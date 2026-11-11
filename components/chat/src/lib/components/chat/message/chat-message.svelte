@@ -104,7 +104,7 @@
     approvalResolutionInFlightIds?: ReadonlySet<string> | undefined;
     /** UI-only approvals decided in this chat, keyed by tool-call id, kept as receipts. */
     approvalReceipts?: ReadonlyMap<string, ToolApprovalReceiptRecord> | undefined;
-    /** Describes a tool approval beyond its action; `undefined` draws the shared approval row. */
+    /** Describes a tool approval beyond its action; `undefined` adds nothing to what the action carries. */
     describeApproval?: MessagePartDerivationContext['describeApproval'];
     /** Called when the user resolves an action-required approval. */
     onApprovalResolve?:

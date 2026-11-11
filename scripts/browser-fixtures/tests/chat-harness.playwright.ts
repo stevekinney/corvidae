@@ -927,7 +927,7 @@ test.describe('chat harness — mounts cleanly', () => {
         const approvalChat = await openApprovalFixture();
         const card = approvalChat.locator('.cinder-approval-card');
         cinderCardCounts.push(await card.count());
-        await expect(card).toHaveAttribute('data-cinder-layout', 'row');
+        await expect(card).toHaveAttribute('data-cinder-layout', 'decision');
         await expect(
           card.getByRole('heading', { name: 'Approve running this tool before it executes?' }),
         ).toBeVisible();

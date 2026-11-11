@@ -90,6 +90,7 @@
   import Badge from '../badge/badge.svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
+  import CodeBlock from '../code-block/code-block.svelte';
   import Link from '../link/link.svelte';
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
@@ -332,7 +333,15 @@
             </p>
           {/if}
           {#if command !== undefined}
-            <pre class="cinder-approval-card__command"><code>{command}</code></pre>
+            <div class="cinder-approval-card__command">
+              <CodeBlock
+                code={command}
+                language="shell"
+                languageLabelVisible={false}
+                copyable={false}
+                wrap
+              />
+            </div>
           {/if}
         </div>
       </div>
@@ -381,7 +390,15 @@
     {#if command !== undefined}
       <div class="cinder-approval-card__fact cinder-approval-card__fact--command">
         <dt>Command</dt>
-        <dd><pre class="cinder-approval-card__command"><code>{command}</code></pre></dd>
+        <dd><div class="cinder-approval-card__command">
+              <CodeBlock
+                code={command}
+                language="shell"
+                languageLabelVisible={false}
+                copyable={false}
+                wrap
+              />
+            </div></dd>
       </div>
     {/if}
   </dl>

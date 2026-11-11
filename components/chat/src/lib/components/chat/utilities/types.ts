@@ -402,7 +402,7 @@ export type MessagePartDerivationContext = {
    * `tool-approval` part (its receipt) after its result stops asking for approval.
    */
   approvalReceipts?: ReadonlyMap<string, ToolApprovalReceiptRecord> | undefined;
-  /** Describes an approval beyond its action; `undefined` draws the shared approval row. */
+  /** Describes an approval beyond its action; `undefined` adds nothing to what the action carries. */
   describeApproval?:
     ((toolCall: { id: string; name: string }, action: ToolApprovalAction) => ChatApprovalDetails | undefined) | undefined;
   /**

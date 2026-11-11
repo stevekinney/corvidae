@@ -91,15 +91,16 @@ describe('ApprovalCard decision layout', () => {
       squash(fact.querySelector('dt')?.textContent),
       squash(fact.querySelector('dd')?.textContent),
     ]);
-    expect(facts).toEqual([
+    expect(facts.slice(0, 3)).toEqual([
       ['Tool', 'Issue refund'],
       ['Target', 'order 4471'],
       ['Amount', '$42.00'],
-      ['Command', 'refund --order 4471 --amount 42.00'],
     ]);
+    expect(facts[3]?.[0]).toBe('Command');
+    expect(facts[3]?.[1]).toContain('refund --order 4471 --amount 42.00');
     const command = container.querySelector('.cinder-approval-card__command');
     expect(command?.closest('[hidden]')).toBeNull();
-    expect(command?.querySelector('code')).not.toBeNull();
+    expect(command?.querySelector('.cinder-code-block--wrap')).not.toBeNull();
   });
 
   test('names the tool in monospace when it has no label, and says nothing of reversibility it does not know', () => {
@@ -459,7 +460,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(details?.hasAttribute('hidden')).toBe(false);
     expect(squash(details?.textContent)).toContain('Your note Checked the order first');
     expect(squash(details?.textContent)).toContain('Result: Refunded $42.00 to the original card.');
-    expect(squash(details?.querySelector('.cinder-approval-card__command')?.textContent)).toBe(
+    expect(squash(details?.querySelector('.cinder-approval-card__command')?.textContent)).toContain(
       'refund --order 4471 --amount 42.00',
     );
   });
@@ -510,13 +511,11 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
 });
 
 describe('ApprovalCard decision layout stylesheet', () => {
-  test('keeps the command flat, wrapped and monospaced, and the facts in a definition grid', () => {
+  test('keeps the facts in a definition grid and the command free of a box of its own', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
-    expect(css).toMatch(
-      /\.cinder-approval-card__command \{[^}]*font-family: var\(--cinder-font-mono\);[^}]*white-space: pre-wrap;/,
-    );
     expect(css).toMatch(/\.cinder-approval-card__fact \{\s*display: grid;/);
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*background:/);
+    expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*border:/);
   });
 });

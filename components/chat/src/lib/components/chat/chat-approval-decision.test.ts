@@ -254,16 +254,17 @@ describe('Chat composer drawer for a waiting approval', () => {
 });
 
 describe('Chat approval decision surface', () => {
-  test('keeps the shared row for an approval the adapter does not describe', () => {
+  test('draws the decision for an approval the adapter does not describe, without the extras', () => {
     const { container } = render(Chat, {
-      id: 'chat-decision-row',
-      conversation: approvalConversation('decision-row'),
+      id: 'chat-decision-plain',
+      conversation: approvalConversation('decision-plain'),
       adapter: { sendMessage: async () => undefined, resolveToolApproval: async () => undefined },
     });
+    const card = getByRole(container, 'article', { name: QUESTION });
 
-    expect(
-      getByRole(container, 'article', { name: QUESTION }).getAttribute('data-cinder-layout'),
-    ).toBe('row');
+    expect(card.getAttribute('data-cinder-layout')).toBe('decision');
+    expect(card.querySelector('.cinder-approval-card__irreversible')).toBeNull();
+    expect(getByRole(card, 'button', { name: 'Approve' })).not.toBeNull();
   });
 
   test('draws the decision for an approval the adapter describes, with the badge, the facts and the command', () => {
@@ -310,7 +311,7 @@ describe('Chat approval decision surface', () => {
     expect(seen[0]).toEqual([{ id: 'call', name: 'issue-refund' }, 'approval', 'test-approval']);
   });
 
-  test('draws the shared row when the adapter throws', () => {
+  test('draws the decision without the extras when the adapter throws', () => {
     const { container } = render(Chat, {
       id: 'chat-decision-throws',
       conversation: approvalConversation('decision-throws'),
@@ -322,9 +323,9 @@ describe('Chat approval decision surface', () => {
       },
     });
 
-    expect(
-      getByRole(container, 'article', { name: QUESTION }).getAttribute('data-cinder-layout'),
-    ).toBe('row');
+    const card = getByRole(container, 'article', { name: QUESTION });
+    expect(card.getAttribute('data-cinder-layout')).toBe('decision');
+    expect(card.querySelector('.cinder-approval-card__irreversible')).toBeNull();
   });
 
   test('an irreversible approval arms on the first press and resolves on the second', async () => {

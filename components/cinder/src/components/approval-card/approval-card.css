@@ -846,23 +846,12 @@
     font-family: var(--cinder-font-mono);
   }
 
-  /* The command is always open and always monospaced; it wraps so none of it hides behind a
-     sideways scroll. It is flat text, not a box inside the card. */
+  /* The command is always open, so it is a code block that wraps: none of it hides behind a
+     sideways scroll. */
   .cinder-approval-card__command {
-    box-sizing: border-box;
+    min-inline-size: 0;
     margin: 0;
-    padding: 0;
-    color: var(--cinder-text-default);
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-xs);
-    line-height: var(--cinder-leading-snug);
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
     text-align: start;
-  }
-
-  .cinder-approval-card__command > code {
-    font: inherit;
   }
 
   .cinder-approval-card__countdown,

@@ -65,7 +65,7 @@ describe('ToolApprovalPart', () => {
 
     expect(card).not.toBeNull();
     expect(card?.getAttribute('data-cinder-tool-approval')).toBe('true');
-    expect(card?.getAttribute('data-cinder-layout')).toBe('row');
+    expect(card?.getAttribute('data-cinder-layout')).toBe('decision');
     expect(card?.getAttribute('data-cinder-state')).toBe('pending');
     expect(card?.getAttribute('data-cinder-risk')).toBe('high');
     expect(getByRole('article', { name: 'Deploy to production?' })).toBe(card as HTMLElement);
@@ -154,7 +154,7 @@ describe('ToolApprovalPart', () => {
     });
 
     expect(document.activeElement).toBe(before);
-    const heading = container.querySelector('h4.cinder-approval-card__row-question');
+    const heading = container.querySelector('h4.cinder-approval-card__decision-title');
     if (!(heading instanceof HTMLElement)) throw new Error('Missing approval row question');
     expect(heading.textContent).toContain('Deploy to production?');
     const card = getByRole('article', { name: 'Deploy to production?' });

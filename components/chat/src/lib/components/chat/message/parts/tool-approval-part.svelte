@@ -35,9 +35,9 @@
       idempotencyKey: part.action.idempotencyKey,
       state: part.state,
       headingLevel: 4,
-      // An approval the adapter describes is the explicit decision, which stays as a receipt once
-      // decided. Any other is one row: the reply above it already explains the request.
-      layout: part.details === undefined ? 'row' : 'decision',
+      // The explicit decision, which stays as a receipt once decided. The adapter adds what the
+      // approval action does not carry: whether it can be undone, a named primary, facts.
+      layout: 'decision',
     };
 
     if (part.details?.approveLabel !== undefined) props.approveLabel = part.details.approveLabel;

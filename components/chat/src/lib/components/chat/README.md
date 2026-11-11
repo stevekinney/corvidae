@@ -132,7 +132,7 @@ The helpers immutably set or clear the transient `_deliveryStatus` metadata used
 
 ## Approval decisions
 
-A tool approval draws as the shared approval row. An adapter that knows more about it opts into the explicit decision surface with `describeApproval(toolCall, action)`, which returns a `ChatApprovalDetails` or `undefined` (a throw reads as `undefined`):
+A tool approval draws as Cinder's explicit decision surface: the action, the Tool, the Command and a Deny and Approve pair. An adapter that knows more about it adds to that with `describeApproval(toolCall, action)`, which returns a `ChatApprovalDetails` or `undefined` (a throw reads as `undefined`). The approval action carries no word on whether it can be undone, so only the adapter can mark an approval irreversible:
 
 ```ts
 import type { ChatAdapter } from '@lostgradient/chat';
@@ -151,7 +151,7 @@ const adapter: Pick<ChatAdapter, 'sendMessage' | 'describeApproval'> = {
 };
 ```
 
-- The decision surface is Cinder's `ApprovalCard` with `layout="decision"`: the action as the title, a danger badge when `irreversible`, the pause sentence, Tool, your `facts`, whether it can be undone, and the command always open and monospaced. Deny sits left and the named primary right. An irreversible primary arms on its first press ("Press again to refund"), reverts after three seconds or on Escape, and commits on the second press. Escape on an armed press never cancels the approval.
+- The surface is Cinder's `ApprovalCard` with `layout="decision"`: the action as the title, a danger badge when `irreversible`, the pause sentence, Tool, your `facts`, whether it can be undone, and the command always open and monospaced. Deny sits left and the named primary right. An irreversible primary arms on its first press ("Press again to refund"), reverts after three seconds or on Escape, and commits on the second press. Escape on an armed press never cancels the approval.
 - A decision made in this chat stays in the transcript as a receipt: a check badge, "by you" and the time, with a denial's note quoted inline. The receipt outlives the result that asked, so it is still there once the run resumes. A decision made on another surface is not known to Chat; the wire action carries no actor or surface.
 - While an approval waits, a drawer above the composer says "Waiting for your approval. Anything you send now queues until you decide." Its Review approval button scrolls to the approval (through the virtualized rows) and focuses its card without answering it. A draft in the box makes Send read Queue with the queue icon.
 

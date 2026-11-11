@@ -47,15 +47,21 @@ const details: NonNullable<ToolApprovalMessagePart['details']> = {
 };
 
 describe('ToolApprovalPart decision surface', () => {
-  test('keeps the shared row when nothing describes the approval', () => {
-    const { container } = render(ToolApprovalPart, {
+  test('draws the decision with the tool and the command when nothing describes the approval', () => {
+    const { container, getByRole } = render(ToolApprovalPart, {
       props: { part: refundPart(), onApprovalResolve: () => undefined },
     });
+    const card = container.querySelector('[data-cinder-tool-approval]');
 
+    expect(card?.getAttribute('data-cinder-layout')).toBe('decision');
+    expect(card?.querySelector('.cinder-approval-card__risk-icon')).toBeNull();
+    expect(card?.querySelector('.cinder-approval-card__irreversible')).toBeNull();
     expect(
-      container.querySelector('[data-cinder-tool-approval]')?.getAttribute('data-cinder-layout'),
-    ).toBe('row');
-    expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
+      Array.from(card?.querySelectorAll('.cinder-approval-card__fact dt') ?? [], (term) =>
+        term.textContent?.trim(),
+      ),
+    ).toEqual(['Tool', 'Command']);
+    expect(getByRole('button', { name: 'Approve' })).not.toBeNull();
   });
 
   test('draws the decision, forwarding the irreversible flag, the label, the pause, the facts and why', () => {
@@ -183,7 +189,7 @@ describe('ToolApprovalPart receipt', () => {
     ).toBe('“Refund it through the original card instead”');
   });
 
-  test('the shared row names who decided and when too', () => {
+  test('without a description a decision made here is still a receipt', () => {
     const { container } = render(ToolApprovalPart, {
       props: {
         part: refundPart({ state: 'denied', receipt: { decidedAt, reason: 'Not today' } }),
@@ -191,10 +197,12 @@ describe('ToolApprovalPart receipt', () => {
     });
     const card = container.querySelector('[data-cinder-tool-approval]');
 
-    expect(card?.getAttribute('data-cinder-layout')).toBe('row');
-    expect(card?.querySelector('.cinder-approval-card__outcome')?.textContent).toMatch(
-      /Denied by you,\s+\d{1,2}:\d{2} [AP]M/,
+    expect(card?.getAttribute('data-cinder-layout')).toBe('decision');
+    expect(card?.querySelector('.cinder-approval-card__receipt-by')?.textContent?.trim()).toMatch(
+      /^by you, \d{1,2}:\d{2} [AP]M$/,
     );
-    expect(card?.textContent).toContain('Not today');
+    expect(card?.querySelector('.cinder-approval-card__receipt-quote')?.textContent).toContain(
+      'Not today',
+    );
   });
 });

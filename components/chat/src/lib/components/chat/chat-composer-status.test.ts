@@ -187,7 +187,7 @@ describe('Chat composer status and approval row', () => {
       adapter,
     });
     const row = getByRole(container, 'article', { name: 'Run issue-refund for $42.10?' });
-    expect(row.getAttribute('data-cinder-layout')).toBe('row');
+    expect(row.getAttribute('data-cinder-layout')).toBe('decision');
 
     await fireEvent.click(getByRole(row, 'button', { name: 'Approve' }));
     await tick();

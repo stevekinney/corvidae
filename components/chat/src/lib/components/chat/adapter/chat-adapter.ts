@@ -96,12 +96,11 @@ export type ChatPushHandlers = {
 };
 
 /**
- * What a host knows about a tool approval that the approval action does not carry. Chat draws the
- * explicit decision surface for an approval the adapter describes: the action as the title, a
- * danger badge when it cannot be undone, a sentence about the pause, Tool, Target, Amount and
- * Command facts, a named primary action that arms on its first press when it is irreversible, and
- * a retained receipt once it is decided. An approval the adapter does not describe keeps the
- * shared approval row.
+ * What a host knows about a tool approval that the approval action does not carry. Chat draws
+ * every approval as the explicit decision surface: the action as the title, a danger badge when it
+ * cannot be undone, a sentence about the pause, Tool, Target, Amount and Command facts, a named
+ * primary action that arms on its first press when it is irreversible, and a retained receipt once
+ * it is decided. The action carries the Tool and the Command; this adds the rest.
  */
 export type ChatApprovalDetails = {
   /** Whether the operation cannot be undone: an irreversible primary arms on its first press. */
@@ -138,8 +137,8 @@ export type ChatAdapter = {
   /**
    * Describes a tool approval beyond what its action carries (see {@link ChatApprovalDetails}).
    * Called while the transcript derives the approval's part, with the call's id and name and the
-   * approval action. Return `undefined` for the shared approval row. A throw is treated as
-   * `undefined`.
+   * approval action. Return `undefined` to add nothing: the approval then reads as the action
+   * alone. A throw is treated as `undefined`.
    */
   describeApproval?: (
     toolCall: { id: string; name: string },
