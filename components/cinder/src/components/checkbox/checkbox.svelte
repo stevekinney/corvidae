@@ -138,7 +138,9 @@
   // the input stays the one keyboard and assistive-technology target, and a press on the box itself
   // is the browser's own (its target is the input, not the row).
   function forwardRowPress(event: MouseEvent): void {
-    if (event.target === event.currentTarget) inputElement?.click();
+    if (event.target === event.currentTarget && inputElement && !inputElement.disabled) {
+      inputElement.click();
+    }
   }
 
   function handleChange(event: Event & { currentTarget: EventTarget & HTMLInputElement }): void {
