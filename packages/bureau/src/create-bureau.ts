@@ -37,7 +37,6 @@ import {
   type JSONValue,
   type LivenessSnapshot,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
-  parseSessionInputPayload,
   PERMISSION_MODES,
   type PermissionMode,
   readGenerationProfile,
@@ -56,9 +55,6 @@ import {
   SessionCreatedEvent,
   SessionDeletedEvent,
   type SessionInputAdmissionOutcome,
-  type SessionInputAdmissionRequest,
-  type SessionInputRetractionOutcome,
-  type SessionInputRetractionRequest,
   type SessionInputGate,
   type SessionListOptions,
   SessionOutboxAppendedEvent,
@@ -68,7 +64,6 @@ import {
   type SessionSummary,
   SteeringAcceptedEvent,
   SteeringAppliedEvent,
-  snapshotPayload,
   type SteeringRequestedValue,
   type StepRecord,
   type PeerCallJournal,
@@ -80,14 +75,11 @@ import {
   SESSION_OWNER_METADATA_KEY,
   SESSION_TITLE_METADATA_KEY,
   SESSION_TITLE_OVERRIDE_LIMIT,
-  createSessionHandle,
-  ForkThroughMessageError,
   admitToolResultMedia,
   createStepGeneratedMediaAdmitter,
   isFailureFinishReason,
   readDurableRunResult,
   humanInputSchemaOf,
-  sessionOwnerOf,
   summarizeSession,
   TOOL_TIMING_METADATA_KEY,
   type ToolTiming,
@@ -126,7 +118,6 @@ import {
   type WorkflowState,
 } from '@lostgradient/weft';
 import {
-  type AnyToolbox,
   formatToolName,
   type SignedPendingToolApproval,
   type Tool,
@@ -136,7 +127,6 @@ import {
 import {
   Conversation,
   type ConversationHistory,
-  CURRENT_SCHEMA_VERSION,
   materializeToolResultAsync,
   resolveToolResult,
   getOwn,
@@ -164,13 +154,10 @@ import {
 import { AgentSnapshotError, type AgentFileDefinitionInput, guardrailIdOf } from './agent-file';
 import { createTryAgents, isTryAgentName } from './agent-try';
 import {
-  allowedDescriptorsOfFileAgent,
   createAgentFileCatalog,
   type FileAgentBinding,
   readFileAgentBinding,
-  readFileAgentCostBudget,
 } from './agent-file-catalog';
-import { unpricedSwitchReason } from './file-agent-cost-budget';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createAssetService } from './assets/asset-service';
@@ -248,12 +235,7 @@ import {
   ChatPermissionUnavailableError,
   grantLoosensTool,
 } from './tool-approval';
-import {
-  createRunCreationLedger,
-  BureauLedgerConflictError,
-  digestCommandPayload,
-  type RunCreationObservation,
-} from './command-ledger';
+import { createRunCreationLedger, type RunCreationObservation } from './command-ledger';
 import {
   createDurableEventHistory,
   createDurableEventProducer,
@@ -471,7 +453,6 @@ import {
   createRunHumanWaits,
   humanWaitDecisionPayload,
   humanWaitDecisionRequest,
-  humanWaitDeliveryId,
 } from './run-human-waits';
 import { createWorkflowReviewWaits } from './workflow-review-waits';
 import {
@@ -491,38 +472,15 @@ import {
 } from './schedule-fire-settled-event';
 import { createChatSpendLedger } from './chat-spend-ledger';
 import {
-  admitSessionInput,
   isSessionInputSessionIdAddressable,
-  SessionInputMailboxPurgedError,
-  type SessionInputAdmissionAttemptOutcome,
   createSessionInputMailbox,
-  type PersistedSessionInput,
-  readSessionInputReceipt,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
-  SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
-  SESSION_INPUT_RETRACTED_REASON,
 } from './session-input-durability';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
-import {
-  createSessionInputSettlement,
-  forEachOpenReceipt,
-  SESSION_INPUT_RUN_ENDED_REASON,
-} from './session-input-settlement';
+import { createSessionInputSettlement, forEachOpenReceipt } from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import { recoveredRequestContextFromMetadata } from './session-request-context';
-import { allowsModelOverride, describeAgentModels } from './agent-models';
-import {
-  assertBranchPoint,
-  createForkLedger,
-  FORK_OPERATION_VERSION,
-  type ForkLedgerClaim,
-  type ForkLedgerFailure,
-  type ForkLedgerResult,
-  type ForkSessionRequest,
-  type ForkSessionResult,
-  SessionForkRefusedError,
-} from './session-fork';
-import { withoutGrantsFor } from './session-grants';
+import { createForkLedger } from './session-fork';
 import {
   answerSteeringRetry,
   type BureauSteeringGate,
@@ -533,7 +491,6 @@ import {
   isConfigurationTarget,
   type SteeringCommandAdmissionOutcome,
   type SteeringCommandRequest,
-  type SessionSteeringState,
   type SteeringRefusal,
   steersIdleSession,
 } from './steering';
@@ -559,7 +516,6 @@ import type {
   BureauShutdownReport,
   CancelDurableRunOutcome,
   ContextDeletionReport,
-  ContextWindowReport,
   OwnedResource,
   PendingHumanWaitReview,
   PendingReview,
@@ -588,12 +544,6 @@ import { writeContextTombstone } from './context-tombstone';
 import { type AgUiLease, createAgUiLeases, releaseQuietly } from './http/ag-ui-lease';
 import { purgeChatLedgerEntries } from './chat-ledger-purge';
 import { createNotifications } from './notifications/create-notifications';
-import {
-  buildContextWindow,
-  type ContextWindowTool,
-  type ReportedStepUsage,
-  sizeManagedAssets,
-} from './contexts/context-window';
 import { createContexts } from './contexts/create-contexts';
 import { createTasks } from './tasks/create-tasks';
 import { createReviews } from './reviews/create-reviews';
@@ -669,7 +619,6 @@ import {
   hasMaintenanceSurface,
   expiredRecordRemovalOf,
   THREAD_LEASE_RETRY_MILLISECONDS,
-  CONTEXT_WINDOW_TASK_SCAN_LIMIT,
   resumeRefusedBeforeExecution,
   FIRE_REVIEW_RECONCILIATION_MAXIMUM_DELAY_MILLISECONDS,
   notifyPeerCallsReady,
@@ -718,6 +667,11 @@ import {
   createScheduleOperations,
   type ScheduleOperationsPeers,
 } from './bureau-seams/schedule-operations';
+import {
+  createSessionInputAdmission,
+  type SessionInputAdmissionPeers,
+} from './bureau-seams/session-input-admission';
+import { createSessionForks, type SessionForksPeers } from './bureau-seams/session-forks';
 
 /**
  * The callables the seams of `constructBureau` read from one another and from the parent: the
@@ -729,7 +683,9 @@ type BureauPeers = EventHistoryPeers &
   RunCreationPeers &
   ShutdownPeers &
   DurableRecoveryPeers &
-  ScheduleOperationsPeers;
+  ScheduleOperationsPeers &
+  SessionInputAdmissionPeers &
+  SessionForksPeers;
 
 export function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
@@ -2262,6 +2218,30 @@ async function constructBureau<const D extends AgentDefinitions>(
     get sessionOwner() {
       return sessionOwner;
     },
+    get isSessionInputClosed() {
+      return isSessionInputClosed;
+    },
+    get tryGetSessionInputMailbox() {
+      return tryGetSessionInputMailbox;
+    },
+    get liveSessionRunIdsEverywhere() {
+      return liveSessionRunIdsEverywhere;
+    },
+    get resolveLiveSessionPreAdmission() {
+      return resolveLiveSessionPreAdmission;
+    },
+    get catchUpSteering() {
+      return catchUpSteering;
+    },
+    get requireSessionStore() {
+      return requireSessionStore;
+    },
+    get listPendingReviews() {
+      return listPendingReviews;
+    },
+    get admitSteeringRequest() {
+      return admitSteeringRequest;
+    },
   };
   // The seam block: synchronous, side-effect-free factories, called before anything can reach them.
   const { readEventHistory, subscribeToEventHistory } = createEventHistoryReads<D>(core, peers);
@@ -2297,6 +2277,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     listScheduleMissed,
     updateSchedule,
   } = createScheduleOperations<D>(core, peers);
+  const {
+    deliverHumanWaitDecision,
+    signalSession,
+    submitSessionInput,
+    retractSessionInput,
+    forgetSessionGrants,
+  } = createSessionInputAdmission<D>(core, peers);
+  const {
+    submitSteeringCommand,
+    unpricedSwitchRefusalOf,
+    agentAllowsModel,
+    forkSession,
+    getSessionSteering,
+    getContextWindow,
+  } = createSessionForks<D>(core, peers);
   // COR-660 — the per-tick observation pair, forwarded the same way and for
   // the same reason: a scheduled tick is headless, so the bureau emitter is
   // the only surface it has. Fresh instances again, for the WHATWG
@@ -12918,919 +12913,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
-   * Look up the current durable run id for a session. Used by signal/update/query
-   * to route the operation to the correct workflow handle.
-   *
-   * Requires that `lastRunStatus` is `'running'`: completed, aborted, and error
-   * sessions retain their `lastRunId` but targeting a terminal workflow with a
-   * signal/update would silently mis-route or surface a low-level engine error
-   * instead of the expected "no active run" response.
-   */
-  async function requireSessionRunId(sessionId: string): Promise<string> {
-    const session = await requireSessionStore().load(sessionId);
-    if (!session || inFlightSessionDeletions.has(sessionId)) {
-      throw new BureauError(`Session not found: ${sessionId}`, 'NOT_FOUND');
-    }
-    const runId = session.metadata['lastRunId'];
-    if (typeof runId !== 'string' || !runId) {
-      throw new BureauError(`Session ${sessionId} has no active run`, 'NOT_FOUND');
-    }
-    const runStatus = session.metadata['lastRunStatus'];
-    if (runStatus !== 'running') {
-      throw new BureauError(`Session ${sessionId} has no active run`, 'NOT_FOUND');
-    }
-    return runId;
-  }
-
-  /**
-   * COR-1579 — the delivery id the next `signalSession` call delivers under, set only by
-   * {@link deliverHumanWaitDecision} for the synchronous start of that call. `resolveReview`
-   * delivers a human-wait decision through the public `bureau.contexts.signal` (one seam, which a
-   * host or test can observe), whose signature has no delivery id; the call reads and clears this
-   * before its first `await`, so no other call can see it. A wrapper around `bureau.contexts.signal`
-   * must therefore call through before it awaits anything, or the delivery goes out unkeyed.
-   */
-  let keyedSessionDelivery: string | undefined;
-
-  /**
-   * Deliver a human-wait decision on a session run keyed by its review id, so a retry or a
-   * same-decision resolver in another process delivers it once (Weft deduplicates a keyed signal
-   * by its accepted-response marker), and nothing is left buffered for the run's next park.
-   */
-  function deliverHumanWaitDecision(
-    review: Extract<SessionPendingReview, { kind: 'human-wait' }>,
-    payload: unknown,
-  ): Promise<void> {
-    keyedSessionDelivery = humanWaitDeliveryId(review.id);
-    try {
-      return bureau.contexts.signal(review.sessionId, review.signalName, payload);
-    } finally {
-      keyedSessionDelivery = undefined;
-    }
-  }
-
-  async function signalSession(sessionId: string, name: string, payload?: unknown): Promise<void> {
-    const signalId = keyedSessionDelivery;
-    keyedSessionDelivery = undefined;
-    if (!runtime.durable)
-      throw new BureauError('Durable engine not configured', 'NOT_CONFIGURED', 'durable');
-    const runId = await requireSessionRunId(sessionId);
-    const requestContext = runRequestContexts.get(runId);
-    if (
-      requestContext &&
-      isTransportIssuedAuthority(requestContext) &&
-      (!requestAuthorityValidator || !(await requestAuthorityValidator(requestContext)))
-    ) {
-      throw new BureauError(
-        'Cannot signal: the request authority is no longer current.',
-        'CONFLICT',
-      );
-    }
-    await (signalId === undefined
-      ? runtime.durable.engine.signal(runId, name, payload)
-      : runtime.durable.engine.signal(runId, name, payload, { signalId }));
-    // AB-13 — a signal is how a human-wait park is released (directly, or via
-    // `resolveReview`'s human-wait approve path). Reacquire the concurrency
-    // slot `HumanWaitParkedEvent` freed. A no-op when this runId was never
-    // parked (e.g. a signal delivered to a run that never called
-    // `requestHumanInput`) or when no flow control is configured.
-    flowController?.markResumed(runId);
-  }
-
-  /**
-   * AB-42/AB-194 — admit a caller's session input. Pre-admission checks run
-   * in AB-42's fixed order: authorization (`not-found`) first, then session
-   * lifecycle (`session-terminal`), then capability/capacity
-   * (`unsupported-capability`) — reversing the first two would let an
-   * unauthorized caller learn a session exists.
-   *
-   * COR-435/COR-1476: on a durably-configured bureau an authorized request to
-   * a non-terminal session is admitted to the session's mailbox (`admitted`,
-   * `replayed`, `conflict`, or `backlog-exhausted`). An admitted input ends
-   * `promoted` once a live run's step boundary appends its user turn (at most
-   * once, in admission order within a run, keyed by the mailbox command, under
-   * the input's own id, and promoted in the write that saves the turn), or
-   * `canceled` when its run ends first, so the client resends it. Bureau never
-   * starts a run to answer input: after the admission commits this method
-   * reads the session's liveness, and with no run live or starting it cancels
-   * the input itself and returns the re-read receipt (see
-   * `session-input-settlement.ts`). `steer` and `queue` share that one FIFO
-   * path. A bureau with no durable mailbox, or a session id too long to
-   * address one, answers `unsupported-capability`.
-   */
-  function assertSessionInputAdmissionOpen(): void {
-    if (runAdmissionClosed) {
-      throw new BureauError('Cannot submit session input: Bureau is shutting down.', 'CONFLICT');
-    }
-  }
-
-  async function submitSessionInput(
-    sessionId: string,
-    callerRequest: SessionInputAdmissionRequest,
-  ): Promise<SessionInputAdmissionOutcome> {
-    // Unlike signalSession, this does NOT throw
-    // BureauError('NOT_CONFIGURED') when no session store is composed: an
-    // ephemeral bureau (no persistence/storage) is a supported configuration,
-    // and every sessionId is necessarily unknown in it — the correct outcome
-    // per this method's own contract is `not-found`, not a throw.
-    // A durable admission reads the engine and the log from its first await to
-    // its last, so shutdown waits for the whole of it before it disposes
-    // either; once shutdown starts, none begins, as for steering.
-    assertSessionInputAdmissionOpen();
-    // COR-716: a payload no run could read is refused here, at the contract's own door,
-    // rather than admitted and then rejected without retry when a step boundary decodes it.
-    try {
-      parseSessionInputPayload(callerRequest.payload);
-    } catch (error) {
-      toBadRequest(
-        `"payload" is invalid: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    // COR-1661: `expiresAt` bounds how long the input may wait, so it must be an instant.
-    if (
-      callerRequest.expiresAt !== undefined &&
-      Number.isNaN(Date.parse(callerRequest.expiresAt))
-    ) {
-      toBadRequest('"expiresAt" must be an ISO 8601 timestamp');
-    }
-    // The caller owns its payload and may edit it as soon as this call yields, but the
-    // admission awaits the session, its liveness, and the mailbox before it persists.
-    // Copy what was validated, now, and admit the copy.
-    const request: SessionInputAdmissionRequest = {
-      ...callerRequest,
-      payload: snapshotPayload(callerRequest.payload),
-    };
-    const sessionStoreForInput = runtime.sessionStore;
-    const session = sessionStoreForInput ? await sessionStoreForInput.load(sessionId) : undefined;
-    // `session` truthy implies `sessionStoreForInput` was truthy above, but
-    // TypeScript cannot carry that narrowing across the ternary into later
-    // code — this makes it explicit rather than asserting it away.
-    if (!session || !sessionStoreForInput) {
-      return { outcome: 'not-found' };
-    }
-    // COR-1481: input to a context being deleted reads as input to one that is gone.
-    if (inFlightSessionDeletions.has(sessionId)) return { outcome: 'not-found' };
-    // COR-1661: input checked against an earlier incarnation of the context is input to a session
-    // that is not there, whatever now answers to its id.
-    if (request.incarnation !== undefined && request.incarnation !== session.incarnation) {
-      return { outcome: 'not-found' };
-    }
-    // COR-301/COR-1569: the same live-run-aware checks steering makes,
-    // across every process sharing this backend. A request carries no run
-    // id, so authorization targets the session's sole live run.
-    const preAdmission = await resolveLiveSessionPreAdmission(
-      sessionId,
-      session,
-      request.principal,
-    );
-    if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
-    if (preAdmission.verdict === 'session-terminal') {
-      return { outcome: 'session-terminal', sessionId };
-    }
-
-    // `tryGet...`, not `get...`: a session id Weft cannot address as a mailbox
-    // resource (over 256 bytes) is a deployment limit, so it answers
-    // `unsupported-capability` like a bureau with no mailbox rather than throwing.
-    const sessionMailbox = tryGetSessionInputMailbox(sessionId, session.incarnation);
-    const storage = runtime.durableStorage;
-    const kv = runtime.kv;
-    if (sessionMailbox === undefined || storage === undefined || kv === undefined) {
-      return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
-    }
-    // A mailbox exists only with the durable engine (`getSessionInputMailbox`),
-    // and the engine with `kv` is what composes the settlement, so it is never
-    // absent here; this only narrows the type, and fails loudly if the
-    // composition above ever changes.
-    if (sessionInputSettlement === undefined) {
-      throw new Error('Session-input admission reached a bureau without its settlement.');
-    }
-
-    const id = request.id ?? runtimeServices.identifiers.next('session-input');
-    const reservationKey = `${request.principal}\u0000session-input\u0000${id}`;
-
-    const payload: PersistedSessionInput = {
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-      incarnation: session.incarnation,
-      payload: request.payload,
-      ...(request.expiresAt !== undefined ? { expiresAt: request.expiresAt } : {}),
-      ...(request.supersedes !== undefined ? { supersedes: request.supersedes } : {}),
-    };
-
-    // ORDERING (see `session-input-settlement.ts`): the session's marker is
-    // written BEFORE the admission, so admitted input is never missing from the
-    // sweep's index; the admission commits BEFORE liveness is read below, and the
-    // ending run reads the mailbox only after its own not-live write, so one side
-    // always sees the other. A failure writing the marker refuses the admission.
-    // Checked again after the awaits above: a shutdown that started during them
-    // must not find a new admission outside its drain.
-    assertSessionInputAdmissionOpen();
-    // One admission of a `(principal, id)` at a time in this process, each
-    // answered on its own: a concurrent submission with another payload reads
-    // the mailbox's `conflict`, and one for another session reads the
-    // identity's. Nothing is coalesced into another call's receipt.
-    const previous = inFlightSessionInputAdmissions.get(reservationKey);
-    const runAdmission = (): Promise<SessionInputAdmissionAttemptOutcome> =>
-      (async () => {
-        await sessionInputSettlement.markOpen(sessionId, session.incarnation);
-        return admitSessionInput({
-          storage,
-          kv,
-          sessionMailbox,
-          sessionId,
-          incarnation: session.incarnation,
-          id,
-          principal: request.principal,
-          deliveryMode: request.deliveryMode,
-          payload,
-          principalBacklogLimit: sessionInputPrincipalBacklogLimit(),
-          sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit(),
-          nowMs: runtimeServices.clock.now(),
-        }).catch((error: unknown): SessionInputAdmissionAttemptOutcome => {
-          // COR-1934: the chat was deleted and its mailbox purged while this admission was in
-          // flight; it is refused as any input to a chat that is gone.
-          if (error instanceof SessionInputMailboxPurgedError) return { outcome: 'not-found' };
-          throw error;
-        });
-      })();
-    const admission = (
-      previous === undefined ? runAdmission() : previous.then(runAdmission, runAdmission)
-    )
-      .then(async (outcome): Promise<SessionInputAdmissionOutcome> => {
-        if (outcome.outcome !== 'admitted') return outcome;
-        const { receipt, commandId } = outcome;
-        const admitted: SessionInputAdmissionOutcome = { outcome: 'admitted', receipt };
-        if (sessionInputSettlement === undefined) return admitted;
-        // The marker written before the admission can be removed in between by
-        // a sweep that read it, found the mailbox still empty, and deleted it
-        // after the admission committed. Bumping it again now, with the input
-        // durable, keeps the session listed whatever happened to the first bump.
-        try {
-          await sessionInputSettlement.markOpen(sessionId, session.incarnation);
-        } catch (error) {
-          diagnose({
-            level: 'error',
-            scope: 'session-input',
-            message: `[bureau] Could not re-mark session "${sessionId}" as having open input after admitting "${id}": ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-        }
-        // Shutdown releases open input rather than cancelling it; the next
-        // boot's recovered run delivers it, or the sweep cancels it.
-        if (isSessionInputClosed()) return admitted;
-        // COR-1476 — the admission above is committed. Only now is liveness
-        // read, after catching up the steering log, so a run whose `run-ended`
-        // entry another process wrote is not counted live. No run live or
-        // starting means nothing will ever deliver the input, so it is
-        // cancelled here and the caller reads `canceled`. A liveness read that
-        // fails is answered the same way: an input admitted on a guess would
-        // be left open.
-        let live: readonly string[];
-        try {
-          const steeringKv = durableSteeringStore();
-          if (steeringKv !== undefined) {
-            await enqueueSteering(sessionId, () =>
-              catchUpSteering(steeringKv, sessionId, session.incarnation),
-            );
-          }
-          live = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
-        } catch (error) {
-          diagnose({
-            level: 'error',
-            scope: 'session-input',
-            message: `[bureau] Could not read the live runs of session "${sessionId}" after admitting input "${id}"; the input is cancelled rather than left open: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-          live = [];
-        }
-        if (live.length > 0) return admitted;
-        try {
-          await sessionMailbox.requestCancellation({
-            commandId,
-            reason: SESSION_INPUT_RUN_ENDED_REASON,
-          });
-          return {
-            outcome: 'admitted',
-            receipt: await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId),
-          };
-        } catch (error) {
-          // Still open, and the marker written above lists it for the sweep.
-          diagnose({
-            level: 'error',
-            scope: 'session-input',
-            message: `[bureau] Could not cancel input "${id}" of session "${sessionId}", which no run is live to deliver: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-          return admitted;
-        }
-      })
-      .finally(() => {
-        if (inFlightSessionInputAdmissions.get(reservationKey) === admission) {
-          inFlightSessionInputAdmissions.delete(reservationKey);
-        }
-      });
-    inFlightSessionInputAdmissions.set(reservationKey, admission);
-    return admission;
-  }
-
-  /**
-   * B06 (row 18k) — takes back one input its own principal admitted and no run has taken yet: a
-   * follow-up the person removes before the run reaches it. The command is cancelled in the
-   * session's mailbox, so no step boundary can claim it, and the answer says whether that landed
-   * in time. A command a run already claimed is the run's: the gate keeps its lease, the step
-   * appends the turn, and the cancellation only closes the command once the turn commits, so that
-   * case is answered `delivered`, as is an input already promoted. Another principal's input, an
-   * unknown id, and an unknown session or incarnation all answer `not-found`.
-   */
-  async function retractSessionInput(
-    sessionId: string,
-    request: SessionInputRetractionRequest,
-  ): Promise<SessionInputRetractionOutcome> {
-    assertSessionInputAdmissionOpen();
-    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
-    if (session === undefined) return { outcome: 'not-found' };
-    if (request.incarnation !== undefined && request.incarnation !== session.incarnation) {
-      return { outcome: 'not-found' };
-    }
-    const sessionMailbox = tryGetSessionInputMailbox(sessionId, session.incarnation);
-    const kv = runtime.kv;
-    if (sessionMailbox === undefined || kv === undefined) {
-      return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
-    }
-    const admitted = await sessionMailbox.receiptByIdempotencyKey(request.id);
-    // An id is unique within its session whatever its principal, so another caller's input is
-    // answered as one that is not there.
-    if (admitted === null || admitted.caller !== request.principal) {
-      return { outcome: 'not-found' };
-    }
-    const { commandId } = admitted;
-    const before = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
-    if (before.state === 'promoted') return { outcome: 'delivered', receipt: before };
-    const cancellation = await sessionMailbox.requestCancellation({
-      commandId,
-      reason: SESSION_INPUT_RETRACTED_REASON,
-    });
-    // `requested` is a command a step boundary holds. The boundary honors a cancellation that
-    // landed before its last check by rejecting the command, so it is never appended; one that
-    // landed after is closed once the turn commits, and the run has the input. The wait lets the
-    // boundary settle the first kind, and the receipt, never the wait, says which it was: a turn
-    // that appended the input is `promoted`, one the boundary rejected has ended undelivered, and a
-    // command still open when the wait runs out is held by a step that is appending it.
-    if (cancellation.status === 'requested') {
-      await sessionMailbox
-        .awaitCleanup({
-          commandId,
-          timeoutMs: SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
-          pollIntervalMs: 10,
-        })
-        .catch(() => undefined);
-    }
-    const receipt = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
-    const endedUndelivered =
-      receipt.state === 'canceled' || receipt.state === 'failed' || receipt.state === 'expired';
-    const heldByStep = cancellation.status === 'requested' && !endedUndelivered;
-    return receipt.state === 'promoted' || heldByStep
-      ? { outcome: 'delivered', receipt }
-      : { outcome: 'retracted', receipt };
-  }
-
-  /**
-   * B06 (row 20c) — forget the chat's "Allow for the rest of this chat" grants of `tools`, so Retry
-   * on a reply that failed sends the turn again with the interrupted tool back behind its approval.
-   * Only the session's metadata changes: every row of the conversation stays, and the failed
-   * attempt is kept on record. Like a rename it is not activity, so `updatedAt` does not move.
-   */
-  async function forgetSessionGrants(
-    id: string,
-    tools: readonly string[],
-    forgetOptions?: { readonly incarnation?: string | undefined },
-  ): Promise<readonly string[] | undefined> {
-    const sessions = requireSessionStore();
-    if (runAdmissionClosed) {
-      throw new BureauShuttingDownError(
-        'Cannot forget grants: Bureau is shutting down.',
-        runtimeServices.clock.nowISO(),
-      );
-    }
-    let forgotten: readonly string[] | undefined;
-    await sessions.update(
-      id,
-      (session) => {
-        if (session === undefined) return undefined;
-        if (
-          forgetOptions?.incarnation !== undefined &&
-          session.incarnation !== forgetOptions.incarnation
-        ) {
-          return undefined;
-        }
-        const without = withoutGrantsFor(session.metadata, tools);
-        forgotten = without.forgotten;
-        // Nothing to forget is no write: undefined leaves the session as it is.
-        return without.metadata === session.metadata
-          ? undefined
-          : { ...session, metadata: without.metadata };
-      },
-      { refreshActivity: false },
-    );
-    return forgotten;
-  }
-
-  /**
-   * AB-67/AB-199 — admit a `pause`/`resume` steering command. Pre-admission
-   * checks reuse `submitSessionInput`'s fixed order (authorization, then
-   * session lifecycle, then capability): an unauthorized caller or unknown
-   * `sessionId` returns `not-found`; an authorized caller naming an
-   * already-terminal session returns `session-terminal`. Every target other
-   * than `pause`/`resume`, and a durably-configured bureau's `pause`/
-   * `resume`, returns `unsupported-capability` before this session's
-   * `SteeringGate` is ever consulted or created — see
-   * `SteeringCommandAdmissionOutcome`'s doc comment for the exact reasons.
-   */
-  async function submitSteeringCommand(
-    sessionId: string,
-    request: SteeringCommandRequest,
-  ): Promise<SteeringCommandAdmissionOutcome> {
-    // Copied before anything awaits: every check and the decision itself
-    // read this copy, so a caller changing its own request object later
-    // cannot alter what was validated (its run, or its requested value).
-    const snapshot = structuredClone(request);
-    // A durable submission reads the engine and the log from its first
-    // await to its last, so shutdown waits for the whole of it before it
-    // disposes either; once shutdown starts, none begins.
-    if (durableSteeringStore() === undefined) return admitSteeringRequest(sessionId, snapshot);
-    if (runAdmissionClosed) {
-      throw new BureauShuttingDownError(
-        'Cannot steer: Bureau is shutting down.',
-        runtimeServices.clock.nowISO(),
-      );
-    }
-    const submission = admitSteeringRequest(sessionId, snapshot);
-    inFlightSteeringSubmissions.add(submission);
-    try {
-      return await submission;
-    } finally {
-      inFlightSteeringSubmissions.delete(submission);
-    }
-  }
-
-  /**
-   * COR-1921 — why a session of `agentName`'s agent may not be switched to `override` because the
-   * agent has `limits.cost` and the model's row has no price in the catalog, or `undefined` when
-   * it may. The agent is a file agent, bound or `ephemeral` (tried): a code-defined agent has no
-   * budget. The row judged is the one the agent's generate runs for the switch.
-   */
-  function unpricedSwitchRefusalOf(
-    agentName: string,
-    override: { readonly model: string; readonly provider?: string | undefined },
-  ): string | undefined {
-    const agent = agentCatalog.find(agentName) ?? tryAgents.peek(agentName);
-    const budgeted = agent === undefined ? undefined : readFileAgentCostBudget(agent);
-    if (budgeted === undefined) return undefined;
-    return unpricedSwitchReason(
-      budgeted.budget,
-      allowedDescriptorsOfFileAgent(budgeted.models, models.catalog().descriptors),
-      override,
-    );
-  }
-
-  /**
-   * COR-1559 — whether `agentName`'s agent allows a session to be switched to `override`: the
-   * model must be one `bureau.agents.models` lists for it. A routed or opaque agent lists none, so
-   * every override is refused; only an agent this Bureau cannot find is left to the deployment's
-   * catalog, which the caller has already checked. A file agent's model must also be one the
-   * host's resolver can set up: a model it cannot is not allowed.
-   */
-  function agentAllowsModel(
-    agentName: string,
-    override: { readonly model: string; readonly provider?: string | undefined },
-  ): boolean {
-    const agent = agentCatalog.find(agentName) ?? tryAgents.peek(agentName);
-    if (agent === undefined) return true;
-    const descriptors = models.catalog().descriptors;
-    const allowed = describeAgentModels(agent, descriptors);
-    if (!allowsModelOverride(allowed.models, override)) return false;
-    if (readFileAgentBinding(agent) === undefined || options.models?.generate === undefined) {
-      return true;
-    }
-    const row = descriptors.find(
-      (descriptor) =>
-        descriptor.model === override.model &&
-        (override.provider === undefined || descriptor.provider === override.provider) &&
-        allowsModelOverride(allowed.models, {
-          model: descriptor.model,
-          provider: descriptor.provider,
-        }),
-    );
-    if (row === undefined) return false;
-    try {
-      models.generate(row);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * COR-1560 — the fork command ledger: an exact retry of `forkSession`, even after a restart,
    * returns the original result and creates nothing more. It keeps its entries in this Bureau's
    * store, or in memory for an ephemeral one, under a key prefix of its own.
    */
   const forkLedger = createForkLedger(runtime.kv, runtimeServices);
-  /** Fork attempts this process is running, by ledger identity, so a concurrent retry waits for one. */
-  const inFlightForks = new Map<string, { digest: string; result: Promise<ForkSessionResult> }>();
-
-  async function forkSession(
-    sessionId: string,
-    request: ForkSessionRequest,
-  ): Promise<ForkSessionResult> {
-    if (runAdmissionClosed) {
-      throw new BureauShuttingDownError(
-        'Cannot fork: Bureau is shutting down.',
-        runtimeServices.clock.nowISO(),
-      );
-    }
-    const identity = {
-      callerId: request.owner,
-      target: sessionId,
-      requestId: request.commandId,
-      operationVersion: FORK_OPERATION_VERSION,
-    };
-    const digest = digestCommandPayload({ throughMessageId: request.throughMessageId });
-    const key = JSON.stringify([identity.callerId, identity.target, identity.requestId]);
-    const running = inFlightForks.get(key);
-    if (running !== undefined) {
-      if (running.digest !== digest) throw forkConflict(request);
-      return running.result;
-    }
-    const attempt = runForkAttempt(sessionId, request, identity, digest);
-    inFlightForks.set(key, { digest, result: attempt });
-    try {
-      return await attempt;
-    } finally {
-      inFlightForks.delete(key);
-    }
-  }
-
-  function forkConflict(request: ForkSessionRequest): SessionForkRefusedError {
-    return new SessionForkRefusedError(
-      'command-conflict',
-      `The command "${request.commandId}" was already used to branch from another message.`,
-    );
-  }
-
-  async function runForkAttempt(
-    sessionId: string,
-    request: ForkSessionRequest,
-    identity: Parameters<typeof forkLedger.claim>[0],
-    digest: string,
-  ): Promise<ForkSessionResult> {
-    const sessions = runtime.sessionStore;
-    if (sessions === undefined) {
-      throw new BureauError('This Bureau keeps no sessions to branch.', 'BAD_REQUEST');
-    }
-    // A command already answered is answered again without judging the branch point afresh: the
-    // parent may have changed since, and the retry must see what the first attempt made.
-    const located = await forkLedger.locate(identity);
-    const retained = located.state === 'retained' ? located.entry : undefined;
-    if (retained?.state === 'completed' && retained.payloadDigest === digest) {
-      return answerOfFork(retained.result);
-    }
-    const session = await sessions.load(sessionId);
-    // COR-1911 — a tried chat has no agent to continue a branch with: its agent is held for it
-    // alone, so a branch of it is a context that cannot run. It reads as one that does not exist.
-    if (session === undefined || sessionOriginOf(session.metadata) === 'try') {
-      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-    }
-    if (retained === undefined) {
-      await assertBranchPoint(session, request.throughMessageId, {
-        record: (runId) => tasks.record(runId),
-        pendingApprovals: async (runId) => {
-          const live = listPendingReviews()
-            .filter((review) => review.kind === 'tool-approval' && review.runId === runId)
-            .map((review) => review.id);
-          const view = await tasks.get(runId);
-          const durable = (view?.openWaits ?? [])
-            .filter((wait) => wait.kind === 'tool-approval')
-            .map((wait) => wait.reviewId);
-          return [...new Set([...live, ...durable])];
-        },
-      });
-    }
-    const parentSteering = await getSessionSteering(sessionId);
-    const parentRequest = await latestModelRequest(sessionId);
-    let outcome: Awaited<ReturnType<typeof forkLedger.claim>>;
-    try {
-      outcome = await forkLedger.claim(identity, digest, {
-        contextId: runtimeServices.identifiers.next('session'),
-        override: parentRequest ?? parentSteering?.model ?? null,
-        effort: parentSteering?.effort ?? null,
-        permissionMode: parentSteering?.permissionMode ?? null,
-      });
-    } catch (error) {
-      if (error instanceof BureauLedgerConflictError) throw forkConflict(request);
-      throw error;
-    }
-    if (outcome.entry.state === 'completed') return answerOfFork(outcome.entry.result);
-    const claim = outcome.entry.claim;
-    // The identifier is the claim's, so an attempt that died after forking finds its fork, and one
-    // that died before it makes the fork under the identifier the ledger already holds.
-    try {
-      await createSessionHandle(sessionId, {
-        store: sessions,
-        agentName: session.agentName,
-        runtime: runtimeServices,
-      }).fork({
-        throughMessageId: request.throughMessageId,
-        id: claim.contextId,
-        owner: request.owner,
-      });
-    } catch (error) {
-      // The parent was deleted, or the message with it, after the checks: nothing was created. The
-      // command settles to that failure rather than staying pending, so a retry is refused alike.
-      if (!(error instanceof ForkThroughMessageError)) throw error;
-      // A fork before the first message names no message: the parent itself is what went away.
-      const failure: ForkLedgerFailure = {
-        failure:
-          error.messageId === null
-            ? { reason: 'context-not-found', message: error.message }
-            : { reason: 'message-not-found', message: error.message },
-      };
-      await forkLedger.complete(outcome.entry, failure);
-      return answerOfFork(failure);
-    }
-    const carried =
-      claim.override === null
-        ? null
-        : await carryModelOverride(claim.contextId, {
-            id: `${request.commandId}:model`,
-            principal: request.owner,
-            // As the parent asked: a policy reference is submitted as a reference, and resolved
-            // afresh like any carried request; otherwise the explicit override.
-            requestedValue:
-              claim.override.policyRef === undefined
-                ? {
-                    target: 'model',
-                    override: claim.override.model,
-                    ...(claim.override.provider === null
-                      ? {}
-                      : { provider: claim.override.provider }),
-                  }
-                : { target: 'model', policyRef: claim.override.policyRef },
-          });
-    // COR-1935: the effort goes the same way. The claim keeps it, so a retry after a restart
-    // carries the one the first attempt read, and a claim from before the field carries none.
-    const carriedEffort =
-      claim.effort === undefined || claim.effort === null
-        ? null
-        : await submitSteeringCommand(claim.contextId, {
-            id: `${request.commandId}:effort`,
-            principal: request.owner,
-            requestedValue: { target: 'effort', override: claim.effort },
-          });
-    // COR-1936: and the permission mode, so a branch of a read-only chat is read-only.
-    const carriedPermissionMode =
-      claim.permissionMode === undefined || claim.permissionMode === null
-        ? null
-        : await submitSteeringCommand(claim.contextId, {
-            id: `${request.commandId}:permission-mode`,
-            principal: request.owner,
-            requestedValue: { target: 'permission-mode', override: claim.permissionMode },
-          });
-    const result: ForkSessionResult = {
-      contextId: claim.contextId,
-      carriedOverride: carried,
-      carriedEffort,
-      carriedPermissionMode,
-    };
-    const completed = await forkLedger.complete(outcome.entry, result);
-    return answerOfFork(completed.result);
-  }
-
-  /**
-   * Admits the model a fork carries from its parent. An agent whose `limits.cost` cannot count the
-   * model (COR-1921: its price left the catalog since) refuses it, and the fork answers the carry
-   * as rejected, as it does a model the agent no longer allows, rather than failing half made.
-   */
-  async function carryModelOverride(
-    contextId: string,
-    request: SteeringCommandRequest,
-  ): Promise<SteeringCommandAdmissionOutcome> {
-    try {
-      return await submitSteeringCommand(contextId, request);
-    } catch (error) {
-      if (!(error instanceof UnpricedSwitchRefusedError)) throw error;
-      return {
-        outcome: 'rejected',
-        failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
-      };
-    }
-  }
-
-  /**
-   * The session's latest admitted `model` request as it was made, from the steering record itself
-   * (COR-1560): the accepted command with the highest version, and, where Bureau resolved a
-   * `policyRef` into that command, the reference the caller submitted. A durable Bureau reads the
-   * folded log; an in-process one reads its ledger and the references it kept. `undefined` when
-   * the session has had no model request.
-   */
-  async function latestModelRequest(
-    sessionId: string,
-  ): Promise<ForkLedgerClaim['override'] | undefined> {
-    const session = await runtime.sessionStore?.load(sessionId);
-    if (session === undefined) return undefined;
-    const kv = durableSteeringStore();
-    let ledger: ReturnType<typeof createSteeringCommandLedger> = steeringCommandLedger;
-    const gate = steeringGates.get(sessionId);
-    let selectors: Map<string, Map<string, SteeringRequestedValue>> = (gate === undefined
-      ? undefined
-      : submittedSteeringValues.get(gate)) ?? new Map();
-    if (kv !== undefined) {
-      const cursor = await enqueueSteering(sessionId, () =>
-        catchUpSteering(kv, sessionId, session.incarnation),
-      );
-      ledger = cursor.ledger;
-      selectors = cursor.submitted;
-    }
-    let latest: { principal: string; id: string; version: number; at: string } | undefined;
-    for (const [principal, commands] of ledger) {
-      for (const [id, command] of commands) {
-        if (command.sessionId !== sessionId || command.requestedValue.target !== 'model') continue;
-        if (command.state !== 'accepted' && command.state !== 'applied') continue;
-        if (
-          latest === undefined ||
-          command.configVersion > latest.version ||
-          (command.configVersion === latest.version && command.requestedAt > latest.at)
-        ) {
-          latest = { principal, id, version: command.configVersion, at: command.requestedAt };
-        }
-      }
-    }
-    if (latest === undefined) return undefined;
-    const resolved = ledger.get(latest.principal)?.get(latest.id)?.requestedValue;
-    if (resolved?.target !== 'model' || resolved.override === undefined) return undefined;
-    const selector = selectors.get(latest.principal)?.get(latest.id);
-    const policyRef =
-      selector !== undefined && 'policyRef' in selector ? selector.policyRef : undefined;
-    return {
-      provider: resolved.provider ?? null,
-      model: resolved.override,
-      ...(policyRef === undefined ? {} : { policyRef }),
-    };
-  }
-
-  /** What a ledger result answers: the fork, or the refusal the command settled to. */
-  function answerOfFork(result: ForkLedgerResult): ForkSessionResult {
-    if ('failure' in result) {
-      if (result.failure.reason === 'context-not-found') {
-        throw new BureauError(result.failure.message, 'NOT_FOUND');
-      }
-      throw new SessionForkRefusedError(result.failure.reason, result.failure.message);
-    }
-    return structuredClone(result);
-  }
-
-  async function getSessionSteering(sessionId: string): Promise<SessionSteeringState | undefined> {
-    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
-    if (session === undefined) return undefined;
-    const kv = durableSteeringStore();
-    let gate: BureauSteeringGate | undefined;
-    if (kv === undefined) {
-      gate = steeringGates.get(sessionId);
-    } else {
-      try {
-        const cursor = await enqueueSteering(sessionId, () =>
-          catchUpSteering(kv, sessionId, session.incarnation),
-        );
-        gate = cursor.gate;
-      } catch (error) {
-        // A session deleted while its log was read has no steering to report.
-        const afterFailure = await runtime.sessionStore?.load(sessionId);
-        if (afterFailure?.incarnation !== session.incarnation) return undefined;
-        throw error;
-      }
-    }
-    const desired = gate?.getDesiredState();
-    return {
-      model:
-        desired?.model === undefined
-          ? null
-          : { provider: desired.modelProvider ?? null, model: desired.model },
-      effort: desired?.effort ?? null,
-      permissionMode: desired?.permissionMode ?? null,
-      configVersion: gate?.getConfigVersion() ?? 0,
-    };
-  }
-
-  /**
-   * COR-1937 — the context-window report of a context. Read-only: the history is the session's
-   * persisted one, the instructions and tool schemas come from the agent (or, while this process
-   * holds the context's latest run, that run's own toolbox), and the reported usage comes from the
-   * latest step recorded for the context. No model is called and nothing is written.
-   */
-  async function getContextWindow(
-    contextId: string,
-    windowOptions?: { readonly incarnation?: string | undefined },
-  ): Promise<ContextWindowReport | undefined> {
-    // Read before the first await: the caller's options are not read again.
-    const expectedIncarnation = windowOptions?.incarnation;
-    const sessions = requireSessionStore();
-    const session = await sessions.load(contextId);
-    if (session === undefined) return undefined;
-    if (expectedIncarnation !== undefined && session.incarnation !== expectedIncarnation) {
-      return undefined;
-    }
-    const steering = await getSessionSteering(contextId);
-    // Deleted while its steering was read.
-    if (steering === undefined) return undefined;
-    const agent = agentCatalog.find(session.agentName) ?? tryAgents.peek(session.agentName);
-    const catalog = models.catalog().descriptors;
-    const named =
-      steering.model ?? (agent === undefined ? null : describeAgentModels(agent, catalog).default);
-    const model =
-      named === null
-        ? undefined
-        : catalog.find(
-            (row) =>
-              row.model === named.model &&
-              (named.provider === null || row.provider === named.provider),
-          );
-
-    // Newest first; a context's latest step is the last step of its newest task that has one. One
-    // page of `CONTEXT_WINDOW_TASK_SCAN_LIMIT` tasks bounds the reads of a report that clients
-    // poll: a context whose newest tasks all ended before a step reports `usedReported: null`.
-    const latest = await tasks.enumerate({
-      contextId,
-      limit: CONTEXT_WINDOW_TASK_SCAN_LIMIT,
-      offset: 0,
-    });
-    let reported: ReportedStepUsage | undefined;
-    for (const task of latest.tasks) {
-      const liveStep = store.getRun(task.id)?.steps.at(-1);
-      // A run this process no longer holds keeps its steps in the durable checkpoint.
-      const checkpointed =
-        liveStep === undefined ? await runtime.durable?.checkpointStore.loadSteps(task.id) : [];
-      const step = liveStep ?? checkpointed?.at(-1);
-      if (step === undefined) continue;
-      reported = step.usage;
-      break;
-    }
-
-    const liveToolbox = latest.tasks.map((task) => runToolboxesByRunId.get(task.id)).find(Boolean);
-    let toolbox: Pick<AnyToolbox, 'tools'> | undefined = liveToolbox;
-    if (toolbox === undefined && agent !== undefined && hasDefinitionResolver(agent)) {
-      // The agent's own definition resolves to the toolbox a run of it would start with: a pure
-      // build, no run and no model call.
-      const resolved = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('window', {});
-      toolbox = resolved.toolbox;
-    }
-    const tools: ContextWindowTool[] = (toolbox?.tools() ?? []).map((tool) => {
-      const described = tool.toJSON();
-      return {
-        name: described.name,
-        description: described.description,
-        input: described.input,
-      };
-    });
-
-    // Every read above belongs to the incarnation loaded first: an id deleted and created again
-    // while they ran is a different context, and this report would mix the two.
-    const current = await sessions.load(contextId);
-    if (current?.incarnation !== session.incarnation) return undefined;
-
-    // A managed asset is sized from its descriptor as the session's owner, so no bytes are read.
-    const assetService = assetServiceHolder.current;
-    const owner = ownerOrLocal(sessionOwnerOf(session.metadata) ?? undefined);
-    const resolvedSources =
-      assetService === undefined
-        ? undefined
-        : await sizeManagedAssets(session.conversationHistory, async (assetId) => {
-            const descriptor = await assetService.inspect(assetId, {
-              id: owner,
-              workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, owner),
-            });
-            return {
-              state: descriptor.state,
-              custody: descriptor.custody,
-              mediaType: descriptor.mediaType,
-              byteLength: descriptor.byteLength,
-            };
-          });
-
-    return buildContextWindow({
-      history: session.conversationHistory,
-      instructions: agent === undefined ? undefined : instructionsOf(agent),
-      tools,
-      model,
-      catalog,
-      reported,
-      resolvedSources,
-    });
-  }
-
-  /** The system instructions an agent was created with (`createAgent`'s `instructions`), if it declares any. */
-  function instructionsOf(agent: object): string | undefined {
-    const declared: unknown = Reflect.get(agent, 'instructions');
-    return typeof declared === 'string' ? declared : undefined;
-  }
 
   async function admitSteeringRequest(
     sessionId: string,
