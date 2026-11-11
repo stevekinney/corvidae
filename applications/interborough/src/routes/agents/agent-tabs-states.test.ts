@@ -239,7 +239,11 @@ describe('the Instructions tab, when there is nothing to show', () => {
     expect(add.closest('[data-cinder-kind="first-use"]')).not.toBeNull();
     await fireEvent.click(add);
     expect(router.pathname).toBe('/agents/researcher/edit');
-    expect(container.querySelector('[role="status"]')).toBeNull();
+    // Nothing says anything: a filter row's live region may stand by, but it stays empty.
+    const said = [...container.querySelectorAll('[role="status"]')]
+      .map((status) => status.textContent?.trim() ?? '')
+      .filter((text) => text !== '');
+    expect(said).toEqual([]);
   });
 
   test('offers nothing to an agent in code that states no instructions', async () => {

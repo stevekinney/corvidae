@@ -5,7 +5,7 @@
  * reports it through this context, which the agent's page provides; outside the page nothing
  * listens.
  */
-import { getContext, setContext } from 'svelte';
+import { getContext, setContext, untrack } from 'svelte';
 
 const AGENT_TAB_STALE_KEY = Symbol('agent-tab-stale');
 
@@ -17,7 +17,14 @@ export function provideAgentTabStale(mark: MarkTabStale): void {
   setContext(AGENT_TAB_STALE_KEY, mark);
 }
 
-/** The agent page's listener, or one that does nothing for a tab body rendered outside the page. */
+/**
+ * The agent page's listener, or one that does nothing for a tab body rendered outside the page.
+ * A tab body marks from inside an effect, and the page's listener counts the marks in state it reads
+ * to add one, so the mark runs untracked: otherwise the effect would depend on the count it changes
+ * and run again without end.
+ */
 export function useAgentTabStale(): MarkTabStale {
-  return getContext<MarkTabStale | undefined>(AGENT_TAB_STALE_KEY) ?? (() => () => {});
+  const mark = getContext<MarkTabStale | undefined>(AGENT_TAB_STALE_KEY);
+  if (mark === undefined) return () => () => {};
+  return () => untrack(mark);
 }

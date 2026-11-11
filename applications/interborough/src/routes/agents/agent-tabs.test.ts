@@ -194,9 +194,10 @@ describe('the Chats tab', () => {
     serve({ 'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }) });
     const { container, findByText } = mount();
 
-    await findByText('No chats yet');
+    // The header says "No chats yet" from the agent's counts before the tab's own read lands, so
+    // wait for the tab's empty state itself.
+    await findByText('Chats with Researcher appear here, newest first.');
 
-    expect(container.textContent).toContain('Chats with Researcher appear here, newest first.');
     expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
     expect(container.querySelector('[role="status"]')).toBeNull();
     const action = container.querySelector('[data-cinder-kind="first-use"] a');

@@ -862,7 +862,8 @@ describe('one agent’s page', () => {
     landAt('/agents/assistant');
     const { findByRole } = mount(AgentDetail);
 
-    const row = await findByRole('button', { name: /Plan the week/ });
+    // Each chat row is one link to the chat.
+    const row = await findByRole('link', { name: /Plan the week/ });
     row.click();
 
     await waitFor(() => expect(router.pathname).toBe('/chats/session-1'));
