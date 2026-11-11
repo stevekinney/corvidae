@@ -113,7 +113,9 @@ export const RUN_STEPS_COPY = {
   detailLabel: 'Step',
   filterLabel: 'Show steps',
   count: (shown: number, total: number): string =>
-    shown === total ? `${String(total)} steps` : `${String(shown)} of ${String(total)} steps`,
+    shown === total
+      ? `${String(total)} ${total === 1 ? 'step' : 'steps'}`
+      : `${String(shown)} of ${String(total)} steps`,
   waterfallLabel: (starts: string, took: string | undefined): string =>
     took === undefined
       ? `Started ${starts} into the run`
