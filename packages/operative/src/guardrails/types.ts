@@ -287,6 +287,11 @@ export interface SessionTaintOptions {
   /** Validators added to the active set once the session is tainted. */
   escalatedValidators?: OutputValidator[] | undefined;
   /**
+   * Tool-call validators added to the active set once the session is tainted (COR-2109). They take
+   * the `tools` group's action, and run even when the group lists none of its own.
+   */
+  escalatedToolValidators?: ToolCallValidator[] | undefined;
+  /**
    * Called once, on the first taint. A promise it returns (a host persisting the taint) is awaited: the
    * guardrail hooks wait for it before they return or throw, so a tripwire halt cannot outrun the
    * write. A promise it returns must not reject; a rejection is ignored.
@@ -387,4 +392,6 @@ export interface SessionTaintTracker {
   settled: () => Promise<void>;
   getDetectors: () => InputDetector[];
   getValidators: () => OutputValidator[];
+  /** The escalated tool-call validators when tainted, an empty array otherwise (COR-2109). */
+  getToolValidators: () => ToolCallValidator[];
 }

@@ -25,8 +25,10 @@ import { createDefaultGuardrailsPreset } from './guardrails/default-preset';
 import type {
   GuardrailHooks,
   GuardrailsOptions,
+  InputDetector,
   InputGuardrailEntry,
   OutputGuardrailEntry,
+  OutputValidator,
   SessionTaintOptions,
   ToolCallValidator,
 } from './guardrails/types';
@@ -126,6 +128,15 @@ export interface GuardrailAdditions {
   readonly outputValidators?: readonly OutputGuardrailEntry[] | undefined;
   /** Validators run over each tool call before it runs, after the resolved configuration's own. */
   readonly toolValidators?: readonly ToolCallValidator[] | undefined;
+  /**
+   * Detectors run over the input only once the session is tainted (COR-2109), under the group's
+   * action; an entry's own action does not apply.
+   */
+  readonly escalatedInputDetectors?: readonly InputDetector[] | undefined;
+  /** Validators run over a response only once the session is tainted (COR-2109). */
+  readonly escalatedOutputValidators?: readonly OutputValidator[] | undefined;
+  /** Validators run over each tool call only once the session is tainted (COR-2109). */
+  readonly escalatedToolValidators?: readonly ToolCallValidator[] | undefined;
 }
 
 /**
@@ -141,12 +152,40 @@ function withGuardrailAdditions(
   const detectors = additions.inputDetectors ?? [];
   const validators = additions.outputValidators ?? [];
   const toolValidators = additions.toolValidators ?? [];
-  if (detectors.length === 0 && validators.length === 0 && toolValidators.length === 0) {
+  const escalatedDetectors = additions.escalatedInputDetectors ?? [];
+  const escalatedValidators = additions.escalatedOutputValidators ?? [];
+  const escalatedToolValidators = additions.escalatedToolValidators ?? [];
+  if (
+    detectors.length === 0 &&
+    validators.length === 0 &&
+    toolValidators.length === 0 &&
+    escalatedDetectors.length === 0 &&
+    escalatedValidators.length === 0 &&
+    escalatedToolValidators.length === 0
+  ) {
     return resolved === false ? undefined : resolved;
   }
   const base: GuardrailsOptions = resolved === false ? { mode: 'tripwire' } : resolved;
   return {
     ...base,
+    ...(escalatedDetectors.length === 0 &&
+    escalatedValidators.length === 0 &&
+    escalatedToolValidators.length === 0
+      ? {}
+      : {
+          taint: {
+            ...base.taint,
+            escalatedDetectors: [...(base.taint?.escalatedDetectors ?? []), ...escalatedDetectors],
+            escalatedValidators: [
+              ...(base.taint?.escalatedValidators ?? []),
+              ...escalatedValidators,
+            ],
+            escalatedToolValidators: [
+              ...(base.taint?.escalatedToolValidators ?? []),
+              ...escalatedToolValidators,
+            ],
+          },
+        }),
     ...(detectors.length === 0
       ? {}
       : { input: { ...base.input, detectors: [...(base.input?.detectors ?? []), ...detectors] } }),

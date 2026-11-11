@@ -81,6 +81,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'compaction',
   'references',
   'guardrails',
+  'escalations',
   'interceptors',
   'approvals',
 ] as const;
@@ -544,6 +545,11 @@ export const agentFileFrontmatterSchema = z
      */
     guardrails: agentGuardrailSelectionsSchema.nullish(),
     /**
+     * The plugin guardrails (`plugin:name`, ids only) that run only once the session is tainted
+     * (COR-2109), besides the default preset's own escalation. Absent, the agent adds none.
+     */
+    escalations: agentContributionIdsSchema.nullish(),
+    /**
      * The plugin interceptors (`plugin:name`) the agent runs. Absent, the agent runs none.
      */
     interceptors: agentContributionIdsSchema.nullish(),
@@ -745,6 +751,8 @@ const agentFileDefinitionObjectSchema = z.object({
     ])
     .optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  escalations: agentContributionIdsSchema.optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
   interceptors: agentContributionIdsSchema.optional(),
   /**
    * What `interceptors` was called before COR-2126. A stored definition that names it reads as the
@@ -930,6 +938,11 @@ export interface AgentFileDefinition {
    * lists none.
    */
   readonly guardrails?: readonly AgentGuardrailSelection[];
+  /**
+   * The ids (`plugin:name`) of the plugin guardrails that run only once the session is tainted
+   * (COR-2109). Absent when the file lists none.
+   */
+  readonly escalations?: readonly string[];
   /** The ids (`plugin:name`) of the plugin interceptors the agent runs. Absent when the file lists none. */
   readonly interceptors?: readonly string[];
   /**
@@ -967,6 +980,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   compaction: true,
   references: true,
   guardrails: true,
+  escalations: true,
   interceptors: true,
   approvals: true,
   examples: true,
@@ -1042,6 +1056,11 @@ export interface AgentFileDefinitionInput {
    * `null`, or an empty list, removes it.
    */
   readonly guardrails?: readonly AgentGuardrailSelection[] | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.escalations}. An update that omits it keeps the file's value;
+   * `null`, or an empty list, removes it.
+   */
+  readonly escalations?: readonly string[] | null | undefined;
   /**
    * See {@link AgentFileDefinition.interceptors}. An update that omits it keeps the file's value; `null`,
    * or an empty list, removes it.
@@ -1258,6 +1277,9 @@ function toDefinition(
     ...(frontmatter.guardrails == null || frontmatter.guardrails.length === 0
       ? {}
       : { guardrails: structuredClone([...frontmatter.guardrails]) }),
+    ...(frontmatter.escalations == null || frontmatter.escalations.length === 0
+      ? {}
+      : { escalations: [...frontmatter.escalations] }),
     ...(frontmatter.interceptors == null || frontmatter.interceptors.length === 0
       ? {}
       : { interceptors: [...frontmatter.interceptors] }),
@@ -1372,6 +1394,9 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   if (definition.guardrails != null && definition.guardrails.length > 0) {
     known['guardrails'] = structuredClone([...definition.guardrails]);
   }
+  if (definition.escalations != null && definition.escalations.length > 0) {
+    known['escalations'] = [...definition.escalations];
+  }
   if (definition.interceptors != null && definition.interceptors.length > 0) {
     known['interceptors'] = [...definition.interceptors];
   }
@@ -1414,6 +1439,9 @@ export function resolveAgentFileDefinition(
     ...(input.guardrails == null || input.guardrails.length === 0
       ? {}
       : { guardrails: structuredClone([...input.guardrails]) }),
+    ...(input.escalations == null || input.escalations.length === 0
+      ? {}
+      : { escalations: [...input.escalations] }),
     ...(input.interceptors == null || input.interceptors.length === 0
       ? {}
       : { interceptors: [...input.interceptors] }),
@@ -1444,6 +1472,7 @@ export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefi
     compaction: definition.compaction ?? null,
     references: definition.references ?? null,
     guardrails: definition.guardrails ?? null,
+    escalations: definition.escalations ?? null,
     interceptors: definition.interceptors ?? null,
     approvals: definition.approvals ?? null,
   };
@@ -1479,6 +1508,7 @@ export function serializeUpdatedAgentFile(
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
     ...(input.references === undefined ? { references: before.references } : {}),
     ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
+    ...(input.escalations === undefined ? { escalations: before.escalations } : {}),
     ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
     ...(input.approvals === undefined ? { approvals: before.approvals } : {}),
   });
@@ -1506,6 +1536,7 @@ export function serializeUpdatedAgentFile(
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
         ...(input.references === undefined ? { references: before.references } : {}),
         ...(input.guardrails === undefined ? { guardrails: before.guardrails } : {}),
+        ...(input.escalations === undefined ? { escalations: before.escalations } : {}),
         ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
         ...(input.approvals === undefined ? { approvals: before.approvals } : {}),
       }),

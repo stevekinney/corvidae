@@ -244,10 +244,14 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
 
   // Build the beforeToolExecution hook: the tool-call validators, over each call before it runs.
   const beforeToolExecution: BeforeToolExecutionHook = async (context) => {
-    if (!tools || tools.validators.length === 0) return context.toolCalls;
+    // The escalated validators of a tainted session join the group's own (COR-2109), and run
+    // even when the group lists none.
+    const validators = [...(tools?.validators ?? []), ...taintTracker.getToolValidators()];
+    if (validators.length === 0) return context.toolCalls;
     const hook = createToolCallGuardrail({
       ...tools,
-      action: mode === 'tripwire' ? 'tripwire' : tools.action,
+      validators,
+      action: mode === 'tripwire' ? 'tripwire' : tools?.action,
       getSessionTainted: () => taintTracker.isTainted(),
       onTriggered: (event) => {
         // A call the guardrail refuses taints the session, as a refused tool result does (COR-2300).
@@ -269,7 +273,7 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
             action: event.action,
           });
         }
-        tools.onTriggered?.(event);
+        tools?.onTriggered?.(event);
       },
     });
     return hook(context);

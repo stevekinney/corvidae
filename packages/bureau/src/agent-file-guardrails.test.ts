@@ -48,27 +48,32 @@ function issuePaths(frontmatter: string): string[] | undefined {
   return result.problem.issues?.map((issue) => issue.path);
 }
 
-describe.each(['guardrails', 'interceptors'] as const)('%s in the frontmatter', (key) => {
-  it('parses a list of ids, and a file without the key or with an empty one has none', () => {
-    expect(parsed(`---\nmodel: a/b\n${key}: [x:check, y:other]\n---\n`).definition[key]).toEqual([
-      'x:check',
-      'y:other',
-    ]);
-    expect(Object.hasOwn(parsed('---\nmodel: a/b\n---\n').definition, key)).toBe(false);
-    expect(Object.hasOwn(parsed(`---\nmodel: a/b\n${key}:\n---\n`).definition, key)).toBe(false);
-    expect(Object.hasOwn(parsed(`---\nmodel: a/b\n${key}: []\n---\n`).definition, key)).toBe(false);
-  });
+describe.each(['guardrails', 'escalations', 'interceptors'] as const)(
+  '%s in the frontmatter',
+  (key) => {
+    it('parses a list of ids, and a file without the key or with an empty one has none', () => {
+      expect(parsed(`---\nmodel: a/b\n${key}: [x:check, y:other]\n---\n`).definition[key]).toEqual([
+        'x:check',
+        'y:other',
+      ]);
+      expect(Object.hasOwn(parsed('---\nmodel: a/b\n---\n').definition, key)).toBe(false);
+      expect(Object.hasOwn(parsed(`---\nmodel: a/b\n${key}:\n---\n`).definition, key)).toBe(false);
+      expect(Object.hasOwn(parsed(`---\nmodel: a/b\n${key}: []\n---\n`).definition, key)).toBe(
+        false,
+      );
+    });
 
-  it('names the field of a value that is not a list of ids, the old preset name among them', () => {
-    expect(issuePaths(`${key}: default`)).toEqual([key]);
-    expect(issuePaths(`${key}: off`)).toEqual([key]);
-    expect(issuePaths(`${key}: true`)).toEqual([key]);
-    expect(issuePaths(`${key}: [x:check, 3]`)).toEqual([`${key}.1`]);
-    expect(issuePaths(`${key}: ['']`)).toEqual([`${key}.0`]);
-  });
-});
+    it('names the field of a value that is not a list of ids, the old preset name among them', () => {
+      expect(issuePaths(`${key}: default`)).toEqual([key]);
+      expect(issuePaths(`${key}: off`)).toEqual([key]);
+      expect(issuePaths(`${key}: true`)).toEqual([key]);
+      expect(issuePaths(`${key}: [x:check, 3]`)).toEqual([`${key}.1`]);
+      expect(issuePaths(`${key}: ['']`)).toEqual([`${key}.0`]);
+    });
+  },
+);
 
-describe.each(['guardrails', 'interceptors'] as const)('writing %s', (key) => {
+describe.each(['guardrails', 'escalations', 'interceptors'] as const)('writing %s', (key) => {
   it('writes a new file that parses back to the same ids', () => {
     const text = decoder.decode(
       serializeNewAgentFile({ model: 'a/b', [key]: ['x:check'], instructions: 'Body.\n' }),
@@ -390,6 +395,21 @@ describe('guardrailAdditionsOf', () => {
     });
   });
 
+  it('collects the escalations apart from the always-on guardrails, once each (COR-2109)', () => {
+    expect(
+      guardrailAdditionsOf(
+        { escalations: ['x:check', 'x:check', 'x:no-forbidden', 'x:order-cap'] },
+        contributions,
+      ),
+    ).toEqual({
+      inputDetectors: [],
+      outputValidators: [],
+      escalatedInputDetectors: [sentinelDetector],
+      escalatedOutputValidators: [forbiddenValidator],
+      escalatedToolValidators: [orderCap],
+    });
+  });
+
   it('refuses a tool-call validator name contributed twice by one plugin', () => {
     expect(() =>
       createAgentContributions([{ plugin: 'y', guardrails: { tools: [orderCap, orderCap] } }]),
@@ -619,6 +639,18 @@ describe.each(['non-durable', 'durable'] as const)(
       });
     });
 
+    it('does not run an escalation on an untainted session (COR-2109)', async () => {
+      const activity = await runFileAgent(
+        dispatch,
+        { escalations: '[x:check]' },
+        'SENTINEL',
+        'Hi there.',
+      );
+
+      expect(activity.finishReason).toBe('stop-condition');
+      expect(tripwires(activity)).toEqual([]);
+    });
+
     it('runs a plugin interceptor the agent lists, and not one it does not', async () => {
       await runFileAgent(dispatch, { interceptors: '[x:audit]' }, 'Hello', 'Hi there.');
       expect(stepsSeen).toEqual(['x:audit']);
@@ -649,6 +681,20 @@ describe('an id nothing contributes', () => {
     expect(listing?.problem?.issues).toEqual([
       {
         path: 'guardrails.1',
+        message: '"y:gone" is not a contributed guardrail',
+        reference: 'y:gone',
+      },
+    ]);
+  });
+
+  it('makes an agent that lists an unknown escalation invalid with reference-unresolved (COR-2109)', async () => {
+    const listing = await problemOf({ escalations: '[x:check, y:gone]' });
+
+    expect(listing?.state).toBe('invalid');
+    expect(listing?.problem?.code).toBe('reference-unresolved');
+    expect(listing?.problem?.issues).toEqual([
+      {
+        path: 'escalations.1',
         message: '"y:gone" is not a contributed guardrail',
         reference: 'y:gone',
       },
