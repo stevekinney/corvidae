@@ -95,6 +95,7 @@ export async function handleJsonRpcHttpRequest(
     host: context.host,
     principal: context.principal,
     transport: 'jsonRpcHttp',
+    signal: request.signal,
     ...(context.discoverDocument === undefined
       ? {}
       : { discoverDocument: context.discoverDocument }),

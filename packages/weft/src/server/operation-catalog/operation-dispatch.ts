@@ -132,5 +132,6 @@ function operationContext<Input, Host>(
     principal: context.principal,
     host: context.host,
     transport: context.transport,
+    ...(context.signal === undefined ? {} : { signal: context.signal }),
   };
 }

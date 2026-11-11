@@ -178,6 +178,14 @@ export type OperationContext<Input, Host = unknown> = {
    */
   readonly host: Host;
   readonly transport: TransportKind;
+  /**
+   * The abort signal of the request that carried this call, when its transport has one: an HTTP
+   * transport (JSON-RPC over HTTP and the REST routes) passes the `Request`'s own signal, which
+   * aborts when the client goes away. Absent on a transport with no request of its own (the
+   * WebSocket and stdio JSON-RPC transports, MCP). The operation decides what an abort means for
+   * it; the pipeline neither checks it nor changes how a result or a fault is answered.
+   */
+  readonly signal?: AbortSignal;
 };
 
 /**
@@ -409,6 +417,8 @@ export type DispatchContext<Host = unknown> = {
   readonly transport: TransportKind;
   readonly registry: OperationRegistry;
   readonly pipelineTrace?: PipelineTrace;
+  /** See {@link OperationContext.signal}: copied into the context `authorize` and `invoke` read. */
+  readonly signal?: AbortSignal;
 };
 
 export type DispatchResult<Output> =

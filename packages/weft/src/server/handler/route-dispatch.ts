@@ -331,6 +331,7 @@ export async function dispatchViaExecuteOperation(
     host: engine,
     transport: 'http-rest',
     registry,
+    signal: request.signal,
     ...(pipelineTrace !== undefined ? { pipelineTrace } : {}),
   });
   if (result.ok) {

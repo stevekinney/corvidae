@@ -86,9 +86,9 @@ async function recordExpectedConsoleError<T>(run: () => Promise<T>): Promise<{
 function buildPrincipalSpy(): {
   readonly registry: OperationRegistry;
   readonly bindings: ReadonlyArray<UnknownRestBinding>;
-  readonly captured: { principal?: Principal };
+  readonly captured: { principal?: Principal; signal?: AbortSignal | undefined };
 } {
-  const captured: { principal?: Principal } = {};
+  const captured: { principal?: Principal; signal?: AbortSignal | undefined } = {};
   const operation = defineOperation({
     name: 'weft.test.principalspy',
     mcpExposable: false,
@@ -99,8 +99,9 @@ function buildPrincipalSpy(): {
     access: { kind: 'public' },
     transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: false, jsonRpcStdio: false },
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-    invoke: async ({ principal }) => {
+    invoke: async ({ principal, signal }) => {
       captured.principal = principal;
+      captured.signal = signal;
       return { method: principal.method };
     },
   });
@@ -571,6 +572,29 @@ describe('handler pipeline — authContextToPrincipal branches', () => {
 
     expect(response.status).toBe(200);
     expect(captured.principal?.method).toBe('unauthenticated');
+  });
+
+  // COR-2296: a REST route hands the operation the request's own signal, as JSON-RPC does.
+  it('hands invoke the request’s own signal, aborted when the request was', async () => {
+    await using engine = createEngine();
+    const handle = await engine.start('hold', {}, {});
+    await waitForRunning(engine, handle.id);
+
+    const { registry, bindings, captured } = buildPrincipalSpy();
+    const controller = new AbortController();
+    controller.abort();
+    const request = new Request(`http://localhost/v1/test/principalspy/${handle.id}`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    const response = await handleRequest(request, engine, {
+      operationRegistry: registry,
+      restBindings: bindings,
+    });
+
+    expect(response.status).toBe(200);
+    expect(captured.signal).toBe(request.signal);
+    expect(captured.signal?.aborted).toBe(true);
   });
 
   it('returns 400 when route matching sees malformed percent encoding', async () => {
