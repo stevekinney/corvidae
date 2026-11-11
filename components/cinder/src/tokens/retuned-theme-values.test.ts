@@ -154,8 +154,10 @@ const DARK_VALUES: readonly ExpectedColor[] = [
   ['--cinder-status-danger-solid-active', [0.59, 0.18, 27]],
   ['--cinder-status-danger-solid-hover', [0.61, 0.19, 27]],
   ['--cinder-status-danger-background', [0.2529, 0.02287, 4.502]],
-  ['--cinder-status-danger-text', [0.9, 0.05, 25]],
-  ['--cinder-status-danger-border', [0.5, 0.11, 25]],
+  // COR-2287: the dark danger ink is a red at 76% (chroma 0.14, the in-gamut step below the
+  // board's 0.15) and its border a red at 62%, so a danger row reads red instead of pink-white.
+  ['--cinder-status-danger-text', [0.76, 0.14, 25]],
+  ['--cinder-status-danger-border', [0.62, 0.17, 25]],
   ['--cinder-status-danger-subtle', [0.7708, 0.05, 25.539]],
   ['--cinder-status-danger-muted', [0.4954, 0.05, 25.241]],
   ['--cinder-status-info-contrast', [0.15, 0.03, 230]],

@@ -465,9 +465,9 @@
     color-mix(in oklab, var(--cinder-status-danger-solid) 14%, var(--cinder-surface))
   );
   /* Foreground color on the soft danger surface. */
-  --cinder-status-danger-text: light-dark(oklch(49% 0.201 27), oklch(90% 0.05 25));
+  --cinder-status-danger-text: light-dark(oklch(49% 0.201 27), oklch(76% 0.14 25));
   /* Border color on the soft danger surface. */
-  --cinder-status-danger-border: light-dark(oklch(80% 0.06 25), oklch(50% 0.11 25));
+  --cinder-status-danger-border: light-dark(oklch(80% 0.06 25), oklch(62% 0.17 25));
   /* Danger color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-danger-subtle: oklch(
     from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l
@@ -883,8 +883,8 @@
     var(--cinder-status-danger-solid) 14%,
     var(--cinder-surface)
   );
-  --cinder-status-danger-text: oklch(90% 0.05 25);
-  --cinder-status-danger-border: oklch(50% 0.11 25);
+  --cinder-status-danger-text: oklch(76% 0.14 25);
+  --cinder-status-danger-border: oklch(62% 0.17 25);
   --cinder-status-danger-subtle: oklch(
     from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h

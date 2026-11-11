@@ -2298,11 +2298,23 @@
     padding-block-end: var(--cinder-chat-message-gap);
   }
 
-  /* Inset surface separates assistant bubbles (--cinder-surface) from the
-   * page-level background. Only applied in default surfaceMode; embedded
-   * contexts using surfaceMode="transparent" inherit their host's background. */
+  /* The shared transcript ground separates assistant bubbles (--cinder-surface)
+   * from the page-level background. Light mode keeps the inset well. Dark mode
+   * drops to the canvas (COR-2287): code headers, table headers and the Sources
+   * count paint --cinder-surface-inset, and on an inset ground they vanished. On
+   * the neutral dark ladder the canvas (14.5%) sits under the bubbles (18.5%)
+   * and those inset bands (21%), so each steps up from the ground. Only applied
+   * in default surfaceMode; embedded contexts using surfaceMode="transparent"
+   * inherit their host's background. */
+  .chat-container[data-surface-mode='default'] {
+    --_cinder-chat-shared-surface: light-dark(
+      var(--cinder-surface-inset),
+      var(--cinder-surface-canvas)
+    );
+  }
+
   .chat-container[data-surface-mode='default'] .chat-timeline {
-    background: var(--cinder-surface-inset);
+    background: var(--_cinder-chat-shared-surface);
   }
 
   /* Scroll-fade color must match the background set immediately above — the
@@ -2312,7 +2324,7 @@
    * gets a var with no correct value to resolve to; the JS attachment is
    * also gated off entirely in that mode (see timelineScrollFadeAttachment). */
   .chat-container[data-surface-mode='default'] .chat-timeline.cinder-_scroll-fade {
-    --_cinder-scroll-fade-color: var(--cinder-surface-inset);
+    --_cinder-scroll-fade-color: var(--_cinder-chat-shared-surface);
   }
 
   /* Prevent non-last messages from being scroll anchors */
@@ -2608,9 +2620,10 @@
 
   /* ==========================================================================
    * Variant — flat: remove bubble backgrounds; role is communicated via
-   * alignment and role label only. Text renders on --cinder-surface-inset
-   * (the timeline background in default surfaceMode), which meets WCAG AA
-   * for --cinder-text-default. The `:global()` reach is required because bubble CSS
+   * alignment and role label only. Text renders on the shared transcript
+   * ground (--cinder-surface-inset in light mode, --cinder-surface-canvas in
+   * dark mode, the timeline background in default surfaceMode), which meets
+   * WCAG AA for --cinder-text-default. The `:global()` reach is required because bubble CSS
    * lives in chat-message.svelte (a child component).
    * ========================================================================== */
 

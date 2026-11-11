@@ -274,7 +274,7 @@
             "cssProperty": "--cinder-status-danger-text",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(49% 0.201 27), oklch(90% 0.05 25))",
+            "cssRecipe": "light-dark(oklch(49% 0.201 27), oklch(76% 0.14 25))",
             "palette": {
               "family": "danger",
               "role": "text"
@@ -294,7 +294,7 @@
             "cssProperty": "--cinder-status-danger-border",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(80% 0.06 25), oklch(50% 0.11 25))",
+            "cssRecipe": "light-dark(oklch(80% 0.06 25), oklch(62% 0.17 25))",
             "palette": {
               "family": "danger",
               "role": "border"

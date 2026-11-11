@@ -893,14 +893,14 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.9, 0.05, 25]
+          "components": [0.76, 0.14, 25]
         }
       },
       "border": {
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.5, 0.11, 25]
+          "components": [0.62, 0.17, 25]
         }
       },
       "subtle": {

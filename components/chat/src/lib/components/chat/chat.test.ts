@@ -382,9 +382,23 @@ describe('Chat — scrollFadeVisible', () => {
     const chatSveltePath = new URL('./container/chat.svelte', import.meta.url);
     const source = await Bun.file(chatSveltePath).text();
     expect(source).toMatch(
-      /\.chat-container\[data-surface-mode='default'\] \.chat-timeline\.cinder-_scroll-fade\s*\{\s*--_cinder-scroll-fade-color:\s*var\(--cinder-surface-inset\)/,
+      /\.chat-container\[data-surface-mode='default'\] \.chat-timeline\.cinder-_scroll-fade\s*\{\s*--_cinder-scroll-fade-color:\s*var\(--_cinder-chat-shared-surface\)/,
     );
     expect(source).not.toMatch(/mask-image/);
+  });
+
+  test('the shared transcript ground differs from the inset in dark mode (COR-2287)', async () => {
+    // Code headers, table headers and the Sources count paint --cinder-surface-inset. On an inset
+    // ground they vanished in dark mode, so the dark arm of the shared surface is the canvas while
+    // the light arm keeps the inset well. The timeline and its scroll fade read the same variable.
+    const chatSveltePath = new URL('./container/chat.svelte', import.meta.url);
+    const source = await Bun.file(chatSveltePath).text();
+    expect(source).toMatch(
+      /\.chat-container\[data-surface-mode='default'\]\s*\{\s*--_cinder-chat-shared-surface:\s*light-dark\(\s*var\(--cinder-surface-inset\),\s*var\(--cinder-surface-canvas\)\s*\);/,
+    );
+    expect(source).toMatch(
+      /\.chat-container\[data-surface-mode='default'\] \.chat-timeline\s*\{\s*background:\s*var\(--_cinder-chat-shared-surface\);/,
+    );
   });
 });
 
