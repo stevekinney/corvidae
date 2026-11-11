@@ -304,8 +304,11 @@
     {/if}
   {:else if children}
     {@render children()}
-  {:else}
-    {label}
+  {:else if label}
+    <!-- The words sit in their own box so a long label truncates with an ellipsis inside the
+         button instead of widening it; the text is still the button's content, so the accessible
+         name keeps every word. -->
+    <span class="cinder-button__label">{label}</span>
   {/if}
   {#if trailingIcon}
     <span class="cinder-button__icon" aria-hidden="true">{@render trailingIcon()}</span>

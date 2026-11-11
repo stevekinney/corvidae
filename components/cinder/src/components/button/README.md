@@ -18,6 +18,12 @@ When `href` is set, the component renders as `<a>`; otherwise it renders as `<bu
 
 `md` is the default and the size for inline actions: the buttons in a row, a card, a dialog footer, or a toolbar. Use `sm` or `xs` where space is tight. Reserve `lg` for a page-level primary action, such as the one call to action that a page is organized around. A screen with several `lg` buttons has no primary action.
 
+## Content
+
+A label is a short verb phrase, about four words: "Save draft", "Run now", "Add a memory". It names the action, not what the action will produce. A proposal, a preview or a sentence the person should read before acting belongs beside the button, in the row or card it acts on, with the button keeping a short verb ("Apply", "Use this").
+
+A button is never wider than its container. A label too long for the room truncates with an ellipsis, and the full words stay the accessible name, so nothing is lost to a screen reader; the sighted reader loses the end of the label, which is why a long label is a content defect rather than a layout to rely on. Labels never wrap onto a second line. Truncation applies to the `label` prop; content you pass as children is laid out as you write it, so pass the words through `label` when they could run long.
+
 ## Shortcut hint
 
 `shortcut` takes a key (`"N"`) or an array of keys (`['Ctrl', 'K']`) and renders a ShortcutHint after the label. The hint is decorative and `aria-hidden`, so the button's accessible name stays its label, and it only displays the shortcut; registering the key is the application's job. The hint is plain glyphs in the button's own text color, on every variant: no border, fill, shadow, or key-cap chip, and slightly dimmed so the label stays dominant. It is hidden on touch devices (`pointer: coarse` or `hover: none`), which have no keyboard to press it with. A `Kbd` or `ShortcutHint` you nest in a button by hand gets the same treatment, so do not restyle it per page.

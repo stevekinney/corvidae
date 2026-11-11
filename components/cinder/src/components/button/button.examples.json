@@ -71,6 +71,12 @@
       "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n\n  let inFlight = $state(false);\n</script>\n\n<div class=\"example-preview-column\">\n  <div class=\"example-preview-row\">\n    <Button\n      variant=\"secondary\"\n      data-testid=\"loading-toggle\"\n      label={inFlight ? 'Reset' : 'Start'}\n      onclick={() => (inFlight = !inFlight)}\n    />\n  </div>\n  <div class=\"example-preview-row\">\n    <Button variant=\"primary\" label=\"Save\" loading={inFlight} loadingStatus=\"Saving…\" />\n    <Button variant=\"primary\" size=\"sm\" label=\"Save\" loading={inFlight} loadingStatus=\"Saving…\" />\n  </div>\n  <div class=\"example-preview-row\">\n    <Button\n      variant=\"primary\"\n      label={inFlight ? 'Creating…' : 'Create'}\n      loading={inFlight}\n      loadingStatus=\"Creating…\"\n    />\n  </div>\n  <div class=\"example-preview-row\">\n    <Button\n      variant=\"secondary\"\n      label={inFlight ? 'Testing…' : 'Test connection'}\n      loading={inFlight}\n      loadingStatus=\"Testing…\"\n    />\n  </div>\n  <div class=\"example-preview-row\">\n    <Button\n      variant=\"primary\"\n      label={inFlight ? 'Connecting…' : 'Connect'}\n      loading={inFlight}\n      loadingStatus=\"Connecting…\"\n      style=\"--cinder-button-loading-opacity: 0.75\"\n    />\n  </div>\n</div>\n"
     },
     {
+      "id": "long-labels",
+      "title": "Long labels and the preview row",
+      "description": "A label is a short verb phrase. A proposal the person should read sits beside the button, and a label too long for its container truncates with an ellipsis while the full words stay the accessible name.",
+      "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-column\">\n  <div style=\"display: flex; align-items: center; gap: 0.75rem; max-inline-size: 28rem\">\n    <p style=\"flex: 1; min-inline-size: 0; margin: 0\">\n      Move the weekly review to Friday afternoon at four\n    </p>\n    <Button variant=\"primary\" label=\"Apply\" />\n  </div>\n  <div style=\"inline-size: 10rem\">\n    <Button label=\"Move the weekly review to Friday afternoon at four\" />\n  </div>\n</div>\n"
+    },
+    {
       "id": "inert",
       "title": "Inert buttons with a reason",
       "description": "An aria-disabled button stays focusable, ignores the press and says why through aria-describedby and a tooltip. Icon-only inert buttons keep their accessible name; the live Export beside them still works.",
