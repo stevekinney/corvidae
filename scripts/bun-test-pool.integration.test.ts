@@ -1,5 +1,6 @@
 import type { Subprocess } from 'bun';
 import { afterAll, describe, expect, test } from 'bun:test';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,6 +15,7 @@ import {
   describePool,
   heldSlotsTokenVariable,
   isHolderAlive,
+  isTestWorkerCommand,
   poolSize,
   readProcessTable,
   requestedWorkers,
@@ -653,6 +655,52 @@ const killedRunLeavesNoWorkers = await inScratchDirectory(async (directory) => {
   }
 });
 
+/**
+ * The run's record write fails, and a stand-in `bun test --test-worker` still runs under the
+ * leader. The run must go on tracking its workers and terminate them on exit. The process table
+ * hook removes the run's slot directory at its first read after the slot is taken; the tracker
+ * makes that read before the record write only when it starts first, so the write then fails. The
+ * leader waits for the worker to be seen, up to a bound, so a run that never tracks it ends with
+ * the worker alive instead of hanging.
+ */
+const failedRecordStillTracksWorkers = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const worker = join(directory, 'bun');
+  await writeFile(worker, '#!/bin/sh\nwhile true; do sleep 0.2; done\n', { mode: 0o755 });
+  const seen = join(directory, 'seen');
+  const tracked: number[] = [];
+  const reports: string[] = [];
+  const read = (): ProcessTable | undefined => {
+    const table = readProcessTable();
+    if (!existsSync(join(slotDirectory(pool, 0), ownerFileName))) return table;
+    rmSync(slotDirectory(pool, 0), { recursive: true, force: true });
+    for (const [pid, entry] of table ?? []) {
+      if (!entry.command?.includes(worker) || !isTestWorkerCommand(entry.command)) continue;
+      if (!tracked.includes(pid)) tracked.push(pid);
+      writeFileSync(seen, '');
+    }
+    return table;
+  };
+  const leader = `'${worker}' test --test-worker & i=0; while [ ! -e '${seen}' ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done`;
+  try {
+    const code = await runPooledBunTest({
+      bunTestArguments: ['--parallel=1'],
+      command: ['sh', '-c', leader, 'sh'],
+      poolDirectory: pool,
+      size: 1,
+      readProcessTable: read,
+      report: (line) => reports.push(line),
+    });
+    expect(code).toBe(0);
+    expect(reports.join('\n')).toContain("could not record the command's process group");
+    expect(tracked).toHaveLength(1);
+    const table = readProcessTable();
+    expect(tracked.filter((pid) => table?.has(pid))).toEqual([]);
+  } finally {
+    for (const pid of tracked) killGroup(pid);
+  }
+});
+
 describe('the pool size', () => {
   test('sizes the pool from processors and memory, and honours the override', () => {
     const gibibytes = (count: number) => count * 1024 ** 3;
@@ -756,6 +804,9 @@ describe('reclaiming slots', () => {
 
   test('a killed run leaves no Bun test worker running and its slots free', () =>
     rethrow(killedRunLeavesNoWorkers));
+
+  test('a failed record write still tracks the workers and terminates them on exit', () =>
+    rethrow(failedRecordStillTracksWorkers));
 
   test('creates a missing pool directory', () => rethrow(createsAMissingPoolDirectory));
 

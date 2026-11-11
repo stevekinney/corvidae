@@ -175,7 +175,7 @@ const processLine =
  * dead from a table that cannot be trusted.
  */
 export function readProcessTable(): ProcessTable | undefined {
-  const result = Bun.spawnSync(['ps', '-A', '-o', 'pid=,ppid=,pgid=,lstart=,command='], {
+  const result = Bun.spawnSync(['ps', '-A', '-ww', '-o', 'pid=,ppid=,pgid=,lstart=,command='], {
     env: processTableEnvironment(),
     stdout: 'pipe',
     stderr: 'ignore',
@@ -746,8 +746,9 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
         held === undefined ? environment : { ...environment, [heldSlotsTokenVariable]: held.token },
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       recordProcessGroup: async (processGroup) => {
-        await held?.recordProcessGroup(processGroup);
+        // Started first, so a failed record write cannot leave the run's workers untracked.
         tracker?.start(processGroup);
+        await held?.recordProcessGroup(processGroup);
       },
       report: (line) => report(`bun-test-pool: ${line}`),
     });
