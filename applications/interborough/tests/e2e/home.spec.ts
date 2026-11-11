@@ -836,6 +836,14 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     ).toBe(1);
     expect(await opacity(page.getByTestId('home-counts'))).toBe(1);
     // Only the controls that change something are inert.
+    const disabledColour = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--cinder-text-disabled)';
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    });
     for (const [name, scope] of [
       ['Answer', needsYou(page)],
       ['Review', needsYou(page)],
@@ -845,7 +853,12 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     ] as const) {
       const control = scope.getByRole('link', { name, exact: true });
       await expect(control, `${name} is held`).toHaveAttribute('aria-disabled', 'true');
-      expect(await opacity(control), `${name} reads as off`).toBeLessThan(1);
+      // It reads as off by its colour, never by a fade: the disabled text colour at full opacity.
+      expect(await opacity(control), `${name} is not faded`).toBe(1);
+      expect(
+        await control.evaluate((element) => getComputedStyle(element).color),
+        `${name} reads as off`,
+      ).toBe(disabledColour);
     }
     await expect(needsYou(page).getByRole('link', { name: 'Open Reviews' })).not.toHaveAttribute(
       'aria-disabled',

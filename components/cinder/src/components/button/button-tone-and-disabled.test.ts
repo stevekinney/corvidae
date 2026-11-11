@@ -137,7 +137,7 @@ describe('Button disabled looks disabled in every variant', () => {
     expect(rules).toEqual([]);
   });
 
-  test('disabled opacity comes from one place, not from each variant', () => {
+  test('no disabled rule fades the button with opacity (COR-2303)', () => {
     const rules: string[] = [];
     parse(buttonCss).walkRules((rule) => {
       if (!rule.selector.includes(':disabled') && !rule.selector.includes("[aria-disabled='true']"))

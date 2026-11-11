@@ -38,6 +38,10 @@
     cursor: not-allowed;
   }
 
+  .cinder-color-picker[data-cinder-disabled] .cinder-color-picker__hex-value {
+    color: var(--cinder-text-disabled);
+  }
+
   /* ── 2D gradient ──────────────────────────────────────────────────────── */
 
   .cinder-color-picker__gradient {

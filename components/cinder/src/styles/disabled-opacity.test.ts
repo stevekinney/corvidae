@@ -19,7 +19,7 @@ import { join } from 'node:path';
 
 import { Glob } from 'bun';
 import { expect, test } from 'bun:test';
-import { parse, type AtRule, type Rule } from 'postcss';
+import { parse, type AtRule, type Container, type Document, type Rule } from 'postcss';
 
 const sourceDirectory = join(import.meta.dir, '..');
 const STYLESHEETS = new Glob('**/*.css');
@@ -33,8 +33,10 @@ function isFraction(value: string): boolean {
 }
 
 function insideKeyframes(rule: Rule): boolean {
-  for (let parent = rule.parent; parent; parent = parent.parent) {
-    if (parent.type === 'atrule' && /keyframes$/i.test((parent as AtRule).name)) return true;
+  let ancestor: Container | Document | undefined = rule.parent;
+  while (ancestor !== undefined) {
+    if (ancestor.type === 'atrule' && /keyframes$/i.test((ancestor as AtRule).name)) return true;
+    ancestor = ancestor.parent;
   }
   return false;
 }
