@@ -116,6 +116,6 @@
        and truncates instead. */
     font-size: var(--cinder-text-xl);
     line-height: var(--cinder-leading-tight);
-    margin-block: calc((1lh - var(--cinder-control-height-xs)) / 2);
+    margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
   }
 }

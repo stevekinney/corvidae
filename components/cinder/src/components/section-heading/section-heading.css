@@ -62,7 +62,7 @@
        taller than its title. */
     font-size: var(--cinder-text-lg);
     line-height: var(--cinder-leading-tight);
-    margin-block: calc((1lh - var(--cinder-control-height-xs)) / 2);
+    margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
   }
 
   .cinder-section-heading__tabs {

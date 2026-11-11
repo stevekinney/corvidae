@@ -197,6 +197,17 @@
     min-width: var(--cinder-button-height-lg);
   }
 
+  /* A compact button (in a header's actions) keeps its fine-pointer visual height on a coarse
+     pointer, where the `xs` step is raised to the touch target; the hit-area extension above
+     supplies the 44px target. Declared after the size rules so it wins at equal specificity. */
+  .cinder-button[data-cinder-compact] {
+    min-height: var(--_cinder-compact-control-height);
+  }
+
+  .cinder-button[data-cinder-compact][data-cinder-icon-only] {
+    min-width: var(--_cinder-compact-control-height);
+  }
+
   /* ----------------------------------------
  * Icon slot wrapper — used for leadingIcon and trailingIcon snippets.
  * These slots are decorative-only; meaning lives in the button's accessible name.
