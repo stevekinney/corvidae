@@ -805,11 +805,12 @@ export type {
   BureauHooks,
   HookActionInput,
   HookCreateInput,
+  HookDraftTestInput,
   HookReplaceSecretOptions,
   HookUpdateInput,
   HookWithSigningSecret,
 } from './hooks/create-hooks';
-export { HOOK_TEST_EVENT_KIND } from './hooks/create-hooks';
+export { HOOK_DRAFT_ID, HOOK_TEST_EVENT_KIND } from './hooks/create-hooks';
 export {
   generateHookSigningSecret,
   HOOK_SIGNATURE_HEADER,

@@ -286,8 +286,17 @@ export interface HookDelivery {
   readonly work?: HookDeliveryWork;
   /** Every attempt made, in order. */
   readonly attempts: readonly HookDeliveryAttempt[];
-  /** How many attempts the delivery may make. */
+  /**
+   * How many attempts the delivery may make. A retry of a settled delivery
+   * (`hooks.retryDelivery`) raises it by a new round of tries.
+   */
   readonly maxAttempts: number;
+  /**
+   * Epoch milliseconds the next attempt is due, while a `pending` delivery waits out its backoff
+   * after a failed attempt (COR-2022). Absent before the first attempt, while an attempt is being
+   * sent, once the delivery has settled, and on a record written before it existed.
+   */
+  readonly nextAttemptAt?: number;
   /** Epoch milliseconds the delivery was created. */
   readonly createdAt: number;
   /** Epoch milliseconds the delivery was last changed. */

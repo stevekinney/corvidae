@@ -26,6 +26,14 @@ import { recoverRunWorkspaceAuthority } from '../run-authority.ts';
  * that remain); a shutdown abandons the wait. Without it such a delivery would stay pending until
  * some later restart.
  *
+ * ## Retry and the next attempt
+ *
+ * While a delivery waits out its backoff its record carries `nextAttemptAt`, dropped by the next
+ * write. `retry` (COR-2022) sends the delivery again from its record, never from the hook as it is
+ * now: a settled delivery is opened again with room for one more attempt, under the same fence,
+ * and one waiting here has its wait cut short. A delivery is never copied, so its body, its
+ * `X-Delivery-Id` and its `Idempotency-Key` stay the ones the receiver may already have seen.
+ *
  * @module hook-delivery
  */
 
@@ -127,6 +135,25 @@ export interface HookEventToDeliver {
   readonly source?: string;
 }
 
+/**
+ * A webhook request sent once to a hook that is not saved yet (COR-2022, `hooks.testDraft`): what
+ * {@link HookDeliveries.sendDraft} signs and sends, and writes nowhere.
+ */
+export interface HookDraftToSend {
+  /** Stands in for the hook's identifier in the body and the `X-Hook-Id` header. */
+  readonly hookId: string;
+  /** The principal the draft would belong to. */
+  readonly owner: string;
+  /** The owner's workspace authority, revalidated before the request as for any delivery. */
+  readonly workspaceAuthority?: HookRecord['workspaceAuthority'];
+  /** Where the request is POSTed; the caller has already checked it against the URL policy. */
+  readonly url: string;
+  /** The secret the request is signed with. */
+  readonly secret: string;
+  /** The event the body carries: a `hook.test` message. */
+  readonly event: HookEventToDeliver;
+}
+
 /** The delivery operations {@link createHookDeliveries} offers. */
 export interface HookDeliveries {
   /**
@@ -155,6 +182,57 @@ export interface HookDeliveries {
    * that changed since it was read is left.
    */
   prune(olderThanMilliseconds: number): Promise<number>;
+  /**
+   * Sends a delivery again from its record (COR-2022): the request or work recorded when the
+   * delivery was created, never one rebuilt from the hook as it is now, under the same
+   * `Idempotency-Key` and signed with the hook's current secret. A settled delivery that was not
+   * delivered is made `pending` again with room for one more attempt, which is made at once and
+   * awaited. A `pending` delivery this process is waiting to retry has its backoff cut short and
+   * is not awaited; one whose lease has expired is taken and driven, as `resume` would; one whose
+   * attempt is in flight, here or in another process, is left as it is. A `delivered` delivery,
+   * and one that is not stored, are left as they are.
+   */
+  retry(deliveryId: string): Promise<void>;
+  /**
+   * Signs and sends one webhook request for a hook that is not saved (COR-2022), and resolves with
+   * the delivery it would have recorded: one attempt, no retry. Nothing is written: no hook,
+   * delivery, secret or pending index key.
+   */
+  sendDraft(draft: HookDraftToSend): Promise<HookDeliveryRecord>;
+}
+
+/**
+ * The request a webhook delivery sends, without its signature, built once when the delivery is
+ * created and kept on its record, so every attempt and every retry sends this text.
+ */
+function webhookRequestOf(
+  deliveryId: string,
+  hookId: string,
+  url: string,
+  event: HookEventToDeliver,
+  test: boolean,
+): HookDeliveryRequest {
+  return {
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'corvidae-hooks/1',
+      'X-Hook-Id': hookId,
+      'X-Delivery-Id': deliveryId,
+      'Idempotency-Key': deliveryId,
+      'X-Event-Kind': event.kind,
+    },
+    body: JSON.stringify({
+      id: deliveryId,
+      hookId,
+      kind: event.kind,
+      bureauId: event.bureauId,
+      emittedAtMs: event.emittedAtMs,
+      test,
+      payload: event.payload,
+      ...(event.source === undefined ? {} : { source: event.source }),
+    }),
+  };
 }
 
 /** `text` with every occurrence of `secret` removed. */
@@ -270,14 +348,24 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
     engine.backoffMilliseconds(Math.max(1, engine.maxAttempts)) +
     LEASE_MARGIN_MILLISECONDS;
 
-  /** `record` advanced: a new revision, a fresh lease unless `leaseUntil` is given. */
+  /**
+   * `record` advanced: a new revision, a fresh lease unless `leaseUntil` is given. The time of the
+   * next attempt holds only until the record next changes, so it is dropped unless `changes` sets
+   * it again.
+   */
   function advanced(
     record: HookDeliveryRecord,
-    changes: Partial<Pick<HookDeliveryRecord, 'status' | 'attempts' | 'leaseUntil'>>,
+    changes: Partial<
+      Pick<
+        HookDeliveryRecord,
+        'status' | 'attempts' | 'leaseUntil' | 'maxAttempts' | 'nextAttemptAt'
+      >
+    >,
   ): HookDeliveryRecord {
     const now = engine.now();
+    const { nextAttemptAt: _due, ...rest } = record;
     return {
-      ...record,
+      ...rest,
       ...changes,
       updatedAt: now,
       revision: record.revision + 1,
@@ -527,9 +615,37 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
         await finish(opened, 'exhausted', attempts);
         return;
       }
-      if ((await write(opened, advanced(opened.record, { attempts }))) === undefined) return;
-      await engine.wait(engine.backoffMilliseconds(number));
+      const backoffMilliseconds = engine.backoffMilliseconds(number);
+      const waiting = await write(
+        opened,
+        advanced(opened.record, { attempts, nextAttemptAt: engine.now() + backoffMilliseconds }),
+      );
+      if (waiting === undefined) return;
+      await backoff(id, backoffMilliseconds);
     }
+  }
+
+  // The deliveries this process is waiting to retry, each with what ends its wait early
+  // (`retry`, the person's "Retry now").
+  const wakers = new Map<string, () => void>();
+
+  /** Waits out a delivery's backoff, or less when `retry` wakes it or the engine shuts down. */
+  async function backoff(id: string, milliseconds: number): Promise<void> {
+    const woken = new Promise<void>((resolve) => {
+      wakers.set(id, resolve);
+    });
+    try {
+      await Promise.race([engine.wait(milliseconds), woken]);
+    } finally {
+      wakers.delete(id);
+    }
+  }
+
+  /** Drives a delivery under the engine's tracking, so `flush()` and `dispose()` wait for it. */
+  function driveTracked(id: string): Promise<void> {
+    const driving = drive(id);
+    engine.track(driving);
+    return driving;
   }
 
   async function drive(id: string): Promise<void> {
@@ -614,27 +730,7 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
         action.type === 'webhook'
           ? {
               ...base,
-              request: {
-                url: action.url,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'User-Agent': 'corvidae-hooks/1',
-                  'X-Hook-Id': hook.id,
-                  'X-Delivery-Id': id,
-                  'Idempotency-Key': id,
-                  'X-Event-Kind': event.kind,
-                },
-                body: JSON.stringify({
-                  id,
-                  hookId: hook.id,
-                  kind: event.kind,
-                  bureauId: event.bureauId,
-                  emittedAtMs: event.emittedAtMs,
-                  test,
-                  payload: event.payload,
-                  ...(event.source === undefined ? {} : { source: event.source }),
-                }),
-              },
+              request: webhookRequestOf(id, hook.id, action.url, event, test),
               maxAttempts: test ? 1 : engine.maxAttempts,
             }
           : {
@@ -662,6 +758,83 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
       const first = await scan();
       if (first.skipped.size > 0) engine.track(rescan(first.skipped));
       return first.taken;
+    },
+    async retry(deliveryId) {
+      const current = await store.getDelivery(deliveryId);
+      if (current === undefined || current.record.status === 'delivered') return;
+      const { record } = current;
+      if (record.status === 'pending') {
+        // Waiting out its backoff here: the next attempt is made now, by the loop already driving it.
+        const wake = wakers.get(deliveryId);
+        if (wake !== undefined) {
+          wake();
+          return;
+        }
+        // Driven now, by this process or another: the attempt in flight is the retry.
+        if (record.leaseUntil > engine.now()) return;
+        const claimed = await write(
+          current,
+          advanced(record, { attempts: withoutSending(record.attempts) }),
+        );
+        if (claimed !== undefined) void driveTracked(deliveryId);
+        return;
+      }
+      // Settled: open the same record again, with room for one more attempt. The request, its
+      // body, and its `Idempotency-Key` are the record's; only the signature is made afresh.
+      const reopened = await write(
+        current,
+        advanced(record, {
+          status: 'pending',
+          attempts: withoutSending(record.attempts),
+          maxAttempts: record.attempts.length + 1,
+        }),
+      );
+      if (reopened === undefined) return;
+      await driveTracked(deliveryId);
+    },
+    async sendDraft(draft) {
+      // Read before the first await: the caller owns `draft`.
+      const { hookId, owner, workspaceAuthority, url, secret, event } = draft;
+      const id = dependencies.newId();
+      const now = engine.now();
+      const request = webhookRequestOf(id, hookId, url, event, true);
+      const record: HookDeliveryRecord = {
+        version: 1,
+        id,
+        hookId,
+        owner,
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
+        actionType: 'webhook',
+        kind: event.kind,
+        test: true,
+        status: 'pending',
+        request,
+        attempts: [],
+        maxAttempts: 1,
+        createdAt: now,
+        updatedAt: now,
+        leaseUntil: 0,
+        revision: 0,
+      };
+      const startedAt = engine.now();
+      const outcome = await send(request, 1, secret, record);
+      const status: HookDeliveryStatus =
+        outcome.outcome === 'response' &&
+        (outcome.status ?? 0) >= 200 &&
+        (outcome.status ?? 0) < 300
+          ? 'delivered'
+          : outcome.outcome === 'rejected'
+            ? 'failed'
+            : outcome.outcome === 'interrupted'
+              ? 'aborted'
+              : 'exhausted';
+      const finishedAt = engine.now();
+      return {
+        ...record,
+        status,
+        attempts: [{ number: 1, startedAt, finishedAt, ...outcome }],
+        updatedAt: finishedAt,
+      };
     },
   };
 }

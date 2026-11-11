@@ -301,5 +301,10 @@ export const OPERATION_MAP = {
   'bureau.hooks.get': { workspaceClass: 'administrator-shared', member: 'hooks.get' },
   'bureau.hooks.list': { workspaceClass: 'administrator-shared', member: 'hooks.list' },
   'bureau.hooks.test': { workspaceClass: 'administrator-shared', member: 'hooks.test' },
+  'bureau.hooks.draft.test': { workspaceClass: 'deployment-operator', member: 'hooks.testDraft' },
   'bureau.hooks.deliveries': { workspaceClass: 'deployment-operator', member: 'hooks.deliveries' },
+  'bureau.hooks.deliveries.retry': {
+    workspaceClass: 'deployment-operator',
+    member: 'hooks.retryDelivery',
+  },
 } as const satisfies Readonly<Record<string, OperationBinding>>;

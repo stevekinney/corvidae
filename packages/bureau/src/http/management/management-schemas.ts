@@ -177,7 +177,8 @@ export function resourceNotFound(
     | 'asset'
     | 'upload'
     | 'memory'
-    | 'hook',
+    | 'hook'
+    | 'hook-delivery',
   identifier: string,
 ): OperationFault {
   return {

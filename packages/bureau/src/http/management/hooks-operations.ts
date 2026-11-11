@@ -36,6 +36,10 @@ import {
  * audit entry returns it. A host that keeps secrets elsewhere (a remote home) refuses a write of
  * one with `Forbidden`, `data: { reason: 'deployment' }`.
  *
+ * `draft.test` tests a webhook URL before its hook is saved and writes nothing; `deliveries.retry`
+ * sends a recorded delivery again, never a rebuilt one, and a delivery carries `nextAttemptAt`
+ * while it waits out its backoff (COR-2022).
+ *
  * @module hooks-operations
  */
 
@@ -283,6 +287,12 @@ const deliverySchema = z.object({
     ),
   attempts: z.array(attemptSchema),
   maxAttempts: z.number().int(),
+  nextAttemptAt: z
+    .number()
+    .nullable()
+    .describe(
+      'Epoch milliseconds the next attempt is due, while a `pending` delivery waits out its backoff after a failed attempt; `null` otherwise.',
+    ),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -461,6 +471,7 @@ function deliveryViewOf(delivery: HookDelivery): z.infer<typeof deliverySchema> 
             },
     })),
     maxAttempts: delivery.maxAttempts,
+    nextAttemptAt: delivery.nextAttemptAt ?? null,
     createdAt: delivery.createdAt,
     updatedAt: delivery.updatedAt,
   };
@@ -997,6 +1008,52 @@ export const hooksTestOperation = defineOperation<
   },
 });
 
+const draftTestInput = z.object({
+  url: urlField,
+  signingSecret: signingSecret
+    .optional()
+    .describe(
+      'The secret to sign the test with, 16 to 256 characters, when the person chose one. Omitted, the test is signed with a secret made for it alone and then forgotten. Never returned.',
+    ),
+});
+
+export const hooksDraftTestOperation = defineOperation<
+  typeof draftTestInput,
+  typeof deliverySchema,
+  BureauHooksOperationHost
+>({
+  name: 'bureau.hooks.draft.test',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.draft.test'),
+  mcpExposable: false,
+  summary: 'Test a webhook before saving it',
+  description:
+    'Sends one signed `hook.test` delivery to `url`, the webhook a person is writing, before the hook is saved (COR-2022), with one attempt and no retry, and answers the delivery as it would have been recorded: the request, the response status and a bounded excerpt of the response, or the error. Nothing is written: no hook, no delivery record, no secret. The answer’s `hookId` is `draft`. `signingSecret` signs it when given; otherwise a secret made for this test alone does, since a hook’s own secret is made when it is first saved. The URL and secret are refused as `bureau.hooks.create` refuses them (`InvalidParams`). It needs an owner and, as `bureau.hooks.create` does, `bureau.events:observe-all`. A failed delivery is an answer (`status: "exhausted"`), not a fault.',
+  destructive: false,
+  tags: ['Hooks'],
+  inputSchema: draftTestInput,
+  outputSchema: deliverySchema,
+  producibleFaults: ['InvalidParams', 'Forbidden', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const owner = ownerFor(principal);
+    requireObserveAll(principal);
+    if (host.hooks === undefined) throw unsupported();
+    try {
+      const sent = await host.hooks.testDraft({
+        url: input.url,
+        principal: owner,
+        ...(input.signingSecret === undefined ? {} : { signingSecret: input.signingSecret }),
+      });
+      return deliveryViewOf(sent);
+    } catch (error) {
+      return faultOf(error);
+    }
+  },
+});
+
 const deliveriesInput = z.object({
   hookId,
   limit: z
@@ -1038,7 +1095,53 @@ export const hooksDeliveriesOperation = defineOperation<
   },
 });
 
-/** The eight `bureau.hooks.*` operations. */
+const retryInput = z.object({
+  hookId,
+  deliveryId: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe('The identifier of the delivery to send again; it must be one of the hook’s.'),
+});
+
+export const hooksRetryDeliveryOperation = defineOperation<
+  typeof retryInput,
+  typeof deliverySchema,
+  BureauHooksOperationHost
+>({
+  name: 'bureau.hooks.deliveries.retry',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.deliveries.retry'),
+  mcpExposable: false,
+  summary: 'Retry a hook delivery',
+  description:
+    'Sends one of a hook’s deliveries again from its record (COR-2022): the request recorded when the delivery was made, with the same body, `X-Delivery-Id` and `Idempotency-Key`, never one rebuilt from the hook as it is now; it is signed with the hook’s current secret. A delivery that was not delivered (`exhausted`, `failed`, `aborted` or `failed-secret`) gets one more attempt, made now, and the answer is its record once that attempt has ended. A `pending` delivery waiting out its backoff is tried now, and the answer is its record at once; one whose attempt is in flight is left to it. A `delivered` delivery is `InvalidParams` on `deliveryId`, and a delivery that is not the hook’s is `NotFound`. A caller retries its own hooks’ deliveries; `bureau.hooks:write` retries any owner’s.',
+  destructive: false,
+  tags: ['Hooks'],
+  inputSchema: retryInput,
+  outputSchema: deliverySchema,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const { hooks } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
+    const actor = actorOf(principal);
+    try {
+      const retried = await hooks.retryDelivery(
+        input.hookId,
+        input.deliveryId,
+        actor === undefined ? {} : { principal: actor },
+      );
+      if (retried === undefined) throw resourceNotFound('hook-delivery', input.deliveryId);
+      return deliveryViewOf(retried);
+    } catch (error) {
+      return faultOf(error);
+    }
+  },
+});
+
+/** The ten `bureau.hooks.*` operations. */
 export const bureauHooksOperations = [
   hooksCreateOperation,
   hooksUpdateOperation,
@@ -1047,5 +1150,7 @@ export const bureauHooksOperations = [
   hooksGetOperation,
   hooksListOperation,
   hooksTestOperation,
+  hooksDraftTestOperation,
   hooksDeliveriesOperation,
+  hooksRetryDeliveryOperation,
 ] as const;

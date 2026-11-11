@@ -309,7 +309,9 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.hooks.get', 'administrator'],
       ['bureau.hooks.list', 'administrator'],
       ['bureau.hooks.test', 'administrator'],
+      ['bureau.hooks.draft.test', 'deployment'],
       ['bureau.hooks.deliveries', 'deployment'],
+      ['bureau.hooks.deliveries.retry', 'deployment'],
     ],
   },
 ] as const satisfies readonly {

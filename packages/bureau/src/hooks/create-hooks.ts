@@ -55,7 +55,11 @@ import { captureRunWorkspaceAuthority } from '../run-authority.ts';
  * ## Matching
  *
  * `hooks.test` sends a test delivery to a webhook hook only: for the other actions it would start a
- * real run or write a real notification, so it is refused.
+ * real run or write a real notification, so it is refused. `hooks.testDraft` sends the same test to
+ * a webhook URL before the hook is saved, and writes nothing (COR-2022).
+ *
+ * `hooks.retryDelivery` sends a delivery again from its record, never a delivery rebuilt from the
+ * hook as it is now (COR-2022; see `hook-delivery.ts`).
  *
  *
  * A hook fires on the published event kinds it lists (`PUBLISHED_BUREAU_EVENT_KINDS`), for events
@@ -259,6 +263,26 @@ export interface HookReplaceSecretOptions extends HookCallOptions {
   readonly expectedRevision?: number;
 }
 
+/**
+ * Stands in for the hook's identifier in a draft test (`hooks.testDraft`): the body's `hookId` and
+ * the `X-Hook-Id` header carry it, because the hook has no identifier until it is saved.
+ */
+export const HOOK_DRAFT_ID = 'draft';
+
+/** What `hooks.testDraft` takes: the webhook a person is writing, before it is saved. */
+export interface HookDraftTestInput {
+  /** Where the test is POSTed; refused as `create` refuses it. */
+  readonly url: string;
+  /**
+   * The secret to sign the test with, 16 to 256 characters, when the person chose one. Omitted,
+   * the test is signed with a secret generated for it alone and then forgotten, since the secret
+   * the hook keeps is made when it is first saved.
+   */
+  readonly signingSecret?: string;
+  /** The caller's principal (`api-key:<subject>`); omitted, `anonymous:local`. */
+  readonly principal?: string;
+}
+
 /** The Bureau's hooks: `Bureau.hooks`. Ownership is decided by the caller, as for `Bureau.goals`. */
 export interface BureauHooks {
   /**
@@ -296,6 +320,27 @@ export interface BureauHooks {
    * when there is no such hook.
    */
   test(hookId: string, options?: HookCallOptions): Promise<HookDelivery | undefined>;
+  /**
+   * Sends one signed `hook.test` request to a webhook that is not saved yet (COR-2022): one
+   * attempt, no retry, and nothing written, neither a hook, a delivery, nor a secret. Resolves with
+   * the delivery as it would have been recorded, whose `hookId` is {@link HOOK_DRAFT_ID}. Refuses
+   * a URL or secret `create` would refuse with {@link HookError} `invalid`.
+   */
+  testDraft(input: HookDraftTestInput): Promise<HookDelivery>;
+  /**
+   * Sends one of the hook's deliveries again from its record (COR-2022): the request (or work)
+   * recorded when the delivery was made, with its body and `Idempotency-Key`, never one rebuilt
+   * from the hook as it is now; a webhook's is signed with the hook's current secret. A settled
+   * delivery gets one more attempt, made now, and resolves once it has ended. A `pending` one that
+   * is waiting out its backoff is tried now ("Retry now") and resolves at once. A delivered one is
+   * refused with {@link HookError} `invalid`. Resolves `undefined` when the hook has no such
+   * delivery.
+   */
+  retryDelivery(
+    hookId: string,
+    deliveryId: string,
+    options?: HookCallOptions,
+  ): Promise<HookDelivery | undefined>;
   /** The hook's deliveries, newest first, at most `limit` (default 50, at most 200). */
   deliveries(
     hookId: string,
@@ -1195,6 +1240,58 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       await driving;
       const finished = await store.getDelivery(id);
       return finished === undefined ? undefined : deliveryViewOf(finished.record);
+    },
+    async testDraft(input) {
+      // The caller owns `input`: every field is read and checked before the first await.
+      const url = input.url;
+      const defect = hookUrlDefect(url, urlPolicy);
+      if (defect !== undefined) invalid('url', defect);
+      const secret =
+        input.signingSecret === undefined
+          ? generateHookSigningSecret()
+          : checkedSecret(input.signingSecret);
+      const owner = ownerFromPrincipal(input.principal, (message) => invalid('principal', message));
+      const workspaceAuthority =
+        dependencies.workspace === undefined
+          ? undefined
+          : await captureRunWorkspaceAuthority(dependencies.workspace, owner);
+      if (dependencies.workspace !== undefined && workspaceAuthority === undefined)
+        throw new Error('Workspace authority unavailable.');
+      const sent = await deliveries.sendDraft({
+        hookId: HOOK_DRAFT_ID,
+        owner,
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
+        url,
+        secret,
+        event: {
+          kind: HOOK_TEST_EVENT_KIND,
+          bureauId: dependencies.bureauId,
+          emittedAtMs: engine.now(),
+          payload: { message: 'This is a test delivery from Corvidae.' },
+        },
+      });
+      return deliveryViewOf(sent);
+    },
+    async retryDelivery(hookId, deliveryId, options) {
+      // The caller owns `options`: read before the first await.
+      const principal = options?.principal;
+      const stored = await store.getDelivery(deliveryId);
+      // A delivery is reached through its own hook, so another hook's identifier finds nothing.
+      if (stored === undefined || stored.record.hookId !== hookId) return undefined;
+      if (stored.record.status === 'delivered') {
+        invalid('deliveryId', 'The delivery was delivered, so there is nothing to retry');
+      }
+      void dependencies
+        .audit({
+          runId: `hook:${hookId}`,
+          type: 'hook.delivery.retried',
+          ...(principal === undefined ? {} : { principal }),
+          detail: { hookId, owner: stored.record.owner, deliveryId },
+        })
+        .catch((cause: unknown) => dependencies.diagnose('Failed to audit a hook retry', cause));
+      await deliveries.retry(deliveryId);
+      const after = await store.getDelivery(deliveryId);
+      return after === undefined ? undefined : deliveryViewOf(after.record);
     },
     async deliveries(hookId, options) {
       const requested = options?.limit ?? 50;

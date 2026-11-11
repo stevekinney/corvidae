@@ -645,6 +645,8 @@ describe('createBureauHandler catalog', () => {
         'bureau.hooks.create',
         'bureau.hooks.delete',
         'bureau.hooks.deliveries',
+        'bureau.hooks.deliveries.retry',
+        'bureau.hooks.draft.test',
         'bureau.hooks.get',
         'bureau.hooks.list',
         'bureau.hooks.secret.replace',

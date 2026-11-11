@@ -27,6 +27,16 @@ const cases = [
   { operation: 'bureau.hooks.test', parameters: {}, deploymentOnly: false },
   { operation: 'bureau.hooks.secret.replace', parameters: {}, deploymentOnly: true },
   { operation: 'bureau.hooks.deliveries', parameters: {}, deploymentOnly: true },
+  {
+    operation: 'bureau.hooks.deliveries.retry',
+    parameters: { deliveryId: 'delivery-missing' },
+    deploymentOnly: true,
+  },
+  {
+    operation: 'bureau.hooks.draft.test',
+    parameters: { url: definition.url },
+    deploymentOnly: true,
+  },
 ] as const;
 
 for (const row of cases) {
@@ -57,8 +67,11 @@ for (const row of cases) {
       expect(seed.body?.error).toBeUndefined();
       const hookId = seed.body?.result?.['id'];
       for (const actor of actors) {
+        // A draft names no hook: it is tested before one exists.
         const parameters =
-          row.operation === 'bureau.hooks.create' || row.operation === 'bureau.hooks.list'
+          row.operation === 'bureau.hooks.create' ||
+          row.operation === 'bureau.hooks.list' ||
+          row.operation === 'bureau.hooks.draft.test'
             ? row.parameters
             : { ...row.parameters, hookId };
         const result = await workspacePrivacyCall(opened, actor, row.operation, parameters);
