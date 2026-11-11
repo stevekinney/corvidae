@@ -31,7 +31,7 @@
     acceptOpacity?: number;
     rejectOpacity?: number;
     hintId: string;
-    body?: Snippet<[TItem]>;
+    body?: Snippet<[TItem]> | undefined;
     onkeydown?: (event: KeyboardEvent) => void;
     onpointerdown?: (event: PointerEvent) => void;
   } = $props();
