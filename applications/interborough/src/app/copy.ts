@@ -1859,7 +1859,7 @@ export const WORKFLOW_COPY = {
     },
     /**
      * The warning under the tabs when the file changed on disk while the form was open (board
-     * PageWorkflowBuilder, "Edit · file changed on disk"). Nothing happens until the person chooses.
+     * PageWorkflowBuilder, "Edit, file changed on disk"). Nothing happens until the person chooses.
      */
     changedOnDisk: {
       title: 'This file changed on disk.',
