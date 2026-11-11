@@ -64,8 +64,8 @@ export type SelectGroup = {
 /** Colour of the select's value: `accent` is for the one select that names what its surface is about to do. */
 export type SelectTone = 'default' | 'accent';
 
-/** Visual style of the select: bordered for forms and filter bars, ghost inside a bordered container. */
-export type SelectVariant = 'default' | 'ghost';
+/** Visual style of the select: bordered for forms and filter bars, ghost inside a bordered container, inline inside a sentence. */
+export type SelectVariant = 'default' | 'ghost' | 'inline';
 
 /**
  * How the select is drawn. `native` is the platform `<select>`: right for forms, and the phone's
@@ -110,10 +110,22 @@ export type SelectProps<T extends string = string> = Omit<
    * Visual style. `ghost` has no border or fill at rest, a neutral tint on hover and while open,
    * the focus ring wrapping the whole control, and keeps its chevron: use it for a select inside
    * a bordered container (a composer, an inline toolbar) so the row of controls reads as one
-   * surface. `default` is the bordered select for forms and filter bars.
+   * surface. `inline` sits inside a sentence ("Archive messages from [sender]"): it takes the
+   * surrounding text size and weight, the `sm` height and an auto width, whatever `size` says.
+   * `default` is the bordered select for forms and filter bars.
    * @default "default"
    */
   variant?: SelectVariant;
+  /**
+   * How the bordered select is drawn. `"outlined"` is the control fill inside a 1px edge.
+   * `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps
+   * the 3:1 boundary the fill alone would lose, with a 12px radius, a 48px height in the
+   * comfortable density and the 2px focus ring. Left unset, the select follows its density:
+   * `filled` under `data-density="comfortable"`, `outlined` otherwise. The `ghost` and `inline`
+   * variants draw no fill of their own unless `"filled"` is set. The native caret never shows:
+   * the Cinder chevron is the only one.
+   */
+  appearance?: 'outlined' | 'filled';
   /**
    * Colour of the value. `accent` draws it in the accent colour and weight, for the one select that
    * names what the container it sits in is about to do (the agent a new chat is with), beside

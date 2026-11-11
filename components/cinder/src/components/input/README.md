@@ -17,12 +17,27 @@ Single-line text input with support for labels, addons, validation states, and h
 {/if}
 ```
 
+## Filled appearance
+
+`appearance="filled"` draws an inset fill inside the same 1px `--cinder-control-border` edge, a 12px radius and the 2px focus ring. The edge is what keeps the 3:1 boundary: the fill alone measures about 1.1:1 against its surface and would fail WCAG 1.4.11. Hover darkens the edge, focus lifts the fill to the control surface under the ring, an invalid field keeps its danger edge, and a disabled field drops to the disabled fill. A read-only value drops the fill and keeps its dashed edge, so an editable field and a read-only value stay apart. Under `data-density="comfortable"` a field with no `appearance` is filled and 48px tall; the default density stays outlined, and `appearance="outlined"` opts a field out. The same prop is on Select, Textarea and SearchField.
+
+```svelte
+<script lang="ts">
+  import { Input } from '@lostgradient/cinder';
+
+  let email = $state('');
+</script>
+
+<Input id="email" appearance="filled" bind:value={email} label="Email" />
+```
+
 ## Props
 
 <!-- generated:props:start -->
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | `"outlined"` \| `"filled"` | no | — | How the field is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary the fill alone would lose, with a 12px radius, a 48px height in the comfortable density and the 2px focus ring. Left unset, the field follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise. |
 | `class` | `string` | no | — | Custom class merged with `.cinder-input`. |
 | `description` | `string` | no | — | Helper text rendered below the input and associated via `aria-describedby`. |
 | `disabled` | `boolean` | no | — | When true, disables the input, matching the native `disabled` attribute. |

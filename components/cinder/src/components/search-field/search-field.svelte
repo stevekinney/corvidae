@@ -29,6 +29,7 @@
     id,
     value = $bindable(''),
     placeholder,
+    appearance,
     size = 'md',
     shortcut,
     disabled,
@@ -130,6 +131,7 @@
     id={resolvedId}
     bind:value
     {placeholder}
+    {appearance}
     {size}
     {readonly}
     type="search"

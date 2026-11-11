@@ -94,6 +94,41 @@
     padding-block: var(--cinder-space-2);
   }
 
+  /* ----------------------------------------
+ * Filled appearance (COR-2313)
+ *
+ * An inset fill inside the same 1px `--cinder-control-border` edge, so the boundary keeps its
+ * 3:1 contrast against the fill and the surface around it (the fill alone measures about 1.1:1).
+ * The radius is 12px and the focus ring stays the shared 2px ring. A field with no `appearance`
+ * follows its density: filled under `data-density='comfortable'`, outlined otherwise, and an
+ * explicit `appearance='outlined'` opts a field out of the density default.
+ *
+ * The density selectors keep their specificity at or below the state rules (`:where()` for the
+ * ancestor), and sit before them, so disabled, read-only and the group's transparent inner input
+ * still win. A grouped field (an addon on either side) takes the same fill on the group, below.
+ * ---------------------------------------- */
+
+  .cinder-input[data-cinder-appearance='filled'],
+  :where([data-density='comfortable']) .cinder-input:not([data-cinder-appearance='outlined']) {
+    background: var(--cinder-surface-inset);
+    border-radius: var(--cinder-radius-lg);
+  }
+
+  /* The comfortable density's filled field is 48px, the `lg` step, at the default `md` size.
+     A `sm` field keeps its own height, and `lg` is already 48px. */
+  :where([data-density='comfortable'])
+    .cinder-input:not([data-cinder-appearance='outlined'])[data-cinder-size='md'] {
+    --_cinder-input-height: var(--cinder-control-height-lg);
+  }
+
+  /* Focus lifts the fill to the control surface under the 2px ring, so a focused field reads as
+     the one being edited. */
+  .cinder-input[data-cinder-appearance='filled']:focus-visible,
+  :where([data-density='comfortable'])
+    .cinder-input:not([data-cinder-appearance='outlined']):focus-visible {
+    background: var(--cinder-control-background);
+  }
+
   .cinder-input::placeholder {
     color: var(--cinder-text-subtle);
   }
@@ -169,6 +204,14 @@
     border-style: dashed;
   }
 
+  /* A filled field is already on the inset surface, so its read-only value drops the fill and
+     keeps the dashed edge: editable and read-only values stay apart (COR-2313). */
+  .cinder-input[data-cinder-appearance='filled'][readonly]:not(:disabled),
+  :where([data-density='comfortable'])
+    .cinder-input:not([data-cinder-appearance='outlined'])[readonly]:not(:disabled) {
+    background: transparent;
+  }
+
   /* ----------------------------------------
  * Code variant
  * ---------------------------------------- */
@@ -225,6 +268,7 @@
     line-height: var(--cinder-leading-snug);
     background: transparent;
     border-color: transparent;
+    border-radius: var(--cinder-control-radius);
   }
 
   @supports (field-sizing: content) {
@@ -410,6 +454,30 @@
        the ring for the whole grouped control; the input's own ring is clipped
        away above, not zeroed, so the swap does not animate it. */
     outline: none;
+  }
+
+  /* Filled appearance on the group, as for the standalone input above: the inset fill and the 12px
+     radius move to the wrapper, whose 1px edge is the boundary. The density default stays below
+     the disabled rule's specificity (`:where()`), and the read-only rule drops the fill. */
+  .cinder-input-group--filled,
+  :where([data-density='comfortable'])
+    .cinder-input-group:where(:not(.cinder-input-group--outlined)) {
+    background: var(--cinder-surface-inset);
+    border-radius: var(--cinder-radius-lg);
+  }
+
+  .cinder-input-group--filled:focus-within,
+  :where([data-density='comfortable'])
+    .cinder-input-group:where(:not(.cinder-input-group--outlined)):focus-within {
+    background: var(--cinder-control-background);
+  }
+
+  .cinder-input-group--filled:has(> .cinder-input[readonly]:not(:disabled)),
+  :where([data-density='comfortable'])
+    .cinder-input-group:where(:not(.cinder-input-group--outlined)):has(
+      > .cinder-input[readonly]:not(:disabled)
+    ) {
+    background: transparent;
   }
 
   /* Hover mirrors the standalone input. Sticky-hover suppression on touch. */

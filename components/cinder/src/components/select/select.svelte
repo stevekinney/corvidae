@@ -48,6 +48,7 @@
     disabled,
     size = 'md',
     variant = 'default',
+    appearance,
     tone = 'default',
     presentation = 'native',
     placeholder,
@@ -77,6 +78,11 @@
   const staleRegion = getStaleRegionContext();
   const staleInert = $derived(isStaleInert(staleRegion, mutating));
   const blocked = $derived(readonly || staleInert);
+  // A ghost or inline select draws no fill of its own, so it opts out of the density default
+  // (filled under comfortable density) unless the caller asks for `filled`.
+  const resolvedAppearance = $derived(
+    appearance ?? (variant === 'default' ? undefined : 'outlined'),
+  );
   const field = $derived(
     resolveFieldControl({
       id,
@@ -158,6 +164,7 @@
       {valuePrefix}
       {size}
       {variant}
+      appearance={resolvedAppearance}
       disabled={field.disabled}
       readonly={blocked}
       aria-disabled={staleInert ? 'true' : undefined}
@@ -179,6 +186,7 @@
           class="cinder-_input-frame cinder-select"
           data-cinder-size={size}
           data-cinder-variant={variant}
+          data-cinder-appearance={resolvedAppearance}
           disabled={field.disabled}
           required={field.required}
           {name}
@@ -197,6 +205,7 @@
           class="cinder-_input-frame cinder-select"
           data-cinder-size={size}
           data-cinder-variant={variant}
+          data-cinder-appearance={resolvedAppearance}
           disabled={field.disabled}
           required={field.required}
           {name}

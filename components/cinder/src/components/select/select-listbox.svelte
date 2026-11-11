@@ -43,6 +43,7 @@
     valuePrefix,
     size = 'md',
     variant = 'default',
+    appearance,
     disabled = false,
     readonly = false,
     required = false,
@@ -67,6 +68,7 @@
     valuePrefix?: string | undefined;
     size?: 'sm' | 'md' | 'lg' | undefined;
     variant?: SelectVariant | undefined;
+    appearance?: 'outlined' | 'filled' | undefined;
     disabled?: boolean | undefined;
     readonly?: boolean | undefined;
     required?: boolean | undefined;
@@ -482,6 +484,7 @@
     class={classNames('cinder-_input-frame', 'cinder-select', className)}
     data-cinder-size={size}
     data-cinder-variant={variant}
+    data-cinder-appearance={appearance}
     data-cinder-presentation="listbox"
     data-cinder-open={open || undefined}
     data-cinder-empty={selectedOption === undefined && placeholder === undefined
@@ -539,7 +542,7 @@
     focusManagement="preserve"
     wireTriggerAria={false}
     closeOnEscape={false}
-    widthMode={variant === 'ghost' ? 'content' : 'match-anchor'}
+    widthMode={variant === 'ghost' || variant === 'inline' ? 'content' : 'match-anchor'}
     {sheetBelow}
     class="cinder-select__panel"
     onExitComplete={() => {

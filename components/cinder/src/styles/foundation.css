@@ -149,7 +149,11 @@
  * on an ancestor and gets roomier type (15px body, 14px secondary, an 18px
  * section title and a 28px page title), taller controls (32, 40 and 48px),
  * rounder corners (16px surfaces, 10px fields; a Button stays a pill) and more
- * room (20px card padding, a 16px stack gap). Interborough's operator pages keep
+ * room (20px card padding, a 16px stack gap). Input, Select, Textarea and
+ * SearchField default to `appearance="filled"` here (COR-2313): an inset fill
+ * inside the 1px control edge, a 12px radius and, at the default size, a 48px
+ * height; their own stylesheets key that off this attribute, and
+ * `appearance="outlined"` opts a field out. Interborough's operator pages keep
  * the default or compact density.
  *
  * Comfortable also switches the light arm of the surface ladder to the

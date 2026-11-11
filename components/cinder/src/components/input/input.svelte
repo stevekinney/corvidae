@@ -39,6 +39,7 @@
     required,
     type = 'text',
     variant = 'default',
+    appearance,
     size = 'md',
     inputAttachment,
     groupClassName,
@@ -94,6 +95,8 @@
       rendersNativeDateIcon && 'cinder-input-group--native-date',
       resolvedDisabled && 'cinder-input-group--disabled',
       isInvalid && 'cinder-input-group--invalid',
+      appearance === 'filled' && 'cinder-input-group--filled',
+      appearance === 'outlined' && 'cinder-input-group--outlined',
     ),
   );
   // One class string for the control wrapper in both of its states. The
@@ -181,6 +184,7 @@
     data-cinder-full-width
     data-cinder-variant={variant}
     data-cinder-size={size}
+    data-cinder-appearance={appearance}
     data-cinder-native-date={rendersNativeDateIcon ? '' : undefined}
     aria-invalid={resolvedAriaInvalid}
     aria-describedby={describedBy}

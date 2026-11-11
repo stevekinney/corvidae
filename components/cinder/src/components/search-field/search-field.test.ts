@@ -114,6 +114,25 @@ describe('SearchField rendering', () => {
   });
 });
 
+describe('SearchField appearance', () => {
+  test('forwards appearance to the inner input and to the group that draws its edge', () => {
+    const { container } = render(SearchField, { props: { id: 'search', appearance: 'filled' } });
+    expect(container.querySelector('#search')?.getAttribute('data-cinder-appearance')).toBe(
+      'filled',
+    );
+    expect(
+      container
+        .querySelector('.cinder-input-group')
+        ?.classList.contains('cinder-input-group--filled'),
+    ).toBe(true);
+  });
+
+  test('carries no appearance by default, so the density decides', () => {
+    const { container } = render(SearchField, { props: { id: 'search' } });
+    expect(container.querySelector('#search')?.hasAttribute('data-cinder-appearance')).toBe(false);
+  });
+});
+
 describe('SearchField clear button', () => {
   test('clear button is hidden when value is empty', () => {
     const { container } = render(SearchField, {

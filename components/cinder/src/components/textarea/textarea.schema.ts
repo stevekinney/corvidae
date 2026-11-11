@@ -54,6 +54,11 @@ const schema = {
         'Visual style. `"code"` applies a shared monospace metric set (font-family, font-size,\nline-height, tab-size) for source-like values such as raw JSON, YAML, or configuration text.',
       default: 'default',
     },
+    appearance: {
+      enum: ['outlined', 'filled'],
+      description:
+        'How the field is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an\ninset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary\nthe fill alone would lose, with a 12px radius and the 2px focus ring. Left unset, the field\nfollows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise.',
+    },
     countVisible: {
       type: 'boolean',
       description:
