@@ -326,6 +326,7 @@ export type BureauHandlerSource = Pick<
     | 'steer'
     | 'steering'
     | 'fork'
+    | 'regenerate'
     | 'subscribeEvents'
   >;
   readonly schedules: Pick<

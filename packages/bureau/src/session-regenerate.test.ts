@@ -169,13 +169,13 @@ const R = 'run-crafted';
 const ANSWER = `${R}:step:1`;
 
 /** A finished turn: the user's message, a step that called a tool and got its result, an answer. */
-const turn = (runId: string, text: string): CraftedRun => ({
+const turn = (runId: string, text: string, call = 'c-1'): CraftedRun => ({
   runId,
   rows: [
     { id: `${runId}:user`, role: 'user', content: text },
     { id: `${runId}:step:0`, role: 'assistant', content: 'thinking' },
-    { id: `${runId}:step:0:call:c-1`, role: 'tool-call', call: 'c-1' },
-    { id: `${runId}:step:0:result:c-1`, role: 'tool-result', call: 'c-1' },
+    { id: `${runId}:step:0:call:${call}`, role: 'tool-call', call },
+    { id: `${runId}:step:0:result:${call}`, role: 'tool-result', call },
     { id: `${runId}:step:1`, role: 'assistant', content: 'old answer' },
   ],
 });
@@ -480,7 +480,7 @@ describe('a regeneration refused before the model is asked', () => {
   it('refuses the answer of an earlier run once a later run answered', async () => {
     const script = newScript();
     const bureau = await openBureau(script);
-    const before = await craft(bureau, [turn('run-1', 'one'), turn('run-2', 'two')]);
+    const before = await craft(bureau, [turn('run-1', 'one'), turn('run-2', 'two', 'c-2')]);
 
     expect(await refusalOf(regenerate(bureau, CRAFTED, 'run-1:step:1'))).toBe('not-latest-answer');
     expect(script.regenerations).toBe(0);
@@ -815,10 +815,10 @@ describe('a regeneration command', () => {
       },
     );
 
-    await waitForCondition(
-      async () => (await ledger.read(identity))?.state === 'completed',
-      'the drain completes the command from its receipt',
-    );
+    await waitForCondition(async () => {
+      const entry = await ledger.read(identity);
+      return entry?.state === 'completed';
+    }, 'the drain completes the command from its receipt');
     await waitForCondition(
       async () => !(await receiptPending(bureau)),
       'the receipt is acknowledged',
@@ -863,7 +863,7 @@ describe('a regeneration command', () => {
 
     await waitForCondition(async () => !(await receiptPending(bureau)), 'the receipt is drained');
 
-    expect((await ledger.read(identity))?.state).toBe('pending');
+    expect(await ledger.read(identity)).toHaveProperty('state', 'pending');
     expect(await refusalOf(regenerate(bureau, CRAFTED, ANSWER, 'forged'))).toBe('command-in-doubt');
     expect(script.regenerations).toBe(0);
   });

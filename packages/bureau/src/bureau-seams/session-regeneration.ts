@@ -62,6 +62,15 @@ export interface SessionRegenerationPeers {
 }
 
 /** Builds the session regeneration of one Bureau. Synchronous, and registers nothing. */
+
+/**
+ * Whether the request was aborted, read afresh at each call: an abort can land during any await,
+ * and a comparison written inline is narrowed away by the first check that returned.
+ */
+function wasAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
 export function createSessionRegeneration<D extends AgentDefinitions>(
   core: BureauCore<D>,
   peers: SessionRegenerationPeers,
@@ -224,7 +233,7 @@ export function createSessionRegeneration<D extends AgentDefinitions>(
       await ledger.release(claimed);
       return refuse(reason, message, cause);
     };
-    if (signal?.aborted === true) {
+    if (wasAborted(signal)) {
       return released('aborted', 'The request was aborted before the model was asked.');
     }
     const through = parseStepRowIdentifier(messageId);
@@ -264,7 +273,7 @@ export function createSessionRegeneration<D extends AgentDefinitions>(
         response = validated ?? generated;
       }
     } catch (error) {
-      if (signal?.aborted === true) {
+      if (wasAborted(signal)) {
         return released('aborted', 'The request was aborted while the model answered.', error);
       }
       // A model that failed, a model the policy forbids, and a guardrail that halted the step.
@@ -277,7 +286,7 @@ export function createSessionRegeneration<D extends AgentDefinitions>(
       );
     }
     // An answer that arrives after the abort is discarded, never committed.
-    if (signal?.aborted === true) {
+    if (wasAborted(signal)) {
       return released('aborted', 'The request was aborted before the answer was committed.');
     }
     if (response.toolCalls.length > 0) {
@@ -326,7 +335,7 @@ export function createSessionRegeneration<D extends AgentDefinitions>(
             fence.lost = 'history-changed';
             return undefined;
           }
-          if (signal?.aborted === true) {
+          if (wasAborted(signal)) {
             fence.lost = 'aborted';
             return undefined;
           }

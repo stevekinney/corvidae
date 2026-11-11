@@ -116,9 +116,6 @@ export type InternalsAreDeclared = Bureau['internals'] extends BureauInternals ?
 // `internals` carries every moved member under its new name.
 export type InternalsMembers = AssertNever<
   Exclude<
-    | 'fork'
-    | 'regenerate'
-    | 'events'
     | 'eventFeed'
     | 'runEventFeeds'
     | 'kv'
