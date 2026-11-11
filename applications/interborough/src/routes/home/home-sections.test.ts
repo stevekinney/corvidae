@@ -61,13 +61,18 @@ async function open(world: HomeWorld = sampleHomeWorld()) {
   return rendered;
 }
 
+/** The section Home titles `title`. */
+function cardOf(container: HTMLElement, title: string): HTMLElement {
+  const card = container.querySelector<HTMLElement>(`[data-home-card="${title}"]`);
+  if (card === null) throw new Error(`no ${title} section`);
+  return card;
+}
+
 describe('Home’s sections', () => {
   test('are Cinder sections, each titled by a level-two heading, and the page draws no card', async () => {
     const { container } = await open();
-    const recent = container.querySelector<HTMLElement>('[data-home-card="Recent chats"]');
-    expect(recent).not.toBeNull();
     // The rows are in once the list is named.
-    await within(recent as HTMLElement).findByRole('list', { name: 'Recent chats' });
+    await within(cardOf(container, 'Recent chats')).findByRole('list', { name: 'Recent chats' });
 
     const sections = [...container.querySelectorAll<HTMLElement>('[data-home-card]')];
     expect(sections.map((section) => section.getAttribute('data-home-card'))).toEqual(
