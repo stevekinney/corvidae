@@ -408,7 +408,12 @@ export type {
 } from './components/docked-action-bar/index.ts';
 
 export { default as Drawer } from './components/drawer/index.ts';
-export type { DrawerPlacement, DrawerProps, DrawerSize } from './components/drawer/index.ts';
+export type {
+  DrawerDetent,
+  DrawerPlacement,
+  DrawerProps,
+  DrawerSize,
+} from './components/drawer/index.ts';
 
 export { default as Dropdown } from './components/dropdown/index.ts';
 export type {

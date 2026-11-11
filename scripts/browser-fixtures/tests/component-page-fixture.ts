@@ -14,6 +14,9 @@ type OpenArgs = {
 
 type Fixtures = { componentPage: { open(args: OpenArgs): Promise<Page> } };
 
+/** The `componentPage` fixture, for a helper that takes it as a parameter. */
+export type ComponentPageFixture = Fixtures['componentPage'];
+
 function buildRoute(
   entry: ComponentEntry,
   fixtureName?: string,

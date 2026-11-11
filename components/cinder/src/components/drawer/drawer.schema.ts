@@ -48,7 +48,7 @@ const schema = {
     dragHandleVisible: {
       type: 'boolean',
       description:
-        'Whether a `placement="bottom"` drawer shows the grabber, the small pill above the header that\nmarks it as a sheet. Swipe-to-close is not implemented, so the pill is a visual affordance\nonly. Ignored for `left`/`right` placements.\n\nNamed `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML\n`draggable` attribute on the underlying `<dialog>`.',
+        'Whether a `placement="bottom"` drawer shows the grabber, the small pill above the header that\nmarks it as a sheet. Swipe-to-close is not implemented, so the pill is a visual affordance\nonly, unless the drawer has `detents`: then the grabber is the resize control and always shows.\nIgnored for `left`/`right` placements.\n\nNamed `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML\n`draggable` attribute on the underlying `<dialog>`.',
       default: true,
     },
     closeLabel: {
@@ -56,11 +56,35 @@ const schema = {
       description:
         'Words for the close control. When set, the control is a text button that reads these words\n("Close", as on the shared sheets) instead of the X icon, and they are its accessible name.\nLeft out, the control is the X icon named "Close drawer".',
     },
+    detents: {
+      type: 'array',
+      items: {
+        enum: ['peek', 'medium', 'large'],
+      },
+      description:
+        'The heights a `placement="bottom"` drawer can rest at, from `peek`, `medium` and `large`. Listed\nin any order, they are used smallest first. With two or more, the grabber becomes a resize\ncontrol: drag it, press ArrowUp and ArrowDown on it, or tap it, and the sheet snaps to the\nnearest detent. A single detent fixes the sheet at that height. Left out, the sheet is as tall\nas its content up to 90% of the viewport. Ignored for `left`/`right` placements.',
+    },
+    detent: {
+      enum: ['peek', 'medium', 'large'],
+      description:
+        'The detent the sheet rests at, one of `detents`. Bindable via `bind:detent`. Left out, or not\none of `detents`, the sheet rests at the smallest detent.',
+    },
+    count: {
+      type: 'string',
+      description:
+        'A live count the collapsed `peek` bar shows beside the title, such as "12 results". It is a\npolite live region, so screen readers announce it as it changes. Only the peek bar draws it.',
+    },
   },
   additionalProperties: false,
   required: ['title'],
   metadata: {
     unsupportedProps: [
+      {
+        name: 'action',
+        reason: 'function-or-snippet',
+        description:
+          'The primary action of a bottom sheet\'s header, such as "Apply" or "Done", drawn at the trailing\nedge. With it, the sheet\'s default header is a three-column bar: the close control at the start\n(a text "Cancel" when `closeLabel` says so), the title centred as a small label, and this action\nat the end. Ignored for `left`/`right` placements and next to a custom `header`.',
+      },
       {
         name: 'children',
         reason: 'function-or-snippet',

@@ -26,6 +26,9 @@ When `modal={false}`, Drawer renders an `<aside>` instead of a native dialog. Th
 | `Shift+Tab` | Move focus backward |
 | `Escape` | Close the drawer |
 | Close button click / activation | Close the drawer |
+| `ArrowUp` / `ArrowDown` on the grabber | Step to the next larger / smaller detent (a sheet with two or more `detents`) |
+| `Home` / `End` on the grabber | Jump to the smallest / largest detent |
+| `Enter` / `Space` on the grabber or the peek bar | Step to the next larger detent; from the largest, the grabber wraps to the smallest |
 
 The native `<dialog showModal()>` plus the shared focus-trap attachment provide Tab containment for modal drawers. Non-modal drawers do not trap Tab, so focus can move between the drawer and the page.
 
@@ -56,7 +59,13 @@ When `dragHandleVisible={true}` and `placement="bottom"`, a decorative drag hand
 
 The prop is named `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML `draggable` attribute on the underlying `<dialog>`.
 
-Swipe-to-close gesture support is a stretch goal not implemented in the MVP. The `dragHandleVisible` prop currently only controls visibility of the handle, and the cursor is intentionally `default` rather than `grab` so pointer users are not given a false affordance. When swipe support lands, both will change in lockstep.
+### Detents
+
+With two or more `detents` the grabber stops being decorative. It becomes a focusable `role="separator"` with `aria-orientation="horizontal"`, the WAI-ARIA window splitter: `aria-valuemin` is 0, `aria-valuemax` is the last detent's index, `aria-valuenow` is the current detent's index, and `aria-valuetext` names it ("Collapsed", "Half height" or "Full height"). It is named "Resize sheet", it takes the standard focus ring, and it keeps the 44px band. Dragging the grabber moves the sheet with the pointer (the pointer is captured, so the drag survives leaving the band) and snaps to the nearest detent on release; a pointer that moves less than a few pixels is a tap. The keyboard path above reaches every detent without a pointer.
+
+The collapsed `peek` detent shows one bar: a button (when the sheet can resize) holding the title and the `count`. The count is a polite live region, so a change is announced without moving focus. The header, body and footer are `display: none` while the sheet peeks, but the title element stays in the dialog and keeps naming it through `aria-labelledby`. Opening the sheet from the peek bar moves focus to the grabber, because the bar unmounts as the sheet opens.
+
+Swipe-to-close gesture support is not implemented. The drag only resizes between detents, and the close paths above are unchanged. Without `detents`, the `dragHandleVisible` prop only controls visibility of the decorative handle, and the cursor is intentionally `default` rather than `grab` so pointer users are not given a false affordance. With `detents` the handle is the resize control, always shows, and takes the `grab` cursor.
 
 ## Reduced motion
 

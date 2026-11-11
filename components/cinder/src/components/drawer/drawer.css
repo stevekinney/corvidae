@@ -65,6 +65,8 @@
   }
 
   .cinder-drawer[data-cinder-modal='false'] .cinder-drawer__footer {
+    --_cinder-drawer-footer-fade-color: var(--cinder-surface-inset);
+
     background: transparent;
   }
 
@@ -178,6 +180,29 @@
     user-select: none;
   }
 
+  /* With detents the grabber is the resize control: a grab cursor, no browser panning of the
+   * gesture, and a focus ring inside its band (the panel clips an outset ring). */
+  .cinder-drawer__drag-handle[data-cinder-resizable] {
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .cinder-drawer__drag-handle[data-cinder-resizable]:active {
+    cursor: grabbing;
+  }
+
+  .cinder-drawer__drag-handle[data-cinder-resizable]:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-drawer__drag-handle[data-cinder-resizable]:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
   .cinder-drawer__drag-handle-pill {
     display: block;
     width: 2.25rem;
@@ -287,15 +312,185 @@
     outline: none;
   }
 
+  /* The footer is a bar on a real surface, not a strip over the content (COR-2322 AC2): the body
+   * scrolls under a 24px fade that ends at the bar's top edge, and the bar keeps clear of a bottom
+   * safe area. A non-modal drawer re-points the fade colour at its inset surface above. */
   .cinder-drawer__footer {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-3) var(--cinder-space-5);
-    border-block-start: 1px solid var(--cinder-border-muted);
+    padding-block-end: max(var(--cinder-space-3), env(safe-area-inset-bottom));
     flex-shrink: 0;
     background: var(--cinder-surface);
+  }
+
+  .cinder-drawer__footer::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 100%;
+    block-size: var(--cinder-space-6);
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      var(--_cinder-drawer-footer-fade-color, var(--cinder-surface))
+    );
+    pointer-events: none;
+  }
+
+  /* Content never shrinks inside the scrolling column (COR-2322 AC3): a consumer that makes its
+   * body content a flex column would otherwise let a clipped child collapse to nothing as the sheet
+   * gets shorter, where it should keep its height and scroll. */
+  .cinder-drawer__body > * {
+    flex-shrink: 0;
+  }
+
+  /* ----------------------------------------
+ * Detents (bottom placement): the sheet rests at `peek`, `medium` or `large`. The height is the
+ * detent's, transitions between detents, and follows the pointer while the grabber is dragged
+ * (the inline `height` from drawer.svelte, with the transition off). Every detent stays under the
+ * 90dvh cap in the bottom block above, which already shrinks by the keyboard inset.
+ * ---------------------------------------- */
+
+  .cinder-drawer__panel[data-cinder-detent] {
+    transition:
+      translate var(--cinder-duration-normal) var(--cinder-ease-spring),
+      opacity var(--cinder-duration-normal) var(--cinder-ease-standard),
+      height var(--cinder-duration-normal) var(--cinder-ease-standard);
+  }
+
+  .cinder-drawer__panel[data-cinder-dragging] {
+    transition: none;
+  }
+
+  /* The 20px grabber band, the 56px bar, and the bottom safe area under it. */
+  .cinder-drawer__panel[data-cinder-detent='peek'] {
+    --_cinder-drawer-peek-height: calc(
+      var(--cinder-space-5) + 3.5rem + env(safe-area-inset-bottom)
+    );
+
+    height: var(--_cinder-drawer-peek-height);
+  }
+
+  .cinder-drawer__panel[data-cinder-detent='medium'] {
+    height: 50dvh;
+  }
+
+  .cinder-drawer__panel[data-cinder-detent='large'] {
+    height: calc(90dvh - var(--_cinder-keyboard-inset, 0px));
+  }
+
+  /* Collapsed, the sheet is its grabber and one bar: the header, body and footer step aside. The
+   * title keeps naming the dialog from inside the hidden header. While the grabber is being dragged
+   * the sheet is no longer peeking, so the content shows as it opens. */
+  .cinder-drawer__panel[data-cinder-peek]
+    > :is(.cinder-drawer__header, .cinder-drawer__body, .cinder-drawer__footer) {
+    display: none;
+  }
+
+  .cinder-drawer__peek {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-4);
+    flex: 1;
+    min-block-size: 0;
+    margin: 0;
+    padding: 0 var(--cinder-space-5);
+    padding-block-end: env(safe-area-inset-bottom);
+    border: none;
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    font: inherit;
+    text-align: start;
+  }
+
+  button.cinder-drawer__peek {
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  /* The bar fills the panel's corner band, so the focus ring is drawn inside it. */
+  button.cinder-drawer__peek:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    button.cinder-drawer__peek:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
+  /* A drag that starts on the bar keeps the pointer on the bar while the sheet opens, so the bar
+   * stays mounted and only steps out of the way. */
+  .cinder-drawer__panel[data-cinder-dragging] .cinder-drawer__peek {
+    visibility: hidden;
+    flex: none;
+    block-size: 0;
+    padding: 0;
+  }
+
+  .cinder-drawer__peek-title {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-drawer__peek-count {
+    flex: none;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-drawer__peek-count:empty {
+    display: none;
+  }
+
+  /* ----------------------------------------
+ * Sheet header bar (bottom placement with an `action`): three columns, the close control
+ * ("Cancel") at the start, the title centred as a 14/600 label rather than a
+ * page heading, and the action at the end (COR-2322 AC7). The DOM order is unchanged (title,
+ * close, action), so focus order stays close then action.
+ * ---------------------------------------- */
+
+  .cinder-drawer__header[data-cinder-bar] {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    grid-template-areas: 'lead title end';
+    align-items: center;
+  }
+
+  .cinder-drawer__header[data-cinder-bar] .cinder-drawer__title {
+    grid-area: title;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-drawer__header[data-cinder-bar] .cinder-drawer__close {
+    grid-area: lead;
+    justify-self: start;
+  }
+
+  .cinder-drawer__action {
+    grid-area: end;
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
   }
 
   /* ----------------------------------------
