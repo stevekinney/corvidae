@@ -52,7 +52,7 @@ function actionClause(action: EditorHook['action']): string {
   switch (action.type) {
     case 'webhook':
       return action.url === ''
-        ? HOOKS_COPY.sentence.webhookUnset
+        ? COPY.action.webhook.toLowerCase()
         : row.webhook(webhookHost(action.url));
     case 'start-workflow':
       return action.workflowId === ''
@@ -109,9 +109,14 @@ export function editorTitle(
   return hook.name === null || hook.name === '' ? editorClause(hook, anyOf) : hook.name;
 }
 
-/** The kind of subject Only for narrows by, when the events chosen can be narrowed by a workflow. */
+/**
+ * The kind of subject the chosen events narrow by when they narrow by exactly one, which is what
+ * Only for reads "Any workflow" for. With several kinds to choose from, or none, the hook covers
+ * "everything" and the sentence says nothing of it.
+ */
 export function anyScopeOf(allowed: readonly HookScopeKind[]): HookScopeKind | undefined {
-  return allowed.includes('workflow') ? 'workflow' : undefined;
+  const [only] = allowed;
+  return allowed.length === 1 ? only : undefined;
 }
 
 /** What the phone's When step says: the events, then what the hook is limited to. */

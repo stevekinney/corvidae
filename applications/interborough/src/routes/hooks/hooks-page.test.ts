@@ -155,6 +155,8 @@ function open(
     createdSecret?: string;
     /** What a test of a hook not yet saved answers: delivered, or one that failed with a status. */
     draftTest?: 'delivered' | { status: number };
+    /** The read of one hook never answers, as a slow server does. */
+    holdRead?: boolean;
   } = {},
 ) {
   const served: Served = {
@@ -190,7 +192,10 @@ function open(
           })),
       };
     },
-    'bureau.hooks.get': (params) => (options.off ? unsupported() : found(params)),
+    'bureau.hooks.get': (params) => {
+      if (options.holdRead) return new Promise(() => undefined);
+      return options.off ? unsupported() : found(params);
+    },
     'bureau.hooks.deliveries': (params) => {
       const id = String(params['hookId']);
       served.deliveryReads.push(id);
@@ -1236,6 +1241,344 @@ describe('the hook editor', () => {
   });
 });
 
+describe('a saved hook’s header', () => {
+  const PAGER_ADDRESS = 'https://events.pagerduty.com/v2/enqueue';
+  const gaveUp = () =>
+    delivery('alpha', 'exhausted', {
+      attempts: [
+        {
+          number: 1,
+          startedAt: 2_000,
+          finishedAt: 2_100,
+          outcome: 'response',
+          status: 410,
+          responseExcerpt: null,
+          responseTruncated: null,
+          error: null,
+          receipt: null,
+        },
+      ],
+    });
+  const named = () =>
+    hook('alpha', {
+      name: 'Page on-call when a run fails',
+      action: { type: 'webhook', url: PAGER_ADDRESS },
+    });
+
+  test('is the hook’s name, its On switch, a menu, its sentence and its latest delivery, with no way back to a list', async () => {
+    const { view } = open([named()], {
+      path: '/hooks/alpha',
+      deliveries: { alpha: [gaveUp()] },
+    });
+    const header = await view.findByTestId('hook-header');
+    expect(
+      within(header).getByRole('heading', { level: 1, name: 'Page on-call when a run fails' }),
+    ).not.toBeNull();
+    expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('true');
+    expect(within(header).getByText(HOOKS_COPY.editor.header.on)).not.toBeNull();
+    expect(
+      within(header).getByRole('button', { name: HOOKS_COPY.editor.header.menuLabel }),
+    ).not.toBeNull();
+    expect(header.textContent).toContain(
+      'When a review is waiting, send a webhook to events.pagerduty.com.',
+    );
+    expect(view.queryByRole('link', { name: 'All hooks' })).toBeNull();
+
+    // The latest delivery: a red Gave up dot and word, what answered, and a link to the log.
+    const latest = await within(header).findByTestId('hook-latest-delivery');
+    expect(latest.textContent).toContain('Gave up');
+    expect(within(latest).getByTestId('hook-latest-when').textContent).toContain('410 Gone');
+    const jump = within(latest).getByRole('link', { name: HOOKS_COPY.editor.header.jumpToLog });
+    expect(jump.getAttribute('href')).toBe('#ib-hook-log');
+    await fireEvent.click(jump);
+    await waitFor(() => expect(document.activeElement?.id).toBe('ib-hook-log'));
+  });
+
+  test('says a hook that has sent nothing yet', async () => {
+    const { view } = open([named()], { path: '/hooks/alpha' });
+    const latest = await view.findByTestId('hook-latest-delivery');
+    expect(latest.textContent).toContain(HOOKS_COPY.editor.header.nothingSent);
+    expect(within(latest).queryByTestId('hook-latest-when')).toBeNull();
+  });
+
+  test('a hook with no name is headed by its sentence', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
+    const header = await view.findByTestId('hook-header');
+    expect(
+      within(header).getByRole('heading', {
+        level: 1,
+        name: 'When a review is waiting, send a webhook to example.com',
+      }),
+    ).not.toBeNull();
+  });
+
+  test('saves the On switch at once, says so in a toast with Undo, and Undo turns it back on', async () => {
+    const { view } = open([named()], { path: '/hooks/alpha' });
+    const header = await view.findByTestId('hook-header');
+    await fireEvent.click(within(header).getByRole('switch'));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.update')[0]?.params).toEqual({
+      hookId: 'alpha',
+      expectedRevision: 1,
+      enabled: false,
+    });
+    await view.findByText(HOOKS_COPY.editor.toggled.off('Page on-call when a run fails'));
+    await waitFor(() =>
+      expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('false'),
+    );
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(2));
+    expect(stub?.callsTo('bureau.hooks.update')[1]?.params).toEqual({
+      hookId: 'alpha',
+      expectedRevision: 2,
+      enabled: true,
+    });
+    await waitFor(() =>
+      expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('true'),
+    );
+  });
+
+  test('the switch saves alone: what was typed stays, and the next Save names the new revision', async () => {
+    const { view } = open([named()], { path: '/hooks/alpha' });
+    const name = (await view.findByLabelText(
+      HOOKS_COPY.editor.check.nameLabel,
+    )) as HTMLInputElement;
+    await fireEvent.input(name, { target: { value: 'Mine' } });
+    const header = await view.findByTestId('hook-header');
+    await fireEvent.click(within(header).getByRole('switch'));
+    await waitFor(() =>
+      expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('false'),
+    );
+    expect(name.value).toBe('Mine');
+    expect(view.queryByTestId('hook-changed')).toBeNull();
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(2));
+    expect(stub?.callsTo('bureau.hooks.update')[1]?.params).toEqual({
+      hookId: 'alpha',
+      expectedRevision: 2,
+      name: 'Mine',
+    });
+  });
+
+  test('says a switch the Bureau refused, and leaves the hook as it was', async () => {
+    const { view } = open([named()], {
+      path: '/hooks/alpha',
+      refuse: { 'bureau.hooks.update': new StubFault('Forbidden', 403, 'Not yours.') },
+    });
+    const header = await view.findByTestId('hook-header');
+    await fireEvent.click(within(header).getByRole('switch'));
+    await view.findByText(new RegExp(HOOKS_COPY.editor.toggled.failed));
+    expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('true');
+  });
+});
+
+describe('the steps of a saved hook', () => {
+  test('shows the event as plain text with its raw kind and a note, and offers no picker', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
+    const locked = await view.findByTestId('hook-event-locked');
+    expect(locked.textContent).toContain('A review is waiting');
+    expect(locked.textContent).toContain('review.requested');
+    expect(locked.textContent).toContain(HOOKS_COPY.editor.event.fixed);
+    expect(locked.querySelector('[aria-readonly="true"]')).not.toBeNull();
+    expect(view.container.querySelector('input[role="combobox"]')).toBeNull();
+  });
+
+  test('is numbered 1 When, 2 Then, 3 Check, with the delivery log beside them', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
+    const titles = await waitFor(() => {
+      const found = Array.from(view.container.querySelectorAll('h2.ib-hook-step__title')).map(
+        (element) => element.textContent?.replaceAll(/\s+/g, ' ').trim(),
+      );
+      expect(found.length).toBe(3);
+      return found;
+    });
+    expect(titles).toEqual(['1 When', '2 Then', '3 Check']);
+    expect(view.container.querySelector('aside#ib-hook-log [data-testid="hook-deliveries"]')).not.toBeNull();
+  });
+
+  test('keeps the Check sentence as the hook reads in the editor, in a quiet box above the buttons', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
+    const sentence = await view.findByTestId('hook-sentence');
+    expect(sentence.textContent).toBe(
+      'When a review is waiting, send a webhook to example.com.',
+    );
+    const save = view.getByRole('button', { name: HOOKS_COPY.editor.check.save });
+    expect(sentence.nextElementSibling).toBe(save.parentElement);
+  });
+
+  test('on a phone When and Then are one-line summaries that open to their fields', async () => {
+    const original = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        media: query,
+        matches: query.includes('640'),
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+      }),
+    });
+    try {
+      const { view } = open([hook('alpha', { events: ['goal.attempt.evaluating'] })], {
+        path: '/hooks/alpha',
+      });
+      const when = await view.findByTestId('hook-step-summary-when');
+      // The event narrows by one kind of subject only, so the summary says it covers any of them.
+      await waitFor(() => expect(when.textContent).toContain('Goal attempt evaluating, Any agent'));
+      const then = view.getByTestId('hook-step-summary-then');
+      expect(then.textContent).toContain('Send a webhook to example.com');
+      expect(view.queryByLabelText(HOOKS_COPY.editor.webhook.urlLabel)).toBeNull();
+
+      await fireEvent.click(within(then).getByRole('button', { name: HOOKS_COPY.editor.steps.edit }));
+      expect(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel)).not.toBeNull();
+      expect(view.queryByTestId('hook-step-summary-then')).toBeNull();
+      await fireEvent.click(within(when).getByRole('button', { name: HOOKS_COPY.editor.steps.edit }));
+      expect(view.getByTestId('hook-event-locked')).not.toBeNull();
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(window, 'matchMedia');
+      else Object.defineProperty(window, 'matchMedia', original);
+    }
+  });
+
+  test('a workflow hook whose workflow was deleted keeps its old name marked and asks for another', async () => {
+    const { view } = open(
+      [
+        hook('alpha', {
+          action: { type: 'start-workflow', workflowId: 'weekly-cleanup', input: 'payload' },
+        }),
+      ],
+      { path: '/hooks/alpha', workflows: [] },
+    );
+    const select = (await view.findByLabelText(
+      HOOKS_COPY.editor.workflow.label,
+    )) as HTMLSelectElement;
+    await waitFor(() =>
+      expect(select.options[1]?.textContent?.trim()).toBe(
+        HOOKS_COPY.editor.workflow.deletedName('weekly-cleanup'),
+      ),
+    );
+    await view.findByText(HOOKS_COPY.editor.workflow.deleted);
+
+    // Save hook says what to pick, moves to the field, and sends nothing.
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(document.activeElement?.id).toBe('ib-hook-workflow'));
+    expect(stub?.callsTo('bureau.hooks.update').length).toBe(0);
+  });
+
+  test('says what a workflow hook starts, and what the workflow receives', async () => {
+    const { view } = open(
+      [
+        hook('alpha', {
+          action: { type: 'start-workflow', workflowId: 'order-refund', input: 'payload' },
+        }),
+      ],
+      { path: '/hooks/alpha', workflows: [{ id: 'order-refund', state: 'ready', paused: false }] },
+    );
+    const select = (await view.findByLabelText(
+      HOOKS_COPY.editor.workflow.label,
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('order-refund'));
+    expect(view.getByText(HOOKS_COPY.editor.workflow.payload)).not.toBeNull();
+    expect(view.queryByText(HOOKS_COPY.editor.workflow.deleted)).toBeNull();
+  });
+});
+
+describe('the Then step of a new hook', () => {
+  test('is a segmented control, and each choice shows its own fields', async () => {
+    const { view } = open([], {
+      path: '/hooks/new',
+      workflows: [{ id: 'order-refund', state: 'ready', paused: false }],
+    });
+    const webhook = await view.findByRole('radio', { name: HOOKS_COPY.editor.action.webhook });
+    expect(webhook.getAttribute('aria-checked')).toBe('true');
+    const address = view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel) as HTMLInputElement;
+    expect(address.placeholder).toBe(HOOKS_COPY.editor.webhook.urlPlaceholder);
+
+    await fireEvent.click(view.getByRole('radio', { name: HOOKS_COPY.editor.action.startWorkflow }));
+    await view.findByLabelText(HOOKS_COPY.editor.workflow.label);
+    expect(view.getByText(HOOKS_COPY.editor.workflow.payload)).not.toBeNull();
+    expect(view.queryByLabelText(HOOKS_COPY.editor.webhook.urlLabel)).toBeNull();
+
+    await fireEvent.click(view.getByRole('radio', { name: HOOKS_COPY.editor.action.notify }));
+    expect(view.getByTestId('hook-notify-note').textContent).toContain(
+      HOOKS_COPY.editor.action.notifyNote,
+    );
+    expect(view.queryByLabelText(HOOKS_COPY.editor.workflow.label)).toBeNull();
+  });
+
+  test('names a missing event and address beside their fields when Save hook is pressed, and moves focus to the first', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    const save = (await view.findByRole('button', {
+      name: HOOKS_COPY.editor.check.create,
+    })) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    // Nothing is said before it is pressed, and the Check step says what to do first.
+    expect(view.queryByText(HOOKS_COPY.editor.event.required)).toBeNull();
+    expect(view.getByTestId('hook-check-summary').textContent).toContain(
+      HOOKS_COPY.editor.check.pickEvent,
+    );
+
+    await fireEvent.click(save);
+
+    await view.findByText(HOOKS_COPY.editor.event.required);
+    await view.findByText(HOOKS_COPY.editor.webhook.urlMissing);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole('combobox', { name: HOOKS_COPY.editor.event.label }),
+      ),
+    );
+    expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
+  });
+
+  test('says an address without https:// as it is typed, keeps it, and sends nothing', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    await chooseEvent(view, 'review', 'A review is waiting');
+    const address = view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel) as HTMLInputElement;
+    await fireEvent.input(address, { target: { value: 'events.pagerduty.com' } });
+    await view.findByText(HOOKS_COPY.editor.webhook.urlMissing);
+    expect(address.getAttribute('aria-invalid')).toBe('true');
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
+    await waitFor(() => expect(document.activeElement).toBe(address));
+    expect(address.value).toBe('events.pagerduty.com');
+    expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
+  });
+
+  test('is headed New hook with its one-line subtitle, and a Check that says to pick an event', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle });
+    expect(view.getByText(HOOKS_COPY.editor.newDescription)).not.toBeNull();
+    expect(
+      (view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel) as HTMLInputElement).placeholder,
+    ).toBe('https://');
+    expect(view.queryByRole('switch')).toBeNull();
+    expect(view.queryByRole('button', { name: HOOKS_COPY.editor.header.menuLabel })).toBeNull();
+  });
+});
+
+describe('while the hook is read', () => {
+  test('draws placeholders for the title and the three steps instead of the editor', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha', holdRead: true });
+    await view.findByTestId('hook-loading');
+    expect(view.queryByTestId('hook-header')).toBeNull();
+    expect(view.container.querySelector('h2.ib-hook-step__title')).toBeNull();
+    expect(view.queryByRole('button', { name: HOOKS_COPY.editor.check.save })).toBeNull();
+  });
+});
+
+describe('the Bureau’s own words about a hook that is gone', () => {
+  test('say it does not exist, and that the other hooks are unchanged', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/ghost' });
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.notFound.title });
+    expect(view.getByText(HOOKS_COPY.editor.notFound.description)).not.toBeNull();
+    expect(view.queryByRole('button', { name: HOOKS_COPY.editor.check.save })).toBeNull();
+  });
+});
+
 describe('when the Bureau refuses', () => {
   const invalid = () =>
     new StubFault('InvalidParams', 400, 'The address is not acceptable.', {
@@ -1401,7 +1744,11 @@ describe('the editor for a hook it cannot change the action of', () => {
     }) as HTMLButtonElement;
     expect(save.disabled).toBe(false);
     await fireEvent.click(save);
-    await waitFor(() => expect(document.activeElement?.id).toBe('ib-hook-event'));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole('combobox', { name: HOOKS_COPY.editor.event.label }),
+      ),
+    );
     expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
   });
 
