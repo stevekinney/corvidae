@@ -14,6 +14,8 @@ export type CardSurfaceTone = 'default' | 'danger';
  * card. A card never draws both, so there is no way to ask for both.
  */
 export type CardEdge = 'none' | 'border' | 'shadow';
+/** Where a card's media sits: `top` spans the card's width above the header, and `leading` sits in a column before the content. */
+export type CardMediaPosition = 'top' | 'leading';
 /** Controls body padding. `none` removes only body padding for flush/full-bleed content. */
 export type CardPadding = 'default' | 'none';
 /** Heading level for the generated card title, so the document outline stays correct. */
@@ -131,4 +133,16 @@ export type CardProps = SharedHtmlAttributes &
     edgeToEdgeOnMobile?: boolean;
     /** Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges. */
     padding?: CardPadding;
+    /** An optional image or other media, drawn at a set aspect ratio at the top of the card or in a leading column. A card with no media draws no placeholder and reserves no space. */
+    media?: Snippet;
+    /**
+     * Where the media sits: `top` spans the card above the header, `leading` is a column before the content. Used with `media`.
+     * @default "top"
+     */
+    mediaPosition?: CardMediaPosition;
+    /**
+     * The aspect ratio of the media box, such as `"16 / 9"` or `1`. The media fills it and is cropped to fit. Used with `media`.
+     * @default "16 / 9"
+     */
+    mediaAspectRatio?: string | number;
   };

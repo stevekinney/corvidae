@@ -142,6 +142,47 @@
   }
 
   /* ----------------------------------------
+ * Media
+ *
+ * Optional: a card with no media renders no element, so there is no placeholder and no reserved
+ * space. The box takes its aspect ratio from the `aspect-ratio` style, and the media fills it.
+ * ---------------------------------------- */
+
+  .cinder-card__media {
+    position: relative;
+    overflow: hidden;
+    min-inline-size: 0;
+  }
+
+  .cinder-card__media > :where(img, picture, video, svg) {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
+  /* A leading media column sits before the header, body and footer, which stack in the second. */
+  .cinder-card[data-cinder-media='leading'] {
+    display: grid;
+    grid-template-columns: minmax(0, 10rem) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .cinder-card[data-cinder-media='leading'] > .cinder-card__media {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+  }
+
+  .cinder-card[data-cinder-media='leading']
+    > :where(.cinder-card__header, .cinder-card__body, .cinder-card__footer) {
+    grid-column: 2;
+  }
+
+  .cinder-card[data-cinder-variant='plain'] > .cinder-card__media {
+    border-radius: var(--cinder-radius-md);
+  }
+
+  /* ----------------------------------------
  * Header
  * ---------------------------------------- */
 

@@ -116,6 +116,12 @@
       "title": "Card header divider",
       "description": "The rule under the header is opt-in. Without headerDivider the header is separated from the body by its surface alone.",
       "code": "<script lang=\"ts\">\n  import { Card } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-row\">\n  <Card title=\"No divider\" description=\"The default.\">\n    <p style=\"margin: 0; color: var(--cinder-text-muted);\">Body content.</p>\n  </Card>\n  <Card title=\"Divider\" description=\"headerDivider is set.\" headerDivider>\n    <p style=\"margin: 0; color: var(--cinder-text-muted);\">Body content.</p>\n  </Card>\n</div>\n"
+    },
+    {
+      "id": "media",
+      "title": "An optional media slot",
+      "description": "A media snippet fills a box at a set aspect ratio above the header. A card without media draws no placeholder and reserves no space.",
+      "code": "<script lang=\"ts\">\n  import { Card } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: grid; gap: 1rem; max-inline-size: 28rem;\">\n  <Card title=\"The Rooftop\" description=\"Half-price wells until 8:00 pm\" mediaAspectRatio=\"3 / 2\">\n    {#snippet media()}\n      <svg viewBox=\"0 0 600 400\" role=\"img\" aria-label=\"The rooftop terrace at dusk\" preserveAspectRatio=\"xMidYMid slice\">\n        <rect width=\"600\" height=\"400\" fill=\"currentColor\" opacity=\"0.15\" />\n        <circle cx=\"440\" cy=\"130\" r=\"48\" fill=\"currentColor\" opacity=\"0.4\" />\n      </svg>\n    {/snippet}\n    Open until midnight.\n  </Card>\n  <Card title=\"The Pier\" description=\"No photo yet\">\n    Cards without media draw no placeholder.\n  </Card>\n</div>\n"
     }
   ]
 }

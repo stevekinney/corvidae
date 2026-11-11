@@ -14,6 +14,7 @@
    */
   export type {
     CardHeadingLevel,
+    CardMediaPosition,
     CardPadding,
     CardProps,
     CardEdge,
@@ -52,6 +53,9 @@
     padding = 'default',
     edge = 'none',
     headerDivider = false,
+    media,
+    mediaPosition = 'top',
+    mediaAspectRatio = '16 / 9',
     href,
     onclick,
     ...rest
@@ -91,6 +95,14 @@
         }
       : {},
   );
+  // A ratio the browser cannot use (zero, negative, NaN) falls back to the default.
+  const mediaRatio = $derived(
+    typeof mediaAspectRatio === 'string'
+      ? mediaAspectRatio
+      : Number.isFinite(mediaAspectRatio) && mediaAspectRatio > 0
+        ? String(mediaAspectRatio)
+        : '16 / 9',
+  );
   const isLink = $derived(href !== undefined);
   const anchorAttributes = $derived(rest as HTMLAnchorAttributes);
   const buttonAttributes = $derived(rest as HTMLButtonAttributes);
@@ -100,6 +112,14 @@
     onclick?.(event);
   }
 </script>
+
+{#snippet mediaRegion()}
+  {#if media}
+    <div class="cinder-card__media" style:aspect-ratio={mediaRatio}>
+      {@render media()}
+    </div>
+  {/if}
+{/snippet}
 
 {#snippet titleRow(showActions: boolean)}
   <div class="cinder-card__title-row">
@@ -128,11 +148,13 @@
     data-cinder-tone={tone}
     data-cinder-padding={padding}
     data-cinder-edge={edge}
+    data-cinder-media={media ? mediaPosition : undefined}
     data-cinder-interactive=""
     data-cinder-edge-to-edge-mobile={edgeToEdgeOnMobile ? '' : undefined}
     {...labelAttributes}
     onclick={handleClick}
   >
+    {@render mediaRegion()}
     {#if header}
       <div
         class="cinder-card__header"
@@ -171,10 +193,12 @@
     data-cinder-tone={tone}
     data-cinder-padding={padding}
     data-cinder-edge={edge}
+    data-cinder-media={media ? mediaPosition : undefined}
     data-cinder-interactive={buttonDisabled ? undefined : ''}
     data-cinder-disabled={buttonDisabled ? '' : undefined}
     data-cinder-edge-to-edge-mobile={edgeToEdgeOnMobile ? '' : undefined}
   >
+    {@render mediaRegion()}
     {#if header}<div
         id={customHeaderId}
         class="cinder-card__header"
@@ -219,9 +243,11 @@
     data-cinder-tone={tone}
     data-cinder-padding={padding}
     data-cinder-edge={edge}
+    data-cinder-media={media ? mediaPosition : undefined}
     data-cinder-edge-to-edge-mobile={edgeToEdgeOnMobile ? '' : undefined}
     {...labelAttributes}
   >
+    {@render mediaRegion()}
     {#if header}<div
         class="cinder-card__header"
         data-cinder-divider={headerDivider ? '' : undefined}

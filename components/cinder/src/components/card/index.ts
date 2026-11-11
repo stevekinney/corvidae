@@ -4,6 +4,7 @@ import Card from './card.svelte';
 export default Card;
 export type {
   CardEdge,
+  CardMediaPosition,
   CardPadding,
   CardProps,
   CardSurfaceTone,

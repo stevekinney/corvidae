@@ -57,6 +57,23 @@
     "padding": {
       "enum": ["none", "default"],
       "description": "Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges."
+    },
+    "mediaPosition": {
+      "enum": ["top", "leading"],
+      "description": "Where the media sits: `top` spans the card above the header, `leading` is a column before the content. Used with `media`.",
+      "default": "top"
+    },
+    "mediaAspectRatio": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "The aspect ratio of the media box, such as `\"16 / 9\"` or `1`. The media fills it and is cropped to fit. Used with `media`.",
+      "default": "16 / 9"
     }
   },
   "additionalProperties": false,
@@ -81,6 +98,11 @@
         "name": "header",
         "reason": "function-or-snippet",
         "description": "Card with a custom header snippet — full control over header content."
+      },
+      {
+        "name": "media",
+        "reason": "function-or-snippet",
+        "description": "An optional image or other media, drawn at a set aspect ratio at the top of the card or in a leading column. A card with no media draws no placeholder and reserves no space."
       },
       {
         "name": "onclick",
