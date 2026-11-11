@@ -167,7 +167,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The long-named schedule's page prints its runs and the zone they are shown in.
   '/schedules/:schedule': /Upcoming above, past below/,
   '/schedules/:schedule/edit': /If Interborough was off/,
-  '/goals': /seeded-goal/,
+  '/goals': /say-hello/,
   '/goals/:goal': /seeded-goal/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
   '/hooks': /No answer/,

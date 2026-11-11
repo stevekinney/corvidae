@@ -92,6 +92,8 @@ const GOAL = {
   goalRunId: 'goal-1',
   owner: 'anonymous:local',
   agentName: 'assistant',
+  identity: { name: 'Say hello', version: '1' },
+  validator: { name: 'reply-says-hello', version: '1' },
   status: 'running',
   terminalReason: null,
   revision: 1,
@@ -447,11 +449,40 @@ describe('a view that owns its states', () => {
 });
 
 describe('a view that owns its states on some routes only', () => {
-  test('is the Agents view, on the address of its list', () => {
+  test('is the Agents and Goals views, on the address of their lists', () => {
     expect(VIEW_NAMES.filter((view) => VIEWS[view].ownsStatesOnPatterns !== undefined)).toEqual([
       'agents',
+      'goals',
     ]);
     expect(VIEWS.agents.ownsStatesOnPatterns).toEqual(['/agents']);
+    expect(VIEWS.goals.ownsStatesOnPatterns).toEqual(['/goals']);
+  });
+
+  test('renders the Goals list, and says error in data-state, when its probe fails', async () => {
+    stub('goals', 'error');
+    const { container, findByTestId, queryByRole } = mount('goals', { pattern: '/goals' });
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
+    expect(queryByRole('heading', { name: VIEW_COPY.goals.error.title })).toBeNull();
+    expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
+
+  test('renders the Goals list, and says empty in data-state, when its probe finds nothing', async () => {
+    stub('goals', 'empty');
+    const { container, findByTestId, queryByRole } = mount('goals', { pattern: '/goals' });
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('empty'));
+    expect(queryByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' })).toBeNull();
+  });
+
+  test('leaves a goal’s page its failure from the frame', async () => {
+    stub('goals', 'error');
+    const { container, findByRole } = mount('goals', {
+      parameters: { goal: 'goal-1' },
+      pattern: '/goals/:goal',
+    });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.goals.error.title });
+    expect(frame(container).dataset['state']).toBe('error');
   });
 
   test('renders the Agents list, and says error in data-state, when its probe fails', async () => {

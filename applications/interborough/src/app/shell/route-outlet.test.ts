@@ -42,7 +42,8 @@ function mount() {
 
 /**
  * A list of goals with nothing in it, which is how the Bureau answers the view's probe. Goals is a
- * view whose frame says its empty state itself; the audit log draws its own under Health's header.
+ * view that owns its states: its page draws the empty state under its own header, as the audit log
+ * does under Health's.
  */
 function emptyGoals(): () => Promise<Response> {
   return async () =>
@@ -59,7 +60,7 @@ describe('the route outlet', () => {
     landAt('/goals');
     const { container, findByRole } = mount();
     expect(
-      await findByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' }),
+      await findByRole('heading', { level: 2, name: VIEW_COPY.goals.empty?.title ?? '' }),
     ).not.toBeNull();
     const frame = container.querySelector('.weft-view');
     expect(frame?.getAttribute('data-view')).toBe('goals');
@@ -70,7 +71,7 @@ describe('the route outlet', () => {
     restore = installFetchImplementation(emptyGoals());
     landAt('/goals');
     const { findByRole, container } = mount();
-    await findByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' });
+    await findByRole('heading', { level: 2, name: VIEW_COPY.goals.empty?.title ?? '' });
     const outlet = container.querySelector('main.weft-shell-outlet');
     expect(outlet?.hasAttribute('data-density')).toBe(false);
     expect(outlet?.getAttribute('data-width')).toBe('full');
@@ -118,7 +119,7 @@ describe('the route outlet', () => {
     restore = installFetchImplementation(emptyGoals());
     landAt('/goals');
     const { findByRole, getAllByRole, container } = mount();
-    await findByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' });
+    await findByRole('heading', { level: 2, name: VIEW_COPY.goals.empty?.title ?? '' });
     expect(getAllByRole('main')).toHaveLength(1);
     expect(container.querySelector('main.weft-shell-outlet')).not.toBeNull();
   });
@@ -127,7 +128,7 @@ describe('the route outlet', () => {
     restore = installFetchImplementation(emptyGoals());
     landAt('/goals');
     const { findByRole, container } = mount();
-    await findByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' });
+    await findByRole('heading', { level: 2, name: VIEW_COPY.goals.empty?.title ?? '' });
 
     const agents = routes.find((route) => route.pattern === '/agents');
     if (agents === undefined) throw new Error('Expected an /agents route.');
@@ -187,7 +188,7 @@ describe('a route whose chunk is gone after a rebuild', () => {
     restore = installFetchImplementation(emptyGoals());
     landAt('/goals');
     const page = mount();
-    await page.findByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' });
+    await page.findByRole('heading', { level: 2, name: VIEW_COPY.goals.empty?.title ?? '' });
     const agents = routes.find((route) => route.pattern === '/agents');
     if (agents === undefined) throw new Error('Expected an /agents route.');
     return { page, loading: spyOn(agents, 'load').mockImplementation(load) };
@@ -234,7 +235,7 @@ describe('a route whose chunk is gone after a rebuild', () => {
     restore = installFetchImplementation(emptyGoals());
     landAt('/goals');
     const { findByRole } = mount();
-    await findByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' });
+    await findByRole('heading', { level: 2, name: VIEW_COPY.goals.empty?.title ?? '' });
     expect(window.sessionStorage.getItem(CHUNK_RELOAD_KEY)).toBeNull();
   });
 });

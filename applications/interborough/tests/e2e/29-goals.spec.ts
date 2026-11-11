@@ -1,13 +1,16 @@
 /**
- * `/goals` (COR-1494, COR-1843): a goal is made on `/goals/new` from an agent chosen from the
- * agents, a prompt, an identity, a validator named by free text, and a most-attempts, and cancelled
- * from the list. The host seeds a validator that never passes, so a goal that names it stays going
- * until the cancel ends it as `canceled`. A validator the Bureau lacks is `Unprocessable`, said on
- * the page. The seeded goal is listed in the seven status words, its page lists its attempts, and
- * the pages pass axe at the two widths. Goals is in the sidebar, and `g` then `l` opens it.
+ * `/goals` (COR-1494, COR-1843, COR-2017): a goal is made on `/goals/new` from an agent chosen from
+ * the agents, a prompt, an identity, a validator named by free text, and a most-attempts. The host
+ * seeds a validator that never passes, so a goal that names it stays going until it is cancelled,
+ * which the list does not offer (a goal's own page stops it), so the test cancels it through the
+ * Bureau and sees its row end as Stopped. A validator the Bureau lacks is `Unprocessable`, said on
+ * the page. The seeded goal is listed as a status-first row titled by its name, its page lists its
+ * attempts, and the pages pass axe at the two widths. Goals is in the sidebar, and `g` then `l`
+ * opens it.
  */
 import { GOALS_COPY } from '../../src/app/copy.ts';
 import { expect, test } from './fixtures.ts';
+import { bureauCall } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
 
@@ -17,14 +20,15 @@ for (const width of WIDTHS) {
     await page.goto('/goals');
 
     await expect(page.locator('[data-view="goals"]')).toHaveAttribute('data-state', 'ready');
-    const seeded = page.locator('tr[data-goal="seeded-goal"]');
+    const seeded = page.locator('[data-goal="seeded-goal"]');
     await expect(seeded).toBeVisible();
     await expect(seeded).toHaveAttribute('data-status-word', 'Done');
     // The seeded validator accepts any answer, so the seeded goal ends as succeeded.
     await expect(seeded).toHaveAttribute('data-status', 'succeeded');
-    await expect(seeded.getByRole('link', { name: 'assistant' })).toHaveAttribute(
+    // The row is titled by the goal's name, and its title is the link to the goal's page.
+    await expect(seeded.getByRole('link', { name: 'say-hello' })).toHaveAttribute(
       'href',
-      '/agents/demo%3Aassistant',
+      '/goals/seeded-goal',
     );
     await checkA11y(`goals — the list at ${width}px`);
   });
@@ -39,7 +43,7 @@ test('opens from the sidebar and from g then l, and lists the goal in the status
     .getByRole('link', { name: 'Goals' })
     .click();
   await expect(page).toHaveURL(/\/goals$/);
-  await expect(page.locator('tr[data-goal="seeded-goal"]')).toHaveAttribute(
+  await expect(page.locator('[data-goal="seeded-goal"]')).toHaveAttribute(
     'data-status-word',
     'Done',
   );
@@ -69,17 +73,19 @@ test('lists the attempts of the seeded goal on its page, each linking to its run
   await checkA11y('goals — one goal and its attempts');
 });
 
-test('creates a goal that names the validator that never passes, cancels it, and sees its row end canceled', async ({
+test('creates a goal that names the validator that never passes, and sees its row end Stopped once it is cancelled', async ({
   page,
+  request,
   checkA11y,
 }) => {
   await page.goto('/goals');
-  await expect(page.locator('tr[data-goal="seeded-goal"]')).toBeVisible();
+  await expect(page.locator('[data-goal="seeded-goal"]')).toBeVisible();
   const known = await page
-    .locator('tr[data-goal]')
+    .locator('[data-goal]')
     .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-goal') ?? ''));
 
-  await page.getByRole('link', { name: GOALS_COPY.newAction }).click();
+  // The header's "+" is a button that makes a goal.
+  await page.getByRole('button', { name: GOALS_COPY.newAction }).click();
   await expect(page).toHaveURL(/\/goals\/new$/);
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
   await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('demo:assistant');
@@ -93,22 +99,23 @@ test('creates a goal that names the validator that never passes, cancels it, and
   await expect(page).toHaveURL(/\/goals$/);
 
   // The new row is the one this page had not seen, and it is going, not ended.
-  await expect(page.locator('tr[data-goal]')).toHaveCount(known.length + 1);
+  await expect(page.locator('[data-goal]')).toHaveCount(known.length + 1);
   const after = await page
-    .locator('tr[data-goal]')
+    .locator('[data-goal]')
     .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-goal') ?? ''));
   const id = after.find((candidate) => !known.includes(candidate)) ?? '';
   expect(id).not.toBe('');
-  const row = page.locator(`tr[data-goal="${id}"]`);
+  const row = page.locator(`[data-goal="${id}"]`);
   await expect(row).not.toHaveAttribute('data-status', /^(succeeded|failed|exhausted|canceled)$/);
+  await expect(row).toHaveAttribute('data-status-word', /^Running/);
 
-  await row.getByRole('button', { name: GOALS_COPY.cancelAction }).click();
-  await page.getByRole('button', { name: GOALS_COPY.cancelDialog.confirm }).click();
+  // The list offers no cancel (a goal's own page stops it), so the Bureau ends it.
+  await bureauCall(request, 'bureau.goals.cancel', { goalRunId: id });
 
   await expect(row).toHaveAttribute('data-status', 'canceled');
-  await expect(row).toHaveAttribute('data-status-word', 'Canceled');
-  await expect(row.getByRole('button', { name: GOALS_COPY.cancelAction })).toHaveCount(0);
-  await checkA11y('goals — a canceled goal');
+  await expect(row).toHaveAttribute('data-status-word', 'Stopped');
+  await expect(row.getByRole('button')).toHaveCount(0);
+  await checkA11y('goals — a stopped goal');
 });
 
 test('says Unprocessable on the page for a validator the Bureau does not have', async ({

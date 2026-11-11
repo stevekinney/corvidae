@@ -2975,22 +2975,68 @@ export const SETTINGS_COPY = {
   },
 } as const;
 
-/** The words the goals (`/goals`) use outside its view states. */
+/**
+ * The words the goals list (`/goals`) uses. The list draws its own empty, loading and failed states
+ * under its own header (`ownsStates` in `views.ts`), so `VIEW_COPY.goals` takes its words from here.
+ */
 export const GOALS_COPY = {
   newAction: 'New goal',
-  loadMore: 'Load more',
+  /** The line under the heading. */
+  subtitle: 'Work an agent keeps trying until its check is met.',
   /** The accessible name of the filter bar. */
   filtersLabel: 'Filter goals',
-  anyStatus: 'Any status',
-  anyAgent: 'Any agent',
+  /** The accessible name of the list of goals. */
+  rowsLabel: 'Goals',
+  /** The status segments, in the order the filter bar draws them. */
+  segments: {
+    all: 'All',
+    running: 'Running',
+    done: 'Done',
+    gaveUp: 'Gave up',
+    stopped: 'Stopped',
+  },
+  /** The add-facet chip that narrows the list to one agent. */
+  agentLabel: 'Agent',
   clearAction: 'Clear filters',
-  /** How many goals the page lists, as a sentence. */
-  count: (count: number): string => `${String(count)} ${count === 1 ? 'goal' : 'goals'}`,
+  /** Nothing yet: the empty state that is the page. */
+  empty: {
+    title: 'No goals yet',
+    description:
+      'A goal runs an agent again and again until a check you write passes. Try one when a single reply may not be enough.',
+  },
   /** A filter that matches none of the goals read. */
   noMatch: {
-    title: 'No goal matches these filters',
-    description: 'Change the filters to see more goals.',
+    title: 'No goals match these filters',
   },
+  /** The name of the loading region, and the line that says the read is slow. */
+  loading: 'Loading goals',
+  stillLoading: 'Still loading goals…',
+  /** What the page says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+  stopped: {
+    title: 'Stopped loading goals',
+    description: 'You stopped the read, so the goals are not shown. Nothing was changed.',
+  },
+  /** A read that did not give the page its goals, with the status the server answered with. */
+  failed: {
+    title: 'Couldn’t load goals',
+    answered: (status: number): string =>
+      `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+    /** A refusal (401 or 403) is something to fix, so it carries the server's own words. */
+    refused: (status: number, message: string): string =>
+      `The server answered with an error (${String(status)}): ${message.replace(/[.\s]+$/, '')}.`,
+    noAnswer: 'The server didn’t answer. Nothing you did caused it.',
+    unknown: 'Something went wrong reading the goals. Nothing you did caused it.',
+    openHealth: 'Check Health',
+    openHealthPath: '/health',
+  },
+  /** Why the header's "+" is inert while the goals could not be read. */
+  newActionOffReason: 'New goal is off until the goals load.',
+  /** A day band's words for the days that are not named by their date. */
+  band: { today: 'Today', yesterday: 'Yesterday', earlier: 'Earlier' },
+  /** What a goal's row says it is trying to make true: the check's text after the word. */
+  checkLine: (text: string): string => `Check: ${text}`,
+  /** The qualifier on Running for a goal that has been asked to stop and has not yet. */
+  stopping: 'stopping',
   /** The goal's own page, which lists its attempts. */
   detail: {
     title: (id: string): string => `Goal ${id}`,
@@ -3020,28 +3066,8 @@ export const GOALS_COPY = {
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
   },
-  /** The caption of the table. */
-  caption: 'Goals, oldest first',
-  goalColumn: 'Goal',
-  agentColumn: 'Agent',
-  statusColumn: 'Status',
-  attemptsColumn: 'Attempts',
-  createdColumn: 'Created',
-  actionsColumn: 'Actions',
   /** The words for attempts used, of the most the goal may make. */
   attempts: (used: number, most: number): string => `${String(used)} of ${String(most)}`,
-  cancelAction: 'Cancel',
-  /** A goal that has been asked to stop, and has not yet. */
-  cancelRequested: 'Cancel requested',
-  cancelDialog: {
-    title: 'Cancel this goal?',
-    description: (id: string): string =>
-      `“${id}” stops: its controller and its attempt’s run are stopped, and it ends as canceled. This can’t be undone.`,
-    confirm: 'Cancel goal',
-  },
-  cancelFailed: 'The goal was not cancelled',
-  /** The Bureau answered a cancel with how far it got. */
-  cancelPending: 'The cancellation is recorded and will finish. The goal ends as canceled.',
   form: {
     title: 'New goal',
     description: 'Run an agent on a prompt until a validator passes, within the bounds you set.',
@@ -5949,12 +5975,10 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   goals: {
     label: 'Goals',
     loading: { title: 'Loading goals', description: 'Reading the running goals.' },
-    empty: {
-      title: 'No goals yet',
-      description:
-        'A goal runs an agent on a prompt until a validator passes. Create one to see it here.',
-      action: { label: 'Create a goal', href: '/goals/new' },
-    },
+    // The list at `/goals` draws its own empty and failed states under its own header
+    // (`ownsStatesOnPatterns` in `views.ts`), and its empty one in the words `GOALS_COPY` holds, so
+    // the frame and the page never say them two ways. A goal's page keeps the frame's.
+    empty: { ...GOALS_COPY.empty, action: { label: GOALS_COPY.newAction, href: '/goals/new' } },
     error: {
       title: 'Goals are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',

@@ -1,9 +1,8 @@
 /**
- * `/goals` (COR-1494): the caller's goals, listed with where each stands, created on `/goals/new`
- * from an agent, a prompt, an identity, a validator named by free text, and a maximum number of
- * attempts, and cancelled. An unknown validator is the Bureau's `Unprocessable`, said inline. A cancel names the
- * revision of the goal the page read, so a goal that moved since is refused, and the page says so and
- * reloads the row. Owner scoping is the gate, so the view holds no scope of its own.
+ * The routes under `/goals` (COR-1494): a goal made on `/goals/new` from an agent, a prompt, an
+ * identity, a validator named by free text, and a maximum number of attempts, and a goal's own page
+ * with its attempts. An unknown validator is the Bureau's `Unprocessable`, said inline. The list is
+ * `goal-list.test.ts`. Owner scoping is the gate, so the view holds no scope of its own.
  *
  * Driven through the route outlet against a stand-in Bureau that keeps the goals, so the route, the
  * view frame, and the page are exercised together.
@@ -12,14 +11,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
-import {
-  AGENT_EDITOR_COPY,
-  GOALS_COPY,
-  RETRY_LABEL,
-  SCHEDULE_COPY,
-  VIEW_COPY,
-} from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY, GOALS_COPY, RETRY_LABEL } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   installBureauStub,
@@ -28,7 +20,6 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
-import { STATUS_WORDS } from '../../lib/status.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 
 let stub: BureauStub | undefined;
@@ -45,6 +36,8 @@ function goal(id: string, overrides: Record<string, unknown> = {}) {
     goalRunId: id,
     owner: 'anonymous:local',
     agentName: 'assistant',
+    identity: { name: `Goal ${id}`, version: '1' },
+    validator: { name: 'reply-says-hello', version: '1' },
     status: 'running',
     terminalReason: null,
     revision: 2,
@@ -181,13 +174,13 @@ function open(
 }
 
 const row = (container: HTMLElement, id: string) =>
-  container.querySelector<HTMLElement>(`tr[data-goal="${id}"]`);
+  container.querySelector<HTMLElement>(`[data-goal="${id}"]`);
 const frameState = (container: HTMLElement) =>
   container.querySelector('[data-view="goals"]')?.getAttribute('data-state');
 
 /** Opens the page that makes a goal from the list's New goal link, and returns the page. */
 async function openCreatePage(view: ReturnType<typeof open>['view']): Promise<HTMLElement> {
-  await fireEvent.click(await view.findByRole('link', { name: GOALS_COPY.newAction }));
+  await fireEvent.click(await view.findByRole('button', { name: GOALS_COPY.newAction }));
   await view.findByRole('heading', { level: 1, name: GOALS_COPY.form.title });
   return view.container;
 }
@@ -216,64 +209,6 @@ async function fillGoal(
     target: { value: values.validatorVersion ?? KNOWN_VALIDATOR.version },
   });
 }
-
-describe('the goals', () => {
-  test('are listed with their status, their agent, and how many attempts they have used of the most they may', async () => {
-    const { view } = open([
-      goal('goal-1', {
-        status: 'running',
-        usage: { attempts: 1, steps: 0, tokens: 0, costUsd: null, durationMs: 0 },
-      }),
-      goal('goal-2', {
-        status: 'succeeded',
-        agentName: 'tool-runner',
-        closedAt: '2026-10-19T09:00:00.000Z',
-      }),
-    ]);
-
-    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    const first = within(row(view.container, 'goal-1') as HTMLElement);
-    expect(row(view.container, 'goal-1')?.dataset['status']).toBe('running');
-    // A row carries the Bureau’s status for a spec to match, and shows it in one of the seven words.
-    expect(first.getByText('Running')).not.toBeNull();
-    expect(first.getByRole('link', { name: 'assistant' }).getAttribute('href')).toBe(
-      '/agents/assistant',
-    );
-    expect(first.getByText('1 of 3')).not.toBeNull();
-    expect(row(view.container, 'goal-2')?.dataset['status']).toBe('succeeded');
-    expect(frameState(view.container)).toBe('ready');
-  });
-
-  test('follow the pages the Bureau returns, with Load more', async () => {
-    const { view } = open([goal('goal-1'), goal('goal-2'), goal('goal-3')], { pageSize: 2 });
-    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    // The first page holds two of the three.
-    expect(row(view.container, 'goal-3') === null).toBe(true);
-
-    await fireEvent.click(await view.findByRole('button', { name: GOALS_COPY.loadMore }));
-
-    await waitFor(() => expect(row(view.container, 'goal-3')).not.toBeNull());
-  });
-
-  test('offer Load more beside the filtered empty state, so a match on a later page can be reached', async () => {
-    const { view } = open(
-      [
-        goal('goal-1', { status: 'running' }),
-        goal('goal-2', { status: 'running' }),
-        goal('goal-3', { status: 'exhausted' }),
-      ],
-      { pageSize: 2 },
-    );
-    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    await chooseFilterOption(view, GOALS_COPY.statusColumn, 'Failed');
-    // Nothing on the first page matches, yet the match is on the second.
-    await view.findByRole('heading', { level: 2, name: GOALS_COPY.noMatch.title });
-
-    await fireEvent.click(await view.findByRole('button', { name: GOALS_COPY.loadMore }));
-
-    await waitFor(() => expect(row(view.container, 'goal-3')).not.toBeNull());
-  });
-});
 
 describe('creating a goal', () => {
   test('says there are no agents, and offers to make one, when the Bureau lists none', async () => {
@@ -326,9 +261,9 @@ describe('creating a goal', () => {
 
   test('says Unprocessable inline for a validator the Bureau does not have, and creates nothing', async () => {
     const { view, served } = open([]);
-    await fireEvent.click(
-      await view.findByRole('link', { name: VIEW_COPY.goals.empty?.action?.label ?? '' }),
-    );
+    // The header's "+" and the empty state's primary button both make a goal.
+    const makers = await view.findAllByRole('button', { name: GOALS_COPY.newAction });
+    await fireEvent.click(makers[0] as HTMLElement);
     await view.findByRole('heading', { level: 1, name: GOALS_COPY.form.title });
     expect(router.pathname).toBe('/goals/new');
     const element = view.container;
@@ -415,229 +350,6 @@ describe('a goal whose controller failed to start', () => {
   });
 });
 
-describe('cancelling a goal', () => {
-  test('asks first, names the revision the page read, and shows the row ended once the Bureau says so', async () => {
-    const { view } = open([goal('goal-1', { revision: 7 })]);
-    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-
-    await fireEvent.click(
-      within(row(view.container, 'goal-1') as HTMLElement).getByRole('button', {
-        name: GOALS_COPY.cancelAction,
-      }),
-    );
-    expect(stub?.callsTo('bureau.goals.cancel')).toEqual([]);
-    await fireEvent.click(
-      await view.findByRole('button', { name: GOALS_COPY.cancelDialog.confirm }),
-    );
-
-    await waitFor(() => expect(row(view.container, 'goal-1')?.dataset['status']).toBe('canceled'));
-    expect(stub?.callsTo('bureau.goals.cancel')[0]?.params).toEqual({
-      goalRunId: 'goal-1',
-      expectedRevision: 7,
-    });
-  });
-
-  test('is offered only for a goal that has not ended', async () => {
-    const { view } = open([
-      goal('goal-run', { status: 'running' }),
-      goal('goal-done', { status: 'succeeded' }),
-      goal('goal-gone', { status: 'canceled' }),
-      goal('goal-out', { status: 'exhausted' }),
-      goal('goal-bad', { status: 'failed' }),
-    ]);
-    await waitFor(() => expect(row(view.container, 'goal-run')).not.toBeNull());
-
-    const cancels = (id: string) =>
-      within(row(view.container, id) as HTMLElement).queryByRole('button', {
-        name: GOALS_COPY.cancelAction,
-      });
-    expect(cancels('goal-run')).not.toBeNull();
-    for (const id of ['goal-done', 'goal-gone', 'goal-out', 'goal-bad']) {
-      expect(cancels(id), id).toBeNull();
-    }
-  });
-
-  test('says the goal changed since it was loaded when it moved first, and reloads the row', async () => {
-    const { view, served } = open([goal('goal-1', { revision: 7 })]);
-    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    // The controller moved the goal on after the page read it: another attempt, so another revision.
-    const moved = served.goals[0];
-    if (moved === undefined) throw new Error('expected the goal');
-    moved.status = 'evaluating';
-    moved.revision = 8;
-
-    await fireEvent.click(
-      within(row(view.container, 'goal-1') as HTMLElement).getByRole('button', {
-        name: GOALS_COPY.cancelAction,
-      }),
-    );
-    await fireEvent.click(
-      await view.findByRole('button', { name: GOALS_COPY.cancelDialog.confirm }),
-    );
-
-    const notice = await view.findByTestId('goal-notice');
-    expect(notice.textContent).toContain(SCHEDULE_COPY.stale.title('goal-1'));
-    expect(moved.status).toBe('evaluating');
-    await waitFor(() =>
-      expect(row(view.container, 'goal-1')?.dataset['status']).toBe('evaluating'),
-    );
-    // Cancelling again names the revision it can see now.
-    await fireEvent.click(
-      within(row(view.container, 'goal-1') as HTMLElement).getByRole('button', {
-        name: GOALS_COPY.cancelAction,
-      }),
-    );
-    await fireEvent.click(
-      await view.findByRole('button', { name: GOALS_COPY.cancelDialog.confirm }),
-    );
-    await waitFor(() => expect(row(view.container, 'goal-1')?.dataset['status']).toBe('canceled'));
-    expect(stub?.callsTo('bureau.goals.cancel').at(-1)?.params).toEqual({
-      goalRunId: 'goal-1',
-      expectedRevision: 8,
-    });
-  });
-});
-
-describe('who may see the goals', () => {
-  test('a principal holding no console scope sees its goals, not a forbidden view', async () => {
-    const { view } = open([goal('goal-1')], { scopes: [] });
-
-    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    expect(frameState(view.container)).toBe('ready');
-  });
-
-  test('a refusal from the Bureau is the forbidden state', async () => {
-    stub = installBureauStub({
-      'bureau.goals.list': () => {
-        throw new StubFault('Forbidden', 403, 'Not yours.');
-      },
-    });
-    landAt('/goals');
-    const { container, findByRole } = render(RouteOutletHarness, {
-      props: {
-        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
-        scopes: AUTHORIZATION_SCOPES,
-      },
-    } as never);
-
-    await findByRole('heading', { level: 1, name: VIEW_COPY.goals.forbidden.title });
-    expect(frameState(container)).toBe('forbidden');
-  });
-
-  test('is empty, with a way to make the first goal, when the caller has none', async () => {
-    const { view } = open([]);
-
-    await view.findByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' });
-    expect(frameState(view.container)).toBe('empty');
-  });
-});
-
-describe('a goal the Bureau is still stopping', () => {
-  test('says the cancellation is recorded and will finish, and shows the goal as asked to stop', async () => {
-    const { view } = open([goal('goal-1', { revision: 7 })]);
-    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
-    stub?.restore();
-    // The Bureau records the cancellation and has not finished.
-    stub = installBureauStub({
-      'bureau.agents.list': () => ({ agents: AGENTS }),
-      'bureau.goals.list': () => ({
-        goals: [
-          goal('goal-1', {
-            revision: 8,
-            status: 'evaluating',
-            cancellation: { requestedAt: '2026-10-19T08:06:00.000Z', reason: null },
-          }),
-        ],
-        nextOffset: null,
-      }),
-      'bureau.goals.cancel': () => ({
-        goalRunId: 'goal-1',
-        outcome: 'cancellation-pending',
-        status: 'evaluating',
-        revision: 8,
-      }),
-    });
-
-    await fireEvent.click(
-      within(row(view.container, 'goal-1') as HTMLElement).getByRole('button', {
-        name: GOALS_COPY.cancelAction,
-      }),
-    );
-    await fireEvent.click(
-      await view.findByRole('button', { name: GOALS_COPY.cancelDialog.confirm }),
-    );
-
-    await view.findByText(GOALS_COPY.cancelPending);
-    await waitFor(() =>
-      expect(row(view.container, 'goal-1')?.textContent).toContain(GOALS_COPY.cancelRequested),
-    );
-  });
-
-  test('is a toast that says the goal was not cancelled when the Bureau refuses for another reason', async () => {
-    const { view } = open([goal('goal-1')]);
-    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
-    stub?.restore();
-    stub = installBureauStub({
-      'bureau.agents.list': () => ({ agents: AGENTS }),
-      'bureau.goals.list': () => ({ goals: [goal('goal-1')], nextOffset: null }),
-      'bureau.goals.cancel': () => {
-        throw new StubFault('Unavailable', 503, 'The goal’s record cannot be read.');
-      },
-    });
-
-    await fireEvent.click(
-      within(row(view.container, 'goal-1') as HTMLElement).getByRole('button', {
-        name: GOALS_COPY.cancelAction,
-      }),
-    );
-    await fireEvent.click(
-      await view.findByRole('button', { name: GOALS_COPY.cancelDialog.confirm }),
-    );
-
-    await view.findByText(GOALS_COPY.cancelFailed, { exact: false });
-  });
-});
-
-describe('the list of goals', () => {
-  test('says so inline, and can be tried again, when a read fails after the view opened', async () => {
-    let failing = false;
-    stub = installBureauStub({
-      'bureau.agents.list': () => ({ agents: AGENTS }),
-      'bureau.goals.list': (params) => {
-        if (params['limit'] === 1) return { goals: [goal('goal-1')], nextOffset: null };
-        if (failing) throw new StubFault('Unavailable', 503, 'The Bureau is down.');
-        return { goals: [goal('goal-1')], nextOffset: null };
-      },
-    });
-    landAt('/goals');
-    failing = true;
-    const { findByRole, container, findByText } = render(RouteOutletHarness, {
-      props: {
-        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
-        scopes: AUTHORIZATION_SCOPES,
-      },
-    } as never);
-
-    await findByText(VIEW_COPY.goals.error.title);
-    failing = false;
-    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
-
-    await findByText('goal-1');
-    expect(row(container, 'goal-1') === null).toBe(false);
-  });
-
-  test('links a goal’s agent, and leaves a modified click to the browser', async () => {
-    const { view } = open([goal('goal-1')]);
-    const link = await view.findByRole('link', { name: 'assistant' });
-
-    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
-    expect(router.pathname).toBe('/goals');
-    link.click();
-
-    expect(router.pathname).toBe('/agents/assistant');
-  });
-});
-
 describe('the page that creates a goal', () => {
   test('offers the agents the Bureau lists as a picker, and says so when it cannot list them', async () => {
     const { view } = open([goal('goal-1')], { path: '/goals/new' });
@@ -683,49 +395,6 @@ describe('the page that creates a goal', () => {
 
     await waitFor(() => expect(router.pathname).toBe('/goals'));
     expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
-  });
-});
-
-describe('the records page', () => {
-  test('counts the goals, says each status in the seven words, and filters by status and agent', async () => {
-    const { view } = open([
-      goal('goal-1', { status: 'running' }),
-      goal('goal-2', { status: 'succeeded', agentName: 'tool-runner' }),
-      goal('goal-3', { status: 'exhausted' }),
-    ]);
-    await waitFor(() => expect(row(view.container, 'goal-3')).not.toBeNull());
-    expect(view.getByTestId('records-count').textContent).toBe(GOALS_COPY.count(3));
-    const words = [...view.container.querySelectorAll('tr[data-goal]')].map((tableRow) =>
-      tableRow.getAttribute('data-status-word'),
-    );
-    expect(words).toEqual(['Running', 'Done', 'Failed']);
-    for (const word of words) expect(STATUS_WORDS as readonly (string | null)[]).toContain(word);
-
-    await chooseFilterOption(view, GOALS_COPY.statusColumn, 'Failed');
-    await waitFor(() => expect(router.search.get('status')).toBe('Failed'));
-    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(true));
-    expect(row(view.container, 'goal-3')).not.toBeNull();
-    expect(view.getByTestId('records-count').textContent).toBe(GOALS_COPY.count(1));
-
-    await chooseFilterOption(view, GOALS_COPY.agentColumn, 'tool-runner');
-    await view.findByRole('heading', { level: 2, name: GOALS_COPY.noMatch.title });
-    expect(view.container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
-
-    const clear = view.container.querySelector<HTMLButtonElement>(
-      '[data-cinder-kind="filtered"] button',
-    );
-    if (clear === null) throw new Error('The empty state did not offer Clear filters.');
-    await fireEvent.click(clear);
-    await waitFor(() => expect(router.search.get('status')).toBeNull());
-    await waitFor(() => expect(row(view.container, 'goal-2')).not.toBeNull());
-  });
-
-  test('links a goal’s identifier to its page', async () => {
-    const { view } = open([goal('goal-1')]);
-    const link = await view.findByRole('link', { name: 'goal-1' });
-    expect(link.getAttribute('href')).toBe('/goals/goal-1');
-    link.click();
-    expect(router.pathname).toBe('/goals/goal-1');
   });
 });
 

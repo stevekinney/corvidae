@@ -188,17 +188,15 @@ test.describe('the records pages', () => {
     await expect(page).toHaveURL(new RegExp(`/agents/${TWO_QUESTIONS_AGENT_NAME}$`));
   });
 
-  test('Goals is a table with a StatusDot per row', async ({ page, checkA11y }) => {
+  test('Goals is a list of status-first rows with a StatusDot each', async ({ page, checkA11y }) => {
     await page.goto('/goals');
 
     await expect(page.locator('[data-view="goals"]')).toHaveAttribute('data-state', 'ready');
-    await expect(page.getByRole('columnheader').first()).toHaveText('Goal');
-    const seeded = page.locator('tr[data-goal="seeded-goal"]');
+    await expect(page.getByRole('heading', { level: 1, name: 'Goals' })).toBeVisible();
+    const seeded = page.locator('[data-goal="seeded-goal"]');
     await expect(seeded.locator('[data-cinder-status="success"]')).toHaveCount(1);
-    await expect(page.getByRole('link', { name: 'New goal' })).toHaveAttribute(
-      'href',
-      '/goals/new',
-    );
+    // The header's "+" is the secondary button that makes a goal.
+    await expect(page.getByRole('button', { name: 'New goal' })).toBeVisible();
     await checkA11y('records — goals');
   });
 

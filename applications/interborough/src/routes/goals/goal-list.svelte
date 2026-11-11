@@ -1,371 +1,366 @@
 <script lang="ts">
   /**
-   * `/goals`: the caller's goals, oldest first, ended ones included, as a table. A goal runs an
-   * agent on a prompt until a validator passes, so a row says where it stands (one of the seven
-   * status words, `lib/status.ts`), the agent, and how many attempts it has used of the most it may
-   * make; its identifier opens the goal's page, which lists the attempts. The toolbar under the
-   * heading has the count, the filters (status, agent) and New goal, which opens `/goals/new`. A goal
-   * that has not ended can be cancelled, after a confirmation, with the
-   * revision of the goal the page read: a goal that moved since is refused, and the page says it
-   * changed and reads it again. The list reads itself again when `bureau.events` reports a goal
-   * event, so a goal ends on screen as the Bureau ends it; while that feed is not live and a goal has
-   * not ended, it reads itself again on a timer instead.
+   * `/goals`: the caller's goals, ended ones included, as Cinder's status-first rows grouped under
+   * their days, newest first (the days name the zone their times are in). A row is the goal's name
+   * and the time it began on line one, with its status word ahead of it, and line two the agent,
+   * the attempts bar with "N of M", and the check the goal runs (`goal-list-row.svelte`). The
+   * segments (All, Running, Done, Gave up, Stopped) partition the list, and each carries its count;
+   * "Agent" is a chip beside them. The address owns the filters, so a filtered list can be shared.
+   * A row is one link to the goal, whose own page stops, edits and restarts it, so the rows carry no
+   * actions. The header's "+" makes a goal, and opens `/goals/new`.
    *
-   * Owner scoping is the gate, so the view holds no scope. Whether there is nothing to list, or the
-   * Bureau is failing or refusing, is the view frame's to say (`app/view-probes.ts`).
+   * The Bureau lists goals oldest first by offset, and each segment carries a count of its own, so
+   * every goal is read once (`listAllGoals`) and narrowed here. The list reads itself again when
+   * `bureau.events` reports a goal event, so a goal ends on screen as the Bureau ends it; while that
+   * feed is not live and a goal has not ended, it reads itself again on a timer instead.
+   *
+   * The page keeps its header in every state, so it draws its own (`ownsStates` in `app/views.ts`):
+   * nothing yet is an empty state that is the page, with no filter bar and the one primary "New
+   * goal"; filters that match nothing keep the filter bar over a "Clear filters" state; a read in
+   * progress shows placeholders after 300 ms, and "Cancel" in its slow-load line stops it; a read
+   * that failed with nothing to show is a full error state with the header's "+" inert, and one that
+   * failed over old data is a banner under the header (the shared unreachable preset, with its
+   * countdown, in place of the shell's, which leaves it to this page: `claimBanner`). The frame
+   * still says whether the caller may see the view at all, forbidden or not. Owner scoping is the
+   * gate, so the view holds no scope.
    */
   import {
-    Alert,
+    Banner,
     Button,
-    ConfirmDialog,
+    DataList,
     EmptyState,
+    ErrorState,
     FilterBar,
     PageHeader,
-    Table,
+    StaleRegion,
+    type AppliedFilter,
+    type FacetDefinition,
   } from '@lostgradient/cinder';
-  import {
-    createInfiniteQuery,
-    createMutation,
-    useQueryClient,
-    type InfiniteData,
-  } from '@tanstack/svelte-query';
+  import { Plus, Search, Target } from '@lucide/svelte';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
 
-  import { GOALS_COPY, RETRY_LABEL, STALE_COPY, VIEW_COPY } from '../../app/copy.ts';
-  import RecordsToolbar from '../../app/records/records-toolbar.svelte';
-  import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
-  import { showFault } from '../../app/toast-host.svelte';
-  import { agentFaultOf } from '../../lib/agent-definitions.ts';
-  import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
-  import { agentPath } from '../../lib/agent-paths.ts';
   import {
-    cancelGoal,
-    goalHasEnded,
-    listGoals,
-    type Goal,
-    type GoalPage,
-  } from '../../lib/bureau-goals.ts';
-  import { faultTreatment } from '../../lib/faults.ts';
-  import { formatRelativeTime } from '../../lib/format/index.ts';
-  import { goalPath } from '../../lib/identifier-paths.ts';
-  import { keyedByOccurrence } from '../../lib/list-keys.ts';
+    CONNECTION_MAX_ATTEMPTS,
+    ConnectionMonitor,
+    connectionBannerPreset,
+    getConnection,
+  } from '../../app/connection.svelte.ts';
+  import { CONNECTION_COPY, GOALS_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
+  import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
+  import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
+  import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
+  import { goalHasEnded, listAllGoals, type Goal } from '../../lib/bureau-goals.ts';
+  import { followLinks } from '../../lib/follow-links.ts';
+  import { viewerTimeZone } from '../../lib/format/clock.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { goalStatusWord, STATUS_WORDS } from '../../lib/status.ts';
-  import StatusLabel from '../../lib/status-label.svelte';
+  import GoalListLoading from './goal-list-loading.svelte';
+  import GoalListRow from './goal-list-row.svelte';
+  import { goalsLoadFailure } from './goal-list-states.ts';
+  import {
+    GOAL_SEGMENT_LABELS,
+    GOAL_SEGMENTS,
+    countGoalRows,
+    goalDayGroup,
+    goalFiltersFromSearch,
+    goalNoMatchDescription,
+    goalRow,
+    narrowByAgent,
+    narrowBySegment,
+    sortGoalRows,
+    type GoalRow,
+  } from './goal-rows.ts';
 
-  const PAGE_SIZE = 50;
   /** The page that makes a goal. */
   const NEW_GOAL_PATH = '/goals/new';
   /** How often the list reads itself again while a goal has not ended and the Bureau's feed is not live. */
   const POLL_MS = 1_500;
 
   const queryClient = useQueryClient();
-
-  const bureauLive = useBureauEventsLive();
-  const goals = createInfiniteQuery(() => {
-    // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
-    const polling = !bureauLive();
-    return {
-      queryKey: queryKeys.goals.list(),
-      queryFn: ({ pageParam, signal }: { pageParam: number; signal: AbortSignal }) =>
-        listGoals({ limit: PAGE_SIZE, offset: pageParam }, { signal }),
-      initialPageParam: 0,
-      getNextPageParam: (last: GoalPage) => last.nextOffset ?? undefined,
-      retry: false,
-      // poll-reason: fallback
-      refetchInterval: (query: { state: { data: InfiniteData<GoalPage> | undefined } }) =>
-        polling &&
-        (query.state.data?.pages ?? []).some((page) =>
-          page.goals.some((goal) => !goalHasEnded(goal.status)),
-        )
-          ? POLL_MS
-          : false,
-    };
-  }, undefined);
-  const rows = $derived((goals.data?.pages ?? []).flatMap((page) => page.goals));
-
-  const statusFilter = $derived(
-    STATUS_WORDS.find((word) => word === router.current.search.get('status')),
-  );
-  const agentFilter = $derived(router.current.search.get('agent') ?? undefined);
-
-  // The Bureau lists goals by offset and cannot narrow them, so the filters narrow the pages held.
-  const visible = $derived(
-    rows.filter(
-      (goal) =>
-        (statusFilter === undefined || goalStatusWord(goal.status) === statusFilter) &&
-        (agentFilter === undefined || goal.agentName === agentFilter),
-    ),
-  );
+  const connection = getConnection();
   const agentLabel = useAgentDisplayName();
-  const agentNames = $derived(
-    [
-      ...new Set([...rows.map((goal) => goal.agentName), ...(agentFilter ? [agentFilter] : [])]),
-    ].toSorted(),
-  );
-  const facets = $derived([
-    {
-      type: 'select' as const,
-      key: 'status',
-      label: GOALS_COPY.statusColumn,
-      placeholder: GOALS_COPY.anyStatus,
-      options: STATUS_WORDS.map((word) => ({ value: word, label: word })),
-    },
-    {
-      type: 'select' as const,
-      key: 'agent',
-      label: GOALS_COPY.agentColumn,
-      placeholder: GOALS_COPY.anyAgent,
-      options: agentNames.map((name) => ({ value: name, label: agentLabel(name) })),
-    },
-  ]);
-  const appliedFilters = $derived([
-    ...(statusFilter === undefined
-      ? []
-      : [
-          {
-            key: 'status',
-            value: statusFilter,
-            label: GOALS_COPY.statusColumn,
-          },
-        ]),
-    ...(agentFilter === undefined
-      ? []
-      : [{ key: 'agent', value: agentFilter, label: GOALS_COPY.agentColumn }]),
-  ]);
+  const zone = viewerTimeZone();
 
-  function changeFilter(key: string, value: string): void {
+  const filters = $derived(goalFiltersFromSearch(router.current.search));
+  const phone = $derived(phoneViewport.current);
+
+  /** Writes one filter into the address, and takes it out when it has no value. */
+  function setFilter(key: string, value: string | undefined): void {
     const params = new URLSearchParams(router.current.search);
-    if (value === '') params.delete(key);
+    if (value === undefined || value === '' || value === 'all') params.delete(key);
     else params.set(key, value);
     const query = params.toString();
-    router.navigate(`/goals${query === '' ? '' : `?${query}`}`, { replace: true });
+    router.navigate(query ? `/goals?${query}` : '/goals', { replace: true });
   }
 
   function clearFilters(): void {
     router.navigate('/goals', { replace: true });
   }
 
-  /** A cancel the Bureau refused for being stale: nothing was changed, and the list was read again. */
-  let staleGoal = $state<string | null>(null);
-  /** A cancel the Bureau recorded and has not finished. */
-  let pending = $state(false);
-
-  let confirming = $state(false);
-  let target = $state<Goal | null>(null);
-
-  function askToCancel(goal: Goal): void {
-    target = goal;
-    confirming = true;
+  function newGoal(): void {
+    router.navigate(NEW_GOAL_PATH);
   }
 
-  const cancellation = createMutation(() => ({
-    mutationFn: (goal: Goal) => cancelGoal(goal.goalRunId, goal.revision),
-    onMutate: () => {
-      staleGoal = null;
-      pending = false;
-    },
-    onSuccess: (answer) => {
-      pending = answer.outcome === 'cancellation-pending';
-      void queryClient.invalidateQueries({ queryKey: queryKeys.goals.list() });
-    },
-    onError: (error: unknown, goal: Goal) => {
-      if (agentFaultOf(error).kind === 'stale') {
-        staleGoal = goal.goalRunId;
-        void queryClient.invalidateQueries({ queryKey: queryKeys.goals.list() });
-        return;
-      }
-      const treatment = faultTreatment(error);
-      showFault({ ...treatment, message: `${GOALS_COPY.cancelFailed}. ${treatment.message}` });
-    },
-  }));
+  // Every goal is read once and narrowed here, because each segment carries a count of its own.
+  const bureauLive = useBureauEventsLive();
+  const goals = createQuery(() => {
+    // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
+    const polling = !bureauLive();
+    return {
+      queryKey: queryKeys.goals.list(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listAllGoals({ signal }),
+      retry: false,
+      // poll-reason: fallback
+      refetchInterval: (query: { state: { data: Goal[] | undefined } }) =>
+        polling && (query.state.data ?? []).some((goal) => !goalHasEnded(goal.status))
+          ? POLL_MS
+          : false,
+    };
+  }, undefined);
 
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+  // "Cancel" in the "Still loading" line stops the first read, and "Try again" reads again.
+  // TanStack puts a first read that is cancelled back to pending, so the page keeps what it was
+  // told here.
+  let loadStopped = $state(false);
+
+  function stopLoading(): void {
+    loadStopped = true;
+    void queryClient.cancelQueries({ queryKey: queryKeys.goals.list() });
+  }
+
+  function readAgain(): void {
+    loadStopped = false;
+    void goals.refetch();
+  }
+
+  // A read that failed with nothing to show replaces the list; one that failed over goals already
+  // read leaves them in place under a banner, which counts down to the next try the way the shell's
+  // does for a server that gives no answer.
+  const failedFirstLoad = $derived(goals.isError && goals.data === undefined);
+  const refetchFailed = $derived(goals.isRefetchError && goals.data !== undefined);
+  const failure = $derived(failedFirstLoad ? goalsLoadFailure(goals.error) : undefined);
+  const stopped = $derived(goals.isPending && loadStopped);
+
+  /** Reads the list again, and the frame's own probe of it, so what the frame says follows. */
+  function retry(): void {
+    void goals.refetch();
+    void queryClient.refetchQueries({ queryKey: queryKeys.view('goals', null) });
+  }
+
+  // The tries after a failed refresh back off and count, as the connection's do.
+  const refreshTries = new ConnectionMonitor({
+    probe: async () => {
+      const result = await goals.refetch();
+      if (result.isError) throw result.error;
+    },
+    browserOffline: false,
+  });
+  $effect(() => {
+    if (refetchFailed) untrack(() => refreshTries.reportUnreachable());
+    else untrack(() => refreshTries.reportReachable());
+  });
+  $effect(() => () => refreshTries.dispose());
+  // The shell leaves its banner to this page while it is on screen.
+  $effect(() => connection.claimBanner());
+
+  /** Banner's Retry now: the connection's own tries again, or this read's, and the frame's probe of it. */
+  function retryNow(): void {
+    if (connection.unreachable) {
+      void connection.retryNow();
       return;
     }
-    event.preventDefault();
-    router.navigate(path);
+    void refreshTries.retryNow();
+    void queryClient.refetchQueries({ queryKey: queryKeys.view('goals', null) });
   }
 
-  function createdAgo(goal: Goal): string {
-    return formatRelativeTime(Date.parse(goal.createdAt));
+  /** The server gives no answer, or this read failed after it had shown goals. */
+  const stale = $derived(!failedFirstLoad && (connection.unreachable || refetchFailed));
+  /** What counts the banner: the connection's own tries, or the refresh's. */
+  const tries = $derived(connection.unreachable ? connection : refreshTries);
+
+  // The clock the days are counted from, read again whenever the goals are.
+  const now = $derived.by(() => {
+    void goals.dataUpdatedAt;
+    return Date.now();
+  });
+
+  /** One row of each goal, newest first. */
+  const allRows = $derived(sortGoalRows((goals.data ?? []).map(goalRow)));
+  const facetRows = $derived(narrowByAgent(allRows, filters.agent));
+  const counts = $derived(countGoalRows(facetRows));
+  const visibleRows = $derived(narrowBySegment(facetRows, filters.status));
+
+  const segments = $derived(
+    GOAL_SEGMENTS.map((value) => ({
+      value,
+      label: GOAL_SEGMENT_LABELS[value],
+      count: counts[value],
+    })),
+  );
+
+  const agentOptions = $derived(
+    [
+      ...new Set([
+        ...allRows.map((row) => row.agentName),
+        ...(filters.agent === undefined ? [] : [filters.agent]),
+      ]),
+    ]
+      .map((name) => ({ value: name, label: agentLabel(name) }))
+      .toSorted((left, right) => left.label.localeCompare(right.label)),
+  );
+  const facets = $derived<FacetDefinition[]>([
+    {
+      type: 'choice',
+      key: 'agent',
+      label: GOALS_COPY.agentLabel,
+      multiple: false,
+      options: agentOptions,
+    },
+  ]);
+  const appliedFilters = $derived<AppliedFilter[]>(
+    filters.agent === undefined
+      ? []
+      : [{ key: 'agent', value: filters.agent, label: GOALS_COPY.agentLabel }],
+  );
+
+  function rowKey(row: GoalRow): string {
+    return row.id;
   }
+
+  // Nothing to list at all, as opposed to filters that match nothing.
+  const nothingYet = $derived(allRows.length === 0);
+  const noMatchSentence = $derived(
+    goalNoMatchDescription(filters, {
+      agent: filters.agent === undefined ? undefined : agentLabel(filters.agent),
+    }),
+  );
+  const newActionReason = $derived(failedFirstLoad ? GOALS_COPY.newActionOffReason : undefined);
 </script>
 
-<section class="weft-goals ib-records" aria-label={VIEW_COPY.goals.label} data-page="goals">
-  <PageHeader title={VIEW_COPY.goals.label} headingLevel={1} />
-
-  {#snippet filterBar()}
-    <FilterBar
-      aria-label={GOALS_COPY.filtersLabel}
-      searchVisible={false}
-      {facets}
-      {appliedFilters}
-      onFacetChange={changeFilter}
-      onFilterRemove={(key) => changeFilter(key, '')}
+<section class="ib-records" aria-label={VIEW_COPY.goals.label} data-page="goals">
+  <!-- While the server gives no answer the shell holds every control that changes something; this
+       region is how the header's "+" (and the empty state's button) join them. -->
+  <StaleRegion stale={stale || connection.unreachable} reason={CONNECTION_COPY.changesOff}>
+    <PageHeader
+      title={VIEW_COPY.goals.label}
+      description={GOALS_COPY.subtitle}
+      headingLevel={1}
+      error={failedFirstLoad}
+      createAction={{
+        label: GOALS_COPY.newAction,
+        onclick: newGoal,
+        ...(newActionReason === undefined ? {} : { inertReason: newActionReason }),
+      }}
     />
-  {/snippet}
-  {#snippet newGoal()}
-    <Button
-      href={router.href(NEW_GOAL_PATH)}
-      variant="primary"
-      size="sm"
-      onclick={(event) => go(event, NEW_GOAL_PATH)}>{GOALS_COPY.newAction}</Button
-    >
-  {/snippet}
-  <RecordsToolbar count={GOALS_COPY.count(visible.length)} filters={filterBar} action={newGoal} />
 
-  {#if staleGoal !== null}
-    <Alert
-      variant="warning"
-      dismissible
-      onDismiss={() => (staleGoal = null)}
-      data-testid="goal-notice"
-    >
-      <p class="weft-goals__alert-title">{STALE_COPY.title(staleGoal)}</p>
-      <p class="weft-goals__alert-body">{STALE_COPY.description}</p>
-    </Alert>
-  {/if}
-  {#if pending}
-    <Alert variant="info" dismissible onDismiss={() => (pending = false)}>
-      <p class="weft-goals__alert-body">{GOALS_COPY.cancelPending}</p>
-    </Alert>
-  {/if}
+    <!-- While the host restarts, the restart dialog is the one account of it, as in the shell. -->
+    {#if stale && !restartActivity.active}
+      <Banner
+        preset={connectionBannerPreset(tries)}
+        dataUpdatedAt={connection.unreachable ? connection.lastHealthyAt : goals.dataUpdatedAt}
+        retryInSeconds={tries.retryInSeconds}
+        attempt={tries.browserOffline || tries.attempt === 0 ? undefined : tries.attempt}
+        maxAttempts={CONNECTION_MAX_ATTEMPTS}
+        onRetry={retryNow}
+      />
+    {/if}
 
-  {#if goals.isError}
-    <Alert variant="danger">
-      <p class="weft-goals__alert-title">{VIEW_COPY.goals.error.title}</p>
-      <p class="weft-goals__alert-body">{VIEW_COPY.goals.error.description}</p>
-      <Button variant="secondary" size="sm" onclick={() => void goals.refetch()}
-        >{RETRY_LABEL}</Button
-      >
-    </Alert>
-  {:else if rows.length > 0 && visible.length === 0}
-    <EmptyState
-      kind="filtered"
-      title={GOALS_COPY.noMatch.title}
-      description={GOALS_COPY.noMatch.description}
-      headingLevel={2}
-      clearFiltersLabel={GOALS_COPY.clearAction}
-      onClearFilters={clearFilters}
-    />
-  {:else if rows.length > 0}
-    <Table caption={GOALS_COPY.caption} density="condensed">
-      <Table.Header>
-        <Table.Row>
-          <Table.HeaderCell>{GOALS_COPY.goalColumn}</Table.HeaderCell>
-          <Table.HeaderCell>{GOALS_COPY.agentColumn}</Table.HeaderCell>
-          <Table.HeaderCell>{GOALS_COPY.statusColumn}</Table.HeaderCell>
-          <Table.HeaderCell>{GOALS_COPY.attemptsColumn}</Table.HeaderCell>
-          <Table.HeaderCell>{GOALS_COPY.createdColumn}</Table.HeaderCell>
-          <Table.HeaderCell
-            ><span class="weft-sr-only">{GOALS_COPY.actionsColumn}</span></Table.HeaderCell
-          >
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {#each keyedByOccurrence(visible, (goal) => goal.goalRunId) as { key, item: goal } (key)}
-          {@const word = goalStatusWord(goal.status)}
-          <Table.Row data-goal={goal.goalRunId} data-status={goal.status} data-status-word={word}>
-            <Table.Cell class="weft-goals__mono">
-              <a
-                href={router.href(goalPath(goal.goalRunId))}
-                onclick={(event) => go(event, goalPath(goal.goalRunId))}>{goal.goalRunId}</a
-              >
-            </Table.Cell>
-            <Table.Cell class="ib-records__wrap">
-              <a
-                href={router.href(agentPath(goal.agentName))}
-                onclick={(event) => go(event, agentPath(goal.agentName))}
-                >{agentLabel(goal.agentName)}</a
-              >
-            </Table.Cell>
-            <Table.Cell>
-              <StatusLabel {word} />
-              {#if goal.cancellation !== null && !goalHasEnded(goal.status)}
-                <span class="weft-goals__muted">{GOALS_COPY.cancelRequested}</span>
-              {/if}
-            </Table.Cell>
-            <Table.Cell
-              >{GOALS_COPY.attempts(goal.usage.attempts, goal.bounds.maximumAttempts)}</Table.Cell
+    {#if failedFirstLoad && failure !== undefined}
+      <div {@attach followLinks}>
+        <ErrorState
+          bordered
+          headingLevel={2}
+          title={failure.title}
+          description={failure.description}
+          {...failure.detail === undefined ? {} : { detail: failure.detail }}
+          retryLabel={RETRY_LABEL}
+          onRetry={retry}
+        >
+          {#snippet secondaryAction()}
+            <Button variant="secondary" href={router.href(GOALS_COPY.failed.openHealthPath)}
+              >{GOALS_COPY.failed.openHealth}</Button
             >
-            <Table.Cell class="weft-goals__muted">{createdAgo(goal)}</Table.Cell>
-            <Table.Cell align="right">
-              {#if !goalHasEnded(goal.status)}
-                <Button
-                  data-changes
-                  variant="ghost"
-                  size="sm"
-                  disabled={cancellation.isPending}
-                  onclick={() => askToCancel(goal)}>{GOALS_COPY.cancelAction}</Button
-                >
-              {/if}
-            </Table.Cell>
-          </Table.Row>
-        {/each}
-      </Table.Body>
-    </Table>
-  {/if}
-  {#if !goals.isError && goals.hasNextPage}
-    <div class="ib-records__more">
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={goals.isFetchingNextPage}
-        onclick={() => void goals.fetchNextPage()}>{GOALS_COPY.loadMore}</Button
+          {/snippet}
+        </ErrorState>
+      </div>
+    {:else if stopped}
+      <ErrorState
+        bordered
+        headingLevel={2}
+        tone="neutral"
+        title={GOALS_COPY.stopped.title}
+        description={GOALS_COPY.stopped.description}
+        retryLabel={RETRY_LABEL}
+        retryVariant="secondary"
+        onRetry={readAgain}
+      />
+    {:else if goals.isPending}
+      <GoalListLoading
+        {segments}
+        segmentValue={filters.status}
+        {facets}
+        {appliedFilters}
+        onSegmentChange={(value) => setFilter('status', value)}
+        onFacetChange={setFilter}
+        onFilterRemove={(key) => setFilter(key, undefined)}
+        onCancel={stopLoading}
+      />
+    {:else if nothingYet}
+      <EmptyState
+        bordered
+        kind="first-use"
+        title={GOALS_COPY.empty.title}
+        description={GOALS_COPY.empty.description}
+        headingLevel={2}
       >
-    </div>
-  {/if}
+        {#snippet icon()}<Target aria-hidden="true" />{/snippet}
+        {#snippet action()}
+          <Button variant="primary" label={GOALS_COPY.newAction} onclick={newGoal} mutating>
+            {#snippet leadingIcon()}<Plus />{/snippet}
+          </Button>
+        {/snippet}
+      </EmptyState>
+    {:else}
+      <FilterBar
+        aria-label={GOALS_COPY.filtersLabel}
+        searchVisible={false}
+        {segments}
+        segmentValue={filters.status}
+        {facets}
+        {appliedFilters}
+        onSegmentChange={(value) => setFilter('status', value)}
+        onFacetChange={setFilter}
+        onFilterRemove={(key) => setFilter(key, undefined)}
+      />
+
+      {#if visibleRows.length === 0}
+        <EmptyState
+          bordered
+          kind="filtered"
+          title={GOALS_COPY.noMatch.title}
+          description={noMatchSentence}
+          headingLevel={2}
+          clearFiltersLabel={GOALS_COPY.clearAction}
+          onClearFilters={clearFilters}
+        >
+          {#snippet icon()}<Search aria-hidden="true" />{/snippet}
+        </EmptyState>
+      {:else}
+        <div {@attach followLinks}>
+          <DataList
+            items={visibleRows}
+            key={rowKey}
+            aria-label={GOALS_COPY.rowsLabel}
+            groupBy={(row: GoalRow) => goalDayGroup(row, now, zone, phone)}
+          >
+            {#snippet children(row: GoalRow)}
+              <GoalListRow {row} agent={agentLabel(row.agentName)} {zone} {phone} />
+            {/snippet}
+          </DataList>
+        </div>
+      {/if}
+    {/if}
+  </StaleRegion>
 </section>
-
-<ConfirmDialog
-  bind:open={confirming}
-  title={GOALS_COPY.cancelDialog.title}
-  description={target === null ? '' : GOALS_COPY.cancelDialog.description(target.goalRunId)}
-  confirmLabel={GOALS_COPY.cancelDialog.confirm}
-  destructive
-  onConfirm={() => {
-    if (target !== null) cancellation.mutate(target);
-  }}
-/>
-
-<style>
-  .weft-goals {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .weft-goals__alert-title {
-    margin: 0;
-    font-weight: 600;
-  }
-
-  .weft-goals__alert-body {
-    margin: 4px 0 8px;
-  }
-
-  .weft-goals__muted {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-  }
-
-  :global(.weft-goals__mono) {
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
-  }
-
-  .weft-sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-</style>

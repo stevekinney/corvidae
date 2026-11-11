@@ -17,10 +17,10 @@ import { createLiveFeeds, type LiveFeeds } from '../../lib/live-source/live-feed
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 
-/** How often the page reads again while a goal runs and the feed is not live (`index.svelte`). */
+/** How often the page reads again while a goal runs and the feed is not live (`goal-list.svelte`). */
 const GOAL_POLL_MILLISECONDS = 1_500;
-/** The page reads fifty goals at a time; the probe behind the view’s states reads one. */
-const PAGE_SIZE = 50;
+/** The page reads every goal, a hundred at a time (`listAllGoals`); the probe behind the view’s states reads one. */
+const PAGE_SIZE = 100;
 
 let stub: BureauStub | undefined;
 let feeds: LiveFeeds | undefined;
