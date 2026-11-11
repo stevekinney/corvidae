@@ -189,7 +189,7 @@ describe('the heading of a schedule', () => {
 
     const toggle = await findByRole('switch', { name: 'Active, Inbox triage schedule' });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    await waitFor(() => expect(headerStatus()).toBeUndefined());
+    await waitFor(() => expect(headerStatus()).toBe('Paused'));
     const summary = await findByTestId('schedule-summary');
     expect(summary.textContent).toContain('No next run while paused');
   });

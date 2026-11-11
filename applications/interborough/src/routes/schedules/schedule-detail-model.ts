@@ -82,7 +82,7 @@ export function nextSummary(
   const relative = formatRelativeTime(at, { now, units: 'spelled' });
   // Beyond the range of relative time the formatter answers with the date, which the line already
   // says: the parenthetical is left out then, as it is when the page cannot keep a claim of "in 4 hours".
-  const saysRelative = !stale && /^in /.test(relative);
+  const saysRelative = !stale && relative.startsWith('in ');
   if (row.blockers.length === 0) {
     return [
       {

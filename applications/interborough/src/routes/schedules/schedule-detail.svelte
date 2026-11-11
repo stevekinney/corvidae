@@ -339,11 +339,11 @@
           />
         </span>
       {/if}
-      {#if !(switchable && (statusWord === 'Active' || statusWord === 'Paused'))}
+      {#if !(switchable && statusWord === 'Active')}
         {#if switchable}
           <Divider orientation="vertical" decorative class="ib-schedule__status-divider" />
         {/if}
-        <!-- The switch already says Active or Paused, so only what it does not say is a status word. -->
+        <!-- The switch, labeled Active, already says Active; Paused and the exceptions are words it cannot say. -->
         <StatusDot word={statusWord} data-status-word={statusWord} />
       {/if}
     {/snippet}

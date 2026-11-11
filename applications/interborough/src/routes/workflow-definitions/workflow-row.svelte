@@ -35,7 +35,7 @@
 {/snippet}
 
 <StackedListItem
-  status={model.statusWord === null ? undefined : statusSlot}
+  {...model.statusWord === null ? {} : { status: statusSlot }}
   href={router.href(workflowTypePath(row.name))}
   tooltip={model.title ?? model.name}
   data-workflow={row.name}

@@ -445,12 +445,11 @@ describe('an agent-authored type', () => {
     expect(testId(root, 'workflow-state')).toBeNull();
     expect(testId(root, 'workflow-description')?.textContent).toBe('Writes the daily digest.');
     const starts = testId(root, 'workflow-line-starts')?.textContent?.replace(/\s+/g, ' ').trim();
-    expect(starts).toBe(
-      [
-        'Starts every day at 06:00',
-        WORKFLOW_COPY.page.header.startYourself,
-        WORKFLOW_COPY.page.header.runsAs('Writer'),
-      ].join(', '),
+    // The cadence is a clock time in the viewer's zone, so the hour is whatever zone the test runs in.
+    expect(starts).toMatch(
+      new RegExp(
+        `^Starts every day at \\d{1,2}:\\d{2} [AP]M.*, ${WORKFLOW_COPY.page.header.startYourself}, ${WORKFLOW_COPY.page.header.runsAs('Writer')}$`,
+      ),
     );
     // The steps are numbered rows with a title, a kind line, and what the step does.
     const steps = [...(testId(root, 'workflow-steps')?.querySelectorAll('li') ?? [])];
@@ -523,7 +522,8 @@ describe('an agent-authored type', () => {
     // The page reads the versions once, for the tab's count, and the tab shows that same list.
     expect(stub?.callsTo('bureau.workflows.revisions')).toHaveLength(1);
     expect(stub?.callsTo('bureau.workflows.revisions')[0]?.params).toEqual({ id: 'digest' });
-    expect(revisions?.querySelector('button')).toBeNull();
+    // The only control on a version is the one that copies its hash; nothing activates it.
+    expect(revisions?.querySelector('button:not([aria-label^="Copy version"])')).toBeNull();
     expect(root.textContent).not.toContain('Activate');
   });
 

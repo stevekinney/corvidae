@@ -50,7 +50,8 @@ export type HappenedInput = {
   /** The IANA zone the clock is written in; defaults to the viewer's. */
   readonly zone?: string | undefined;
   /** How the run ended and when (epoch milliseconds), for a run that is over: the last entry says it. */
-  readonly ended?: { readonly outcome: 'done' | 'failed' | 'canceled'; readonly at: number };
+  readonly ended?:
+    { readonly outcome: 'done' | 'failed' | 'canceled'; readonly at: number } | undefined;
 };
 
 const timeOf = z.string().optional();

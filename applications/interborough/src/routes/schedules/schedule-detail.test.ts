@@ -695,8 +695,11 @@ describe('ScheduleDetail', () => {
         ).toBe('false'),
       );
       await waitFor(() => {
-        // The switch says Paused, so the heading row has no status word of its own.
-        expect(document.querySelector('.cinder-page-header [data-status-word]')).toBeNull();
+        expect(
+          document
+            .querySelector('.cinder-page-header [data-status-word]')
+            ?.getAttribute('data-status-word'),
+        ).toBe('Paused');
       });
 
       // The switch is held while the write settles, so it is pressed again once it is free.
