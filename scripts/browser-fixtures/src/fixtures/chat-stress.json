@@ -1266,7 +1266,7 @@
       },
       {
         "action": "expect-text",
-        "text": "need attention"
+        "text": "Retry or remove"
       }
     ],
     "variants": [],
@@ -1589,7 +1589,7 @@
       {
         "action": "expect",
         "role": "button",
-        "name": "Remove receipt-14.pdf"
+        "name": "11 more"
       }
     ],
     "variants": [],

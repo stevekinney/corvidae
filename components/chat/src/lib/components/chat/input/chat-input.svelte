@@ -2074,8 +2074,8 @@
     overflow-y: auto;
   }
 
-  /* On a phone each file is a row the width of the composer, so its name has all the room there
-   * is and is cut only when it is longer than that. */
+  /* On a phone each file is a row the width of the composer, and its name wraps rather than being
+   * cut, so the person can tell which file failed and which one they are removing. */
   @container (max-inline-size: 30rem) {
     .chat-input-attachments {
       align-items: stretch;
@@ -2086,7 +2086,14 @@
     }
 
     .chat-input-attachment-wrapper :global(.chat-attachment-preview-name) {
+      display: block;
       flex: 1 1 auto;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .chat-input-attachment-wrapper :global(.chat-attachment-preview-stem) {
+      overflow: visible;
     }
   }
 

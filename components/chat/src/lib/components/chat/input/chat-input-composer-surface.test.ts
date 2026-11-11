@@ -264,6 +264,10 @@ describe('the controls snippet is told when the composer is narrow', () => {
     expect(source).toMatch(
       /@container \(max-inline-size: 30rem\)\s*\{\s*\.chat-input-attachments\s*\{\s*align-items: stretch;/,
     );
+    // The name wraps there instead of being cut to its first letter.
+    expect(source).toMatch(
+      /:global\(\.chat-attachment-preview-name\)\s*\{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;/,
+    );
   });
 
   test('Attach and Send are at least 44px on both sides on a phone-width composer and a touch screen', async () => {
