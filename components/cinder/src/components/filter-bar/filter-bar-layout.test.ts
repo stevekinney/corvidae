@@ -64,17 +64,23 @@ afterAll(() => {
   });
 });
 
-// happy-dom lays nothing out, so the row reports what a browser would: its own width, and a
-// `scrollWidth` of the larger of that and what the drawn form's controls need.
+// happy-dom lays nothing out, so the row reports what a browser would: its own width, and controls
+// whose far edge is what the drawn form's controls need. `scrollWidth` is a decoy as wide as the
+// row plus a hit area drawn past the last control: the bar must never read it as a need.
 let barWidth = 0;
 let needs: Record<string, number> = { wide: 0, medium: 0, narrow: 0 };
+const HIT_AREA_OVERHANG = 7;
 const ownClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
 const ownScrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
-function isRow(element: HTMLElement): boolean {
+const ownRect = Object.getOwnPropertyDescriptor(Element.prototype, 'getBoundingClientRect');
+function isRow(element: Element): boolean {
   return element.classList.contains('cinder-filter-bar__row');
 }
-function drawnForm(element: HTMLElement): string {
+function drawnForm(element: Element): string {
   return element.closest('.cinder-filter-bar')?.getAttribute('data-cinder-layout') ?? 'wide';
+}
+function rect(left: number, right: number): DOMRect {
+  return DOMRect.fromRect({ x: left, y: 0, width: right - left, height: 32 });
 }
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
   configurable: true,
@@ -85,7 +91,16 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
 Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
   configurable: true,
   get(this: HTMLElement) {
-    return isRow(this) ? Math.max(barWidth, needs[drawnForm(this)] ?? 0) : 0;
+    return isRow(this) ? barWidth + HIT_AREA_OVERHANG : 0;
+  },
+});
+Object.defineProperty(Element.prototype, 'getBoundingClientRect', {
+  configurable: true,
+  value(this: Element) {
+    if (isRow(this)) return rect(0, barWidth);
+    const row = this.parentElement?.closest('.cinder-filter-bar__row');
+    if (row) return rect(0, needs[drawnForm(row)] ?? 0);
+    return rect(0, 0);
   },
 });
 
@@ -94,6 +109,7 @@ afterAll(() => {
   else Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
   if (ownScrollWidth) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', ownScrollWidth);
   else Reflect.deleteProperty(HTMLElement.prototype, 'scrollWidth');
+  if (ownRect) Object.defineProperty(Element.prototype, 'getBoundingClientRect', ownRect);
 });
 
 const { cleanup, render } = await import('@testing-library/svelte');

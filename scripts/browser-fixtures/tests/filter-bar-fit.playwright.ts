@@ -108,6 +108,31 @@ test.describe('FilterBar folds by its measured width', () => {
   });
 });
 
+test.describe('FilterBar measures its controls, not what they draw past their boxes', () => {
+  // The clear button's 44px hit area runs past the search field's edge. Read from scrollWidth, a
+  // typed query made a bar that fits fold the next time it measured (the agent Chats tab).
+  test('a typed query and then a segment change keep a bar that fits wide', async ({ page }) => {
+    await page.setViewportSize({ width: 2400, height: 900 });
+    await page.goto(FILTER_BAR_ROUTE, { waitUntil: 'load' });
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
+    const bar = page.getByRole('search', { name: 'Workflow filters' });
+    await setBarWidth(bar, 2000);
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'wide');
+    // Exactly as wide as the wide form needs, with the search field at its end.
+    await setBarWidth(bar, Math.ceil(await wideNeed(bar)) + 1);
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'wide');
+
+    await bar.getByRole('searchbox').fill('needle');
+    await expect(bar.getByRole('button', { name: /clear/i })).toBeVisible();
+    await bar.getByRole('radio', { name: /^Running/ }).click();
+    await expect(bar.getByRole('radio', { name: /^Running/ })).toBeChecked();
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'wide');
+    await expect(bar.getByRole('radio', { name: /^Waiting on you/ })).toBeVisible();
+  });
+});
+
 /** Whether the folded Status select shows its prefix and its value, and cuts the value short. */
 async function statusTrigger(bar: Locator): Promise<{
   valueText: string;

@@ -45,6 +45,7 @@ export type PropSpec = {
     | 'TSArrayType'
     | 'TSFunctionType'
     | 'TSTypeOperator'
+    | 'TSTypeLiteral'
     | 'TSUndefinedKeyword';
   default?: DefaultSpec;
 };

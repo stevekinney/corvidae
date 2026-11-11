@@ -188,14 +188,49 @@ export function nextFilterBarFit(input: FilterBarFitInput): FilterBarFit {
   return input.mayProbe ? { fitted: wider, waiting: false } : { fitted: undefined, waiting: true };
 }
 
+/** The row's flex items, looking through `display: contents` wrappers (a popover's trigger). */
+function rowItems(parent: Element): HTMLElement[] {
+  const items: HTMLElement[] = [];
+  for (const child of parent.children) {
+    if (!(child instanceof HTMLElement)) continue;
+    const style = getComputedStyle(child);
+    if (style.display === 'contents') items.push(...rowItems(child));
+    else if (style.display !== 'none' && style.position !== 'absolute') items.push(child);
+  }
+  return items;
+}
+
+function pixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 /**
- * The inline size, in pixels, the drawn row's controls need. A row that overflows reports it in
- * `scrollWidth`. The search field is the one control that gives way (it shrinks toward nothing
- * before the row overflows), so it is counted at no less than its flex basis: a search squeezed
- * below that is a row that does not fit.
+ * The inline size, in pixels, the drawn row's controls need: from the row's padding edge to the
+ * far margin edge of its last control, plus the row's end padding. It is read from the controls'
+ * own boxes, never from `scrollWidth`, which also counts what a control draws past its box without
+ * taking room, such as the 44px hit area of the search field's clear button: that made a bar with
+ * a typed query fold the next time it measured (agent Chats tab). The search field is the one
+ * control that gives way (it shrinks toward nothing before the row overflows), so it is counted at
+ * no less than its flex basis: a search squeezed below that is a row that does not fit.
  */
 export function measureFilterBarRow(row: HTMLElement): number {
-  let need = row.scrollWidth;
+  const style = getComputedStyle(row);
+  const box = row.getBoundingClientRect();
+  const rtl = style.direction === 'rtl';
+  const start = rtl
+    ? box.right - pixels(style.borderRightWidth)
+    : box.left + pixels(style.borderLeftWidth);
+  let extent = 0;
+  for (const item of rowItems(row)) {
+    const itemBox = item.getBoundingClientRect();
+    const itemStyle = getComputedStyle(item);
+    const end = rtl
+      ? start - (itemBox.left - pixels(itemStyle.marginLeft))
+      : itemBox.right + pixels(itemStyle.marginRight) - start;
+    extent = Math.max(extent, end);
+  }
+  let need = extent + pixels(rtl ? style.paddingLeft : style.paddingRight);
   const search = row.querySelector<HTMLElement>(':scope > .cinder-filter-bar__search');
   if (search !== null) {
     const basis = Number.parseFloat(getComputedStyle(search).flexBasis);
