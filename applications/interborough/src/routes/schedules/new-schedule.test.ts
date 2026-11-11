@@ -643,6 +643,31 @@ describe('a workflow', () => {
     expect(stub?.callsTo('POST /schedules')).toEqual([]);
   });
 
+  test('says a required text field left empty is required, focuses it, and makes nothing until it is filled', async () => {
+    open();
+    await choose('Triage inbox');
+    await view().findByTestId('new-schedule-input');
+    await fireEvent.input(field(/^Name/), { target: { value: 'Inbox' } });
+    await fireEvent.click(create());
+
+    const message = await view().findByText('Folder is required.');
+    expect(message.textContent).toBe('Folder is required.');
+    const folderId = field(/^Folder/).id;
+    await waitFor(() => expect(document.activeElement?.id).toBe(folderId));
+    expect(document.activeElement?.getAttribute('aria-invalid')).toBe('true');
+    await quietFor(50);
+    expect(stub?.callsTo('POST /schedules')).toEqual([]);
+
+    await fireEvent.input(field(/^Folder/), { target: { value: 'Inbox' } });
+    await fireEvent.blur(field(/^Folder/));
+    await fireEvent.click(create());
+    await waitFor(() => expect(stub?.callsTo('POST /schedules').length).toBe(1));
+    expect(stub?.callsTo('POST /schedules')[0]?.params).toMatchObject({
+      type: 'triage-inbox',
+      input: { folder: 'Inbox' },
+    });
+  });
+
   test('does not make a schedule on a plain Enter, which only checks the input', async () => {
     open();
     await chooseOrder();

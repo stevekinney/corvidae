@@ -145,7 +145,7 @@
     if (form === null || form === undefined) return;
     // A required text field left empty passes the form's own check (the key is there, with no text
     // in it), so the form is told it is missing, and focus goes to it as it does for its own.
-    const missing = composed ? firstMissingField(formSchema, draft) : undefined;
+    const missing = firstMissingField(formSchema, draft);
     if (missing !== undefined) {
       issues = [{ path: [missing.key], message: copy.fieldRequired(missing.name) }];
       void tick().then(() => region?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
@@ -287,7 +287,8 @@
       variant="input"
       {issues}
       {onSubmit}
-      {...composed ? { value: draft, onDraftChange: trackDraft, jsonEditable: false } : {}}
+      onDraftChange={trackDraft}
+      {...composed ? { value: draft, jsonEditable: false } : {}}
     />
   {:else}
     <Textarea
