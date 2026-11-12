@@ -55,6 +55,13 @@ export interface ControlFact {
    * label around a checkbox or radio. The same as `rect` when nothing extends it.
    */
   readonly hit: Box;
+  /**
+   * On a touch screen, the sides on which a tap half the touch minimum from the center does not
+   * reach the control, each with what it reaches instead. Empty when every side answers, and `null`
+   * when the control was not asked: a mouse capture, a disabled control, one covered at its center,
+   * or one with every probe point off screen.
+   */
+  readonly unreached: readonly string[] | null;
   /** A number shared by the controls of one parent, so controls in one row can be told apart. */
   readonly parent: number;
   /** Whether it fills its container's inline size and at least half the viewport. */
@@ -297,6 +304,10 @@ export const GEOMETRY_RULES = {
     title: 'Hit areas that take layout space',
     principle: `On a touch screen a button's layout box is its painted face. One that paints ${GEOMETRY_THRESHOLDS.touchButtonHeightMaximum} pixels or less but takes more in the layout (a transparent border, a minimum size) pushes its neighbors away by room nobody sees: wide icon pitch, swollen title rows and dead bands inside cards. The hit area grows through something that takes no space, such as a positioned pseudo-element.`,
   },
+  'hit-unreached': {
+    title: 'Hit areas a tap does not reach',
+    principle: `On a touch screen a tap ${GEOMETRY_THRESHOLDS.touchTargetMinimum / 2} pixels from a control's center reaches the control, on every side in view. A hit area the styles extend but a parent clips, the next row paints over, or a bar cuts is not there: give the parent room for the overhang, or stop what covers it from taking the tap. A neighboring control's own hit area may take the point; anything else may not.`,
+  },
   'icon-pitch': {
     title: 'Icon buttons spaced too far apart',
     principle: `Icon buttons in one row sit at most ${GEOMETRY_THRESHOLDS.iconPitchRatioMaximum} times their glyph apart, center to center. Their hit areas may meet or overlap invisibly; their glyphs read as one group.`,
@@ -506,6 +517,22 @@ function auditControls(facts: GeometryFacts, capture: GeometryCapture): Geometry
         'target-undersized',
         control,
         `"${label}" takes a tap over ${round(control.hit.width)} by ${round(control.hit.height)}px, under the ${minimum}px minimum${minimum === thresholds.touchTargetMinimum ? ' on a touch screen' : ''}; it is drawn ${round(rect.width)} by ${round(rect.height)}px`,
+      );
+    } else if (
+      facts.pointerCoarse &&
+      control.kind !== 'field' &&
+      !control.inline &&
+      (control.unreached ?? []).length > 0 &&
+      // One covered control is one finding: the covering check names what lies on its face.
+      !facts.overlaps.some(
+        (overlap) =>
+          overlap.kind === 'covered' && overlap.subject === control.name && overlap.label === label,
+      )
+    ) {
+      add(
+        'hit-unreached',
+        control,
+        `"${label}" claims a ${round(control.hit.width)} by ${round(control.hit.height)}px hit area that a tap does not reach: ${(control.unreached ?? []).join(', ')}`,
       );
     }
   }
