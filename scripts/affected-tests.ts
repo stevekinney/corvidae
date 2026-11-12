@@ -45,6 +45,7 @@ import {
   type Selection,
   type WorkspaceSelection,
 } from './affected-tests-selection.ts';
+import { rootScriptEnvironment } from './environment-configuration.ts';
 import { awaitMemory, memoryAdmittedVariable, memoryRefusalExitCode } from './run-exclusively.ts';
 import { exportSourceTarget } from './workspace-exports.ts';
 
@@ -370,7 +371,7 @@ async function run(root: string, selection: Selection, isolated: boolean): Promi
       admitted = true;
       const memory = await awaitMemory({
         label: 'affected-tests',
-        environment: process.env,
+        environment: rootScriptEnvironment(),
         report: (line) => console.error(line),
       });
       if (!memory.admitted) {

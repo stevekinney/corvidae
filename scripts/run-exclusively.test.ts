@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { rootScriptEnvironment } from './environment-configuration.ts';
 import {
   ancestorsOf,
   awaitMemory,
@@ -173,7 +174,7 @@ describe('awaitMemory', () => {
   });
 
   test('under a test, with no reader passed, it admits without reading the host', async () => {
-    expect(process.env['NODE_ENV']).toBe('test');
+    expect(rootScriptEnvironment()['NODE_ENV']).toBe('test');
     const result = await awaitMemory({ label: 'stage', environment: {}, report: () => {} });
     expect(result).toEqual({ admitted: true, reason: 'unread' });
   });

@@ -679,7 +679,7 @@ export async function awaitMemory(options: MemoryAdmissionOptions): Promise<Memo
     return { admitted: true, reason: 'nested' };
   }
   // A test that passes no reader never reads the host's real memory by accident.
-  if (options.readMemory === undefined && process.env['NODE_ENV'] === 'test') {
+  if (options.readMemory === undefined && rootScriptEnvironment()['NODE_ENV'] === 'test') {
     return { admitted: true, reason: 'unread' };
   }
   const read = options.readMemory ?? readMemory;

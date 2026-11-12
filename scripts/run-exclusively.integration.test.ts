@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
+import { rootScriptEnvironment } from './environment-configuration.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import {
   acquireHostLock,
@@ -706,7 +707,10 @@ const environmentSnapshottedBeforeWait = await inScratchDirectory(async (scratch
   const output = join(directory, 'value');
   const holding = await acquireHostLock({ lockDirectory, holder: holder(scratch) });
   const reports: string[] = [];
-  const environment: Record<string, string | undefined> = { PATH: process.env['PATH'], X: 'asked' };
+  const environment: Record<string, string | undefined> = {
+    PATH: rootScriptEnvironment()['PATH'],
+    X: 'asked',
+  };
   const running = runExclusively({
     lockDirectory,
     script: `printf '%s' "$X" > '${output}'`,
@@ -795,7 +799,7 @@ const orphanIgnoringSigtermIsKilled = await inScratchDirectory(async (scratch) =
   let check: () => void = () => {};
   let processGroup: number | undefined;
   const running = runInProcessGroup(['sh', '-c', `trap '' TERM; : > '${ready}'; sleep 30`], {
-    environment: process.env,
+    environment: rootScriptEnvironment(),
     report: () => {},
     recordProcessGroup: async (group) => {
       processGroup = group;
