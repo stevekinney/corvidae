@@ -154,12 +154,12 @@ describe('the helpers', () => {
 
   test('anchor headings the way GitHub does', () => {
     const anchors = headingAnchors(
-      '# Title\n## A crashed `--parallel` worker\n## Gate tiers and main health\n## Title\n',
+      '# Title\n## A crashed `--parallel` worker\n## Gate tiers and main CI\n## Title\n',
     );
     expect([...anchors]).toEqual([
       'title',
       'a-crashed---parallel-worker',
-      'gate-tiers-and-main-health',
+      'gate-tiers-and-main-ci',
       'title-1',
     ]);
   });

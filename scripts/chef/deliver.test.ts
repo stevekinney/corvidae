@@ -219,7 +219,7 @@ describe('deliver', () => {
 
   test('a red main is a warning in the report and the text, and the merge still happens', async () => {
     const { partial } = seams({
-      merge: mergedReport({ mainHealthWarning: 'main batch validate at aaaa: exit 1 (RED).' }),
+      merge: mergedReport({ mainHealthWarning: 'main main.yml at aaaa: failure (RED).' }),
     });
     const report = await deliver(options, partial);
     expect(report).toMatchObject({ merged: true, failedStep: null });
@@ -610,7 +610,7 @@ describe('run', () => {
     // The gate, its retry and the waivers are gone: their flags are unknown options now.
     for (const removed of ['--gate-log', '--max-attempts', '--removed-names', '--log-dir'])
       expect(await usage('--pr', '1', ...base, removed, 'x')).toBeInstanceOf(UsageError);
-    expect(await usage('--pr', '1', ...base, '--waive-main-health')).toBeInstanceOf(UsageError);
+    expect(await usage('--pr', '1', ...base, '--health-file')).toBeInstanceOf(UsageError);
   });
 
   test('--head, --fixes-main and the spend flags reach the merge gate', async () => {

@@ -14,15 +14,11 @@ Read this when the scope is a whole Linear project, or any work that spans more 
 - The team-size limit covers the whole program. Corrections take the next free slot ahead of new work.
 - Re-query the project after every merge; a new issue, a changed blocker, or a revised description updates the batch table.
 
-## Batch validate on a timer
+## Main health
 
-GitHub Actions runs the per-change checks on pull requests and the full suite on every push to `main`, advisory until COR-2374. CI on `main` is the routine signal; run a local batch validate only when CI cannot answer the question.
+GitHub Actions is the full tier: the `main` workflow runs the full suite on every push to `main`, and its latest completed run is `main`'s health. `merge-gate.ts` warns, and never refuses, while that run is red, and reports `main health unknown` and proceeds when GitHub cannot be read. A pull request that repairs `main` is declared with `--fixes-main` on `bun scripts/chef/deliver.ts`. Read the run at a batch boundary or the end of a program run with `gh run list --workflow main.yml --branch main --limit 3`; nothing is run locally for it.
 
-- **Per batch:** run one `bun run validate:batch` on `origin/main` after a batch of merges lands, or at the end of a program run, as a background command.
-- **Main health:** `merge-gate.ts` warns, and never refuses, while the last batch validate on `main` failed. A pull request that repairs `main` is declared with `--fixes-main` on `bun scripts/chef/deliver.ts`.
-- **Scheduling:** `bun scripts/chef/batch-validate.ts --max-load 8` decides whether a batch validate is due and runs it; its header holds the rules. Schedule it from the coordinator's session with a Claude Code scheduled task or `/loop 30m bun scripts/chef/batch-validate.ts --max-load 8 --json`, never with CI, cron files, or launchd plists, and never start a second timer while one is live.
-
-When a batch validate fails, run `bun scripts/chef/gate-run.ts triage <log> --base <sha>` and route each mapped failure to its owner as a fix forward ([triaging a failed gate](review-and-deliver.md#triaging-a-failed-gate)).
+When the `main` run is red, read the failed jobs with `gh run view <id> --log-failed` and route each failure to the pull request that changed its package to its owner as a fix forward ([triaging a failed gate](review-and-deliver.md#triaging-a-failed-gate)).
 
 Once a day, or before a release, launch `bun run harden` in the background, never per change. A failure follows AGENTS.md "Test tiers": a control against the base and a COR issue for the flake's mechanism, never a rerun until green.
 

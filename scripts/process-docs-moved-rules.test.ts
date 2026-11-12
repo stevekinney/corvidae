@@ -18,19 +18,9 @@ const read = (path: string) => normalize(readFileSync(join(root, path), 'utf8'))
 
 const movedRules: [rule: string, destination: string, phrase: string][] = [
   [
-    'per-batch validate',
-    `${chef}/program-runs.md`,
-    'run one `bun run validate:batch` on `origin/main` after a batch of merges lands',
-  ],
-  [
     'main health',
     `${chef}/program-runs.md`,
-    '`merge-gate.ts` warns, and never refuses, while the last batch validate on `main` failed',
-  ],
-  [
-    'local batch validate is never scheduled with CI',
-    `${chef}/program-runs.md`,
-    'never with CI, cron files, or launchd plists',
+    '`merge-gate.ts` warns, and never refuses, while that run is red',
   ],
   [
     'fresh worker per issue',
