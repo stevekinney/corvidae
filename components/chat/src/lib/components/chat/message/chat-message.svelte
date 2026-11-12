@@ -960,7 +960,6 @@
         variant="warning"
         semantic="note"
         class="chat-turn-callout"
-        actionLayout="inline"
         {...onRetryConnection ? { action: retryConnectionAction } : {}}
       >
         {#snippet icon()}<WifiOff aria-hidden="true" />{/snippet}
@@ -985,7 +984,6 @@
         variant="neutral"
         semantic="note"
         class="chat-turn-callout chat-turn-stopped-card"
-        actionLayout="inline"
         {...onDiscardTurn || onContinueTurn ? { action: stoppedTurnActions } : {}}
       >
         {#snippet icon()}<Info aria-hidden="true" />{/snippet}
@@ -998,7 +996,6 @@
         variant="danger"
         semantic="note"
         class="chat-turn-callout chat-turn-alert"
-        actionLayout="inline"
         title={turnWords.incomplete}
         {...onRetryTurn ? { action: retryTurnAction } : {}}
       >
@@ -1015,7 +1012,6 @@
         variant="neutral"
         semantic="note"
         class="chat-turn-callout chat-turn-empty-card"
-        actionLayout="inline"
         {...onRetryTurn ? { action: retryTurnAction } : {}}
       >
         {#snippet icon()}<Info aria-hidden="true" />{/snippet}
@@ -2456,11 +2452,12 @@
     white-space: nowrap;
   }
 
-  /* Coarse pointers get full-size targets for the recovery controls. */
-  @media (pointer: coarse) {
-    .chat-turn-outcome :global(.chat-turn-action) {
-      min-block-size: var(--cinder-touch-target-min);
-    }
+  /* A stopped turn is one contained card: a neutral Callout is otherwise bare text, so this one
+   * takes the hairline and surface the other notices have. */
+  .chat-turn-outcome :global(.chat-turn-stopped-card) {
+    padding-inline: var(--cinder-space-4);
+    border-color: var(--cinder-border);
+    background: var(--cinder-surface);
   }
 
   /* RTL message chrome follows the prose edge even when the narrow-screen footer rule moves

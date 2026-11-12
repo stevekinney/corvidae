@@ -187,7 +187,6 @@
    * blocking condition. Its row is centred, so the icon lines up with the text however many lines
    * it wraps to. */
   .cinder-callout[data-cinder-variant='neutral'] {
-    align-items: center;
     padding-inline: 0;
     border-color: transparent;
     background: transparent;

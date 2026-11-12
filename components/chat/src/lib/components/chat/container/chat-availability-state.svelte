@@ -89,7 +89,6 @@
         <Callout
           class="chat-availability-notice"
           semantic="note"
-          actionLayout="inline"
           aria-label={labels.slow}
           {...availability.onCancel === undefined ? {} : { action: cancelButton }}
         >

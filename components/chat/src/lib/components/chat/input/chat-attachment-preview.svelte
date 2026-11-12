@@ -134,7 +134,7 @@
     max-inline-size: 100%;
     box-sizing: border-box;
     padding-block: var(--cinder-space-0-5, 0.125rem);
-    padding-inline: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-3);
     overflow: visible;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);

@@ -1605,7 +1605,6 @@
         data-chat-composer-drawer={drawerStatus.kind}
         variant={drawerTone}
         semantic="note"
-        actionLayout="inline"
         icon={drawerIcon}
         aria-label={drawerStatus.kind === 'offline'
           ? labels.offline
@@ -2589,12 +2588,20 @@
    * the logical start, and keep the request action at the logical end. The compact faces still
    * retain their coarse-pointer hit height without forcing a second full-width action row. */
   .chat-input-notice {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
   }
 
+  /* The words break between words only: the reason takes what the actions leave, never narrower
+   * than its longest word, and the actions drop to their own line before it would. */
   .chat-input-notice .chat-input-blocked-message {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     align-items: center;
+  }
+
+  .chat-input-notice .chat-input-blocked-reason {
+    overflow-wrap: normal;
+    word-break: normal;
+    min-inline-size: min-content;
   }
 
   .chat-input-notice .chat-input-blocked-actions {
@@ -2637,7 +2644,6 @@
 
     .chat-input-blocked-actions :global(.cinder-button) {
       flex: 1 1 auto;
-      min-block-size: var(--cinder-touch-target-min);
     }
 
     .chat-input-notice .chat-input-blocked-actions {
@@ -2653,10 +2659,6 @@
     .chat-input-notice-label {
       min-block-size: var(--cinder-touch-target-min);
       min-inline-size: var(--cinder-touch-target-min);
-    }
-
-    .chat-input-blocked-actions :global(.cinder-button) {
-      min-block-size: var(--cinder-touch-target-min);
     }
   }
 

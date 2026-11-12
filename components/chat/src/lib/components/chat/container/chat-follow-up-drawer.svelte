@@ -172,7 +172,8 @@
     gap: var(--cinder-space-2);
     min-inline-size: 0;
     min-block-size: 2.75rem;
-    padding: 0 var(--cinder-space-1) 0 0;
+    padding-block: 0;
+    padding-inline: var(--cinder-space-3) var(--cinder-space-1);
     border-block-end: 1px solid var(--cinder-border-muted);
     color: var(--cinder-text-muted);
   }
@@ -183,7 +184,7 @@
 
   .chat-follow-up-ghost-index {
     position: absolute;
-    inset-inline-start: 0;
+    inset-inline-start: var(--cinder-space-3);
     inline-size: var(--cinder-space-3);
     color: var(--cinder-text-subtle);
     font-variant-numeric: tabular-nums;

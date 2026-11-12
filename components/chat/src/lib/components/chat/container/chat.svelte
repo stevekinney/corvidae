@@ -2500,6 +2500,11 @@
         {@const inputMessages = actionRequiredInputMessages(renderRow.messages)}
         {@const compactApprovalMessages = approvalMessages.length > 1 ? approvalMessages : []}
         {@const approvalIds = new Set(compactApprovalMessages.map((message) => message.id))}
+        {@const cardOwnedCallIds = new Set([
+          ...approvalMessages.flatMap((message) => (message.toolCall ? [message.toolCall.id] : [])),
+          ...inputMessages.flatMap((message) => (message.toolCall ? [message.toolCall.id] : [])),
+          ...questions.dockedQuestions.map((question) => question.toolCallId),
+        ])}
         {@const ordinaryPairs = groupPairs.filter(({ message }) => !approvalIds.has(message.id))}
         <div class="chat-tool-call-group">
           {#if compactApprovalMessages.length > 1}
@@ -2521,6 +2526,7 @@
               startTimes={toolCallStartTimes(ordinaryPairs)}
               {onRetryStep}
               labels={turnLabels}
+              {cardOwnedCallIds}
               onToggle={onExpandedChange}
             />
           {/if}
@@ -3379,13 +3385,6 @@
         var(--_cinder-chat-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
     );
     background: var(--cinder-surface);
-  }
-
-  /* The input area's reading inset already aligns the composer with the transcript. Keep the
-   * editor's ink on that same edge; its own padding is for standalone ChatInput consumers. */
-  .chat-input-area :global(.chat-input-editor),
-  .chat-input-area :global(.chat-input-markdown) {
-    padding-inline: 0;
   }
 
   .chat-container[data-surface-mode='default'] .chat-input-area {

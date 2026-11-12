@@ -30,7 +30,6 @@
   class="chat-follow-up-discard"
   variant="warning"
   semantic="note"
-  actionLayout="inline"
   aria-label={words.followUpNotSent}
   dismissLabel={words.followUpDismiss}
   onDismiss={ondismiss}

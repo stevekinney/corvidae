@@ -22,7 +22,6 @@
 <Callout
   class="chat-approval-drawer"
   semantic="note"
-  actionLayout="inline"
   aria-label={labels.approvalWaiting}
   data-chat-approval-drawer
 >
