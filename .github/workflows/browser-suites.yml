@@ -1,0 +1,118 @@
+# The two Playwright browser suites (COR-2411), called by `main.yml` on every push to `main` and by
+# `pull-request.yml` when a pull request's changes reach them. A failing case fails the job.
+#
+# The Chromium fixture suite (`scripts/browser-fixtures`) compares screenshots (`CINDER_VISUAL_DIFF=block`)
+# against the committed Linux baselines, which reproduce only on the renderer that wrote them: native
+# linux/arm64 in `mcr.microsoft.com/playwright:v<version>-jammy` (`scripts/browser-fixtures/visual-baselines.md`).
+# So its shards run in that image on an arm64 runner, where Playwright's own Chromium and the image's
+# fonts are the baseline renderer's; an x64 runner with `playwright install` rasterizes differently.
+# `scripts/browser-suites-workflow.test.ts` keeps the image tag equal to the Playwright that `bun.lock`
+# resolves. Interborough's end-to-end suite compares no screenshots, so it runs on the standard runner.
+#
+# Both call Playwright directly: the root `test:browser:*` scripts wrap it in the shared development
+# host's lock and slot pool (`scripts/run-exclusively.ts`, `scripts/host-slots.ts`), which a runner
+# does not need.
+name: Browser suites
+
+on:
+  workflow_call:
+    inputs:
+      fixtures:
+        description: Run the Chromium fixture suite.
+        type: boolean
+        required: true
+      interborough:
+        description: Run Interborough's end-to-end suite.
+        type: boolean
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+
+jobs:
+  fixtures:
+    name: Chromium fixtures (${{ matrix.shard }}/4)
+    if: ${{ inputs.fixtures }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-jammy
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      CINDER_VISUAL_DIFF: block
+    steps:
+      # The image has neither Git (which `actions/checkout` needs for a repository rather than a
+      # tarball) nor `unzip` (which `setup-bun` needs).
+      - run: apt-get update && apt-get install -y --no-install-recommends git unzip
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/browser-fixtures/scripts/prepare-manifest.ts
+      # Four workers on the four processors the renderer container gets locally (`CONTAINER_CPUS`).
+      # Inside a container `github.workspace` names the host's path, so the reports take the
+      # container's `GITHUB_WORKSPACE`.
+      - run: >-
+          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report"
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json"
+          bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts
+          --project=chromium --workers=4 --shard=${{ matrix.shard }}/4 --reporter=line,html,json
+      # A failed report upload must not fail the suite's job.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        continue-on-error: true
+        with:
+          name: playwright-fixtures-${{ matrix.shard }}
+          path: |
+            playwright-output/
+            scripts/browser-fixtures/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  interborough:
+    name: Interborough end-to-end (${{ matrix.shard }}/4)
+    if: ${{ inputs.interborough }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      # The gated runner picks a free block of ports and never reuses a server; it passes every
+      # argument on to `playwright test`.
+      - run: >-
+          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report"
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json"
+          bun applications/interborough/scripts/run-gated-browser-suite.ts
+          --shard=${{ matrix.shard }}/4 --trace=retain-on-failure --reporter=line,html,json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        continue-on-error: true
+        with:
+          name: playwright-interborough-${{ matrix.shard }}
+          path: |
+            playwright-output/
+            applications/interborough/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
