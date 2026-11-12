@@ -29,6 +29,7 @@ When the browser supports `anchor-name` (Chrome 125+, Safari 18.2+), the tooltip
 - Tooltip text should be brief (a single phrase or sentence).
 - Do not use a tooltip as the sole means of conveying critical information — it is not accessible to touch-only users.
 - Avoid repeating text already visible on screen.
+- A tooltip whose `text` is empty (or only whitespace) renders no panel, links no `aria-describedby` to its trigger, and never shows, so a caller can pass `text={reason ?? ''}` to show a hint only while it has one.
 
 ## Anchoring Modes
 
