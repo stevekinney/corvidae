@@ -169,6 +169,15 @@
     .cinder-citation__pagination button {
       inline-size: var(--cinder-touch-target-min);
     }
+    /* The pager buttons paint 32px tall and reach 44px through a pseudo-element that takes no
+       layout, as the link and the marker do; it covers the space around the button, never another
+       control, because the row gap and the panel's padding keep the neighbours further than it. */
+    .cinder-citation__pagination button::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
   }
 
   @container (inline-size < 30rem) {
