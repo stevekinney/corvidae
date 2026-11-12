@@ -2568,6 +2568,21 @@
     cursor: help;
   }
 
+  /* The label paints 24px tall; on a coarse pointer a pseudo-element that takes no layout lifts its
+   * hit area to 44px, so a tap that shows who granted access lands on it and not on the bar. */
+  @media (pointer: coarse) {
+    .chat-input-notice-label {
+      position: relative;
+    }
+
+    .chat-input-notice-label::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min, 44px)) / 2));
+      inset-inline: 0;
+    }
+  }
+
   .chat-input-blocked-actions {
     display: flex;
     flex: none;
