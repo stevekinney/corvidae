@@ -2193,6 +2193,19 @@
     flex: none;
   }
 
+  /* A row's Remove or Retry reaches 44px by a hit area that overhangs its row. A later row paints
+   * over an earlier one's overhang, and the scrolling list clips the first and last, so on a
+   * coarse pointer the rows stand a hit-area overhang apart and the list pads its ends. */
+  @media (any-pointer: coarse) {
+    .chat-input-attachments {
+      gap: var(--cinder-space-2);
+    }
+
+    .chat-input-attachments[data-expanded] {
+      padding-block: var(--cinder-space-2);
+    }
+  }
+
   .chat-input-attachments[data-expanded]::-webkit-scrollbar {
     inline-size: var(--cinder-scrollbar-size);
   }
