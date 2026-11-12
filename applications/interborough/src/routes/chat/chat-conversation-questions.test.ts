@@ -296,7 +296,7 @@ describe('a question in the transcript, answered with an Undo window', () => {
     await fireEvent.click(staging);
 
     const line = container.querySelector('.chat-question-status');
-    expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging Undo (5 s)');
+    expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging Undo (5s)');
     expect(line?.querySelector('.chat-question-status-text')?.textContent).toBe('Answered Staging');
     expect(staging.getAttribute('aria-checked')).toBe('true');
     expect(getAllByRole('button', { name: /Undo/ })).toHaveLength(1);

@@ -139,7 +139,7 @@ describe('an open question with choices', () => {
 
     await fireEvent.click(view.getByRole('radio', { name: /Staging/ }));
     const status = view.container.querySelector('.chat-question-status');
-    expect(status?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging Undo (5 s)');
+    expect(status?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging Undo (5s)');
     expect(status?.querySelector('.chat-question-status-text')?.textContent).toBe(
       'Answered Staging',
     );
