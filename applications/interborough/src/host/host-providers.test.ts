@@ -78,7 +78,8 @@ async function start(setup: Setup, options: HostOptions = {}): Promise<Host> {
 function pairsOf(host: Host): string[] {
   return host.bureau.models
     .catalog()
-    .descriptors.map((descriptor) => `${descriptor.provider}/${descriptor.model}`)
+    .descriptors.filter((descriptor) => descriptor.availability !== 'unavailable')
+    .map((descriptor) => `${descriptor.provider}/${descriptor.model}`)
     .toSorted();
 }
 
@@ -104,7 +105,7 @@ describe('a configuration that is not valid', () => {
     // The failed start released Bungalow's lock, so a corrected file starts.
     await writeFile(join(home, 'configuration.json'), JSON.stringify({ catalog: [] }));
     const host = await startAt(home);
-    expect(host.bureau.models.catalog().descriptors).toEqual([]);
+    expect(pairsOf(host)).toEqual([]);
   });
 
   test('starts, and skips the plugin, on an allowlist entry that matches no row', async () => {
@@ -132,7 +133,7 @@ describe('the installed catalog', () => {
     const warnings: string[] = [];
     const host = await start({}, { warn: (message) => warnings.push(message) });
 
-    expect(host.bureau.models.catalog().descriptors).toEqual([]);
+    expect(pairsOf(host)).toEqual([]);
     const result = await runTask(host.bureau, 'demo:assistant', 'Hello');
     expect(result.content).toBe(
       'Hello from the assistant. This reply is scripted; no model was called.',
@@ -142,7 +143,7 @@ describe('the installed catalog', () => {
 
   test('holds no model when no provider has a key, whatever the configuration says', async () => {
     const host = await start({ configuration: { providers: { anthropic: {} }, plugins: {} } });
-    expect(host.bureau.models.catalog().descriptors).toEqual([]);
+    expect(pairsOf(host)).toEqual([]);
   });
 
   test('is the keyed providers’ rows, each stamped as the host’s, and survives a replace', async () => {
@@ -154,7 +155,16 @@ describe('the installed catalog', () => {
 
     const before = host.bureau.models.catalog();
     expect(pairsOf(host)).toEqual(expected);
-    expect(new Set(pairsOf(host)).size).toBe(before.descriptors.length);
+    const offered = (rows: readonly { readonly availability: string }[]) =>
+      rows.filter((row) => row.availability !== 'unavailable');
+    expect(new Set(pairsOf(host)).size).toBe(offered(before.descriptors).length);
+    // The openai rows stay for want of a key, unavailable (COR-2143).
+    expect(
+      before.descriptors
+        .filter((row) => row.provider === 'openai')
+        .every((row) => row.availability === 'unavailable'),
+    ).toBe(true);
+    expect(before.descriptors.some((row) => row.provider === 'openai')).toBe(true);
     // Rows a host supplies are stamped as its own, never `static`.
     expect(
       before.descriptors.every((descriptor) => descriptor.source === 'operator-override'),
@@ -163,9 +173,9 @@ describe('the installed catalog', () => {
     const replaced = host.bureau.models.replace(before.descriptors);
     expect(replaced.revision).toBe(before.revision + 1);
     // Replacing with the rows it already holds keeps exactly those rows, so a replace cannot bring
-    // a provider without a key back.
+    // a provider without a key back: its rows stay unavailable.
     expect(pairsOf(host)).toEqual(expected);
-    expect(host.bureau.models.catalog().descriptors.length).toBe(expected.length);
+    expect(offered(host.bureau.models.catalog().descriptors).length).toBe(expected.length);
   });
 
   test('omits a provider whose key is missing and warns once, naming the provider and key but no value, when it has an allowlist', async () => {

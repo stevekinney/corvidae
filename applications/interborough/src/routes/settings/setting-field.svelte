@@ -22,7 +22,7 @@
   import type { Snippet } from 'svelte';
 
   import { SETTINGS_COPY } from '../../app/copy/settings.ts';
-  import { getAgentCatalog } from '../../lib/agent-definitions.ts';
+  import { getAgentCatalog, isAvailableModel } from '../../lib/agent-definitions.ts';
   import type { SchemaNode, SettingKeyState } from '../../lib/bureau-settings.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { inlineSegments } from './inline-markdown.ts';
@@ -181,7 +181,7 @@
     if (spec.kind !== 'choice') return [];
     const options =
       spec.source === 'catalog-rows'
-        ? (catalog.data?.models ?? []).map((row) => {
+        ? (catalog.data?.models ?? []).filter(isAvailableModel).map((row) => {
             const value = `${row.provider}/${row.model}`;
             return { value, label: value };
           })

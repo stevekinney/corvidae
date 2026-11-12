@@ -10,7 +10,7 @@
 
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
-  import { getAgentCatalog } from '../../../lib/agent-definitions.ts';
+  import { getAgentCatalog, hasAvailableModel } from '../../../lib/agent-definitions.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import RunCancel from './run-cancel.svelte';
@@ -21,7 +21,8 @@
 
   let { task }: RunMessageBlockedProps = $props();
 
-  // The run's own question card decides it the same way: no model in the catalog, no provider.
+  // The run's own question card decides it the same way: no available model in the catalog (a
+  // provider with no key keeps its rows, `unavailable`), no provider.
   const catalog = createQuery(
     () => ({
       queryKey: queryKeys.agents.catalog(),
@@ -31,7 +32,7 @@
     undefined,
   );
   // Until the host has answered nothing is blocked, as in the chat's composer.
-  const noProvider = $derived(catalog.data !== undefined && catalog.data.models.length === 0);
+  const noProvider = $derived(catalog.data !== undefined && !hasAvailableModel(catalog.data));
   const waiting = $derived(
     !isTerminalState(task.status) && task.openWaits.some((wait) => wait.kind === 'human-wait'),
   );

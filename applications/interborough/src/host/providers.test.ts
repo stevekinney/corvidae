@@ -196,6 +196,13 @@ describe('the allowlists', () => {
   });
 });
 
+/** The providers with at least one row a call can reach: a row kept for a missing key is `unavailable`. */
+function offeredProviders(rows: readonly BackendDescriptor[]): ReadonlySet<string> {
+  return new Set(
+    rows.filter((row) => row.availability !== 'unavailable').map((row) => row.provider),
+  );
+}
+
 describe('the catalog rows', () => {
   const select = (input: {
     readonly configuration?: ProviderConfigurationFile;
@@ -212,15 +219,20 @@ describe('the catalog rows', () => {
     });
   const allow = (plugin: string, ...models: string[]) => new Map([[plugin, models]]);
 
-  test('apply an edit only to a provider that has a key, but check the edit either way', () => {
-    const off = { catalog: [{ provider: 'openai', model: 'gpt-4.1', off: true }] };
-    const withKey = select({ configuration: off });
-    expect(withKey.find((row) => row.model === 'gpt-4.1')?.availability).toBe('unavailable');
-    expect(
-      select({ configuration: off, available: new Set(['anthropic']) }).some(
-        (row) => row.provider === 'openai',
-      ),
-    ).toBe(false);
+  test('apply an edit to a provider that has no key too, keep its rows unavailable, and check the edit either way', () => {
+    const edit = {
+      catalog: [{ provider: 'openai', model: 'gpt-4.1', contextWindowTokens: 123_456 }],
+    };
+    const withKey = select({ configuration: edit });
+    expect(withKey.find((row) => row.model === 'gpt-4.1')).toMatchObject({
+      contextWindowTokens: 123_456,
+      availability: 'available',
+    });
+    const withoutKey = select({ configuration: edit, available: new Set(['anthropic']) });
+    expect(withoutKey.find((row) => row.model === 'gpt-4.1')).toMatchObject({
+      contextWindowTokens: 123_456,
+      availability: 'unavailable',
+    });
     const stale = failureOf(() =>
       select({
         configuration: { catalog: [{ provider: 'openai', model: 'gpt-unheard-of' }] },
@@ -309,9 +321,24 @@ describe('the catalog rows', () => {
     expect(select({ providers: [] })).toEqual([]);
   });
 
-  test('leave out a provider that has no key', () => {
+  test('keep a provider that has no key, its rows marked unavailable (COR-2143)', () => {
     const rows = select({ available: new Set(['openai']) });
-    expect(new Set(rows.map((row) => row.provider))).toEqual(new Set(['openai']));
+    expect(new Set(rows.map((row) => row.provider))).toEqual(
+      new Set(['anthropic', 'openai', 'gemini']),
+    );
+    for (const row of rows) {
+      expect(row.availability === 'unavailable').toBe(row.provider !== 'openai');
+    }
+    // The same rows as when every provider has a key, so "needs a key" is not "no such model".
+    expect(pairs(rows)).toEqual(pairs(select({})));
+  });
+
+  test('keep a row an edit adds to a provider that has no key, marked unavailable', () => {
+    const rows = select({
+      configuration: { catalog: [{ provider: 'openai', model: 'gpt-next', basedOn: 'gpt-4.1' }] },
+      available: new Set(['anthropic']),
+    });
+    expect(rows.find((row) => row.model === 'gpt-next')?.availability).toBe('unavailable');
   });
 
   test('narrow to an allowlist matched on the model or an alias', () => {
@@ -432,10 +459,10 @@ describe('loading the providers', () => {
       warn: () => undefined,
       providers: contributed(),
     });
-    expect(new Set(loaded.rows.map((row) => row.provider))).toEqual(new Set(['openai']));
+    expect(offeredProviders(loaded.rows)).toEqual(new Set(['openai']));
   });
 
-  test('omits a provider whose key is missing, and warns once, naming the provider and the key but no value, only when its plugin has an allowlist', async () => {
+  test('keeps a provider whose key is missing, unavailable, and warns once, naming the provider and the key but no value, only when its plugin has an allowlist', async () => {
     const path = await configurationAt({
       plugins: { openai: { configuration: { models: ['gpt-4.1'] } } },
     });
@@ -446,12 +473,33 @@ describe('loading the providers', () => {
       warn: (message) => warnings.push(message),
       providers: contributed(),
     });
-    expect(new Set(loaded.rows.map((row) => row.provider))).toEqual(new Set(['anthropic']));
+    expect(offeredProviders(loaded.rows)).toEqual(new Set(['anthropic']));
+    expect(pairs(loaded.rows.filter((row) => row.provider === 'openai'))).toEqual([
+      'openai/gpt-4.1',
+    ]);
     expect(loaded.apiKeys.has('openai')).toBe(false);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('openai');
     expect(warnings[0]).toContain('openai-api-key');
     expect(warnings[0]).not.toContain(FIXTURE_VALUE);
+  });
+
+  test('offers a provider that declares no secret as available, without reading any (COR-2144)', async () => {
+    const path = await configurationAt({});
+    const reads: string[] = [];
+    const loaded = await loadProviders({
+      ...fileReader(path),
+      readSecret: async (key) => {
+        reads.push(key);
+        return undefined;
+      },
+      warn: () => undefined,
+      providers: contributed(['gemini']).map((provider) => ({ ...provider, secretKey: undefined })),
+    });
+    expect(reads).toEqual([]);
+    expect(loaded.apiKeys.size).toBe(0);
+    expect(loaded.rows.length).toBeGreaterThan(0);
+    expect(offeredProviders(loaded.rows)).toEqual(new Set(['gemini']));
   });
 
   test('treats an empty secret as missing', async () => {
@@ -462,7 +510,8 @@ describe('loading the providers', () => {
       warn: () => undefined,
       providers: contributed(['gemini']),
     });
-    expect(loaded.rows).toEqual([]);
+    expect(loaded.rows.length).toBeGreaterThan(0);
+    expect(offeredProviders(loaded.rows)).toEqual(new Set());
   });
 
   test('never echoes a model entry, which may be a pasted secret, in any startup error', async () => {
@@ -608,6 +657,49 @@ describe('a model’s generate', () => {
     expect(seen).toEqual([
       { provider: 'anthropic', model: 'claude-sonnet-5', apiKey: 'fixture-key' },
     ]);
+  });
+
+  test('refuses a row of a provider with no key, naming the secret to save (COR-2143)', () => {
+    const unkeyed = selectCatalogRows({
+      configuration: {},
+      allowlists: NONE,
+      path: PATH,
+      available: new Set(),
+      providers,
+    });
+    expect(unkeyed.length).toBeGreaterThan(0);
+    expect(unkeyed.every((row) => row.availability === 'unavailable')).toBe(true);
+    const refusal = () =>
+      createCatalogGenerate(
+        { provider: 'anthropic', model: 'sonnet' },
+        {
+          rows: unkeyed,
+          apiKeys: new Map(),
+          providers,
+          resolveProviderGenerate: () => async () => ({ content: '', toolCalls: [] }),
+        },
+      );
+    expect(refusal).toThrow('save the secret "anthropic-api-key"');
+    expect(refusal).not.toThrow('holds no');
+  });
+
+  test('calls a keyless provider with apiKey omitted (COR-2144)', () => {
+    const keyless = providers.map((provider) => ({ ...provider, secretKey: undefined }));
+    const seen: unknown[] = [];
+    createCatalogGenerate(
+      { provider: 'anthropic', model: 'sonnet' },
+      {
+        rows,
+        apiKeys: new Map(),
+        providers: keyless,
+        resolveProviderGenerate: (_definitions, provider) => {
+          seen.push(provider);
+          return async () => ({ content: '', toolCalls: [] });
+        },
+      },
+    );
+    expect(seen).toEqual([{ provider: 'anthropic', model: 'claude-sonnet-5' }]);
+    expect(Object.hasOwn(seen[0] as object, 'apiKey')).toBe(false);
   });
 
   test('refuses a model that is not in the catalog', () => {

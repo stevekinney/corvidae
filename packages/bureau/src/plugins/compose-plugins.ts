@@ -584,7 +584,7 @@ class Contributed {
     plugin: string,
     version: string,
     result: PluginSetupResult,
-    configuration: unknown,
+    providers: readonly PluginProviderContribution[],
     tools: ReadonlyMap<string, Tool>,
     gate: PluginSecretGate | undefined,
   ): void {
@@ -613,7 +613,7 @@ class Contributed {
       this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
     for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
-    this.providers.push(...providersOf(plugin, configuration, result));
+    this.providers.push(...providers);
     for (const detector of result.guardrails?.memory ?? []) {
       // The detector itself, not a copy of its fields: it may be an instance whose methods live on
       // its prototype.
@@ -637,14 +637,17 @@ class Contributed {
 
 /** The providers a plugin's setup returned, each with the rows it carries or Operative's static ones. */
 function providersOf(
-  plugin: string,
+  entry: BureauPluginEntry,
   configuration: unknown,
   result: PluginSetupResult,
 ): PluginProviderContribution[] {
+  const declared = [...secretKeysOf(entry)];
   return (result.providers ?? []).map((provider) => ({
-    plugin,
+    plugin: entry.descriptor.name,
     definition: provider,
     configuration,
+    // `providerSecretProblems` has refused every other case: one declared secret is the key.
+    secretKey: provider.secretKey ?? declared[0],
     rows:
       provider.rows ??
       createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
@@ -913,6 +916,37 @@ async function agentsOfDisabledPlugin(
 }
 
 /**
+ * The problems of a plugin whose provider names a `secretKey` the plugin did not declare, or names
+ * none while the plugin declares several secrets. Which secret holds the key is never read from
+ * the order of the declarations (COR-2142).
+ */
+function providerSecretProblems(
+  entry: BureauPluginEntry,
+  contributions: PluginContributions,
+): PluginProblem[] {
+  const declared = [...secretKeysOf(entry)];
+  const problems: PluginProblem[] = [];
+  for (const provider of contributions.providers ?? []) {
+    if (provider.secretKey !== undefined) {
+      if (!declared.includes(provider.secretKey)) {
+        problems.push({
+          code: 'provider-secret-unknown',
+          provider: provider.name,
+          key: provider.secretKey,
+        });
+      }
+    } else if (declared.length > 1) {
+      problems.push({
+        code: 'provider-secret-ambiguous',
+        provider: provider.name,
+        secrets: declared,
+      });
+    }
+  }
+  return problems;
+}
+
+/**
  * The `formatter-unknown-kind` problems of a plugin whose formatters list an event kind Bureau
  * never publishes, so a formatter cannot wait on an event that never fires (COR-2101).
  */
@@ -1002,17 +1036,16 @@ export async function composePlugins<O extends ComposableOptions>(
       record(outcome.status, outcome.problems);
       continue;
     }
-    const unknownKinds = formatterUnknownKinds(outcome.result);
-    if (unknownKinds.length > 0) {
-      record('skipped', unknownKinds);
+    const refusals = [
+      ...formatterUnknownKinds(outcome.result),
+      ...providerSecretProblems(entry, outcome.result),
+    ];
+    if (refusals.length > 0) {
+      record('skipped', refusals);
       continue;
     }
     const { plan } = outcome;
-    const providers = providersOf(
-      entry.descriptor.name,
-      outcome.context.configuration,
-      outcome.result,
-    );
+    const providers = providersOf(entry, outcome.context.configuration, outcome.result);
     const checked =
       providers.length === 0
         ? []
@@ -1038,7 +1071,7 @@ export async function composePlugins<O extends ComposableOptions>(
       entry.descriptor.name,
       entry.descriptor.version,
       outcome.result,
-      outcome.context.configuration,
+      providers,
       plan.tools,
       outcome.gate,
     );

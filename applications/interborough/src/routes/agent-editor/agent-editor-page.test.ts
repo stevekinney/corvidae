@@ -23,6 +23,7 @@ import {
   STUB_REMOTE_CONFIGURATION_FILE,
   STUB_REMOTE_PROVIDERS,
   StubFault,
+  unkeyedModelFixtures,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -167,7 +168,7 @@ describe('a new agent', () => {
   });
 
   test('shows where to add a provider, with this installation’s paths and no form, when the catalog holds no model', async () => {
-    bureau({ catalog: catalogFixture({ models: [] }) });
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }) });
     const { findByRole, getByTestId, getByRole, queryAllByRole, queryByRole, container } =
       mountEditor();
 
@@ -197,9 +198,43 @@ describe('a new agent', () => {
     expect(getByRole('button', { name: AGENT_EDITOR_COPY.cancelAction })).not.toBeNull();
   });
 
+  test('shows the same state, with its connect link, for a catalog with no row at all', async () => {
+    bureau({ catalog: catalogFixture({ models: [] }) });
+    const { findByRole } = mountEditor();
+
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+    expect(await findByRole('link', { name: AGENT_EDITOR_COPY.noProvider.connectAction })).not.toBe(
+      null,
+    );
+  });
+
+  test('shows the no-provider state, not an empty form, for a catalog whose every row is unavailable', async () => {
+    // A home with the bundled providers and no key keeps all of their rows, marked unavailable.
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }) });
+    const { findByRole, queryByRole } = mountEditor();
+
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+    expect(await findByRole('link', { name: AGENT_EDITOR_COPY.noProvider.connectAction })).not.toBe(
+      null,
+    );
+    expect(queryByRole('form')).toBeNull();
+    expect(queryByRole('combobox', { name: 'Model' })).toBeNull();
+  });
+
+  test('builds the form once one provider has a key, though the others keep unavailable rows', async () => {
+    bureau({
+      catalog: catalogFixture({
+        models: [...unkeyedModelFixtures(), { provider: 'anthropic', model: 'claude-opus-5' }],
+      }),
+    });
+    const { findByRole } = mountEditor();
+
+    expect(await findByRole('combobox', { name: 'Model' })).not.toBeNull();
+  });
+
   test('leaves the no-provider state for the list with its Cancel', async () => {
     router.navigate('/agents/new', { replace: true });
-    bureau({ catalog: catalogFixture({ models: [] }) });
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }) });
     const { findByRole } = mountEditor();
 
     await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
@@ -209,7 +244,7 @@ describe('a new agent', () => {
 
   test('offers Connect a provider, which opens Settings › Models with a way back to this form', async () => {
     router.navigate('/agents/new', { replace: true });
-    bureau({ catalog: catalogFixture({ models: [] }) });
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }) });
     const { findByRole } = mountEditor();
 
     const connect = await findByRole('link', { name: AGENT_EDITOR_COPY.noProvider.connectAction });
@@ -221,7 +256,7 @@ describe('a new agent', () => {
   });
 
   test('offers no Connect a provider where the host keeps its keys in its deployment, and leaves the steps', async () => {
-    bureau({ catalog: catalogFixture({ models: [] }), hostMode: 'remote' });
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }), hostMode: 'remote' });
     const { findByRole, queryByRole, container } = mountEditor();
 
     await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
@@ -231,7 +266,7 @@ describe('a new agent', () => {
   });
 
   test('builds the form when a provider has been added and the page is reloaded', async () => {
-    let catalog = catalogFixture({ models: [] });
+    let catalog = catalogFixture({ models: unkeyedModelFixtures() });
     bureau({ catalog: () => catalog });
     const { findByRole, getByRole, queryByRole } = mountEditor();
 
@@ -252,7 +287,7 @@ describe('a new agent', () => {
   });
 
   test('reads the catalog again when the window is focused, while it offers no model', async () => {
-    let catalog = catalogFixture({ models: [] });
+    let catalog = catalogFixture({ models: unkeyedModelFixtures() });
     const calls = bureau({ catalog: () => catalog });
     const { findByRole, queryByRole } = mountEditor();
     await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
@@ -275,7 +310,7 @@ describe('a new agent', () => {
   });
 
   test('names no path when the host did not say where its files are', async () => {
-    bureau({ catalog: catalogFixture({ models: [] }), hostPaths: null });
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }), hostPaths: null });
     const { findByRole, queryByTestId, container } = mountEditor();
 
     await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
@@ -895,7 +930,7 @@ describe('the delete in the page header', () => {
   });
 
   test('is shown for an existing agent when no provider means the form cannot be', async () => {
-    bureau({ catalog: catalogFixture({ models: [] }) });
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }) });
     const { findByRole, queryAllByRole } = mountEditor('researcher');
     await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
     expect(queryAllByRole('button', deleteButton).length).toBe(1);
@@ -1019,7 +1054,7 @@ describe.each(['local', 'remote'] as const)('the agent editor on a %s host', (mo
   });
 
   test('says where to configure a provider, and where its key goes, in the words of its mode', async () => {
-    bureau({ catalog: catalogFixture({ models: [] }), hostMode: mode });
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }), hostMode: mode });
     const { findByRole, getByTestId, container } = mountEditor();
     await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
 

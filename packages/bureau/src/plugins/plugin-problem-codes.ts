@@ -14,6 +14,8 @@ export const PLUGIN_PROBLEM_CODES = {
   'configuration-invalid': 'configuration',
   'name-clash': 'name',
   'formatter-unknown-kind': 'formatter',
+  'provider-secret-unknown': 'provider',
+  'provider-secret-ambiguous': 'provider',
   'setup-failed': 'plugin',
   'development-source': 'plugin',
   'secret-refused': 'secret',

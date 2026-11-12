@@ -119,7 +119,8 @@ async function managerFor(
   await manager.adopt(contributedFixtures());
   const revisions: number[] = [];
   manager.attach((rows) => {
-    revisions.push(rows.length);
+    // The rows a run can use: a provider without a key keeps its rows, `unavailable` (COR-2143).
+    revisions.push(rows.filter((row) => row.availability !== 'unavailable').length);
     return Promise.resolve(revisions.length);
   });
   return { manager, revisions, audits, home };
@@ -349,8 +350,30 @@ describe('disconnecting a provider', () => {
     expect(home.writes).toEqual(['configuration']);
     expect(home.configuration).not.toBe(before);
     expect(manager.current().apiKeys.has('anthropic')).toBe(false);
-    expect(manager.current().rows).toEqual([]);
+    // The rows stay, so "needs a key" is told from "no such model", and none can be called.
+    expect(manager.current().rows.length).toBeGreaterThan(0);
+    expect(
+      manager
+        .current()
+        .rows.filter((row) => row.provider === 'anthropic')
+        .every((row) => row.availability === 'unavailable'),
+    ).toBe(true);
     expect(revisions).toHaveLength(1);
+  });
+
+  test('takes its models out of the snapshot the pages list, though the catalog keeps the rows (COR-2143)', async () => {
+    const home = fakeHome('local');
+    const { manager } = await managerFor(home);
+    const before = await manager.snapshot();
+    expect(before.models.some((row) => row.provider === 'anthropic')).toBe(true);
+
+    await manager.disconnect('anthropic');
+
+    // The rows stay in the catalog, `unavailable`; the Models page would draw each as "Not allowed".
+    expect(manager.current().rows.some((row) => row.provider === 'anthropic')).toBe(true);
+    const snapshot = await manager.snapshot();
+    expect(snapshot.models.some((row) => row.provider === 'anthropic')).toBe(false);
+    expect(snapshot.providers.find((entry) => entry.name === 'anthropic')?.hasKey).toBe(false);
   });
 
   test('a configuration publication failure keeps the provider active', async () => {

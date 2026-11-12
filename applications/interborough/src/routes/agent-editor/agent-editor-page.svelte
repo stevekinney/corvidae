@@ -72,6 +72,7 @@
     deleteAgent,
     getAgentCatalog,
     getAgentDefinition,
+    hasAvailableModel,
     listAgentVersions,
     updateAgent,
     type AgentCatalog,
@@ -129,8 +130,10 @@
   // refetch must not change its choices.
   const catalog = createQuery(() => ({
     ...stable,
-    refetchOnWindowFocus: () =>
-      queryClient.getQueryData<AgentCatalog>(queryKeys.agents.catalog())?.models.length === 0,
+    refetchOnWindowFocus: () => {
+      const cached = queryClient.getQueryData<AgentCatalog>(queryKeys.agents.catalog());
+      return cached !== undefined && !hasAvailableModel(cached);
+    },
     queryKey: queryKeys.agents.catalog(),
     queryFn: ({ signal }) => getAgentCatalog({ signal }),
   }));
@@ -240,8 +243,9 @@
       if (!settled) return;
       if (editor?.catalogMissing === true && catalogData !== undefined) {
         // A catalog with no model has nothing to fill the form from: the no-provider state shows.
-        editor =
-          catalogData.models.length > 0 ? editor.withCatalog(catalogData, context) : undefined;
+        editor = hasAvailableModel(catalogData)
+          ? editor.withCatalog(catalogData, context)
+          : undefined;
         return;
       }
       if (editor === undefined && catalogData === undefined && catalogFailed && freshAgent) {
@@ -249,7 +253,7 @@
         return;
       }
       if (editor !== undefined || catalogData === undefined) return;
-      if (catalogData.models.length === 0) return;
+      if (!hasAvailableModel(catalogData)) return;
       if (agentId === undefined && copiedFrom !== null) {
         const seed = sourceData === undefined ? null : copySeedOf(sourceData);
         if (seed !== null) {
@@ -482,7 +486,7 @@
     // A catalog that has lost its last model offers nothing to fill the form from.
     const context = modelContext(providersResult.data, policyResult.data);
     editor =
-      catalogData.models.length > 0 &&
+      hasAvailableModel(catalogData) &&
       detailData.state === 'ready' &&
       detailData.definition !== null
         ? AgentEditorState.edit(detailData, catalogData, context)
@@ -513,7 +517,7 @@
       invalidAgent === undefined &&
       editor === undefined &&
       catalog.data !== undefined &&
-      catalog.data.models.length === 0,
+      !hasAvailableModel(catalog.data),
   );
   const loading = $derived(
     !loadFailed && !copyFailed && !noProvider && editor === undefined && invalidAgent === undefined,

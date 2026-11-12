@@ -337,8 +337,6 @@ export type CatalogEditInput = {
   readonly path: string;
   /** The rows the providers selected, in order. */
   readonly selected: readonly BackendDescriptor[];
-  /** The providers that have a key, so an edit to any other provider's row has nothing to change. */
-  readonly available: ReadonlySet<string>;
   /** The built-in rows of a provider that a name may match, retired ones excluded. */
   readonly candidates: (provider: string) => readonly BackendDescriptor[];
   /** Whether a row is named by a model or an alias. */
@@ -393,9 +391,10 @@ function assertLimits(row: BackendDescriptor, path: string, field: string): void
 
 /**
  * The selected rows with the edits applied. An edit to a built-in row replaces that row where it
- * stands, when the provider has a key and the provider's allowlist kept it. An added row is
- * appended after the others when its provider has a key and its allowlist, if it has one, names it. Every edit is checked either way, so a
- * stale edit fails before the provider's key appears.
+ * stands, when the provider's allowlist kept it. An added row is appended after the others when its
+ * provider's allowlist, if it has one, names it. Every edit is checked, so a stale edit fails
+ * before the provider's key appears. Whether a provider has a key is not decided here: the rows of
+ * one without are marked `unavailable` afterwards.
  */
 export function applyCatalogEdits(input: CatalogEditInput): BackendDescriptor[] {
   const rows = [...input.selected];
@@ -453,12 +452,7 @@ export function applyCatalogEdits(input: CatalogEditInput): BackendDescriptor[] 
       edit,
     );
     assertLimits(added, input.path, `${field}.maxOutputTokens`);
-    if (
-      input.available.has(edit.provider) &&
-      (input.keepsAdded?.(edit.provider, edit.model) ?? true)
-    ) {
-      rows.push(added);
-    }
+    if (input.keepsAdded?.(edit.provider, edit.model) ?? true) rows.push(added);
   });
   return rows;
 }
