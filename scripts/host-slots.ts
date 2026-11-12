@@ -200,32 +200,67 @@ export function runWithHostSlots(
 ): Promise<number> {
   const command = [...argv];
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
-  return exitCodeOnMemoryRefusal(
-    withHostSlots(
-      count,
-      (slots) =>
-        runInProcessGroup(command, {
-          environment: slots.environment,
-          ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-          recordProcessGroup: slots.recordProcessGroup,
-          report: (line) => report(`host-slots: ${line}`),
-        }),
-      { command: command.join(' '), ...options },
-    ),
-    report,
+  return withMemoryAdmission(
+    (environment) =>
+      withHostSlots(
+        count,
+        (slots) =>
+          runInProcessGroup(command, {
+            environment: slots.environment,
+            ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+            recordProcessGroup: slots.recordProcessGroup,
+            report: (line) => report(`host-slots: ${line}`),
+          }),
+        { command: command.join(' '), ...options, environment },
+      ),
+    { ...options, report },
   );
 }
 
+export type MemoryAdmissionRun = {
+  /** The script's environment; defaults to `process.env`, which is then marked admitted. */
+  readonly environment?: Readonly<Record<string, string | undefined>>;
+  readonly report?: (line: string) => void;
+  readonly readMemory?: () => MemoryReading | undefined;
+  readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly pollIntervalMs?: number;
+  readonly maximumWaitMs?: number;
+};
+
 /**
- * The run's exit code, or, when the host stayed too short of memory to start it, the refusal's
- * after reporting its message: what an entry point that holds host slots exits with.
+ * The one memory admission of a script that takes host slots, however many phases it has: checks
+ * the host's memory before any work starts, then runs `main` with the environment marked admitted
+ * ({@link memoryAdmittedVariable}), so every `withHostSlots` phase inside it, and every child, runs
+ * without reading again. By default the mark goes on `process.env`; a caller that passes an
+ * environment gets a marked copy, handed to `main`, and its own is left as it was. When the host
+ * stays too short of memory, the refusal is reported and the exit code is
+ * {@link memoryRefusalExitCode} (75), never 1, and `main` never starts.
  */
-export async function exitCodeOnMemoryRefusal(
-  running: Promise<number>,
-  report: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
+export async function withMemoryAdmission(
+  main: (environment: Record<string, string | undefined>) => Promise<number>,
+  options: MemoryAdmissionRun = {},
 ): Promise<number> {
+  const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
+  const source = options.environment ?? rootScriptEnvironment();
   try {
-    return await running;
+    const memory = await awaitMemory({
+      label: 'host-slots',
+      environment: source,
+      report,
+      ...(options.readMemory === undefined ? {} : { readMemory: options.readMemory }),
+      ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+      ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
+      ...(options.maximumWaitMs === undefined ? {} : { maximumWaitMs: options.maximumWaitMs }),
+    });
+    if (!memory.admitted) throw new MemoryRefusal(memory.message);
+    let environment: Record<string, string | undefined>;
+    if (options.environment === undefined) {
+      environment = rootScriptEnvironment();
+      environment[memoryAdmittedVariable] = '1';
+    } else {
+      environment = { ...options.environment, [memoryAdmittedVariable]: '1' };
+    }
+    return await main(environment);
   } catch (error) {
     if (!(error instanceof MemoryRefusal)) throw error;
     report(error.message);

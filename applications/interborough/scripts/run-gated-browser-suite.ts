@@ -18,7 +18,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { exitCodeOnMemoryRefusal, withHostSlots } from '../../../scripts/host-slots.ts';
+import { withHostSlots, withMemoryAdmission } from '../../../scripts/host-slots.ts';
 import { portIsFree, underHostSlots } from './design-review-capture.ts';
 import { END_TO_END_PORT_COUNT, endToEndPortOverride } from './environment-configuration.ts';
 
@@ -123,7 +123,7 @@ export async function runGatedBrowserSuite(
 // slot, taken whether this script runs under the host lock (`test:browser:interborough`) or
 // directly, as an agent runs one end-to-end spec, after the host is checked for memory.
 if (import.meta.main) {
-  process.exitCode = await exitCodeOnMemoryRefusal(
+  process.exitCode = await withMemoryAdmission(() =>
     withHostSlots(1, (slots) =>
       runGatedBrowserSuite(process.argv.slice(2), underHostSlots(hostEnvironment, slots)),
     ),
