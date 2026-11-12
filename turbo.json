@@ -49,6 +49,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -72,6 +74,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -128,6 +132,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/module-scope-scenario.test-support.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
@@ -180,6 +186,8 @@
         "$TURBO_ROOT$/documentation/runtime-contracts.md",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -197,6 +205,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -246,6 +256,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
@@ -272,6 +284,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -288,6 +302,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -305,6 +321,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -321,6 +339,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -340,6 +360,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
@@ -353,6 +375,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -369,6 +393,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -386,6 +412,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -402,6 +430,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -421,6 +451,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
@@ -434,6 +466,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -450,6 +484,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -469,6 +505,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
@@ -482,6 +520,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -498,6 +538,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -517,6 +559,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
@@ -530,6 +574,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -546,6 +592,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -565,6 +613,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
@@ -578,6 +628,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -594,6 +646,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -611,6 +665,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -627,6 +683,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -644,6 +702,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -660,6 +720,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -677,6 +739,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -690,6 +754,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -704,6 +770,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -713,6 +781,8 @@
       "dependsOn": ["transit"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -731,6 +801,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -772,6 +844,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -791,6 +865,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -819,6 +895,8 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
@@ -839,6 +917,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
@@ -858,6 +938,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/components/chat/src/**",
@@ -871,6 +953,8 @@
   "globalPassThroughEnv": [
     "CORVIDAE_TEST_SLOTS",
     "CORVIDAE_TEST_SLOTS_TOKEN",
-    "CORVIDAE_MEMORY_ADMITTED"
+    "CORVIDAE_MEMORY_ADMITTED",
+    "CORVIDAE_TEST_MEMORY_CEILING_MEGABYTES",
+    "CORVIDAE_TEST_WATCHDOG_REPORT"
   ]
 }

@@ -6,6 +6,7 @@
  * Usage: bun scripts/serve-static-export.ts --port 54232
  */
 
+import { exitWhenOrphaned } from '@lostgradient/testing/exit-when-orphaned';
 import { stat } from 'node:fs/promises';
 import { join, normalize, sep } from 'node:path';
 
@@ -39,6 +40,8 @@ async function resolveFile(pathname: string): Promise<ReturnType<typeof Bun.file
 }
 
 const port = parsePort();
+// Playwright starts this server; a run killed outright must not leave it behind.
+exitWhenOrphaned();
 Bun.serve({
   hostname: '127.0.0.1',
   port,

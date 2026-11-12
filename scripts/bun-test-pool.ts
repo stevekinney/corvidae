@@ -29,6 +29,12 @@
  * suite, a capture, the Docker renderer), which holds its slots for as long as its run lasts, unless
  * its session is gone (`runInProcessGroup` in `scripts/run-exclusively.ts`).
  *
+ * The hang guard runs inside the test process, so it cannot fire while a synchronous loop holds the
+ * event loop, and it bounds no memory. So the wrapper also watches each `bun test` it starts from
+ * outside (`scripts/test-watchdog.ts`): a run whose process tree passes the memory ceiling, or
+ * whose test process burns processor time past the per-test deadline without starting or finishing
+ * a test, is killed and exits 70 with a line that names the test files.
+ *
  * Bun's `--parallel` workers (`bun test --test-worker`) are children of the `bun test` leader but
  * each leads a process group of its own, and they outlive a leader killed with SIGKILL. So while a
  * pooled run lives, its wrapper records the leader's test-worker descendants (pid and start time)
@@ -60,9 +66,9 @@
  * and the free slots.
  */
 
-import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { cpus, totalmem } from 'node:os';
-import { join } from 'node:path';
+import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { cpus, tmpdir, totalmem } from 'node:os';
+import { basename, join } from 'node:path';
 
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import {
@@ -88,6 +94,18 @@ import {
   type OwnerRecord,
 } from './run-exclusively.ts';
 import { TEST_TIMEOUT_ARGUMENT } from './test-deadlines.ts';
+import {
+  describeWatch,
+  heartbeatDirectoryVariable,
+  memoryCeilingBytes,
+  parseProcessorTime,
+  runawayExitCode,
+  stallGuardMilliseconds,
+  stallProcessorShare,
+  startTestWatchdog,
+  watchdogReportVariable,
+  type WatchdogOutcome,
+} from './test-watchdog.ts';
 
 /** Overrides the pool's size, for CI runners and the dev container. */
 export const poolSizeVariable = 'CORVIDAE_TEST_SLOTS';
@@ -170,6 +188,10 @@ export type ProcessEntry = {
   readonly parent?: number;
   /** The command line. */
   readonly command?: string;
+  /** Resident memory, which leaves out compressed and swapped pages. */
+  readonly residentBytes?: number;
+  /** Processor time used so far. */
+  readonly cpuMilliseconds?: number;
 };
 
 /** A snapshot of the host's processes by pid. */
@@ -177,7 +199,7 @@ export type ProcessTable = ReadonlyMap<number, ProcessEntry>;
 
 /** `lstart` under the C locale, kept byte for byte as `processStartTime` prints it. */
 const processLine =
-  /^\s*(\d+)\s+(\d+)\s+(\d+)\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s*(.*?)\s*$/;
+  /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s*(.*?)\s*$/;
 
 /**
  * One `ps` snapshot of every process, with the same `lstart` text `processStartTime` records.
@@ -185,21 +207,27 @@ const processLine =
  * dead from a table that cannot be trusted.
  */
 export function readProcessTable(): ProcessTable | undefined {
-  const result = Bun.spawnSync(['ps', '-A', '-ww', '-o', 'pid=,ppid=,pgid=,lstart=,command='], {
-    env: processTableEnvironment(),
-    stdout: 'pipe',
-    stderr: 'ignore',
-  });
+  const result = Bun.spawnSync(
+    ['ps', '-A', '-ww', '-o', 'pid=,ppid=,pgid=,rss=,time=,lstart=,command='],
+    {
+      env: processTableEnvironment(),
+      stdout: 'pipe',
+      stderr: 'ignore',
+    },
+  );
   if (result.exitCode !== 0) return undefined;
   const table = new Map<number, ProcessEntry>();
   for (const line of result.stdout.toString().split('\n')) {
     const match = processLine.exec(line);
-    if (match?.[4] !== undefined) {
+    if (match?.[6] !== undefined) {
+      const cpuMilliseconds = parseProcessorTime(match[5] ?? '');
       table.set(Number(match[1]), {
         parent: Number(match[2]),
         processGroup: Number(match[3]),
-        startedAt: match[4],
-        command: match[5] ?? '',
+        residentBytes: Number(match[4]) * 1024,
+        ...(cpuMilliseconds === undefined ? {} : { cpuMilliseconds }),
+        startedAt: match[6],
+        command: match[7] ?? '',
       });
     }
   }
@@ -696,7 +724,48 @@ export type RunPooledBunTestOptions = {
   readonly report?: (line: string) => void;
   /** The program that runs the tests, before the arguments; tests of the pool substitute a stand-in. */
   readonly command?: readonly string[];
+  /** The watchdog's limits (`scripts/test-watchdog.ts`); only its own tests pass any. */
+  readonly watchdog?: {
+    /** Defaults to `memoryCeilingBytes` of the environment. */
+    readonly ceilingBytes?: number;
+    /** Defaults to `stallGuardMilliseconds`. */
+    readonly stallGuardMilliseconds?: number;
+    readonly sampleIntervalMilliseconds?: number;
+    /** Where the run's heartbeat directory is made; defaults to the temporary directory. */
+    readonly heartbeatParentDirectory?: string;
+  };
 };
+
+/** The preload through which every test process records its heartbeat. */
+const heartbeatPreload = join(import.meta.dir, 'test-heartbeat.ts');
+
+/**
+ * Whether the command is a `bun test`, the default or a runner's own (`bun --config=… test`),
+ * rather than the stand-in a test of the pool substitutes.
+ */
+export function isBunTestCommand(command: readonly string[]): boolean {
+  const [program = ''] = command;
+  return basename(program) === 'bun' && command.includes('test');
+}
+
+/**
+ * The directory the run's test processes record their heartbeats in. A stand-in command is no
+ * `bun test` and records none, and a directory that cannot be made leaves the stall guard off.
+ */
+async function makeHeartbeatDirectory(
+  options: RunPooledBunTestOptions,
+  report: (line: string) => void,
+): Promise<string | undefined> {
+  if (!isBunTestCommand(options.command ?? bunTestCommand)) return undefined;
+  try {
+    return await mkdtemp(
+      join(options.watchdog?.heartbeatParentDirectory ?? tmpdir(), 'corvidae-test-heartbeats-'),
+    );
+  } catch (error) {
+    report(`bun-test-pool: running without the stall guard: ${(error as Error).message}`);
+    return undefined;
+  }
+}
 
 /**
  * Runs `bun test` holding one slot per worker, in a process group of its own whose signals the
@@ -752,21 +821,67 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
   const tracker = argumentsList.some((argument) => parallelArgument.test(argument))
     ? trackWorkers(read, workers, held?.recordWorkers, (line) => report(`bun-test-pool: ${line}`))
     : undefined;
+  const heartbeatDirectory = await makeHeartbeatDirectory(options, report);
+  const ceilingBytes = options.watchdog?.ceilingBytes ?? memoryCeilingBytes(environment);
+  let watchdog: ReturnType<typeof startTestWatchdog> | undefined;
+  let watched: WatchdogOutcome | undefined;
   try {
-    return await runInProcessGroup([...(options.command ?? bunTestCommand), ...argumentsList], {
-      environment:
-        held === undefined ? environment : { ...environment, [heldSlotsTokenVariable]: held.token },
-      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-      recordProcessGroup: async (processGroup) => {
-        // Started first, so a failed record write cannot leave the run's workers untracked.
-        tracker?.start(processGroup);
-        await held?.recordProcessGroup(processGroup);
+    const code = await runInProcessGroup(
+      [
+        ...(options.command ?? bunTestCommand),
+        ...(heartbeatDirectory === undefined ? [] : ['--preload', heartbeatPreload]),
+        ...argumentsList,
+      ],
+      {
+        environment: {
+          ...environment,
+          ...(held === undefined ? {} : { [heldSlotsTokenVariable]: held.token }),
+          ...(heartbeatDirectory === undefined
+            ? {}
+            : { [heartbeatDirectoryVariable]: heartbeatDirectory }),
+        },
+        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+        recordProcessGroup: async (processGroup) => {
+          // Started first, so a failed record write cannot leave the run unwatched or its workers
+          // untracked.
+          watchdog = startTestWatchdog({
+            leader: processGroup,
+            readProcessTable: read,
+            ceilingBytes,
+            run: argumentsList.join(' '),
+            stallGuard: {
+              milliseconds: options.watchdog?.stallGuardMilliseconds ?? stallGuardMilliseconds,
+              processorShare: stallProcessorShare,
+            },
+            ...(heartbeatDirectory === undefined ? {} : { heartbeatDirectory }),
+            ...(options.watchdog?.sampleIntervalMilliseconds === undefined
+              ? {}
+              : { sampleIntervalMilliseconds: options.watchdog.sampleIntervalMilliseconds }),
+          });
+          tracker?.start(processGroup);
+          await held?.recordProcessGroup(processGroup);
+        },
+        report: (line) => report(`bun-test-pool: ${line}`),
       },
-      report: (line) => report(`bun-test-pool: ${line}`),
-    });
+    );
+    watched = await watchdog?.stop();
+    if (watched?.killed === undefined) return code;
+    report(`bun-test-pool: ${watched.killed}`);
+    return runawayExitCode;
   } finally {
+    watched ??= await watchdog?.stop();
+    // A stand-in command is no test run, so it has nothing to measure.
+    const measuring =
+      isBunTestCommand(options.command ?? bunTestCommand) &&
+      (environment[watchdogReportVariable] ?? '') !== '';
+    if (watched !== undefined && measuring) {
+      report(`bun-test-pool: ${describeWatch(watched, ceilingBytes)}`);
+    }
     const recorded = (await tracker?.stop()) ?? [];
     if (recorded.length > 0) await terminateRecordedWorkers(recorded, { readProcessTable: read });
+    if (heartbeatDirectory !== undefined) {
+      await rm(heartbeatDirectory, { recursive: true, force: true });
+    }
     await held?.release();
   }
 }

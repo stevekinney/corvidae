@@ -143,6 +143,7 @@
   "scripts": {
     "build": "bun scripts/run-exclusively.ts 'turbo run build'",
     "audit": "bun scripts/check-audit-exceptions.ts",
+    "audit:processes": "bun scripts/agent-process-audit.ts",
     "check": "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && bun run typecheck:root && turbo run lint typecheck --affected && bun scripts/affected-tests.ts run'",
     "clean": "turbo run clean",
     "coverage": "bun scripts/run-exclusively.ts --shared 'turbo run test:coverage'",

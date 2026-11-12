@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./browser-smoke-gate": "./src/browser-smoke-gate.ts",
+    "./exit-when-orphaned": "./src/exit-when-orphaned.ts",
     "./fake-timers": "./src/fake-timers.ts",
     "./hang-guard": "./src/hang-guard.ts",
     "./module-scope-scenario": "./src/module-scope-scenario.ts",

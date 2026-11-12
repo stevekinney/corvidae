@@ -1,3 +1,4 @@
+import { exitWhenOrphaned } from '@lostgradient/testing/exit-when-orphaned';
 import { watch } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -5,6 +6,8 @@ import { createFixtureServer } from '../src/server.ts';
 import { buildFixtures } from './build.ts';
 import { FIXTURE_PORT } from './fixture-port.ts';
 
+// A Playwright run or a capture killed outright stops nothing; the host must not outlive it.
+exitWhenOrphaned();
 const root = resolve(import.meta.dirname, '..');
 const repository = resolve(root, '../..');
 const { values } = parseArgs({

@@ -13,6 +13,7 @@
  *
  *   bun scripts/static-playground-server.ts --directory build --port-file <file>
  */
+import { exitWhenOrphaned } from '@lostgradient/testing/exit-when-orphaned';
 import { realpathSync, statSync } from 'node:fs';
 import { rename } from 'node:fs/promises';
 import { extname, join, relative, resolve, sep } from 'node:path';
@@ -274,6 +275,8 @@ export async function writePortFile(path: string, port: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // The check that starts this server stops it; a check killed outright must not leave it behind.
+  exitWhenOrphaned();
   const { values } = parseArgs({
     options: {
       directory: { type: 'string' },
