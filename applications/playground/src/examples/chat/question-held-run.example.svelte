@@ -22,7 +22,7 @@
   // The example starts with Production already picked, so the held state is what the page shows.
   // The count waits while focus is inside the question, as it does on the run’s page.
   $effect(() => {
-    const choice = host?.querySelectorAll<HTMLButtonElement>('.chat-question-choices button')[1];
+    const choice = host?.querySelectorAll<HTMLElement>('.chat-question-choices [role="radio"]')[1];
     choice?.click();
     host
       ?.querySelector('.chat-question')

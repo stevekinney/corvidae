@@ -21,7 +21,7 @@
 
   // A window too short to see: the example picks Staging and lands on the sent line.
   $effect(() => {
-    host?.querySelector<HTMLButtonElement>('.chat-question-choices button')?.click();
+    host?.querySelector<HTMLElement>('.chat-question-choices [role="radio"]')?.click();
   });
 </script>
 
