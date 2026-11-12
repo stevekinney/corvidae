@@ -53,7 +53,7 @@
 
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
-import { ancestorsOf, readParents } from '../run-exclusively.ts';
+import { ancestorsOf } from '../run-exclusively.ts';
 import { findWorktreeProcesses, ProbeError } from './leftovers.ts';
 import {
   defaultRunner,
@@ -293,6 +293,13 @@ export interface RemoveOptions {
    */
   deliveredTip?: string | undefined;
   /**
+   * The branch (without `refs/heads/`) the caller saw at `deliveredTip`; `undefined` for a
+   * detached head. `endProcesses` refuses unless the worktree's head is `deliveredTip` and, when this
+   * key is given, its branch is this one (a delivery pins the head, not the local branch name),
+   * so a path reused by a new session is never emptied of its processes.
+   */
+  deliveredBranch?: string | undefined;
+  /**
    * End the processes whose working directory is inside the worktree once nothing else refuses
    * its removal, instead of refusing for them (`endProcessesInside`). Open files of processes
    * elsewhere still refuse it.
@@ -411,6 +418,16 @@ export function removeWorktree(
     const undelivered = undeliveredReason(runner, checkout, config, branch);
     if (undelivered !== undefined) reasons.push(undelivered);
   }
+  if (
+    options.endProcesses === true &&
+    (entry.head === undefined ||
+      entry.head !== options.deliveredTip ||
+      ('deliveredBranch' in options && branch !== options.deliveredBranch))
+  ) {
+    reasons.push(
+      `its branch and head are not the ones recorded as delivered (${branch ?? 'detached'} at ${entry.head ?? 'unknown'}), so it may be a worktree reused since, and its processes are not ended`,
+    );
+  }
   let ended: WorkingDirectoryProcess[] = [];
   try {
     // Only once nothing else refuses the removal: a refused worktree keeps its processes.
@@ -488,13 +505,34 @@ export interface EndProcessesDependencies {
   sleep?: (milliseconds: number) => void;
   /** Never signalled; defaults to this process and its ancestors. */
   exclude?: ReadonlySet<number>;
+  /**
+   * The parents of every process, for finding this process's ancestors; `undefined` stands for an
+   * unreadable process table. Absent, it is read with the runner's `ps`.
+   */
+  parents?: ReadonlyMap<number, number> | undefined;
 }
 
 const endGraceMs = 3000;
 const endPollMs = 250;
 
-function thisProcessAndItsAncestors(): Set<number> {
-  return new Set([process.pid, ...ancestorsOf(process.pid, readParents() ?? new Map())]);
+/** The parents of every process from the runner's `ps`; `undefined` when `ps` fails. */
+function readParentsWith(runner: Runner): Map<number, number> | undefined {
+  const result = runner(['ps', '-A', '-o', 'pid=,ppid=']);
+  if (result.code !== 0) return undefined;
+  const parents = new Map<number, number>();
+  for (const line of result.stdout.split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
+    if (match !== null) parents.set(Number(match[1]), Number(match[2]));
+  }
+  return parents;
+}
+
+/**
+ * This process, its parent whatever the process table says, and its ancestors when `parents` can
+ * name them: an unreadable table must never leave the caller's own session signalled.
+ */
+function thisProcessAndItsAncestors(parents: ReadonlyMap<number, number> | undefined): Set<number> {
+  return new Set([process.pid, process.ppid, ...ancestorsOf(process.pid, parents ?? new Map())]);
 }
 
 function signalProcess(pid: number, signal: NodeJS.Signals): void {
@@ -518,7 +556,11 @@ export function endProcessesInside(
   dependencies: EndProcessesDependencies = {},
 ): WorkingDirectoryProcess[] {
   const root = realpath(path);
-  const exclude = dependencies.exclude ?? thisProcessAndItsAncestors();
+  const exclude =
+    dependencies.exclude ??
+    thisProcessAndItsAncestors(
+      'parents' in dependencies ? dependencies.parents : readParentsWith(runner),
+    );
   const send = dependencies.signal ?? signalProcess;
   const sleep = dependencies.sleep ?? ((milliseconds: number) => Bun.sleepSync(milliseconds));
   const inside = (): WorkingDirectoryProcess[] => {
@@ -734,6 +776,7 @@ export function staleWorktrees(
           name: entry.path,
           keepRemote: true,
           deliveredTip: entry.tip,
+          deliveredBranch: entry.branch,
           // Never for a tip on the default branch: a session may have started there since the
           // listing, and the removal then refuses for its processes instead.
           endProcesses: entry.deliveredBy === 'changes-in-default',

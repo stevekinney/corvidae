@@ -14,6 +14,7 @@ import type { Runner } from './process-runner.ts';
 import {
   branchOwner,
   createWorktree,
+  endProcessesInside,
   parseWorktreeList,
   Refusal,
   removeWorktree,
@@ -273,7 +274,13 @@ describe('removeWorktree delivery guard with a fake runner', () => {
     workingDirectories?: string[][];
   }
 
-  type Remove = (options?: { keepRemote?: boolean; retired?: boolean; endProcesses?: boolean }) => {
+  type Remove = (options?: {
+    keepRemote?: boolean;
+    retired?: boolean;
+    endProcesses?: boolean;
+    deliveredTip?: string;
+    deliveredBranch?: string | undefined;
+  }) => {
     path: string;
     branch: string | undefined;
     remoteDeleted: boolean;
@@ -356,7 +363,11 @@ describe('removeWorktree delivery guard with a fake runner', () => {
         workingDirectories: [['10 {}', '11 {}/packages/a', '12 {}-2', '13 /elsewhere', '1 {}'], []],
       },
       (remove, calls, path, signals) => {
-        const result = remove({ endProcesses: true });
+        const result = remove({
+          endProcesses: true,
+          deliveredTip: TIP,
+          deliveredBranch: 'feature/alpha',
+        });
         expect(result.ended.map((item) => item.pid)).toEqual([10, 11]);
         expect(signals).toEqual([
           [10, 'SIGTERM'],
@@ -380,7 +391,7 @@ describe('removeWorktree delivery guard with a fake runner', () => {
         ],
       },
       (remove, _calls, _path, signals) => {
-        remove({ endProcesses: true });
+        remove({ endProcesses: true, deliveredTip: TIP, deliveredBranch: 'feature/alpha' });
         expect(signals).toEqual([
           [10, 'SIGTERM'],
           [11, 'SIGTERM'],
@@ -403,6 +414,64 @@ describe('removeWorktree delivery guard with a fake runner', () => {
         expect(mutations(calls)).toEqual([]);
       },
     );
+  });
+
+  test('a worktree reused since the listing, now at a commit of main, is refused and signalled to nothing', () => {
+    removal({ ancestor: 0, workingDirectories: [['10 {}']] }, (remove, calls, _path, signals) => {
+      // The recorded tip is an old delivered commit; the path's head is TIP now.
+      expect(() =>
+        remove({
+          endProcesses: true,
+          deliveredTip: 'c'.repeat(40),
+          deliveredBranch: 'feature/alpha',
+        }),
+      ).toThrow('not the ones recorded as delivered');
+      expect(signals).toEqual([]);
+      expect(mutations(calls)).toEqual([]);
+    });
+  });
+
+  test('a worktree whose branch changed since the listing is refused and signalled to nothing', () => {
+    removal({ ancestor: 0, workingDirectories: [['10 {}']] }, (remove, calls, _path, signals) => {
+      expect(() =>
+        remove({ endProcesses: true, deliveredTip: TIP, deliveredBranch: 'feature/other' }),
+      ).toThrow('not the ones recorded as delivered');
+      expect(signals).toEqual([]);
+      expect(mutations(calls)).toEqual([]);
+    });
+  });
+
+  test('ending processes with no recorded tip is refused', () => {
+    removal({ ancestor: 0, workingDirectories: [['10 {}']] }, (remove, _calls, _path, signals) => {
+      expect(() => remove({ endProcesses: true })).toThrow('not the ones recorded as delivered');
+      expect(signals).toEqual([]);
+    });
+  });
+
+  test('never signals its parent when the process table cannot be read', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'worktree-parent-')));
+    try {
+      const signals: number[] = [];
+      const runner: Runner = (command) =>
+        command[0] === 'lsof'
+          ? {
+              code: 0,
+              stdout: `p${process.ppid}\ncbun\nn${root}\np${process.pid}\ncbun\nn${root}\np999999\ncbun\nn${root}\n`,
+              stderr: '',
+            }
+          : { code: 1, stdout: '', stderr: 'ps: unavailable' };
+      const ended = endProcessesInside(root, runner, {
+        parents: undefined,
+        signal: (pid) => signals.push(pid),
+        sleep: () => {},
+      });
+      expect(ended.map((item) => item.pid)).toEqual([999999]);
+      expect(signals).toContain(999999);
+      expect(signals).not.toContain(process.ppid);
+      expect(signals).not.toContain(process.pid);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('without endProcesses a process inside still refuses the removal', () => {
