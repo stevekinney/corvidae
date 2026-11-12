@@ -66,15 +66,15 @@ describe('ReasoningPart — label (C#10)', () => {
       const label = () => container.querySelector('.chat-reasoning-label')?.textContent?.trim();
       const status = () => container.querySelector('.chat-entry-frame__status')?.textContent;
       expect(label()).toBe('Thinking…');
-      expect(status()).toBe('0 s');
+      expect(status()).toBe('0s');
 
       jest.advanceTimersByTime(4_000);
       flushSync();
-      expect(status()).toBe('4 s');
+      expect(status()).toBe('4s');
 
       rerender({ part: makePart({ streaming: false }) });
       flushSync();
-      expect(label()).toBe('Thought for 4 s');
+      expect(label()).toBe('Thought for 4s');
       expect(container.querySelector('.chat-entry-frame__status')).toBeNull();
       expect(container.textContent).not.toContain('token');
     } finally {
@@ -295,7 +295,7 @@ describe('ReasoningPart — streaming state', () => {
       props: { part: makePart({ streaming: true }) },
     });
     expect(container.querySelector('.chat-entry-frame__busy')).toBeNull();
-    expect(container.querySelector('button')?.getAttribute('aria-label')).toContain('0 s');
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toContain('0s');
   });
 
   test('leading whitespace is trimmed from the reasoning body', () => {

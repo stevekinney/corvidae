@@ -136,7 +136,7 @@ describe('Chat — run outcomes on the turn', () => {
       reconnecting.querySelector('.cinder-callout__icon svg')?.getAttribute('aria-hidden'),
     ).toBe('true');
     expect(view.container.textContent).toContain(
-      'Connection lost. Reconnecting, attempt 1 of 3. Next try in 4 s.',
+      'Connection lost. Reconnecting, attempt 1 of 3. Next try in 4s.',
     );
 
     state = advanceTurnState(state, { type: 'fail', cause: 'Three tries failed.' });

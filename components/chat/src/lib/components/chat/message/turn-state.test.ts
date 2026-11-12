@@ -257,7 +257,7 @@ describe('reconnectWaitFraction', () => {
 describe('turn labels', () => {
   test('R3: the reconnecting warning reads exactly as the board writes it', () => {
     expect(DEFAULT_TURN_LABELS.reconnecting(2, 5, 8)).toBe(
-      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s.',
+      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8s.',
     );
   });
 

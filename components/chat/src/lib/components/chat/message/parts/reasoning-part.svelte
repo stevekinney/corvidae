@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+  import { formatCountdown } from '../../../../utilities/format-countdown.ts';
   import EntryFrame from '../entry-frame.svelte';
 
   let { part, expanded = false, onToggle }: ReasoningPartProps = $props();
@@ -46,7 +47,7 @@
       ? 'Thinking…'
       : thoughtMilliseconds === undefined
         ? 'Thought process'
-        : `Thought for ${Math.max(1, Math.round(thoughtMilliseconds / 1000))} s`,
+        : `Thought for ${formatCountdown(Math.max(1, Math.round(thoughtMilliseconds / 1000)))}`,
   );
 
   // The polite "Reasoning complete." announcement fires ONLY on a streaming
@@ -93,7 +94,7 @@
     id={labelId}
     {label}
     labelClass="chat-reasoning-label"
-    status={part.streaming ? `${elapsedSeconds} s` : undefined}
+    status={part.streaming ? formatCountdown(elapsedSeconds) : undefined}
     triggerClass="chat-reasoning-toggle"
     busy={part.streaming}
     busyIndicator={false}

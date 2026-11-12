@@ -220,6 +220,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
+  import { formatCountdown } from '../../../utilities/format-countdown.ts';
   import { isStreamingMessage, mediaDisplayUrl } from '../builders.ts';
   import {
     deriveMessageParts,
@@ -973,7 +974,7 @@
             max={100}
             size="sm"
             ariaLabel={turnWords.nextTry}
-            label={`${turn.nextTryIn} s`}
+            label={formatCountdown(turn.nextTryIn)}
           />
         {/snippet}
       </Callout>

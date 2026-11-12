@@ -99,12 +99,12 @@ describe('R3: reconnecting', () => {
       'Retry',
     );
     expect(warning?.querySelector('.chat-turn-text')?.textContent?.trim()).toBe(
-      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s.',
+      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8s.',
     );
 
     const bar = getByRole('progressbar', { name: 'Time until the next try' });
     expect(bar.getAttribute('aria-valuenow')).toBe('80');
-    expect(bar.getAttribute('aria-valuetext')).toBe('8 s');
+    expect(bar.getAttribute('aria-valuetext')).toBe('8s');
 
     await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryConnection).toHaveBeenCalledWith('a1');
@@ -117,7 +117,7 @@ describe('R3: reconnecting', () => {
     const bar = view.getByRole('progressbar', { name: 'Time until the next try' });
     expect(bar.getAttribute('aria-valuenow')).toBe('30');
     expect(view.container.querySelector('.chat-turn-text')?.textContent).toContain(
-      'Next try in 3 s.',
+      'Next try in 3s.',
     );
   });
 

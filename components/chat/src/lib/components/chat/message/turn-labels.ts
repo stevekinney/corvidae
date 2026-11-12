@@ -1,3 +1,4 @@
+import { formatCountdown } from '../../../utilities/format-countdown.ts';
 import type { ToolCallRowStatus } from './tool-call-summary.ts';
 
 /**
@@ -77,7 +78,7 @@ export type ChatTurnLabels = {
 export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
   approvalWaiting: (count) => `${count} approvals waiting`,
   reconnecting: (attempt, attempts, nextTryIn) =>
-    `Connection lost. Reconnecting, attempt ${attempt} of ${attempts}. Next try in ${nextTryIn} s.`,
+    `Connection lost. Reconnecting, attempt ${attempt} of ${attempts}. Next try in ${formatCountdown(nextTryIn)}.`,
   retryNow: 'Retry',
   nextTry: 'Time until the next try',
   stopped: 'Stopped. The answer above is partial.',

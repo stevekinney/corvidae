@@ -95,6 +95,7 @@
   } from '@lostgradient/cinder';
   import type { FileUploadEntry } from '@lostgradient/cinder';
 
+  import { formatCountdown } from '../../../utilities/format-countdown.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { AnswerHold } from './answer-hold.svelte.ts';
   import {
@@ -162,7 +163,7 @@
   const announcer = useAnnouncer();
   const copy = $derived<ChatQuestionHoldCopy>({
     held: (label) => `Answered ${label}`,
-    undo: (seconds) => `Undo (${seconds} s)`,
+    undo: (seconds) => `Undo (${formatCountdown(seconds)})`,
     sent: (label) => `You answered: ${label}`,
     ...holdCopy,
   });

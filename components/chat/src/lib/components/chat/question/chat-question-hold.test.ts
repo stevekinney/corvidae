@@ -74,7 +74,7 @@ describe('a one-click answer is held for a short Undo window', () => {
     expect(choice('Production').getAttribute('aria-checked')).toBe('false');
     expect(choice('Production').getAttribute('aria-disabled')).toBe('true');
     expect(status(container)?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Answered Staging Undo (5 s)',
+      'Answered Staging Undo (5s)',
     );
     // What was answered and the Undo are separate elements, never joined by a separator glyph.
     expect(status(container)?.querySelector('.chat-question-status-text')?.textContent).toBe(
@@ -91,7 +91,7 @@ describe('a one-click answer is held for a short Undo window', () => {
     const { container, submitted, holds } = await ask();
     await fireEvent.click(choice('Staging'));
     await elapse(1000);
-    expect(screen.getByRole('button', { name: /Undo/ }).textContent?.trim()).toBe('Undo (4 s)');
+    expect(screen.getByRole('button', { name: /Undo/ }).textContent?.trim()).toBe('Undo (4s)');
     await elapse(3900);
     expect(submitted).toEqual([]);
     await elapse(100);
@@ -137,7 +137,7 @@ describe('a one-click answer is held for a short Undo window', () => {
     await fireEvent.focusIn(staging);
     await elapse(30000);
     expect(submitted).toEqual([]);
-    expect(screen.getByRole('button', { name: /Undo/ }).textContent?.trim()).toBe('Undo (5 s)');
+    expect(screen.getByRole('button', { name: /Undo/ }).textContent?.trim()).toBe('Undo (5s)');
 
     await fireEvent.focusOut(staging, { relatedTarget: document.body });
     await elapse(5000);
