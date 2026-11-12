@@ -141,6 +141,9 @@ describe('Store events (EventTarget)', () => {
 
     expect(subscription).toHaveProperty('unsubscribe');
     expect(typeof subscription.unsubscribe).toBe('function');
+    // COR-2374: a collection between subscribe and unsubscribe once left the observer subscribed;
+    // a loaded host runs one at its own time, so this test runs one at a fixed point.
+    Bun.gc(true);
 
     const activeRun = makeTestRun();
     store.register(activeRun);

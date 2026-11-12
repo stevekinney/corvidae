@@ -4,7 +4,7 @@
  * agent, when it started and what it ran with. The popover is the page's own, drawn by the top bar.
  */
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 
 import { clockTime, dayAndTime } from '../../lib/format/clock.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -13,6 +13,7 @@ import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 
 let restore: (() => void) | undefined;
 afterEach(() => {
+  setSystemTime();
   cleanup();
   restore?.();
   restore = undefined;
@@ -112,6 +113,9 @@ describe('the details popover (16u, 16v)', () => {
   }
 
   test('lists the session with a copy button, the agent as a link, and when it started', async () => {
+    // Midday in the host's zone, so both moments fall on today whatever the hour the suite runs at
+    // (COR-2374: run just after midnight, the start fell on yesterday and the day was named again).
+    setSystemTime(new Date(2026, 10, 12, 12, 0));
     const started = Date.now() - 16 * 60_000;
     const active = Date.now() - 1 * 60_000;
     serve({
@@ -132,6 +136,22 @@ describe('the details popover (16u, 16v)', () => {
       `Started ${dayAndTime(started, Date.now())}, last active ${clockTime(active)}`,
     );
     expect(details.textContent).toContain('Today, ');
+  });
+
+  test('names both days when the chat started before midnight and was last active after it', async () => {
+    setSystemTime(new Date(2026, 10, 12, 0, 1, 15));
+    const started = new Date(2026, 10, 11, 23, 45).getTime();
+    const active = new Date(2026, 10, 12, 0, 0).getTime();
+    serve({
+      createdAt: new Date(started).toISOString(),
+      updatedAt: new Date(active).toISOString(),
+    });
+    landAt('/chats/session-1');
+    const { details } = await open();
+
+    expect(details.textContent).toContain(
+      `Started Yesterday, ${clockTime(started)}, last active Today, ${clockTime(active)}`,
+    );
   });
 
   test('names the day again when the chat was last active on a later day', async () => {

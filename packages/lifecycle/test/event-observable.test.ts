@@ -313,3 +313,64 @@ describe('allEventsObservable', () => {
     expect(completeCalls).toBe(1);
   });
 });
+
+// COR-2374: Bun collects an `AbortSignal.any` signal that only an event listener's `signal` option
+// refers to, and aborting its sources then never removes that listener. A subscription made with an
+// external signal stopped unsubscribing once a collection ran between subscribe and unsubscribe,
+// which a loaded CI host does at its own time; `Bun.gc(true)` forces it here.
+describe('unsubscribing after a garbage collection', () => {
+  it('stops an eventObservable subscription made with an external signal', () => {
+    const target = createTarget();
+    const external = new AbortController();
+    const received: number[] = [];
+
+    const subscription = eventObservable(target, 'test', { signal: external.signal }).subscribe(
+      (event) => {
+        received.push(event.value);
+      },
+    );
+    Bun.gc(true);
+    subscription.unsubscribe();
+    target.dispatchEvent(new TestEvent(1));
+
+    expect(received).toEqual([]);
+  });
+
+  it('stops an allEventsObservable subscription made with an external signal', () => {
+    const target = createTarget();
+    const external = new AbortController();
+    const received: string[] = [];
+
+    const subscription = allEventsObservable(target, ['test', 'other'], {
+      signal: external.signal,
+    }).subscribe((event) => {
+      received.push(event.type);
+    });
+    Bun.gc(true);
+    subscription.unsubscribe();
+    target.dispatchEvent(new TestEvent(1));
+    target.dispatchEvent(new OtherEvent('after'));
+
+    expect(received).toEqual([]);
+  });
+
+  it('still stops delivery when the external signal aborts after a collection', () => {
+    const target = createTarget();
+    const external = new AbortController();
+    const received: number[] = [];
+    let completed = 0;
+
+    eventObservable(target, 'test', { signal: external.signal }).subscribe({
+      next: (event) => received.push(event.value),
+      complete: () => {
+        completed += 1;
+      },
+    });
+    Bun.gc(true);
+    external.abort();
+    target.dispatchEvent(new TestEvent(1));
+
+    expect(received).toEqual([]);
+    expect(completed).toBe(1);
+  });
+});

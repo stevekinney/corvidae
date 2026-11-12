@@ -36,17 +36,24 @@ export interface EventObservableOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Routes an external abort into `close`, and returns the signal a subscription's listeners are
+ * removed by: the subscription's own controller, which `close` aborts.
+ *
+ * Not `AbortSignal.any([signal, controller.signal])`: Bun collects a combined signal that only a
+ * listener's `signal` option refers to, after which aborting its sources never removes the listener,
+ * so an unsubscribed observer went on receiving events (COR-2374).
+ */
 function attachExternalAbort(
   signal: AbortSignal | undefined,
   controller: AbortController,
   close: () => void,
 ): AbortSignal {
-  const combinedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
   signal?.addEventListener('abort', close, {
     once: true,
     signal: controller.signal,
   });
-  return combinedSignal;
+  return controller.signal;
 }
 
 /**

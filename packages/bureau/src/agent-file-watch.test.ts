@@ -34,6 +34,17 @@ afterEach(async () => {
   for (const fixture of fixtures.splice(0)) await fixture.dispose();
 });
 
+/**
+ * Writes `text` to a temporary file the directory ignores and renames it over `name`, so a scan
+ * reads the file as it was before or as `text`, never between the two. `fixture.put` writes in
+ * place, which a watcher scan can read after the file is created and before its bytes land.
+ */
+async function publish(fixture: AgentFileFixture, name: string, text: string): Promise<void> {
+  const temporary = join(fixture.directory, `.${name}.tmp`);
+  await writeFile(temporary, text);
+  await rename(temporary, join(fixture.directory, name));
+}
+
 describe('watching the agent directory', () => {
   it('picks up an added file', async () => {
     const fixture = await start();
@@ -114,10 +125,34 @@ describe('watching the agent directory', () => {
     const fixture = await start();
     const changes: string[][] = [];
     fixture.catalog.onChange((change) => changes.push([...change.added]));
-    await fixture.put('one.md', validAgentFile());
+    // Published whole, so no scan can read it half written: COR-2374, where a watcher scan on Linux
+    // read `one.md` between its creation and its bytes and rightly reported it twice (the next test).
+    await publish(fixture, 'one.md', validAgentFile());
     await fixture.catalog.refresh();
     await fixture.catalog.refresh();
     expect(changes).toEqual([['one']]);
+  });
+
+  it('reports a file read half written as invalid, then as changed once it is whole', async () => {
+    const fixture = await start();
+    const changes: { added: string[]; changed: string[]; state: string | undefined }[] = [];
+    fixture.catalog.onChange((change) =>
+      changes.push({
+        added: [...change.added],
+        changed: [...change.changed],
+        state: fixture.catalog.list()[0]?.state,
+      }),
+    );
+    const whole = validAgentFile();
+    await publish(fixture, 'one.md', whole.slice(0, Math.floor(whole.length / 2)));
+    await fixture.catalog.refresh();
+    await publish(fixture, 'one.md', whole);
+    await fixture.catalog.refresh();
+    await fixture.catalog.refresh();
+    expect(changes).toEqual([
+      { added: ['one'], changed: [], state: 'invalid' },
+      { added: [], changed: ['one'], state: 'ready' },
+    ]);
   });
 
   it('converges on the final state of a burst of changes', async () => {
