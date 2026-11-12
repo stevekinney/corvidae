@@ -242,6 +242,49 @@ describe('chat stress visual measurement', () => {
     }
   });
 
+  it('waits for the arrival scroll of an approval card that fits, not only for the reminder to agree', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      // Before the arrival scroll lands the card is below the transcript's box and the reminder is
+      // on screen, which is the reminder agreeing with a row out of view: a state the product
+      // leaves again by itself. The page stands in for the product, landing the scroll and
+      // removing the reminder in one task after a few frames.
+      await page.setContent(
+        `<main data-testid="chat-stress-shell">
+          <div class="chat-timeline" style="height:200px;overflow:auto;position:relative">
+            <div style="height:600px"></div>
+            <article><div class="cinder-approval-card" data-cinder-state="pending" style="height:80px">
+              <div class="cinder-approval-card__row-actions" style="height:30px"><button>Deny</button><button>Approve $42.00</button></div>
+            </div></article>
+            <div style="height:40px"></div>
+          </div>
+          <div data-chat-approval-drawer style="height:40px"></div>
+        </main>`,
+      );
+      await page.evaluate(() => {
+        const state = window as typeof window & { landed?: boolean };
+        let frames = 0;
+        const land = (): void => {
+          if (++frames < 5) {
+            requestAnimationFrame(land);
+            return;
+          }
+          const scroller = document.querySelector<HTMLElement>('.chat-timeline');
+          if (scroller === null) return;
+          scroller.scrollTop = scroller.scrollHeight;
+          document.querySelector('[data-chat-approval-drawer]')?.remove();
+          state.landed = true;
+        };
+        requestAnimationFrame(land);
+      });
+      await runStep(page, { action: 'expect-approval-review' });
+      expect(await page.evaluate(() => (window as { landed?: boolean }).landed)).toBe(true);
+    } finally {
+      await browser.close();
+    }
+  });
+
   it('checks the real streaming assistant article and body, not a guessed message selector', async () => {
     const browser = await chromium.launch();
     try {

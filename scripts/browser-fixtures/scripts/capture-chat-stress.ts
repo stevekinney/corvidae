@@ -1373,6 +1373,12 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
             rowBox.left >= box.left - 1 &&
             rowBox.right <= box.right + 1;
           const reminder = shell?.querySelector('[data-chat-approval-drawer]') != null;
+          // A card that fits the box is one the product scrolls into place on arrival, and the
+          // reminder it shows until then agrees with the row being out of view. That agreement
+          // holds before the arrival scroll lands, so a card that fits settles only once its row
+          // is in view and the reminder is gone; a taller card is the lift's, and keeps both.
+          const fits = card.getBoundingClientRect().height < box.height + reclaimable;
+          if (fits) return visible && !reminder;
           return reminder === !visible;
         },
         undefined,
