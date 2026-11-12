@@ -374,7 +374,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Where a question that has choices (a choice, a choice with Something else, a yes or no) is
    * answered. `'inline'` (default) draws its controls in its transcript row. On a coarse pointer,
    * choice questions dock so phone users always get the explicit Reply and Answer controls.
-   * `'docked'` draws the question in place of the composer: a Needs you warning, a fieldset named The agent is asking,
+   * `'docked'` draws the question in place of the composer: a Needs you warning, a fieldset named Question (its legend is visually hidden),
    * radio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
    * secondary Reply in chat instead and a primary Answer, with `Question 2 of 3` when several were
    * asked together. A choice only selects; Answer sends it. Reply in chat instead gives the
@@ -425,25 +425,25 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * message; return a {@link ChatTurnState} to draw the turn's outcome on the turn itself, or
    * `undefined` to leave it streaming while text arrives and complete after. `reconnecting`
    * mutes the partial text and drops its caret under the warning "Connection lost. Reconnecting,
-   * attempt 2 of 5. Next try in 8 s." with Retry now and a bar that drains until the next try;
-   * `stopped` draws a neutral pill with Discard and Continue; `failed` a danger alert that says the
-   * answer is incomplete, why, and what Retry keeps, with Retry; `empty` a dashed row with the
-   * turn's time and Try again in place of its line. `advanceTurnState` moves a state on as the run
+   * attempt 2 of 5. Next try in 8 s." with Retry and a bar that drains until the next try;
+   * `stopped` draws a neutral card with Discard and Continue; `failed` a danger alert that says the
+   * answer is incomplete, why, and what Retry keeps, with Retry; `empty` a neutral row with the
+   * turn's time and Retry in place of its line. `advanceTurnState` moves a state on as the run
    * reports what happened. A callback that throws or returns something else draws the turn as
    * Chat sees it.
    */
   messageTurnState?: ((message: Message) => ChatTurnState | undefined) | undefined;
   /** The words of a turn's outcome and of the steps under it, any of which the host can replace. */
   turnLabels?: Partial<ChatTurnLabels> | undefined;
-  /** Called with a reconnecting turn's id when the person chooses Retry now. Retry now shows only when this is set. */
+  /** Called with a reconnecting turn's id when the person chooses Retry. Retry shows only when this is set. */
   onRetryConnection?: ((messageId: string) => void) | undefined;
   /** Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set. */
   onContinueTurn?: ((messageId: string) => void) | undefined;
   /** Called with a stopped turn's id when the person chooses Discard. Discard shows only when this is set; the host removes the turn from the conversation. */
   onDiscardTurn?: ((messageId: string) => void) | undefined;
-  /** Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Try again. Each shows only when this is set. */
+  /** Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Retry. Each shows only when this is set. */
   onRetryTurn?: ((messageId: string) => void) | undefined;
-  /** Called with a failed tool call's id when the person chooses Retry this step under it. The button shows only when this is set; Copy error always shows. */
+  /** Called with a failed tool call's id when the person chooses Retry under it. The button shows only when this is set; Copy error always shows. */
   onRetryStep?: ((toolCallId: string) => void) | undefined;
   /** Called when the explicit history trigger is activated. The consumer prepends compatible messages into `conversation`. */
   onLoadHistory?: () => void | Promise<void>;

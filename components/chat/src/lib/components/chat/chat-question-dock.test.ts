@@ -1,6 +1,6 @@
 /**
  * A question that has choices, docked in place of the composer (COR-2278, row P3): the Needs you
- * warning, the fieldset named The agent is asking, radio cards with the keys 1, 2 and 3, Something
+ * warning, the fieldset named Question, radio cards with the keys 1, 2 and 3, Something
  * else with its field, a secondary Reply in chat instead and a primary Answer, progress through
  * several questions, and the answer receipt that stays in the transcript.
  */
