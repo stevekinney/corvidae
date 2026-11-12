@@ -142,7 +142,7 @@ describe('a conversation that is loading', () => {
       'Still loading. This is taking longer than usual.',
     );
     expect(region.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toMatch(
-      /^\d+ s$/u,
+      /^\d+s$/u,
     );
 
     const cancel = buttonNamed(container, 'Cancel')!;
@@ -163,7 +163,7 @@ describe('a conversation that is loading', () => {
   test('says the host words instead of the defaults', () => {
     const { container } = mountWith('availability-labels', {
       kind: 'loading',
-      labels: { loading: 'جارٍ تحميل المحادثة…', secondsUnit: 'ث', sendWaits: 'انتظر' },
+      labels: { loading: 'جارٍ تحميل المحادثة…', sendWaits: 'انتظر' },
     });
 
     expect(container.querySelector('.chat-availability-reading')?.textContent?.trim()).toBe(

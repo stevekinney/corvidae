@@ -76,7 +76,13 @@ function approvalConversation(id: string): ConversationHistory {
 }
 
 function statusLine(container: HTMLElement): string | undefined {
-  return container.querySelector('.chat-input-status')?.textContent ?? undefined;
+  // A reconnect is a notice above the composer (Cinder's Callout); the rest are the line under it.
+  const element =
+    container.querySelector('.chat-input-status') ??
+    container.querySelector('[data-chat-composer-drawer="reconnecting"]');
+  // The spinner's own (hidden) label repeats the sentence, so read the sentence's own text.
+  const sentence = element?.querySelector('.cinder-callout__content') ?? element;
+  return sentence?.textContent?.trim() ?? undefined;
 }
 
 describe('Chat composer status and approval row', () => {

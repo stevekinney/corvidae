@@ -172,7 +172,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
     count === 1 ? 'Retry or remove 1 file to send' : `Retry or remove ${count} files to send`,
   approvalWaiting: 'Approval waiting',
   approvalWaitingText:
-    'Waiting for your approval. Anything you send now queues until this run finishes.',
+    'Waiting for your approval.',
   reviewApproval: 'Review approval',
   copy: 'Copy',
   copyMessage: 'Copy message',

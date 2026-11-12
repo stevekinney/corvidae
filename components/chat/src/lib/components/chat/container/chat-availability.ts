@@ -47,8 +47,6 @@ export interface ChatAvailabilityLabels {
   readonly canceledComposer: string;
   /** The visible reason Send is unavailable after a canceled read. */
   readonly sendBlocked: string;
-  /** The unit that follows the elapsed number. Default `s`. */
-  readonly secondsUnit: string;
 }
 
 /** The words Chat uses when the host sets none. */
@@ -69,7 +67,6 @@ export const DEFAULT_CHAT_AVAILABILITY_LABELS: ChatAvailabilityLabels = {
   sendWaits: 'Loading…',
   canceledComposer: 'Conversation loading stopped.',
   sendBlocked: 'Load the conversation to send messages.',
-  secondsUnit: 's',
 };
 
 /** The seconds after which a read counts as slow, when the host sets none. */
@@ -152,9 +149,16 @@ export function availabilityLabels(
   return { ...DEFAULT_CHAT_AVAILABILITY_LABELS, ...availability?.labels };
 }
 
-/** The elapsed time as the status line reads it, such as `12 s`. */
-export function formatElapsedSeconds(seconds: number, unit: string): string {
-  return `${Math.max(0, Math.trunc(seconds))} ${unit}`;
+/**
+ * The elapsed time as the status line reads it, in the compact form of Cinder's `formatDuration`:
+ * `12s`, or `3m 12s` past a minute. (Cinder does not export that helper from its package entry.)
+ */
+export function formatElapsedSeconds(seconds: number): string {
+  const whole = Math.max(0, Math.trunc(seconds));
+  const minutes = Math.floor(whole / 60);
+  if (minutes === 0) return `${whole}s`;
+  const rest = whole % 60;
+  return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
 }
 
 /** Whether a read that has run for `elapsedSeconds` counts as slow. */

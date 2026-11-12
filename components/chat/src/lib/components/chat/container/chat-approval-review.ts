@@ -3,7 +3,7 @@ import type { Message } from '../conversation-model.ts';
 
 /** The words the composer drawer says while an approval waits on the person. */
 export const APPROVAL_DRAWER_TEXT =
-  'Waiting for your approval. Anything you send now queues until this run finishes.';
+  'Waiting for your approval.';
 
 /** The drawer's action: it takes the person to the approval that waits. */
 export const APPROVAL_DRAWER_ACTION = 'Review approval';

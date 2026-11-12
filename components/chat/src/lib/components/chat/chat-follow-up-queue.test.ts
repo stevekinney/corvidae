@@ -366,13 +366,15 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     expect(discard.querySelector('.chat-follow-up-discard-text')?.textContent?.trim()).toBe(
       'The run was stopped, so your 2 queued follow-ups were not sent.',
     );
-    // The secondary action sits left of the primary one.
+    // Restore sits inline with the sentence; the dismiss is Callout's own, at the trailing end.
     const actions = [...discard.querySelectorAll('button')].map(
       (button) => button.getAttribute('aria-label') ?? button.textContent?.trim(),
     );
-    expect(actions).toEqual(['Dismiss', 'Restore']);
+    expect(actions).toEqual(['Restore', 'Dismiss']);
     expect(
-      discard.querySelector('button[aria-label="Dismiss"]')?.hasAttribute('data-cinder-icon-only'),
+      discard
+        .querySelector('button[aria-label="Dismiss"]')
+        ?.classList.contains('cinder-callout__dismiss'),
     ).toBe(true);
 
     await rendered.rerender({ streaming: false });

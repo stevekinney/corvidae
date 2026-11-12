@@ -184,7 +184,11 @@ describe('ChatInput — status line', () => {
     expect(line()?.getAttribute('data-chat-composer-status')).toBe('waiting');
 
     await rerender({ id: 'status-line', status: { kind: 'reconnecting', attempt: 3 } });
-    expect(line()?.textContent).toBe('Reconnecting… attempt 3');
+    expect(line()).toBeNull();
+    const notice = container.querySelector('[data-chat-composer-drawer="reconnecting"]');
+    expect(notice?.textContent).toContain('Reconnecting… attempt 3');
+    expect(notice?.classList.contains('cinder-callout')).toBe(true);
+    expect(notice?.querySelector('.cinder-spinner')).not.toBeNull();
 
     await rerender({ id: 'status-line', status: { kind: 'queued', count: 2 } });
     expect(line()?.textContent).toBe('2 follow-ups queued until the run is ready');

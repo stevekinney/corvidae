@@ -23,7 +23,8 @@ export interface ChatComposerBlockedAction {
  *   sent now goes to the run as input instead of starting a new turn.
  * - `steering`: the chat is working, so a message sent now steers the run.
  * - `note`: a sentence of the host's own, such as when a changed setting applies.
- * - `reconnecting`: the transport lost the run's stream and is trying again.
+ * - `reconnecting`: the transport lost the run's stream and is trying again. A notice above the
+ *   composer with a spinner for its icon.
  * - `queued`: follow-ups the user sent are waiting for the run to take them.
  * - `offline`: the browser has no connection. A warning drawer above the composer says the draft is
  *   kept, and Send is off (and names the drawer through `aria-describedby`) until it clears.
@@ -114,11 +115,15 @@ export function isComposerNoticeStatus(
 /** Whether a status is drawn as a drawer above the composer rather than the line under it. */
 export function isComposerDrawerStatus(
   status: ChatComposerStatus | undefined,
-): status is Extract<ChatComposerStatus, { kind: 'offline' | 'draft-restored' | 'drawer-notice' }> {
+): status is Extract<
+  ChatComposerStatus,
+  { kind: 'offline' | 'draft-restored' | 'drawer-notice' | 'reconnecting' }
+> {
   return (
     status?.kind === 'offline' ||
     status?.kind === 'draft-restored' ||
-    status?.kind === 'drawer-notice'
+    status?.kind === 'drawer-notice' ||
+    status?.kind === 'reconnecting'
   );
 }
 

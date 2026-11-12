@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-  import { Button, Callout, Tooltip, TriangleAlert, X } from '@lostgradient/cinder';
+  import { Button, Callout, TriangleAlert } from '@lostgradient/cinder';
   import { resolveChatLabels, type ChatLabels } from '../chat-labels.ts';
 
   let {
@@ -24,45 +24,33 @@
   const words = $derived(resolveChatLabels(labels));
 </script>
 
-<!-- A warning drawer above the composer when the run was stopped or failed with follow-ups still
-     waiting. The secondary action sits left of the primary one. -->
+<!-- A warning notice above the composer when the run was stopped or failed with follow-ups still
+     waiting: the tone icon, the sentence, Restore inline, and Callout's own dismiss. -->
 <Callout
   class="chat-follow-up-discard"
   variant="warning"
   semantic="note"
-  actionLayout="stacked"
+  actionLayout="inline"
   aria-label={words.followUpNotSent}
+  dismissLabel={words.followUpDismiss}
+  onDismiss={ondismiss}
   data-chat-follow-up-discard={discarded.reason}
 >
+  {#snippet icon()}
+    <TriangleAlert class="cinder-icon-sm" aria-hidden="true" />
+  {/snippet}
   <span class="chat-follow-up-discard-text" dir="auto">
-    <TriangleAlert class="chat-follow-up-discard-glyph cinder-icon-sm" aria-hidden="true" />
     {words.followUpDiscardText(discarded.items.length, discarded.reason)}
   </span>
   {#snippet action()}
-    <div class="chat-follow-up-discard-actions">
-      <Tooltip text={words.followUpDismiss} placement="top">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          class="chat-follow-up-discard-action"
-          label={words.followUpDismiss}
-          iconOnly
-          aria-label={words.followUpDismiss}
-          onclick={ondismiss}
-        >
-          <X class="cinder-icon-sm" aria-hidden="true" />
-        </Button>
-      </Tooltip>
-      <Button
-        type="button"
-        variant="primary"
-        size="sm"
-        class="chat-follow-up-discard-action"
-        label={words.followUpRestore}
-        onclick={onrestore}
-      />
-    </div>
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      class="chat-follow-up-discard-action"
+      label={words.followUpRestore}
+      onclick={onrestore}
+    />
   {/snippet}
 </Callout>
 
@@ -77,32 +65,5 @@
     min-inline-size: 0;
     line-height: var(--cinder-leading-snug);
     text-align: start;
-  }
-
-  :global(.chat-follow-up-discard .cinder-callout__content),
-  :global(.chat-follow-up-discard .cinder-callout__action) {
-    grid-column: 1 / -1;
-  }
-
-  :global(.chat-follow-up-discard-glyph) {
-    display: inline-block;
-    margin-inline-end: var(--cinder-space-1);
-    vertical-align: text-bottom;
-  }
-
-  :global(.chat-follow-up-discard-actions) {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: flex-end;
-    inline-size: 100%;
-    gap: var(--cinder-space-2);
-  }
-
-  @media (pointer: coarse) {
-    :global(.chat-follow-up-discard .chat-follow-up-discard-action) {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-    }
   }
 </style>

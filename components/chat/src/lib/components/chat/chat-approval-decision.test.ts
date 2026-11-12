@@ -161,7 +161,7 @@ describe('Chat composer drawer for a waiting approval', () => {
 
     expect(drawer).not.toBeNull();
     expect(drawer?.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
-      'Waiting for your approval. Anything you send now queues until this run finishes.',
+      'Waiting for your approval.',
     );
     expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
   });

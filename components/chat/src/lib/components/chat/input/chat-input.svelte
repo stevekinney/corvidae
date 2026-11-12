@@ -233,6 +233,7 @@
     SendHorizontal,
     Square,
     Callout,
+    Spinner,
     Tooltip,
     TriangleAlert,
     X,
@@ -393,7 +394,7 @@
   const offline = $derived(status?.kind === 'offline');
   /** The tone one composer notice paints: offline is a warning, the rest say their own. */
   const drawerTone = $derived<'neutral' | 'info' | 'warning' | 'danger'>(
-    drawerStatus?.kind === 'offline'
+    drawerStatus?.kind === 'offline' || drawerStatus?.kind === 'reconnecting'
       ? 'warning'
       : drawerStatus?.kind === 'drawer-notice'
         ? (drawerStatus.tone ?? 'neutral')
@@ -1590,7 +1591,9 @@
       <!-- A drawer above the box: it pushes the transcript up and leaves the composer's bottom
            edge where it was. -->
       {#snippet drawerIcon()}
-        {#if drawerTone === 'warning' || drawerTone === 'danger'}
+        {#if drawerStatus?.kind === 'reconnecting'}
+          <Spinner size="sm" label={statusText ?? ''} class="chat-input-drawer-glyph" />
+        {:else if drawerTone === 'warning' || drawerTone === 'danger'}
           <TriangleAlert class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
         {:else}
           <Info class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
@@ -1975,7 +1978,7 @@
   {#if blocked === undefined && notice === undefined}
     {#if statusText && drawerStatus === undefined}
       <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
-    {:else if hintText !== undefined}
+    {:else if hintText !== undefined && status?.kind !== 'reconnecting'}
       <p class="chat-input-hint" aria-hidden="true" data-chat-keyboard-hint={keyboardHint}>
         {hintText}
       </p>

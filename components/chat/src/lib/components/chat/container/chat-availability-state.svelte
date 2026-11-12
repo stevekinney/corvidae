@@ -17,6 +17,7 @@
    */
   import {
     Button,
+    Callout,
     ChevronLeft,
     EmptyState,
     ErrorState,
@@ -61,7 +62,7 @@
 
 {#if availability.kind === 'loading'}
   {@const slow = isSlowRead(elapsed, availability.slowAfterSeconds)}
-  {@const reading = formatElapsedSeconds(elapsed, labels.secondsUnit)}
+  {@const reading = formatElapsedSeconds(elapsed)}
   <div
     class="chat-availability chat-availability-loading"
     data-chat-availability="loading"
@@ -83,14 +84,21 @@
     </div>
     <div class="chat-availability-status" dir="auto">
       {#if slow}
-        <Spinner size="sm" label={labels.slow} class="chat-availability-spinner" />
-        <span class="chat-availability-reading">{labels.slow}</span>
-        <span class="chat-availability-elapsed" data-chat-availability-elapsed>{reading}</span>
-        {#if availability.onCancel !== undefined}
-          <Button type="button" variant="ghost" size="sm" onclick={availability.onCancel}>
-            {labels.cancel}
-          </Button>
-        {/if}
+        <!-- The slow read is one notice: the spinner as its icon, the elapsed time in the
+             sentence, and Cancel as the inline action. -->
+        <Callout
+          class="chat-availability-notice"
+          semantic="note"
+          actionLayout="inline"
+          aria-label={labels.slow}
+          {...availability.onCancel === undefined ? {} : { action: cancelButton }}
+        >
+          {#snippet icon()}
+            <Spinner size="sm" label={labels.slow} class="chat-availability-spinner" />
+          {/snippet}
+          <span class="chat-availability-reading">{labels.slow}</span>
+          <span class="chat-availability-elapsed" data-chat-availability-elapsed>{reading}</span>
+        </Callout>
       {:else}
         <span class="chat-availability-reading" aria-hidden="true">{labels.loading}</span>
         {#if elapsed > 0}
@@ -170,6 +178,14 @@
   </div>
 {/if}
 
+{#snippet cancelButton()}
+  {#if availability.kind === 'loading' && availability.onCancel !== undefined}
+    <Button type="button" variant="secondary" size="sm" onclick={availability.onCancel}>
+      {labels.cancel}
+    </Button>
+  {/if}
+{/snippet}
+
 {#snippet allConversationsButton()}
   {#if allConversations !== undefined}
     <Button type="button" variant="secondary" onclick={allConversations.onclick}>
@@ -232,10 +248,7 @@
   }
 
   .chat-availability-loading[data-slow] .chat-availability-status {
-    display: grid;
-    grid-template-columns: auto auto auto auto;
-    flex-wrap: initial;
-    justify-content: start;
+    display: block;
   }
 
   .chat-availability-status :global(.cinder-spinner) {
