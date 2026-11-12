@@ -501,10 +501,16 @@ describe('Chat — sourcePresentation="inline"', () => {
       'Unsafe source',
     ]);
     await waitFor(() => expect(document.activeElement === remaining[1]).toBe(true));
-    const said = [
-      ...messageArticle(container, 'assistant-a').querySelectorAll('[aria-live="polite"]'),
-    ].map((region) => region.textContent?.trim());
-    expect(said.filter((text) => text === 'A source was withdrawn.')).toHaveLength(1);
+    // Said once, through Chat's announcer outside the transcript's log, never by a region in it.
+    const log = container.querySelector('[role="log"]')!;
+    expect(log.textContent).not.toContain('A source was withdrawn.');
+    await waitFor(() =>
+      expect(
+        [...container.querySelectorAll('[aria-live="polite"]')].filter(
+          (region) => region.textContent?.trim() === 'A source was withdrawn.',
+        ).length,
+      ).toBe(1),
+    );
   });
 
   test('removing the sources while a chip has focus moves focus to the message', async () => {

@@ -16,6 +16,11 @@
     ontoggle?: (() => void) | undefined;
     /** With `presentation="list"`, the id of the list, which its control names in `aria-controls`. */
     listId: string;
+    /**
+     * Says a sentence to a screen reader through the host's announcer, outside the transcript's
+     * log, so it is said once. Without it the sentence goes to a live region of its own.
+     */
+    announce?: ((message: string) => void) | undefined;
   };
 </script>
 
@@ -30,6 +35,7 @@
     expanded = false,
     ontoggle,
     listId,
+    announce,
   }: MessageSourcesProps = $props();
 
   // Each inline chip is keyed by the source it stands for (its address and label, and which copy
@@ -48,6 +54,7 @@
     sources.map((source, index) => ({ source, key: chipKeys[index] ?? String(index) })),
   );
   let chipGroup = $state<HTMLElement | null>(null);
+  const WITHDRAWN = 'A source was withdrawn.';
   let withdrawal = $state('');
   let shownKeys: readonly string[] = [];
 
@@ -74,7 +81,8 @@
     });
     if (held === -1) return;
     const before = previous.slice(0, held).filter((key) => keys.includes(key)).length;
-    withdrawal = 'A source was withdrawn.';
+    if (announce === undefined) withdrawal = WITHDRAWN;
+    else announce(WITHDRAWN);
     void moveFocusAfterWithdrawal(group, before);
   });
 </script>
@@ -135,7 +143,9 @@
       >
     {/each}
   </span>
-  <span class="cinder-sr-only" aria-live="polite" aria-atomic="true">{withdrawal}</span>
+  {#if announce === undefined}
+    <span class="cinder-sr-only" aria-live="polite" aria-atomic="true">{withdrawal}</span>
+  {/if}
 {:else}
   <Citation {sources} label="Sources" class="chat-message-sources-citation"
     >Sources <span class="chat-message-sources-count">{sources.length}</span></Citation

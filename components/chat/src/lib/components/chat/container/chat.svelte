@@ -1435,13 +1435,16 @@
     let target: HTMLElement | null = null;
     let released = false;
     let frame = 0;
+    let liftedTop = 0;
     const reveal = (): void => {
       frame = 0;
       const next = findAttentionTarget(scroller);
       if (next !== target) {
         target = next;
         released = false;
-        attentionLifted = false;
+        // The transcript stays where the lift put it while an item still waits there, even when
+        // that item is drawn again; it is the person's again once nothing waits.
+        if (next === null) attentionLifted = false;
       }
       if (target === null || released) return;
       if (focusIsInside(target, scroller.ownerDocument.activeElement)) return;
@@ -1465,7 +1468,15 @@
       );
       if (shift !== 0) {
         scroller.scrollTop += shift;
+        liftedTop = scroller.scrollTop;
         attentionLifted = true;
+      }
+    };
+    // Only the transcript moving away from where the lift left it gives Jump to latest back, so a
+    // press inside the lifted card never brings the control in under the finger mid-press.
+    const followScroll = (): void => {
+      if (untrack(() => attentionLifted) && Math.abs(scroller.scrollTop - liftedTop) > 2) {
+        attentionLifted = false;
       }
     };
     const schedule = (): void => {
@@ -1473,7 +1484,6 @@
     };
     const release = (): void => {
       released = target !== null;
-      attentionLifted = false;
     };
     releaseAttention = release;
     const resizes = new ResizeObserver(schedule);
@@ -1489,6 +1499,7 @@
     for (const type of inputs) scroller.addEventListener(type, release, { passive: true });
     // A pin to the end scrolls without any input from the person: look again after it.
     scroller.addEventListener('scroll', schedule, { passive: true });
+    scroller.addEventListener('scroll', followScroll, { passive: true });
     schedule();
     return () => {
       if (frame !== 0) cancelAnimationFrame(frame);
@@ -1496,6 +1507,7 @@
       changes.disconnect();
       for (const type of inputs) scroller.removeEventListener(type, release);
       scroller.removeEventListener('scroll', schedule);
+      scroller.removeEventListener('scroll', followScroll);
       releaseAttention = () => {};
       attentionLifted = false;
     };
@@ -2205,6 +2217,7 @@
           {onDiscardTurn}
           {onRetryTurn}
           {onRetryStep}
+          onAnnounce={(text) => announcements.announce(text)}
           toolCallDurations={ownToolCallPairs.length > 0
             ? toolCallDurations(ownToolCallPairs)
             : undefined}

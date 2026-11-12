@@ -26,7 +26,6 @@
     ". ReasoningInfo",
     ". SerializedChatAttachment",
     ". ToolCallKind",
-    ". ToolCallPresentation",
     ". ToolCallTense",
     ". TranscriptEntryInfo",
     ". TranscriptEntryKind",

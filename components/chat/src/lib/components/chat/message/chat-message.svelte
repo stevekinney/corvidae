@@ -198,6 +198,8 @@
     onRetryTurn?: ((messageId: string) => void) | undefined;
     /** Called with a failed tool call's id when the person chooses Retry this step under it. The button shows only when this is set. */
     onRetryStep?: ((toolCallId: string) => void) | undefined;
+    /** Says a sentence to a screen reader through the container's announcer, outside the transcript's log. */
+    onAnnounce?: ((message: string) => void) | undefined;
     /** How long each tool call of this message took, in milliseconds, keyed by call id. */
     toolCallDurations?: ReadonlyMap<string, number> | undefined;
     /** When each tool call of this message started, in milliseconds since the Unix epoch, keyed by call id. */
@@ -302,6 +304,7 @@
     onDiscardTurn,
     onRetryTurn,
     onRetryStep,
+    onAnnounce,
     toolCallDurations,
     toolCallStartTimes,
     tabindex,
@@ -1052,6 +1055,7 @@
           expanded={sourcesExpanded}
           ontoggle={toggleSourcesExpanded}
           listId={`${messageId}-sources`}
+          announce={onAnnounce}
         />
       </div>
     {/if}

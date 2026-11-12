@@ -30,8 +30,16 @@ describe('Jump to latest on a phone', () => {
 
   test('stays hidden while the transcript sits where a waiting item lifted it', () => {
     expect(chat).toContain('showJumpButton={scrollState.showJumpButton && !attentionLifted}');
-    // The lift sets it, and the person's own scroll, touch, click or key clears it.
-    expect(chat).toMatch(/scroller\.scrollTop \+= shift;\s*attentionLifted = true;/);
-    expect(chat).toMatch(/released = target !== null;\s*attentionLifted = false;/);
+    // The lift sets it; only the transcript moving from where the lift left it, or nothing
+    // waiting any more, clears it. A press inside the card does not, so the control never comes in
+    // under the finger mid-press.
+    expect(chat).toMatch(
+      /scroller\.scrollTop \+= shift;\s*liftedTop = scroller\.scrollTop;\s*attentionLifted = true;/,
+    );
+    expect(chat).toMatch(
+      /Math\.abs\(scroller\.scrollTop - liftedTop\) > 2\) \{\s*attentionLifted = false;/,
+    );
+    expect(chat).toMatch(/if \(next === null\) attentionLifted = false;/);
+    expect(chat).not.toMatch(/released = target !== null;\s*attentionLifted = false;/);
   });
 });
