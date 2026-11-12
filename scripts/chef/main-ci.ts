@@ -44,22 +44,22 @@ export function mainCiHealth(
   let listed;
   try {
     listed = runner([
-    'gh',
-    'run',
-    'list',
-    '--repo',
-    repository,
-    '--workflow',
-    MAIN_WORKFLOW,
-    '--branch',
-    defaultBranch,
-    '--status',
-    'completed',
-    '--limit',
-    '10',
-    '--json',
-    'conclusion,headSha,url,createdAt',
-  ]);
+      'gh',
+      'run',
+      'list',
+      '--repo',
+      repository,
+      '--workflow',
+      MAIN_WORKFLOW,
+      '--branch',
+      defaultBranch,
+      '--status',
+      'completed',
+      '--limit',
+      '10',
+      '--json',
+      'conclusion,headSha,url,createdAt',
+    ]);
   } catch (error) {
     return unknown(`gh could not run: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -96,7 +96,8 @@ export function mainCiHealth(
 /** One line for the report. */
 export function renderMainCiHealth(health: MainCiHealth, defaultBranch: string): string {
   if (health.problem !== undefined) return `main health unknown: ${health.problem}.`;
-  if (health.run === undefined) return `main health unknown: no ${MAIN_WORKFLOW} run on ${defaultBranch}.`;
+  if (health.run === undefined)
+    return `main health unknown: no ${MAIN_WORKFLOW} run on ${defaultBranch}.`;
   const { run } = health;
   return `${defaultBranch} ${MAIN_WORKFLOW} at ${run.head.slice(0, 12)}: ${run.conclusion} at ${run.time} (${health.red ? 'RED' : 'green'}) ${run.url}`.trim();
 }

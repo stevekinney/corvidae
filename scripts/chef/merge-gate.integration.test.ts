@@ -202,7 +202,11 @@ describe('mergeGate', () => {
       const runner: Runner = (command, runnerOptions) => {
         if (command[0] === 'gh' && command[1] === 'run') {
           asked.push(command);
-          return { code: answer.code ?? 0, stdout: answer.stdout ?? '', stderr: answer.stderr ?? '' };
+          return {
+            code: answer.code ?? 0,
+            stdout: answer.stdout ?? '',
+            stderr: answer.stderr ?? '',
+          };
         }
         return inner(command, runnerOptions);
       };
@@ -218,8 +222,21 @@ describe('mergeGate', () => {
       mergeGate({ ...options, checkMainHealth: true }, { runner });
       expect(asked).toEqual([
         [
-          'gh', 'run', 'list', '--repo', 'acme/widgets', '--workflow', 'main.yml', '--branch', 'main',
-          '--status', 'completed', '--limit', '10', '--json', 'conclusion,headSha,url,createdAt',
+          'gh',
+          'run',
+          'list',
+          '--repo',
+          'acme/widgets',
+          '--workflow',
+          'main.yml',
+          '--branch',
+          'main',
+          '--status',
+          'completed',
+          '--limit',
+          '10',
+          '--json',
+          'conclusion,headSha,url,createdAt',
         ],
       ]);
     });

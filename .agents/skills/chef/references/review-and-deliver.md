@@ -36,7 +36,7 @@ Run `bun scripts/chef/gate-run.ts triage <log> --base <sha>` first, where `<sha>
 
 For anything ambiguous (a task several changes touched, a failure in a file none of them changed, a load-sensitive test), run `bun scripts/chef/gate-run.ts control --candidate <dir> --base <dir> --command <shell>` under the same load. Candidate fails and base passes: the candidate caused it. Both fail the same way: it is pre-existing and gets its own issue. Inconclusive: widen the control. Never rerun a gate until it passes in place of a control.
 
-A full `validate` taken as an exception runs on GitHub, not on the host, once the head is accepted: push the branch, run `gh workflow run main.yml --ref <branch>` (the `main` workflow's jobs on the branch, in a concurrency group of their own so they never replace a pending `main` run), and read the result with `gh run list --workflow main.yml --branch <branch> --limit 1`. Run `bunx turbo run test --filter=<workspace>` for each affected workspace first when the host has room.
+A full `validate` taken as an exception runs on GitHub once the head is accepted: push the branch, run `gh workflow run main.yml --ref <branch>` (its own concurrency group, so it never replaces a pending `main` run), and read it with `gh run list --workflow main.yml --branch <branch> --limit 1`.
 
 ## Preflights
 

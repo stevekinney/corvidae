@@ -2,9 +2,13 @@ import { describe, expect, test } from 'bun:test';
 import { mainCiHealth, mainCiWarning, renderMainCiHealth } from './main-ci.ts';
 import type { Runner } from './process-runner.ts';
 
-const runs = (stdout: string, code = 0, stderr = ''): Runner => () => ({ code, stdout, stderr });
+const runs =
+  (stdout: string, code = 0, stderr = ''): Runner =>
+  () => ({ code, stdout, stderr });
 const run = (conclusion: string) =>
-  JSON.stringify([{ conclusion, headSha: 'f'.repeat(40), url: 'https://x.test/1', createdAt: 't' }]);
+  JSON.stringify([
+    { conclusion, headSha: 'f'.repeat(40), url: 'https://x.test/1', createdAt: 't' },
+  ]);
 
 describe('mainCiHealth', () => {
   test.each(['failure', 'timed_out', 'startup_failure'])('%s is red', (conclusion) => {
@@ -21,19 +25,27 @@ describe('mainCiHealth', () => {
 
   test('a cancelled run is skipped over: the newest conclusive run decides', () => {
     const list = (...conclusions: string[]) =>
-      JSON.stringify(conclusions.map((conclusion) => ({ conclusion, headSha: 'a', url: 'u', createdAt: 't' })));
-    expect(mainCiHealth(runs(list('cancelled', 'failure', 'success')), 'o/n', 'main').red).toBe(true);
-    expect(mainCiHealth(runs(list('cancelled', 'success', 'failure')), 'o/n', 'main').red).toBe(false);
-    expect(mainCiWarning(mainCiHealth(runs(list('cancelled', 'skipped')), 'o/n', 'main'), 'main')).toContain(
-      'main health unknown',
+      JSON.stringify(
+        conclusions.map((conclusion) => ({ conclusion, headSha: 'a', url: 'u', createdAt: 't' })),
+      );
+    expect(mainCiHealth(runs(list('cancelled', 'failure', 'success')), 'o/n', 'main').red).toBe(
+      true,
     );
+    expect(mainCiHealth(runs(list('cancelled', 'success', 'failure')), 'o/n', 'main').red).toBe(
+      false,
+    );
+    expect(
+      mainCiWarning(mainCiHealth(runs(list('cancelled', 'skipped')), 'o/n', 'main'), 'main'),
+    ).toContain('main health unknown');
   });
 
   test('a runner that throws is unknown', () => {
     const runner: Runner = () => {
       throw new Error('spawn gh ENOENT');
     };
-    expect(mainCiWarning(mainCiHealth(runner, 'o/n', 'main'), 'main')).toContain('main health unknown');
+    expect(mainCiWarning(mainCiHealth(runner, 'o/n', 'main'), 'main')).toContain(
+      'main health unknown',
+    );
   });
 
   test('a failed read is unknown, with the reason', () => {
