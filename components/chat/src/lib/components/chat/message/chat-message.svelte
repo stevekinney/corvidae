@@ -184,10 +184,10 @@
     onsourcestoggle?: (() => void) | undefined;
     /**
      * Where this assistant turn stands (COR-2283), as the host knows it. A `reconnecting` turn reads
-     * muted with no caret, under a warning with Retry now and a bar that drains until the next try;
-     * a `stopped` one carries a neutral pill with Discard and Continue; a `failed` one a danger alert
-     * that says the answer is incomplete, why, and what Retry keeps; an `empty` one a dashed row in
-     * place of its line, with its time and Try again. Left out, the turn streams while text arrives
+     * muted with no caret, under a warning Callout with Retry and a bar that drains until the next try;
+     * a `stopped` one carries one neutral Callout with Continue and Discard; a `failed` one a danger
+     * Callout that says the answer is incomplete, why, and what Retry keeps; an `empty` one a neutral
+     * Callout in place of its line, with its time and Retry. Left out, the turn streams while text arrives
      * and is complete after. Ignored on a message that is not the assistant's.
      */
     turnState?: ChatTurnState | undefined;
@@ -2376,8 +2376,9 @@
    * Run outcomes on the turn (COR-2283)
    *
    * A turn that has not simply finished says so on itself, under its text, with the controls that
-   * recover it: a warning while the stream reconnects, a neutral pill on a stopped turn, a danger
-   * alert on one that failed partway, and a dashed row on one that finished with no answer.
+   * recover it: a warning while the stream reconnects, a neutral note on a stopped turn, a danger
+   * note on one that failed partway, and a neutral note on one that finished with no answer. Each is
+   * the Cinder Callout.
    * ---------------------------------------- */
 
   /* A reconnecting turn's partial text reads muted: it may not be the final answer yet. */
