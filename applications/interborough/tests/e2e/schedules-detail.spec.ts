@@ -241,10 +241,13 @@ test('the menu holds Delete schedule only, below its button, and deleting asks f
 
   const more = main.getByRole('button', { name: 'More actions' });
   await more.click();
-  await expect(more).toBeFocused();
   const items = page.getByRole('menuitem');
   await expect(items).toHaveCount(1);
   await expect(items).toHaveText('Delete schedule');
+  // Opening the menu moves focus to its first item (Cinder's dropdown.a11y.md). The move follows
+  // the popover's toggle event, so the trigger holds focus only for an instant after the click;
+  // reading what has focus names the holder if the move does not happen.
+  await expect(page.locator(':focus')).toHaveText('Delete schedule');
   const moreBox = await more.boundingBox();
   const itemBox = await items.boundingBox();
   if (moreBox === null || itemBox === null) throw new Error('the button and the menu are drawn');
@@ -255,6 +258,13 @@ test('the menu holds Delete schedule only, below its button, and deleting asks f
     source: SOURCE,
   });
   await checkA11y('schedule detail, actions menu');
+
+  // Escape closes the menu and returns focus to its button; opening it again focuses the item.
+  await page.keyboard.press('Escape');
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await expect(more).toBeFocused();
+  await more.click();
+  await expect(page.locator(':focus')).toHaveText('Delete schedule');
 
   await items.click();
   const dialog = page.getByRole('dialog', { name: 'Delete Daily summary?' });
