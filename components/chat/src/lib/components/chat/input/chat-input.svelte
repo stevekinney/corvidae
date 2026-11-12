@@ -391,6 +391,14 @@
   const drawerStatus = $derived(isComposerDrawerStatus(status) ? status : undefined);
   /** The browser has no connection: the draft stays, and Send waits for it to come back. */
   const offline = $derived(status?.kind === 'offline');
+  /** The tone one composer notice paints: offline is a warning, the rest say their own. */
+  const drawerTone = $derived<'neutral' | 'info' | 'warning' | 'danger'>(
+    drawerStatus?.kind === 'offline'
+      ? 'warning'
+      : drawerStatus?.kind === 'drawer-notice'
+        ? (drawerStatus.tone ?? 'neutral')
+        : 'neutral',
+  );
   const toolbarContext: ChatComposerToolbarContext = { format: applyFormat };
   let markdownBackdrop = $state<HTMLDivElement | null>(null);
 
@@ -1581,21 +1589,21 @@
     {#if drawerStatus !== undefined}
       <!-- A drawer above the box: it pushes the transcript up and leaves the composer's bottom
            edge where it was. -->
-      {#snippet drawerInfoIcon()}
-        <Info class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
+      {#snippet drawerIcon()}
+        {#if drawerTone === 'warning' || drawerTone === 'danger'}
+          <TriangleAlert class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
+        {:else}
+          <Info class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
+        {/if}
       {/snippet}
       <Callout
         id={drawerId}
-        class="chat-input-drawer chat-input-drawer-callout"
+        class="chat-input-drawer"
         data-chat-composer-drawer={drawerStatus.kind}
-        variant={drawerStatus.kind === 'offline'
-          ? 'warning'
-          : drawerStatus.kind === 'drawer-notice'
-            ? (drawerStatus.tone ?? 'neutral')
-            : 'neutral'}
+        variant={drawerTone}
         semantic="note"
         actionLayout="inline"
-        {...drawerStatus.kind === 'offline' ? {} : { icon: drawerInfoIcon }}
+        icon={drawerIcon}
         aria-label={drawerStatus.kind === 'offline'
           ? labels.offline
           : drawerStatus.kind === 'draft-restored'
@@ -1629,12 +1637,9 @@
       class={classNames('chat-input', isDragOver && 'chat-input-dragover', className)}
       data-compact={compact || undefined}
       data-controls-folded={folded || undefined}
-      data-ready={(canSubmit && !showStopButton) || undefined}
+      data-ready={(canSubmit && !offline && !showStopButton) || undefined}
       data-queueing={queueing || undefined}
-      data-queueing-compact={queueing &&
-      !allowAttachments &&
-      controls === undefined &&
-      toolbar === undefined
+      data-single-row={!allowAttachments && controls === undefined && toolbar === undefined
         ? ''
         : undefined}
       method="POST"
@@ -1701,11 +1706,6 @@
             <span class="chat-input-attachment-count"
               >{attachmentCountText(attachments.length)}</span
             >
-            {#if attentionCount > 0}
-              <span class="chat-input-attachment-attention" data-chat-attachment-attention="">
-                {labels.attachmentsNeedAttention(attentionCount)}
-              </span>
-            {/if}
             {#if hiddenAttachmentCount > 0}
               <button
                 type="button"
@@ -1914,7 +1914,6 @@
             size="sm"
             class="chat-input-send"
             data-chat-send=""
-            data-offline={drawerStatus?.kind === 'offline' ? '' : undefined}
             {@attach holdButton((element) => (sendButtonRef = element))}
             data-stop={showStopButton ? '' : undefined}
             disabled={showStopButton ? false : !canSubmit}
@@ -2003,7 +2002,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--cinder-space-0-5, 0.125rem);
-    padding: var(--cinder-space-2);
+    padding: var(--cinder-space-2) var(--cinder-space-2) var(--cinder-space-2) 0;
   }
 
   .chat-input[data-compact] .chat-input-footer,
@@ -2016,32 +2015,32 @@
     display: none;
   }
 
-  /* While a run holds follow-ups, the phone composer has no left-side toolbar. Keep the editor and
-   * its 44px Send/Stop target in one row so queued work does not consume a second empty row. */
-  @media (max-width: 30rem) {
-    .chat-input[data-queueing-compact]:not([data-compact]) {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center;
-    }
+  /* One layout in every state: with nothing in the toolbar but Send, the editor and Send share one
+   * row. A second row appears only when the toolbar holds more than Send; a wrapped line grows
+   * the editor inside the same row. */
+  .chat-input[data-single-row]:not([data-compact]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding-inline-end: var(--cinder-space-2);
+  }
 
-    .chat-input[data-queueing-compact]:not([data-compact]) .chat-input-editor-container {
-      grid-column: 1;
-      grid-row: 1;
-    }
+  .chat-input[data-single-row]:not([data-compact]) .chat-input-editor-container {
+    grid-column: 1;
+    grid-row: 1;
+  }
 
-    .chat-input[data-queueing-compact]:not([data-compact]) .chat-input-footer {
-      display: contents;
-    }
+  .chat-input[data-single-row]:not([data-compact]) .chat-input-footer {
+    display: contents;
+  }
 
-    .chat-input[data-queueing-compact]:not([data-compact]) .chat-input-footer-left {
-      display: none;
-    }
+  .chat-input[data-single-row]:not([data-compact]) .chat-input-footer-left {
+    display: none;
+  }
 
-    .chat-input[data-queueing-compact]:not([data-compact]) .chat-input-footer-right {
-      grid-column: 2;
-      grid-row: 1;
-    }
+  .chat-input[data-single-row]:not([data-compact]) .chat-input-footer-right {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .chat-input {
@@ -2053,7 +2052,7 @@
     background: var(--cinder-control-background);
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-space-0-5, 0.125rem) var(--cinder-space-2);
+    padding: var(--cinder-space-0-5, 0.125rem) 0;
     padding-block-end: var(--cinder-space-0-5, 0.125rem);
     transition: border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
@@ -2072,64 +2071,16 @@
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--cinder-accent-solid) 25%, transparent);
   }
 
-  /* A drawer above the box (offline, a restored draft): it takes its height from the transcript
-   * above, so the composer's bottom edge stays where it was. */
-  .chat-input-drawer {
-    position: relative;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised);
-    color: var(--cinder-text-default);
+  /* A notice above the box (offline, a restored draft, a blocking reason) is Cinder's Callout, one
+   * layout for every tone. It starts on the composer's left edge and takes its height from the
+   * transcript above, so the composer's bottom edge stays where it was. */
+  :global(.chat-input-drawer) {
+    padding-inline: var(--cinder-space-3);
     font-size: var(--cinder-text-sm);
   }
 
-  .chat-input-drawer.chat-input-drawer-callout {
-    display: flex;
-  }
-
-  :global(.chat-input-drawer.chat-input-drawer-callout) {
-    display: flex;
-  }
-
-  .chat-input-drawer[data-chat-composer-drawer='offline'] {
-    border-color: var(--cinder-status-warning-border);
-    background: var(--cinder-status-warning-background);
-    color: var(--cinder-status-warning-text);
-  }
-
-  .chat-input-drawer[data-chat-composer-drawer='draft-restored'] :global(.cinder-callout__content) {
-    flex: 0 1 auto;
-    inline-size: max-content;
-    max-inline-size: 24rem;
-  }
-
-  :global(.chat-input-drawer[data-chat-composer-drawer='draft-restored'] .cinder-callout__content) {
-    flex: 0 1 auto;
-    inline-size: max-content;
-    max-inline-size: 24rem;
-  }
-
-  .chat-input-drawer :global(.chat-input-drawer-glyph) {
+  :global(.chat-input-drawer .chat-input-drawer-glyph) {
     flex: none;
-  }
-
-  .chat-input-drawer-text {
-    flex: 1 1 14rem;
-    min-inline-size: 0;
-    margin: 0;
-    line-height: var(--cinder-leading-snug);
-    text-align: start;
-  }
-
-  @media (pointer: coarse) {
-    .chat-input-drawer :global(.chat-input-drawer-action) {
-      min-block-size: var(--cinder-touch-target-min);
-    }
   }
 
   /* The run toolbar: Running and the clock, each its own element, in muted text. */
@@ -2175,7 +2126,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-1);
-    padding-inline: 0;
+    padding-inline: var(--cinder-space-3);
   }
 
   .chat-input-attachment-summary {
@@ -2187,10 +2138,6 @@
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
     text-align: start;
-  }
-
-  .chat-input-attachment-attention {
-    color: var(--cinder-status-danger-text);
   }
 
   /* A capped list shows exactly its first tiles, each whole with its reason, and the count under it
@@ -2318,7 +2265,7 @@
   /* Why Send is off while files need attention, under the composer. */
   .chat-input-attachment-reason {
     margin: 0;
-    padding-inline: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-3);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-status-danger-text);
   }
@@ -2498,7 +2445,7 @@
     display: flex;
     align-items: center;
     min-inline-size: 0;
-    margin-inline-start: calc(var(--cinder-space-2) * -1);
+    margin-inline-start: 0;
   }
 
   /* The formatting row: the toolbar at the left, the words of its shortcuts at the right. It is
@@ -2508,6 +2455,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-2) var(--cinder-space-3);
     padding-block-end: var(--cinder-space-1);
     border-block-end: 1px solid var(--cinder-border-muted);
   }
@@ -2725,6 +2673,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-2);
   }
 
   .chat-input-footer-left,
@@ -2766,27 +2715,9 @@
     color: var(--cinder-text-muted);
   }
 
-  .chat-input-footer-right :global(.chat-input-send[data-offline]:disabled) {
-    border-color: var(--cinder-status-warning-border);
-    background: var(--cinder-surface-inset);
-    color: var(--cinder-status-warning-text);
-  }
-
-  /* On a phone-width composer, and wherever the primary pointer is a finger, the footer's controls
-   * are touch targets. */
-  @container (max-inline-size: 28rem) {
-    .chat-input-footer :global(.cinder-button) {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-    }
-  }
-
+  /* The footer's controls are painted compact: Cinder's Button reaches 44px by a hit area that
+   * takes no layout, and its focus ring wraps the painted face (Attach, Send, Stop alike). */
   @media (any-pointer: coarse) {
-    .chat-input-footer :global(.cinder-button) {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-    }
-
     /* Send and Stop sit side by side once a follow-up is typed, so their hit areas must not touch. */
     .chat-input-footer-right {
       gap: var(--cinder-space-3);
@@ -2810,6 +2741,7 @@
 
   .chat-input-error {
     margin: 0;
+    padding-inline: var(--cinder-space-3);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     color: var(--cinder-status-danger-text);
   }

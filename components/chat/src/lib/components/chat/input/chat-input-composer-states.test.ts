@@ -70,9 +70,8 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).toMatch(
       /:global\(\.chat-input-send:disabled\)\s*\{[^}]*background: transparent;/,
     );
-    expect(source).toMatch(
-      /:global\(\.chat-input-send\[data-offline\]:disabled\)\s*\{[^}]*background: var\(--cinder-surface-inset\);[^}]*color: var\(--cinder-status-warning-text\);/s,
-    );
+    // Offline Send is the same disabled icon button as an empty one: no warning-coloured variant.
+    expect(source).not.toContain('data-offline');
     expect(source).toMatch(/\.chat-input-editor\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
     expect(source).toMatch(/\.chat-input-markdown\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
     expect(source).toContain('const attachmentScrollFade = overflowFadeEdges();');
@@ -174,7 +173,12 @@ describe('the offline drawer (C5)', () => {
     expect(editorOf(container).value).toBe('Draft about order 4471');
     const send = sendOf(container);
     expect(send.disabled).toBe(true);
-    expect(send.hasAttribute('data-offline')).toBe(true);
+    expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
+    // Offline never paints the ready halo, even with a draft in the box.
+    expect(form.hasAttribute('data-ready')).toBe(false);
+    // The notice is the Cinder callout with its tone icon.
+    expect(drawer.getAttribute('data-cinder-variant')).toBe('warning');
+    expect(drawer.querySelector('.cinder-callout__icon')).not.toBeNull();
     expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(drawer.id);
   });
 });

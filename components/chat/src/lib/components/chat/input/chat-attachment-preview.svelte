@@ -176,6 +176,7 @@
 
   .chat-attachment-preview-state {
     flex: none;
+    margin-inline-start: var(--cinder-space-2);
     color: var(--cinder-text-muted);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -205,11 +206,8 @@
     white-space: normal;
   }
 
-  /* A failed file keeps its chip; the colour says which one the reason beside it is about. */
-  .chat-attachment-preview[data-error] {
-    border-color: var(--cinder-status-danger-border);
-  }
-
+  /* A failed file keeps its chip and the red of its reason, with no red border: one layer of
+   * emphasis, and the row stays the same weight as its neighbours. */
   .chat-attachment-preview[data-error] .chat-attachment-preview-badge {
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-muted);

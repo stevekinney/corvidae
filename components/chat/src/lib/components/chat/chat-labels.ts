@@ -69,7 +69,6 @@ export type ChatLabels = {
   newMessagesLabel: string;
   attachedFiles: string;
   moreAttachments: (count: number) => string;
-  attachmentsNeedAttention: (count: number) => string;
   retryAttachment: string;
   retryAttachmentAccessible: (name: string) => string;
   removeAttachment: string;
@@ -162,8 +161,6 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   newMessagesLabel: 'New',
   attachedFiles: 'Attached files',
   moreAttachments: (count) => `${count} more below`,
-  attachmentsNeedAttention: (count) =>
-    count === 1 ? '1 file needs attention' : `${count} files need attention`,
   retryAttachment: 'Retry',
   retryAttachmentAccessible: (name) => `Retry ${name}`,
   removeAttachment: 'Remove',

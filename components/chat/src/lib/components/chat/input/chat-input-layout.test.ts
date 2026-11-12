@@ -89,7 +89,7 @@ describe('ChatInput layout CSS', () => {
     const editor = cssBlocks(chatInputSource, '.chat-input-editor {')[0] ?? '';
     expectDeclaration(editor, 'min-height', 'var(--cinder-touch-target-min)');
     expect(chatInputSource).toMatch(
-      /\.chat-input \{[^}]*padding:\s*var\(--cinder-space-0-5, 0\.125rem\) var\(--cinder-space-2\);/,
+      /\.chat-input \{[^}]*padding:\s*var\(--cinder-space-0-5, 0\.125rem\) 0;/,
     );
     expect(chatInputSource).toMatch(
       /\.chat-input \{[^}]*gap:\s*var\(--cinder-space-0-5, 0\.125rem\);/,

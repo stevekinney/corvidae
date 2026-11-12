@@ -6,7 +6,7 @@ import type { ChatAttachment } from './chat-attachment.ts';
  * whole, and the rest wait behind a count under it, so a pile of files never pushes Send off a
  * phone.
  */
-export const ATTACHMENT_LIST_CAP = 3;
+export const ATTACHMENT_LIST_CAP = 2;
 
 /** Number of complete attachment rows that fit common narrow viewport heights. */
 export function attachmentViewportCap(width: number, height: number): number {

@@ -108,12 +108,8 @@ describe('the attention summary', () => {
     expect(attachmentBlockingReason(3)).toBe('Retry or remove 3 files to send');
   });
 
-  test('summarizes files that need attention without a separator glyph', () => {
-    expect(DEFAULT_CHAT_LABELS.attachmentsNeedAttention(1)).toBe('1 file needs attention');
-    expect(DEFAULT_CHAT_LABELS.attachmentsNeedAttention(2)).toBe('2 files need attention');
-    expect(DEFAULT_CHAT_LABELS.attachmentsNeedAttention(2)).not.toContain(
-      String.fromCodePoint(0xb7),
-    );
+  test('the header states no count of failed files: the rows and the hint say it', () => {
+    expect('attachmentsNeedAttention' in DEFAULT_CHAT_LABELS).toBe(false);
   });
 
   test('a failed file needs attention, and only a failed upload offers Retry', () => {
@@ -127,7 +123,7 @@ describe('the attention summary', () => {
   test('caps complete rows by narrow viewport height without changing desktop cap', () => {
     expect(attachmentViewportCap(320, 640)).toBe(1);
     expect(attachmentViewportCap(390, 820)).toBe(2);
-    expect(attachmentViewportCap(1024, 640)).toBe(3);
+    expect(attachmentViewportCap(1024, 640)).toBe(2);
   });
 });
 

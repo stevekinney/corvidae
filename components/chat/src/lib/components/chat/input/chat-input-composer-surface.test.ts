@@ -250,9 +250,8 @@ describe('the controls snippet is told when the composer is narrow', () => {
   test('the footer never wraps and its controls are touch-sized on a phone-width composer', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(/\.chat-input-footer-left\s*\{[^}]*flex-wrap:\s*nowrap;/);
-    expect(source).toMatch(
-      /@container \(max-inline-size: 28rem\)\s*\{\s*\.chat-input-footer :global\(\.cinder-button\)\s*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
-    );
+    // Buttons are painted compact: Cinder's hit area reaches 44px, so no rule inflates their face.
+    expect(source).not.toMatch(/\.chat-input-footer :global\(\.cinder-button\)\s*\{/);
   });
 
   test('a capped attachment list is no scroll box, and on a phone each file is a full-width row (C#4)', async () => {
@@ -270,11 +269,11 @@ describe('the controls snippet is told when the composer is narrow', () => {
     );
   });
 
-  test('Attach and Send are at least 44px on both sides on a phone-width composer and a touch screen', async () => {
+  test('Attach and Send keep a compact face with the 44px hit area from Cinder, and the one-row form is the default', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
-    const touchSized =
-      /\.chat-input-footer :global\(\.cinder-button\) \{\s*min-block-size: var\(--cinder-touch-target-min\);\s*min-inline-size: var\(--cinder-touch-target-min\);/g;
-    expect(source.match(touchSized)).toHaveLength(2);
+    expect(source).not.toMatch(/\.chat-input-footer :global\(\.cinder-button\) \{\s*min-block-size/);
+    expect(source).toContain('data-single-row=');
+    expect(source).not.toContain('data-queueing-compact');
   });
 });
 
@@ -338,7 +337,7 @@ describe('attachments', () => {
 
     expect(target.querySelector('[aria-label="Angehängte Dateien"]')).not.toBeNull();
     expect(target.querySelector('.chat-input-attachment-more')?.textContent?.trim()).toBe(
-      '1 weitere unten',
+      '2 weitere unten',
     );
     expect(target.querySelector('button[aria-label="Entfernen: foto-1.png"]')).not.toBeNull();
     unmount(instance);
@@ -421,12 +420,11 @@ describe('attachments', () => {
     await tick();
 
     const summary = target.querySelector('[data-chat-attachment-summary]')!;
-    expect(summary.textContent?.trim()).toBe('3 files 2 files need attention');
-    expect(summary.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(summary.textContent?.trim()).toBe('3 files 1 more below');
     expect(target.querySelector('.chat-input-attachment-reason')?.textContent?.trim()).toBe(
       'Retry or remove 2 files to send',
     );
-    expect(target.textContent).toContain('2 files need attention');
+    expect(target.textContent).not.toContain('need attention');
     unmount(instance);
   });
 
@@ -440,9 +438,9 @@ describe('attachments', () => {
     const list = target.querySelector<HTMLElement>('[aria-label="Attached files"]')!;
     expect(list.hasAttribute('data-expanded')).toBe(false);
     // Exactly the tiles shown are drawn, so the count under them is the rest of the files (C#4).
-    expect(list.querySelectorAll('li')).toHaveLength(3);
+    expect(list.querySelectorAll('li')).toHaveLength(2);
     const more = target.querySelector<HTMLButtonElement>('.chat-input-attachment-more')!;
-    expect(more.textContent?.trim()).toBe('11 more below');
+    expect(more.textContent?.trim()).toBe('12 more below');
     expect(more.getAttribute('aria-controls')).toBe(list.id);
 
     await fireEvent.click(more);
