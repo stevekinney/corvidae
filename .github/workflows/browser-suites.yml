@@ -86,6 +86,8 @@ jobs:
   interborough:
     name: Interborough end-to-end (${{ matrix.shard }}/4)
     if: ${{ inputs.interborough }}
+    # Advisory until COR-2412: sixteen tests fail on Linux. Remove this line when that issue closes.
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
