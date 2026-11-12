@@ -294,13 +294,21 @@ export function measureInPage(options: {
         if (reachableBox(element, new DOMRect(x, y, 1, 1), true) === undefined) continue;
         const hit = document.elementFromPoint(x, y);
         if (hit === null || hit === element || element.contains(hit)) continue;
-        const nearerToANeighbour = controlCentres.some(
-          (other) =>
-            other.element !== element &&
-            !other.element.contains(element) &&
-            !element.contains(other.element) &&
-            Math.hypot(other.x - x, other.y - y) < reach,
-        );
+        // A probe inside the control's own painted box that resolves to another control is that
+        // neighbour covering this control's face, a real defect, so both exemptions below apply
+        // only to a point outside the box.
+        const ownBox = element.getBoundingClientRect();
+        const insideOwnBox =
+          x >= ownBox.left && x < ownBox.right && y >= ownBox.top && y < ownBox.bottom;
+        const nearerToANeighbour =
+          !insideOwnBox &&
+          controlCentres.some(
+            (other) =>
+              other.element !== element &&
+              !other.element.contains(element) &&
+              !element.contains(other.element) &&
+              Math.hypot(other.x - x, other.y - y) < reach,
+          );
         if (nearerToANeighbour) continue;
         // A point that reaches another control (its face or its own hit area) is that control's
         // tap, which its own probe covers. The distance test above is centre to centre and a
@@ -309,6 +317,7 @@ export function measureInPage(options: {
           'button, [role="button"], [role="radio"], [role="checkbox"], a[href], textarea, select, summary',
         );
         if (
+          !insideOwnBox &&
           reachedControl !== null &&
           reachedControl !== element &&
           !reachedControl.contains(element) &&

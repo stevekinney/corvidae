@@ -763,6 +763,16 @@ describe('chat stress visual measurement', () => {
       ).toEqual([]);
     });
 
+    it('fails a 44px control whose face is partly covered by a neighbouring control', async () => {
+      // The neighbour sits over the right half of the first button's own face, so a tap there
+      // never reaches it. That is a defect, unlike a neighbour's hit area beyond the box.
+      const targets = await smallTargetsFor(
+        `<button class="cinder-button" aria-label="Under" style="width:44px;height:44px"></button><button class="cinder-button" aria-label="Over" style="position:absolute;left:72px;top:40px;width:44px;height:44px"></button>`,
+      );
+      const under = targets.find((target) => target.name === 'Under');
+      expect(under?.shortSides?.map((side) => side.split(' ')[0])).toContain('right');
+    });
+
     it('passes two adjacent 24px buttons at a 28px pitch, whose hit areas overlap by design', async () => {
       expect(
         await smallTargetsFor(
