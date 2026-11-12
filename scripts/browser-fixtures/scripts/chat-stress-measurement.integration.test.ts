@@ -4,6 +4,8 @@ import { describe, expect, it } from 'bun:test';
 import {
   locate,
   measureInPage,
+  readFailureSummaryProblems,
+  readRepeatedSummaryProblems,
   readWithdrawal,
   revealScrollableControls,
   runStep,
@@ -11,6 +13,107 @@ import {
 } from './capture-chat-stress.ts';
 
 describe('chat stress visual measurement', () => {
+  describe('repeated rollup guard', () => {
+    // The real mechanism of `tool-call-timeline.svelte`: the summary becomes a two-column grid, the
+    // count spans the first row, and the tool/count and duration share the second row.
+    const rollup = (toolsStyle: string): string => `
+      <style>
+        body { margin: 0; }
+        .chat-tool-call-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; font: 12px monospace; }
+        .chat-tool-call-summary-count { grid-column: 1 / -1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .chat-tool-call-summary-tools { grid-column: 1; grid-row: 2; max-inline-size: 100%; white-space: nowrap; ${toolsStyle} }
+        .chat-tool-call-summary-duration { grid-column: 2; grid-row: 2; white-space: nowrap; }
+      </style>
+      <main data-testid="chat-stress-shell" style="width:320px">
+        <section class="chat-tool-call-timeline" data-cinder-tool-call-count="20" data-has-repeated-summary="true">
+          <span class="chat-tool-call-summary">
+            <span class="chat-tool-call-summary-count">Looked up twenty orders</span>
+            <span class="chat-tool-call-summary-tools">lookup_order ×20</span>
+            <span class="chat-tool-call-summary-duration">6.1s</span>
+          </span>
+        </section>
+      </main>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 320, height: 640 } });
+        await page.setContent(markup);
+        return await readRepeatedSummaryProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes when the tool/count and duration are fully painted', async () => {
+      expect(await problemsFor(rollup(''))).toEqual([]);
+    });
+
+    it('fails when the tool/count is display: none', async () => {
+      expect(await problemsFor(rollup('display: none;'))).toContain(
+        'repeated summary tool/count is not painted',
+      );
+    });
+
+    it('fails when an ellipsis clips the tool/count in a too-narrow container', async () => {
+      expect(
+        await problemsFor(
+          rollup(
+            'overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-inline-size: 60px;',
+          ),
+        ),
+      ).toContain('repeated summary tool/count is clipped');
+    });
+  });
+
+  describe('failed step guard', () => {
+    // The real mechanism of the narrow-container rule: the row is a three-column grid and the status
+    // and duration both live in the last column, each in a row of its own.
+    const failedRow = (durationArea: string): string => `
+      <style>
+        body { margin: 0; }
+        .chat-tool-call-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 4px; inline-size: 100%; font: 12px monospace; }
+        .chat-tool-call-label { grid-column: 2; grid-row: 1; }
+        .chat-tool-call-name { grid-column: 2; grid-row: 2; }
+        .chat-tool-call-status { grid-column: 3; grid-row: 1; white-space: nowrap; }
+        .chat-tool-call-duration { grid-area: ${durationArea}; white-space: nowrap; }
+      </style>
+      <main data-testid="chat-stress-shell" style="width:320px">
+        <ol>
+          <li class="chat-tool-call-item" data-cinder-tool-call-status="failed">
+            <button class="chat-tool-call-row" type="button">
+              <span>x</span>
+              <span class="chat-tool-call-label">Looked up an order</span>
+              <code class="chat-tool-call-name">lookup_order</code>
+              <span class="chat-tool-call-status">Failed</span>
+              <span class="chat-tool-call-duration">1m</span>
+            </button>
+          </li>
+        </ol>
+      </main>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 320, height: 640 } });
+        await page.setContent(markup);
+        return await readFailureSummaryProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('fails when the status and duration share one grid cell', async () => {
+      expect(await problemsFor(failedRow('1 / 3 / 2 / 4'))).toContain(
+        'failed step status overlaps duration',
+      );
+    });
+
+    it('passes when the duration sits on the row below the status, sharing its column', async () => {
+      expect(await problemsFor(failedRow('2 / 3 / 3 / 4'))).toEqual([]);
+    });
+  });
+
   it('proves scroll-reveal for a clipped control and rejects fixed-mask interception', async () => {
     const browser = await chromium.launch();
     try {

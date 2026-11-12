@@ -1139,9 +1139,11 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       const state = await page.evaluate(() => {
         const shell = document.querySelector('[data-testid="chat-stress-shell"]');
         const scroller = shell?.querySelector<HTMLElement>('.chat-timeline');
-        const cards = [...(shell?.querySelectorAll<HTMLElement>(
-          '.cinder-approval-card[data-cinder-state="pending"]',
-        ) ?? [])];
+        const cards = [
+          ...(shell?.querySelectorAll<HTMLElement>(
+            '.cinder-approval-card[data-cinder-state="pending"]',
+          ) ?? []),
+        ];
         const card = cards[0] ?? null;
         const article = card?.closest<HTMLElement>('article');
         const drawer = shell?.querySelector<HTMLElement>('[data-chat-approval-drawer]') ?? null;
@@ -1165,11 +1167,16 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
           article: box(article ?? null),
           scroller: box(scroller ?? null),
           viewport: { top: 0, bottom: innerHeight, left: 0, right: innerWidth },
-          scrollerOverflow: scroller === null ? null : getComputedStyle(scroller).overflow,
+          scrollerOverflow:
+            scroller === undefined || scroller === null
+              ? null
+              : getComputedStyle(scroller).overflow,
         };
       });
       if (state.pendingCards !== 1 || state.card === null || state.scroller === null) {
-        throw new Error(`Approval review did not expose one measurable pending card: ${JSON.stringify(state)}`);
+        throw new Error(
+          `Approval review did not expose one measurable pending card: ${JSON.stringify(state)}`,
+        );
       }
       const visibleLeft = Math.max(state.scroller.left, state.viewport.left);
       const visibleRight = Math.min(state.scroller.right, state.viewport.right);
@@ -1236,7 +1243,9 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
           (decision) => !('fullyVisible' in decision) || !decision.fullyVisible,
         )
       ) {
-        throw new Error(`Approval decisions are not fully inside the live scroller viewport: ${JSON.stringify(decisionIntersection)}`);
+        throw new Error(
+          `Approval decisions are not fully inside the live scroller viewport: ${JSON.stringify(decisionIntersection)}`,
+        );
       }
       return;
     }
@@ -1731,43 +1740,159 @@ async function measure(
   if (stressCase.id === 19 || stressCase.id === 59) {
     problems.push(...(await readRepeatedSummaryProblems(opened.page)));
   }
+  if (stressCase.id === 48 || stressCase.id === 78) {
+    problems.push(...(await readFailureSummaryProblems(opened.page)));
+  }
   return { measurement, problems };
 }
 
-/** The repeated-call board row must keep its complete work identity and duration visibly painted. */
-async function readRepeatedSummaryProblems(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const timeline = document.querySelector<HTMLElement>(
-      '.chat-tool-call-timeline[data-cinder-tool-call-count="20"]',
-    );
-    const tools = timeline?.querySelector<HTMLElement>('.chat-tool-call-summary-tools');
-    const duration = timeline?.querySelector<HTMLElement>('.chat-tool-call-summary-duration');
-    if (timeline === null || tools === null || duration === null) {
-      return ['repeated summary metadata is missing'];
-    }
-    const visible = (element: HTMLElement): boolean => {
-      const box = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      const timelineBox = timeline.getBoundingClientRect();
-      return (
-        element.textContent?.trim() !== '' &&
-        box.width > 0 &&
-        box.height > 0 &&
-        box.left >= timelineBox.left - 1 &&
-        box.right <= timelineBox.right + 1 &&
-        style.visibility !== 'hidden' &&
-        style.display !== 'none'
-      );
-    };
+/** One element a layout guard requires to be fully painted: present, with the expected text. */
+export interface PaintedItem {
+  readonly name: string;
+  readonly selector: string;
+  /** A regular expression source the element's trimmed text must match. */
+  readonly pattern: string;
+}
+
+/** A layout guard: every scope found must paint each item and keep each `apart` pair separate. */
+export interface PaintGuard {
+  readonly label: string;
+  /** Selector for the containers to check; each match is measured on its own. */
+  readonly scope: string;
+  readonly items: readonly PaintedItem[];
+  /** Pairs of item names whose painted text must not intersect on both axes. */
+  readonly apart: readonly (readonly [string, string])[];
+}
+
+/**
+ * Measures that each item's text is really painted, not merely present in the DOM: it has a box,
+ * is not `display: none` or `visibility: hidden`, sits inside the viewport, and is not cut off by
+ * the element itself or any ancestor up to its scope that clips overflow (an ellipsis included).
+ * Items that must stay apart fail when their painted text rectangles intersect on both axes, so
+ * two items on different rows never collide however their horizontal ranges relate.
+ */
+export async function readPaintProblems(page: Page, guard: PaintGuard): Promise<string[]> {
+  return page.evaluate((spec) => {
     const problems: string[] = [];
-    if (tools.textContent?.trim() !== 'lookup_order ×20' || !visible(tools)) {
-      problems.push('repeated summary tool/count is not fully visible');
+    const scopes = [...document.querySelectorAll<HTMLElement>(spec.scope)];
+    if (scopes.length === 0) {
+      return [`${spec.label} is missing`];
     }
-    if (duration.textContent?.trim() !== '6.1s' || !visible(duration)) {
-      problems.push('repeated summary duration is not fully visible');
+    const textBox = (element: HTMLElement): DOMRect => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getBoundingClientRect();
+    };
+    for (const scope of scopes) {
+      const painted = new Map<string, DOMRect>();
+      for (const item of spec.items) {
+        const element = scope.querySelector<HTMLElement>(item.selector);
+        if (element === null) {
+          problems.push(`${spec.label} ${item.name} is missing`);
+          continue;
+        }
+        const text = (element.textContent ?? '').trim();
+        if (!new RegExp(item.pattern).test(text)) {
+          problems.push(`${spec.label} ${item.name} reads "${text}"`);
+          continue;
+        }
+        const rectangle = textBox(element);
+        const own = getComputedStyle(element);
+        if (
+          own.display === 'none' ||
+          own.visibility === 'hidden' ||
+          rectangle.width <= 0 ||
+          rectangle.height <= 0
+        ) {
+          problems.push(`${spec.label} ${item.name} is not painted`);
+          continue;
+        }
+        if (
+          rectangle.left < -1 ||
+          rectangle.top < -1 ||
+          rectangle.right > innerWidth + 1 ||
+          rectangle.bottom > innerHeight + 1
+        ) {
+          problems.push(`${spec.label} ${item.name} is outside the viewport`);
+          continue;
+        }
+        let clipped = false;
+        for (
+          let ancestor: HTMLElement | null = element;
+          ancestor !== null;
+          ancestor = ancestor === scope ? null : ancestor.parentElement
+        ) {
+          const style = getComputedStyle(ancestor);
+          if (style.overflowX === 'visible' && style.overflowY === 'visible') {
+            continue;
+          }
+          const clip = ancestor.getBoundingClientRect();
+          if (
+            rectangle.left < clip.left - 1 ||
+            rectangle.right > clip.right + 1 ||
+            rectangle.top < clip.top - 1 ||
+            rectangle.bottom > clip.bottom + 1
+          ) {
+            clipped = true;
+          }
+        }
+        if (clipped) {
+          problems.push(`${spec.label} ${item.name} is clipped`);
+          continue;
+        }
+        painted.set(item.name, rectangle);
+      }
+      for (const [first, second] of spec.apart) {
+        const a = painted.get(first);
+        const b = painted.get(second);
+        if (a === undefined || b === undefined) {
+          continue;
+        }
+        const horizontal = Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5;
+        const vertical = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5;
+        if (horizontal && vertical) {
+          problems.push(`${spec.label} ${first} overlaps ${second}`);
+        }
+      }
     }
     return problems;
-  });
+  }, guard);
+}
+
+/** The repeated-rollup guard: twenty identical calls keep their tool/count and duration painted. */
+export const repeatedSummaryGuard: PaintGuard = {
+  label: 'repeated summary',
+  scope: '.chat-tool-call-timeline[data-cinder-tool-call-count="20"] .chat-tool-call-summary',
+  items: [
+    {
+      name: 'tool/count',
+      selector: '.chat-tool-call-summary-tools',
+      pattern: '^lookup_order ×20$',
+    },
+    { name: 'duration', selector: '.chat-tool-call-summary-duration', pattern: '^6\\.1s$' },
+  ],
+  apart: [['tool/count', 'duration']],
+};
+
+/** The failed-step guard: a failed step row keeps its status word and its duration apart. */
+export const failedStepGuard: PaintGuard = {
+  label: 'failed step',
+  scope: '.chat-tool-call-item[data-cinder-tool-call-status="failed"] .chat-tool-call-row',
+  items: [
+    { name: 'status', selector: '.chat-tool-call-status', pattern: '^\\S.*$' },
+    { name: 'duration', selector: '.chat-tool-call-duration', pattern: '^\\S.*$' },
+  ],
+  apart: [['status', 'duration']],
+};
+
+/** The repeated-call board row must keep its complete work identity and duration visibly painted. */
+export async function readRepeatedSummaryProblems(page: Page): Promise<string[]> {
+  return readPaintProblems(page, repeatedSummaryGuard);
+}
+
+/** A failed step's status and duration must stay separate, painted facts. */
+export async function readFailureSummaryProblems(page: Page): Promise<string[]> {
+  return readPaintProblems(page, failedStepGuard);
 }
 
 interface RunState {

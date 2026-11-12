@@ -239,12 +239,16 @@ function withCall(
   result?: Record<string, string | number | boolean>,
   metadata?: Record<string, number>,
 ): ConversationHistory {
-  const called = appendToolCall(history, { id, name, arguments: args }, { metadata });
+  const called = appendToolCall(
+    history,
+    { id, name, arguments: args },
+    metadata === undefined ? {} : { metadata },
+  );
   if (result === undefined) return called;
   return appendToolResult(
     called,
     { callId: id, outcome: 'success', content: result },
-    { metadata },
+    metadata === undefined ? {} : { metadata },
   );
 }
 
@@ -528,7 +532,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       );
       setup.turnLabels = {
         steps: (count) => `Compared ${count} recent orders…`,
-        stepsDone: (done, total) => `Compared ${total} recent orders…`,
+        stepsDone: (_done, total) => `Compared ${total} recent orders…`,
       };
     } else if (shape === 'steps') {
       conversation = withCall(

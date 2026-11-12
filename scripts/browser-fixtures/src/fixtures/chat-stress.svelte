@@ -16,7 +16,6 @@
     type ChatRowContext,
     type ChatTurnEvent,
     type ChatTurnState,
-    type ChatTurnLabels,
     type ConversationHistory,
     type Message,
     type ReasoningInfo,
