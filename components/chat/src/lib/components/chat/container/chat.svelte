@@ -603,7 +603,14 @@
     getStreamingContent: () => streamingState.content,
     getMessageReasoning: () => messageReasoning,
     getFirstUnreadId: () => unreadState.firstUnreadId,
-    getSuppressTypingIndicator: () => composerStatus?.kind === 'reconnecting',
+    // The dots say work goes on when nothing else does: a reconnecting turn, a waiting approval, an
+    // open question and an availability banner each already say so, and the dots stay out from under them.
+    getSuppressTypingIndicator: () =>
+      composerStatus?.kind === 'reconnecting' ||
+      approvalWaiting ||
+      questions.dockedQuestions.length > 0 ||
+      questions.composerTarget !== undefined ||
+      availability !== undefined,
     getMessageTurnState: () => messageTurnState,
     // A call whose question was answered here, or whose approval was decided here, keeps its own
     // row so the answer or the receipt stays readable once the run resumes. So does a call that
@@ -3187,10 +3194,9 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-1);
-    padding: var(--cinder-space-3) var(--cinder-space-4);
+    /* Quiet and inline: no bubble, on the same edge as the assistant's text above it. */
+    padding: var(--cinder-space-1) var(--cinder-chat-message-padding-inline, var(--cinder-space-3));
     max-width: max-content;
-    background: var(--cinder-surface-raised);
-    border-radius: var(--cinder-radius-lg);
     animation: typing-indicator-enter var(--cinder-duration-base) var(--cinder-ease-decelerate);
   }
 
