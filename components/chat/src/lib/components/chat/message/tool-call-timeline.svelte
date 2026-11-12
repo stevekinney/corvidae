@@ -669,6 +669,7 @@
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
     font-family: var(--cinder-font-mono);
     font-size: 12px;
   }

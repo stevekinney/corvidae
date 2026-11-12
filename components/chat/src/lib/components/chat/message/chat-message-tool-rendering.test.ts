@@ -989,6 +989,10 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).toMatch(
         /\.chat-tool-call-summary-count,\s*\.chat-tool-call-summary-segment,\s*\.chat-tool-call-summary-duration\s*\{\s*white-space:\s*nowrap;/,
       );
+      // The tool names are cut with an ellipsis, which needs one line: they never wrap.
+      expect(source).toMatch(
+        /\.chat-tool-call-summary-tools\s*\{[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/s,
+      );
       // The running call's sentence is not held to one line, so a long one wraps inside the group.
       expect(source).toMatch(/\.chat-tool-call-running\s*\{[^}]*overflow-wrap:\s*anywhere/s);
       // A row wraps between its parts in a narrow chat, so a tool's name is never clipped there.
