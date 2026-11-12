@@ -53,3 +53,17 @@ Every library and component runs `scripts/check-inherited-key-reads.ts` in its `
 ## Process documentation
 
 The process documents carry word budgets and checked references, so they cannot regrow or rot unnoticed. `scripts/process-docs-budget.test.ts` holds AGENTS.md, which every agent session pays for on every request, to 2,250 words and 16,000 characters, the chef `SKILL.md` to 1,500, and each `.agents/skills/chef/references/*.md` to its own budget, which every reference must have. `scripts/process-docs-references.test.ts` checks that every `scripts/...` path and `bun scripts/...` command named in AGENTS.md, `.agents/skills/**/*.md`, `.claude/agents/*.md`, and `documentation/repository/*.md` exists, that every relative Markdown link in them resolves, anchors included, and that every AGENTS.md section another document or script cites by name in quotes exists. Move mechanics, history, and rationale into a document under `documentation/repository/` and link it, rather than raising a budget.
+
+## Agent edits and worker briefs
+
+`scripts/chef/edit-guard.ts` is a Claude Code `PreToolUse` hook for Bash (`.claude/settings.json`), beside the stash guard. It denies the two shell edits that leave a change half applied: an interpreter fed a script on standard input by a heredoc (`python3 - <<'EOF'`, and the same for `node`, `bun`, `ruby`, `perl` and `deno`) when that script writes a file, and `sed` or `perl` with an in-place flag, wherever it runs in a pipeline. In one day's run workers twice used a Python heredoc for a multi-site edit; a later assertion failed, and the earlier replacements were lost with nobody told. An in-place substitution that matches nothing also reports success. Edit and Write fail loudly, one site at a time.
+
+The guard allows a heredoc script that only reads and prints, a heredoc that is data for a script run by name, a heredoc into `cat` or `git commit`, and `sed` and `perl` that print. It does not catch a script kept in a file and run by name, and it fails open. Codex has no project hook here, so its `chef-worker` carries the rule as an instruction only.
+
+A brief holds five to eight items, each with the file it touches. Seven workers in one day reached their context limit mid-brief, mostly from reading two 28K review reports and many screenshots. What worked:
+
+- Leave long reports on disk with a tag per finding (`NEW-2`, `A10`) for the worker to search instead of read.
+- Tell the worker to commit after each item, and cap the images a brief asks it to open.
+- Run long captures and checks from the coordinator, in the background, where they cost it almost no context.
+
+A worker watches what it starts. A test stuck in a synchronous loop never reaches the hang guard, which runs inside the test's own process: one such test grew to 144 GB, almost all of it compressed, in 13 minutes, and `ps -o rss` showed 3 GB. `top -l 1 -o mem -n 5 -stats pid,mem,cpu,command` lists the largest processes by physical footprint, which counts compressed memory.
