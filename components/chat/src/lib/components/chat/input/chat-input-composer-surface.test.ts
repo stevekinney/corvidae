@@ -422,7 +422,7 @@ describe('attachments', () => {
     await tick();
 
     const summary = target.querySelector('[data-chat-attachment-summary]')!;
-    expect(summary.textContent?.trim()).toBe('3 files 1 more below');
+    expect(summary.textContent?.replace(/\s+/g, ' ').trim()).toBe('3 files 1 more below');
     expect(target.querySelector('.chat-input-attachment-reason')?.textContent?.trim()).toBe(
       'Retry or remove 2 files to send',
     );

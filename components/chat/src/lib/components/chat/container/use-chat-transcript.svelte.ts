@@ -4,7 +4,6 @@ import type { ChatTurnState } from '../message/turn-state.ts';
 import { resolveMessageTurnState } from '../message/turn-state.ts';
 import {
   getMessages,
-  getMessageText,
   pairToolCallsWithResults,
   resolveMessageReasoning,
 } from '../utilities/index.ts';
@@ -49,10 +48,6 @@ export interface UseChatTranscriptReturn {
   readonly toolResultMessagesByResult: Map<ToolResult, Message>;
   readonly actionRequiredToolCallIds: Set<string>;
   readonly renderRows: ChatRenderRow[];
-}
-
-function isStreamingAssistantMessage(message: Message | undefined): message is Message {
-  return message?.role === 'assistant' && isStreamingMessage(message);
 }
 
 export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTranscriptReturn {
@@ -133,31 +128,6 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       messages.filter((message) => activeTurnMessageIds.has(message.id)),
     ).some((pair) => !pair.result);
   });
-  const activeStreamingMessage = $derived.by(() => {
-    if (!options.getStreaming()) return undefined;
-    const streamingMessageId = options.getStreamingMessageId();
-    if (streamingMessageId) return messages.find((message) => message.id === streamingMessageId);
-    const latestMessage = messages.at(-1);
-    return isStreamingAssistantMessage(latestMessage) ? latestMessage : undefined;
-  });
-  const activeStreamingText = $derived.by(() => {
-    if (!options.getStreaming()) return '';
-    const streamingMessageId = options.getStreamingMessageId();
-    if (streamingMessageId) return options.getStreamingContent();
-    return activeStreamingMessage ? getMessageText(activeStreamingMessage) : '';
-  });
-  const hasActiveStreamingText = $derived.by(() => {
-    if (activeStreamingText.trim().length > 0) return true;
-
-    // Some hosts mark a run active before reserving a streaming assistant row. If the
-    // conversation already contains the assistant's visible reply, adding a generic
-    // typing row below it is duplicate progress UI. Keep the row for an explicitly
-    // reserved stream (including an empty stream), and only use the completed latest
-    // assistant content as evidence when no stream message id exists.
-    if (options.getStreamingMessageId() !== null) return false;
-    const latestAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
-    return latestAssistant ? getMessageText(latestAssistant).trim().length > 0 : false;
-  });
   const progressState = $derived(
     selectChatProgressState({
       streaming: options.getStreaming(),
@@ -165,7 +135,9 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       toolActivity,
     }),
   );
-  const showTypingIndicator = $derived(progressState === 'streaming' && !hasActiveStreamingText);
+  // The three quiet dots follow the last assistant line whenever a run is active and neither
+  // reasoning nor a tool reports progress, including after partial text has streamed (a pause).
+  const showTypingIndicator = $derived(progressState === 'streaming');
 
   return {
     get messages() {

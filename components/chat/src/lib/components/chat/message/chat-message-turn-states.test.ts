@@ -94,8 +94,7 @@ describe('R3: reconnecting', () => {
     expect(warning?.querySelector('[role="note"]')?.getAttribute('data-cinder-variant')).toBe(
       'warning',
     );
-    expect(warning?.querySelector('.cinder-callout--inline-action')).toBeNull();
-    expect(warning?.querySelector('[role="note"] > .cinder-callout__action')).not.toBeNull();
+    expect(warning?.querySelector('.cinder-callout--inline-action')).not.toBeNull();
     expect(warning?.querySelector('.cinder-callout__action button')?.textContent?.trim()).toBe(
       'Retry',
     );

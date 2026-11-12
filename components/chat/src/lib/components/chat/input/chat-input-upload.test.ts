@@ -148,7 +148,8 @@ describe('an attachment with an upload hook', () => {
     expect(preview.querySelector('.chat-attachment-preview-error')).not.toBeNull();
     expect(preview.querySelector('.chat-attachment-preview-error')?.parentElement).toBe(preview);
     const retry = target.querySelector<HTMLButtonElement>('button[aria-label="Retry photo.png"]')!;
-    expect(retry.textContent?.trim()).toBe('Retry');
+    // An icon-only Cinder Button: the name is the aria-label, there is no visible text.
+    expect(retry.textContent?.trim()).toBe('');
     expect(retry.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(retry.nextElementSibling?.getAttribute('aria-label')).toBe('Remove photo.png');
 

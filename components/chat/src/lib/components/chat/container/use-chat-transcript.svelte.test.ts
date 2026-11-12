@@ -104,7 +104,8 @@ describe('useChatTranscript live inputs', () => {
     await tick();
 
     expect(transcript.messages).toHaveLength(2);
-    expect(transcript.showTypingIndicator).toBe(false);
+    // Partial text has streamed and nothing else reports progress: the dots follow it (H6).
+    expect(transcript.showTypingIndicator).toBe(true);
   });
 
   test('keeps the separate typing row when streaming starts before an assistant row exists', async () => {
@@ -118,7 +119,7 @@ describe('useChatTranscript live inputs', () => {
     expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
   });
 
-  test('does not append typing below an existing assistant reply before a stream row is reserved', async () => {
+  test('appends typing below an assistant reply while a run is active and nothing else reports progress', async () => {
     const fixture = createTranscriptFixture(
       conversation([message('user-first', 'user'), message('assistant-reply')]),
     );
@@ -127,8 +128,8 @@ describe('useChatTranscript live inputs', () => {
     fixture.setStreaming(true);
     await tick();
 
-    expect(transcript.showTypingIndicator).toBe(false);
-    expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
   });
 
   test('keeps the separate typing row after beginStreaming reserves a row before content arrives', async () => {
@@ -147,8 +148,9 @@ describe('useChatTranscript live inputs', () => {
     fixture.setStreamingContent('first token');
     await tick();
 
-    expect(transcript.showTypingIndicator).toBe(false);
-    expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
+    // Partial text has streamed and nothing else reports progress: the dots follow it.
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
   });
 
   test('recognizes the canonical Conversationalist streaming marker for content-driven streams', async () => {
@@ -172,7 +174,8 @@ describe('useChatTranscript live inputs', () => {
     );
     await tick();
 
-    expect(transcript.showTypingIndicator).toBe(false);
-    expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
+    // Partial text has streamed and nothing else reports progress: the dots follow it.
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
   });
 });

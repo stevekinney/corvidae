@@ -54,9 +54,9 @@ describe('ChatInput layout CSS', () => {
     const editorBlocks = cssBlocks(chatInputSource, '.chat-input-editor {');
 
     expectDeclaration(
-      editorBlocks.find((block) => block.includes('padding:')) ?? '',
-      'padding',
-      'var(--cinder-space-1) var(--cinder-space-3)',
+      editorBlocks.find((block) => block.includes('padding-inline:')) ?? '',
+      'padding-inline',
+      'var(--cinder-space-3)',
     );
   });
 
@@ -65,9 +65,10 @@ describe('ChatInput layout CSS', () => {
 
     const chatContainerBlock =
       cssBlocks(chatInputSource, '.chat-input-editor-container').find((block) =>
-        block.includes('min-height'),
+        block.includes('min-block-size'),
       ) ?? '';
-    expectDeclaration(chatContainerBlock, 'min-height', 'var(--cinder-touch-target-min)');
+    // The row is as tall as Send, a compact painted button, never the 44px hit area.
+    expectDeclaration(chatContainerBlock, 'min-block-size', 'var(--_chat-input-row-height)');
     expect(chatInputSource).not.toContain('--editor-min-height');
     expect(chatInputSource).not.toContain('markdown-editor');
     expect(chatInputSource).not.toContain('ProseMirror');
@@ -84,10 +85,11 @@ describe('ChatInput layout CSS', () => {
     expect(base).not.toContain('overflow-y');
   });
 
-  test('keeps the editor and toolbar at 44px while trimming only surrounding inset', async () => {
+  test('keeps the editor as tall as Send and centres its first line, trimming only surrounding inset', async () => {
     const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
     const editor = cssBlocks(chatInputSource, '.chat-input-editor {')[0] ?? '';
-    expectDeclaration(editor, 'min-height', 'var(--cinder-touch-target-min)');
+    expectDeclaration(editor, 'min-block-size', 'var(--_chat-input-row-height)');
+    expectDeclaration(editor, 'padding-block', 'calc((var(--_chat-input-row-height) - 1lh) / 2)');
     expect(chatInputSource).toMatch(
       /\.chat-input \{[^}]*padding:\s*var\(--cinder-space-0-5, 0\.125rem\) 0;/,
     );
