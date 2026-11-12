@@ -833,7 +833,7 @@
         </div>
       </Popover>
       {#if createdAtValue && formattedCreatedAt && !approvalOnlyTurn}
-        <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+        <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
       {/if}
       <span class="chat-message-not-sent-label" role="status">Not sent</span>
     {:else if isPending}
@@ -850,7 +850,7 @@
         </Button>
       {/if}
     {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn}
-      <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+      <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
     {/if}
     {#if !isPending && !streaming}
       <span class="chat-message-line-actions">
@@ -1167,7 +1167,7 @@
     {/if}
 
     {#if shownSources && !transcript}
-      <div class="chat-message-sources" dir="ltr" bind:this={sourcesElement}>
+      <div class="chat-message-sources" dir={messageDirection} bind:this={sourcesElement}>
         <MessageSources
           sources={shownSources}
           presentation={sourcePresentation}
@@ -1223,7 +1223,7 @@
       <!-- The sources sit under the prose, on their own block; the line below keeps only the time
            and the actions, on one row. -->
       {#if shownSources}
-        <div class="chat-message-sources" dir="ltr" bind:this={sourcesElement}>
+        <div class="chat-message-sources" dir={messageDirection} bind:this={sourcesElement}>
           <MessageSources
             sources={shownSources}
             presentation={sourcePresentation}
@@ -1247,7 +1247,7 @@
   {#if hasMetadata && !transcript}
     <div class="chat-message-metadata">
       {#if createdAtValue && formattedCreatedAt}
-        <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+        <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
       {/if}
       {#if metadata}
         {@render metadata()}
@@ -1665,9 +1665,8 @@
     margin-block-start: var(--cinder-space-1);
   }
 
-  .chat-message-wrapper:has(:global(.message-content):dir(rtl)) .chat-message-sources {
-    align-items: flex-end;
-  }
+  /* The Sources block takes the message's direction (`dir` on the block), so its control and list
+     start at the message's inline start in either; no physical alignment is needed. */
 
   .chat-message-expand:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
@@ -2139,6 +2138,32 @@
 
   .chat-message-wrapper[data-role='user'] .chat-message-line {
     justify-content: flex-end;
+  }
+
+  /* The trailing Copy glyph meets the bubble's edge: its 24px box overhangs by its own inset
+   * (the 16px glyph sits 4px inside it), and its hit area extends outward with it. */
+  .chat-message-wrapper[data-role='user'] .chat-message-line-actions {
+    margin-inline-end: calc((1rem - 1.5rem) / 2);
+  }
+
+  /* The time sits the same distance under an assistant's last text line as under a user's bubble
+   * (about 9 to 12px of ink): the line box's leading below the last text line is pulled back. */
+  .chat-message-wrapper[data-presentation='transcript'][data-role='assistant']
+    > .chat-message
+    + .chat-message-line {
+    margin-block-start: calc(var(--cinder-space-1) * -1.5);
+  }
+
+  /* Prose to Sources is one small step, not a blank line: the block's own margin cancels the
+   * wrapper's gap, and the text's trailing leading plus the control's own slack read as the step. */
+  .chat-message-wrapper[data-presentation='transcript'] > .chat-message-sources {
+    margin-block-start: calc(var(--cinder-space-1) * -1);
+  }
+
+  /* A bubble that ends in an attachment tile has the same inset below the tile as beside it. */
+  .chat-message-wrapper[data-role='user']
+    .chat-message:has(:global(.message-attachments:last-child)) {
+    padding-block-end: var(--cinder-space-3);
   }
 
   /* An RTL reply's line takes the message's direction: the time at inline start, the actions

@@ -673,6 +673,18 @@
     transform: rotate(90deg);
   }
 
+  /* The step row takes the message's direction: the chevron leads at the inline start and points
+     toward the text, as the open one points down in either. */
+  :global(.chat-message-wrapper[data-message-direction='rtl']) .chat-tool-call-timeline {
+    direction: rtl;
+  }
+
+  :global(.chat-message-wrapper[data-message-direction='rtl'])
+    .chat-tool-call-toggle[aria-expanded='false']
+    :global(.chat-tool-call-chevron) {
+    transform: scaleX(-1);
+  }
+
   @media (any-pointer: coarse) {
     .chat-tool-call-toggle,
     .chat-tool-call-row {

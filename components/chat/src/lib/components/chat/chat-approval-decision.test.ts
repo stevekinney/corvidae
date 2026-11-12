@@ -671,18 +671,17 @@ describe('the reminder follows the decision row, not its own presence', () => {
 
   /** Lays the page out by hand: the transcript loses the reminder's room while the reminder shows. */
   function layOut(container: HTMLElement): HTMLElement {
-    const box = (top: number, bottom: number): DOMRect =>
-      ({
-        top,
-        bottom,
-        left: 0,
-        right: 300,
-        width: 300,
-        height: bottom - top,
-        x: 0,
-        y: top,
-        toJSON: () => ({}),
-      }) as DOMRect;
+    const box = (top: number, bottom: number): DOMRect => ({
+      top,
+      bottom,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: bottom - top,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    });
     HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
       if (this.matches('[data-chat-approval-drawer]')) return box(0, REMINDER_HEIGHT);
       if (this.classList.contains('chat-timeline')) {

@@ -1843,6 +1843,10 @@
               type="button"
               variant="ghost"
               size="sm"
+              quiet
+              iconOnly
+              class="chat-input-attach"
+              label={labels.attachFile}
               onclick={() => fileInputRef?.click()}
               disabled={disabled || paused || sendBlocked}
               aria-label={labels.attachFile}
@@ -2597,6 +2601,22 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
+  }
+
+  /* Attach is a 28px rounded square, like the message actions, sitting inside the footer's inset
+   * (at least 4px from the composer's edge), with the same quiet ring as they have. */
+  .chat-input-footer-left :global(.chat-input-attach) {
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    min-inline-size: 0;
+    min-block-size: 0;
+    padding: 0;
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .chat-input-footer-left :global(.chat-input-attach:focus-visible) {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   /* The row never wraps: the host's selects shrink (a ghost select ellipsizes its value) or fold

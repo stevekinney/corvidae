@@ -33,12 +33,15 @@
     type="button"
     {...className === undefined ? {} : { class: className }}
     size="sm"
-    variant="secondary"
+    variant="ghost"
+    quiet
     iconOnly
+    {label}
     aria-label={ariaLabel ?? label}
     {onclick}
   >
-    {#snippet leadingIcon()}<RotateCcw aria-hidden="true" />{/snippet}
+    <!-- The same control as the composer's attachment Retry: a ghost icon button, one glyph. -->
+    <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
   </Button>
 {:else}
   <Button

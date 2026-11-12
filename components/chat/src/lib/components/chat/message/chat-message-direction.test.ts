@@ -131,10 +131,11 @@ describe('ChatMessage text direction', () => {
     expect(contentSource).toContain('dir="auto"');
     const messageSource = await Bun.file(`${import.meta.dir}/chat-message.svelte`).text();
     expect(messageSource).toContain('class="chat-message-line"\n    dir="ltr"');
-    expect(messageSource).toContain('class="chat-message-sources" dir="ltr"');
-    expect(messageSource).toContain(
-      '.chat-message-wrapper:has(:global(.message-content):dir(rtl)) .chat-message-sources',
-    );
+    // The Sources block takes the message's direction, so its control and list start on the
+    // message's inline start; the time inside the line is isolated so it reads "9:01 AM".
+    expect(messageSource).toContain('class="chat-message-sources" dir={messageDirection}');
+    expect(messageSource).not.toContain('class="chat-message-sources" dir="ltr"');
+    expect(messageSource).toContain('<time datetime={createdAtValue}><bdi>');
     expect(messageSource).toContain('justify-content: flex-end;');
   });
 });

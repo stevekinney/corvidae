@@ -193,13 +193,17 @@
     gap: var(--cinder-space-1);
     min-height: 1.5rem;
     padding-block: 0;
-    padding-inline: var(--cinder-space-3);
+    /* The label starts on the prose edge; the hit area extends outward from a pseudo-element. */
+    padding-inline: 0;
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     font-weight: var(--cinder-font-medium);
   }
 
   .chat-message-sources-toggle {
-    padding-inline-start: 0;
+    /* The chevron's 16px box sits inside the 24px control, so its ink is 4px in from the box's
+       edge; the box overhangs the prose edge by that inset so the ink meets it. */
+    margin-inline-start: calc((1rem - 1.5rem) / 2);
+    padding-inline: 0 var(--cinder-space-3);
     color: var(--cinder-text-default);
     background: transparent;
     border: none;
@@ -225,6 +229,13 @@
 
   .chat-message-sources-toggle[aria-expanded='true'] :global(.chat-message-sources-chevron) {
     transform: rotate(90deg);
+  }
+
+  /* In a right-to-left message the closed chevron points toward the text, to the left. */
+  :global(.chat-message-wrapper[data-message-direction='rtl'])
+    .chat-message-sources-toggle[aria-expanded='false']
+    :global(.chat-message-sources-chevron) {
+    transform: scaleX(-1);
   }
 
   .chat-message-sources-count {
@@ -305,7 +316,7 @@
       content: '';
       position: absolute;
       inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
-      inset-inline: 0;
+      inset-inline: calc(var(--cinder-space-3) * -1);
     }
   }
 
