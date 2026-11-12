@@ -28,7 +28,8 @@ describe('New chat while its agents load', () => {
     expect(box.placeholder).toBe('Message…');
     expect(box.disabled).toBe(true);
     const send = container.querySelector<HTMLButtonElement>('button[data-chat-send]');
-    expect(send?.textContent).toContain('Send');
+    // Send is an icon-only button; its accessible name is the only text it carries.
+    expect(send?.getAttribute('aria-label')).toBe('Send message');
     expect(send?.disabled).toBe(true);
     // Placeholders stand where the avatar, the greeting and the sentence will be and where each
     // control will be; no real greeting is drawn.

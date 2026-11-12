@@ -209,7 +209,7 @@ describe('Enter on a row', () => {
     const primary = rows(container)[0]!;
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const staging = await findByRole('button', { name: 'staging' });
+    const staging = await findByRole('radio', { name: 'staging' });
     await waitFor(() => expect(document.activeElement === staging).toBe(true));
     expect(stub?.callsTo('bureau.tasks.respond')).toEqual([]);
   });

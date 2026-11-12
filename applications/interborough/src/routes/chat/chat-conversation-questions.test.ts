@@ -109,7 +109,7 @@ describe('the composer while a question waits', () => {
   test('is in answer mode: the placeholder says to choose above or type your own, and Answer replaces Send', async () => {
     serve(ask(CHOICES));
     const { findByRole, container } = await open();
-    await findByRole('button', { name: 'production' });
+    await findByRole('radio', { name: 'production' });
 
     const box = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
     await waitFor(() => expect(box.placeholder).toBe('Choose an answer above, or type your own…'));
@@ -129,12 +129,12 @@ describe('the composer while a question waits', () => {
 });
 
 describe('a question with choices', () => {
-  test('draws them as buttons under the question, and the one pressed is the answer', async () => {
+  test('draws them as radio cards under the question, and the one pressed is the answer', async () => {
     const { bodies } = serve(ask(CHOICES));
     const { findByText, findByRole, queryByText } = await open();
 
     expect(await findByText('Which environment should the release go to?')).not.toBeNull();
-    await fireEvent.click(await findByRole('button', { name: 'production' }));
+    await fireEvent.click(await findByRole('radio', { name: 'production' }));
 
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]?.messages).toEqual([]);
@@ -155,7 +155,7 @@ describe('a question with choices', () => {
   test('is picked with its number key, and a number with no choice does nothing', async () => {
     const { bodies } = serve(ask(CHOICES));
     const { findByRole, findByText } = await open();
-    await findByRole('button', { name: 'staging' });
+    await findByRole('radio', { name: 'staging' });
     expect(await findByText('Press 1 to 9 to pick a choice.')).not.toBeNull();
 
     expect(press('9')).toBe(true);
@@ -169,7 +169,7 @@ describe('a question with choices', () => {
   test('registers 1 to 9 for the chat route only, and takes them away when the page goes', async () => {
     serve(ask(CHOICES));
     const { unmount, findByRole } = await open();
-    await findByRole('button', { name: 'staging' });
+    await findByRole('radio', { name: 'staging' });
 
     const registered = () =>
       shortcuts
@@ -290,7 +290,7 @@ describe('a question in the transcript, answered with an Undo window', () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
     const { bodies } = serve(ask(RELEASE_CHOICES));
     const { container, findByRole, getAllByRole } = await open();
-    const staging = await findByRole('button', { name: /Staging/ });
+    const staging = await findByRole('radio', { name: /Staging/ });
     jest.useFakeTimers();
 
     await fireEvent.click(staging);
@@ -298,7 +298,7 @@ describe('a question in the transcript, answered with an Undo window', () => {
     const line = container.querySelector('.chat-question-status');
     expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging Undo (5 s)');
     expect(line?.querySelector('.chat-question-status-text')?.textContent).toBe('Answered Staging');
-    expect(staging.getAttribute('aria-pressed')).toBe('true');
+    expect(staging.getAttribute('aria-checked')).toBe('true');
     expect(getAllByRole('button', { name: /Undo/ })).toHaveLength(1);
     expect(container.querySelector('textarea')?.hasAttribute('readonly')).toBe(true);
     // Nothing has gone to the run yet, and the number keys pick nothing more.
@@ -318,7 +318,7 @@ describe('a question in the transcript, answered with an Undo window', () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
     const { bodies } = serve(ask(RELEASE_CHOICES));
     const { findByRole } = await open();
-    const production = await findByRole('button', { name: /Production/ });
+    const production = await findByRole('radio', { name: /Production/ });
     jest.useFakeTimers();
 
     await fireEvent.click(production);
