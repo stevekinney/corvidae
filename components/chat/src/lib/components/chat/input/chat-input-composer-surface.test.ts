@@ -271,7 +271,9 @@ describe('the controls snippet is told when the composer is narrow', () => {
 
   test('Attach and Send keep a compact face with the 44px hit area from Cinder, and the one-row form is the default', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
-    expect(source).not.toMatch(/\.chat-input-footer :global\(\.cinder-button\) \{\s*min-block-size/);
+    expect(source).not.toMatch(
+      /\.chat-input-footer :global\(\.cinder-button\) \{\s*min-block-size/,
+    );
     expect(source).toContain('data-single-row=');
     expect(source).not.toContain('data-queueing-compact');
   });

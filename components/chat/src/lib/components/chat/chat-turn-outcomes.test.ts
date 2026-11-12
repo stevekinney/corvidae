@@ -132,9 +132,9 @@ describe('Chat — run outcomes on the turn', () => {
     expect(kindOf()).toBe('reconnecting');
     const reconnecting = view.container.querySelector('.chat-turn-callout')!;
     expect(reconnecting.querySelector('.cinder-callout__icon')).not.toBeNull();
-    expect(reconnecting.querySelector('.cinder-callout__icon svg')?.getAttribute('aria-hidden')).toBe(
-      'true',
-    );
+    expect(
+      reconnecting.querySelector('.cinder-callout__icon svg')?.getAttribute('aria-hidden'),
+    ).toBe('true');
     expect(view.container.textContent).toContain(
       'Connection lost. Reconnecting, attempt 1 of 3. Next try in 4 s.',
     );

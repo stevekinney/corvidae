@@ -138,8 +138,8 @@ describe('Chat step summary beside an approval card', () => {
     const timeline = container.querySelector<HTMLElement>('.chat-tool-call-timeline');
     expect(timeline).not.toBeNull();
     expect(container.textContent).toContain(QUESTION);
-    expect(timeline!.querySelector(".chat-tool-call-summary-count")).not.toBeNull();
-    expect(timeline!.querySelector("[data-problem]")).toBeNull();
+    expect(timeline!.querySelector('.chat-tool-call-summary-count')).not.toBeNull();
+    expect(timeline!.querySelector('[data-problem]')).toBeNull();
   });
 });
 

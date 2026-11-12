@@ -250,12 +250,9 @@ describe('a one-click answer is held for a short Undo window', () => {
         'x-allowOther': true,
       },
     });
-    await fireEvent.input(
-      screen.getByPlaceholderText('Type your answer'),
-      {
-        target: { value: 'canary' },
-      },
-    );
+    await fireEvent.input(screen.getByPlaceholderText('Type your answer'), {
+      target: { value: 'canary' },
+    });
     await fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
     await elapse(0);
     expect(submitted).toEqual(['canary']);

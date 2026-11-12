@@ -224,9 +224,7 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     const drawer = drawerOf(container)!;
     expect(drawer).not.toBeNull();
     expect(drawer.querySelector('.chat-follow-up-drawer-title')?.textContent).toBe('Up next');
-    expect(drawer.querySelector('.chat-follow-up-drawer-summary')?.textContent).toBe(
-      '1 queued',
-    );
+    expect(drawer.querySelector('.chat-follow-up-drawer-summary')?.textContent).toBe('1 queued');
     expect(drawer.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(ghostTexts(container)).toEqual(['then check the logs']);
     expect(drawer.querySelector('.chat-follow-up-ghost-index')?.textContent).toBe('1');

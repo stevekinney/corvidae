@@ -152,7 +152,9 @@
       role="listitem"
       data-cinder-image-placeholder={dimensions ? undefined : ''}
       data-unavailable={unavailable ? '' : undefined}
-      style={dimensions && !unavailable ? `aspect-ratio: ${dimensions.width} / ${dimensions.height}` : undefined}
+      style={dimensions && !unavailable
+        ? `aspect-ratio: ${dimensions.width} / ${dimensions.height}`
+        : undefined}
     >
       {#if unavailable}
         <!-- The image failed: the reserved box names what did not load and offers Retry. -->

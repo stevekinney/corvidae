@@ -154,10 +154,14 @@ describe('an approval with a deadline (COR-2280)', () => {
   test('drops the waiting and expired words a card in the turn already says', () => {
     const pairs = [approvalPair('a', at(-1_000)), approvalPair('b', at(60_000))];
     const statuses = pairs.map((pair) => toolCallRowStatus(pair, undefined, NOW));
-    const parts = toolCallSummaryParts(pairs, statuses, [undefined, undefined], undefined, [], [
-      true,
-      false,
-    ]);
+    const parts = toolCallSummaryParts(
+      pairs,
+      statuses,
+      [undefined, undefined],
+      undefined,
+      [],
+      [true, false],
+    );
     expect(parts.problems).toEqual(['1 waiting for approval']);
     expect(
       toolCallSummaryParts(pairs, statuses, [undefined, undefined], undefined, [], [true, true])
