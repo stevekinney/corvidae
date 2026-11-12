@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
+import { waitUntil } from '../testing/testing/src/wait-until.ts';
 import type { ProcessEntry, ProcessTable } from './bun-test-pool.ts';
 import { TEST_TIMEOUT_MILLISECONDS } from './test-deadlines.ts';
 import {
@@ -16,6 +17,7 @@ import {
   processTreeOf,
   sampleTree,
   stallGuardMilliseconds,
+  startTestWatchdog,
   type StallState,
 } from './test-watchdog.ts';
 
@@ -188,6 +190,57 @@ describe('advanceStalls', () => {
     advanceStalls(state, observe(1, 0), 900, guard);
     const recycled = [{ ...observe(1, 900)[0]!, startedAt: 'later' }];
     expect(advanceStalls(state, recycled, 900, guard)).toEqual([]);
+  });
+});
+
+describe('startTestWatchdog', () => {
+  const gigabyte = 1024 ** 3;
+  const run = (startedAt: string, residentBytes: number): ProcessTable =>
+    new Map([
+      [10, entry(1, { processGroup: 10, startedAt, residentBytes })],
+      [11, entry(10, { processGroup: 10, startedAt, residentBytes })],
+    ]);
+
+  function watch(tables: (look: number) => ProcessTable) {
+    const sent: [number, NodeJS.Signals][] = [];
+    let looks = 0;
+    const watchdog = startTestWatchdog({
+      leader: 10,
+      readProcessTable: () => {
+        looks += 1;
+        return tables(looks);
+      },
+      ceilingBytes: gigabyte,
+      run: 'src',
+      sampleIntervalMilliseconds: 1,
+      readFootprint: () => undefined,
+      signal: (pid, name) => sent.push([pid, name]),
+    });
+    return { sent, watchdog, looks: () => looks };
+  }
+
+  test('kills the process group and each process of the tree once the tree passes the ceiling', async () => {
+    const { sent, watchdog } = watch(() => run('then', gigabyte));
+    const outcome = await watchdog.stop();
+    expect(sent).toEqual([
+      [-10, 'SIGKILL'],
+      [10, 'SIGKILL'],
+      [11, 'SIGKILL'],
+    ]);
+    expect(outcome.killed).toContain('above the 1.0 GiB ceiling');
+    expect(outcome.peakBytes).toBe(2 * gigabyte);
+  });
+
+  test('never signals once the pid of the leader belongs to another process', async () => {
+    // The run was small, and it is gone; a large process group now has its leader's pid.
+    const { sent, watchdog, looks } = watch((look) =>
+      look === 1 ? run('then', 1024) : run('later', gigabyte),
+    );
+    await waitUntil(() => looks() >= 3, { message: 'the watchdog looked again' });
+    const outcome = await watchdog.stop();
+    expect(sent).toEqual([]);
+    expect(outcome.killed).toBeUndefined();
+    expect(outcome.peakBytes).toBe(2048);
   });
 });
 

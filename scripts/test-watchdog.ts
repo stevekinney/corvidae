@@ -421,7 +421,18 @@ export function startTestWatchdog(options: TestWatchdogOptions): {
   let longestBurnMilliseconds = 0;
   let last = now();
 
+  // The leader's start time, from the first sample that shows it. A pid, and so a process group
+  // id, is not reused while a member of the group lives, but it can be once the whole run is gone.
+  let leaderStartedAt: string | undefined;
+  /** Whether the pid of the leader now belongs to another process. */
+  const leaderRecycled = (table: ProcessTable): boolean => {
+    const startedAt = table.get(options.leader)?.startedAt;
+    leaderStartedAt ??= startedAt;
+    return startedAt !== undefined && startedAt !== leaderStartedAt;
+  };
+
   const kill = (sample: TreeSample, table: ProcessTable): void => {
+    // `look` has just found the leader's pid to be the run's own or gone, never another's.
     signal(-options.leader, 'SIGKILL');
     for (const sampled of sample.processes) {
       if (table.get(sampled.pid)?.startedAt === sampled.startedAt) signal(sampled.pid, 'SIGKILL');
@@ -434,6 +445,9 @@ export function startTestWatchdog(options: TestWatchdogOptions): {
     last = current;
     const table = options.readProcessTable();
     if (table === undefined) return;
+    // The run is over and another process has its leader's pid: nothing here is the run's to
+    // measure or to kill.
+    if (leaderRecycled(table)) return;
     const sample = sampleTree(options.leader, table, readFootprint);
     peakBytes = Math.max(peakBytes, sample.totalBytes);
     const heartbeats =
