@@ -185,8 +185,7 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 
 <!-- generated:variables:start -->
 
-- `--cinder-code-block-padding`
-
+This component does not declare any local CSS variables.
 <!-- generated:variables:end -->
 
 ## Subcomponents

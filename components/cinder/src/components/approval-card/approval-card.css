@@ -1067,15 +1067,18 @@
    * inline padding, so the command's first character sits on the label column instead of one
    * padding inside it, in the light scheme where the panel and the card share a white surface. */
   .cinder-approval-card__command {
-    --cinder-code-block-padding: var(--cinder-space-2);
+    --_cinder-approval-card-command-padding: var(--cinder-space-2);
+    /* @runtime-state */
+    --cinder-code-block-padding: var(--_cinder-approval-card-command-padding);
 
     min-inline-size: 0;
     margin: 0;
-    margin-inline: calc(-1 * var(--cinder-code-block-padding));
+    margin-inline: calc(-1 * var(--_cinder-approval-card-command-padding));
     text-align: start;
   }
 
   .cinder-approval-card--row .cinder-approval-card__command {
+    /* @runtime-state */
     --cinder-code-block-padding: var(--cinder-space-1);
   }
 
@@ -1126,6 +1129,7 @@
     }
 
     .cinder-approval-card--decision .cinder-approval-card__command {
+      /* @runtime-state */
       --cinder-code-block-padding: var(--cinder-space-1-5);
     }
   }
