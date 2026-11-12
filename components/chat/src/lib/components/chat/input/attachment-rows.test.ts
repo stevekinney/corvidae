@@ -2,69 +2,58 @@ import { describe, expect, test } from 'bun:test';
 
 import { wholeAttachmentRowsBlockSize } from './attachment-rows.ts';
 
-// A ready row is 40px, a failed row 62px (its error line adds 22px), rows stand 8px apart and the
-// list pads its end by 8px. The fade is 24px.
+// Rows stand 8px apart, the list pads its start and end by 8px and the fade is 24px. A ready row
+// is 40px; a failed row carries an error line and is 62px.
 const fade = 24;
 const paddingEnd = 8;
-const bottomsOf = (heights: number[]): number[] => {
+
+function measure(heights: number[], room: number, fadeSize = fade) {
   let top = 8;
-  return heights.map((height) => {
+  const bottoms = heights.map((height) => {
     top += height;
     const bottom = top;
     top += 8;
     return bottom;
   });
-};
+  return { bottoms, heights, room, fade: fadeSize, paddingEnd };
+}
 
 describe('wholeAttachmentRowsBlockSize', () => {
   test('returns undefined when every row fits, so nothing is snapped', () => {
-    expect(
-      wholeAttachmentRowsBlockSize({ bottoms: bottomsOf([40, 62]), room: 192, fade, paddingEnd }),
-    ).toBeUndefined();
+    expect(wholeAttachmentRowsBlockSize(measure([40, 62], 192))).toBeUndefined();
   });
 
-  test('sums real row heights: a taller failed row ends the visible rows where it really ends', () => {
-    const bottoms = bottomsOf([40, 62, 40, 40, 40]); // 48, 118, 166, 214, 262
-    const size = wholeAttachmentRowsBlockSize({ bottoms, room: 192, fade, paddingEnd });
-    // 192 - 24 = 168: the third row (bottom 166) is the last whole row; the fade stands below it.
-    expect(size).toBe(166 + fade);
+  test('uses each real row height: a taller failed row ends the visible rows where it ends', () => {
+    // Bottoms 48, 118, 166, 214, 262; 192 - 24 = 168, so the third row is the last whole row.
+    expect(wholeAttachmentRowsBlockSize(measure([40, 62, 40, 40, 40], 192))).toBe(166 + fade);
   });
 
-  test('keeps the fade off the last visible row even when that row is a failed row with an error line', () => {
-    const bottoms = bottomsOf([40, 62, 62, 40]); // 48, 118, 188, 236
-    const room = 192;
-    const size = wholeAttachmentRowsBlockSize({ bottoms, room, fade, paddingEnd })!;
-    // The third row ends at 188, inside the fade's 24px (168-192), so it is not a visible row.
+  test('keeps the fade off a visible failed row and its error line', () => {
+    const measurements = measure([40, 62, 62, 40], 192); // bottoms 48, 118, 188, 236
+    const size = wholeAttachmentRowsBlockSize(measurements)!;
+    // The third row ends at 188, inside the fade's 24px (168 to 192), so it is not a visible row.
     expect(size).toBe(118 + fade);
-    // Every visible row ends at or above the top of the fade.
-    const visible = bottoms.filter((bottom) => bottom <= size - fade);
-    expect(visible).toEqual([48, 118]);
+    expect(measurements.bottoms.filter((bottom) => bottom <= size - fade)).toEqual([48, 118]);
   });
 
-  test('never exceeds the room when at least one row fits above the fade', () => {
-    const size = wholeAttachmentRowsBlockSize({
-      bottoms: bottomsOf([40, 40, 40, 40, 40, 40]),
-      room: 192,
-      fade,
-      paddingEnd,
-    })!;
+  test('never exceeds the room when a row fits above the fade', () => {
+    const size = wholeAttachmentRowsBlockSize(measure([40, 40, 40, 40, 40, 40], 192))!;
     expect(size).toBeLessThanOrEqual(192 + 1);
   });
 
   test('shows the first row whole when it alone is taller than the window', () => {
-    expect(wholeAttachmentRowsBlockSize({ bottoms: [300, 360], room: 192, fade, paddingEnd })).toBe(
-      300 + fade,
-    );
+    expect(wholeAttachmentRowsBlockSize(measure([300, 60], 192))).toBe(308 + fade);
+  });
+
+  test('a short window still holds the tallest row above the fade', () => {
+    // Bottoms 46, 109.6 with room 120: only the first row clears the fade, but a row scrolled to
+    // the end edge stops one fade short of it, so the 55.6px row needs 55.6 + 24 of window.
+    const size = wholeAttachmentRowsBlockSize(measure([38, 55.6, 38, 38], 120))!;
+    expect(size).toBeGreaterThanOrEqual(55.6 + fade);
   });
 
   test('uses the larger of the fade and the padding for the end room', () => {
-    expect(
-      wholeAttachmentRowsBlockSize({
-        bottoms: bottomsOf([40, 40, 40, 40, 40, 40]),
-        room: 192,
-        fade: 4,
-        paddingEnd: 8,
-      }),
-    ).toBe(Math.max(...bottomsOf([40, 40, 40, 40, 40, 40]).filter((bottom) => bottom <= 189)) + 8);
+    // Fade 4 and padding 8: bottoms 48, 96, 144, 192; room 192 keeps rows through 144 (<= 189).
+    expect(wholeAttachmentRowsBlockSize(measure([40, 40, 40, 40, 40, 40], 192, 4))).toBe(144 + 8);
   });
 });

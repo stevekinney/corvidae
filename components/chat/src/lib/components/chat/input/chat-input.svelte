@@ -287,7 +287,8 @@
       );
       const paddingEnd = Number.parseFloat(getComputedStyle(node).paddingBlockEnd) || 0;
       const fade = Number.parseFloat(getComputedStyle(node, '::after').blockSize) || 0;
-      const blockSize = wholeAttachmentRowsBlockSize({ bottoms, room, fade, paddingEnd });
+      const heights = rows.map((row) => row.getBoundingClientRect().height);
+      const blockSize = wholeAttachmentRowsBlockSize({ bottoms, heights, room, fade, paddingEnd });
       if (blockSize !== undefined) node.style.setProperty('max-block-size', `${blockSize}px`);
     };
 
