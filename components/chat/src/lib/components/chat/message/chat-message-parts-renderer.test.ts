@@ -367,6 +367,48 @@ describe('renderer — per-part rendering', () => {
     expect(labels).toContain('Deny');
   });
 
+  test('a step whose approval card is in the turn says no waiting word of its own', () => {
+    const approvalAction = {
+      type: 'approval',
+      message: 'Deploy?',
+      risk: 'high',
+      operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+      policyVersion: 'test-policy',
+      idempotencyKey: 'test-approval',
+    } as const;
+    const { container } = render(ChatMessagePartsRenderer, {
+      props: {
+        parts: [
+          {
+            type: 'tool-call',
+            key: 'm:tool-call:c1',
+            pair: {
+              call: { id: 'c1', name: 'deploy', arguments: {} },
+              result: {
+                callId: 'c1',
+                outcome: 'action_required',
+                content: null,
+                action: approvalAction,
+              },
+            },
+          },
+          {
+            type: 'tool-approval',
+            key: 'm:tool-approval:c1',
+            toolCallId: 'c1',
+            toolName: 'deploy',
+            action: approvalAction,
+            state: 'pending',
+            resolutionInFlight: false,
+          },
+        ],
+        onApprovalResolve: () => {},
+      },
+    });
+    expect(container.querySelector('.chat-tool-call-timeline')).not.toBeNull();
+    expect(container.querySelector('.chat-tool-call-timeline [data-problem]')).toBeNull();
+  });
+
   test('renders an image group through the attachments grid with the right count', () => {
     const { container } = render(ChatMessagePartsRenderer, {
       props: {

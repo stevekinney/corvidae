@@ -259,8 +259,16 @@ export function toolCallSummaryParts(
   durations: readonly (number | undefined)[],
   problemText: (count: number, status: ToolCallRowStatus) => string = defaultProblemText,
   descriptions: readonly (string | undefined)[] = [],
+  cardOwned: readonly boolean[] = [],
 ): ToolCallSummaryParts {
-  const count = (status: ToolCallRowStatus) => statuses.filter((value) => value === status).length;
+  // A card in the same turn (an approval or a question) says that a call waits or expired; the
+  // summary leaves those words to it.
+  const cardSays = (status: ToolCallRowStatus) =>
+    status === 'waiting' || status === 'waiting-input' || status === 'expired';
+  const count = (status: ToolCallRowStatus) =>
+    statuses.filter(
+      (value, index) => value === status && !(cardOwned[index] === true && cardSays(value)),
+    ).length;
   const problems: string[] = [];
   const problemStatuses: ToolCallRowStatus[] = [];
   const add = (amount: number, status: ToolCallRowStatus): void => {

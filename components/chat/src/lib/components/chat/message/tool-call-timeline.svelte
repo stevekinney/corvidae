@@ -53,6 +53,7 @@
     durations,
     startTimes,
     onRetryStep,
+    cardOwnedCallIds,
     labels,
   }: {
     pairs: ToolCallPair[];
@@ -72,6 +73,11 @@
     /** Called with a failed call's id when the person chooses Retry this step. The button shows only when this is set. */
     onRetryStep?: ((toolCallId: string) => void) | undefined;
     /** The words of the step position, the failed count and a failed step's controls. */
+    /**
+     * The calls whose waiting or expired state a card in the same turn (an approval or a question)
+     * already says. The summary leaves those words to the card.
+     */
+    cardOwnedCallIds?: ReadonlySet<string> | undefined;
     labels?: Partial<ChatTurnLabels> | undefined;
   } = $props();
 
@@ -204,6 +210,7 @@
       rows.map((row) => row.duration),
       words.toolProblem,
       rows.map((row) => row.prose),
+      rows.map((row) => cardOwnedCallIds?.has(row.pair.call.id) ?? false),
     ),
   );
   // Once a step failed, the header counts the steps that worked out of all of them (R7).

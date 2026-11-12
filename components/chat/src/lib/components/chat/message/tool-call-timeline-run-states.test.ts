@@ -269,6 +269,26 @@ describe('R7: a failed step', () => {
     ).toContain('issue_refund');
   });
 
+  test('a call a card in the turn speaks for says no waiting word in the summary', async () => {
+    const approval = {
+      call: { id: 'approval', name: 'issue_refund', arguments: {} },
+      result: {
+        callId: 'approval',
+        outcome: 'action_required',
+        action: { type: 'approval', operation: { kind: 'other' } },
+      },
+    } as unknown as ToolCallPair;
+    const alone = render(ToolCallTimeline, { props: { pairs: [approval], describeToolCall } });
+    await tick();
+    expect(heading(alone.container).querySelector('[data-problem]')).not.toBeNull();
+    alone.unmount();
+    const owned = render(ToolCallTimeline, {
+      props: { pairs: [approval], describeToolCall, cardOwnedCallIds: new Set(['approval']) },
+    });
+    await tick();
+    expect(heading(owned.container).querySelector('[data-problem]')).toBeNull();
+  });
+
   test('the failed row opens with its failure in view, a danger summary and a wrapping diagnostic', async () => {
     const { container } = render(ToolCallTimeline, {
       props: { pairs: [done('s1'), done('s2'), failed('s3')], describeToolCall },

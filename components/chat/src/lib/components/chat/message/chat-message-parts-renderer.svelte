@@ -45,6 +45,17 @@
   }: ChatMessagePartsRendererProps = $props();
 
   const units = $derived(toRenderUnits(parts));
+  // The calls an approval card or an open question in this turn speaks for: their steps say no
+  // waiting or expired word of their own.
+  const cardOwnedCallIds = $derived(
+    new Set(
+      parts.flatMap((part) =>
+        part.type === 'tool-approval' || (part.type === 'tool-input' && part.resolved !== true)
+          ? [part.toolCallId]
+          : [],
+      ),
+    ),
+  );
   const turnWords = $derived(resolveTurnLabels(turnLabels));
 
   // APG toolbar roving-tabindex for suggestion chips. `activeIndex` tracks the
@@ -107,6 +118,7 @@
       durationMilliseconds={toolCallDurations?.get(part.pair.call.id)}
       startedAt={toolCallStartTimes?.get(part.pair.call.id)}
       labels={turnLabels}
+      {cardOwnedCallIds}
     />
   {:else if part.type === 'tool-result'}
     <ToolResultPart {part} />
