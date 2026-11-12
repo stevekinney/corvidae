@@ -773,6 +773,17 @@ describe('chat stress visual measurement', () => {
       expect(under?.shortSides?.map((side) => side.split(' ')[0])).toContain('right');
     });
 
+    it('passes two touching 44px buttons whose hit pseudo-elements sit on the shared edge', async () => {
+      // A bordered 44px button (Cinder's) has a pseudo-element offset by its border, so its
+      // region is exactly its box; the neighbour starts where it ends.
+      const bordered = 'width:44px;height:44px;border:1px solid #999;';
+      expect(
+        await smallTargetsFor(
+          `<button class="cinder-button" data-cinder-hit-target="44" aria-label="Edit" style="${bordered}"></button><button class="cinder-button" data-cinder-hit-target="44" aria-label="Remove" style="${bordered}"></button>`,
+        ),
+      ).toEqual([]);
+    });
+
     it('passes two adjacent 24px buttons at a 28px pitch, whose hit areas overlap by design', async () => {
       expect(
         await smallTargetsFor(

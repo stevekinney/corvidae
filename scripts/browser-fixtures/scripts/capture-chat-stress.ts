@@ -281,11 +281,20 @@ export function measureInPage(options: {
       // A 44px hit area ends exactly 22px from the centre and its far edge is exclusive, so the
       // probe sits half a pixel inside it.
       const reach = 21.5;
+      // Chrome's `elementFromPoint` resolves a fractional point within about three quarters of a
+      // pixel of a shared edge to the next box (two touching 44px buttons answer the neighbour at
+      // 43.25px, with or without a hit pseudo-element). A control whose own box is 44px or more
+      // therefore probes one pixel inside its face edge, still well past anything a tap needs.
+      const ownBox = element.getBoundingClientRect();
+      const reachAlong = (halfExtent: number) =>
+        halfExtent >= 22 ? Math.min(reach, halfExtent - 1) : reach;
+      const reachX = reachAlong(ownBox.width / 2);
+      const reachY = reachAlong(ownBox.height / 2);
       const sides: ['left' | 'right' | 'above' | 'below', number, number][] = [
-        ['left', centreX - reach, centreY],
-        ['right', centreX + reach, centreY],
-        ['above', centreX, centreY - reach],
-        ['below', centreX, centreY + reach],
+        ['left', centreX - reachX, centreY],
+        ['right', centreX + reachX, centreY],
+        ['above', centreX, centreY - reachY],
+        ['below', centreX, centreY + reachY],
       ];
       const short: string[] = [];
       for (const [side, x, y] of sides) {
@@ -297,7 +306,6 @@ export function measureInPage(options: {
         // A probe inside the control's own painted box that resolves to another control is that
         // neighbour covering this control's face, a real defect, so both exemptions below apply
         // only to a point outside the box.
-        const ownBox = element.getBoundingClientRect();
         const insideOwnBox =
           x >= ownBox.left && x < ownBox.right && y >= ownBox.top && y < ownBox.bottom;
         const nearerToANeighbour =
