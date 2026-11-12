@@ -1361,7 +1361,8 @@
    * overhangs the 28px control. `content-visibility: auto` contains paint at the message's own
    * edge, so the overhang below the last line would not be hit-testable; the row is laid out in
    * full instead (one receipt is a few lines, so nothing is saved by skipping it). */
-  .chat-message:has(:global(.chat-question-receipt)) {
+  .chat-message:has(:global(.chat-question-receipt)),
+  .chat-message:has(:global(.chat-question-choices)) {
     content-visibility: visible;
   }
 

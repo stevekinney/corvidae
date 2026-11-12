@@ -44,8 +44,14 @@ describe('chat message action buttons', () => {
     // `content-visibility: auto` contains paint at the message's edge and would cut the 44px
     // area of the receipt's Change action where the message ends.
     expect(source).toMatch(
-      /\.chat-message:has\(:global\(\.chat-question-receipt\)\) \{\s*content-visibility: visible;/,
+      /\.chat-message:has\(:global\(\.chat-question-receipt\)\),\s*\.chat-message:has\(:global\(\.chat-question-choices\)\) \{\s*content-visibility: visible;/,
     );
+  });
+
+  test('a message that holds an open question is never content-skipped either', () => {
+    // The last choice row's 44px area overhangs its 38px card; paint containment at the message's
+    // edge would hand a tap below the card to the message.
+    expect(source).toContain(':has(:global(.chat-question-choices))');
   });
 
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
