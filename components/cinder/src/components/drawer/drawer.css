@@ -220,6 +220,10 @@
     border-block-end: 1px solid var(--cinder-border-muted);
     flex-shrink: 0;
     background: var(--cinder-surface);
+    /* The close button's 44px hit area reaches below the header's padding: the header paints above
+     * the content that follows so that part of the area still takes the tap. */
+    position: relative;
+    z-index: 1;
   }
 
   .cinder-drawer__title {
