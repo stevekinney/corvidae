@@ -739,6 +739,14 @@ describe('chat stress visual measurement', () => {
       });
     });
 
+    it('fails a hit area cut off by an overflow: hidden parent', async () => {
+      const targets = await smallTargetsFor(
+        '<div style="width:24px;height:24px;overflow:hidden"><button class="cinder-button" data-cinder-hit-target="44" aria-label="Copy"></button></div>',
+      );
+      expect(targets).toHaveLength(1);
+      expect(targets[0]?.name).toBe('Copy');
+    });
+
     it('passes two adjacent 24px buttons at a 28px pitch, whose hit areas overlap by design', async () => {
       expect(
         await smallTargetsFor(

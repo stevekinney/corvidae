@@ -161,8 +161,17 @@ export function measureInPage(options: {
     }
     return [...elements];
   };
-  const reachableBox = (element: Element, box: DOMRect): DOMRect | undefined => {
+  const reachableBox = (
+    element: Element,
+    box: DOMRect,
+    scrollersOnly = false,
+  ): DOMRect | undefined => {
     if (modalBackground(element)) return undefined;
+    // A hit-area probe skips only what a person can scroll out of view; a parent that clips with
+    // `overflow: hidden` or `clip` really cuts the hit area off.
+    const clippingValues = scrollersOnly
+      ? ['auto', 'scroll']
+      : ['hidden', 'clip', 'auto', 'scroll'];
     let left = Math.max(0, box.left);
     let top = Math.max(0, box.top);
     let right = Math.min(innerWidth, box.right);
@@ -171,11 +180,9 @@ export function measureInPage(options: {
     while (ancestor !== null && ancestor !== shell.parentElement) {
       const style = getComputedStyle(ancestor);
       const clipX =
-        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflow) ||
-        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX);
+        clippingValues.includes(style.overflow) || clippingValues.includes(style.overflowX);
       const clipY =
-        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflow) ||
-        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowY);
+        clippingValues.includes(style.overflow) || clippingValues.includes(style.overflowY);
       if (clipX || clipY) {
         const clip = ancestor.getBoundingClientRect();
         const clipLeft = clip.left + ancestor.clientLeft;
@@ -288,7 +295,7 @@ export function measureInPage(options: {
       for (const [side, x, y] of sides) {
         if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
         // A point scrolled out of a scroller's visible box cannot be tapped at all.
-        if (reachableBox(element, new DOMRect(x, y, 1, 1)) === undefined) continue;
+        if (reachableBox(element, new DOMRect(x, y, 1, 1), true) === undefined) continue;
         const hit = document.elementFromPoint(x, y);
         if (hit === null || hit === element || element.contains(hit)) continue;
         const nearerToANeighbour = controlCentres.some(
