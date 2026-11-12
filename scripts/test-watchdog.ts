@@ -62,7 +62,7 @@ export const runawayExitCode = 70;
  * The most memory a healthy test run's process tree may hold: 24 GiB, about two and a half times
  * the heaviest lane. Measured peaks on 2026-11-12 (`CORVIDAE_TEST_WATCHDOG_REPORT=1`): Cinder's
  * full suite 9.4 GiB and chat's 6.0 GiB, each on four workers; Interborough's host lane 4.3 GiB
- * and each of its UI shards 2.8 to 3.6 GiB; SLOW_TEXT. The runaway that prompted
+ * and each of its UI shards 2.8 to 3.6 GiB; no slow lane above 4.9 GiB. The runaway that prompted
  * this grew by about 25 GB a minute, so it would have been stopped within a minute, 120 GB earlier.
  */
 export const defaultMemoryCeilingBytes = 24 * 1024 ** 3;
