@@ -68,12 +68,25 @@ const REBUILD_DELAY_MILLISECONDS = 100;
 const buildOptions = { outdir: buildDirectory, inputsFile: BUILD_INPUTS_FILE };
 
 await buildBrowserApplication(buildOptions);
+
+let stopping: Promise<never> | undefined;
+
+/**
+ * Settles once the watchers below exist. The host answers a restart request as soon as it listens,
+ * which can be while the source watch is still loading its inputs; `shutDown` closes those
+ * watchers, so a request that arrives first waits here rather than finding them uninitialized.
+ */
+const { promise: initialized, resolve: markInitialized } = Promise.withResolvers<void>();
+
 const hostOptions = {
   environment,
   buildDirectory,
   development: true,
   developmentPlugins: pluginPaths,
-  onRestartRequested: () => shutDown(RESTART_EXIT_CODE),
+  onRestartRequested: async () => {
+    await initialized;
+    await shutDown(RESTART_EXIT_CODE);
+  },
 } satisfies HostOptions;
 const host: Host = showcase
   ? await seedSampleWorld(environment['INTERBOROUGH_HOME']!, { host: hostOptions }).then(
@@ -122,8 +135,6 @@ const entryChanged = (current: Stats, previous: Stats): void => {
 };
 watchFile(ENTRY_PAGE, { interval: 100 }, entryChanged);
 
-let stopping: Promise<never> | undefined;
-
 /**
  * Stop everything this process started, then exit with `code`. The first call decides the code: a
  * signal that arrives while a restart is stopping the host does not turn it into a plain exit. A
@@ -148,3 +159,4 @@ function shutDown(code: number): Promise<never> {
 }
 
 installShutdownSignals(process, () => shutDown(0));
+markInitialized();

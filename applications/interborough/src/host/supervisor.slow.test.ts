@@ -381,6 +381,32 @@ const devRestart = await withSupervised(
   },
 );
 
+// A restart request that arrives while the development entry is still starting: the host listens
+// before the source watch has read its inputs, and the restart closes that watch. The entry holds
+// that read until the test releases it, so the request lands inside the window on any host.
+const devEarlyRestart = await (async () => {
+  const directory = await scratch();
+  const buildDirectory = join(directory, 'build');
+  const supervised = await supervise('dev', {
+    buildDirectory,
+    entry: join(import.meta.dir, 'supervisor-held-inputs-entry.test-support.ts'),
+  });
+  return withSupervised(supervised, async () => {
+    await waitFor(
+      supervised,
+      () => supervised.stdout().includes('Holding the inputs read'),
+      'the source watch to be held while the host listens',
+    );
+    const before = supervised.pids().at(-1);
+    const starts = supervised.pids().length;
+    const status = await requestRestart(supervised);
+    await writeFile(join(directory, 'release-the-inputs-read'), '');
+    const started = await waitForStarts(supervised, starts + 1);
+    await waitForHost(supervised);
+    return { status, before, after: started.at(-1), stderr: supervised.stderr() };
+  });
+})();
+
 // A source edit: the entry is a wrapper outside the package that imports the real `dev.ts` and a
 // module of its own, so rewriting that module reloads the real host without touching the tree.
 // The module takes a moment to evaluate, which is how a reload takes long enough to be abandoned
@@ -510,6 +536,12 @@ const devPlugin = await (async () => {
 })();
 
 describe('under `dev`', () => {
+  test('a restart request that arrives before the source watch is ready still restarts the host', () => {
+    expect(devEarlyRestart.status).toBe(202);
+    expect(devEarlyRestart.after).not.toBe(devEarlyRestart.before);
+    expect(devEarlyRestart.stderr).not.toContain('The restart failed.');
+  });
+
   test('an edit to a --plugin folder’s plugin.ts restarts the host in place, and the new code is what runs', () => {
     expect(devPlugin.before).toMatchObject({
       descriptor: { version: '1.0.0' },
