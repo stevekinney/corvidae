@@ -95,7 +95,7 @@
   {
     "id": 5,
     "slug": "history-error",
-    "title": "A history error replaces transcript and composer with a cause, Try again and All conversations.",
+    "title": "A history error replaces transcript and composer with a cause, Retry and All conversations.",
     "provenance": "derived",
     "source": "Derived from design row V3; the original definition of this number was lost.",
     "rows": ["V3"],
@@ -107,7 +107,7 @@
       {
         "action": "expect",
         "role": "button",
-        "name": "Try again"
+        "name": "Retry"
       },
       {
         "action": "expect",
@@ -558,7 +558,7 @@
   {
     "id": 21,
     "slug": "steps-pending-approval",
-    "title": "Two finished steps and an approval waiting read as one group with one waiting count.",
+    "title": "Two finished steps and an approval waiting read as one group, with the approval card owning the waiting state.",
     "provenance": "issue-named",
     "source": "COR-2289 checkpoint: state 21 is the two completed steps and a pending approval, once split into separate groups.",
     "rows": ["M2"],
@@ -569,7 +569,7 @@
     "steps": [
       {
         "action": "expect-text",
-        "text": "1 waiting for approval"
+        "text": "Refund order 4471 for $42.00?"
       },
       {
         "action": "expect",

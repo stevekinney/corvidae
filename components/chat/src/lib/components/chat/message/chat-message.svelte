@@ -2093,7 +2093,13 @@
     );
   }
 
+  /* The line's actions reach 44px by a hit area that overhangs the line by about 10px. The next
+   * message's bubble (`content-visibility: auto` makes it a stacking context painted in tree order)
+   * would otherwise paint over that overhang, so a tap just under Copy would land on the next
+   * message's text. A stacking position of its own puts the line's overhang above it. */
   .chat-message-line {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-wrap: wrap;
     align-items: center;

@@ -1029,12 +1029,12 @@
     padding-inline: var(--cinder-space-2);
   }
 
-  /* On a touch screen the group's summary line, each step's row and a failed step's controls are
-   * full touch targets (C#3). */
+  /* On a touch screen the group's summary line and each step's row are full touch targets (C#3). A
+   * failed step's controls are Cinder Buttons: they keep their painted size and reach 44px by the
+   * button's own hit area, so no minimum is set on them here. */
   @media (any-pointer: coarse) {
     .chat-tool-call-toggle,
-    .chat-tool-call-row,
-    .chat-tool-call-failure-actions :global(.chat-tool-call-failure-action) {
+    .chat-tool-call-row {
       min-block-size: var(--cinder-touch-target-min);
     }
   }

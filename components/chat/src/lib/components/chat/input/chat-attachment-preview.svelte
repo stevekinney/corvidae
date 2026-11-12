@@ -219,6 +219,9 @@
     inset-inline: 0;
     block-size: 2px;
     overflow: hidden;
+    /* A status line along the tile's lower edge; the tile's Remove button reaches that edge, and
+     * a tap there is the button's. */
+    pointer-events: none;
     background: var(--cinder-surface-inset);
   }
 

@@ -752,6 +752,17 @@ describe('chat stress visual measurement', () => {
       expect(targets[0]?.name).toBe('Copy');
     });
 
+    it("passes a button whose hit area is covered by the next button's own hit area just short of the probe radius", async () => {
+      // The second button's centre is 43.25px below the first's: its 44px area starts 21.75px from
+      // the first's centre, so the probe at 21.5px lands in it. That is the neighbour's tap, and a
+      // distance test with the probe radius would have missed it by a quarter pixel.
+      expect(
+        await smallTargetsFor(
+          `<button class="cinder-button" data-cinder-hit-target="44" aria-label="Continue"></button><br><button class="cinder-button" data-cinder-hit-target="44" aria-label="Quote" style="margin-block-start:19.25px"></button>`,
+        ),
+      ).toEqual([]);
+    });
+
     it('passes two adjacent 24px buttons at a 28px pitch, whose hit areas overlap by design', async () => {
       expect(
         await smallTargetsFor(

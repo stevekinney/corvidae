@@ -302,6 +302,20 @@ export function measureInPage(options: {
             Math.hypot(other.x - x, other.y - y) < reach,
         );
         if (nearerToANeighbour) continue;
+        // A point that reaches another control (its face or its own hit area) is that control's
+        // tap, which its own probe covers. The distance test above is centre to centre and a
+        // neighbour's area is wider than the probe radius, so it stays only as the cheap case.
+        const reachedControl = hit.closest(
+          'button, [role="button"], [role="radio"], [role="checkbox"], a[href], textarea, select, summary',
+        );
+        if (
+          reachedControl !== null &&
+          reachedControl !== element &&
+          !reachedControl.contains(element) &&
+          !element.contains(reachedControl)
+        ) {
+          continue;
+        }
         // A fixed or sticky surface (the composer, a docked bar) legitimately covers part of the
         // area while content scrolls under it; the occlusion guard owns that case.
         let overlay: Element | null = hit;
