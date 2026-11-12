@@ -264,6 +264,7 @@
     canRetry,
     needsAttention,
   } from './attachment-tile.ts';
+  import { wholeAttachmentRowsBlockSize } from './attachment-rows.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
 
   const attachmentScrollFade = overflowFadeEdges();
@@ -284,11 +285,10 @@
       const bottoms = rows.map(
         (row) => row.getBoundingClientRect().bottom - nodeTop + node.scrollTop,
       );
-      const lastBottom = bottoms.at(-1);
-      if (lastBottom === undefined || lastBottom <= room + 1) return;
       const paddingEnd = Number.parseFloat(getComputedStyle(node).paddingBlockEnd) || 0;
-      const whole = bottoms.filter((bottom) => bottom <= room + 1).at(-1) ?? bottoms[0]!;
-      node.style.setProperty('max-block-size', `${whole + paddingEnd}px`);
+      const fade = Number.parseFloat(getComputedStyle(node, '::after').blockSize) || 0;
+      const blockSize = wholeAttachmentRowsBlockSize({ bottoms, room, fade, paddingEnd });
+      if (blockSize !== undefined) node.style.setProperty('max-block-size', `${blockSize}px`);
     };
 
     let frame = 0;
