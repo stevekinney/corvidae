@@ -23,7 +23,7 @@ export interface ControlFact {
    * it. Every rule about what a person sees (size, padding) reads this.
    */
   readonly rect: Box;
-  /** The visible background/border face, excluding transparent border space used only for hit area. */
+  /** The face a person sees: `rect` less whatever a scrolling or clipping ancestor cuts off. */
   readonly painted: Box;
   /** The box it takes in the layout, which is larger than `rect` when a transparent border pads it. */
   readonly layout: Box;

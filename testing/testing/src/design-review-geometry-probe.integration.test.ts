@@ -28,7 +28,8 @@ describe('design-review geometry probe', () => {
       const control = facts.controls.find(
         (candidate) => candidate.accessibleLabel === 'Padding face',
       );
-      expect(control?.rect.height).toBe(44);
+      expect(control?.layout.height).toBe(44);
+      expect(control?.rect.height).toBe(28);
       expect(control?.painted.height).toBe(28);
       expect(control?.hit.height).toBe(44);
 
