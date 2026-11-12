@@ -108,36 +108,36 @@
 
 <div class="ib-tools" data-tool-group={id}>
   <ToolCallRail
-      {calls}
-      {running}
-      {duration}
-      {endLabel}
-      label={CHAT_COPY.tools.railLabel}
-      {selectedId}
-      onSelect={onSelect ?? toggleDetails}
+    {calls}
+    {running}
+    {duration}
+    {endLabel}
+    label={CHAT_COPY.tools.railLabel}
+    {selectedId}
+    onSelect={onSelect ?? toggleDetails}
   >
-      {#snippet children(call)}
-        {@const entry = byId.get(call.id)}
-        {#if entry !== undefined}
-          {#if inline && openDetails.has(entry.callId)}
-            <dl class="ib-tool__details" id={`${id}-${entry.callId}-details`}>
-              {#each argumentEntries(entry.arguments) as [key, value] (`argument-${key}`)}
-                <dt>{key}</dt>
-                <dd>{value}</dd>
-              {/each}
-              {#each resultEntries(entry) as [key, value] (`result-${key}`)}
-                <dt>{CHAT_COPY.tools.resultPrefix} {key}</dt>
-                <dd>{value}</dd>
-              {/each}
-            </dl>
-          {/if}
-          {#if decision !== undefined && showsDecision(entry)}
-            {@render decision(entry)}
-          {/if}
-          {#if mcpApp !== undefined}
-            {@render mcpApp(entry)}
-          {/if}
+    {#snippet children(call)}
+      {@const entry = byId.get(call.id)}
+      {#if entry !== undefined}
+        {#if inline && openDetails.has(entry.callId)}
+          <dl class="ib-tool__details" id={`${id}-${entry.callId}-details`}>
+            {#each argumentEntries(entry.arguments) as [key, value] (`argument-${key}`)}
+              <dt>{key}</dt>
+              <dd>{value}</dd>
+            {/each}
+            {#each resultEntries(entry) as [key, value] (`result-${key}`)}
+              <dt>{CHAT_COPY.tools.resultPrefix} {key}</dt>
+              <dd>{value}</dd>
+            {/each}
+          </dl>
         {/if}
-      {/snippet}
+        {#if decision !== undefined && showsDecision(entry)}
+          {@render decision(entry)}
+        {/if}
+        {#if mcpApp !== undefined}
+          {@render mcpApp(entry)}
+        {/if}
+      {/if}
+    {/snippet}
   </ToolCallRail>
 </div>

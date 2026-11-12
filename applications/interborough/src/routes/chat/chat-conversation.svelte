@@ -1157,11 +1157,18 @@
   );
   function displayEntry(entry: ToolCallEntry): ToolCallEntry {
     if (entry.railId !== undefined) return entry;
-    const reviewId = approvalsByCall.get(entry.callId)?.reviewId;
-    return reviewId === undefined
-      ? entry
-      : { ...entry, railId: `${reviewId}:call:${entry.callId}` };
+    // The rail keys its rows by this id, so an id that changed under a drawn row would remount it
+    // and drop what the approver had ticked or typed: the first id a call is shown with stays.
+    let shown = shownRailIds.get(entry.callId);
+    if (shown === undefined) {
+      const reviewId = approvalsByCall.get(entry.callId)?.reviewId;
+      shown = reviewId === undefined ? entry.callId : `${reviewId}:call:${entry.callId}`;
+      shownRailIds.set(entry.callId, shown);
+    }
+    return shown === entry.callId ? entry : { ...entry, railId: shown };
   }
+  /** Not reactive on purpose: it only remembers, so a render never reads its own write. */
+  const shownRailIds = new Map<string, string>();
   function approvalIsLive(approval: (typeof approvals)[number]): boolean {
     const expiry = approval.action?.expiresAt;
     return expiry === undefined || Date.parse(expiry) > Date.now();
@@ -2110,85 +2117,83 @@
           {@const group = activity.groups.get(message.id)}
           {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
           {#if group !== undefined}
-            {#key group.entries
-              .map((entry) => `${entry.state}:${entry.approvalExpiresAt ?? ''}`)
-              .join('|')}
-              <ToolCalls
-                id={`tools-${message.id}`}
-                entries={group.entries.map(displayEntry)}
-                decided={decisionContext}
-                selectedId={selectedCallId}
-                onSelect={selectCall}
-                endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
-                duration={group.durationMilliseconds === undefined
-                  ? undefined
-                  : formatCallDuration(group.durationMilliseconds)}
-              >
-                {#snippet decision(entry)}
-                  {@const asked = approvalsByCall.get(entry.callId)}
-                  {@const expired =
-                    entry.state === 'expired' ||
-                    (entry.approvalExpiresAt !== undefined &&
-                      session.clock.now() >= entry.approvalExpiresAt)}
-                  {#if entry.decision !== undefined || asked !== undefined}
-                    {#key `${entry.state}:${entry.approvalExpiresAt ?? ''}`}
-                      <ChatApproval
-                        id={`tools-${message.id}-${entry.callId}`}
-                        {entry}
-                        question={asked?.question ?? ''}
-                        source={agentShown}
-                        unavailableReason={agentUnavailable
-                          ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
-                          : undefined}
-                        providerNote={noProvider
-                          ? CHAT_COPY.approval.continuesOnProvider(agentShown)
-                          : undefined}
-                        requestedAt={asked?.requestedAt}
-                        alwaysAsks={asked?.alwaysAsks}
-                        {...asked?.action?.expiresAt === undefined
-                          ? {}
-                          : { expiresAt: asked.action.expiresAt }}
-                        {...entry.approvalExpiresAt === undefined
-                          ? {}
-                          : { expiresAt: new Date(entry.approvalExpiresAt).toISOString() }}
-                        context={decisionContext}
-                        unreachable={connection.unreachable}
-                        onAskAgain={expired ? () => void askAgain(entry) : undefined}
-                        resolving={deciding || session.streaming
-                          ? (decidingAs ?? 'approve')
-                          : undefined}
-                        onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
-                      />
-                    {/key}
-                  {/if}
-                {/snippet}
-                {#snippet mcpApp(entry)}
-                  {@const panel = workflowRevisionPanels.find(
-                    (candidate) =>
-                      candidate.opensFromAgentTool === entry.name ||
-                      candidate.opensFromAgentTool === entry.name.replace('__', ':'),
-                  )}
-                  {@const proposalText = revisionProposalText(entry)}
-                  {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
-                    {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
-                    {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
-                    <McpApp
-                      resourceUri={panel.uri}
-                      title={panel.title}
-                      {loadResource}
-                      {onToolCall}
-                      hostContext={mcpHostContext}
-                      maxHeight={560}
-                      toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
-                      toolResult={{
-                        content: [],
-                        structuredContent: proposalText,
-                      }}
+            <!-- ToolCalls is never keyed on its entries' states: a remount on each step would drop the
+              focus on the row a person is using and the panel's return target. -->
+            <ToolCalls
+              id={`tools-${message.id}`}
+              entries={group.entries.map(displayEntry)}
+              decided={decisionContext}
+              selectedId={selectedCallId}
+              onSelect={selectCall}
+              endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
+              duration={group.durationMilliseconds === undefined
+                ? undefined
+                : formatCallDuration(group.durationMilliseconds)}
+            >
+              {#snippet decision(entry)}
+                {@const asked = approvalsByCall.get(entry.callId)}
+                {@const expired =
+                  entry.state === 'expired' ||
+                  (entry.approvalExpiresAt !== undefined &&
+                    session.clock.now() >= entry.approvalExpiresAt)}
+                {#if entry.decision !== undefined || asked !== undefined}
+                  {#key `${entry.state}:${entry.approvalExpiresAt ?? ''}`}
+                    <ChatApproval
+                      id={`tools-${message.id}-${entry.callId}`}
+                      {entry}
+                      question={asked?.question ?? ''}
+                      source={agentShown}
+                      unavailableReason={agentUnavailable
+                        ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
+                        : undefined}
+                      providerNote={noProvider
+                        ? CHAT_COPY.approval.continuesOnProvider(agentShown)
+                        : undefined}
+                      requestedAt={asked?.requestedAt}
+                      alwaysAsks={asked?.alwaysAsks}
+                      {...asked?.action?.expiresAt === undefined
+                        ? {}
+                        : { expiresAt: asked.action.expiresAt }}
+                      {...entry.approvalExpiresAt === undefined
+                        ? {}
+                        : { expiresAt: new Date(entry.approvalExpiresAt).toISOString() }}
+                      context={decisionContext}
+                      unreachable={connection.unreachable}
+                      onAskAgain={expired ? () => void askAgain(entry) : undefined}
+                      resolving={deciding || session.streaming
+                        ? (decidingAs ?? 'approve')
+                        : undefined}
+                      onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
                     />
-                  {/if}
-                {/snippet}
-              </ToolCalls>
-            {/key}
+                  {/key}
+                {/if}
+              {/snippet}
+              {#snippet mcpApp(entry)}
+                {@const panel = workflowRevisionPanels.find(
+                  (candidate) =>
+                    candidate.opensFromAgentTool === entry.name ||
+                    candidate.opensFromAgentTool === entry.name.replace('__', ':'),
+                )}
+                {@const proposalText = revisionProposalText(entry)}
+                {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
+                  {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
+                  {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
+                  <McpApp
+                    resourceUri={panel.uri}
+                    title={panel.title}
+                    {loadResource}
+                    {onToolCall}
+                    hostContext={mcpHostContext}
+                    maxHeight={560}
+                    toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
+                    toolResult={{
+                      content: [],
+                      structuredContent: proposalText,
+                    }}
+                  />
+                {/if}
+              {/snippet}
+            </ToolCalls>
             <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
             {#each group.messageIds as rowId (rowId)}
               {@const held = shown.messages[rowId]}
