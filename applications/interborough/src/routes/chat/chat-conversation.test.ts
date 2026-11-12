@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';

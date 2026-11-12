@@ -28,15 +28,28 @@
   leading its label. "Ask again" belongs to approvals alone, and a dense row may draw the glyph
   alone.
 -->
-<Button
-  type="button"
-  class={className}
-  size="sm"
-  variant="secondary"
-  {iconOnly}
-  {label}
-  {...ariaLabel === undefined ? {} : { 'aria-label': ariaLabel }}
-  {onclick}
->
-  {#snippet leadingIcon()}<RotateCcw aria-hidden="true" />{/snippet}
-</Button>
+{#if iconOnly}
+  <Button
+    type="button"
+    {...className === undefined ? {} : { class: className }}
+    size="sm"
+    variant="secondary"
+    iconOnly
+    aria-label={ariaLabel ?? label}
+    {onclick}
+  >
+    {#snippet leadingIcon()}<RotateCcw aria-hidden="true" />{/snippet}
+  </Button>
+{:else}
+  <Button
+    type="button"
+    {...className === undefined ? {} : { class: className }}
+    size="sm"
+    variant="secondary"
+    {label}
+    {...ariaLabel === undefined ? {} : { 'aria-label': ariaLabel }}
+    {onclick}
+  >
+    {#snippet leadingIcon()}<RotateCcw aria-hidden="true" />{/snippet}
+  </Button>
+{/if}

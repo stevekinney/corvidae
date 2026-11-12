@@ -7,7 +7,7 @@ import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';

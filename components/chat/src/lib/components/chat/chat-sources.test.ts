@@ -119,8 +119,10 @@ function messageArticle(container: HTMLElement, id: string): HTMLElement {
 }
 
 function sourcesControl(container: HTMLElement, id: string): HTMLButtonElement | null {
-  return messageArticle(container, id).parentElement?.querySelector<HTMLButtonElement>(
-    '.chat-message-sources .cinder-citation__marker',
+  return (
+    messageArticle(container, id).parentElement?.querySelector<HTMLButtonElement>(
+      '.chat-message-sources .cinder-citation__marker',
+    ) ?? null
   );
 }
 
@@ -178,7 +180,7 @@ describe('Chat — sourcesByMessageId', () => {
     expect(article.compareDocumentPosition(sources!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(sources?.compareDocumentPosition(line!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    expect((sources?.compareDocumentPosition(line!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(line?.firstElementChild?.tagName).toBe('TIME');

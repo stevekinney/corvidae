@@ -50,7 +50,7 @@ describe('MessageAttachments image layout contract', () => {
     const image = container.querySelector('.message-attachment-image');
 
     expect(figure?.hasAttribute('data-cinder-image-placeholder')).toBe(true);
-    expect(figure?.style.aspectRatio).toBe('');
+    expect((figure as HTMLElement | null)?.style.aspectRatio).toBe('');
     expect(button?.contains(image)).toBe(true);
     expect(image?.getAttribute('width')).toBeNull();
     expect(image?.getAttribute('height')).toBeNull();
@@ -117,7 +117,7 @@ describe('MessageAttachments image layout contract', () => {
     expect(retry?.getAttribute('aria-label')).toBe('Retry loading receipt.png');
     expect(retry?.textContent?.trim()).toBe('');
     expect(retry?.querySelector('svg')).not.toBeNull();
-    expect(figure?.style.aspectRatio).toBe('');
+    expect((figure as HTMLElement | null)?.style.aspectRatio).toBe('');
     expect(source).toContain('ImageOff');
     expect(source).not.toContain('border: 1px solid var(--cinder-border)');
     expect(source).toContain('grid-template-columns: auto minmax(0, 1fr) auto');

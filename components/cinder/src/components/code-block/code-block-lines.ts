@@ -86,7 +86,7 @@ export const keepFlagsWhole: Attachment<HTMLElement> = (container) => {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-    nodes.push(node as Text);
+    if (node instanceof Text) nodes.push(node);
   }
   for (const node of nodes) {
     const runs = splitFlags(node.data);
