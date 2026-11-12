@@ -23,7 +23,14 @@
  * Playwright is used as a library from this process, so the run has no child test runner. The
  * design review that follows reads `gallery.html` and `manifest.jsonl`; it is not part of this tool.
  */
-import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import {
+  chromium,
+  expect,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -81,6 +88,34 @@ const DEADLINE = HANG_GUARD_MILLISECONDS;
 // layout coordinates. Allow only that subpixel rounding at a row edge; controls must still fit.
 const ROW_EDGE_EPSILON = 0.5;
 const expectAttachment = expect.configure({ timeout: DEADLINE });
+
+/**
+ * A fine pointer's control is at least `minimumTarget` painted. A coarse control paints compact (an
+ * icon-only Retry or Remove is 28px) and reaches 44px through a positioned hit area, so its target
+ * is what a tap above and below its centre reaches, not the painted box.
+ */
+async function expectAttachmentTarget(
+  button: Locator,
+  coarse: boolean,
+  minimumTarget: number,
+): Promise<void> {
+  if (!coarse) {
+    const box = await button.boundingBox();
+    expectAttachment(box?.width).toBeGreaterThanOrEqual(minimumTarget);
+    expectAttachment(box?.height).toBeGreaterThanOrEqual(minimumTarget);
+    return;
+  }
+  const reachesTarget = await button.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const centreX = rect.left + rect.width / 2;
+    const centreY = rect.top + rect.height / 2;
+    return [-21, 21].every(
+      (offset) =>
+        document.elementFromPoint(centreX, centreY + offset)?.closest('button') === element,
+    );
+  });
+  expectAttachment(reachesTarget).toBe(true);
+}
 
 /** The capture contract, kept here so it independently checks the responsive component contract. */
 function expectedAttachmentShelfCap(width: number, height: number): number {
@@ -1562,8 +1597,8 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
         }
         for (const button of await row.locator('button').all()) {
           const box = await button.boundingBox();
-          expectAttachment(box?.width).toBeGreaterThanOrEqual(minimumTarget);
-          expectAttachment(box?.height).toBeGreaterThanOrEqual(minimumTarget);
+          expectAttachment(box).not.toBeNull();
+          await expectAttachmentTarget(button, coarse, minimumTarget);
         }
       }
       if (step.reveal === true && more > 0) {
@@ -1625,8 +1660,7 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
           }
           for (const button of await row.locator('button').all()) {
             const box = await button.boundingBox();
-            expectAttachment(box?.width).toBeGreaterThanOrEqual(minimumTarget);
-            expectAttachment(box?.height).toBeGreaterThanOrEqual(minimumTarget);
+            await expectAttachmentTarget(button, coarse, minimumTarget);
             expectAttachment(box?.y ?? 0).toBeGreaterThanOrEqual(listBox?.y ?? 0);
             expectAttachment((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
               (listBox?.y ?? 0) + (listBox?.height ?? 0),
