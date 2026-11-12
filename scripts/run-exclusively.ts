@@ -48,6 +48,11 @@
  * can run beside each other and beside a locked one. Nothing reads the load average: the test slot
  * pool replaced the load backoff that shared runs once had.
  *
+ * Every stage, locked or shared, reads the host's memory before it starts, and waits while the host
+ * is short or refuses with the measurement ({@link awaitMemory}). A run whose session is gone ends
+ * after the awake-time hang guard ({@link runInProcessGroup}). Both are described in
+ * `documentation/repository/host-admission.md`.
+ *
  * Usage: `bun scripts/run-exclusively.ts [--shared] '<shell command>' [arguments...]`. Arguments
  * reach the command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes
  * them.

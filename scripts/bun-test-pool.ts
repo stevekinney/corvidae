@@ -26,7 +26,8 @@
  * every quarter second and prints a line whenever what it waits for changes. Waiting has no deadline,
  * because running past it would break the cap; it is bounded by the holders. The hang guard bounds a
  * `bun test` holder's tests; nothing times out a holder through `scripts/host-slots.ts` (a browser
- * suite, a capture, the Docker renderer), which holds its slots for as long as its run lasts.
+ * suite, a capture, the Docker renderer), which holds its slots for as long as its run lasts, unless
+ * its session is gone (`runInProcessGroup` in `scripts/run-exclusively.ts`).
  *
  * Bun's `--parallel` workers (`bun test --test-worker`) are children of the `bun test` leader but
  * each leads a process group of its own, and they outlive a leader killed with SIGKILL. So while a
@@ -65,13 +66,16 @@ import { join } from 'node:path';
 
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import {
+  describeMemory,
   enqueue,
   gitCommonDirectory,
   liveFront,
+  memoryShortfall,
   ownerFileName,
   pidStartedAtField,
   processStartTime,
   processTableEnvironment,
+  readMemory,
   readOwner,
   readTicket,
   reclaimAbandoned,
@@ -782,6 +786,14 @@ if (import.meta.main) {
       for (const line of await describePool(poolDirectory, size, readProcessTable())) {
         process.stdout.write(`${line}\n`);
       }
+      // What a heavy stage's memory check reads (`awaitMemory` in `scripts/run-exclusively.ts`).
+      const memory = readMemory();
+      const shortfall = memory === undefined ? undefined : memoryShortfall(memory);
+      process.stdout.write(
+        memory === undefined
+          ? 'memory: could not be read; heavy stages start without the check\n'
+          : `memory: ${describeMemory(memory)}; ${shortfall === undefined ? 'a heavy stage would start' : `a heavy stage would wait: ${shortfall}`}\n`,
+      );
     }
   } else {
     process.stderr.write(

@@ -21,6 +21,10 @@
  * so a `bun test` or another wrapper it starts runs inside them too. The token is honoured only
  * while a live slot names it.
  *
+ * Memory: once a run that is not nested holds its slots, it reads the host's memory and waits
+ * while the host is short, or throws {@link MemoryRefusal} naming the measurement
+ * (`awaitMemory` in `scripts/run-exclusively.ts`); the command line exits 75 then.
+ *
  * A request above the pool's size is clamped to it, and the run learns how many slots it holds, so
  * it can bound its own fan-out to them. When the pool cannot be used at all (no Git checkout, as in
  * the renderer's container), the run warns and runs without a slot.
