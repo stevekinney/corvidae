@@ -13,6 +13,7 @@ import { PALETTE_COPY } from '../../src/app/copy/shell.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { expectReviewsSettled } from './review-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -74,23 +75,6 @@ async function open(page: Page, path: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(path);
   await expect(page.getByRole('link', { name: 'Reviews, 2 need you' })).toBeAttached();
-}
-
-/**
- * Waits until Reviews has settled with its first waiting review open. At a desktop width the list
- * opens its first row beside it and names it in the address (ListDetail's `openFirst`, a replace),
- * and the sample world always has two waiting, so the page settles on `/reviews?review=<first>`.
- * The bare `/reviews` lasts only until the list has a width, and an assertion on it raced that write.
- */
-async function expectReviewsWithFirstOpen(page: Page): Promise<void> {
-  const first = await page.locator('[data-review-row]').first().getAttribute('data-review-row');
-  expect(first).not.toBeNull();
-  await expect(page).toHaveURL(
-    (url) =>
-      url.pathname === '/reviews' &&
-      url.searchParams.size === 1 &&
-      url.searchParams.get('review') === first,
-  );
 }
 
 /** Opens the palette with its key, once the shell has registered it. */
@@ -317,7 +301,7 @@ test.describe('the keys', () => {
     // On: G then R goes to Reviews.
     await page.keyboard.press('g');
     await page.keyboard.press('r');
-    await expectReviewsWithFirstOpen(page);
+    await expectReviewsSettled(page);
 
     // Off: G then R and C do nothing, but ⌘K and ? still answer.
     await page.goto('/settings');
@@ -336,7 +320,7 @@ test.describe('the keys', () => {
       palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).locator('kbd'),
     ).toHaveCount(0);
     await palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).click();
-    await expectReviewsWithFirstOpen(page);
+    await expectReviewsSettled(page);
 
     // The choice survives a reload; back on, a key typed into a field still does nothing.
     await page.goto('/settings');

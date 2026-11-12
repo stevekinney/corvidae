@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 
 import { AUDIT_COPY } from '../../src/app/copy/audit.ts';
 import { STORAGE_COPY } from '../../src/app/copy/settings.ts';
+import { expectAuditSettled } from './audit-support.ts';
 import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -210,6 +211,6 @@ test('G T opens Storage and G D opens the audit log', async ({ page }) => {
 
   await page.keyboard.press('g');
   await page.keyboard.press('d');
-  await expect(page).toHaveURL(/\/health\/audit$/);
+  await expectAuditSettled(page);
   await expect(page.locator('[data-view="audit"]')).toHaveAttribute('data-state', 'ready');
 });
