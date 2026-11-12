@@ -65,7 +65,10 @@ function contains(node: ts.Node, predicate: (node: ts.Node) => boolean): boolean
 }
 
 /** The identifier names this file binds to a combined signal or to a function that returns one. */
-function combinedNames(sourceFile: ts.SourceFile): { variables: Set<string>; functions: Set<string> } {
+function combinedNames(sourceFile: ts.SourceFile): {
+  variables: Set<string>;
+  functions: Set<string>;
+} {
   const variables = new Set<string>();
   const functions = new Set<string>();
   walk(sourceFile, (node) => {
@@ -84,7 +87,7 @@ function combinedNames(sourceFile: ts.SourceFile): { variables: Set<string>; fun
           functions.has(child.expression.text)),
     );
   // A variable can be initialised from one declared earlier, so repeat until nothing is added.
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     walk(sourceFile, (node) => {
       if (
@@ -216,7 +219,7 @@ async function main(): Promise<void> {
   }
   process.stderr.write(
     'check-combined-signal-listeners — Bun collects an AbortSignal.any signal that only a listener\n' +
-      "refers to, and aborting its sources then never removes the listener (COR-2374). Register the\n" +
+      'refers to, and aborting its sources then never removes the listener (COR-2374). Register the\n' +
       "listener with a controller's signal of its own and abort that controller from each source:\n" +
       '  packages/lifecycle/src/event-observable.ts, packages/armorer/src/listener-lifetime.ts\n\n',
   );
