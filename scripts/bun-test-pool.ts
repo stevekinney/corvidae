@@ -450,6 +450,7 @@ function describeOwner(owner: SlotOwner | OwnerRecord | undefined): string {
 
 /** Waits until it holds `slots` slots of the pool. */
 export async function acquireTestSlots(options: AcquireTestSlotsOptions): Promise<HeldTestSlots> {
+  snapshotParents();
   const count = Math.min(Math.max(1, options.slots), options.size);
   const self: SlotOwner = { ...options.holder, token: crypto.randomUUID(), slots: count };
   const queue = queueDirectory(options.poolDirectory);

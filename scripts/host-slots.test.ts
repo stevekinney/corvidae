@@ -2,8 +2,10 @@ import { describe, expect, test } from 'bun:test';
 
 import { withMemoryAdmission } from './host-slots.ts';
 import {
+  forgetParentSnapshot,
   memoryAdmittedVariable,
   memoryRefusalExitCode,
+  parentSnapshotTaken,
   type MemoryReading,
 } from './run-exclusively.ts';
 
@@ -16,6 +18,27 @@ const plenty: MemoryReading = {
 };
 
 describe('withMemoryAdmission', () => {
+  test('takes the parent snapshot before it waits for memory', async () => {
+    forgetParentSnapshot(() => new Map());
+    const takenAtRead: boolean[] = [];
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const run = withMemoryAdmission(async () => 0, {
+      environment: { PATH: '/bin' },
+      readMemory: () => {
+        takenAtRead.push(parentSnapshotTaken());
+        return takenAtRead.length === 1 ? short : plenty;
+      },
+      sleep: () => held,
+      report: () => {},
+    });
+    expect(parentSnapshotTaken()).toBe(true);
+    release();
+    expect(await run).toBe(0);
+    expect(takenAtRead[0]).toBe(true);
+    forgetParentSnapshot();
+  });
+
   test('a refusing reader gives exit 75 with no phase started', async () => {
     const lines: string[] = [];
     let phases = 0;

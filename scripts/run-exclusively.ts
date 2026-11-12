@@ -3,7 +3,7 @@
  *
  * Each `bun run validate` assumes it has the machine to itself: its `tsc`, `svelte-check` and
  * oxlint tasks take about 13 GB at four tasks, so three validates at once would not fit a 32 GB
- * host. The lock serializes the heavy stages (`validate`, `validate:batch`, `lint`, `typecheck`,
+ * host. The lock serializes the heavy stages (`validate`, `lint`, `typecheck`,
  * `build`, `release:check`, the Playwright suites and `harden`). The stages that only run tests
  * (`test`, `test:slow`, `coverage`) run `--shared`, because the test slot pool
  * (`scripts/bun-test-pool.ts`), which every `bun test` passes through, bounds the Bun test workers
@@ -432,6 +432,7 @@ export async function liveFront(queueDirectory: string, own: string): Promise<st
 
 /** Waits until it holds the lock. */
 export async function acquireHostLock(options: AcquireHostLockOptions): Promise<HeldHostLock> {
+  snapshotParents();
   const { lockDirectory, holder } = options;
   const self: OwnerRecord = { ...holder, token: crypto.randomUUID() };
   const queueDirectory = queueDirectoryFor(lockDirectory);
@@ -673,6 +674,7 @@ export type MemoryAdmission =
  * memory cannot be read are admitted at once.
  */
 export async function awaitMemory(options: MemoryAdmissionOptions): Promise<MemoryAdmission> {
+  snapshotParents();
   if ((options.environment[memoryAdmittedVariable] ?? '') !== '') {
     return { admitted: true, reason: 'nested' };
   }
@@ -737,17 +739,32 @@ export function readParents(): Map<number, number> | undefined {
   return parents;
 }
 
+let parentReader: () => Map<number, number> | undefined = readParents;
 let parentSnapshot: { readonly parents: Map<number, number> | undefined } | undefined;
 
 /**
  * The process's one snapshot of the parents of every process, taken the first time it is asked
- * for. A run takes it before its first `await`, while it is queued for the lock or its slots: a
+ * for. Every primitive that waits (`awaitMemory`, `acquireHostLock`, `acquireTestSlots`) takes it synchronously before its first `await`, so every wrapper that goes through one is covered without remembering: a
  * session that ends during the wait leaves this process reparented to pid 1, and a snapshot taken
  * after the wait would find no ancestor to watch, so the run would never be reaped.
  */
 export function snapshotParents(): Map<number, number> | undefined {
-  parentSnapshot ??= { parents: readParents() };
+  parentSnapshot ??= { parents: parentReader() };
   return parentSnapshot.parents;
+}
+
+/** Whether this process has taken its parent snapshot. */
+export function parentSnapshotTaken(): boolean {
+  return parentSnapshot !== undefined;
+}
+
+/**
+ * Forgets the snapshot, so the next one is taken again, with `read` standing in for `ps` when a
+ * test passes one.
+ */
+export function forgetParentSnapshot(read?: () => Map<number, number> | undefined): void {
+  parentSnapshot = undefined;
+  parentReader = read ?? readParents;
 }
 
 /** The ancestors of `pid`, nearest first, up to but not including pid 1, which never exits. */
