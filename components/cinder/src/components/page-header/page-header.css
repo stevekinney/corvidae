@@ -96,9 +96,9 @@
   }
 
   /* A narrow header (a phone) gives the title the full row (owner decision, reversing COR-2337).
-     An inline status drops under the title and wraps there, each item whole, with no divider left
-     at the end of a line. Every action but the create "+" drops to a row of its own under the
-     title and the status; the "+" stays beside the title. */
+     An inline status drops under the title and wraps there, each item whole unless it is wider
+     than the line, with no divider left at the end of a line. Every action but the create "+"
+     drops to a row of its own under the title and the status; the "+" stays beside the title. */
   @container cinder-page-header (max-width: 32rem) {
     .cinder-page-header__row {
       flex-wrap: wrap;
@@ -133,8 +133,11 @@
       white-space: normal;
     }
 
+    /* Each item is a flex item that moves to the next line whole; only an item wider than a line of
+       its own (a maximum-length identifier) breaks, rather than widening the page. */
     .cinder-page-header__status > * {
-      white-space: nowrap;
+      max-inline-size: 100%;
+      overflow-wrap: anywhere;
     }
 
     .cinder-page-header__status > .cinder-divider[data-cinder-orientation='vertical'] {

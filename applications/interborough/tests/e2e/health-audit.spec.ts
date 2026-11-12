@@ -624,6 +624,8 @@ test.describe('Health › Audit log on the sample world', () => {
 
     await main.getByLabel('Who', { exact: true }).selectOption('agents');
     await expect(page).toHaveURL(/actor=agents/);
+    // The event the log opened on load belongs to the old filters, so the address names none.
+    await expect(page).not.toHaveURL(/[?&]record=/);
     await expect(rows(page).first()).toBeVisible();
     for (const cells of await rows(page).evaluateAll((all) =>
       all.map((row) => [...row.querySelectorAll('td, th')].map((cell) => cell.textContent?.trim())),
@@ -641,6 +643,8 @@ test.describe('Health › Audit log on the sample world', () => {
     await main.getByLabel('Action', { exact: true }).selectOption('removed');
     await expect(page).toHaveURL(/action=removed/);
     await expect(rows(page)).toHaveCount(1);
+    await expect(page).not.toHaveURL(/[?&]record=/);
+    await expect(main.getByText('Select an event to see what changed')).toBeVisible();
     await expect(rows(page).first()).toContainText('Removed the Anthropic key');
     await expect(main.getByTestId('audit-count')).toHaveText('1 event');
 
@@ -652,5 +656,8 @@ test.describe('Health › Audit log on the sample world', () => {
     )) {
       expect(text).toContain('4472');
     }
+    await expect(page).toHaveURL(/q=4472/);
+    await expect(page).not.toHaveURL(/[?&]record=/);
+    await expect(main.getByText('Select an event to see what changed')).toBeVisible();
   });
 });

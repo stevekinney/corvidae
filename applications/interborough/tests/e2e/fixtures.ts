@@ -1,10 +1,11 @@
 /**
  * Playwright fixtures shared by every persona-flow spec (plan §11.4). The host serves one local
- * caller and asks for no sign-in, so the page needs no credential. There are three fixtures: the axe
+ * caller and asks for no sign-in, so the page needs no credential. There are four fixtures: the axe
  * gate, `checkA11y`; an automatic one that fails a test whose page logged a console error, threw,
  * or had a request fail, on any page of its context, unless `ALLOWED_PAGE_ERRORS` names it or the
- * test declared it; and an automatic one that, during a design-review capture, pins every page to
- * the sample world's clock and time zone (`capture-clock.ts`).
+ * test declared it; an automatic one that, during a design-review capture, pins every page to
+ * the sample world's clock and time zone (`capture-clock.ts`); and an automatic one that drops the
+ * route handlers still running when a test ends.
  */
 import PlaywrightAxeBuilder from '@axe-core/playwright';
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
@@ -315,6 +316,7 @@ export const test = base.extend<{
   checkA11y: (screenLabel: string) => Promise<void>;
   pageErrors: PageErrorLog;
   sampleClock: void;
+  settledRoutes: void;
 }>({
   // A capture renders in the sample world's zone; an ordinary run keeps the host's.
   timezoneId: captureClock()?.timeZone,
@@ -325,6 +327,20 @@ export const test = base.extend<{
       const clock = captureClock();
       if (clock !== undefined) await context.clock.setFixedTime(clock.now);
       await use();
+    },
+    { auto: true },
+  ],
+  // A test that answers the page's requests through `route.fetch()` can end while a request the
+  // page made on its own (a refetch, a lookup) is still being fetched. Playwright then throws "Test
+  // ended" from that handler into whichever test runs next in the worker, which fails a test that
+  // never routed anything. Every handler still running when its test ends is dropped instead.
+  settledRoutes: [
+    async ({ context }, use) => {
+      await use();
+      await Promise.all(
+        context.pages().map((page) => page.unrouteAll({ behavior: 'ignoreErrors' })),
+      );
+      await context.unrouteAll({ behavior: 'ignoreErrors' });
     },
     { auto: true },
   ],

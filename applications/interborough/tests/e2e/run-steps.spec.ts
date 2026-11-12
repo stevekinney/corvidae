@@ -169,14 +169,26 @@ test('Related runs list the runs a run started and, from a child, its parent and
 
 test('a checkpoint opens as a replay with an Alert and no colored edge', async ({
   page,
+  request,
   checkA11y,
 }) => {
-  await page.goto('/workflows/order-processing/runs');
-  await page
-    .getByRole('row', { name: /order-processing/ })
-    .first()
-    .getByRole('link')
-    .click();
+  // Earlier specs start order-processing runs that keep no checkpoints (a schedule's run with no
+  // input fails at once), so the run opened is the oldest one that keeps them: the seeded run.
+  const listed = await request.get('/v1/workflows?type=order-processing&limit=1000');
+  expect(listed.status()).toBe(200);
+  const { items } = (await listed.json()) as { items: { id: string; createdAt: number }[] };
+  let withCheckpoints: string | undefined;
+  for (const run of items.toSorted((left, right) => left.createdAt - right.createdAt)) {
+    const response = await request.get(`/v1/workflows/${encodeURIComponent(run.id)}/checkpoints`);
+    expect(response.status()).toBe(200);
+    if (((await response.json()) as unknown[]).length > 0) {
+      withCheckpoints = run.id;
+      break;
+    }
+  }
+  if (withCheckpoints === undefined) throw new Error('No order-processing run keeps checkpoints.');
+
+  await page.goto(`/runs/${encodeURIComponent(withCheckpoints)}`);
   await page.getByRole('button', { name: 'Checkpoints' }).click();
   const list = page.locator('.weft-checkpoints-tab__list');
   await expect(list).toBeVisible();

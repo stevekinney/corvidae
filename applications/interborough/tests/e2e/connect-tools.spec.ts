@@ -56,7 +56,10 @@ test.describe('the Sources tab', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/capabilities?tab=sources');
 
-      await expect(page.getByTestId('sources-count')).toHaveText('4');
+      // The tab counts the sources; the pane shows no bare count until a filter narrows the list.
+      await expect(page.getByTestId('tab-count-sources')).toHaveText('4');
+      await expect(page.locator('[data-source-row]')).toHaveCount(4);
+      await expect(page.getByTestId('sources-count')).toHaveCount(0);
       const states = {
         [E2E_TOOL_SOURCES.notes]: 'loaded',
         [E2E_TOOL_SOURCES.petstore]: 'loaded',

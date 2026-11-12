@@ -281,15 +281,28 @@ for (const width of WIDTHS) {
         reason: 'the test answers the log’s reads with a 500 once the page holds it',
       });
       let failing = false;
-      await answerAudit(page, (read) => (failing && read === 'page' ? 'fail' : undefined));
+      let failedReads = 0;
+      await answerAudit(page, (read) => {
+        if (!failing || read !== 'page') return undefined;
+        failedReads += 1;
+        return 'fail';
+      });
       await open(page, width);
       const main = page.locator('main');
       await expect(rows(page).first()).toBeVisible();
       const count = await rows(page).count();
 
       failing = true;
-      // The person comes back to the tab, which reads the log again.
-      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+      // The person comes back to the tab, which reads the log again. A read the page began on its
+      // own may still be on its way (at 1280 pixels the log is read a second time just after it
+      // first shows), and coming back then joins that read instead of making one, so the person
+      // comes back until a read of the log is made, and fails.
+      await expect
+        .poll(async () => {
+          await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+          return failedReads;
+        })
+        .toBeGreaterThan(0);
       const banner = main.getByRole('region', { name: 'Refresh problem' });
 
       // 83a: the shared preset's words, with Retry now, and nothing to dismiss.

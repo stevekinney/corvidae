@@ -194,8 +194,13 @@ describe('PageHeader', () => {
     expect(narrow).toMatch(
       /\.cinder-page-header__row > \.cinder-page-header__actions \+ \.cinder-page-header__create-slot \{\s*margin-inline-start: auto;/,
     );
-    // A status item never breaks inside itself, and no divider is left at the end of a line.
-    expect(narrow).toMatch(/\.cinder-page-header__status > \* \{\s*white-space: nowrap;/);
+    // A status item moves to the next line whole (it is a flex item of a wrapping row, kept to the
+    // line's width), and breaks inside only when it is wider than a line, so a long identifier never
+    // widens the page. No divider is left at the end of a line.
+    expect(narrow).toMatch(
+      /\.cinder-page-header__status > \* \{\s*max-inline-size: 100%;\s*overflow-wrap: anywhere;/,
+    );
+    expect(narrow).not.toMatch(/\.cinder-page-header__status > \* \{\s*white-space: nowrap;/);
     expect(narrow).toMatch(
       /\.cinder-page-header__status > \.cinder-divider\[data-cinder-orientation='vertical'\] \{\s*display: none;/,
     );

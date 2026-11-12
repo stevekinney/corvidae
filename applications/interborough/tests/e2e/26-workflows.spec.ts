@@ -20,7 +20,7 @@ import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
-import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
+import { jsonEditor, jsonEditorSource, replaceJsonEditorText } from './json-editor-support.ts';
 import {
   APPROVAL_SIGNAL,
   APPROVAL_START_SIGNAL,
@@ -308,7 +308,7 @@ test.describe('a new workflow', () => {
       template['name'] = 'e2e-brand-new';
       template['description'] = 'Made from the template.';
       template['steps'] = [{ kind: 'sleep', duration: '1m' }];
-      await editor.fill(JSON.stringify(template, null, 2));
+      await replaceJsonEditorText(editor, JSON.stringify(template, null, 2));
       await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
 
       await expect(page).toHaveURL(/\/workflows\/e2e-brand-new$/);
@@ -340,17 +340,17 @@ test.describe('a new workflow', () => {
     template['steps'] = [{ kind: 'sleep', duration: '1m' }];
 
     template['name'] = SEEDED_WORKFLOWS.digest;
-    await editor.fill(JSON.stringify(template));
+    await replaceJsonEditorText(editor, JSON.stringify(template));
     await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
     await expect(root).toContainText(WORKFLOW_COPY.creator.taken(SEEDED_WORKFLOWS.digest));
 
     template['name'] = 'Not An Identifier';
-    await editor.fill(JSON.stringify(template));
+    await replaceJsonEditorText(editor, JSON.stringify(template));
     await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
     await expect(root).toContainText(WORKFLOW_COPY.creator.invalidName);
 
     template['name'] = 'new';
-    await editor.fill(JSON.stringify(template));
+    await replaceJsonEditorText(editor, JSON.stringify(template));
     await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
     await expect(root).toContainText(WORKFLOW_COPY.creator.reservedName);
     await expect(page).toHaveURL(/\/workflows\/new$/);
@@ -857,7 +857,7 @@ test.describe('the editor', () => {
       // The file's own name is there to read, and is not sent.
       expect(text['name']).toBe('e2e-editable');
       text['trigger'] = { kind: 'schedule', spec: '6h' };
-      await editor.fill(JSON.stringify(text, null, 2));
+      await replaceJsonEditorText(editor, JSON.stringify(text, null, 2));
       await checkA11y(`the editor at ${width}px`);
       await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
 
@@ -884,13 +884,14 @@ test.describe('the editor', () => {
     await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
 
-    await editor.fill('{ "trigger": ');
+    await replaceJsonEditorText(editor, '{ "trigger": ');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root.getByTestId('workflow-builder-summary')).toHaveText(
       WORKFLOW_COPY.builder.json.fixLine(1),
     );
 
-    await editor.fill(
+    await replaceJsonEditorText(
+      editor,
       JSON.stringify({ trigger: { kind: 'schedule', spec: 'never ever' }, steps: [] }),
     );
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
@@ -921,7 +922,10 @@ test.describe('the editor', () => {
         trigger: { kind: 'schedule', spec: '8h' },
       },
     });
-    await editor.fill(JSON.stringify({ trigger: { kind: 'schedule', spec: '2h' }, steps: STEPS }));
+    await replaceJsonEditorText(
+      editor,
+      JSON.stringify({ trigger: { kind: 'schedule', spec: '2h' }, steps: STEPS }),
+    );
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root).toHaveAttribute('data-condition', 'stale');
     await expect(root).toContainText(WORKFLOW_COPY.editor.changedOnDisk.title);
@@ -962,7 +966,10 @@ test.describe('the editor', () => {
     await openJsonTab(root);
 
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
-    await editor.fill(JSON.stringify({ trigger: { kind: 'schedule', spec: '1h' }, steps: STEPS }));
+    await replaceJsonEditorText(
+      editor,
+      JSON.stringify({ trigger: { kind: 'schedule', spec: '1h' }, steps: STEPS }),
+    );
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(page).toHaveURL(/\/workflows\/e2e-fixable$/);
     const fixed = await readWorkflow(request, 'e2e-fixable');
