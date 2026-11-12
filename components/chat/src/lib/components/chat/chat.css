@@ -152,7 +152,7 @@
     position: sticky;
     inset-block-start: var(--cinder-space-2);
     align-self: flex-start;
-    z-index: 1;
+    z-index: 2;
     inline-size: 0;
     block-size: 0;
     min-inline-size: 0;

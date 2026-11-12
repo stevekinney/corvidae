@@ -2937,6 +2937,10 @@
   /* Timeline / Message Area */
   .chat-timeline {
     position: relative;
+    /* A stacking context of its own: a message line's z-index (chat-message.svelte) lifts its
+     * hit-area overhang above the next bubble, and must never reach the jump controls, the
+     * composer, or any surface outside the transcript. */
+    isolation: isolate;
     flex: 1;
     overflow-y: auto;
     scroll-padding-block: var(--cinder-space-2);
@@ -2958,7 +2962,7 @@
     position: sticky;
     inset-block-start: var(--cinder-space-2);
     align-self: flex-start;
-    z-index: 1;
+    z-index: 2;
     inline-size: 0;
     block-size: 0;
     min-inline-size: 0;
