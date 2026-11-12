@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import { runPooledBunTest } from './bun-test-pool.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
@@ -13,7 +14,7 @@ import { memoryCeilingVariable, runawayExitCode, watchdogReportVariable } from '
  * directory and runs it through `runPooledBunTest` with a scratch pool, a ceiling or guard far
  * below the defaults, and a fast sample interval, then reads what the run returned and reported.
  * Nothing here measures a duration: a run that is not killed ends on its own, because each fixture
- * limits itself (the allocator stops at a gigabyte, the spinner after a fixed count of passes), and
+ * limits itself (the allocator stops growing at a gigabyte, and both end after the hang guard), and
  * the scenario then fails on the exit code. Scenarios run at module scope, where no per-test clock
  * applies (`scripts/module-scope-scenario.test-support.ts`).
  */
@@ -65,8 +66,9 @@ async function runFixture(
   return { code, reports, heartbeatsLeft: await readdir(heartbeats) };
 }
 
-// Touches every page it allocates, in a synchronous loop, and gives up at a gigabyte, so a run with
-// no watchdog ends by itself.
+// Touches every page it allocates, in a synchronous loop, stops growing at a gigabyte, and then
+// holds what it has for the hang guard. The watchdog therefore has the whole hang guard to see it,
+// however loaded the host, and a run with no watchdog still ends by itself.
 const allocator = `import { test } from 'bun:test';
 test('allocates until something stops it', () => {
   const held: Uint8Array[] = [];
@@ -74,22 +76,20 @@ test('allocates until something stops it', () => {
     const block = new Uint8Array(8 * 1024 * 1024);
     for (let index = 0; index < block.length; index += 1024) block[index] = (index >> 10) & 0xff;
     held.push(block);
-    const until = performance.now() + 20;
-    while (performance.now() < until);
   }
+  const until = performance.now() + ${HANG_GUARD_MILLISECONDS};
+  while (performance.now() < until);
   if (held.length === 0) throw new Error('unreachable');
 });
 `;
 
-// Never returns to the event loop until its count of passes is spent, far longer than the guard the
-// scenario passes and far shorter than a real hang.
+// Never returns to the event loop for the hang guard, eighty times the guard the scenario passes,
+// and then ends by itself.
 const spinner = `import { test } from 'bun:test';
 test('spins without returning to the event loop', () => {
   let passes = 0;
-  for (let outer = 0; outer < 4000; outer += 1) {
-    const until = performance.now() + 5;
-    while (performance.now() < until) passes += 1;
-  }
+  const until = performance.now() + ${HANG_GUARD_MILLISECONDS};
+  while (performance.now() < until) passes += 1;
   if (passes === 0) throw new Error('unreachable');
 });
 `;
@@ -133,7 +133,7 @@ const leavesAHealthyRunAlone = await outcomeOf(async () => {
   expect(run.code).toBe(0);
   expect(run.reports).toHaveLength(1);
   expect(run.reports[0]).toMatch(
-    /^bun-test-pool: peak memory \d+\.\d GiB of the \d+\.\d GiB ceiling; 1 test process\(es\) reported heartbeats$/,
+    /^bun-test-pool: peak memory \d+\.\d GiB of the \d+\.\d GiB ceiling; 1 test process\(es\) reported heartbeats; the longest stretch without a test starting or finishing burned \d+ s of processor time, where a stall needs 180 s$/,
   );
   expect(run.heartbeatsLeft).toEqual([]);
 });

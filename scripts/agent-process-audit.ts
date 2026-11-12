@@ -211,19 +211,34 @@ function signal(pid: number, name: NodeJS.Signals): void {
 
 const killGraceMilliseconds = 2000;
 
-/** Stops exactly `findings`, each only while its start time still matches; resolves to the survivors. */
-async function stop(findings: readonly AuditFinding[]): Promise<AuditFinding[]> {
+export type StopOptions = {
+  readonly readProcessTable: () => ProcessTable | undefined;
+  readonly signal: (pid: number, name: NodeJS.Signals) => void;
+  readonly sleep: (milliseconds: number) => Promise<void>;
+};
+
+/**
+ * Stops the orphans among `findings`, and nothing else: each is signalled only while a fresh
+ * process table still shows its pid with the start time of the listing, so a pid recycled since is
+ * never touched, and a finding whose parent is alive is never signalled. SIGTERM, then SIGKILL for
+ * what is left after the grace. Resolves to the orphans still running.
+ */
+export async function stopOrphans(
+  findings: readonly AuditFinding[],
+  options: StopOptions,
+): Promise<AuditFinding[]> {
+  const orphans = findings.filter((finding) => finding.orphaned);
   const living = (): AuditFinding[] => {
-    const table = readProcessTable();
+    const table = options.readProcessTable();
     if (table === undefined) return [];
-    return findings.filter((finding) => table.get(finding.pid)?.startedAt === finding.startedAt);
+    return orphans.filter((finding) => table.get(finding.pid)?.startedAt === finding.startedAt);
   };
-  for (const finding of living()) signal(finding.pid, 'SIGTERM');
+  for (const finding of living()) options.signal(finding.pid, 'SIGTERM');
   for (let waited = 0; waited < killGraceMilliseconds && living().length > 0; waited += 100) {
-    await Bun.sleep(100);
+    await options.sleep(100);
   }
-  for (const finding of living()) signal(finding.pid, 'SIGKILL');
-  await Bun.sleep(100);
+  for (const finding of living()) options.signal(finding.pid, 'SIGKILL');
+  await options.sleep(100);
   return living();
 }
 
@@ -275,7 +290,11 @@ async function main(): Promise<number> {
     return 1;
   }
   const orphans = findings.filter((finding) => finding.orphaned);
-  const survivors = await stop(orphans);
+  const survivors = await stopOrphans(findings, {
+    readProcessTable,
+    signal,
+    sleep: (milliseconds) => Bun.sleep(milliseconds),
+  });
   process.stdout.write(
     `agent-process-audit: stopped ${orphans.length - survivors.length} of ${orphans.length} orphan(s)\n`,
   );

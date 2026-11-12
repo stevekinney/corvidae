@@ -59,11 +59,12 @@ export const watchdogReportVariable = 'CORVIDAE_TEST_WATCHDOG_REPORT';
 export const runawayExitCode = 70;
 
 /**
- * The most memory a healthy test run's process tree may hold: 24 GiB, about two and a half times
- * the heaviest lane. Measured peaks on 2026-11-12 (`CORVIDAE_TEST_WATCHDOG_REPORT=1`): Cinder's
- * full suite 9.4 GiB and chat's 6.0 GiB, each on four workers; Interborough's host lane 4.3 GiB
- * and each of its UI shards 2.8 to 3.6 GiB; no slow lane above 4.9 GiB. The runaway that prompted
- * this grew by about 25 GB a minute, so it would have been stopped within a minute, 120 GB earlier.
+ * The most memory a healthy test run's process tree may hold: 24 GiB, a little over twice the
+ * heaviest lane. Measured peaks on 2026-11-12 (`CORVIDAE_TEST_WATCHDOG_REPORT=1`): the UI half of
+ * Interborough's coverage run, one instrumented process, 10.4 GiB; Cinder's full suite 9.4 GiB and
+ * chat's 6.0 GiB, each on four workers; Interborough's host lane 4.3 GiB and each of its UI shards
+ * 2.8 to 3.6 GiB; no slow lane above 4.9 GiB. The runaway that prompted this grew by about 25 GB a
+ * minute, so it would have been stopped within a minute.
  */
 export const defaultMemoryCeilingBytes = 24 * 1024 ** 3;
 
@@ -366,6 +367,8 @@ export type WatchdogOutcome = {
   readonly peakBytes: number;
   /** The test processes that recorded a heartbeat at any time. */
   readonly heartbeatProcesses: number;
+  /** The most processor time one test process burned without starting or finishing a test. */
+  readonly longestBurnMilliseconds: number;
 };
 
 export type TestWatchdogOptions = {
@@ -415,6 +418,7 @@ export function startTestWatchdog(options: TestWatchdogOptions): {
   // Properties, so the loop sees `stop` and `look` set them across its awaits.
   const watching: { running: boolean; killed?: string } = { running: true };
   let peakBytes = 0;
+  let longestBurnMilliseconds = 0;
   let last = now();
 
   const kill = (sample: TreeSample, table: ProcessTable): void => {
@@ -460,6 +464,14 @@ export function startTestWatchdog(options: TestWatchdogOptions): {
       });
     } else {
       const stalled = advanceStalls(stalls, observations, credit, guard);
+      for (const observation of observations) {
+        const since = stalls.get(observation.pid)?.cpuAtProgress;
+        if (since === undefined || observation.cpuMilliseconds === undefined) continue;
+        longestBurnMilliseconds = Math.max(
+          longestBurnMilliseconds,
+          observation.cpuMilliseconds - since,
+        );
+      }
       if (stalled.length > 0) {
         watching.killed = describeStall({ stalled, guardMilliseconds: guard.milliseconds });
       }
@@ -480,16 +492,27 @@ export function startTestWatchdog(options: TestWatchdogOptions): {
       watching.running = false;
       markStopped();
       await loop;
+      // A test process that started and finished between two samples left its record behind.
+      if (options.heartbeatDirectory !== undefined) {
+        for (const pid of readHeartbeats(options.heartbeatDirectory).keys()) reported.add(pid);
+      }
       return {
         ...(watching.killed === undefined ? {} : { killed: watching.killed }),
         peakBytes,
         heartbeatProcesses: reported.size,
+        longestBurnMilliseconds,
       };
     },
   };
 }
 
 /** The line a run prints under {@link watchdogReportVariable}. */
-export function describeWatch(outcome: WatchdogOutcome, ceilingBytes: number): string {
-  return `peak memory ${gibibytes(outcome.peakBytes)} of the ${gibibytes(ceilingBytes)} ceiling; ${outcome.heartbeatProcesses} test process(es) reported heartbeats`;
+export function describeWatch(
+  outcome: WatchdogOutcome,
+  ceilingBytes: number,
+  guard: StallGuard = { milliseconds: stallGuardMilliseconds, processorShare: stallProcessorShare },
+): string {
+  const burned = Math.round(outcome.longestBurnMilliseconds / 1000);
+  const needed = Math.round((guard.milliseconds * guard.processorShare) / 1000);
+  return `peak memory ${gibibytes(outcome.peakBytes)} of the ${gibibytes(ceilingBytes)} ceiling; ${outcome.heartbeatProcesses} test process(es) reported heartbeats; the longest stretch without a test starting or finishing burned ${burned} s of processor time, where a stall needs ${needed} s`;
 }
