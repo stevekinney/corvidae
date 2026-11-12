@@ -29,7 +29,7 @@
     title,
     icon,
     action,
-    actionLayout = 'stacked',
+    actionLayout = 'inline',
     progress,
     onDismiss,
     dismissLabel = 'Dismiss',
@@ -69,6 +69,7 @@
   class={classNames(
     'cinder-callout',
     actionLayout === 'inline' && 'cinder-callout--inline-action',
+    icon && 'cinder-callout--with-icon',
     onDismiss && 'cinder-callout--dismissible',
     variant !== 'neutral' && 'cinder-_status-surface',
     variant !== 'neutral' && 'cinder-_status-surface-border',

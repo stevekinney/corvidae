@@ -359,6 +359,17 @@ describe('Citation', () => {
     expect(hit).toContain('calc((100% - 24px) / 2)');
   });
 
+  test('a standalone source link is at least 24px tall and gets its coarse hit area from a pseudo-element', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const link = /\n {2}\.cinder-citation__link \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+    expect(link).toContain('min-block-size: 1.5rem;');
+    expect(link).toContain('align-items: center;');
+    expect(stylesheet).toMatch(
+      /@media \(pointer: coarse\) \{[^@]*\.cinder-citation__link::before \{[^}]*var\(--cinder-touch-target-min\)/s,
+    );
+    expect(stylesheet).not.toMatch(/\.cinder-citation__link \{[^}]*touch-target-min/s);
+  });
+
   test('the focus ring wraps the marker with 2px of padding and the compact-control radius', () => {
     const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
     const focus = /\.cinder-citation__marker:focus-visible \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';

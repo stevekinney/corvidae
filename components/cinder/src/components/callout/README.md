@@ -16,7 +16,7 @@ Inline note for tips, warnings, or contextual notes within content flow. It is q
 
 ## Neutral note with an action
 
-`variant="neutral"`, the default, is a plain note that is not a status: an icon and muted text, with no tint, edge or inset, and its row is vertically centred, so the `icon` lines up with the text however many lines it wraps to. The message is capped at 68 characters wide, and the `action` stacks under it in a row that wraps, so several actions break onto lines of their own and a button label never wraps (a Banner's actions stack the same way). Use it to explain a state, with one link or button under the message:
+`variant="neutral"`, the default, is a note that is not a status. It is the same card as every tone (a fill, a hairline edge, the radius and the inset); the tone changes only the tint and the icon, and neutral's fill is the quiet sunken surface. The message is capped at 68 characters wide, and the `action` sits at the trailing end of the text while it fits and wraps under it, at the start edge, when it cannot (`actionLayout="stacked"` always puts it under). Under about 30rem of callout width the icon sits beside the first line only, so later lines, the progress line and the action row start at the callout's own padding. Use it to explain a state, with one link or button:
 
 ```svelte
 <script lang="ts">
@@ -45,7 +45,7 @@ Callout is the single notice in Cinder's chat surfaces: one box, one layout, and
 - `title`: an optional bold first line.
 - children: the text.
 - `progress`: an optional snippet under the text inside the content column, usually a small `Progress` with its own accessible name.
-- `action` with `actionLayout="inline"`: one `sm` secondary `Button` at the trailing end of the text. It wraps under the text, at the text's own edge, only when the row cannot hold both.
+- `action` (`actionLayout="inline"`, the default): one `sm` secondary `Button` at the trailing end of the text. It wraps under the text, at the text's own edge, only when the row cannot hold both.
 - `onDismiss` and `dismissLabel`: a compact dismiss button at the trailing end, 20px painted with a 44px hit area that takes no layout space. Callout stays static, so the caller removes it.
 
 ```svelte
@@ -72,7 +72,7 @@ A callout is a note beside the content it qualifies. Do not wrap a form control 
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `actionLayout` | `"stacked"` \| `"inline"` | no | — | Layout for the action slot. `inline` keeps one compact action beside the message. |
+| `actionLayout` | `"stacked"` \| `"inline"` | no | — | Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. |
 | `class` | `string` | no | — | Extra classes appended to the root element. Pass via the explicit `class` prop — it is excluded from rest-prop spread, so writing `class="x"` inside spread attributes will not reach the root. |
 | `dismissLabel` | `string` | no | — | Accessible name of the dismiss button. Default `'Dismiss'`. |
 | `semantic` | `"aside"` \| `"note"` | no | — | Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark. |

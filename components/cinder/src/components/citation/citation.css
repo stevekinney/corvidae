@@ -124,6 +124,12 @@
     gap: var(--cinder-space-1);
     min-width: 0;
   }
+  /* A standalone link in the popover is a target of its own: at least 24px tall. */
+  .cinder-citation__link {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 1.5rem;
+  }
   .cinder-citation__pagination {
     display: flex;
     flex-wrap: wrap;
@@ -150,10 +156,15 @@
     }
 
     .cinder-citation__pagination button,
+    /* The link stays compact; its 44px hit area is a pseudo-element that takes no layout. */
     .cinder-citation__link {
-      display: inline-flex;
-      align-items: center;
-      min-height: var(--cinder-touch-target-min);
+      position: relative;
+    }
+    .cinder-citation__link::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
     }
     .cinder-citation__pagination button {
       inline-size: var(--cinder-touch-target-min);

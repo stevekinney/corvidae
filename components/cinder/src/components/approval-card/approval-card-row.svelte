@@ -252,22 +252,21 @@
           >
         {/if}
       </div>
-      {#if !collapsed}
+      {#if !collapsed && (tool.label !== undefined || !tool.irreversible || hasSourceLine)}
         <p class="cinder-approval-card__line">
           <span class="cinder-approval-card__line-tool">
-            {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
-                >{tool.label}</span
-              >{' '}{/if}<span class="cinder-approval-card__line-facts"
-              ><span class="cinder-approval-card__keep"
-                ><code class="cinder-approval-card__tool-identifier">{tool.name}</code
-                >{#if !tool.irreversible}<span
-                    class="cinder-approval-card__separator"
-                    aria-hidden="true">,</span
-                  >{/if}</span
-              >{#if !tool.irreversible}{' '}<span class="cinder-approval-card__keep"
+            <span class="cinder-approval-card__line-facts"
+              >{#if tool.label !== undefined}<span class="cinder-approval-card__keep"
+                  ><span class="cinder-approval-card__tool-label">{tool.label}</span
+                  >{#if !tool.irreversible}<span
+                      class="cinder-approval-card__separator"
+                      aria-hidden="true">,</span
+                    >{/if}</span
+                >{#if !tool.irreversible}{' '}{/if}{/if}{#if !tool.irreversible}<span
+                  class="cinder-approval-card__keep"
                   ><span class="cinder-approval-card__risk-word">{riskWord}</span></span
                 >{/if}</span
-            >{#if hasSourceLine}<span
+            >{#if hasSourceLine && (tool.label !== undefined || !tool.irreversible)}<span
                 class="cinder-approval-card__separator cinder-approval-card__source-separator"
                 aria-hidden="true">,</span
               >{/if}

@@ -22,7 +22,7 @@ const schema = {
     actionLayout: {
       enum: ['stacked', 'inline'],
       description:
-        'Layout for the action slot. `inline` keeps one compact action beside the message.',
+        "Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message.",
     },
     dismissLabel: {
       type: 'string',

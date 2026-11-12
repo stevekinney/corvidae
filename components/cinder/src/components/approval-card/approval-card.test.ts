@@ -1308,7 +1308,7 @@ describe('ApprovalCard row layout', () => {
       squash(container.querySelector('.cinder-approval-card__irreversible')?.textContent),
     ).toBe("Can't be undone");
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      'Issue refund issue-refund, Approval from Tool runner, 4 min ago',
+      'Issue refund, Approval from Tool runner, 4 min ago',
     );
     expect(container.querySelector('.cinder-approval-card__consequence')?.textContent).toBe(
       'Sends $42.00 back to the original card',
@@ -1387,8 +1387,8 @@ describe('ApprovalCard row layout', () => {
   test('writes the identifier small and keeps the irreversible marker in the title', () => {
     const { container } = render(ApprovalCard, { props: refundRow() });
 
-    const identifier = container.querySelector('code.cinder-approval-card__tool-identifier');
-    expect(identifier?.textContent).toBe('issue-refund');
+    // The row carries no separate tool-id line: the identifier repeats the label.
+    expect(container.querySelector('.cinder-approval-card__tool-identifier')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__irreversible')?.textContent).toBe(
       "Can't be undone",
     );
@@ -1408,7 +1408,7 @@ describe('ApprovalCard row layout', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      'issue-refund, Dangerous, Approval from the agent, 2 min ago',
+      'Dangerous, Approval from the agent, 2 min ago',
     );
     expect(container.querySelector('.cinder-approval-card__undone')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__tool-label')).toBeNull();
@@ -1692,7 +1692,7 @@ describe('ApprovalCard row layout', () => {
       'Unavailable',
     );
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      'Publish notes publish-notes, Changes things, Approval from Release helper, 12 min ago',
+      'Publish notes, Changes things, Approval from Release helper, 12 min ago',
     );
     expect(
       squash(container.querySelector('.cinder-approval-card__input-summary')?.textContent),
@@ -2338,13 +2338,13 @@ describe('ApprovalCard line wrapping', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__line-facts')?.textContent)).toBe(
-      'issue-refund, Dangerous',
+      'Dangerous',
     );
     expect(
       [
         ...container.querySelectorAll('.cinder-approval-card__line .cinder-approval-card__keep'),
       ].map((piece) => squash(piece.textContent)),
-    ).toEqual(['issue-refund,', 'Dangerous']);
+    ).toEqual(['Dangerous']);
     expect(container.querySelector('.cinder-approval-card__line time')?.textContent).toBe(
       '4 min ago',
     );
@@ -2381,7 +2381,7 @@ describe('ApprovalCard source line', () => {
     );
     // The comma that leads into the source ends the tool line, so it never starts a line.
     expect(squash(container.querySelector('.cinder-approval-card__line-tool')?.textContent)).toBe(
-      'Issue refund issue-refund,',
+      'Issue refund,',
     );
   });
 

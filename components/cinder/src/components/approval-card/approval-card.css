@@ -494,7 +494,7 @@
     box-sizing: border-box;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-space-2);
+    padding: var(--cinder-space-3);
     background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-sm);
   }
@@ -529,7 +529,7 @@
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
-    line-height: var(--cinder-leading-tight);
+    line-height: var(--cinder-leading-snug);
   }
 
   /* Decided on another page: a glyph in the decision's tone stands where the risk shield stood,
@@ -705,7 +705,19 @@
   }
 
   /* A collapsed disclosure points toward the inline end, so RTL mirrors it. */
-  .cinder-approval-card__input-toggle:dir(rtl) svg:not([data-cinder-open]) {
+  .cinder-approval-card__input-toggle:dir(rtl) svg:not([data-cinder-open]),
+  .cinder-approval-card:has(
+      :is(
+        .cinder-approval-card__title,
+        .cinder-approval-card__decision-title,
+        .cinder-approval-card__row-question
+      ):dir(rtl)
+    )
+    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    svg:not([data-cinder-open]),
+  .cinder-approval-card[dir='rtl']
+    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    svg:not([data-cinder-open]) {
     transform: scaleX(-1);
   }
 
@@ -1033,9 +1045,17 @@
     unicode-bidi: isolate;
   }
 
-  .cinder-approval-card:has(.cinder-approval-card__title:dir(rtl))
+  /* The actions row reads in the card's own direction, so the note toggle starts at the start edge
+   * and the decision buttons end at the end edge in right-to-left content too. */
+  .cinder-approval-card:has(
+      :is(
+        .cinder-approval-card__title,
+        .cinder-approval-card__decision-title,
+        .cinder-approval-card__row-question
+      ):dir(rtl)
+    )
     .cinder-approval-card__row-actions {
-    justify-content: flex-end;
+    direction: rtl;
   }
 
   .cinder-approval-card[dir='rtl']
@@ -1057,7 +1077,7 @@
   }
 
   .cinder-approval-card[dir='rtl'] .cinder-approval-card__row-actions {
-    justify-content: flex-end;
+    direction: rtl;
   }
 
   .cinder-approval-card__fact--command:dir(rtl) {
@@ -1080,9 +1100,10 @@
     text-align: start;
   }
 
+  /* The hang (`margin-inline`) is the padding, so the row's command text lands on the title column
+   * and the panel keeps one space-1 from the card's border. */
   .cinder-approval-card--row .cinder-approval-card__command {
-    /* @runtime-state */
-    --cinder-code-block-padding: var(--cinder-space-1);
+    --_cinder-approval-card-command-padding: var(--cinder-space-1);
   }
 
   .cinder-approval-card__decision-tools {
@@ -1132,8 +1153,7 @@
     }
 
     .cinder-approval-card--decision .cinder-approval-card__command {
-      /* @runtime-state */
-      --cinder-code-block-padding: var(--cinder-space-1-5);
+      --_cinder-approval-card-command-padding: var(--cinder-space-1-5);
     }
   }
 

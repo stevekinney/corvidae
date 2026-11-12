@@ -8,9 +8,9 @@ import type { HTMLAttributes } from 'svelte/elements';
  * `--cinder-status-danger-solid`). `alert.svelte` uses `error` instead of `danger`;
  * that divergence is tracked in `banner.a11y.md`.
  *
- * `'neutral'` is the default: a plain note that is not a status, an icon and muted text with no
- * tint, for explaining a state, such as why a goal ended. Its row is vertically centred, so an
- * `icon` sits beside the text. The status variants are tinted, so keep them for a warning or a
+ * `'neutral'` is the default: a note that is not a status, drawn as the same card as every tone
+ * (a sunken fill, a hairline, the shared inset), for explaining a state, such as why a goal
+ * ended. The status variants are tinted, so keep them for a warning or a
  * blocking condition, at most one tinted box on a screen; a caller that wants the old tinted
  * default passes `variant="info"`.
  */
@@ -94,7 +94,7 @@ export type CalloutProps = Omit<
    * itself stays static.
    */
   action?: Snippet;
-  /** Layout for the action slot. `inline` keeps one compact action beside the message. */
+  /** Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. */
   actionLayout?: 'stacked' | 'inline';
   /**
    * Optional progress line rendered under the message inside the content column, usually a small
