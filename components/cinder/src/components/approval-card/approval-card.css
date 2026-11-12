@@ -853,14 +853,14 @@
     .cinder-approval-card
       .cinder-approval-card__row-actions
       .cinder-button.cinder-approval-card__note-toggle {
-      inline-size: var(--cinder-button-height-sm);
-      min-inline-size: var(--cinder-button-height-sm);
-      block-size: var(--cinder-button-height-sm);
-      min-block-size: var(--cinder-button-height-sm);
+      inline-size: var(--_cinder-painted-height-sm);
+      min-inline-size: var(--_cinder-painted-height-sm);
+      block-size: var(--_cinder-painted-height-sm);
+      min-block-size: var(--_cinder-painted-height-sm);
       padding-inline: 0;
       aspect-ratio: 1;
       justify-content: center;
-      margin-inline-start: calc((var(--cinder-button-height-sm) - 1em) / -2);
+      margin-inline-start: calc((var(--_cinder-painted-height-sm) - 1em) / -2);
     }
 
     .cinder-approval-card

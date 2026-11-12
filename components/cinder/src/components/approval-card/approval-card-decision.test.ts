@@ -749,8 +749,29 @@ describe('ApprovalCard decision layout stylesheet', () => {
       /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*margin-inline-start: calc\(-1 \* var\(--cinder-button-padding-x-sm\)\);/,
     );
     expect(css).toMatch(
-      /@container \(inline-size < 30rem\) \{ [^@]*\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*inline-size: var\(--cinder-button-height-sm\);[^}]*block-size: var\(--cinder-button-height-sm\);[^}]*padding-inline: 0;/,
+      /@container \(inline-size < 30rem\) \{ [^@]*\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*inline-size: var\(--_cinder-painted-height-sm\);[^}]*block-size: var\(--_cinder-painted-height-sm\);[^}]*padding-inline: 0;/,
     );
+  });
+
+  test('the note toggle is sized by the painted height, so it never stretches the action row', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // A coarse pointer raises --cinder-button-height-sm to 44px; a toggle that read it would be the
+    // tallest item in the row and the stretching Deny and primary would follow it.
+    const toggleRules = [...css.matchAll(/[^{}]*__note-toggle \{[^}]*\}/g)].map(
+      (match) => match[0],
+    );
+    expect(toggleRules.length).toBeGreaterThan(0);
+    for (const rule of toggleRules) expect(rule).not.toContain('--cinder-button-height');
+    // The row aligns its items at the start and only the stretching Button rule reaches the
+    // buttons; the toggle opts out with its own centre alignment.
+    expect(css).toMatch(/\.cinder-approval-card__row-actions \{[^}]*align-items:\s*flex-start;/);
+    expect(css).toMatch(
+      /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*align-self:\s*center;/,
+    );
+    expect(css).not.toMatch(/\.cinder-approval-card__row-actions \{[^}]*align-items:\s*stretch/);
   });
 
   test('a batch row title takes its natural width so the badge is what wraps', () => {
