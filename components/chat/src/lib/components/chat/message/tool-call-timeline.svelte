@@ -778,7 +778,7 @@
    * work keeps its tool/count identity in the collapsed header. The semantic title yields space
    * first, so the work identity and duration remain readable on a phone. */
   @container (max-width: 21.99rem) {
-    .chat-tool-call-summary-tools {
+    .chat-tool-call-timeline:not([data-has-repeated-summary='true']) .chat-tool-call-summary-tools {
       display: none;
     }
 
