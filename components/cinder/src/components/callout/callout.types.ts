@@ -96,6 +96,18 @@ export type CalloutProps = Omit<
   action?: Snippet;
   /** Layout for the action slot. `inline` keeps one compact action beside the message. */
   actionLayout?: 'stacked' | 'inline';
+  /**
+   * Optional progress line rendered under the message inside the content column, usually a small
+   * `Progress`. It is decorative to the callout: give the Progress its own accessible name.
+   */
+  progress?: Snippet;
+  /**
+   * When set, a compact dismiss button renders at the trailing end and calls this on activation.
+   * The callout stays static: the caller removes it.
+   */
+  onDismiss?: () => void;
+  /** Accessible name of the dismiss button. Default `'Dismiss'`. */
+  dismissLabel?: string;
   /** Callout body content. */
   children: Snippet;
   /**

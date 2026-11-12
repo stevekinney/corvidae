@@ -19,7 +19,8 @@
     /* The glyph and the message share the first row; the action stacks under the message on the
      * next row (COR-2314). An absent glyph leaves its track at zero width, and the gap is a margin
      * on the glyph, so nothing is left behind. */
-    grid-template-columns: auto minmax(0, 1fr);
+    /* The third track holds the optional dismiss button and collapses to nothing without one. */
+    grid-template-columns: auto minmax(0, 1fr) auto;
     column-gap: 0;
     row-gap: var(--cinder-space-3);
     align-items: start;
@@ -107,51 +108,62 @@
     white-space: nowrap;
   }
 
+  .cinder-callout__progress {
+    margin-block-start: var(--cinder-space-2);
+  }
+
+  .cinder-callout__dismiss {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: start;
+    margin-inline-start: var(--cinder-space-3);
+    margin-block-start: var(--cinder-space-0-5);
+  }
+
+  .cinder-callout__dismiss-icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-callout__dismiss:focus-visible {
+    outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
+    outline-offset: var(--cinder-ring-offset);
+  }
+
+  /* Inline action: the message and its action share one wrapping row, so the action sits at the
+   * trailing end while it fits and drops under the text, at the text's own edge, only when it
+   * cannot. The icon and the dismiss button stay in their own tracks. */
   .cinder-callout--inline-action {
-    grid-template-columns: minmax(0, 1fr) max-content;
-    justify-content: start;
     align-items: center;
-    column-gap: var(--cinder-space-3);
     row-gap: 0;
   }
 
-  .cinder-callout--inline-action .cinder-callout__content {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .cinder-callout--inline-action .cinder-callout__action {
+  .cinder-callout__body {
     grid-column: 2;
     grid-row: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-inline-size: 0;
+    column-gap: var(--cinder-space-3);
+    row-gap: var(--cinder-space-2);
   }
 
-  .cinder-callout--inline-action:has(> .cinder-callout__icon) {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+  .cinder-callout__body > .cinder-callout__content {
+    flex: 1 1 12rem;
+    max-inline-size: 68ch;
   }
 
-  .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__content {
-    grid-column: 2;
+  .cinder-callout__body > .cinder-callout__action {
+    flex: 0 0 auto;
+    grid-column: auto;
+    grid-row: auto;
+    margin-inline-start: auto;
   }
 
-  .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__action {
-    grid-column: 3;
-  }
-
-  @container (inline-size < 30rem) {
-    .cinder-callout--inline-action:has(> .cinder-callout__icon) {
-      display: block;
-    }
-
-    .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__icon {
-      float: inline-start;
-      margin-inline-end: var(--cinder-space-2);
-    }
-
-    .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__content,
-    .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__action {
-      display: block;
-      inline-size: auto;
-    }
+  .cinder-callout--inline-action .cinder-callout__dismiss {
+    align-self: center;
+    margin-block-start: 0;
   }
 
   /* ----------------------------------------
