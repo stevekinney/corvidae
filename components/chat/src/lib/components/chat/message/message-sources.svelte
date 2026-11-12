@@ -315,6 +315,10 @@
     .chat-message-sources-toggle::after {
       content: '';
       position: absolute;
+      /* The line below the Sources block has a stacking position of its own (so its actions'
+         overhang clears the next message); this extension sits above it, so a tap under the
+         toggle reaches the toggle and not the time. Only the invisible area rises: no face. */
+      z-index: 2;
       inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
       inset-inline: calc(var(--cinder-space-3) * -1);
     }

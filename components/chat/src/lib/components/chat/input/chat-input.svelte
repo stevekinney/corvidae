@@ -2266,6 +2266,15 @@
     min-block-size: var(--_chat-input-row-height);
   }
 
+  /* A textarea cannot carry a hit-area pseudo-element, so on a coarse pointer the editor row itself
+   * is a touch target tall. Block padding keeps one line on the centre line Send and Stop share,
+   * because the markdown overlay and the editor both derive their padding from this height. */
+  @media (pointer: coarse) {
+    .chat-input-editor-container {
+      --_chat-input-row-height: var(--cinder-touch-target-min, 44px);
+    }
+  }
+
   /* The first line shares a centre with Send or Stop: the editor is as tall as that button and its
    * block padding centres one line in it. */
   .chat-input-editor {

@@ -207,5 +207,23 @@
     flex: none;
     align-items: center;
   }
+
+  /* The drawer clips its corners and its list scrolls, so a control's 44px hit area (which takes no
+   * layout) must fit inside the box: the header and each row give the last control the room its
+   * overhang needs, and Edit and Remove are a hit area apart so neither covers the other. */
+  @media (pointer: coarse) {
+    .chat-follow-up-drawer-header {
+      min-block-size: 2.75rem;
+      padding-inline-end: var(--cinder-space-2);
+    }
+
+    .chat-follow-up-ghost {
+      padding-inline-end: var(--cinder-space-2);
+    }
+
+    .chat-follow-up-ghost-actions {
+      gap: var(--cinder-space-4);
+    }
+  }
   /* The Cinder icon Buttons paint compact and take their 44 px hit area from a pseudo-element. */
 </style>
