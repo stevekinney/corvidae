@@ -1344,6 +1344,13 @@
     content-visibility: visible;
   }
 
+  /* A card that waits on a decision is always laid out and hit-testable: the transcript scrolls
+   * its buttons into view, and a row still skipped for the frame that scroll lands in would take
+   * the tap itself. */
+  .chat-message:has(:global(.cinder-approval-card[data-cinder-state='pending'])) {
+    content-visibility: visible;
+  }
+
   /* Escape hatch for a deliberate programmatic scroll-to-bottom
      (use-chat-scroll-state.svelte.ts): while `.chat-timeline` carries
      `data-cinder-force-visible`, every row lays out at its real height up

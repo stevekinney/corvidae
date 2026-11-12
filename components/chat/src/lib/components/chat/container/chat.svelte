@@ -1518,9 +1518,12 @@
 
     let observer: IntersectionObserver | undefined;
     let resizeObserver: ResizeObserver | undefined;
+    let detachScroll: (() => void) | undefined;
     const attach = (): void => {
       observer?.disconnect();
       resizeObserver?.disconnect();
+      detachScroll?.();
+      detachScroll = undefined;
       const card = pendingApprovalCard(containerRef, messageId);
       if (card === null) {
         approvalFullyVisible = false;
@@ -1557,6 +1560,12 @@
       // Keep the full context criterion. If the drawer itself reduced the viewport, its measured
       // block size is reclaimable; genuinely top-clipped or taller cards still keep the drawer.
       observer.observe(card);
+      // The reminder follows the decision row, so the row's own visibility (not only the card's)
+      // and any scroll re-read it: a card can stay partly out of view while its row crosses in.
+      const decisionRow = approvalActionRow(card);
+      if (decisionRow !== null) observer.observe(decisionRow);
+      scroller.addEventListener('scroll', updateVisibility, { passive: true });
+      detachScroll = () => scroller.removeEventListener('scroll', updateVisibility);
       updateVisibility();
     };
     const changes = new MutationObserver(attach);
@@ -1565,6 +1574,7 @@
     return () => {
       observer?.disconnect();
       resizeObserver?.disconnect();
+      detachScroll?.();
       changes.disconnect();
     };
   });

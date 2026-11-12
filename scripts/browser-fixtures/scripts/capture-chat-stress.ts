@@ -1238,6 +1238,20 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       return;
     }
     case 'expect-approval-review': {
+      // The reminder follows the card's row of decision buttons and the transcript scrolls that row
+      // clear of the composer on a frame after the card arrives, so let the layout settle first.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            let frames = 0;
+            const next = (): void => {
+              frames += 1;
+              if (frames >= 6) resolve();
+              else requestAnimationFrame(next);
+            };
+            requestAnimationFrame(next);
+          }),
+      );
       const state = await page.evaluate(() => {
         const shell = document.querySelector('[data-testid="chat-stress-shell"]');
         const scroller = shell?.querySelector<HTMLElement>('.chat-timeline');
@@ -1265,7 +1279,12 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
           ),
           pendingCards: cards.length,
           drawer: drawer !== null,
-          card: box(card),
+          // The reminder shows only while the decision row is out of view, so the row is measured.
+          card: box(
+            card?.querySelector<HTMLElement>(
+              '.cinder-approval-card__row-actions, .cinder-approval-card__action-row',
+            ) ?? card,
+          ),
           article: box(article ?? null),
           scroller: box(scroller ?? null),
           viewport: { top: 0, bottom: innerHeight, left: 0, right: innerWidth },
