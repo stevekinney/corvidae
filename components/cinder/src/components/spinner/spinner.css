@@ -8,7 +8,7 @@
     display: inline-block;
     width: var(--cinder-spinner-size, 1.5rem);
     height: var(--cinder-spinner-size, 1.5rem);
-    border: 2px solid var(--cinder-spinner-track, color-mix(in srgb, currentColor 25%, transparent));
+    border: 2px solid var(--cinder-spinner-track, var(--cinder-border-control));
     border-top-color: var(--cinder-spinner-indicator, currentColor);
     border-radius: 50%;
     vertical-align: -0.125em;
@@ -36,7 +36,7 @@
   }
 
   .cinder-spinner__arc-track {
-    stroke: var(--cinder-spinner-track, color-mix(in srgb, currentColor 25%, transparent));
+    stroke: var(--cinder-spinner-track, var(--cinder-border-control));
   }
 
   .cinder-spinner__arc-indicator {
@@ -69,8 +69,9 @@
   }
 
   @keyframes cinder-spinner-arc {
+    /* 56.55 is the circumference, so an offset of 42 still draws a quarter turn (14.1). */
     from {
-      stroke-dashoffset: 50;
+      stroke-dashoffset: 42;
     }
     to {
       stroke-dashoffset: 14;
