@@ -3,7 +3,6 @@ import type { z } from 'zod';
 
 import { serializeToolDefinition } from '../core/serialization';
 import type { ToolEventMap } from '../event-types';
-import { bindListenerLifetime } from '../listener-lifetime';
 import { createExecutionLifecycle, type ExecutionLifecycle } from '../execution-lifecycle';
 import type {
   Tool,
@@ -13,6 +12,7 @@ import type {
   ToolExecuteWithOptions,
   ToolMetadata,
 } from '../is-tool';
+import { bindListenerLifetime } from '../listener-lifetime';
 import type { ToolCallReturn } from '../types';
 import { createKnownToolEvent } from './events';
 import type { NamedTool } from './options';
