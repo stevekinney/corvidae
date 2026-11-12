@@ -676,7 +676,19 @@ export async function awaitMemory(options: MemoryAdmissionOptions): Promise<Memo
   if ((options.environment[memoryAdmittedVariable] ?? '') !== '') {
     return { admitted: true, reason: 'nested' };
   }
+  // A test that passes no reader never reads the host's real memory by accident.
+  if (options.readMemory === undefined && process.env['NODE_ENV'] === 'test') {
+    return { admitted: true, reason: 'unread' };
+  }
   const read = options.readMemory ?? readMemory;
+  // CI never waits or refuses: its runners are not shared, so it reports the reading and starts.
+  if (options.environment['CI'] === 'true') {
+    const reading = read();
+    if (reading !== undefined) {
+      options.report(`${options.label}: memory on CI, not waited for: ${describeMemory(reading)}`);
+    }
+    return { admitted: true, reason: reading === undefined ? 'unread' : 'measured' };
+  }
   const sleep = options.sleep ?? ((milliseconds: number) => Bun.sleep(milliseconds));
   const interval = options.pollIntervalMs ?? memoryPollMs;
   const maximum = options.maximumWaitMs ?? memoryWaitMs;

@@ -154,6 +154,29 @@ describe('awaitMemory', () => {
     const unread = admission([undefined]);
     expect(await unread.result).toEqual({ admitted: true, reason: 'unread' });
   });
+
+  test('on CI it reads once, reports, and starts without waiting', async () => {
+    const lines: string[] = [];
+    const result = await awaitMemory({
+      label: 'stage',
+      environment: { CI: 'true' },
+      readMemory: () => short,
+      sleep: async () => {
+        throw new Error('waited on CI');
+      },
+      report: (line) => lines.push(line),
+    });
+    expect(result).toEqual({ admitted: true, reason: 'measured' });
+    expect(lines).toEqual([
+      'stage: memory on CI, not waited for: 12.8 GiB of 32.0 GiB free, pressure warning, swap 10.4 GiB of 12.0 GiB used',
+    ]);
+  });
+
+  test('under a test, with no reader passed, it admits without reading the host', async () => {
+    expect(process.env['NODE_ENV']).toBe('test');
+    const result = await awaitMemory({ label: 'stage', environment: {}, report: () => {} });
+    expect(result).toEqual({ admitted: true, reason: 'unread' });
+  });
 });
 
 describe('orphaned runs', () => {
