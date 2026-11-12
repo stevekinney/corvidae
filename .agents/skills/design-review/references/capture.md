@@ -50,6 +50,15 @@ After each screenshot the capture measures the page (`tests/e2e/design-review-ge
 
 The stress captures are measured too, but the rules that read content (`button-wordy`, `leading-space`) skip them. The left-edge rule counts blocks of text, not controls or icons, and the leading-side rule looks only at rows at least 60% of the outlet's width and at most 240 pixels tall.
 
+## Adding a measurement
+
+A measurement that cannot fail is worse than none, because its silence reads as a pass. These rules come from a fix run whose new guards all passed on a gallery that still had the defects:
+
+- **Reproduce the real mechanism**: a guard is accepted only with a positive control that fails it the way the product fails (`display: none`, `text-overflow: ellipsis`, two children in one grid cell), built from the component itself or its real class names, plus a negative control beside it. A fixture of absolutely positioned boxes that restates the guard's own assumption proves only that the guard agrees with itself.
+- **One general check, with an allowlist**: "text clipped that may not clip" and "two painted text boxes intersect on both axes" run on every captured state. Never add a guard for one case number; if a state clips or overlaps on purpose, name it in an allowlist with the reason.
+- **One rectangle shape**: every helper returns and takes `Box` (`x`, `y`, `width`, `height`), which is also what Playwright's `boundingBox()` returns. Reading `left`, `right`, `top` or `bottom` from one compares against `undefined` and passes every time. Overlap means intersecting on both axes.
+- **Every rule has facts that break it**: the last test in `scripts/design-review-geometry.test.ts` fails when a rule in `GEOMETRY_RULES` has no set of facts in that file that fires it. See a new rule fail on a real captured page before trusting it on the rest.
+
 ## Known gaps
 
 Tell the reviewer about these, and do not let a sweep claim coverage it lacks:
@@ -59,6 +68,7 @@ Tell the reviewer about these, and do not let a sweep claim coverage it lacks:
 - Item routes (`/agents/:agent`, `/runs/:run`, …) are captured ready only. Their loading, error and not-found states are not.
 - Transient states (a toast, a dialog mid-confirmation, streaming chat output, an offline banner) are not in the sweep. Capture them by hand for an implementation review that changes them: `tests/e2e/states-offline.spec.ts` and the chat specifications show how to reach them, and Chrome on `bun run dev` (port 7234) works for a quick look.
 - A capture at 480 pixels or narrower turns on Chromium's touch emulation while it screenshots and measures, so styles under `@media (pointer: coarse)` (touch-sized rows, extended hit areas) apply, and turns it off before the specification's own assertions run. Each such capture is repeated at 320 by 640 as its own manifest line, so a phone route has a 375 line and a 320 line; no specification asserts anything at 320. Wider captures keep a mouse pointer, so a touch tablet is not covered. The geometry report says so if no capture emulated a coarse pointer.
+- The probe's own browser specification (`tests/e2e/design-review-geometry-probe.spec.ts`) measures hand-written static pages, not Cinder components, so it does not meet "Reproduce the real mechanism" above. The hit-area, padding, covered-control and fixed-chrome rules have also fired on real chat pages; `icon-pitch` and the scroll-fade kind of `occluded` have fired only on the static page.
 - Hover and focus states are not captured. Focus rings matter to the owner, so a change to them is shown with hand-taken captures.
 
 ## A one-page look

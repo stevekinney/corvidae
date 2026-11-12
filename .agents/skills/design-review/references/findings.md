@@ -39,6 +39,7 @@ One Markdown report per area:
 - One paragraph: what the area is for and what works well. Lead with what is genuinely strong.
 - Findings grouped by target (Cinder tokens, Cinder components, new Cinder components, Interborough pages, copy, data), each group ordered by severity.
 - Questions: places where the right answer turns on a product decision, with a recommendation.
+- Complaints: one line per complaint in the rubric's "The owner's complaints", in its order, with the 320 by 640 and 375 pixel screenshots opened to answer it, and either `clear` or the findings that answer it.
 - Coverage: the screens reviewed, and anything you were asked to review but could not judge (missing state, pathological data only, no design reference).
 
 ## Row verdicts
@@ -50,6 +51,7 @@ rows file:      row-id | board | requirement text
 verdicts file:  row-id | verdict | evidence
 ```
 
+- **requirement text**: what should be true, in words a person can check on a screenshot, with a tolerance when it is a measurement ("an action row sits at most 8 pixels under its message"). A row written from an audit finding or an owner complaint puts the old defect last, after `Was:` ("… Was: it floated 35 pixels under."). The reviewer judges against the outcome and never against the `Was:` clause: a fix run that handed reviewers the findings verbatim had them asking workers to restore the uneven padding and heavy borders the findings described. `design-review-rows.ts` refuses a row that opens with `Was:`, and a row whose text describes only a defect in other words is `unverified`, with evidence saying the row states no outcome.
 - **row-id**: the canvas index id, such as `11a`. The verdicts name every input row exactly once, in input order.
 - **board**: the board's file stem under `boards/`, the same stem for both of its files: `<board>.dc.html`, the board's source as the Artifact tool's read returns it (exact copy, structure, and component names), and `<board>.png`, a render of it, with `<board>--part<n>.png` slices when the board is taller than 1,400 pixels. A chef brief saves the `.dc.html`; the review renders the `.png` when it is missing ([design references](design-references.md)). A row on `Main` (the canvas index, which `design-ledger.ts` uses when no board was mapped) has only its requirement text as the standard: judge it from the text, and mark it `unverified` when the text alone cannot settle how it should look.
 - **verdict**: one of the following.
@@ -94,6 +96,8 @@ When the dispatch gave rows, return the row lines first, under a line reading ex
 - `VERDICT: approve`
 - `VERDICT: approve with notes`
 - `VERDICT: changes required`
+
+Next comes a section headed exactly `COMPLAINTS`, with one line per complaint in the rubric's "The owner's complaints", in its order: the complaint's first few words, the 320 by 640 and 375 pixel screenshots opened to answer it, and either `clear` or the finding that answers it. A complaint with a finding against a screen the change touched makes the verdict `changes required`. A report that says `approve` with a complaint unanswered, or answered without a screenshot path, is malformed and goes back to the reviewer. A capture that ran, a clean geometry report and a passing row check are evidence that the review happened, never the approval itself: the last gallery was approved on them with its 44 pixel controls counted as an improvement.
 
 Then, for `changes required`, the blocking items, each a finding as above. A blocking item is a concrete user-facing defect the change introduced or left in the screens it touched: a regression against the before captures, a state that is broken or missing, an accessibility failure, a departure from the agreed design (name the board and the difference) or from a recorded owner decision, or a fix applied in Interborough that belongs in Cinder. Taste, pre-existing problems in untouched screens, and improvements beyond the change's scope never block; list them as notes, marking pre-existing ones as such.
 
