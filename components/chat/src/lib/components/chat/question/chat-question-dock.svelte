@@ -39,7 +39,6 @@
   } from '@lostgradient/cinder';
   import { tick } from 'svelte';
 
-  import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import { DEFAULT_QUESTION_DOCK_LABELS, OTHER_CHOICE } from './question-dock-labels.ts';
   import { choicesOf, classifyQuestion, type QuestionChoice } from './question-kind.ts';
 
@@ -72,7 +71,73 @@
   let optionsScroll = $state<HTMLDivElement | undefined>();
   let selected = $state<string | null>(null);
   let text = $state('');
-  const choicesFade = overflowFadeEdges();
+  let hiddenAbove = $state(0);
+  let hiddenBelow = $state(0);
+
+  /**
+   * Sizes the list's visible area to a whole number of rows, so no row is ever shown half cut, and
+   * counts the rows still out of sight on each side for the "N more" lines. The cap on the dock
+   * decides how much room there is; this takes the last whole row that fits inside it.
+   */
+  function wholeRows(node: HTMLElement): () => void {
+    const rows = (): HTMLElement[] => [...node.querySelectorAll<HTMLElement>('[role="radio"]')];
+    const rowEdges = (row: HTMLElement): { top: number; bottom: number } => {
+      const box = row.getBoundingClientRect();
+      const top = box.top - node.getBoundingClientRect().top + node.scrollTop;
+      return { top, bottom: top + box.height };
+    };
+
+    const count = (): void => {
+      let above = 0;
+      let below = 0;
+      for (const row of rows()) {
+        const { top, bottom } = rowEdges(row);
+        if (top < node.scrollTop - 1) above += 1;
+        else if (bottom > node.scrollTop + node.clientHeight + 1) below += 1;
+      }
+      hiddenAbove = above;
+      hiddenBelow = below;
+    };
+
+    const fit = (): void => {
+      node.style.removeProperty('max-block-size');
+      const room = node.clientHeight;
+      const edges = rows().map(rowEdges);
+      const last = edges.at(-1);
+      if (last !== undefined && last.bottom > room + 1) {
+        const whole = edges.filter((edge) => edge.bottom <= room + 1).at(-1) ?? edges[0]!;
+        node.style.setProperty('max-block-size', `${whole.bottom}px`);
+      }
+      count();
+    };
+
+    let frame = 0;
+    const schedule = (): void => {
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        fit();
+      });
+    };
+
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
+    resize?.observe(node);
+    if (node.parentElement) resize?.observe(node.parentElement);
+    const mutations =
+      typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(schedule);
+    mutations?.observe(node, { childList: true, subtree: true });
+    node.addEventListener('scroll', count, { passive: true });
+    window.addEventListener('resize', schedule);
+    fit();
+
+    return () => {
+      cancelAnimationFrame(frame);
+      resize?.disconnect();
+      mutations?.disconnect();
+      node.removeEventListener('scroll', count);
+      window.removeEventListener('resize', schedule);
+    };
+  }
 
   const pickingOther = $derived(selected === OTHER_CHOICE);
   const ready = $derived(selected !== null && (!pickingOther || text.trim() !== ''));
@@ -165,16 +230,15 @@
         <p id={questionId} class="chat-question-dock-question" dir="auto">{question.message}</p>
       {/if}
       <div class="chat-question-dock-options">
-        <p
-          class="chat-question-dock-scroll-cue chat-question-dock-scroll-cue-above"
-          aria-hidden="true"
-        >
-          {labels.moreChoicesAbove}
-        </p>
+        {#if hiddenAbove > 0}
+          <p class="chat-question-dock-scroll-cue" aria-hidden="true">
+            {labels.moreChoices(hiddenAbove)}
+          </p>
+        {/if}
         <div
           bind:this={optionsScroll}
           class="chat-question-dock-options-scroll"
-          {@attach choicesFade}
+          {@attach wholeRows}
         >
           <ChoiceGrid
             variant="card"
@@ -209,12 +273,9 @@
             {/if}
           </ChoiceGrid>
         </div>
-        {#if !pickingOther}
-          <p
-            class="chat-question-dock-scroll-cue chat-question-dock-scroll-cue-below"
-            aria-hidden="true"
-          >
-            {labels.moreChoicesBelow}
+        {#if hiddenBelow > 0 && !pickingOther}
+          <p class="chat-question-dock-scroll-cue" aria-hidden="true">
+            {labels.moreChoices(hiddenBelow)}
           </p>
         {/if}
       </div>
@@ -267,7 +328,7 @@
     inline-size: 100%;
     min-inline-size: 0;
     padding: var(--cinder-space-3);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised, var(--cinder-surface));
     max-block-size: min(100%, 50dvh);
@@ -326,60 +387,30 @@
 
   .chat-question-dock-options {
     grid-area: options;
-    --_chat-question-dock-cue-size: 1.5rem;
-
-    position: relative;
-    display: grid;
-    grid-template-rows: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
     min-block-size: 0;
   }
 
+  /* `wholeRows` caps this at the last whole row that fits, so no row is ever shown half cut. */
   .chat-question-dock-options-scroll {
+    flex: 0 1 auto;
     min-block-size: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scroll-padding-block: var(--_chat-question-dock-cue-size);
     scroll-snap-type: block mandatory;
     scrollbar-gutter: stable;
   }
 
-  /*
-   * A cue is drawn over the viewport's edge on an opaque strip, so the border of a row clipped
-   * there never shows beside it. Rows snap clear of the strip when the list rests.
-   */
+  /* The count of rows out of sight sits in the flow at the start edge, never over a row. */
   .chat-question-dock-scroll-cue {
-    position: absolute;
-    inset-inline: 0;
-    z-index: 1;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    block-size: var(--_chat-question-dock-cue-size);
+    flex: none;
     margin: 0;
-    background: var(--cinder-surface-raised, var(--cinder-surface));
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     line-height: var(--cinder-leading-tight, 1.25);
-    pointer-events: none;
-  }
-
-  .chat-question-dock-scroll-cue-above {
-    inset-block-start: 0;
-  }
-
-  .chat-question-dock-scroll-cue-below {
-    inset-block-end: 0;
-  }
-
-  .chat-question-dock-options:has(
-      :global(.chat-question-dock-options-scroll[data-cinder-overflows-start])
-    )
-    > .chat-question-dock-scroll-cue-above,
-  :global(
-    .chat-question-dock-options-scroll[data-cinder-overflows] ~ .chat-question-dock-scroll-cue-below
-  ) {
-    display: flex;
+    text-align: start;
   }
 
   .chat-question-dock-completion {
@@ -470,7 +501,7 @@
     justify-content: space-between;
     gap: var(--cinder-space-2);
     padding-block-start: var(--cinder-space-2);
-    border-block-start: 1px solid var(--cinder-border);
+    border-block-start: 1px solid var(--cinder-border-muted);
     background: var(--cinder-surface-raised, var(--cinder-surface));
   }
 

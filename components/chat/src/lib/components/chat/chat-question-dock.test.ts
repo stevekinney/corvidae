@@ -223,8 +223,10 @@ describe('a docked question', () => {
     expect(source).toContain('max-block-size: min(100%, 50dvh);');
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
-    expect(source).toContain('moreChoicesAbove');
-    expect(source).toContain('moreChoicesBelow');
+    expect(source).toContain('moreChoices(hiddenAbove)');
+    expect(source).toContain('moreChoices(hiddenBelow)');
+    expect(source).toContain('wholeRows');
+    expect(source).toContain('--cinder-border-muted');
     expect(source).not.toContain('chat-question-dock-body cinder-_scroll-fade');
     expect(source).toContain('overflow-y: auto;');
     expect(source).toContain('@media (any-pointer: coarse)');
