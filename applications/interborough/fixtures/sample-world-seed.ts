@@ -189,6 +189,12 @@ export type SampleWorldHostOptions = Omit<
 export interface SampleWorldOptions {
   /** Options for the Nov 2 host the seed leaves running; the earlier hosts listen on a free port. */
   readonly host?: SampleWorldHostOptions;
+  /**
+   * Runs against the Nov 2 host just before the story removes the Anthropic key. From then on the
+   * deployment's model catalog is empty, so a change that must name a catalog model (an agent file
+   * `bureau.agents.definitions.create` writes) is made here.
+   */
+  readonly beforeProviderKeyRemoved?: (host: Host) => Promise<void>;
 }
 
 /** What the seed made, by name, with the host it left running at Nov 2. */
@@ -467,7 +473,10 @@ async function saveSetting(host: SessionContext['host'], key: string, value: unk
   if (saved.outcome !== 'applied') throw new Error(`Saving ${key} was refused: ${saved.message}`);
 }
 
-async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host' | 'runtime'>> {
+async function monday(
+  context: SessionContext,
+  beforeProviderKeyRemoved?: SampleWorldOptions['beforeProviderKeyRemoved'],
+): Promise<Omit<SampleWorld, 'host' | 'runtime'>> {
   const { host, runtime } = context;
   await missedRunsLogged(context);
   storageAlertFires(context);
@@ -505,6 +514,7 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
   });
 
   runtime.setTime(SAMPLE_WORLD_TIMES.anthropicKeyRemoved);
+  await beforeProviderKeyRemoved?.(host);
   const providerSnapshot = await host.providers.snapshot();
   const removed = await fetch(new URL('/host/providers/anthropic', host.url), {
     method: 'DELETE',
@@ -622,7 +632,7 @@ export async function seedSampleWorld(
   const host = await startAt(story, times.serverStarted, options.host);
   try {
     const context = { host, runtime, director: story.director };
-    return { host, runtime, ...(await monday(context)) };
+    return { host, runtime, ...(await monday(context, options.beforeProviderKeyRemoved)) };
   } catch (error) {
     await host.close();
     throw error;
