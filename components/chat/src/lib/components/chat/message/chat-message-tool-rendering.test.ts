@@ -1124,7 +1124,11 @@ describe('ChatMessage — tool-call rendering', () => {
     test('on a touch screen the summary line and each step row are full touch targets (C#3)', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
       expect(source).toMatch(
-        /@media \(any-pointer: coarse\) \{\s*\.chat-tool-call-toggle,\s*\.chat-tool-call-row,[^{]*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
+        /@media \(any-pointer: coarse\) \{\s*\.chat-tool-call-toggle,\s*\.chat-tool-call-row\s*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
+      );
+      // A failed step's Retry and Copy error are Cinder Buttons: compact paint, hit-area extension.
+      expect(source).not.toMatch(
+        /@media \(any-pointer: coarse\) \{[^}]*chat-tool-call-failure-action/,
       );
     });
 

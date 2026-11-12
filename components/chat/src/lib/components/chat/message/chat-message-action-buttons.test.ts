@@ -41,8 +41,11 @@ describe('chat message action buttons', () => {
   });
 
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
-    const lineRule = extractRule(source, '.chat-message-line {\n    display: flex;');
+    const lineRule = extractRule(source, '.chat-message-line {\n    position: relative;');
     expect(lineRule).toContain('gap: var(--cinder-space-1)');
+    // The actions' 44px hit areas overhang the line; a stacking position keeps the next bubble
+    // (a `content-visibility: auto` stacking context) from painting over that overhang.
+    expect(lineRule).toContain('z-index: 1;');
     const actionsRule = extractRule(source, '\n  .chat-message-line-actions {');
     expect(actionsRule).toContain('gap: var(--cinder-space-1)');
     const buttonRule = extractRule(
