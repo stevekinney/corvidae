@@ -589,6 +589,14 @@
     getIsVirtualized: () => isVirtualized,
   });
 
+  /**
+   * Whether the streamed text ends inside an unclosed code fence. That code block says "Writing…"
+   * itself, so the typing dots stay out of its way.
+   */
+  function streamingFenceIsOpen(content: string): boolean {
+    return (content.match(/^ {0,3}```/gmu)?.length ?? 0) % 2 === 1;
+  }
+
   let rollbackMessageId = $state<string | null>(null);
   let rollbackConversationIdentity: string | undefined;
 
@@ -612,7 +620,8 @@
       approvalWaiting ||
       questions.dockedQuestions.length > 0 ||
       questions.composerTarget !== undefined ||
-      availability !== undefined,
+      availability !== undefined ||
+      streamingFenceIsOpen(streamingState.content),
     getMessageTurnState: () => messageTurnState,
     // A call whose question was answered here, or whose approval was decided here, keeps its own
     // row so the answer or the receipt stays readable once the run resumes. So does a call that
@@ -3271,7 +3280,7 @@
     align-items: center;
     gap: var(--cinder-space-1);
     /* Quiet and inline: no bubble, on the same edge as the assistant's text above it. */
-    padding: var(--cinder-space-1) var(--cinder-chat-message-padding-inline, var(--cinder-space-3));
+    padding: var(--cinder-space-1) 0;
     max-width: max-content;
     animation: typing-indicator-enter var(--cinder-duration-base) var(--cinder-ease-decelerate);
   }

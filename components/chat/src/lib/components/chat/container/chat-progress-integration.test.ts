@@ -40,6 +40,8 @@ describe('Chat progress affordance integration contract', () => {
     const rule = /\.chat-typing-indicator \{[^}]*\}/u.exec(chat)?.[0] ?? '';
     expect(rule).not.toContain('background');
     expect(rule).not.toContain('border-radius');
+    expect(rule).toMatch(/padding: var\(--cinder-space-1\) 0;/u);
+    expect(chat).toContain('streamingFenceIsOpen(streamingState.content)');
     const suppress = /getSuppressTypingIndicator: \(\) =>[^,]*,/u.exec(chat)?.[0] ?? '';
     for (const banner of ['reconnecting', 'approvalWaiting', 'dockedQuestions', 'availability']) {
       expect(suppress).toContain(banner);
