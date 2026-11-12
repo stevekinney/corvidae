@@ -2,7 +2,7 @@
  * A conversation that is not available stands in the transcript's place (COR-2285, rows V2 and V3):
  * skeleton turns with `Loading conversation…` and the seconds so far, the editor kept and Send
  * waiting for the history, a slow read with its indicator, elapsed time and Cancel, Retry after
- * Cancel, Cinder's `ErrorState` with Try again and All conversations for a history that failed, and
+ * Cancel, Cinder's `ErrorState` with Retry and All conversations for a history that failed, and
  * a deleted conversation with All conversations as the primary action and no composer.
  */
 
@@ -242,7 +242,7 @@ describe('a canceled read', () => {
 });
 
 describe('a history that could not be loaded', () => {
-  test('is an ErrorState with the cause, a primary Try again and a secondary All conversations, and no composer', async () => {
+  test('is an ErrorState with the cause, a primary Retry and a secondary All conversations, and no composer', async () => {
     const calls: string[] = [];
     const { container } = mountWith('availability-error', {
       kind: 'error',
@@ -261,7 +261,7 @@ describe('a history that could not be loaded', () => {
       'Interborough didn’t send it back. Nothing was lost.',
     );
     expect(state.textContent).toContain('HTTP 500');
-    const retry = buttonNamed(container, 'Try again')!;
+    const retry = buttonNamed(container, 'Retry')!;
     const list = buttonNamed(container, 'All conversations')!;
     expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
     expect(list.getAttribute('data-cinder-variant')).toBe('secondary');
@@ -280,7 +280,7 @@ describe('a history that could not be loaded', () => {
       onRetry: () => undefined,
     });
 
-    expect(buttonNamed(container, 'Try again')).not.toBeUndefined();
+    expect(buttonNamed(container, 'Retry')).not.toBeUndefined();
     expect(buttonNamed(container, 'All conversations')).toBeUndefined();
   });
 });

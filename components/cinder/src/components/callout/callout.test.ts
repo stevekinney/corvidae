@@ -174,7 +174,7 @@ describe('Callout neutral variant and action', () => {
   test('the stylesheet draws neutral as an icon and muted text with no tint', async () => {
     const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
     const neutral = declarationsFor(css, ".cinder-callout[data-cinder-variant='neutral']");
-    expect(neutral.get('align-items')).toBe('center');
+    expect(neutral.get('align-items')).toBeUndefined();
     expect(neutral.get('background')).toBe('transparent');
     expect(neutral.get('border-color')).toBe('transparent');
     expect(neutral.get('color')).toBe('var(--cinder-text-muted)');

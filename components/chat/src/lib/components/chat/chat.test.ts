@@ -448,7 +448,9 @@ describe('Chat — scrollFadeVisible', () => {
     expect(source).not.toMatch(
       /\.chat-input-wrapper\s*\{[^}]*max-inline-size:\s*calc\([\s\S]*?reading-max-width/,
     );
-    expect(source).toMatch(
+    // Text inside the composer's border keeps its own inset (round 2): the container shares the
+    // transcript's edge, the editor's text does not sit on the border.
+    expect(source).not.toMatch(
       /\.chat-input-area :global\(\.chat-input-editor\),\s*\.chat-input-area :global\(\.chat-input-markdown\)\s*\{[^}]*padding-inline:\s*0;/,
     );
   });

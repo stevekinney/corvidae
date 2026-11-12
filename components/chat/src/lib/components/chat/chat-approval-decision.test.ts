@@ -128,6 +128,21 @@ const refundDetails: ChatAdapter['describeApproval'] = () => ({
   ],
 });
 
+describe('Chat step summary beside an approval card', () => {
+  test('the step row leaves the waiting words to the card that owns the state', () => {
+    const { container } = render(Chat, {
+      id: 'chat-summary-owned',
+      conversation: approvalConversation('summary-owned'),
+      adapter: resolvingAdapter,
+    });
+    const timeline = container.querySelector<HTMLElement>('.chat-tool-call-timeline');
+    expect(timeline).not.toBeNull();
+    expect(container.textContent).toContain(QUESTION);
+    expect(timeline!.querySelector(".chat-tool-call-summary-count")).not.toBeNull();
+    expect(timeline!.querySelector("[data-problem]")).toBeNull();
+  });
+});
+
 describe('Chat composer drawer for a waiting approval', () => {
   test('shows no drawer while nothing waits', () => {
     const { container } = render(Chat, {

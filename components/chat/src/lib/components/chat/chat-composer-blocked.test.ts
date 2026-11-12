@@ -49,7 +49,9 @@ describe('a blocked composer', () => {
 
     expect(narrow).toContain('flex: 1 0 100%;');
     expect(narrow).not.toContain('justify-content: flex-end');
-    expect(narrow).toMatch(/\.cinder-button\) \{[^}]*flex: 1 1 auto;[^}]*min-block-size/u);
+    // A Button keeps its painted height; its 44px hit area is its own pseudo-element.
+    expect(narrow).toMatch(/\.cinder-button\) \{[^}]*flex: 1 1 auto;/u);
+    expect(narrow).not.toContain('min-block-size');
   });
 
   test('draws one row with the reason, and no text box, controls or Send', () => {

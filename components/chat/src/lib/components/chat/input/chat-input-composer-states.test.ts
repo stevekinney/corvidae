@@ -239,7 +239,9 @@ describe('generic drawer notices', () => {
       },
     });
     const callout = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
-    expect(callout.classList.contains('cinder-callout--inline-action')).toBe(true);
+    // The action stacks under the text, on the text's start edge.
+    expect(callout.classList.contains('cinder-callout--inline-action')).toBe(false);
+    expect(callout.querySelector(':scope > .cinder-callout__action')).not.toBeNull();
     expect(callout.querySelector('.cinder-callout__action button')?.textContent).toContain('Retry');
     expect(callout.querySelector('.cinder-callout__content .cinder-button')).toBeNull();
   });

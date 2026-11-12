@@ -29,7 +29,7 @@ export interface ChatAvailabilityLabels {
   readonly retry: string;
   /** The title of a conversation that could not be read. Default `This conversation couldn’t be loaded`. */
   readonly errorTitle: string;
-  /** The primary button of a conversation that could not be read. Default `Try again`. */
+  /** The primary button of a conversation that could not be read. Default `Retry`. */
   readonly tryAgain: string;
   /** The title of a deleted conversation. Default `This conversation was deleted`. */
   readonly deletedTitle: string;
@@ -58,7 +58,7 @@ export const DEFAULT_CHAT_AVAILABILITY_LABELS: ChatAvailabilityLabels = {
   canceledDescription: 'The conversation was not loaded. Nothing was lost.',
   retry: 'Retry',
   errorTitle: 'This conversation couldn’t be loaded',
-  tryAgain: 'Try again',
+  tryAgain: 'Retry',
   deletedTitle: 'This conversation was deleted',
   deletedDescription: 'It no longer exists, so nothing more can be sent here.',
   unconfiguredTitle: 'Connect a model provider',
@@ -81,7 +81,7 @@ export const DEFAULT_SLOW_AFTER_SECONDS = 10;
  * - `canceled`: the read was canceled. The same placeholders give way to a state with a primary
  *   Retry (`onRetry`), and the composer still waits.
  * - `error`: the read failed. A Cinder `ErrorState` replaces the transcript and the composer. It names
- *   the `cause`, with a primary Try again (`onRetry`) and a secondary `allConversations`.
+ *   the `cause`, with a primary Retry (`onRetry`) and a secondary `allConversations`.
  * - `deleted`: the conversation no longer exists. A neutral `ErrorState` replaces the transcript and
  *   the composer, with `allConversations` as its primary button.
  * - `unconfigured`: a model provider is missing. An EmptyState offers `onConnect` as its primary action.

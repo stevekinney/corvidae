@@ -176,12 +176,13 @@
   }
 
   @media (pointer: coarse) {
-    /* Painted compact; the 44px target is a hit area that takes no layout space. */
-    .cinder-choice-grid-item[data-cinder-size='sm'] {
+    /* Painted at its own size; the 44px target is a hit area that takes no layout space, so a row
+     * under 44px (a card or a compact cell alike) still reaches a finger without growing. */
+    .cinder-choice-grid-item {
       position: relative;
     }
 
-    .cinder-choice-grid-item[data-cinder-size='sm']::before {
+    .cinder-choice-grid-item::before {
       content: '';
       position: absolute;
       inset: min(0px, calc((100% - 44px) / 2));
