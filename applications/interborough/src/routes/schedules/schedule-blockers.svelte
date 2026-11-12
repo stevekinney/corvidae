@@ -9,7 +9,7 @@
   import { Link } from '@lostgradient/cinder';
   import { TriangleAlert } from '@lucide/svelte';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import type { RowBlocker } from './schedule-row-model.ts';

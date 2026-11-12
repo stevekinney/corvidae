@@ -7,7 +7,7 @@
   import { ConfirmDialog } from '@lostgradient/cinder';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
 
-  import { RESTART_COPY } from '../copy.ts';
+  import { RESTART_COPY } from '../copy/restart.ts';
 
   interface Props {
     /** Whether the question is showing. */

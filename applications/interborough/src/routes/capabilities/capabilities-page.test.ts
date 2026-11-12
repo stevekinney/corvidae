@@ -7,7 +7,7 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync, tick } from 'svelte';
 
 import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
-import { CAPABILITIES_COPY } from '../../app/copy.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';

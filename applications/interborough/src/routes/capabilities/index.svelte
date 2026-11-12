@@ -16,7 +16,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { listSkillCatalog } from '../../lib/bureau-skills.ts';
   import { getToolSources } from '../../lib/host-tool-sources.ts';

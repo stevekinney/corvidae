@@ -14,7 +14,8 @@
   import { Checkbox, Spinner, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { AGENT_PAGE_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { listSkills, type Skill } from '../../lib/bureau-skills.ts';
   import { queryKeys } from '../../lib/query.ts';
   import AgentAccessGroupRow from './agent-access-group-row.svelte';

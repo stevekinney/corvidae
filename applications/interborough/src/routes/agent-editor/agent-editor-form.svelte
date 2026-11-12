@@ -37,7 +37,7 @@
   import { Button, EmptyState, FormSection, Input, Textarea, Toggle } from '@lostgradient/cinder';
   import { Check, X } from '@lucide/svelte';
 
-  import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import { agentTabPath } from '../../lib/agent-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { router } from '../../lib/router.svelte.ts';

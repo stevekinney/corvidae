@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import type { WorkflowImpact } from '../../lib/workflow-files.ts';
 import { describeBreakingChange, impactNotice } from './workflow-impact.ts';
 

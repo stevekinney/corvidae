@@ -28,7 +28,8 @@
   } from '@lostgradient/cinder';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
-  import { AGENT_PAGE_COPY, CHAT_COPY } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { listContexts } from '../../lib/bureau-client.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { combinePages } from '../../lib/combine-pages.ts';

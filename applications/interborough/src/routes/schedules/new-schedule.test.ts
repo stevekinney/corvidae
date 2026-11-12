@@ -15,7 +15,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { contextFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../lib/scopes.svelte.ts';

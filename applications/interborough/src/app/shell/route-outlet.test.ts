@@ -12,7 +12,8 @@ import { installFetchImplementation } from '../../lib/live-source/fetch.test-sup
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Placeholder from '../../routes/placeholder/index.svelte';
-import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../copy.ts';
+import { VIEW_COPY } from '../copy/view-pages.ts';
+import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy/views.ts';
 import { routes, type RouteDefinition } from '../routes.ts';
 import { CHUNK_RELOAD_KEY } from './chunk-reload.ts';
 import Harness from './route-outlet.test-harness.svelte';

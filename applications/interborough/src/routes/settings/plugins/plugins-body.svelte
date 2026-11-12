@@ -25,7 +25,8 @@
   import { useQueryClient, type CreateQueryResult } from '@tanstack/svelte-query';
   import { onDestroy, tick, untrack } from 'svelte';
 
-  import { PLUGINS_COPY, SETTINGS_COPY } from '../../../app/copy.ts';
+  import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
+  import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
   import type { RestartIntent } from '../../../app/restart/host-restart-flow.svelte.ts';
   import { dismissToast, showToast } from '../../../app/toast-host.svelte';
   import {

@@ -22,7 +22,8 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { MediaQuery } from 'svelte/reactivity';
 
-  import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { classifyFault } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import {

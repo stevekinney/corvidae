@@ -46,7 +46,8 @@
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
-  import { CONNECTION_COPY, RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';

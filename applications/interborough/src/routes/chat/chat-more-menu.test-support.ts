@@ -5,7 +5,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 
 import type { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';

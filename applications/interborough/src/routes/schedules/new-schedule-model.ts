@@ -12,7 +12,7 @@
 import { humanizeIdentifier, type ComboboxOption, type ScheduleValue } from '@lostgradient/cinder';
 import type { ScheduleOverlapPolicy } from '@lostgradient/weft';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { bureauSpecOf, type AgentScheduleInput } from '../../lib/bureau-schedules.ts';
 import { AGENT_RUN_TYPE } from '../../lib/schedule-kinds.ts';
 import type { CatalogRow, WorkflowResolution } from '../../lib/workflow-catalog.ts';

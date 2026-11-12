@@ -33,7 +33,8 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack, type Snippet } from 'svelte';
 
-  import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { getSettings } from '../../lib/bureau-settings.ts';
   import { getClient } from '../../lib/client.ts';

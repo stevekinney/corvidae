@@ -8,7 +8,7 @@
   import { RelativeTime } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { agentPath } from '../../lib/agent-paths.ts';

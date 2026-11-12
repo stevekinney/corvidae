@@ -41,7 +41,8 @@
   import { untrack } from 'svelte';
 
   import { getConnection } from '../../../app/connection.svelte.ts';
-  import { CONNECTION_COPY, RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { CONNECTION_COPY, RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import { agentLabel as agentLabelOf } from '../../../lib/agent-label.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';

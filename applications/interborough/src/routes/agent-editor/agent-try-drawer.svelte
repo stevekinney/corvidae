@@ -40,7 +40,8 @@
     type ConversationHistory,
   } from '@lostgradient/chat';
 
-  import { AGENT_EDITOR_COPY, CHAT_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';

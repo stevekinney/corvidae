@@ -7,7 +7,8 @@ import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
+import { REVIEWS_COPY } from '../../../app/copy/reviews.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
   humanWaitFixture,

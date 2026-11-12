@@ -14,7 +14,7 @@ import { Window } from 'happy-dom';
 import { flushSync } from 'svelte';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';

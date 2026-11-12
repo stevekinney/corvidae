@@ -11,7 +11,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient } from '@lostgradient/weft';
 
-  import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy.ts';
+  import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy/runs.ts';
   import { applyRunStepTimelineDivergenceHighlight } from '../timeline/run-step-timeline-selection.ts';
   import { mapTimelineToSteps } from '../timeline/timeline-mapping.ts';
   import { workflowTimelineQueryKey } from '../workflow-timeline-data.ts';

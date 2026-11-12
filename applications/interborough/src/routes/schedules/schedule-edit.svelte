@@ -15,7 +15,8 @@
   import { Alert, Button, ErrorState, PageHeader, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { router } from '../../lib/router.svelte.ts';

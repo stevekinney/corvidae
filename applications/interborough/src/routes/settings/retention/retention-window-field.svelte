@@ -13,7 +13,7 @@
    */
   import { NumberInput, Segment, SegmentedControl } from '@lostgradient/cinder';
 
-  import { DATA_RETENTION_COPY } from '../../../app/copy.ts';
+  import { DATA_RETENTION_COPY } from '../../../app/copy/settings.ts';
   import {
     retentionChoiceOf,
     retentionDaysOf,

@@ -16,7 +16,7 @@
   import type { HttpClient } from '@lostgradient/weft';
   import { Rewind } from '@lucide/svelte';
 
-  import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy.ts';
+  import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy/runs.ts';
   import { getPrincipalStore, scopeGate } from '../../../../lib/scopes.svelte.ts';
   import { formatBytes } from '../../../../lib/format/index.ts';
   import { EAGER_REVISION_HEDGE } from '../../../../lib/workflow-revision.ts';

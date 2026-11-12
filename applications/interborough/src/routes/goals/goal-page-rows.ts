@@ -14,7 +14,7 @@
  */
 import type { StatusDotWordLabel } from '@lostgradient/cinder';
 
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalHasEnded, type Goal } from '../../lib/bureau-goals.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import type { TaskView } from '../../lib/bureau-tasks.ts';

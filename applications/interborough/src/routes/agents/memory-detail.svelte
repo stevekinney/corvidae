@@ -24,7 +24,8 @@
   import { Pencil, Trash2 } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { MEMORY_COPY } from '../../app/copy/memory.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import {
     correctMemory,
     getMemory,

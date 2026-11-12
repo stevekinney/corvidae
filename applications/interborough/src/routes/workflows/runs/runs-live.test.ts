@@ -9,7 +9,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 
-import { TASK_COPY } from '../../../app/copy.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
   contextFixture,

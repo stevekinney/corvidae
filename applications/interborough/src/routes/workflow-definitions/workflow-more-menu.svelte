@@ -12,7 +12,7 @@
   import { Dropdown, VisuallyHidden } from '@lostgradient/cinder';
   import { Copy, Ellipsis, Pause, Send, Trash2 } from '@lucide/svelte';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 
   interface Props {
     /** Whether the workflow accepts a signal, which only a ready file does. */

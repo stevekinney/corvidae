@@ -9,7 +9,7 @@ import { expect } from '@playwright/test';
 import { rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { AGENT_EDITOR_COPY } from '../../src/app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
 
 /** What a spec writes through the management plane to create an agent, unless it says otherwise. */
 export const BASE_DEFINITION = {

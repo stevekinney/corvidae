@@ -42,7 +42,7 @@ import {
   scheduleName,
   scheduleNameIdentifiers,
 } from '../../routes/schedules/schedule-presentation.ts';
-import { PALETTE_COPY, SHORTCUT_COPY } from '../copy.ts';
+import { PALETTE_COPY, SHORTCUT_COPY } from '../copy/shell.ts';
 import type { NotificationItem } from '../notifications.svelte.ts';
 
 /** One tool of the catalog, as the palette lists it. */

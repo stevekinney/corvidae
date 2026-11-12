@@ -17,7 +17,8 @@
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { CAPABILITIES_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';

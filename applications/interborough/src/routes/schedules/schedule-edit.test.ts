@@ -11,7 +11,7 @@ import { describe, expect, test } from 'bun:test';
 import { HttpClient } from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import ScheduleEditHarness from './schedule-edit-test-harness.test-harness.svelte';
 import { scheduleDetailQueryKey } from './schedule-queries.ts';

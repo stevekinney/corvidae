@@ -9,7 +9,7 @@
    */
   import { Skeleton, Statistic, StatisticGroup } from '@lostgradient/cinder';
 
-  import { HOME_COPY } from '../../app/copy.ts';
+  import { HOME_COPY } from '../../app/copy/home.ts';
   import { dateLine, timesShowIn } from '../../lib/format/clock.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';

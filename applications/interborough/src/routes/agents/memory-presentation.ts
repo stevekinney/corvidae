@@ -1,6 +1,6 @@
 /** How the Memory page words a memory's facts. */
 
-import { MEMORY_COPY } from '../../app/copy.ts';
+import { MEMORY_COPY } from '../../app/copy/memory.ts';
 import { calendarDay, clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import type {
   Memory,

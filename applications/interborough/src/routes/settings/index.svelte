@@ -5,7 +5,7 @@
    * time as each is left through `bureau.settings.update` (`general-settings.svelte`), with the
    * preferences of this browser under them.
    */
-  import { SETTINGS_COPY, SETTINGS_SECTION_COPY } from '../../app/copy.ts';
+  import { SETTINGS_COPY, SETTINGS_SECTION_COPY } from '../../app/copy/settings.ts';
   import GeneralSettings from './general-settings.svelte';
   import SettingsFrame from './settings-frame.svelte';
 </script>

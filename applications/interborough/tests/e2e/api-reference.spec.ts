@@ -11,7 +11,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { API_REFERENCE_COPY } from '../../src/app/copy.ts';
+import { API_REFERENCE_COPY } from '../../src/app/copy/api-reference.ts';
 import { API_SCOPE_CATALOG } from '../../src/lib/api-scopes.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';

@@ -7,7 +7,7 @@
    */
   import { ErrorState } from '@lostgradient/cinder';
 
-  import { HOME_COPY } from '../../app/copy.ts';
+  import { HOME_COPY } from '../../app/copy/home.ts';
 
   interface HomeCardErrorProps {
     /** What could not be loaded, as a sentence: "Couldn’t load system problems." */

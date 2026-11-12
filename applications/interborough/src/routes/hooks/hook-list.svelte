@@ -33,7 +33,8 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
-  import { CONNECTION_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
+  import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { listHooks } from '../../lib/bureau-hooks.ts';
   import { classifyFault } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';

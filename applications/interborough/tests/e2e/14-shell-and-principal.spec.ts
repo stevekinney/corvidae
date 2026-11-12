@@ -7,12 +7,9 @@
  */
 import type { Page } from '@playwright/test';
 
-import {
-  NOTIFICATION_COPY,
-  PALETTE_COPY,
-  ROUTE_LOAD_FAILURE_COPY,
-  VIEW_COPY,
-} from '../../src/app/copy.ts';
+import { NOTIFICATION_COPY, PALETTE_COPY } from '../../src/app/copy/shell.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
+import { ROUTE_LOAD_FAILURE_COPY } from '../../src/app/copy/views.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';

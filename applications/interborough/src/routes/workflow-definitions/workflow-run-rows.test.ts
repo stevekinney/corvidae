@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { TASK_COPY } from '../../app/copy.ts';
+import { TASK_COPY } from '../../app/copy/tasks.ts';
 import { runLineTwo, runSegmentCounts, runStatusWord } from '../workflows/runs/run-rows.ts';
 import {
   workflowRunOrigin,

@@ -7,7 +7,7 @@
  *
  * A step name is never a problem: it is optional, and empty it falls back to the step's kind.
  */
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { createDefinitionFromText } from '../../lib/workflow-files.ts';
 import { readBuilder } from './workflow-builder-model.ts';
 

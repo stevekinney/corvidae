@@ -6,7 +6,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { SETTINGS_COPY } from '../../app/copy.ts';
+import { SETTINGS_COPY } from '../../app/copy/settings.ts';
 import type { SettingsSnapshot } from '../../lib/bureau-settings.ts';
 import type { SettingsForm } from './settings-form.svelte.ts';
 import { SettingsRevert } from './settings-revert.svelte.ts';

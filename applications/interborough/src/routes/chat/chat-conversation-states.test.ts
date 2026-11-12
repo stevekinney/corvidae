@@ -20,7 +20,7 @@ import {
   heldByPluginMessages,
   tasksOf,
 } from '../../../fixtures/chat-states.ts';
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';

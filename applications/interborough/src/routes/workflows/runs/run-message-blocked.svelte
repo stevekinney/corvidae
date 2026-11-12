@@ -8,7 +8,7 @@
   import { ChatInput } from '@lostgradient/chat';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { TASK_COPY } from '../../../app/copy.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { getAgentCatalog } from '../../../lib/agent-definitions.ts';
   import { queryKeys } from '../../../lib/query.ts';

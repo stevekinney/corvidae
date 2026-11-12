@@ -3,7 +3,7 @@
  * settings, the providers and models, the data and retention overview, and the API reference. Each is a route of its own
  * (`app/routes.ts`), so a section is linked to, and survives a reload.
  */
-import { SETTINGS_SECTION_COPY } from '../../app/copy.ts';
+import { SETTINGS_SECTION_COPY } from '../../app/copy/settings.ts';
 
 /** One section of Settings. */
 export interface SettingsSection {

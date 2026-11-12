@@ -5,7 +5,7 @@
    * this is the Settings frame around it, with the section navigation, the heading and the settings
    * the restart notice counts.
    */
-  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+  import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
   import SettingsFrame from '../settings-frame.svelte';
   import ApiReferenceBody from './api-reference-body.svelte';
 </script>

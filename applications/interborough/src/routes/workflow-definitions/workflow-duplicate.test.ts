@@ -2,7 +2,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import type { WorkflowDefinitionInput } from '../../lib/workflow-files.ts';
 import {
   DUPLICATE_ATTEMPTS,

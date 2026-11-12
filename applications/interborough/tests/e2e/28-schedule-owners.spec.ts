@@ -13,7 +13,7 @@ import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
 
-import { SCHEDULE_COPY } from '../../src/app/copy.ts';
+import { SCHEDULE_COPY } from '../../src/app/copy/schedules.ts';
 import { E2E_BASE_URL, E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 

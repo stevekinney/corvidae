@@ -18,7 +18,7 @@ import {
 
 import type { ScheduleSummary } from '@lostgradient/weft';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { AGENT_RUN_TYPE } from '../../lib/schedule-kinds.ts';
 import type { WorkflowFileListing } from '../../lib/workflow-files.ts';
 import { cadenceToScheduleValue, describeCadence } from './cadence.ts';

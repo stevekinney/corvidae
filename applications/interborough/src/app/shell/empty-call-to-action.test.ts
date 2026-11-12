@@ -12,7 +12,9 @@ import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
-import { TASK_COPY, VIEW_COPY, WORKFLOW_COPY } from '../copy.ts';
+import { TASK_COPY } from '../copy/tasks.ts';
+import { VIEW_COPY } from '../copy/view-pages.ts';
+import { WORKFLOW_COPY } from '../copy/workflows.ts';
 import Harness from './route-outlet.test-harness.svelte';
 
 let restore: (() => void) | undefined;

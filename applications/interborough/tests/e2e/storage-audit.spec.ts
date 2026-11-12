@@ -8,7 +8,8 @@
 import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
-import { AUDIT_COPY, STORAGE_COPY } from '../../src/app/copy.ts';
+import { AUDIT_COPY } from '../../src/app/copy/audit.ts';
+import { STORAGE_COPY } from '../../src/app/copy/settings.ts';
 import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;

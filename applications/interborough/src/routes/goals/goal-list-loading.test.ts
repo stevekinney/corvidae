@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import GoalListLoading, {
   GOAL_LOADING_DELAY_MILLISECONDS,
   GOAL_STILL_LOADING_MILLISECONDS,

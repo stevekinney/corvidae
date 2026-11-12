@@ -32,7 +32,7 @@
   } from '@lostgradient/cinder';
   import { tick, untrack } from 'svelte';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import {
     declaredSchemaOf,
     describeIssue,

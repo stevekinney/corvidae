@@ -5,7 +5,8 @@
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
+import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import ApprovalDecision from './approval-decision.svelte';
 
 afterEach(cleanup);

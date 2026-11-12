@@ -12,7 +12,7 @@
   import { Alert, Button, Input, Modal } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
-  import { PLUGINS_COPY } from '../../../app/copy.ts';
+  import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import { showToast } from '../../../app/toast-host.svelte';
   import { HostPluginError, savePluginSecret } from '../../../lib/host-plugins.ts';
   import { queryKeys } from '../../../lib/query.ts';

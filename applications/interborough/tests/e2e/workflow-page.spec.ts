@@ -12,7 +12,8 @@
 import type { Page } from '@playwright/test';
 import { rm, writeFile } from 'node:fs/promises';
 
-import { TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { TASK_COPY } from '../../src/app/copy/tasks.ts';
+import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { bureau } from './agent-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';

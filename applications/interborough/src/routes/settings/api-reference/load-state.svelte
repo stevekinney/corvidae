@@ -7,7 +7,7 @@
    */
   import { Banner, Button, Skeleton } from '@lostgradient/cinder';
 
-  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+  import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
 
   interface Props {
     /** What the panel has: a read in flight, a read that failed, or a read the person gave up on. */

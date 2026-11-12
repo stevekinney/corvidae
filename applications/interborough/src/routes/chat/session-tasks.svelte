@@ -10,7 +10,7 @@
   import { createInfiniteQuery } from '@tanstack/svelte-query';
 
   import { listTasks } from '../../lib/bureau-tasks.ts';
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';

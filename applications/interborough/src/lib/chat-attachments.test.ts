@@ -6,7 +6,7 @@ import { ChatRunFailureError, type ChatAttachment } from '@lostgradient/chat';
 import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
-import { CHAT_COPY } from '../app/copy.ts';
+import { CHAT_COPY } from '../app/copy/chat.ts';
 import { AttachmentUploadError } from './bureau-assets.ts';
 import type { Fetcher } from './bureau-client.ts';
 import {

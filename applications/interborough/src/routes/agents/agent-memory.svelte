@@ -35,7 +35,9 @@
   import { Download, Plus } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
-  import { AGENT_PAGE_COPY, MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { MEMORY_COPY } from '../../app/copy/memory.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { agentMemoryPath } from '../../lib/agent-paths.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentsListQuery } from '../../lib/agent-queries.ts';

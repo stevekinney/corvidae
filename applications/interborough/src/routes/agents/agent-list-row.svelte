@@ -22,7 +22,7 @@
   import { Button, StackedListItem, StatusDot } from '@lostgradient/cinder';
   import { Brain, MessageSquarePlus, Pencil } from '@lucide/svelte';
 
-  import { AGENTS_COPY } from '../../app/copy.ts';
+  import { AGENTS_COPY } from '../../app/copy/agents.ts';
   import { agentEditPath, agentMemoryPath, agentPath } from '../../lib/agent-paths.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { rowStatus, type AgentRow } from './agent-list-model.ts';

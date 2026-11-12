@@ -29,7 +29,9 @@ import { rm } from 'node:fs/promises';
 
 import { SEEDED_GOAL_RUN_IDENTIFIER } from '@lostgradient/plugin-demo';
 import { RUN_STEPS_RUN_ID } from '../../fixtures/run-steps-ids.ts';
-import { SCHEDULE_COPY, STORAGE_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { SCHEDULE_COPY } from '../../src/app/copy/schedules.ts';
+import { STORAGE_COPY } from '../../src/app/copy/settings.ts';
+import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { routes } from '../../src/app/routes.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';

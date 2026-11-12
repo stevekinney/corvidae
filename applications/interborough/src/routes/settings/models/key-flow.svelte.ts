@@ -10,7 +10,7 @@
  * the dialog is dismissed, and it is never put in a message: a refusal is worded in terms of the
  * field and the provider's status (`lib/host-providers.ts` replaces any message that held it).
  */
-import { MODELS_COPY } from '../../../app/copy.ts';
+import { MODELS_COPY } from '../../../app/copy/models.ts';
 import {
   connectProvider,
   HostProviderError,

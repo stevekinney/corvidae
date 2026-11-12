@@ -11,7 +11,7 @@
    */
   import { Avatar, Text, VisuallyHidden } from '@lostgradient/cinder';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentAvatarName, agentTone } from './session-groups.ts';

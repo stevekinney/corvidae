@@ -28,7 +28,8 @@
   import { ArrowLeft } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { AGENT_PAGE_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import {
     agentFaultOf,
     guardrailEntryId,

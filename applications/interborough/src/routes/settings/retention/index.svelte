@@ -5,7 +5,7 @@
    * `retention-body.svelte`; this is the Settings frame around it, with the section navigation, the
    * heading and the settings the section edits.
    */
-  import { DATA_RETENTION_COPY, SETTINGS_SECTION_COPY } from '../../../app/copy.ts';
+  import { DATA_RETENTION_COPY, SETTINGS_SECTION_COPY } from '../../../app/copy/settings.ts';
   import SettingsFrame from '../settings-frame.svelte';
   import RetentionBody from './retention-body.svelte';
 </script>

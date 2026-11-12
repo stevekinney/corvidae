@@ -3,7 +3,8 @@
  * tier, default approval and source, and for a skill's trust and why it is unavailable. Every
  * answer is a function of an enumerated value, so a value this build does not know still reads.
  */
-import { AGENT_PAGE_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import type { AgentCatalog, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import { waitedFor } from '../../lib/format/clock.ts';

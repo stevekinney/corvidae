@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { router } from '../lib/router.svelte.ts';
-import { NOT_FOUND_COPY } from './copy.ts';
+import { NOT_FOUND_COPY } from './copy/views.ts';
 import Harness from './not-found-state.test-harness.svelte';
 
 afterEach(cleanup);

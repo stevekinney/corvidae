@@ -5,7 +5,7 @@
  * "Copy id". Nothing here invents a name: a schedule with no description is named by what it
  * starts.
  */
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import type { ScheduleKind } from '../../lib/schedule-kinds.ts';
 import { describeCadence, type ScheduleCadence } from './cadence.ts';
 

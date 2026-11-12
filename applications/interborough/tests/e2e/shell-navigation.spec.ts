@@ -4,7 +4,7 @@
  * ListDetail handles itself, the sidebar's icon rail is remembered across a
  * reload, and the top bar's breadcrumb trail follows the route.
  */
-import { VIEW_COPY } from '../../src/app/copy.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { expect, test } from './fixtures.ts';
 
 const DESKTOP = { width: 1280, height: 800 } as const;

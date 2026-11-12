@@ -6,7 +6,7 @@
  */
 import { HttpClientError } from '@lostgradient/weft';
 
-import { AUDIT_COPY } from '../../app/copy.ts';
+import { AUDIT_COPY } from '../../app/copy/audit.ts';
 import { classifyFault, isNetworkFailure } from '../../lib/faults.ts';
 import type { AuditDraft } from './audit-filter.ts';
 

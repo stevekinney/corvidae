@@ -4,7 +4,7 @@
  * outcome row (`tool-activity.ts`, `recordedDecision`); where is what this page knows, because it
  * was showing the approval as waiting when someone decided it somewhere else.
  */
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import type { ApprovalDecision, ToolCallEntry } from './tool-activity.ts';
 

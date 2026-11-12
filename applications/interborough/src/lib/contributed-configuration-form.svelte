@@ -11,7 +11,7 @@
   import { SchemaForm, schemaFormInitialDraft } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
-  import { PLUGIN_KINDS_COPY } from '../app/copy.ts';
+  import { PLUGIN_KINDS_COPY } from '../app/copy/plugins.ts';
   import { formSchemaOf, numbersCommitted } from '../routes/settings/settings-form-schema.ts';
 
   interface Props {

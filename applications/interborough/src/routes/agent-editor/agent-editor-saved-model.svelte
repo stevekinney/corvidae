@@ -9,7 +9,7 @@
    */
   import { Alert } from '@lostgradient/cinder';
 
-  import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import { agentTabPath } from '../../lib/agent-paths.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { modelDisplayName, providerDisplayName } from '../settings/models/format-model.ts';

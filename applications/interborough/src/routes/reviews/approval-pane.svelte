@@ -7,7 +7,7 @@
    */
   import { Alert, Button, Input, humanizeIdentifier } from '@lostgradient/cinder';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
   import IdentifierText from '../../lib/identifier-text.svelte';
   import {

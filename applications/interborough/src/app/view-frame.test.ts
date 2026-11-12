@@ -24,7 +24,8 @@ import {
   type WorkflowStub,
   type World,
 } from '../lib/workflow-world.test-support.ts';
-import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
+import { VIEW_COPY } from './copy/view-pages.ts';
+import { RETRY_LABEL } from './copy/views.ts';
 import Harness from './view-frame.test-harness.svelte';
 import { probeFor, RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';

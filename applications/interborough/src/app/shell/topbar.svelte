@@ -18,7 +18,9 @@
 
   import { router } from '../../lib/router.svelte.ts';
   import { breadcrumbTrail } from '../breadcrumbs.svelte.ts';
-  import { NAVIGATION_COPY, NOT_FOUND_COPY, PALETTE_COPY, VIEW_COPY } from '../copy.ts';
+  import { NAVIGATION_COPY, PALETTE_COPY } from '../copy/shell.ts';
+  import { NOT_FOUND_COPY } from '../copy/views.ts';
+  import { VIEW_COPY } from '../copy/view-pages.ts';
   import type { LayoutPreferences } from '../layout-preferences.svelte.ts';
   import type { NotificationStore } from '../notifications.svelte.ts';
   import type { ThemeStore } from '../theme.svelte.ts';

@@ -15,7 +15,7 @@
    */
   import { Button, Select, Table } from '@lostgradient/cinder';
 
-  import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { TOOL_APPROVALS, type ToolApproval } from '../../lib/agent-definitions.ts';
   import {
     defaultAsks,

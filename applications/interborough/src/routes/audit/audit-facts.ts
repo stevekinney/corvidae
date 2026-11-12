@@ -6,7 +6,7 @@
  */
 import { humanizeIdentifier } from '@lostgradient/cinder';
 
-import { AUDIT_COPY } from '../../app/copy.ts';
+import { AUDIT_COPY } from '../../app/copy/audit.ts';
 import { agentPath } from '../../lib/agent-paths.ts';
 import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
 import { chatSessionPath } from '../../lib/identifier-paths.ts';

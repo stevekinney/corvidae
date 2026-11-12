@@ -26,7 +26,8 @@
   import { ErrorState, VisuallyHidden } from '@lostgradient/cinder';
   import { Ban } from '@lucide/svelte';
 
-  import { CONNECTION_COPY, HOME_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
+  import { HOME_COPY } from '../../app/copy/home.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { dateLine, timesShowIn } from '../../lib/format/clock.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';

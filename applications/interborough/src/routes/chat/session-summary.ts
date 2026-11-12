@@ -1,6 +1,6 @@
 import type { ConversationSummary } from '@lostgradient/chat';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
 
 /**

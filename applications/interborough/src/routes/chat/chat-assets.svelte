@@ -7,7 +7,7 @@
    */
   import { AudioPlayer, Image, Link, VideoPlayer } from '@lostgradient/cinder';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { assetContentPath } from '../../lib/bureau-assets.ts';
   import { kindOf, type ChatAsset } from './chat-assets.ts';
 

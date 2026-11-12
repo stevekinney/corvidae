@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { AGENT_PAGE_COPY } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import type { AgentDefinitionInput, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import {

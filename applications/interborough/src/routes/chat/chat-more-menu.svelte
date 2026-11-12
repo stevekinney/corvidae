@@ -10,7 +10,7 @@
   import { Download, Ellipsis, GitBranch, Pencil, Trash2 } from '@lucide/svelte';
   import { useQueryClient } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { deleteContext, wireCodeOf, type ContextDeleteReceipt } from '../../lib/bureau-client.ts';
   import { queryKeys } from '../../lib/query.ts';

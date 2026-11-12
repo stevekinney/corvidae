@@ -6,7 +6,8 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
-import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
+import { RETRY_LABEL } from '../../../app/copy/views.ts';
 import {
   humanWaitFixture,
   taskFixture,

@@ -10,7 +10,7 @@
  */
 import type { APIRequestContext } from '@playwright/test';
 
-import { SCHEDULE_COPY } from '../../src/app/copy.ts';
+import { SCHEDULE_COPY } from '../../src/app/copy/schedules.ts';
 import { expect, test } from './fixtures.ts';
 
 /**

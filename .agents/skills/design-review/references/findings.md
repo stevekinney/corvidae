@@ -13,7 +13,7 @@ Decide the target by asking, in order, which is the lowest layer whose change fi
 | a pattern pages hand-build that no component provides (the same markup on two or more pages, or one page faking a component) | new Cinder component | the proposed component name and the pages it would replace |
 | shell, outlet padding, page width or density shared by every page | Cinder (shell styles, `components/cinder/src/styles/shell.css`) or Interborough's view table (`applications/interborough/src/app/views.ts`), whichever owns the value | the file |
 | what a page shows, its order, its grouping, its primary action, or which component it picked | Interborough page | the route file under `applications/interborough/src/routes/` |
-| words: labels, titles, empty-state copy, error messages | Interborough copy | `applications/interborough/src/app/copy.ts` or the route file |
+| words: labels, titles, empty-state copy, error messages | Interborough copy | `applications/interborough/src/app/copy/` or the route file |
 | the data a page has to show is missing or wrong | Interborough data | the route and the request it makes |
 
 Before routing to Interborough, grep `components/cinder/src` for the pattern. If Cinder has a component that would do and the page does not use it, the finding is "use the Cinder component" on the page; if Cinder's component is why the page looks wrong, the finding is on the component.

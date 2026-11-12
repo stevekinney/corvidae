@@ -7,7 +7,8 @@
    */
   import { Button, Checkbox, Drawer, EmptyState, SearchField } from '@lostgradient/cinder';
 
-  import { AGENT_EDITOR_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { groupByOrigin, matchesSearch, type ToolGroup } from '../../lib/tool-sources.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
   import AgentEditorToolRow from './agent-editor-tool-row.svelte';

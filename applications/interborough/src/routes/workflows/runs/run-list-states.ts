@@ -5,7 +5,7 @@
  */
 import { HttpClientError } from '@lostgradient/weft';
 
-import { TASK_COPY } from '../../../app/copy.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { isNetworkFailure } from '../../../lib/faults.ts';
 import type { RunFilter } from './run-rows.ts';
 import { STARTED_BY_LABELS, type StartedBy } from './started-by.ts';

@@ -1,7 +1,7 @@
 /** The Connect tools page's form: the request it builds for the host, and the fields it names when it cannot. */
 import { describe, expect, test } from 'bun:test';
 
-import { CAPABILITIES_COPY } from '../app/copy.ts';
+import { CAPABILITIES_COPY } from '../app/copy/capabilities.ts';
 import {
   authenticationChoices,
   buildToolSourceRequest,

@@ -10,7 +10,7 @@ import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { STORAGE_COPY } from '../../app/copy.ts';
+import { STORAGE_COPY } from '../../app/copy/settings.ts';
 import ToastHost from '../../app/toast-host.svelte';
 import StorageRouteHarness from './storage-route-test-harness.test-harness.svelte';
 import { serveStorage } from './storage-server.test-support.ts';

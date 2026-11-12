@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
 
-import { RUN_DETAIL_COPY } from '../../../../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
 import type { AttributesClient } from './attributes-data.ts';
 import AttributesPanelHarness from './attributes-panel.test-harness.svelte';
 

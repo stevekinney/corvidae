@@ -3,7 +3,7 @@
  * (`lib/schedule-kinds.ts`), as the fault banner shows it. Until the Bureau answers, a schedule is of
  * no known kind and nothing is written to it.
  */
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import type { FaultTreatment } from '../../lib/faults.ts';
 
 export const OVERLAY_FAILURE: FaultTreatment = {

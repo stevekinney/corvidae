@@ -14,7 +14,7 @@
   import { Button, SectionHeading, StatusDot, Toggle } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { PLUGINS_COPY } from '../../../app/copy.ts';
+  import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import { listAgentDefinitions } from '../../../lib/agent-definitions.ts';
   import { listSkills } from '../../../lib/bureau-skills.ts';
   import type { PluginProblem, PluginStanding } from '../../../lib/host-plugins.ts';

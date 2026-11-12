@@ -10,7 +10,7 @@
   import { Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { MEMORY_COPY } from '../../app/copy.ts';
+  import { MEMORY_COPY } from '../../app/copy/memory.ts';
   import { getContext } from '../../lib/bureau-client.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { memoryFaultOf } from '../../lib/memory-client.ts';

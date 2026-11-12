@@ -5,7 +5,7 @@
  */
 import { formatDateTime, formatTimeZoneLabel } from '@lostgradient/cinder';
 
-import { DATA_RETENTION_COPY } from '../../../app/copy.ts';
+import { DATA_RETENTION_COPY } from '../../../app/copy/settings.ts';
 import type { HostCleanUpRun, HostCleanUpStanding } from '../../../lib/host-clean-up.ts';
 
 const copy = DATA_RETENTION_COPY.cleanUp;

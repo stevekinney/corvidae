@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import {
   defaultAgentName,

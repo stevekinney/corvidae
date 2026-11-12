@@ -1,5 +1,5 @@
 /** How the Models page words a provider, and a model's size and price. */
-import { ALLOWED_MODELS_COPY, MODELS_COPY } from '../../../app/copy.ts';
+import { ALLOWED_MODELS_COPY, MODELS_COPY } from '../../../app/copy/models.ts';
 
 const COMPACT = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 

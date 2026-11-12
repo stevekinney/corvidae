@@ -18,7 +18,7 @@
  */
 import { humanizeIdentifier, type DataListGroup } from '@lostgradient/cinder';
 
-import { TASK_COPY } from '../../../app/copy.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import type { ChatContext } from '../../../lib/bureau-client.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
 import {

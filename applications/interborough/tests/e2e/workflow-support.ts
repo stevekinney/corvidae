@@ -8,7 +8,7 @@ import type { APIRequestContext, Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { join } from 'node:path';
 
-import { WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { bureau } from './agent-support.ts';
 
 /** The files `e2e-server.ts` seeds into the host's workflow directory before it starts. */

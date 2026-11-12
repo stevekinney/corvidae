@@ -1,6 +1,6 @@
 /**
  * The order a person reads a run's states in, and which of them mean a run is over. The words each
- * state is shown with are `copy.ts`'s `TASK_COPY.states`.
+ * state is shown with are `app/copy/tasks.ts`'s `TASK_COPY.states`.
  */
 import type { TaskState } from './bureau-tasks.ts';
 

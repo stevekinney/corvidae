@@ -50,7 +50,8 @@
   } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, CHAT_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import {
     agentDuplicatePath,
     agentEditPath,

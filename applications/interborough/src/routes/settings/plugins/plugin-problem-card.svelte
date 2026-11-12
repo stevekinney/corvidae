@@ -10,7 +10,7 @@
    */
   import { Button, Card, StatusDot } from '@lostgradient/cinder';
 
-  import { PLUGINS_COPY } from '../../../app/copy.ts';
+  import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import { showToast } from '../../../app/toast-host.svelte';
   import type { PluginProblem, PluginStanding } from '../../../lib/host-plugins.ts';
   import { router } from '../../../lib/router.svelte.ts';

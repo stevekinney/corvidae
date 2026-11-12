@@ -18,7 +18,7 @@
   import type { WorkflowStatus } from '@lostgradient/weft';
   import { onDestroy, untrack } from 'svelte';
 
-  import { RUN_DETAIL_COPY } from '../../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
   import {
     getFleetEventSource,
     hasFleetEventSource,

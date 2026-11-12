@@ -6,7 +6,7 @@
    */
   import { Banner, Button } from '@lostgradient/cinder';
 
-  import { RESTART_COPY } from '../copy.ts';
+  import { RESTART_COPY } from '../copy/restart.ts';
 
   interface Props {
     /** The lead, such as "Back up" or "Back up. Web search is disabled." */

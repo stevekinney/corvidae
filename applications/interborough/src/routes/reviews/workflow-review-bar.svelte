@@ -9,7 +9,7 @@
    */
   import { Button, Textarea, Tooltip } from '@lostgradient/cinder';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import type { ReviewDecisionSubmission } from './review-decision-form.svelte';
 

@@ -1,7 +1,7 @@
 /** The words a catalog row carries: its list row, its segments, its steps and its trigger. */
 import { describe, expect, test } from 'bun:test';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { joinCatalog } from '../../lib/workflow-catalog.ts';
 import {
   codeDefinition,

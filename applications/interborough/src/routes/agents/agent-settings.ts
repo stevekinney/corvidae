@@ -17,7 +17,7 @@
  * (`versionChanges`), the changes a restore removes (`restoredChanges`), and what stops finding an
  * agent once it is deleted (`dependentsLine`).
  */
-import { AGENT_PAGE_COPY, EFFORT_LABELS } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY, EFFORT_LABELS } from '../../app/copy/agents.ts';
 import {
   EFFORTS,
   type AgentDefinitionInput,

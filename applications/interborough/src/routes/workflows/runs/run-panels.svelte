@@ -11,7 +11,7 @@
   import { Badge } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { getPanels, loadPluginApp, pluginToolCaller } from '../../../lib/host-panels.ts';
   import { queryKeys } from '../../../lib/query.ts';
 

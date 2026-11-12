@@ -13,7 +13,10 @@
  */
 import type { Page } from '@playwright/test';
 
-import { CHAT_COPY, CONNECTION_COPY, TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
+import { TASK_COPY } from '../../src/app/copy/tasks.ts';
+import { CONNECTION_COPY } from '../../src/app/copy/views.ts';
+import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test, type PageErrorLog } from './fixtures.ts';
 import { expectEngineMissesForRuns, taskOfSession, waitingReviewOf } from './task-support.ts';

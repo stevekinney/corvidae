@@ -53,7 +53,8 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { tick, untrack } from 'svelte';
 
-  import { RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { AGENT_RUN_TYPE } from '../../lib/schedule-kinds.ts';
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';

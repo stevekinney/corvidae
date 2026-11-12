@@ -29,7 +29,9 @@
   import { Play } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, TASK_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { TASK_COPY } from '../../app/copy/tasks.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentLabel as agentLabelOf } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
   import { followLinks } from '../../lib/follow-links.ts';

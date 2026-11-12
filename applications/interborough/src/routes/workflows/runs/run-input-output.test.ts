@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import type { WorkflowState } from '@lostgradient/weft';
 
-import { RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { contextDetailFixture, taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { SCHEDULER_ACTOR } from '../../../lib/bureau-tasks.ts';
 import { bureau, landAt } from '../../chat/pages.test-support.ts';

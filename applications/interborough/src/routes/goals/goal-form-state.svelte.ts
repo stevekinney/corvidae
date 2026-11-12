@@ -18,7 +18,7 @@
  * The goal's view never carries its prompt, so a goal opened for Edit has an empty prompt that means
  * "keep the current one", and Start again opens with the goal's name as the first line.
  */
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import type { AgentSummary } from '../../lib/bureau-client.ts';
 import type { Goal, GoalChange, GoalInput } from '../../lib/bureau-goals.ts';
 import { checkText } from './goal-rows.ts';

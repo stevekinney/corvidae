@@ -48,7 +48,8 @@
   } from '@lostgradient/weft';
   import { untrack } from 'svelte';
 
-  import { RETRY_LABEL, RUN_STEPS_COPY, RUN_DETAIL_COPY } from '../../../app/copy.ts';
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { RUN_STEPS_COPY, RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { routerSelectionLocationFor } from '../../../lib/router-selection-location.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import LogLines from '../runs/log-lines.svelte';

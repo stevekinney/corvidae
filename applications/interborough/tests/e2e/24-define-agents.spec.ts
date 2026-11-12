@@ -9,7 +9,8 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { AGENT_EDITOR_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { providerDisplayName } from '../../src/routes/settings/models/format-model.ts';
 import {
   addTools,

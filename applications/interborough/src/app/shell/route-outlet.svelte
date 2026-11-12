@@ -14,7 +14,7 @@
 
   import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
+  import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy/views.ts';
   import { clearChunkReloadGuard, reloadOnceForMissingChunk } from './chunk-reload.ts';
   import FaultBoundary from '../fault-boundary.svelte';
   import NotFoundState from '../not-found-state.svelte';

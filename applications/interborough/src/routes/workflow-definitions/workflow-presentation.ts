@@ -1,11 +1,11 @@
 /**
  * What the Workflows area says of a catalog row, a file's steps, and its trigger, in the words
- * `copy.ts` holds. Plain functions over data, so the rows and the labels are tested without a
+ * `app/copy/workflows.ts` holds. Plain functions over data, so the rows and the labels are tested without a
  * page.
  */
 import { humanizeIdentifier } from '@lostgradient/cinder';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { calendarDay, clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import type {
   CatalogRow,

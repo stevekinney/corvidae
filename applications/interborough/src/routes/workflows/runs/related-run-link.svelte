@@ -3,7 +3,7 @@
    * One related run as a link: what it is, how it stands, and a shortened ID that shows in full on
    * hover. A parent the engine no longer holds is named by its ID alone and links nowhere.
    */
-  import { RUN_RELATED_COPY } from '../../../app/copy.ts';
+  import { RUN_RELATED_COPY } from '../../../app/copy/runs.ts';
   import { truncateId } from '../../../lib/format/index.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { workflowRunStatusWord } from '../../../lib/status.ts';

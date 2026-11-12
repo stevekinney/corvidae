@@ -8,7 +8,8 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
   contextDetailFixture,

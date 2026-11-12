@@ -6,7 +6,7 @@
    */
   import { SectionHeading } from '@lostgradient/cinder';
 
-  import { PLUGINS_COPY } from '../../../app/copy.ts';
+  import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import type { UnloadedPlugin } from '../../../lib/host-plugins.ts';
   import { keyedByOccurrence } from '../../../lib/list-keys.ts';
   import { sourceWord } from './plugin-presentation.ts';

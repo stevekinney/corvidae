@@ -4,7 +4,8 @@
    * /settings/a2a"). The body is `a2a-body.svelte`; this is the Settings frame around it, with the
    * section navigation, the heading and the settings the section edits.
    */
-  import { A2A_COPY, SETTINGS_SECTION_COPY } from '../../../app/copy.ts';
+  import { A2A_COPY } from '../../../app/copy/a2a.ts';
+  import { SETTINGS_SECTION_COPY } from '../../../app/copy/settings.ts';
   import SettingsFrame from '../settings-frame.svelte';
   import A2aBody from './a2a-body.svelte';
 </script>

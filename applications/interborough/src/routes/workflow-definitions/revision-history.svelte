@@ -12,7 +12,8 @@
   import { Copy } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { dayAndTime } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { CATALOG_STALE_TIME_MS } from '../../lib/workflow-catalog.ts';

@@ -17,7 +17,7 @@ import {
 } from '@lostgradient/chat';
 import type { z } from 'zod';
 
-import { CHAT_COPY } from '../app/copy.ts';
+import { CHAT_COPY } from '../app/copy/chat.ts';
 import { ASSET_FILE_PROVIDER, AttachmentUploadError, uploadAsset } from './bureau-assets.ts';
 import type { agentMediaSchema, Fetcher } from './bureau-client.ts';
 

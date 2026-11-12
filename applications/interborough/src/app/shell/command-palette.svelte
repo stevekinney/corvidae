@@ -50,7 +50,7 @@
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { newChatPath } from '../../routes/agents/agent-presentation.ts';
   import { actionIcon } from './destinations.ts';
-  import { PALETTE_COPY } from '../copy.ts';
+  import { PALETTE_COPY } from '../copy/shell.ts';
   import type { NotificationStore } from '../notifications.svelte.ts';
   import {
     matchActions,

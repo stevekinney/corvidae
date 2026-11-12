@@ -34,7 +34,7 @@
   } from '../../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
   import { browserWorkspaceStorage } from '../workspace-lifetime.ts';
-  import { CONNECTION_COPY } from '../copy.ts';
+  import { CONNECTION_COPY } from '../copy/views.ts';
   import {
     askAgainAfterOutage,
     CONNECTION_MAX_ATTEMPTS,

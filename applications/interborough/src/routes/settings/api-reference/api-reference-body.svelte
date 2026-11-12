@@ -14,7 +14,7 @@
   import { useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+  import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import type { SettingsSchema, SettingsSnapshot } from '../../../lib/bureau-settings.ts';
   import SettingsRestartNotice from '../settings-restart-notice.svelte';

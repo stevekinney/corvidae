@@ -6,7 +6,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { AUDIT_COPY } from '../../src/app/copy.ts';
+import { AUDIT_COPY } from '../../src/app/copy/audit.ts';
 import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;

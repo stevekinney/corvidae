@@ -46,7 +46,9 @@
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
-  import { CONNECTION_COPY, GOALS_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
+  import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
+  import { GOALS_COPY } from '../../app/copy/goals.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';

@@ -17,7 +17,7 @@
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { createSerialQueue } from '../../../lib/serial-queue.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';

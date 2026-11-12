@@ -14,7 +14,9 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
 
-  import { MODELS_COPY, RETRY_LABEL, SETTINGS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
   import { HostRestartFlow } from '../../../app/restart/host-restart-flow.svelte.ts';
   import { dismissToast, showToast } from '../../../app/toast-host.svelte';
   import {

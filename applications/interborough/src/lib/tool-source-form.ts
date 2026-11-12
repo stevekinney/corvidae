@@ -8,7 +8,7 @@
  * A credential is held in the form until the request is built and goes nowhere else: it is never
  * put in a message, a key, or a description.
  */
-import { CAPABILITIES_COPY } from '../app/copy.ts';
+import { CAPABILITIES_COPY } from '../app/copy/capabilities.ts';
 import type {
   SourceToolApproval,
   ToolSourceProbe,

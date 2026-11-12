@@ -11,7 +11,7 @@ import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { SETTINGS_COPY } from '../../app/copy.ts';
+import { SETTINGS_COPY } from '../../app/copy/settings.ts';
 import { KeyboardPreferences } from '../../app/keyboard-preferences.svelte.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {

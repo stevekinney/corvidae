@@ -9,7 +9,7 @@
   import { Button } from '@lostgradient/cinder';
   import { CircleAlert } from '@lucide/svelte';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
 
   interface NewChatFailureProps {
     /** Why the chat did not start, as a sentence: that Interborough did not answer, or what it refused with. */

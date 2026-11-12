@@ -12,7 +12,8 @@
   import { Button } from '@lostgradient/cinder';
   import { ShieldQuestion, SquareTerminal } from '@lucide/svelte';
 
-  import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import IdentifierText from '../identifier-text.svelte';
 
   interface ApprovalDecisionProps {

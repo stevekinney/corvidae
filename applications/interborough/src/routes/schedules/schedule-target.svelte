@@ -6,7 +6,7 @@
    * Until the Bureau says what kind it is, the type is shown without a link, so a schedule never
    * links to a page that is not what it starts.
    */
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { ScheduleKind } from '../../lib/schedule-kinds.ts';

@@ -9,7 +9,7 @@
   import { Collapsible } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import SignalsTab from '../detail/signals-tab.svelte';
   import UpdatesTab from '../detail/updates-tab.svelte';

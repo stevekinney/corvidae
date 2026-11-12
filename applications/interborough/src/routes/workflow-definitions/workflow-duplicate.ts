@@ -6,7 +6,7 @@
  * own page. Its identifier is the original's with `-copy` after it, then `-copy-2` and on while
  * the Bureau answers that one is taken, cut to the Bureau's 64 characters.
  */
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import {
   createWorkflowFile,
   isIdentifierTaken,

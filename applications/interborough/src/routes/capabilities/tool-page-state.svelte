@@ -10,7 +10,8 @@
   import { Button, EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
 
   import { usePageLeaf } from '../../app/breadcrumbs.svelte.ts';
-  import { CAPABILITIES_COPY, NOT_FOUND_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
+  import { NOT_FOUND_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { router } from '../../lib/router.svelte.ts';
 
   interface Props {

@@ -7,7 +7,8 @@
    */
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { listAllTasks, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { rowTime } from '../../../lib/format/clock.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';

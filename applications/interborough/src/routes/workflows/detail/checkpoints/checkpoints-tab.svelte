@@ -35,7 +35,8 @@
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient } from '@lostgradient/weft';
 
-  import { RETRY_LABEL, RUN_CHECKPOINTS_COPY } from '../../../../app/copy.ts';
+  import { RETRY_LABEL } from '../../../../app/copy/views.ts';
+  import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy/runs.ts';
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../../../lib/faults.ts';
   import { formatBytes, formatRelativeTime } from '../../../../lib/format/index.ts';
   import DivergenceView from './divergence-view.svelte';

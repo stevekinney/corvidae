@@ -1,6 +1,6 @@
 import type { DataListGroup } from '@lostgradient/cinder';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { ChatContext } from '../../lib/bureau-client.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';

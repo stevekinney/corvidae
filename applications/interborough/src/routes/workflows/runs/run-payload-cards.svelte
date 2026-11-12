@@ -8,7 +8,7 @@
    */
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import type { WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';
   import RunPayload from './run-payload.svelte';
 

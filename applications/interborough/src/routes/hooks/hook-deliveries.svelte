@@ -28,7 +28,7 @@
   import { Webhook } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { showFault, showToast } from '../../app/toast-host.svelte';
   import {
     listHookDeliveries,

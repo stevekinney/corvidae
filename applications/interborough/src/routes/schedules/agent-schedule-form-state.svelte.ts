@@ -10,7 +10,7 @@
  */
 import type { ScheduleValue } from '@lostgradient/cinder';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { bureauSpecOf, type AgentScheduleUpdate } from '../../lib/bureau-schedules.ts';
 import {
   browserTimeZone,

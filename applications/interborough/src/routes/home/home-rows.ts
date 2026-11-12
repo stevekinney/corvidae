@@ -7,7 +7,7 @@
  * and who asked, a problem is a sentence and the one page that deals with it, and a chat is its
  * title and last message.
  */
-import { HOME_COPY } from '../../app/copy.ts';
+import { HOME_COPY } from '../../app/copy/home.ts';
 import {
   FIRST_RUN_STEPS,
   type FirstRunProgress,

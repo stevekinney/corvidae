@@ -8,7 +8,7 @@
    */
   import { Alert, Select } from '@lostgradient/cinder';
 
-  import { AGENT_EDITOR_COPY, EFFORT_LABELS } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, EFFORT_LABELS } from '../../app/copy/agents.ts';
   import { EFFORTS } from '../../lib/agent-definitions.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
 

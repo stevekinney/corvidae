@@ -14,7 +14,7 @@
    */
   import { Button, Steps } from '@lostgradient/cinder';
 
-  import { HOME_COPY } from '../../app/copy.ts';
+  import { HOME_COPY } from '../../app/copy/home.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { openInApplication } from './home-navigation.ts';
   import type { ChecklistStep } from './home-rows.ts';

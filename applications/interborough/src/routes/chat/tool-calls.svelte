@@ -13,7 +13,7 @@
 
   import { ToolCallRail } from '@lostgradient/cinder';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import type { DecisionContext } from './approval-decision-words.ts';
   import { argumentEntries, displayValue } from '../../lib/tool-text.ts';
   import { railCall, type ToolCallEntry } from './tool-activity.ts';

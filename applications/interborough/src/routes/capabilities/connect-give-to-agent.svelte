@@ -12,7 +12,7 @@
   import { Alert, Button, Modal, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { pluginOfAgent } from '../../lib/agent-paths.ts';
   import { agentsListQuery } from '../../lib/agent-queries.ts';
 

@@ -6,7 +6,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { VIEW_COPY } from '../../src/app/copy.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';

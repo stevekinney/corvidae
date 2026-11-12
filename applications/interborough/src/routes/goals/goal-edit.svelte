@@ -20,7 +20,8 @@
   import { tick, untrack } from 'svelte';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { GOALS_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { GOALS_COPY } from '../../app/copy/goals.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { getGoal, updateGoal, type GoalChange } from '../../lib/bureau-goals.ts';
   import { goalPath } from '../../lib/identifier-paths.ts';

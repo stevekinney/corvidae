@@ -32,7 +32,8 @@
   } from '@lucide/svelte';
 
   import { router } from '../../lib/router.svelte.ts';
-  import { NOTIFICATION_COPY, RETRY_LABEL } from '../copy.ts';
+  import { NOTIFICATION_COPY } from '../copy/shell.ts';
+  import { RETRY_LABEL } from '../copy/views.ts';
   import type { NotificationItem, NotificationStore } from '../notifications.svelte.ts';
 
   interface NotificationBellProps {

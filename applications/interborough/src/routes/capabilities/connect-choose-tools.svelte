@@ -42,7 +42,8 @@
     Table,
   } from '@lostgradient/cinder';
 
-  import { AGENT_PAGE_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { SOURCE_TOOL_APPROVALS, type SourceToolApproval } from '../../lib/host-tool-sources.ts';
   import {
     chosenToolCount,

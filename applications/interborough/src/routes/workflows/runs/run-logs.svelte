@@ -9,7 +9,8 @@
   import { Alert, Collapsible, EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, RUN_LOGS_COPY } from '../../../app/copy.ts';
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { RUN_LOGS_COPY } from '../../../app/copy/runs.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import LogLines from './log-lines.svelte';
   import {

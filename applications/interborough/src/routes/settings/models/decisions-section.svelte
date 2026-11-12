@@ -9,7 +9,7 @@
    */
   import { Button, FormSection, NumberInput, Select, SettingRow } from '@lostgradient/cinder';
 
-  import { MODELS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
   import type { SchemaNode, SettingKeyState } from '../../../lib/bureau-settings.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import SettingField from '../setting-field.svelte';

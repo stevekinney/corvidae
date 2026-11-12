@@ -7,7 +7,7 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { PLUGIN_KINDS_COPY } from '../app/copy.ts';
+import { PLUGIN_KINDS_COPY } from '../app/copy/plugins.ts';
 import ContributedConfigurationForm from './contributed-configuration-form.svelte';
 
 afterEach(cleanup);

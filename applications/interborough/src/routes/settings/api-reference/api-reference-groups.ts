@@ -3,7 +3,7 @@
  * address of each. The open group is the `group` search parameter, so a tab is linked to, and
  * survives a reload. An unknown value opens the first group.
  */
-import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
 
 /** Every group's search-parameter value. */
 export const API_REFERENCE_GROUPS = ['operations', 'discovery', 'scopes', 'sources'] as const;

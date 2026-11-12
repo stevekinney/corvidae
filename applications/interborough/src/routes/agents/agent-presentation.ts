@@ -1,4 +1,4 @@
-import { AGENT_PAGE_COPY, AGENTS_COPY } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY, AGENTS_COPY } from '../../app/copy/agents.ts';
 import type { AgentDetail } from '../../lib/agent-definitions.ts';
 import type { AgentModels, AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
 import { viewerTimeZone } from '../../lib/format/clock.ts';

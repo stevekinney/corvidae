@@ -11,7 +11,7 @@
 
   import type { ScheduleSummary } from '@lostgradient/weft';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';

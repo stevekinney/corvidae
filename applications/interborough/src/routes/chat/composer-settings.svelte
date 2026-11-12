@@ -10,7 +10,7 @@
   import { Button, Popover } from '@lostgradient/cinder';
   import { ChevronDown, SlidersHorizontal } from '@lucide/svelte';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
 
   interface ComposerSettingsProps {
     /** The selects the control folds. */

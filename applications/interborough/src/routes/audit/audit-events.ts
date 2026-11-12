@@ -17,7 +17,7 @@ import {
   humanizeIdentifier,
 } from '@lostgradient/cinder';
 
-import { AUDIT_COPY, AUDIT_EVENT_COPY } from '../../app/copy.ts';
+import { AUDIT_COPY, AUDIT_EVENT_COPY } from '../../app/copy/audit.ts';
 import type { AuditEventKind } from '../../lib/audit-event-types.ts';
 import { AUDIT_EVENT_KINDS } from '../../lib/audit-event-types.ts';
 import type { AuditRecord } from '../../lib/bureau-audit.ts';

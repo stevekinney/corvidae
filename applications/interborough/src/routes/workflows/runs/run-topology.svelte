@@ -8,7 +8,7 @@
   import { Drawer } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_RELATED_COPY } from '../../../app/copy.ts';
+  import { RUN_RELATED_COPY } from '../../../app/copy/runs.ts';
   import RelatedRunLink from './related-run-link.svelte';
   import type { RelatedRun, RelatedRuns } from './run-related-data.ts';
 

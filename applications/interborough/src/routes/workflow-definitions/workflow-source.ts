@@ -7,7 +7,7 @@
  * the problem differently in every engine (Bun, Chromium and Firefox disagree on whether it names a
  * position at all), so the same file marks the same line wherever the page runs.
  */
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 
 /** Where a file's JSON stops being JSON, and what the parser was waiting for. */
 export type JsonProblem = {

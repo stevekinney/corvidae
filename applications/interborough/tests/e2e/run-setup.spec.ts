@@ -7,7 +7,7 @@
 import type { Page } from '@playwright/test';
 import { rm } from 'node:fs/promises';
 
-import { WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { bureau } from './agent-support.ts';
 import { expect, test } from './fixtures.ts';
 import { expectEngineMissesForFileRuns } from './task-support.ts';

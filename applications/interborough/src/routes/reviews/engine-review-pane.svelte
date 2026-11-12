@@ -8,7 +8,7 @@
    */
   import { Badge, CopyButton, DescriptionList, RelativeTime } from '@lostgradient/cinder';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { EngineReview } from '../../lib/bureau-reviews.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import ArtifactView from './artifact-view.svelte';

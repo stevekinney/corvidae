@@ -25,12 +25,12 @@
    *
    * A view that `ownsStates` (`views.ts`) keeps its header in every state, so the frame renders it
    * while it is loading, empty, failing or unreachable and draws no refresh error above it: the page
-   * says each of those itself, in the words `copy.ts` holds. `data-state` and `data-stale` stay
+   * says each of those itself, in the words `app/copy/views.ts` holds. `data-state` and `data-stale` stay
    * true to what the probe learned, and forbidden and not found are still the frame's. A view can
    * own its states on some routes only (`ownsStatesOnPatterns`): the Agents list does, an agent's
    * page does not.
    *
-   * Only the frame writes the words for the non-ready states, and it reads them from `copy.ts`.
+   * Only the frame writes the words for the non-ready states, and it reads them from `app/copy/views.ts`.
    * A view with no probe, such as one run's detail page, is ready unless its scopes are missing:
    * the page handles its own missing run.
    */
@@ -55,7 +55,9 @@
   import HealthFrame from '../routes/health/health-frame.svelte';
   import { getPrincipalStore } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
-  import { CHAT_COPY, CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
+  import { CHAT_COPY } from './copy/chat.ts';
+  import { CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL } from './copy/views.ts';
+  import { VIEW_COPY } from './copy/view-pages.ts';
   import ForbiddenState from './forbidden-state.svelte';
   import NotFoundState from './not-found-state.svelte';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';

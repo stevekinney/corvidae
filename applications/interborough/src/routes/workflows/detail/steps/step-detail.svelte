@@ -10,7 +10,7 @@
   import type { WorkflowTimelineEntry } from '@lostgradient/weft';
   import type { Snippet } from 'svelte';
 
-  import { RUN_STEPS_COPY } from '../../../../app/copy.ts';
+  import { RUN_STEPS_COPY } from '../../../../app/copy/runs.ts';
   import { formatDuration } from '../../../../lib/format/index.ts';
   import LogLines from '../../runs/log-lines.svelte';
   import type { RunLogLine } from '../../runs/run-logs-data.ts';

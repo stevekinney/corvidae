@@ -8,7 +8,8 @@
  */
 import type { StatusDotStatus } from '@lostgradient/cinder';
 
-import { nameList, PLUGINS_COPY } from '../../../app/copy.ts';
+import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
+import { nameList } from '../../../app/copy/shared.ts';
 import { agentEditPath } from '../../../lib/agent-paths.ts';
 import type { PluginProblem, PluginStanding } from '../../../lib/host-plugins.ts';
 import { fieldWords } from './plugin-configuration.ts';

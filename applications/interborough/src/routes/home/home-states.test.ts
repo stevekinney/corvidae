@@ -23,7 +23,7 @@ import {
 import { Window } from 'happy-dom';
 import { flushSync } from 'svelte';
 
-import { CONNECTION_COPY } from '../../app/copy.ts';
+import { CONNECTION_COPY } from '../../app/copy/views.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import HomeHarness from './home-test-harness.test-harness.svelte';

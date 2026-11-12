@@ -7,7 +7,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 
-import { CAPABILITIES_COPY } from '../../app/copy.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import QueryPage from '../chat/chat-toasts.test-harness.svelte';
 import { bureau, landAt } from '../chat/pages.test-support.ts';
 import CapabilitiesPage from './index.svelte';

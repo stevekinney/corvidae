@@ -10,7 +10,8 @@
   import Lock from '@lucide/svelte/icons/lock';
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_PAGE_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { TaskView } from '../../../lib/bureau-tasks.ts';
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import CheckpointsTab from '../detail/checkpoints/checkpoints-tab.svelte';

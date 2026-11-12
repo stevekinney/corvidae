@@ -9,7 +9,7 @@
    */
   import { Alert, Badge, SectionHeading, Table } from '@lostgradient/cinder';
 
-  import { CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import type { Skill } from '../../lib/bureau-skills.ts';
   import { router } from '../../lib/router.svelte.ts';
   import AgentUsers from './agent-users.svelte';

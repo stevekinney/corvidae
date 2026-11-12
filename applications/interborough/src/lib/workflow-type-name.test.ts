@@ -1,7 +1,7 @@
 /** What a run's page calls a workflow type: the recorded name for a built-in one, else words. */
 import { describe, expect, test } from 'bun:test';
 
-import { RUN_DETAIL_COPY } from '../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../app/copy/runs.ts';
 import { builtInWorkflowName, isBuiltInWorkflow, workflowTypeName } from './workflow-type-name.ts';
 
 describe('workflowTypeName', () => {

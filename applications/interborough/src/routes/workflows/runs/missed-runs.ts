@@ -9,7 +9,7 @@
  * missed fires at all, and `bureau.schedules.missed` lists each one's occurrences. A caller who may
  * not read schedules sees no missed row; the runs list never fails for it.
  */
-import { TASK_COPY } from '../../../app/copy.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import {
   listAgentScheduleMissed,
   listBureauSchedules,

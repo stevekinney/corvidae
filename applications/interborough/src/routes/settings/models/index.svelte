@@ -4,7 +4,7 @@
    * /settings/models"). The body is `models-body.svelte`; this is the Settings frame around it, with
    * the section navigation, the heading and the settings the Decisions section edits.
    */
-  import { MODELS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
   import SettingsFrame from '../settings-frame.svelte';
   import ModelsBody from './models-body.svelte';
 </script>

@@ -19,7 +19,8 @@
   import { Banner, Button } from '@lostgradient/cinder';
   import { RotateCw, TriangleAlert } from '@lucide/svelte';
 
-  import { RESTART_COPY, SETTINGS_COPY } from '../../app/copy.ts';
+  import { RESTART_COPY } from '../../app/copy/restart.ts';
+  import { SETTINGS_COPY } from '../../app/copy/settings.ts';
   import type { HostRestartFlow } from '../../app/restart/host-restart-flow.svelte.ts';
   import RestartBackBanner from '../../app/restart/restart-back-banner.svelte';
   import RestartConfirmDialog from '../../app/restart/restart-confirm-dialog.svelte';

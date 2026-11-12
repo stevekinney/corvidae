@@ -11,7 +11,7 @@
   import { ConfirmDialog } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { MODELS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
   import { showToast } from '../../../app/toast-host.svelte';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { disconnectProvider, HostProviderError } from '../../../lib/host-providers.ts';

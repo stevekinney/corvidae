@@ -9,7 +9,7 @@
   import { humanizeIdentifier } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+  import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
   import { listWorkflowFiles } from '../../../lib/workflow-files.ts';
   import { getHostPaths, workflowFilePath } from '../../../lib/host-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';

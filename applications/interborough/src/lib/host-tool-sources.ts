@@ -10,7 +10,7 @@
  */
 import { z } from 'zod';
 
-import { CAPABILITIES_COPY } from '../app/copy.ts';
+import { CAPABILITIES_COPY } from '../app/copy/capabilities.ts';
 import type { Fetcher } from './bureau-client.ts';
 import { SETTING_LOCK_REASONS } from './bureau-settings.ts';
 import { faultTreatment, type FaultTreatment } from './faults.ts';

@@ -52,7 +52,8 @@
   import { tick, untrack } from 'svelte';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { PLUGIN_KINDS_COPY, RETRY_LABEL, STALE_COPY } from '../../app/copy.ts';
+  import { PLUGIN_KINDS_COPY } from '../../app/copy/plugins.ts';
+  import { RETRY_LABEL, STALE_COPY } from '../../app/copy/views.ts';
   import NotFoundState from '../../app/not-found-state.svelte';
   import { showFault, showToast } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';

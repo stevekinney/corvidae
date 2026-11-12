@@ -9,7 +9,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { CHAT_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { chatSessionPath } from '../../src/lib/identifier-paths.ts';
 import {
   conversation,

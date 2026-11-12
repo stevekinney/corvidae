@@ -25,7 +25,8 @@
   } from '@lostgradient/chat';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../../app/copy/reviews.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { getAgentCatalog } from '../../../lib/agent-definitions.ts';
   import { useAgentDisplayName } from '../../../lib/agent-display-name.svelte.ts';
   import { answerUndoMilliseconds } from '../../../lib/answer-undo.ts';

@@ -49,12 +49,8 @@
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
-  import {
-    AGENT_EDITOR_COPY,
-    AGENT_PAGE_COPY,
-    CONNECTION_COPY,
-    RETRY_LABEL,
-  } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { hasToastHost, showToast } from '../../app/toast-host.svelte';
   import {

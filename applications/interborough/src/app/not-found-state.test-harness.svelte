@@ -6,7 +6,7 @@
    */
   import { router } from '../lib/router.svelte.ts';
   import { breadcrumbTrail } from './breadcrumbs.svelte.ts';
-  import type { ViewLink } from './copy.ts';
+  import type { ViewLink } from './copy/views.ts';
   import NotFoundState from './not-found-state.svelte';
   import { provideSearchOpener } from './shell/search-opener.ts';
   import type { ViewName } from './views.ts';

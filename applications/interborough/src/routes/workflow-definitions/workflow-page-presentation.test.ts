@@ -1,7 +1,7 @@
 /** The lines under a workflow's title and the numbered rows of its steps, said without a page. */
 import { describe, expect, test } from 'bun:test';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import {
   builtInLine,
   hasLongStep,

@@ -10,7 +10,7 @@
   import { AccessGate, Button } from '@lostgradient/cinder';
 
   import { router } from '../lib/router.svelte.ts';
-  import { FORBIDDEN_COPY } from './copy.ts';
+  import { FORBIDDEN_COPY } from './copy/views.ts';
 
   interface ForbiddenStateProps {
     /** Names what is locked: "Your sign-in can’t open Hooks". */

@@ -9,7 +9,7 @@
    */
   import { Button, Skeleton, Tooltip } from '@lostgradient/cinder';
 
-  import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 
   interface Props {
     /** Leaves the page, as Cancel does on the form. */

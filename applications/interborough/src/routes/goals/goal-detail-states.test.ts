@@ -10,7 +10,8 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { GOALS_COPY, RETRY_LABEL } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { goalAttemptFixture, goalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import type { Goal } from '../../lib/bureau-goals.ts';
 import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';

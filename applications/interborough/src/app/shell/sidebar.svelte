@@ -30,7 +30,8 @@
 
   import { router } from '../../lib/router.svelte.ts';
   import { usePendingReviewsCount } from '../../routes/reviews/pending-reviews-count.svelte.ts';
-  import { NAVIGATION_COPY, SHORTCUT_COPY, VIEW_COPY } from '../copy.ts';
+  import { NAVIGATION_COPY, SHORTCUT_COPY } from '../copy/shell.ts';
+  import { VIEW_COPY } from '../copy/view-pages.ts';
   import { getKeyboardPreferences } from '../keyboard-preferences.svelte.ts';
   import { getLayoutPreferences, LayoutPreferences } from '../layout-preferences.svelte.ts';
   import { useAttentionCount } from './attention-count.svelte.ts';

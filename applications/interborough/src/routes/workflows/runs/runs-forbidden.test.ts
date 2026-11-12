@@ -7,7 +7,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { VIEW_COPY } from '../../../app/copy.ts';
+import { VIEW_COPY } from '../../../app/copy/view-pages.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
   emptyBureauWorld,

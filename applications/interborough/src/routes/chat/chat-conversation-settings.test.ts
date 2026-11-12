@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import type { Principal } from '../../lib/scopes.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';

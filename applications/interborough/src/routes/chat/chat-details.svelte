@@ -12,7 +12,7 @@
    */
   import { CopyButton, DescriptionList, type DescriptionListItem } from '@lostgradient/cinder';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import type { Effort, PermissionMode } from '../../lib/bureau-client.ts';
   import { dayAndTime, clockTime, calendarDay } from '../../lib/format/clock.ts';
 

@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import {
   goalAttemptFixture,
   goalFixture,

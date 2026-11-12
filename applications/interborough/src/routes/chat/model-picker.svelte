@@ -20,7 +20,7 @@
   import { Select } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { getAgentModels, steerContext, type AgentModelChoice } from '../../lib/bureau-client.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';

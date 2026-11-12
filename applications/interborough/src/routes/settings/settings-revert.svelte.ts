@@ -12,7 +12,7 @@
  */
 import { SvelteSet } from 'svelte/reactivity';
 
-import { SETTINGS_COPY } from '../../app/copy.ts';
+import { SETTINGS_COPY } from '../../app/copy/settings.ts';
 import {
   settingsFaultOf,
   type SettingsSnapshot,

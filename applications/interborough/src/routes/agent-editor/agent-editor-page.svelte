@@ -64,7 +64,8 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { AGENT_EDITOR_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import {
     agentFaultOf,
     createAgent,

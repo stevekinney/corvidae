@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { readBuilder } from './workflow-builder-model.ts';
 
 /** Friday, Nov 6, 2026, when Chicago is on Central Standard Time. */

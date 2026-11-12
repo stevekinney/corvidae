@@ -22,7 +22,7 @@ import {
   type MessageNoteInfo,
 } from '@lostgradient/chat';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { agentMemoryPath } from '../../lib/agent-paths.ts';
 import type { TaskView } from '../../lib/bureau-tasks.ts';
 import { identifierPath } from '../../lib/identifier-paths.ts';

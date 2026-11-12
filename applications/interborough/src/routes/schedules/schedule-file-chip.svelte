@@ -9,7 +9,7 @@
   import { Lock } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getHostPaths, workflowFilePath, workflowRelativePath } from '../../lib/host-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
 

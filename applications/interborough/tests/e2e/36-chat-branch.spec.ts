@@ -8,7 +8,7 @@
 import type { Page } from '@playwright/test';
 
 import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
-import { CHAT_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import {
   conversation,
   expectWaiting,

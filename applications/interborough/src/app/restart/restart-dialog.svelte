@@ -13,7 +13,7 @@
    */
   import { RestartState } from '@lostgradient/cinder';
 
-  import { RESTART_COPY } from '../copy.ts';
+  import { RESTART_COPY } from '../copy/restart.ts';
   import type { RestartIntent, RestartPhase } from './host-restart-flow.svelte.ts';
 
   /** What the dialog reads from a restart flow, whatever it watches the host through. */

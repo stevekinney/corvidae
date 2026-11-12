@@ -5,7 +5,7 @@
  * `codeDefinition` (what the agent states about itself) is read as one; it states no approvals or
  * budgets, so the copy has none. Nothing is written until the person saves the form.
  */
-import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   AGENT_IDENTIFIER_PATTERN,

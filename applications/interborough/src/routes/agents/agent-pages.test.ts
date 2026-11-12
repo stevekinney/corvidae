@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 import {
   STUB_REMOTE_AGENT_DIRECTORY,
   StubFault,

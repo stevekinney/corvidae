@@ -38,7 +38,7 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { getContext } from 'svelte';
 
-  import { STORAGE_COPY } from '../../app/copy.ts';
+  import { STORAGE_COPY } from '../../app/copy/settings.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';

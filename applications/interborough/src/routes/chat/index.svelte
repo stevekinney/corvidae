@@ -13,7 +13,8 @@
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
-  import { CHAT_COPY, VIEW_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import ForbiddenState from '../../app/forbidden-state.svelte';
   import NotFoundState from '../../app/not-found-state.svelte';
   import { getContext } from '../../lib/bureau-client.ts';

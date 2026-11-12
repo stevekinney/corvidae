@@ -17,7 +17,10 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { AGENT_EDITOR_COPY, MEMORY_COPY, TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
+import { MEMORY_COPY } from '../../src/app/copy/memory.ts';
+import { TASK_COPY } from '../../src/app/copy/tasks.ts';
+import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { addTools, bureau, readAgent, removeAgent } from './agent-support.ts';
 import { conversation } from './chat-support.ts';

@@ -24,7 +24,9 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, onMount, untrack } from 'svelte';
 
-  import { ALLOWED_MODELS_COPY as copy, EFFORT_LABELS, SETTINGS_COPY } from '../../app/copy.ts';
+  import { ALLOWED_MODELS_COPY as copy } from '../../app/copy/models.ts';
+  import { EFFORT_LABELS } from '../../app/copy/agents.ts';
+  import { SETTINGS_COPY } from '../../app/copy/settings.ts';
   import { HostRestartFlow } from '../../app/restart/host-restart-flow.svelte.ts';
   import { dismissToast, showToast } from '../../app/toast-host.svelte';
   import {

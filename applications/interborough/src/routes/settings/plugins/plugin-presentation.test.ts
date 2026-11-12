@@ -1,7 +1,7 @@
 /** What Settings › Plugins says about a plugin, from what the host reports. */
 import { describe, expect, test } from 'bun:test';
 
-import { PLUGINS_COPY } from '../../../app/copy.ts';
+import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
 import type { PluginStanding } from '../../../lib/host-plugins.ts';
 import {
   contributionGroups,

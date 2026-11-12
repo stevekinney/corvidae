@@ -8,7 +8,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
-import { CAPABILITIES_COPY } from '../../app/copy.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';

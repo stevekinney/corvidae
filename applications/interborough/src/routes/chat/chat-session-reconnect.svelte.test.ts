@@ -1,7 +1,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, expect, jest, spyOn, test } from 'bun:test';
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { settle } from '../../lib/fake-timers.test-support.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';

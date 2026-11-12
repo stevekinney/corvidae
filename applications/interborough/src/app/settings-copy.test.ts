@@ -1,7 +1,8 @@
 /** The Settings words that depend on a count or on whether the server answered. */
 import { describe, expect, test } from 'bun:test';
 
-import { A2A_COPY, PLUGINS_COPY } from './copy.ts';
+import { A2A_COPY } from './copy/a2a.ts';
+import { PLUGINS_COPY } from './copy/plugins.ts';
 
 describe('the Shared agents description', () => {
   test('names the one agent, or how many are listed', () => {

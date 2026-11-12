@@ -6,7 +6,7 @@
    */
   import { Badge, type BadgeVariant } from '@lostgradient/cinder';
 
-  import { RUN_LOGS_COPY } from '../../../app/copy.ts';
+  import { RUN_LOGS_COPY } from '../../../app/copy/runs.ts';
   import type { RunLogLine } from './run-logs-data.ts';
 
   interface LogLinesProps {

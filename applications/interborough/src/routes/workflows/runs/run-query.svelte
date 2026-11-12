@@ -6,7 +6,7 @@
    */
   import { Button, Input, Tooltip } from '@lostgradient/cinder';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
 
   interface RunQueryProps {

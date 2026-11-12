@@ -5,7 +5,7 @@
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { REVIEWS_COPY } from '../../app/copy.ts';
+import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import BureauReviewOperation from './bureau-review-operation.svelte';
 
 afterEach(cleanup);

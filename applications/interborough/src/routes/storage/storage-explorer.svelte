@@ -47,7 +47,8 @@
   import { Database } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, STORAGE_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { STORAGE_COPY } from '../../app/copy/settings.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { formatBytes } from '../../lib/format/index.ts';
   import { getHostStorage, getHostStorageSummary } from '../../lib/host-storage.ts';

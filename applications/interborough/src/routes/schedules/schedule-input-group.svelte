@@ -7,7 +7,7 @@
    */
   import { CopyButton, JsonViewer, Segment, SegmentedControl } from '@lostgradient/cinder';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import type { ScheduleInput } from './schedule-detail-model.ts';
 
   interface Props {

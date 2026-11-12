@@ -14,7 +14,7 @@
    */
   import { Button, Callout, Combobox, type ComboboxOption } from '@lostgradient/cinder';
 
-  import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { providerDisplayName } from '../settings/models/format-model.ts';
   import { abilitiesOf, type ModelChoice } from './agent-editor-models.ts';

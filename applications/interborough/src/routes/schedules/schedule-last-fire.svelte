@@ -15,7 +15,7 @@
 
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getClient } from '../../lib/client.ts';
   import { fetchRunDetail, runDetailQueryKey } from './schedule-run-details.ts';
   import { fetchScheduleRunHistory, scheduleRunHistoryQueryKey } from './schedule-queries.ts';

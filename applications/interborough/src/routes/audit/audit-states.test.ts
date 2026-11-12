@@ -5,7 +5,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { AUDIT_COPY } from '../../app/copy.ts';
+import { AUDIT_COPY } from '../../app/copy/audit.ts';
 import { EMPTY_AUDIT_DRAFT, type AuditDraft } from './audit-filter.ts';
 import { auditExportFailure, auditLoadFailure, auditNoMatches } from './audit-states.ts';
 

@@ -9,7 +9,8 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { AGENT_EDITOR_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import {
   catalogFixture,
   installBureauStub,

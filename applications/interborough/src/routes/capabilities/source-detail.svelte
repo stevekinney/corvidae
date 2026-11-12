@@ -38,7 +38,8 @@
   import { Ellipsis } from '@lucide/svelte';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
-  import { AGENT_PAGE_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { showFault } from '../../app/toast-host.svelte';
   import {
     authorizeToolSource,

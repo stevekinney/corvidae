@@ -8,7 +8,7 @@
    */
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import AttributesPanel from '../detail/attributes/attributes-panel.svelte';
   import type { AttributesClient } from '../detail/attributes/attributes-data.ts';

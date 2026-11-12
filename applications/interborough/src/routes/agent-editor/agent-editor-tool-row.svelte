@@ -14,7 +14,7 @@
   import { Collapsible } from '@lostgradient/cinder';
   import type { Snippet } from 'svelte';
 
-  import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import type { AgentCatalog } from '../../lib/agent-definitions.ts';
   import { toolLine } from '../../lib/tool-line.ts';
   import type { ToolStanding } from '../../lib/tool-standing.ts';

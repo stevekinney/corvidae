@@ -19,7 +19,8 @@
  */
 import type { Page } from '@playwright/test';
 
-import { AGENT_EDITOR_COPY, MODELS_COPY } from '../../src/app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../src/app/copy/agents.ts';
+import { MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';

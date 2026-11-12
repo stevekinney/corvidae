@@ -14,7 +14,7 @@
    */
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { getContext, type ChatContext } from '../../../lib/bureau-client.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { getTask, type TaskView } from '../../../lib/bureau-tasks.ts';

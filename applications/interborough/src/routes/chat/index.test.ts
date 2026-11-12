@@ -7,7 +7,8 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 
 import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { CHAT_COPY, VIEW_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
+import { VIEW_COPY } from '../../app/copy/view-pages.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { chatSessionPath } from '../../lib/identifier-paths.ts';
 import { router } from '../../lib/router.svelte.ts';

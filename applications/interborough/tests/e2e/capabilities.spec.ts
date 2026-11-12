@@ -9,7 +9,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { CAPABILITIES_COPY } from '../../src/app/copy.ts';
+import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { readCatalog } from './agent-support.ts';
 import { expect, test } from './fixtures.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';

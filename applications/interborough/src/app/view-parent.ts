@@ -1,4 +1,4 @@
-import { VIEW_COPY } from './copy.ts';
+import { VIEW_COPY } from './copy/view-pages.ts';
 import { DESTINATIONS } from './shell/destinations.ts';
 import type { ViewName } from './views.ts';
 

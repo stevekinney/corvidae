@@ -9,7 +9,7 @@ import { createRawSnippet, tick } from 'svelte';
 
 import { breadcrumbTrail } from './breadcrumbs.svelte.ts';
 import Harness from './breadcrumbs.test-harness.svelte';
-import { VIEW_COPY } from './copy.ts';
+import { VIEW_COPY } from './copy/view-pages.ts';
 import { routes } from './routes.ts';
 
 const NONE = new Map<string, string>();

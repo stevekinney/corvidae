@@ -7,7 +7,7 @@
  * unchanged. The `hash` says which version of the file the form was filled from, and every write
  * names it, so a file that changed since is refused rather than overwritten.
  */
-import { AGENT_EDITOR_COPY, EFFORT_LABELS } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY, EFFORT_LABELS } from '../../app/copy/agents.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   AGENT_IDENTIFIER_PATTERN,

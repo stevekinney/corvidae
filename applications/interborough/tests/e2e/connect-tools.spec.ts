@@ -10,7 +10,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { CAPABILITIES_COPY } from '../../src/app/copy.ts';
+import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import { expect, test } from './fixtures.ts';
 import {
   E2E_FLAGGED_TOOL,

@@ -7,7 +7,7 @@
    */
   import { Button, Modal, StatusDot } from '@lostgradient/cinder';
 
-  import { MODELS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
   import { providerDisplayName } from './format-model.ts';
 
   interface Props {

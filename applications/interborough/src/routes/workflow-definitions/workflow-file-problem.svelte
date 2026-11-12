@@ -7,7 +7,7 @@
    */
   import { Alert, Button } from '@lostgradient/cinder';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import type { WorkflowProblem } from '../../lib/workflow-files.ts';
   import { problemSentence, type JsonProblem } from './workflow-source.ts';

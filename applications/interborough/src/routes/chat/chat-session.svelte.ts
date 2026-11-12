@@ -32,7 +32,7 @@ import {
   type MessageInput,
 } from '@lostgradient/chat';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import {
   forgetContextGrants,
   retractContextInput,

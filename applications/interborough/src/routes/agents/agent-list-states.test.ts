@@ -10,7 +10,8 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import { AGENTS_COPY, VIEW_COPY } from '../../app/copy.ts';
+import { AGENTS_COPY } from '../../app/copy/agents.ts';
+import { VIEW_COPY } from '../../app/copy/view-pages.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';

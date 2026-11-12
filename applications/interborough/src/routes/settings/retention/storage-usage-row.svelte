@@ -10,7 +10,7 @@
   import { Link, SettingRow, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { DATA_RETENTION_COPY } from '../../../app/copy.ts';
+  import { DATA_RETENTION_COPY } from '../../../app/copy/settings.ts';
   import { listAttentionAlerts } from '../../../lib/bureau-attention.ts';
   import { formatBytes } from '../../../lib/format/index.ts';
   import { getHostStorage } from '../../../lib/host-storage.ts';

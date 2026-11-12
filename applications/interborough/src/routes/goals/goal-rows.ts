@@ -9,7 +9,7 @@
  */
 import type { DataListGroup, StatusDotWordLabel } from '@lostgradient/cinder';
 
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalHasEnded, type Goal, type GoalStatus } from '../../lib/bureau-goals.ts';
 import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';
 

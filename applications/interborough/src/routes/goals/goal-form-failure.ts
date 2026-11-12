@@ -3,7 +3,7 @@
  * alert above the footer's buttons, built from the fault the Bureau answered with. The pages put
  * what failed first and what is kept after it, so the person reads that nothing was lost.
  */
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { wireCodeOf } from '../../lib/bureau-client.ts';
 import { faultTreatment } from '../../lib/faults.ts';
 

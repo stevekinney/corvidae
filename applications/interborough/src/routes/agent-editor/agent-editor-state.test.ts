@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 import type { Effort } from '../../lib/agent-definitions.ts';
 import { catalogFixture, readyAgent } from '../../lib/bureau-stub.test-support.ts';
 import { restrictionsOf } from './agent-editor-models.ts';

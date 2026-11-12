@@ -28,7 +28,8 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
 
-  import { A2A_COPY, SETTINGS_COPY } from '../../../app/copy.ts';
+  import { A2A_COPY } from '../../../app/copy/a2a.ts';
+  import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
   import { HostRestartFlow } from '../../../app/restart/host-restart-flow.svelte.ts';
   import { dismissToast, showToast } from '../../../app/toast-host.svelte';
   import { agentLabel } from '../../../lib/agent-label.ts';

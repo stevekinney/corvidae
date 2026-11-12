@@ -7,7 +7,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
-import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy.ts';
+import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { agentDuplicatePath } from '../../src/lib/agent-paths.ts';
 import { providerDisplayName } from '../../src/routes/settings/models/format-model.ts';
 import {

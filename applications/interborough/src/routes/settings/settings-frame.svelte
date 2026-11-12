@@ -22,7 +22,9 @@
   import { onMount, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
 
-  import { RETRY_LABEL, SETTINGS_COPY, VIEW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { SETTINGS_COPY } from '../../app/copy/settings.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import {
     getSettings,
     getSettingsSchema,

@@ -8,7 +8,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { matchRoute } from '../../lib/router.svelte.ts';
 import { ShortcutRegistry, type ShortcutKey } from '../../lib/shortcuts.ts';
-import { SHORTCUT_COPY } from '../copy.ts';
+import { SHORTCUT_COPY } from '../copy/shell.ts';
 import {
   DESTINATIONS,
   HEALTH_SHORTCUTS,

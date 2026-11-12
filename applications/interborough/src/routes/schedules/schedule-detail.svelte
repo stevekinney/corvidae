@@ -41,7 +41,8 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
   import NotFoundState from '../../app/not-found-state.svelte';

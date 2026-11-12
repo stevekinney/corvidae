@@ -14,7 +14,7 @@
   import { renderMarkdown } from '@lostgradient/markdown';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { AGENT_PAGE_COPY } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { listAgentVersions, type AgentDetail } from '../../lib/agent-definitions.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';

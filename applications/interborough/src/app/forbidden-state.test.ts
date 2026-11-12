@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { router } from '../lib/router.svelte.ts';
-import { FORBIDDEN_COPY } from './copy.ts';
+import { FORBIDDEN_COPY } from './copy/views.ts';
 import ForbiddenState from './forbidden-state.svelte';
 
 afterEach(cleanup);

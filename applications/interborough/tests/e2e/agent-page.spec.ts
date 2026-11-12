@@ -10,7 +10,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { AGENT_PAGE_COPY } from '../../src/app/copy.ts';
+import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { bureau, createAgentFile, readAgent, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';

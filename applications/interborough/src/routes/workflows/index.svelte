@@ -12,7 +12,7 @@
    * aggregate view read the engine, so a caller without `workflows:read` is told so here instead of
    * being sent to a form the engine would refuse.
    */
-  import { VIEW_COPY } from '../../app/copy.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import ForbiddenState from '../../app/forbidden-state.svelte';
   import { router } from '../../lib/router.svelte.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';

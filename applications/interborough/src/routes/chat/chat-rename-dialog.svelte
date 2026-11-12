@@ -11,7 +11,7 @@
   import { Alert, Button, Input, Modal } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { renameContext, wireCodeOf } from '../../lib/bureau-client.ts';
   import { chatIsGone } from './chat-gone.ts';

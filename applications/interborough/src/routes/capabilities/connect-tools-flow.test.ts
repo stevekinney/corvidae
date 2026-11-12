@@ -13,7 +13,8 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { AGENT_PAGE_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import type { OpenApiInspection, ToolSourceProbe } from '../../lib/host-tool-sources.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';

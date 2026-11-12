@@ -12,7 +12,9 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import { AUDIT_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
+import { AUDIT_COPY } from '../../app/copy/audit.ts';
+import { VIEW_COPY } from '../../app/copy/view-pages.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import ToastHost from '../../app/toast-host.svelte';
 import { AUDIT_EVENT_TYPES } from '../../lib/audit-event-types.ts';

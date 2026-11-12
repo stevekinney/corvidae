@@ -16,7 +16,7 @@
   import type { HttpClient } from '@lostgradient/weft';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { HOME_COPY } from '../../app/copy.ts';
+  import { HOME_COPY } from '../../app/copy/home.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';

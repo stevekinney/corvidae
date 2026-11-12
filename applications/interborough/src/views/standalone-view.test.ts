@@ -8,7 +8,7 @@ import { render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { Component } from 'svelte';
 
-import { STORAGE_COPY } from '../app/copy.ts';
+import { STORAGE_COPY } from '../app/copy/settings.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../lib/scopes.svelte.ts';
 import DashboardView from './dashboard-view.svelte';

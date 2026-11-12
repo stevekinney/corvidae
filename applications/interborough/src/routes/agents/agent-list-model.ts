@@ -6,7 +6,7 @@
  * and what only one has: a built-in agent, a model that needs a provider, an agent file that can be
  * edited, the reason a plugin's agent cannot run.
  */
-import { AGENTS_COPY } from '../../app/copy.ts';
+import { AGENTS_COPY } from '../../app/copy/agents.ts';
 import type { AgentListing } from '../../lib/agent-definitions.ts';
 import { agentLabel } from '../../lib/agent-label.ts';
 import { pluginOfAgent } from '../../lib/agent-paths.ts';

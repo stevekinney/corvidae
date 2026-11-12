@@ -10,7 +10,8 @@
  */
 import type { Page } from '@playwright/test';
 
-import { TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { TASK_COPY } from '../../src/app/copy/tasks.ts';
+import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { STATUS_WORDS } from '../../src/lib/status.ts';
 import { STARTED_BY_KINDS, STARTED_BY_LABELS } from '../../src/routes/workflows/runs/started-by.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';

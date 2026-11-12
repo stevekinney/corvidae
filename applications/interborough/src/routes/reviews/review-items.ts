@@ -4,7 +4,7 @@
  * key that is unique across the sources, for selection and keyed rendering. The server orders the
  * list (waiting: the longest first; decided: the latest decision first), and this keeps its order.
  */
-import { REVIEWS_COPY } from '../../app/copy.ts';
+import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import type { ListedReview } from '../../lib/bureau-reviews.ts';
 import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
 

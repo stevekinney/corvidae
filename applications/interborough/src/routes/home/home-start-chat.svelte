@@ -17,7 +17,7 @@
   import { Button, Select, Textarea } from '@lostgradient/cinder';
   import { Send } from '@lucide/svelte';
 
-  import { HOME_COPY } from '../../app/copy.ts';
+  import { HOME_COPY } from '../../app/copy/home.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { router } from '../../lib/router.svelte.ts';

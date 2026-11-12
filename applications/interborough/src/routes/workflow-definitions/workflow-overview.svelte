@@ -10,7 +10,7 @@
    */
   import { Alert, Badge, EmptyState, SchemaView, SectionHeading } from '@lostgradient/cinder';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
   import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';

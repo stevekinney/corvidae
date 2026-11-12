@@ -10,7 +10,7 @@
   import { ChevronDown } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { inspectTaskStep } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { isEmptyDetails, replyDetailsOf } from './reply-details.ts';

@@ -7,7 +7,9 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { CHAT_COPY, TASK_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
+import { TASK_COPY } from '../../src/app/copy/tasks.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import {
   conversation,
   deleteChats,

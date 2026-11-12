@@ -42,7 +42,8 @@ import { formatBytes } from '../lib/format/index.ts';
 import { chatSessionPath } from '../lib/identifier-paths.ts';
 import { scheduleDetailPath } from '../lib/router.svelte.ts';
 import { reviewTitle } from '../routes/reviews/review-items.ts';
-import { CHAT_COPY, NOTIFICATION_COPY } from './copy.ts';
+import { CHAT_COPY } from './copy/chat.ts';
+import { NOTIFICATION_COPY } from './copy/shell.ts';
 import type { MissedFireSource } from './notification-sources.ts';
 
 /** How the bell grades an item: `info` never counts toward the badge. */

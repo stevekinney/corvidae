@@ -1,11 +1,12 @@
 /**
  * What a person calls a workflow type where a run's page names it: the recorded display name for a
  * type Interborough runs itself (`agentRun` is "Chat with an agent"), else the identifier in words
- * ("release-notes" reads "Release notes"). The recorded names are in `copy.ts`.
+ * ("release-notes" reads "Release notes"). The recorded names are in `app/copy/workflows.ts`.
  */
 import { humanizeIdentifier } from '@lostgradient/cinder';
 
-import { RUN_DETAIL_COPY, WORKFLOW_COPY } from '../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../app/copy/runs.ts';
+import { WORKFLOW_COPY } from '../app/copy/workflows.ts';
 
 /** The display name Interborough records for a workflow type it runs itself, or `undefined`. */
 export function builtInWorkflowName(type: string): string | undefined {

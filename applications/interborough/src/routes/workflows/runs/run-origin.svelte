@@ -6,7 +6,7 @@
    * "Goal"), and a goal's attempt follows its link ("attempt 2 of 5"). A run recorded before origins
    * were kept reads "Not recorded".
    */
-  import { TASK_COPY } from '../../../app/copy.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { goalTitle, type RunAttempt, type RunOrigin } from './run-rows.ts';
   import { STARTED_BY_LABELS } from './started-by.ts';

@@ -11,7 +11,7 @@ import {
 } from '@lostgradient/cinder';
 import { HttpClientError } from '@lostgradient/weft';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { isEngineType, type WorkflowResolution } from '../../lib/workflow-catalog.ts';
 import { cadenceText } from '../schedules/schedule-cadence-text.ts';
 import {

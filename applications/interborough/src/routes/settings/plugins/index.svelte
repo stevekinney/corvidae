@@ -8,7 +8,7 @@
    */
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { PLUGINS_COPY } from '../../../app/copy.ts';
+  import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import { getPlugins } from '../../../lib/host-plugins.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import SettingsFrame from '../settings-frame.svelte';

@@ -8,7 +8,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { PLUGIN_KINDS_COPY } from '../../app/copy.ts';
+import { PLUGIN_KINDS_COPY } from '../../app/copy/plugins.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';

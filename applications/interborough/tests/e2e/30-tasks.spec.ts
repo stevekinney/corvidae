@@ -9,7 +9,7 @@
  */
 import type { BrowserContext, Page } from '@playwright/test';
 
-import { TASK_COPY } from '../../src/app/copy.ts';
+import { TASK_COPY } from '../../src/app/copy/tasks.ts';
 import { taskCursorKey } from '../../src/routes/workflows/runs/task-follower.svelte.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, goOffline, test, type PageErrorLog } from './fixtures.ts';

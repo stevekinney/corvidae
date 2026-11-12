@@ -7,7 +7,7 @@
    */
   import { CodeBlock, parseUnifiedPatch, SourceDiffViewer } from '@lostgradient/cinder';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 
   interface BureauReviewOperationProps {
     readonly operation: {

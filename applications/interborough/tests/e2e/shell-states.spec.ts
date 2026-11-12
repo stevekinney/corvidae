@@ -10,7 +10,8 @@
 import type { Page } from '@playwright/test';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
-import { FORBIDDEN_COPY, NOT_FOUND_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
+import { FORBIDDEN_COPY, NOT_FOUND_COPY } from '../../src/app/copy/views.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';

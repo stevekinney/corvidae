@@ -10,7 +10,7 @@ import { formatDate, formatDateTime, formatRelativeTime } from '@lostgradient/ci
 
 import type { ScheduleSummary, WorkflowSummary } from '@lostgradient/weft';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import type { MissedFire } from '../../lib/bureau-schedules.ts';
 import { workflowDetailPath } from '../../lib/router.svelte.ts';
 import { pastRows, type PastRowsTruncation } from './past-runs-model.ts';

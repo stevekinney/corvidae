@@ -20,7 +20,7 @@
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import type { SvelteMap } from 'svelte/reactivity';
 
-  import { MEMORY_COPY } from '../../app/copy.ts';
+  import { MEMORY_COPY } from '../../app/copy/memory.ts';
   import {
     forgetMemory,
     memoryFaultOf,

@@ -5,7 +5,7 @@
  */
 import type { WorkflowStatus } from '@lostgradient/weft';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { calendarDay, clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import { workflowRunStatusWord, type StatusWord } from '../../lib/status.ts';
 import { listDate, type TriggerSummary } from './workflow-presentation.ts';

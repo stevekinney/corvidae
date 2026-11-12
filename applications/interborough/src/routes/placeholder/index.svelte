@@ -4,7 +4,7 @@
    * whenever the service behind it answers (`app/view-frame.svelte`), so this content shows only if
    * a probe ever reports something to list before the view exists.
    */
-  import { VIEW_COPY } from '../../app/copy.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { router } from '../../lib/router.svelte.ts';
 
   const view = $derived(router.current.route?.view);

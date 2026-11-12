@@ -9,7 +9,7 @@ import { validateSchemaFormValue } from '@lostgradient/cinder';
 import type { QueryClient } from '@tanstack/svelte-query';
 import { onDestroy, untrack } from 'svelte';
 
-import { SETTINGS_COPY } from '../../app/copy.ts';
+import { SETTINGS_COPY } from '../../app/copy/settings.ts';
 import { HostRestartFlow } from '../../app/restart/host-restart-flow.svelte.ts';
 import { dismissToast, showToast } from '../../app/toast-host.svelte';
 import {

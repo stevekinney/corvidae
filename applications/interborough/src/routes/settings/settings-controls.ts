@@ -14,7 +14,8 @@
  * while it is on. Only a node nothing else reads (an array or a bare `null`) falls to the JSON
  * editor, which can edit any value.
  */
-import { A2A_COPY, DATA_RETENTION_COPY } from '../../app/copy.ts';
+import { A2A_COPY } from '../../app/copy/a2a.ts';
+import { DATA_RETENTION_COPY } from '../../app/copy/settings.ts';
 import type { SchemaNode } from '../../lib/bureau-settings.ts';
 
 /** What a select of catalog rows offers: the models the catalog lists, or the decision models a host registers. */

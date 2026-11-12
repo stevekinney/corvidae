@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Says that a plugin ships the agent, so the page cannot change it, and what to do instead. */
-  import { AGENT_PAGE_COPY } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 
   interface Props {
     /** The plugin that ships the agent. */

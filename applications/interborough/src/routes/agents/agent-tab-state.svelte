@@ -16,7 +16,8 @@
   import { Banner, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { HttpClientError } from '@lostgradient/weft';
 
-  import { AGENT_PAGE_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { useAgentTabStale } from './agent-tab-stale.ts';
 
   interface Props {

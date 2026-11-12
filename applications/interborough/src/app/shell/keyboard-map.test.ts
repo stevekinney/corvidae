@@ -26,7 +26,8 @@ import {
   installSettingsBureau,
   servedSettings,
 } from '../../routes/settings/settings-fixtures.test-support.ts';
-import { SETTINGS_COPY, SHORTCUT_COPY } from '../copy.ts';
+import { SETTINGS_COPY } from '../copy/settings.ts';
+import { SHORTCUT_COPY } from '../copy/shell.ts';
 import { DESTINATIONS, HEALTH_SHORTCUTS, registerShellShortcuts } from './destinations.ts';
 import RouteOutletHarness from './route-outlet.test-harness.svelte';
 import ShortcutMap from './shortcut-map.svelte';

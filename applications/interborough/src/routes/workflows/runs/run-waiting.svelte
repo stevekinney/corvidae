@@ -11,7 +11,8 @@
    */
   import type { QuestionAnswerRecord } from '@lostgradient/chat';
 
-  import { RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { TaskOpenWait, TaskView } from '../../../lib/bureau-tasks.ts';
   import RunWait from './run-wait.svelte';
 

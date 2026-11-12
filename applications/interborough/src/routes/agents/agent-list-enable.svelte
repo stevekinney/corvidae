@@ -18,7 +18,8 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
 
-  import { AGENTS_COPY, RESTART_COPY } from '../../app/copy.ts';
+  import { AGENTS_COPY } from '../../app/copy/agents.ts';
+  import { RESTART_COPY } from '../../app/copy/restart.ts';
   import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import { router } from '../../lib/router.svelte.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';

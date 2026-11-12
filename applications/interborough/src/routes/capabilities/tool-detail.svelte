@@ -11,7 +11,7 @@
   import { Eye, Hand, Pencil, Shield } from '@lucide/svelte';
 
   import { usePageLeaf } from '../../app/breadcrumbs.svelte.ts';
-  import { CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import AgentUsers from './agent-users.svelte';
   import {
     asksLabel,

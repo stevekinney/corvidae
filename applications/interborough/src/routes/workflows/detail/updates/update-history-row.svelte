@@ -9,7 +9,7 @@
   import { Ban, CircleCheck, CircleX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RUN_DETAIL_COPY } from '../../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
   import { faultTreatment } from '../../../../lib/faults.ts';
   import { formatRelativeTime } from '../../../../lib/format/index.ts';
   import {

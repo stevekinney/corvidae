@@ -19,7 +19,7 @@
   import { untrack } from 'svelte';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';

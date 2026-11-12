@@ -11,7 +11,7 @@
  * kept apart from the derived items and survives each refresh, and a reload.
  */
 import type { LiveSourceStatus } from '../lib/live-source/index.ts';
-import { NAVIGATION_COPY } from './copy.ts';
+import { NAVIGATION_COPY } from './copy/shell.ts';
 import type { NotificationEntry } from './notification-items.ts';
 import {
   loadReadIds,

@@ -7,7 +7,7 @@ import { Window } from 'happy-dom';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { ShortcutRegistry } from '../../lib/shortcuts.ts';
-import { PALETTE_COPY } from '../copy.ts';
+import { PALETTE_COPY } from '../copy/shell.ts';
 import type { NotificationEntry } from '../notification-items.ts';
 import { memoryStore } from '../notification-store.test-support.ts';
 import { schedulePath, toolPath, workerPath } from './command-palette-search.ts';

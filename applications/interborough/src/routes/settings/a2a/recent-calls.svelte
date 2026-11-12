@@ -16,7 +16,7 @@
   import { Activity } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { A2A_COPY } from '../../../app/copy.ts';
+  import { A2A_COPY } from '../../../app/copy/a2a.ts';
   import { getRecentCalls } from '../../../lib/a2a-calls.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import type { AgentSummary } from '../../../lib/bureau-client.ts';

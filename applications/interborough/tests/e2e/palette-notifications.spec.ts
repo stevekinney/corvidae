@@ -7,12 +7,8 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import {
-  NOTIFICATION_COPY,
-  PALETTE_COPY,
-  SETTINGS_COPY,
-  SHORTCUT_COPY,
-} from '../../src/app/copy.ts';
+import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
+import { NOTIFICATION_COPY, PALETTE_COPY, SHORTCUT_COPY } from '../../src/app/copy/shell.ts';
 import { createAgentFile, readCatalog, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL, E2E_FLEET_WORKER_ID } from './e2e-constants.ts';

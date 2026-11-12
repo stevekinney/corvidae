@@ -13,7 +13,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { DATA_RETENTION_COPY } from '../../src/app/copy.ts';
+import { DATA_RETENTION_COPY } from '../../src/app/copy/settings.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';

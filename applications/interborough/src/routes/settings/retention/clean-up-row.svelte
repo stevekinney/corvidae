@@ -10,7 +10,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { DATA_RETENTION_COPY } from '../../../app/copy.ts';
+  import { DATA_RETENTION_COPY } from '../../../app/copy/settings.ts';
   import {
     cleanUpNow,
     getCleanUpStanding,

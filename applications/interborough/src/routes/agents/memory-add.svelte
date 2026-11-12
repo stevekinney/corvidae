@@ -22,7 +22,7 @@
   import { Alert, Button, Modal, RadioGroup, Textarea } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
-  import { MEMORY_COPY } from '../../app/copy.ts';
+  import { MEMORY_COPY } from '../../app/copy/memory.ts';
   import { dismissToast, hasToastHost, showToast } from '../../app/toast-host.svelte';
   import {
     forgetMemory,

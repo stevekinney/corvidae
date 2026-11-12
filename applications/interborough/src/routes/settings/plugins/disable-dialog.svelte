@@ -8,7 +8,7 @@
    */
   import { ConfirmDialog } from '@lostgradient/cinder';
 
-  import { PLUGINS_COPY } from '../../../app/copy.ts';
+  import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import type { PluginStanding } from '../../../lib/host-plugins.ts';
   import PendingWritesList from './pending-writes-list.svelte';
   import type { PluginWrite } from './plugin-drafts.svelte.ts';

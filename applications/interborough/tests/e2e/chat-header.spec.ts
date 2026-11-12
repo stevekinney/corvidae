@@ -10,7 +10,7 @@
 import type { Page } from '@playwright/test';
 
 import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
-import { CHAT_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { UPLOAD_CHUNK_BYTES } from '../../src/lib/bureau-assets.ts';
 import { hideModelPicker, newThreadId, revealSettings, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';

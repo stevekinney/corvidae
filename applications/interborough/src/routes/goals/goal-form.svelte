@@ -26,7 +26,7 @@
     Textarea,
   } from '@lostgradient/cinder';
 
-  import { GOALS_COPY } from '../../app/copy.ts';
+  import { GOALS_COPY } from '../../app/copy/goals.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
   import { agentLabel as agentName } from '../../lib/agent-label.ts';
   import type { GoalCreated } from '../../lib/bureau-goals.ts';

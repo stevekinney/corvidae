@@ -19,7 +19,7 @@ import {
   test,
 } from 'bun:test';
 
-import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import {

@@ -15,7 +15,7 @@
   import { DataList, EmptyState, StackedListItem } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { HOME_COPY } from '../../app/copy.ts';
+  import { HOME_COPY } from '../../app/copy/home.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { waitedFor } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';

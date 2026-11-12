@@ -30,7 +30,9 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../../app/breadcrumbs.svelte.ts';
-  import { RETRY_LABEL, RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { answerUndoMilliseconds } from '../../../lib/answer-undo.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import NotFoundState from '../../../app/not-found-state.svelte';

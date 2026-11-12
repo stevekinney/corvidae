@@ -19,7 +19,7 @@
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { onMount, untrack } from 'svelte';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';

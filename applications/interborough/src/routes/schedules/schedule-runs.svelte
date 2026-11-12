@@ -27,7 +27,7 @@
   import { createQueries, createQuery } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { router } from '../../lib/router.svelte.ts';

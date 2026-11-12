@@ -4,7 +4,7 @@
    * switch the page holds: the plugins already switched on or off and waiting. Shown under the
    * confirmation's own words, and not at all when nothing else waits.
    */
-  import { PLUGINS_COPY } from '../../../app/copy.ts';
+  import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import type { PluginWrite } from './plugin-drafts.svelte.ts';
 
   interface Props {

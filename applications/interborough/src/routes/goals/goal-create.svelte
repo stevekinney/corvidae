@@ -20,7 +20,8 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { tick, untrack } from 'svelte';
 
-  import { AGENT_EDITOR_COPY, GOALS_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+  import { GOALS_COPY } from '../../app/copy/goals.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { createGoal, getGoal, type GoalCreated } from '../../lib/bureau-goals.ts';
   import { getProviders } from '../../lib/host-providers.ts';

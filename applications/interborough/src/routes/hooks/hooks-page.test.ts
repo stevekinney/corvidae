@@ -11,7 +11,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
-import { RETRY_LABEL } from '../../app/copy.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   installBureauStub,

@@ -7,7 +7,7 @@
  */
 import type { PayloadInspectorView } from '@lostgradient/cinder';
 
-import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 
 const KEY = 'interborough-run-payload-view';
 

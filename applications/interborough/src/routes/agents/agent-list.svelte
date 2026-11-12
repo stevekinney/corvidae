@@ -41,14 +41,10 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
-  import {
-    AGENT_EDITOR_COPY,
-    AGENTS_COPY,
-    CHAT_COPY,
-    RETRY_LABEL,
-    STALE_DATA_LABEL,
-    VIEW_COPY,
-  } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, AGENTS_COPY } from '../../app/copy/agents.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
+  import { RETRY_LABEL, STALE_DATA_LABEL } from '../../app/copy/views.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { listAgentDefinitions } from '../../lib/agent-definitions.ts';
   import { agentEditPath } from '../../lib/agent-paths.ts';

@@ -22,7 +22,8 @@
   import type { WorkflowState } from '@lostgradient/weft';
   import { Copy, Ellipsis, MessageSquare, Play, RotateCcw } from '@lucide/svelte';
 
-  import { RUN_DETAIL_COPY, RUN_PAGE_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { showFault, showToast } from '../../../app/toast-host.svelte';
   import type { TaskCancelAnswer, TaskCancelReceipt, TaskView } from '../../../lib/bureau-tasks.ts';
   import { dayStamp, utcStamp } from '../../../lib/format/clock.ts';

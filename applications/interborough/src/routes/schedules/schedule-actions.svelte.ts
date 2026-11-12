@@ -10,7 +10,7 @@
  */
 import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { showFault } from '../../app/toast-host.svelte';
 import { agentFaultOf } from '../../lib/agent-definitions.ts';
 import type { RunNowOutcome } from '../../lib/bureau-schedules.ts';

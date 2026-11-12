@@ -7,7 +7,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { CHAT_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 

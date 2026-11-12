@@ -9,7 +9,7 @@
   import { Alert, Button, InlineLoading } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
-  import { CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { queryKeys } from '../../lib/query.ts';
   import type { SourcesRestartFlow } from './restart-flow.svelte.ts';
 

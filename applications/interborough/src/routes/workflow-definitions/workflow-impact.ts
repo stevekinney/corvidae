@@ -5,7 +5,7 @@
  * runs use the new version, and that renaming a step is never breaking. A draft that makes no new
  * version has no notice. Plain functions, so the words are tested without a page.
  */
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import type { WorkflowImpact, WorkflowImpactChange } from '../../lib/workflow-files.ts';
 
 const copy = WORKFLOW_COPY.editor.impact;

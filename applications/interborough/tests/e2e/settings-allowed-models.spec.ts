@@ -10,7 +10,7 @@
  */
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
-import { ALLOWED_MODELS_COPY } from '../../src/app/copy.ts';
+import { ALLOWED_MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';

@@ -13,7 +13,9 @@
  */
 import type { Page } from '@playwright/test';
 
-import { AGENT_PAGE_COPY, MEMORY_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
+import { MEMORY_COPY } from '../../src/app/copy/memory.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME, TEXT_ECHO_SOLO_AGENT_NAME } from './text-echo-agent.ts';

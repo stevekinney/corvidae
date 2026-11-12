@@ -12,7 +12,8 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { MODELS_COPY, SETTINGS_COPY } from '../../src/app/copy.ts';
+import { MODELS_COPY } from '../../src/app/copy/models.ts';
+import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { bureauCall } from './task-support.ts';

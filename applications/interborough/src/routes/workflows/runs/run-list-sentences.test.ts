@@ -6,7 +6,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { TASK_COPY } from '../../../app/copy.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { ServerUnreachableError } from '../../../lib/faults.ts';
 import { runListFailure, runNoMatchDescription, startedByPhrase } from './run-list-states.ts';
 import { STARTED_BY_KINDS } from './started-by.ts';

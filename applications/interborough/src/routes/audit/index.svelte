@@ -52,7 +52,9 @@
   import { onDestroy, untrack } from 'svelte';
 
   import { getConnection } from '../../app/connection.svelte.ts';
-  import { AUDIT_COPY, CONNECTION_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
+  import { AUDIT_COPY } from '../../app/copy/audit.ts';
+  import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { AUDIT_ACTION_KINDS, AUDIT_EVENT_TYPES } from '../../lib/audit-event-types.ts';
   import { queryAudit } from '../../lib/bureau-audit.ts';

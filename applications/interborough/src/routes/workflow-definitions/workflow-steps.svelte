@@ -7,7 +7,7 @@
    */
   import { Button } from '@lostgradient/cinder';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { hasLongStep, type PageStep } from './workflow-page-presentation.ts';
 
   interface Props {

@@ -13,7 +13,7 @@
 
   import { router } from '../lib/router.svelte.ts';
   import { usePageLabel } from './breadcrumbs.svelte.ts';
-  import { NOT_FOUND_COPY, type ViewLink } from './copy.ts';
+  import { NOT_FOUND_COPY, type ViewLink } from './copy/views.ts';
   import { getSearchOpener } from './shell/search-opener.ts';
   import { viewParent } from './view-parent.ts';
   import type { ViewName } from './views.ts';

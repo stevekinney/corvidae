@@ -23,7 +23,8 @@ import {
 } from '@lucide/svelte';
 
 import type { ShortcutRegistry } from '../../lib/shortcuts.ts';
-import { SHORTCUT_COPY, VIEW_COPY } from '../copy.ts';
+import { SHORTCUT_COPY } from '../copy/shell.ts';
+import { VIEW_COPY } from '../copy/view-pages.ts';
 import type { ViewName } from '../views.ts';
 
 /** The focus region of a ListDetail list: its keys act only there. */

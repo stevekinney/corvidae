@@ -5,7 +5,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { goalsLoadFailure } from './goal-list-states.ts';
 
 describe('a failed read of the goals', () => {

@@ -10,7 +10,7 @@
   import { SelectableRow, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { MEMORY_COPY } from '../../app/copy.ts';
+  import { MEMORY_COPY } from '../../app/copy/memory.ts';
   import { getMemory, type Memory } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { highlightSegments, rowLine } from './memory-presentation.ts';

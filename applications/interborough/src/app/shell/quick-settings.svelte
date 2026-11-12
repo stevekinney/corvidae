@@ -22,7 +22,7 @@
 
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { QUICK_SETTINGS_COPY } from '../copy.ts';
+  import { QUICK_SETTINGS_COPY } from '../copy/settings.ts';
   import type { LayoutPreferences } from '../layout-preferences.svelte.ts';
   import type { ThemeStore } from '../theme.svelte.ts';
 

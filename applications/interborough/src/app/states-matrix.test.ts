@@ -20,7 +20,8 @@ import { installFetchImplementation } from '../lib/live-source/fetch.test-suppor
 import { AUTHORIZATION_SCOPES } from '../lib/scopes.svelte.ts';
 import { ChatSessionState, MAX_RECONNECT_ATTEMPTS } from '../routes/chat/chat-session.svelte.ts';
 import type { ConnectionMonitor } from './connection.svelte.ts';
-import { CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
+import { VIEW_COPY } from './copy/view-pages.ts';
+import { CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL } from './copy/views.ts';
 import { holdChangingActions } from './shell/changing-actions.ts';
 import Harness from './view-frame.test-harness.svelte';
 import { probeFor } from './view-probes.ts';

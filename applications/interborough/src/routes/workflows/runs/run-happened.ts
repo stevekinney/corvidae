@@ -10,7 +10,7 @@
  */
 import { z } from 'zod';
 
-import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { clockTime } from '../../../lib/format/clock.ts';
 import {
   formatCallDuration,

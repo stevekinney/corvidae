@@ -12,7 +12,7 @@
   import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { listHooks } from '../../lib/bureau-hooks.ts';
   import { classifyFault } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';

@@ -4,7 +4,7 @@ import { tick } from 'svelte';
 
 import { HttpClientError, type WorkflowStatus } from '@lostgradient/weft';
 
-import { RUN_DETAIL_COPY } from '../../../../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
 import type { StreamChunksClient } from './stream-chunks-data.ts';
 import StreamChunksView from './stream-chunks-view.svelte';
 

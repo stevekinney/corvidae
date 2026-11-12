@@ -8,7 +8,7 @@
  * attempts, and the pages pass axe at the two widths. Goals is in the sidebar, and `g` then `l`
  * opens it.
  */
-import { GOALS_COPY } from '../../src/app/copy.ts';
+import { GOALS_COPY } from '../../src/app/copy/goals.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall } from './task-support.ts';
 

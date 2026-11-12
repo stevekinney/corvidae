@@ -15,7 +15,7 @@
   import { Alert, DataList, StackedListItem, StatusDot, Toggle } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
-  import { STALE_COPY } from '../../app/copy.ts';
+  import { STALE_COPY } from '../../app/copy/views.ts';
   import { showFault } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { updateHook, type ListedHook } from '../../lib/bureau-hooks.ts';

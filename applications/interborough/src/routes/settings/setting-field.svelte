@@ -21,7 +21,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
 
-  import { SETTINGS_COPY } from '../../app/copy.ts';
+  import { SETTINGS_COPY } from '../../app/copy/settings.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import type { SchemaNode, SettingKeyState } from '../../lib/bureau-settings.ts';
   import { queryKeys } from '../../lib/query.ts';

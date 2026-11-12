@@ -11,7 +11,7 @@
  */
 import type { StatusDotWordLabel } from '@lostgradient/cinder';
 
-import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
 import type { StatusWord } from '../../../lib/status.ts';
 import { durationWords, waitedWords } from './run-rows.ts';

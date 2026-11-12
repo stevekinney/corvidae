@@ -13,7 +13,7 @@
  */
 import type { ChatComposerStatus } from '@lostgradient/chat';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 
 /** An agent that cannot run because its plugin is disabled, and what enabling it does. */
 export interface UnavailableAgent {

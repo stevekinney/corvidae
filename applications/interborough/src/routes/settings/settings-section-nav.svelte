@@ -8,7 +8,7 @@
   import { Select, SideNavigation } from '@lostgradient/cinder';
   import { MediaQuery } from 'svelte/reactivity';
 
-  import { SETTINGS_COPY, SETTINGS_SECTION_COPY } from '../../app/copy.ts';
+  import { SETTINGS_COPY, SETTINGS_SECTION_COPY } from '../../app/copy/settings.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { SETTINGS_SECTIONS } from './settings-sections.ts';
 

@@ -12,7 +12,8 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
 import { ConnectionMonitor } from '../../../app/connection.svelte.ts';
-import { CONNECTION_COPY, RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+import { TASK_COPY } from '../../../app/copy/tasks.ts';
+import { CONNECTION_COPY, RETRY_LABEL } from '../../../app/copy/views.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { StubFault } from '../../../lib/bureau-stub.test-support.ts';

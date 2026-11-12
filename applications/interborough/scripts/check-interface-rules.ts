@@ -9,7 +9,7 @@
  *
  * Copy: every `src/**\/*.svelte` and `src/**\/*.ts` that is not a test, a harness, or under
  * `src/host`. A TypeScript module counts because the sentences a page shows live
- * in them (`src/app/copy.ts`, a status table, a scope catalog). A string counts as visible when it
+ * in them (`src/app/copy/`, a status table, a scope catalog). A string counts as visible when it
  * is template text, a mustache, a text attribute, an argument to `{@render}`, a `{@const}`, or, in a
  * script or module, a string that reads as prose (it has a space or starts with a capital letter).
  * A string compared with `===`, `in` or `case` is a key, not copy, and is skipped. The copy rules
@@ -234,7 +234,7 @@ function filesUnder(directory: string, accept: (path: string) => boolean): strin
 /**
  * The source files whose words a person reads: every Svelte file and every TypeScript module under
  * `src` that is not a test, a harness, the host or an MCP app. A module such as
- * `src/lib/system-lease.ts` holds sentences the page renders, and `src/app/copy.ts` is one of them.
+ * `src/lib/system-lease.ts` holds sentences the page renders, and every module under `src/app/copy/` is one of them.
  */
 export function copyFiles(root: string): string[] {
   return filesUnder(join(root, 'src'), (path) => {
@@ -441,7 +441,7 @@ type ParsedSource = {
   readonly style?: { readonly text: string; readonly start: number } | undefined;
 };
 
-/** Parses a Svelte file, or `copy.ts` as the script of one, into the words it holds. */
+/** Parses a Svelte file, or a copy module as the script of one, into the words it holds. */
 function parseSource(file: string, text: string): ParsedSource {
   const isCopyModule = file.endsWith('.ts');
   const wrapper = '<script lang="ts">';

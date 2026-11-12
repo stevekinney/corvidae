@@ -12,7 +12,9 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { AGENT_EDITOR_COPY, GOALS_COPY, RETRY_LABEL } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import { taskFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import {

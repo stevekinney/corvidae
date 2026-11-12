@@ -7,7 +7,7 @@
  * `'forever'` whose unset value still prunes (`retention.memory`, `retention.receipts`) offers no
  * Keep forever at all, so the page never clears it.
  */
-import { DATA_RETENTION_COPY } from '../../../app/copy.ts';
+import { DATA_RETENTION_COPY } from '../../../app/copy/settings.ts';
 import type { SchemaNode } from '../../../lib/bureau-settings.ts';
 
 /** The four windows the page draws as rows, in the order it draws them. */

@@ -39,7 +39,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { tick, untrack, type Snippet } from 'svelte';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
   import { listAgents } from '../../lib/bureau-client.ts';

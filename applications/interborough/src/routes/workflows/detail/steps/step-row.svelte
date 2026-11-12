@@ -7,7 +7,7 @@
   import { SelectableRow, StatusDot, type ListDetailRowContext } from '@lostgradient/cinder';
   import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
-  import { RUN_STEPS_COPY } from '../../../../app/copy.ts';
+  import { RUN_STEPS_COPY } from '../../../../app/copy/runs.ts';
   import { formatDuration } from '../../../../lib/format/index.ts';
   import { stepName, stepStatus } from './step-presentation.ts';
   import type { WaterfallBar } from './step-waterfall.ts';

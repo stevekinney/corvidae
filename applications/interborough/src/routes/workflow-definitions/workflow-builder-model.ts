@@ -12,7 +12,7 @@
  * are JSON objects. An edit that leaves the document as it was returns the text it was given, byte
  * for byte, so reading a hand-formatted file and writing every field back keeps its spacing.
  */
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { readBackOf, type ReadBackOptions } from './workflow-builder-read-back.ts';
 import { stepLabel, triggerLabel } from './workflow-presentation.ts';
 

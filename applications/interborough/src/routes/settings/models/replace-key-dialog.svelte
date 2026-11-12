@@ -9,7 +9,7 @@
   import { Button, Callout, InlineLoading, Input, Modal } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
-  import { MODELS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
   import { showToast } from '../../../app/toast-host.svelte';
   import { providerDisplayName } from './format-model.ts';
   import { KeyFlow } from './key-flow.svelte.ts';

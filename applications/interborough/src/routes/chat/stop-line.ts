@@ -17,7 +17,7 @@ import {
   type MessageNoteInfo,
 } from '@lostgradient/chat';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { opensTurn } from './event-notes.ts';
 import {
   lastTurnStart,

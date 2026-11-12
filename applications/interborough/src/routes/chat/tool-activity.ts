@@ -12,7 +12,7 @@ import {
 
 import type { ToolCallRailCall } from '@lostgradient/cinder';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
 import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
 import {

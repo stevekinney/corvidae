@@ -12,7 +12,7 @@
   import { Button, Callout, InlineLoading, Input, Link, Modal } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
-  import { MODELS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
   import { maskedKey, providerDisplayName, providerKeyPage } from './format-model.ts';
   import { KeyFlow } from './key-flow.svelte.ts';
   import { markConnected, refreshAfterKeyChange } from './provider-cache.ts';

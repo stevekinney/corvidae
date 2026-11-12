@@ -14,7 +14,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { requireElement } from '../../../tests/dom.test-support.ts';
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
   codeDefinition,

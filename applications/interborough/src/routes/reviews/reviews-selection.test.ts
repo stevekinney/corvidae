@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { REVIEWS_COPY } from '../../app/copy.ts';
+import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import {
   emptyBureauWorld,

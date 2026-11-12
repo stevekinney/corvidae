@@ -8,7 +8,7 @@
   import { Alert, Button, Modal, Skeleton } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { showFault, showToast } from '../../app/toast-host.svelte';
   import {
     HostToolSourceError,

@@ -20,7 +20,7 @@
   import { useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { DATA_RETENTION_COPY, SETTINGS_COPY } from '../../../app/copy.ts';
+  import { DATA_RETENTION_COPY, SETTINGS_COPY } from '../../../app/copy/settings.ts';
   import type { SettingsSchema, SettingsSnapshot } from '../../../lib/bureau-settings.ts';
   import SettingField from '../setting-field.svelte';
   import { inSection, settingLabel } from '../settings-controls.ts';

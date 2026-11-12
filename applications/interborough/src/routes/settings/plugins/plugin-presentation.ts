@@ -6,7 +6,9 @@
  */
 import type { StatusDotStatus } from '@lostgradient/cinder';
 
-import { nameList, PLUGINS_COPY, RESTART_COPY } from '../../../app/copy.ts';
+import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
+import { RESTART_COPY } from '../../../app/copy/restart.ts';
+import { nameList } from '../../../app/copy/shared.ts';
 import type { RestartIntent } from '../../../app/restart/host-restart-flow.svelte.ts';
 import type { AgentListing } from '../../../lib/agent-definitions.ts';
 import { agentLabel } from '../../../lib/agent-label.ts';

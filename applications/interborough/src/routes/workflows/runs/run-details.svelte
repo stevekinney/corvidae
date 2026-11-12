@@ -10,7 +10,7 @@
   import { DescriptionList, type DescriptionListItem } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import type { ChatContext } from '../../../lib/bureau-client.ts';
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';

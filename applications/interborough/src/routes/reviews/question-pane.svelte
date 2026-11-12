@@ -13,7 +13,7 @@
   import { Button } from '@lostgradient/cinder';
   import { ChatQuestion, classifyQuestion } from '@lostgradient/chat';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import { answerUndoMilliseconds } from '../../lib/answer-undo.ts';
   import { uploadAsset } from '../../lib/bureau-assets.ts';
   import type { BureauHumanWait } from '../../lib/bureau-reviews.ts';

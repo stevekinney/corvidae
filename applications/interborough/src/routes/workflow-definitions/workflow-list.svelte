@@ -33,7 +33,9 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getConnection } from '../../app/connection.svelte.ts';
-  import { CONNECTION_COPY, RETRY_LABEL, VIEW_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
+  import { VIEW_COPY } from '../../app/copy/view-pages.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { getClient } from '../../lib/client.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';

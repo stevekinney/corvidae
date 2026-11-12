@@ -9,7 +9,7 @@
   import { CopyButton, FormSection, SettingRow } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+  import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
   import { getClient } from '../../../lib/client.ts';
   import { getHostPaths } from '../../../lib/host-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';

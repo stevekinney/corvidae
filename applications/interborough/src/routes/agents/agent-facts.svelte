@@ -12,7 +12,7 @@
    */
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { AGENTS_COPY } from '../../app/copy.ts';
+  import { AGENTS_COPY } from '../../app/copy/agents.ts';
   import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { getAgentModels, type AgentSummary } from '../../lib/bureau-client.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';

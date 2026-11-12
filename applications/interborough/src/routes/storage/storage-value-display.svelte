@@ -11,7 +11,7 @@
    */
   import { PayloadInspector } from '@lostgradient/cinder';
 
-  import { STORAGE_COPY } from '../../app/copy.ts';
+  import { STORAGE_COPY } from '../../app/copy/settings.ts';
   import { formatBytes } from '../../lib/format/index.ts';
   import { formatStoredField, TEXT_VIEW_BYTES, textViewOf } from './key-value.ts';
   import { previewStorageValue } from './value-preview.ts';

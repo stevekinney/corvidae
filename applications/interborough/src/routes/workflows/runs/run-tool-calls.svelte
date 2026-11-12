@@ -16,7 +16,8 @@
   import { keepPreviousData, createQuery } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { getThreadMessages } from '../../../lib/bureau-client.ts';
   import type { TaskView } from '../../../lib/bureau-tasks.ts';
   import ToolCalls from '../../chat/tool-calls.svelte';

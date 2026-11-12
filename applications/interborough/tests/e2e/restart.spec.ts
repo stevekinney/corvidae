@@ -11,7 +11,8 @@
  */
 import type { Page } from '@playwright/test';
 
-import { PLUGINS_COPY, RESTART_COPY } from '../../src/app/copy.ts';
+import { PLUGINS_COPY } from '../../src/app/copy/plugins.ts';
+import { RESTART_COPY } from '../../src/app/copy/restart.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';

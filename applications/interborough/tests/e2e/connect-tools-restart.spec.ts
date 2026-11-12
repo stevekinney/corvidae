@@ -14,7 +14,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { CAPABILITIES_COPY } from '../../src/app/copy.ts';
+import { CAPABILITIES_COPY } from '../../src/app/copy/capabilities.ts';
 import type { ConnectOrigins } from './connect-host.ts';
 import { E2E_BARRIER_URL, E2E_CONNECT_TOKEN, E2E_CONNECT_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';

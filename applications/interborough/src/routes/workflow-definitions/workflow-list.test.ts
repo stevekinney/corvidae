@@ -13,7 +13,9 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { RETRY_LABEL, VIEW_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
+import { VIEW_COPY } from '../../app/copy/view-pages.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { STUB_REMOTE_WORKFLOW_DIRECTORY } from '../../lib/bureau-stub.test-support.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';

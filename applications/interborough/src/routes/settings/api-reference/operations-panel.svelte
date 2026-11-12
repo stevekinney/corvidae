@@ -14,7 +14,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { SvelteSet } from 'svelte/reactivity';
 
-  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+  import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
   import { codeHighlighter } from '../../../lib/code-highlighter.ts';
   import { getClient } from '../../../lib/client.ts';
   import { fetchDiscoveryDocument } from '../../system/discovery-client.ts';

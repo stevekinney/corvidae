@@ -7,7 +7,7 @@
    */
   import { Alert } from '@lostgradient/cinder';
 
-  import { TASK_COPY } from '../../../app/copy.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { TaskCancelAnswer, TaskCancelReceipt, TaskView } from '../../../lib/bureau-tasks.ts';
 
   interface RunCancelNoteProps {

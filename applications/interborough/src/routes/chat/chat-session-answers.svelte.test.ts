@@ -13,7 +13,7 @@ import {
 } from '@lostgradient/bureau';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';

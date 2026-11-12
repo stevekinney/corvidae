@@ -16,7 +16,7 @@
   import { Button, CodeBlock, CodeLocation, EmptyState } from '@lostgradient/cinder';
   import { Plug } from '@lucide/svelte';
 
-  import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import type { HostPaths } from '../../lib/host-paths.ts';
   import { connectProviderPath } from '../../lib/provider-return.ts';
   import { router } from '../../lib/router.svelte.ts';

@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
    * What a schedule write that was refused for being stale, or that the engine applied late, says
-   * (`schedule-actions.svelte.ts`). The words are `copy.ts`'s.
+   * (`schedule-actions.svelte.ts`). The words are in `app/copy/schedules.ts`.
    */
   import { Alert } from '@lostgradient/cinder';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import type { ScheduleNotice } from './schedule-actions.svelte.ts';
 
   interface Props {

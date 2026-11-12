@@ -8,7 +8,7 @@ import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 import type { AgentCatalog } from '../../lib/agent-definitions.ts';
 import {
   catalogFixture,

@@ -26,7 +26,8 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { onDestroy } from 'svelte';
 
-  import { CAPABILITIES_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { getToolSources } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';

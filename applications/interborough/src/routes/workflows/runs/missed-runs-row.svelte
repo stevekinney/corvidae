@@ -8,7 +8,7 @@
    */
   import { Link, StackedListItem, StatusDot } from '@lostgradient/cinder';
 
-  import { TASK_COPY } from '../../../app/copy.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { missedDay, missedLineTwo, occurrenceWords, type MissedRuns } from './missed-runs.ts';
 

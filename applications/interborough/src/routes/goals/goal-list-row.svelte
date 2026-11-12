@@ -10,7 +10,7 @@
    */
   import { AttemptsIndicator, StackedListItem, StatusDot } from '@lostgradient/cinder';
 
-  import { GOALS_COPY } from '../../app/copy.ts';
+  import { GOALS_COPY } from '../../app/copy/goals.ts';
   import { clockTime } from '../../lib/format/clock.ts';
   import { goalPath } from '../../lib/identifier-paths.ts';
   import { router } from '../../lib/router.svelte.ts';

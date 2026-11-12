@@ -26,7 +26,7 @@
    */
   import { Checkbox, ConfirmDialog } from '@lostgradient/cinder';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 
   interface Props {
     /** Whether the dialog is open. Bindable. */

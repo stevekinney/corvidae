@@ -20,7 +20,7 @@
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { AUDIT_COPY } from '../../app/copy.ts';
+  import { AUDIT_COPY } from '../../app/copy/audit.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { listAgentVersions } from '../../lib/agent-definitions.ts';
   import { followLinks } from '../../lib/follow-links.ts';

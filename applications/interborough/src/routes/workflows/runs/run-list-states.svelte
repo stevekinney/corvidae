@@ -25,7 +25,8 @@
   import { ErrorState, Skeleton } from '@lostgradient/cinder';
   import type { Snippet } from 'svelte';
 
-  import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
 
   interface Props {
     /** Whether the runs are being read, or the person canceled the read. */

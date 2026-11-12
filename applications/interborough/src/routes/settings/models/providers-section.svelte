@@ -10,7 +10,7 @@
    */
   import { Alert, Button, FormSection, StatusDot } from '@lostgradient/cinder';
 
-  import { MODELS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
   import type { ProvidersSnapshot } from '../../../lib/host-providers.ts';
   import ConnectDialog from './connect-dialog.svelte';
   import ManageDialog from './manage-dialog.svelte';

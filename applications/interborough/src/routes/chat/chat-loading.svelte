@@ -12,7 +12,7 @@
   import { ChatInput } from '@lostgradient/chat';
   import { Skeleton } from '@lostgradient/cinder';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
 
   interface ChatLoadingProps {
     /** The agent the chat is with, as a person reads it, when the list has said; the composer asks for a message to it. */

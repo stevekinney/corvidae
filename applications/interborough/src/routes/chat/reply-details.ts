@@ -5,7 +5,7 @@
  * the effort, the cost and the time are not here, because no source gives them. The model's name
  * is on the reply's own line, from the model the Bureau recorded on its row (`reply-model.ts`).
  */
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { TaskStep } from '../../lib/bureau-tasks.ts';
 import { formatTokens } from './context-window.ts';
 import type { RunUsage } from './run-wiring.ts';

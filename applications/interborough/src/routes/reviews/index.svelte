@@ -12,7 +12,7 @@
    */
   import { Alert, FilterBar, PageHeader, type FilterSegment } from '@lostgradient/cinder';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import { isReviewRoundChanged, type BureauHumanWait } from '../../lib/bureau-reviews.ts';
   import { answerRefusalIssues, taskAnswerText } from '../../lib/bureau-tasks.ts';
   import { getClient } from '../../lib/client.ts';

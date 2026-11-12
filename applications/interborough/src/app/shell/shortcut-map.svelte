@@ -8,7 +8,7 @@
   import { KeyboardShortcuts, Modal } from '@lostgradient/cinder';
 
   import type { ShortcutRegistry } from '../../lib/shortcuts.ts';
-  import { SHORTCUT_COPY } from '../copy.ts';
+  import { SHORTCUT_COPY } from '../copy/shell.ts';
 
   interface ShortcutMapProps {
     registry: ShortcutRegistry;

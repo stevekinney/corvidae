@@ -7,7 +7,7 @@
    */
   import { Badge, Button, Input, TagInput, Toggle } from '@lostgradient/cinder';
 
-  import { RUN_DETAIL_COPY } from '../../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
   import { parseEditedValue, type AttributeEntry, type AttributeValue } from './attributes-data.ts';
 
   interface AttributeRowProps {

@@ -14,7 +14,7 @@
    */
   import { Checkbox, Select, Spinner, Table } from '@lostgradient/cinder';
 
-  import { AGENT_PAGE_COPY } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { TOOL_APPROVALS, type ToolApproval } from '../../lib/agent-definitions.ts';
   import { toolLine } from '../../lib/tool-line.ts';
   import { riskLabel, tierOf } from '../capabilities/capability-presentation.ts';

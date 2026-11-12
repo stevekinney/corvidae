@@ -9,7 +9,9 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { PLUGINS_COPY, RESTART_COPY, SETTINGS_COPY } from '../../../app/copy.ts';
+import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
+import { RESTART_COPY } from '../../../app/copy/restart.ts';
+import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
 import { restartProbing } from '../../../app/restart/host-restart-flow.svelte.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import type { BureauStub } from '../../../lib/bureau-stub.test-support.ts';

@@ -6,7 +6,7 @@
    */
   import { Badge, RelativeTime } from '@lostgradient/cinder';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauReview } from '../../lib/bureau-reviews.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import { decidedByName, resolutionLabel } from './review-items.ts';

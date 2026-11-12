@@ -12,7 +12,9 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import { AGENT_PAGE_COPY, MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+import { MEMORY_COPY } from '../../app/copy/memory.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import {
   installBureauStub,
   StubFault,

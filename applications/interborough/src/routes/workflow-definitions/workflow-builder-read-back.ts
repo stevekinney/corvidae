@@ -4,7 +4,7 @@
  * Assistant to summarize what happened yesterday, wait for a person to review it, then wait 15
  * minutes." A step the builder cannot read is said as one it cannot describe, never dropped.
  */
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { agentLabel } from '../../lib/agent-label.ts';
 import type { BuilderStep, BuilderTrigger, WaitUnit } from './workflow-builder-model.ts';
 

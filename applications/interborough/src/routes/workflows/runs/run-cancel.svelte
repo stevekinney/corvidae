@@ -9,7 +9,7 @@
   import { Button, ConfirmDialog } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
-  import { TASK_COPY } from '../../../app/copy.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import {
     cancelTask,
     isOwnedElsewhere,

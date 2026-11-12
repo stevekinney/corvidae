@@ -22,7 +22,7 @@
   } from '@lostgradient/cinder';
   import { Cpu } from '@lucide/svelte';
 
-  import { MODELS_COPY } from '../../../app/copy.ts';
+  import { MODELS_COPY } from '../../../app/copy/models.ts';
   import type { ProviderModel } from '../../../lib/host-providers.ts';
   import { deniedProvidersOf, isModelAllowed, type ModelPolicy } from '../model-policy-edit.ts';
   import { formatContext, formatModelAbilities, modelDisplayName } from './format-model.ts';

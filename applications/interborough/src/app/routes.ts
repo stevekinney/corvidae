@@ -1,12 +1,10 @@
 import type { Component } from 'svelte';
 
-import {
-  AGENT_PAGE_COPY,
-  CAPABILITIES_COPY,
-  SETTINGS_SECTION_COPY,
-  VIEW_COPY,
-  WORKFLOW_COPY,
-} from './copy.ts';
+import { AGENT_PAGE_COPY } from './copy/agents.ts';
+import { CAPABILITIES_COPY } from './copy/capabilities.ts';
+import { SETTINGS_SECTION_COPY } from './copy/settings.ts';
+import { VIEW_COPY } from './copy/view-pages.ts';
+import { WORKFLOW_COPY } from './copy/workflows.ts';
 import type { PageKind, ViewName } from './views.ts';
 
 /**

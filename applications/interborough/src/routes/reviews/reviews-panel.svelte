@@ -28,7 +28,7 @@
   } from '@lostgradient/cinder';
   import { Check, Inbox } from '@lucide/svelte';
 
-  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type {
     BureauHumanWait,
     BureauReview,

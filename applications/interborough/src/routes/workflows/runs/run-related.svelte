@@ -8,7 +8,8 @@
   import type { WorkflowState } from '@lostgradient/weft';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, RUN_RELATED_COPY } from '../../../app/copy.ts';
+  import { RETRY_LABEL } from '../../../app/copy/views.ts';
+  import { RUN_RELATED_COPY } from '../../../app/copy/runs.ts';
   import { createActiveRevisionComparisons } from '../../../lib/active-revision-comparisons.svelte.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import RelatedRunLink from './related-run-link.svelte';

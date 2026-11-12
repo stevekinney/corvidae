@@ -8,7 +8,7 @@
    */
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { getContext } from '../../lib/bureau-client.ts';
   import { classifyFault } from '../../lib/faults.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';

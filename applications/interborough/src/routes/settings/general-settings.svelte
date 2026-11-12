@@ -25,7 +25,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
 
-  import { SETTINGS_COPY } from '../../app/copy.ts';
+  import { SETTINGS_COPY } from '../../app/copy/settings.ts';
   import { getKeyboardPreferences } from '../../app/keyboard-preferences.svelte.ts';
   import { getLayoutPreferences } from '../../app/layout-preferences.svelte.ts';
   import { HostRestartFlow } from '../../app/restart/host-restart-flow.svelte.ts';

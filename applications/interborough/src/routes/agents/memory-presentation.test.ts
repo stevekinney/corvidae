@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { MEMORY_COPY } from '../../app/copy.ts';
+import { MEMORY_COPY } from '../../app/copy/memory.ts';
 import type { Memory } from '../../lib/memory-client.ts';
 import {
   addRefusalWords,

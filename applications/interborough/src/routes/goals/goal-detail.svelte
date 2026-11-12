@@ -41,7 +41,8 @@
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
-  import { GOALS_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { GOALS_COPY } from '../../app/copy/goals.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { listAgents, wireCodeOf } from '../../lib/bureau-client.ts';

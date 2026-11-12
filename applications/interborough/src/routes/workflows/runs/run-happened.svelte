@@ -13,7 +13,7 @@
   import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { getThreadMessages } from '../../../lib/bureau-client.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { threadIdForTask } from './run-activity.ts';

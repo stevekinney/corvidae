@@ -26,7 +26,7 @@
     type FilterSegment,
   } from '@lostgradient/cinder';
 
-  import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 
   interface Props {
     /** The segments, without counts: each is drawn with a placeholder where its count will be. */

@@ -14,7 +14,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { CAPABILITIES_COPY } from '../../app/copy.ts';
+import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
 import { restartProbing } from '../../app/restart/host-restart-flow.svelte.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';

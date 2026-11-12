@@ -5,7 +5,7 @@ import { tick } from 'svelte';
 import { HttpClientError, type WorkflowState } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
-import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { settle as settleIo, until } from '../../../lib/fake-timers.test-support.ts';
 import {
   envelopeChunk,

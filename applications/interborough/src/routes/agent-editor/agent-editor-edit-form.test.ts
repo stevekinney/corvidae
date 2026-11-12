@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
-import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 import type { AgentDetail } from '../../lib/agent-definitions.ts';
 import {
   catalogFixture,

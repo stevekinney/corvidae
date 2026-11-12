@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import { STORAGE_COPY } from '../../app/copy.ts';
+import { STORAGE_COPY } from '../../app/copy/settings.ts';
 import ToastHost from '../../app/toast-host.svelte';
 import { router } from '../../lib/router.svelte.ts';
 import { LONG_KEY_CHARACTERS } from './storage-groups.ts';

@@ -12,7 +12,8 @@
   import { Banner, Button, ConfirmDialog } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
-  import { AGENT_PAGE_COPY, CHAT_COPY } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import { queryKeys } from '../../lib/query.ts';
   import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';

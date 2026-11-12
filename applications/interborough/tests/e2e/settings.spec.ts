@@ -11,7 +11,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
-import { SETTINGS_COPY } from '../../src/app/copy.ts';
+import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
 import { E2E_LOCKED_SETTING } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, waitingReviewOf } from './task-support.ts';

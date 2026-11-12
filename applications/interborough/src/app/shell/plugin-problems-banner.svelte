@@ -18,7 +18,7 @@
   import { getPlugins, needAttentionCount } from '../../lib/host-plugins.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { PLUGINS_COPY } from '../copy.ts';
+  import { PLUGINS_COPY } from '../copy/plugins.ts';
 
   interface Props {
     /** Whether the host is known not to answer, which is what a restart looks like from here. */

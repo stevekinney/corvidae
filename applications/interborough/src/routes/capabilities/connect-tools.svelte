@@ -62,7 +62,8 @@
   import { untrack } from 'svelte';
 
   import { getConnection } from '../../app/connection.svelte.ts';
-  import { AGENT_PAGE_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
   import { agentTabPath } from '../../lib/agent-paths.ts';
   import {
     connectToolSource,

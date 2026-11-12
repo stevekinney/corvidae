@@ -8,7 +8,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { AGENT_PAGE_COPY } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import type { AgentVersion } from '../../lib/agent-definitions.ts';
 import {
   installBureauStub,

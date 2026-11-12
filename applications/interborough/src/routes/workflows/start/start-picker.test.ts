@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { WORKFLOW_COPY } from '../../../app/copy.ts';
+import { WORKFLOW_COPY } from '../../../app/copy/workflows.ts';
 import Harness from '../../../app/shell/route-outlet.test-harness.svelte';
 import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';

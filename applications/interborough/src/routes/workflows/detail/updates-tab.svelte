@@ -24,7 +24,7 @@
   import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy } from 'svelte';
 
-  import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { useFleetEventsLive } from '../../../app/live-polling.svelte.ts';
   import { classifyFault, faultTreatment, type FaultTreatment } from '../../../lib/faults.ts';
   import RunFaultBanner from './run-fault-banner.svelte';

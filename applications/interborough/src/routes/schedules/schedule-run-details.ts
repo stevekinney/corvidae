@@ -7,7 +7,7 @@
 import type { HttpClient, WorkflowTimelineEntry } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
 import {
   getScheduleProvenance,
   type WorkflowScheduleProvenanceClient,

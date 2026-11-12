@@ -8,7 +8,7 @@
  * Purely additive (creates one new schedule); safe anywhere in the run order relative to the other
  * flows.
  */
-import { SCHEDULE_COPY } from '../../src/app/copy.ts';
+import { SCHEDULE_COPY } from '../../src/app/copy/schedules.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator creates a cron schedule with backfill and lands on its detail', async ({

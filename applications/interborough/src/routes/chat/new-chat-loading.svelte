@@ -11,7 +11,7 @@
   import { ChatInput } from '@lostgradient/chat';
   import { Skeleton } from '@lostgradient/cinder';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
 
   interface NewChatLoadingProps {
     /** Called when the person cancels a read that is taking long. */

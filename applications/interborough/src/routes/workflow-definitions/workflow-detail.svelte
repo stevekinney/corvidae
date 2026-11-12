@@ -44,7 +44,8 @@
     getConnection,
   } from '../../app/connection.svelte.ts';
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';

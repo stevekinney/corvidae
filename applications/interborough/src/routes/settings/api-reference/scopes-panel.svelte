@@ -6,11 +6,11 @@
    * says which scopes the session holds (`/host/session`), because the host is what checks them on
    * every `/api` operation; each is a small monospaced name with what it lets the session do, from
    * the one catalog the host enforces (`lib/api-scopes.ts`). A forbidden page links here
-   * (`app/copy.ts`, `scopes`).
+   * (`app/copy/api-reference.ts`, `scopes`).
    */
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { API_REFERENCE_COPY } from '../../../app/copy.ts';
+  import { API_REFERENCE_COPY } from '../../../app/copy/api-reference.ts';
   import { API_SCOPE_CATALOG } from '../../../lib/api-scopes.ts';
   import { getHostSession } from '../../../lib/host-session.ts';
   import { queryKeys } from '../../../lib/query.ts';

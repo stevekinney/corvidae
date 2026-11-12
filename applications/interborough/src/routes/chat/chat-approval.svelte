@@ -14,7 +14,7 @@
    */
   import { ApprovalCard, type ApprovalResolution } from '@lostgradient/cinder';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { approvalQuestion } from '../../lib/tool-text.ts';
   import { decidedByLabel, decidedPlace, type DecisionContext } from './approval-decision-words.ts';
   import type { ToolCallEntry } from './tool-activity.ts';

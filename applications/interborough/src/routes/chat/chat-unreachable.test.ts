@@ -7,7 +7,7 @@ import { cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
-import { CHAT_COPY } from '../../app/copy.ts';
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { mount, restoreBureau, serve, TURNS } from './chat-more-menu.test-support.ts';
 
 const monitors: ConnectionMonitor[] = [];

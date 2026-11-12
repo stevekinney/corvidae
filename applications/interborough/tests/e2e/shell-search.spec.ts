@@ -8,7 +8,8 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
-import { PALETTE_COPY, SETTINGS_COPY } from '../../src/app/copy.ts';
+import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
+import { PALETTE_COPY } from '../../src/app/copy/shell.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';

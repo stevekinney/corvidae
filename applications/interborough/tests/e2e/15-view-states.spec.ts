@@ -14,14 +14,11 @@
  */
 import type { Page, Route } from '@playwright/test';
 
-import {
-  AGENTS_COPY,
-  NOT_FOUND_ROUTE_COPY,
-  RETRY_LABEL,
-  SETTINGS_COPY,
-  TASK_COPY,
-  VIEW_COPY,
-} from '../../src/app/copy.ts';
+import { AGENTS_COPY } from '../../src/app/copy/agents.ts';
+import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
+import { TASK_COPY } from '../../src/app/copy/tasks.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
+import { NOT_FOUND_ROUTE_COPY, RETRY_LABEL } from '../../src/app/copy/views.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import {
   HEALTH_ATTENTION_COPY,

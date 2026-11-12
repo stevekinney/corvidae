@@ -6,7 +6,8 @@
  */
 import type { Page } from '@playwright/test';
 
-import { CHAT_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY } from '../../src/app/copy/chat.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import {
   approveThroughMount,
   conversation,

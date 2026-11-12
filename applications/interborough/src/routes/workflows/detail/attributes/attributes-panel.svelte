@@ -11,7 +11,7 @@
   import { Skeleton } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { RUN_DETAIL_COPY } from '../../../../app/copy.ts';
+  import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
   import { faultTreatment, type FaultTreatment } from '../../../../lib/faults.ts';
   import RunFaultBanner from '../run-fault-banner.svelte';
   import AttributeRow from './attribute-row.svelte';

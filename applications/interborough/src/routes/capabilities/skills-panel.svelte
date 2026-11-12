@@ -18,7 +18,8 @@
   import { Plus, Puzzle } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { CAPABILITIES_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { CAPABILITIES_COPY } from '../../app/copy/capabilities.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { listSkillCatalog } from '../../lib/bureau-skills.ts';
   import { queryKeys } from '../../lib/query.ts';

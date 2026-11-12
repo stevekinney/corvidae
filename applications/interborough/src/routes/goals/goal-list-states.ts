@@ -7,7 +7,7 @@
  */
 import { HttpClientError } from '@lostgradient/weft';
 
-import { GOALS_COPY } from '../../app/copy.ts';
+import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { classifyFault, isNetworkFailure } from '../../lib/faults.ts';
 
 /** The title and sentence of a read that did not give the page its goals. */

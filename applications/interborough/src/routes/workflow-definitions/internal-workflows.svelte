@@ -13,7 +13,8 @@
   import { EmptyState, ErrorState, Link, PageHeader, Skeleton, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';

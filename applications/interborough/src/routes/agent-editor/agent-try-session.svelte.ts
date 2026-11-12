@@ -20,7 +20,7 @@
 
 import type { ApprovalResolution } from '@lostgradient/cinder';
 
-import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 import { agentFaultOf, tryAgent, type AgentDefinitionInput } from '../../lib/agent-definitions.ts';
 import { deleteContext, wireCodeOf, type Fetcher } from '../../lib/bureau-client.ts';
 import { ChatSessionState } from '../chat/chat-session.svelte.ts';

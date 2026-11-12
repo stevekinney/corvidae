@@ -16,7 +16,7 @@
   import { MessageSquare } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { HOME_COPY } from '../../app/copy.ts';
+  import { HOME_COPY } from '../../app/copy/home.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
   import { router } from '../../lib/router.svelte.ts';

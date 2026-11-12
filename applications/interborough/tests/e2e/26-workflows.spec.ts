@@ -13,7 +13,8 @@
 import type { Page } from '@playwright/test';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 
-import { VIEW_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
+import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { newChatFromWorkflowsPath } from '../../src/lib/new-chat-address.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';

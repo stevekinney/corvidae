@@ -5,7 +5,7 @@
    * are not here (the Overview shows them as field lists), and neither are the trigger and the
    * file, which are the header's lines.
    */
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import type { DefinitionDetails } from './workflow-presentation.ts';
 
   interface Props {

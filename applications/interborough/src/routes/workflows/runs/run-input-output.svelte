@@ -14,7 +14,8 @@
   import { CircleX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { RUN_DETAIL_COPY, RUN_PAGE_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
+  import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { getThreadMessages } from '../../../lib/bureau-client.ts';
   import { isScheduleFire, isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';

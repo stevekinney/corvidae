@@ -9,7 +9,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { A2A_COPY } from '../../src/app/copy.ts';
+import { A2A_COPY } from '../../src/app/copy/a2a.ts';
 import { captureClock } from './capture-clock.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_PORT, E2E_SHOWCASE_URL } from './e2e-constants.ts';

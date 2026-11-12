@@ -30,7 +30,7 @@
     type FilterSegment,
   } from '@lostgradient/cinder';
 
-  import { GOALS_COPY } from '../../app/copy.ts';
+  import { GOALS_COPY } from '../../app/copy/goals.ts';
 
   interface Props {
     /** The segments, without counts: each is drawn with a placeholder where its count will be. */

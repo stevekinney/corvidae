@@ -8,7 +8,7 @@
    */
   import { DataList, EmptyState, StackedListItem, StatusDot } from '@lostgradient/cinder';
 
-  import { GOALS_COPY } from '../../app/copy.ts';
+  import { GOALS_COPY } from '../../app/copy/goals.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { clockTime } from '../../lib/format/clock.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
