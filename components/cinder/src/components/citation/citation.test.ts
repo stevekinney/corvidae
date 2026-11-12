@@ -370,6 +370,13 @@ describe('Citation', () => {
     expect(stylesheet).not.toMatch(/\.cinder-citation__link \{[^}]*touch-target-min/s);
   });
 
+  test('the pager buttons get their 44px coarse hit area from a pseudo-element', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    expect(stylesheet).toMatch(
+      /@media \(pointer: coarse\) \{[^@]*\.cinder-citation__pagination button::before \{[^}]*position: absolute;[^}]*var\(--cinder-touch-target-min\)/s,
+    );
+  });
+
   test('the focus ring wraps the marker with 2px of padding and the compact-control radius', () => {
     const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
     const focus = /\.cinder-citation__marker:focus-visible \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
