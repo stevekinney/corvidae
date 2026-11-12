@@ -50,7 +50,7 @@ describe('MessageAttachments image layout contract', () => {
     const image = container.querySelector('.message-attachment-image');
 
     expect(figure?.hasAttribute('data-cinder-image-placeholder')).toBe(true);
-    expect((figure as HTMLElement | null)?.style.aspectRatio).toBe('');
+    expect(figure?.style.aspectRatio).toBe('');
     expect(button?.contains(image)).toBe(true);
     expect(image?.getAttribute('width')).toBeNull();
     expect(image?.getAttribute('height')).toBeNull();
