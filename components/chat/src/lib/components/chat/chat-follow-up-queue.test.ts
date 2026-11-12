@@ -198,6 +198,13 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
 
     expect(source).toMatch(/\.chat-follow-up-ghost\s*\{[^}]*min-block-size:\s*2\.75rem;/s);
     expect(source).toMatch(/\.chat-follow-up-ghost-actions\s*\{[^}]*display:\s*flex;/s);
+    // Edit and Remove stand a 40px pitch apart, and the header has block padding at any pointer.
+    expect(source).toMatch(
+      /\.chat-follow-up-ghost-actions\s*\{[^}]*gap:\s*var\(--cinder-space-3\);/s,
+    );
+    expect(source).toMatch(
+      /\.chat-follow-up-drawer-header\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);/s,
+    );
   });
 
   test('a follow-up typed during a run waits under Up next, sent to neither the run nor a new turn', async () => {

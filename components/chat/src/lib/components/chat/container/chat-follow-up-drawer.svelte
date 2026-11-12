@@ -121,6 +121,8 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-2);
+    /* "Up next" never stands pinched against its borders, at any pointer. */
+    padding-block: var(--cinder-space-2);
     padding-inline: var(--cinder-space-3) var(--cinder-space-1);
     border-block-end: 1px solid var(--cinder-border-muted);
   }
@@ -220,7 +222,8 @@
     }
 
     .chat-follow-up-ghost-actions {
-      gap: var(--cinder-space-4);
+      /* A 28px face and 12px: a 40px pitch, the later control winning the hit-area overlap. */
+      gap: var(--cinder-space-3);
     }
   }
   /* The Cinder icon Buttons paint compact and take their 44 px hit area from a pseudo-element. */
