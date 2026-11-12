@@ -95,14 +95,25 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: var(--cinder-touch-target-min);
-    min-height: var(--cinder-touch-target-min);
+    position: relative;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
     background: none;
     border: none;
     padding: 0;
     cursor: grab;
     touch-action: none;
     color: inherit;
+  }
+
+  /* The 44px target is a hit area that takes no layout space. */
+  .cinder-sortable-handle::after {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    inline-size: var(--cinder-touch-target-min);
+    block-size: var(--cinder-touch-target-min);
+    transform: translate(-50%, -50%);
   }
 
   .cinder-sortable-handle:focus-visible {

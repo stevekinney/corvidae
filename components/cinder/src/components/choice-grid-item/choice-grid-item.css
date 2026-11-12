@@ -176,10 +176,15 @@
   }
 
   @media (pointer: coarse) {
+    /* Painted compact; the 44px target is a hit area that takes no layout space. */
     .cinder-choice-grid-item[data-cinder-size='sm'] {
-      block-size: auto;
-      min-block-size: 44px;
-      min-inline-size: 44px;
+      position: relative;
+    }
+
+    .cinder-choice-grid-item[data-cinder-size='sm']::before {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
     }
   }
 

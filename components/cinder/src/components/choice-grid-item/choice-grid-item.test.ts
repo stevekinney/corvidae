@@ -110,11 +110,11 @@ describe('ChoiceGridItem size CSS contract', () => {
     );
   });
 
-  test('coarse pointer: size="sm" floors at a 44px touch target instead of the fine-pointer height', () => {
+  test('coarse pointer: size="sm" keeps its painted height and reaches 44px by a hit area', () => {
     const coarseBlock = styles.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n {2}\}/)?.[1];
     expect(coarseBlock, 'expected an @media (pointer: coarse) block').toBeDefined();
-    expect(coarseBlock).toMatch(/min-block-size:\s*44px;/);
-    expect(coarseBlock).toMatch(/min-inline-size:\s*44px;/);
+    expect(coarseBlock).toContain('(100% - 44px) / 2');
+    expect(coarseBlock).not.toMatch(/min-block-size:\s*44px;/);
   });
 
   test('no selection/hover/focus/disabled/feedback rule sets block-size, padding, or font-size', () => {
