@@ -351,8 +351,20 @@ describe('Citation', () => {
     expect(marker).toContain('padding: 0;');
     expect(marker).toContain('vertical-align: baseline;');
     expect(stylesheet).toMatch(
-      /@media \(pointer: coarse\) \{\s*\.cinder-citation__marker \{[^}]*min-block-size: var\(--cinder-touch-target-min\);/s,
+      /@media \(pointer: coarse\) \{\s*\.cinder-citation__marker::before \{[^}]*var\(--cinder-touch-target-min\)/s,
     );
+    expect(stylesheet).not.toMatch(/\.cinder-citation__marker \{[^}]*min-block-size/s);
+    const hit = /\.cinder-citation__marker::before \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+    expect(hit).toContain('position: absolute;');
+    expect(hit).toContain('calc((100% - 24px) / 2)');
+  });
+
+  test('the focus ring wraps the marker with 2px of padding and the compact-control radius', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const focus = /\.cinder-citation__marker:focus-visible \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+    expect(focus).toContain('border-radius: var(--cinder-radius-sm);');
+    expect(focus).toContain('0 0 0 2px var(--cinder-ring-offset-color)');
+    expect(focus).not.toContain('inset');
   });
 
   test('uses one compact body inset for anchored and sheet presentation', () => {

@@ -20,12 +20,26 @@
     padding: 0;
     vertical-align: baseline;
     text-decoration: none;
+    /* Anchors the hit area below. */
+    position: relative;
   }
 
+  /* The marker is painted at its text height, but its hit area is at least 24px tall (and 44px on
+   * a coarse pointer) without taking layout space, so a row of markers does not grow. */
+  .cinder-citation__marker::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - 24px) / 2));
+    inset-inline: min(0px, calc((100% - 24px) / 2));
+  }
+
+  /* The ring wraps the marker with 2px of padding and the compact-control radius. */
   .cinder-citation__marker:focus-visible {
-    outline: none;
+    outline: var(--cinder-ring-width) solid transparent;
     border-radius: var(--cinder-radius-sm);
-    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+    box-shadow:
+      0 0 0 2px var(--cinder-ring-offset-color),
+      0 0 0 calc(2px + var(--cinder-ring-width)) var(--cinder-ring-color);
   }
 
   @media (forced-colors: active) {
@@ -130,8 +144,9 @@
     block-size: 1rem;
   }
   @media (pointer: coarse) {
-    .cinder-citation__marker {
-      min-block-size: var(--cinder-touch-target-min);
+    .cinder-citation__marker::before {
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
 
     .cinder-citation__pagination button,
