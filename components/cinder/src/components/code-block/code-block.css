@@ -536,7 +536,7 @@
      * instead of running under it (C#5: on a one-line block the icon sat on the characters). */
     --_cinder-code-block-float-size: 1.75rem;
     --_cinder-code-block-float-reserve: calc(
-      var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-1)
+      var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-2)
     );
 
     position: relative;
@@ -577,7 +577,9 @@
     );
     inset-inline-end: 0;
     z-index: 1;
-    padding: 0 var(--cinder-space-1);
+    /* The inset keeps the button's 44px hit area, 8px past its painted edge, inside the block's
+     * clipped box. */
+    padding: 0 var(--cinder-space-2);
     transform: translateY(-50%);
   }
 

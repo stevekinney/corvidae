@@ -231,7 +231,7 @@ describe('CodeBlock — static structure', () => {
       )?.[1];
     expect(reserve).toContain('min-block-size: var(--_cinder-code-block-float-reserve);');
     expect(css).toContain(
-      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-1) );',
+      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-2) );',
     );
     const button =
       /\.cinder-code-block--floating-meta \.cinder-code-block__meta \.cinder-copy-button \{([^}]*)\}/.exec(

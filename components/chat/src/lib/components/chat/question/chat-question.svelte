@@ -791,6 +791,10 @@
   }
 
   .chat-question-receipt {
+    /* Change reaches 44px by a hit area that overhangs the receipt; the message line under the
+     * card stacks at 1, so the receipt stacks above it. */
+    position: relative;
+    z-index: 2;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
