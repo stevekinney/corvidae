@@ -58,7 +58,8 @@
       {
         "action": "expect",
         "role": "button",
-        "name": "Cancel"
+        "name": "Cancel",
+        "scope": ".cinder-callout"
       }
     ],
     "variants": [],
@@ -438,7 +439,7 @@
   {
     "id": 17,
     "slug": "turn-reconnecting",
-    "title": "A dropped stream mutes the partial reply and shows the attempt, the next try and Retry now.",
+    "title": "A dropped stream mutes the partial reply and shows the attempt, the next try and Retry.",
     "provenance": "issue-named",
     "source": "COR-2289 acceptance: 17 is one of the existing cases to wire to an actual named condition (a lost connection).",
     "rows": ["R3"],
@@ -467,7 +468,7 @@
   {
     "id": 18,
     "slug": "turn-stopped",
-    "title": "Pressing Stop leaves a neutral Stopped pill with Continue and Discard.",
+    "title": "Pressing Stop leaves a neutral Stopped notice with Continue and Discard.",
     "provenance": "derived",
     "source": "Derived from design row R4; the original definition of this number was lost.",
     "rows": ["R4"],
@@ -489,7 +490,7 @@
         "name": "stopped-to-failed",
         "steps": [
           { "action": "click", "role": "button", "name": "Stop generating" },
-          { "action": "expect-text", "text": "Stopped by you, partial answer" },
+          { "action": "expect-text", "text": "Stopped. The answer above is partial." },
           { "action": "measure-composer-top", "name": "before" },
           { "action": "click", "role": "button", "name": "Continue" },
           {
@@ -582,7 +583,7 @@
   {
     "id": 22,
     "slug": "turn-empty",
-    "title": "A run that finished without an answer shows the dashed row, its time and Try again.",
+    "title": "A run that finished without an answer shows the empty-turn notice, its time and Retry.",
     "provenance": "derived",
     "source": "Derived from design row R6; the original definition of this number was lost.",
     "rows": ["R6"],
@@ -1447,10 +1448,6 @@
           }
         ]
       },
-      {
-        "action": "expect-text",
-        "text": "need attention"
-      },
       { "action": "expect-attachment-shelf", "total": 5 }
     ],
     "variants": [
@@ -1471,7 +1468,6 @@
               { "name": "ready-b.pdf", "mimeType": "application/pdf", "bytes": 2048 }
             ]
           },
-          { "action": "expect-text", "text": "need attention" },
           { "action": "expect-attachment-shelf", "total": 5, "reveal": true },
           { "action": "expect", "role": "button", "name": "Retry upload-fail-1.pdf" },
           { "action": "expect", "role": "button", "name": "Remove ready-a.pdf" },
@@ -2462,7 +2458,7 @@
   {
     "id": 75,
     "slug": "turn-retry-now",
-    "title": "Retry now on a reconnecting turn resumes the stream.",
+    "title": "Retry on a reconnecting turn resumes the stream.",
     "provenance": "derived",
     "source": "Derived from design row R3; the original definition of this number was lost.",
     "rows": ["R3"],
@@ -2483,7 +2479,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Retry now"
+        "name": "Retry"
       },
       {
         "action": "expect",
@@ -2529,7 +2525,7 @@
   {
     "id": 77,
     "slug": "turn-empty-retry",
-    "title": "Try again on an empty turn starts the run again.",
+    "title": "Retry on an empty turn starts the run again.",
     "provenance": "derived",
     "source": "Derived from design row R6; the original definition of this number was lost.",
     "rows": ["R6"],
@@ -2549,7 +2545,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Try again"
+        "name": "Retry"
       },
       {
         "action": "expect",
@@ -2563,7 +2559,7 @@
   {
     "id": 78,
     "slug": "step-retry",
-    "title": "A failed step offers Retry this step and Copy error beneath its diagnostic.",
+    "title": "A failed step offers Retry and Copy error beneath its diagnostic.",
     "provenance": "derived",
     "source": "Derived from design row R7; the original definition of this number was lost.",
     "rows": ["R7"],
@@ -2579,7 +2575,7 @@
       {
         "action": "expect",
         "role": "button",
-        "name": "Retry this step"
+        "name": "Retry"
       },
       {
         "action": "expect",

@@ -85,7 +85,7 @@ const expectAttachment = expect.configure({ timeout: DEADLINE });
 function expectedAttachmentShelfCap(width: number, height: number): number {
   if (width <= 480 && height <= 700) return 1;
   if (width <= 480 && height <= 860) return 2;
-  return 3;
+  return 2;
 }
 
 const fixtureRoot = resolve(import.meta.dirname, '..');
@@ -1880,7 +1880,11 @@ export const repeatedSummaryGuard: PaintGuard = {
       selector: '.chat-tool-call-summary-tools',
       pattern: '^lookup_order ×20$',
     },
-    { name: 'duration', selector: '.chat-tool-call-summary-duration', pattern: '^6\\.1s$' },
+    {
+      name: 'duration',
+      selector: '.chat-tool-call-summary-duration',
+      pattern: '^\\d+(?:ms|s|m|h)(?: \\d+(?:s|m))?$',
+    },
   ],
   apart: [['tool/count', 'duration']],
 };

@@ -29,7 +29,7 @@ describe('chat stress visual measurement', () => {
           <span class="chat-tool-call-summary">
             <span class="chat-tool-call-summary-count">Looked up twenty orders</span>
             <span class="chat-tool-call-summary-tools">lookup_order ×20</span>
-            <span class="chat-tool-call-summary-duration">6.1s</span>
+            <span class="chat-tool-call-summary-duration">6s</span>
           </span>
         </section>
       </main>`;
