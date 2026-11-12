@@ -40,7 +40,16 @@
             "description": "How long the call took, formatted by the caller (\"0.2s\"), at the end of the row. Elapsed while `running`."
           },
           "status": {
-            "enum": ["done", "approved", "running", "waiting", "denied", "failed", "interrupted"],
+            "enum": [
+              "done",
+              "approved",
+              "running",
+              "waiting",
+              "expired",
+              "denied",
+              "failed",
+              "interrupted"
+            ],
             "description": "Where the call stands."
           },
           "failure": {

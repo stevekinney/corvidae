@@ -13,6 +13,11 @@ const schema = {
       description:
         'Names the marker and the panel, such as `Sources`. The marker reads it with the source count.',
     },
+    closeOnSourceRemoval: {
+      type: 'boolean',
+      description:
+        'Closes an open panel when a previously displayed source is withdrawn by the host.',
+    },
   },
   additionalProperties: false,
   metadata: {
@@ -26,6 +31,11 @@ const schema = {
         reason: 'unknown-shape',
         description:
           'The words Citation draws itself, for a host that translates them. Each one left out keeps its English default.',
+      },
+      {
+        name: 'onCloseComplete',
+        reason: 'function-or-snippet',
+        description: 'Called after an open source panel or sheet has fully closed.',
       },
       {
         name: 'sources',

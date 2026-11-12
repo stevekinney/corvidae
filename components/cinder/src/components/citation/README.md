@@ -23,11 +23,11 @@ Each source shows its title (clamped to two lines), its excerpt in quotation mar
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Custom class merged with `.cinder-citation`. |
+| `closeOnSourceRemoval` | `boolean` | no | — | Closes an open panel when a previously displayed source is withdrawn by the host. |
 | `label` | `string` | no | — | Names the marker and the panel, such as `Sources`. The marker reads it with the source count. |
-| `closeOnSourceRemoval` | `boolean` | no | `false` | Closes an open panel when a previously displayed source is withdrawn by the host. |
-| `onCloseComplete` | `() => void` | no | — | Called after an open source panel or sheet has fully closed. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `labels` | `(opaque)` | no | — | The words Citation draws itself, for a host that translates them. Each one left out keeps its English default. Not expressible in JSON Schema; see the component types for the signature. |
+| `onCloseComplete` | `(opaque)` | no | — | Called after an open source panel or sheet has fully closed. Not expressible in JSON Schema; see the component types for the signature. |
 | `sources` | `(opaque)` | yes | — | The sources behind the claim, in the order to show them. Up to five are listed together; more are paged one at a time. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
