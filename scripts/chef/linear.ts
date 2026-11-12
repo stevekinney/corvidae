@@ -10,8 +10,11 @@
 //   bun scripts/chef/linear.ts state <ID> <State Name> [--json]
 //   bun scripts/chef/linear.ts comment <ID> --file <md> [--update <comment-id>] [--json]
 //   bun scripts/chef/linear.ts append <ID> --file <md> [--json]
+//   bun scripts/chef/linear.ts describe <ID> --file <md> [--json]
 //   bun scripts/chef/linear.ts create --team <KEY> [--project <id>] --title <t> --file <md> --label <name>
 //                                [--state <name>] [--json]
+//   bun scripts/chef/linear.ts priority <ID> <urgent|high|medium|low> [--json]
+//   bun scripts/chef/linear.ts labels <ID> --add <name> [--add <name> ...] [--json]
 //   bun scripts/chef/linear.ts blockers <ID> [--json]
 //   bun scripts/chef/linear.ts block <ID> --by <ID> [--json]
 //   bun scripts/chef/linear.ts project-read <project> [--json]
@@ -457,6 +460,137 @@ export async function appendDescription(
       ? `${identifier}: appended ${text.length} characters (read back).`
       : `${identifier}: the appended text is not in the description on read-back.`,
     data: { identifier, appendedCharacters: text.length, verified },
+  };
+}
+
+/** Linear's priority values by name: 0 is "No priority". */
+export const priorityValues = { urgent: 1, high: 2, medium: 3, low: 4 } as const;
+export type PriorityName = keyof typeof priorityValues;
+
+export function isPriorityName(value: string): value is PriorityName {
+  return Object.hasOwn(priorityValues, value);
+}
+
+/** Set an issue's priority by name and read it back. */
+export async function setPriority(
+  client: LinearClient,
+  identifier: string,
+  name: PriorityName,
+): Promise<Outcome> {
+  const issue = await fetchIssue(client, identifier);
+  const value = priorityValues[name];
+  const result = await client.request<{ issueUpdate: { success: boolean } }>(
+    `mutation IssueSetPriority($id: String!, $priority: Int!) { issueUpdate(id: $id, input: { priority: $priority }) { success } }`,
+    { id: issue.id, priority: value },
+  );
+  const back = await client.request<{ issue: { priority: number } | null }>(
+    `query IssuePriority($id: String!) { issue(id: $id) { priority } }`,
+    { id: issue.id },
+  );
+  const verified = result.issueUpdate.success && back.issue?.priority === value;
+  return {
+    ok: verified,
+    summary: verified
+      ? `${identifier}: priority ${name} (read back).`
+      : `${identifier}: read-back mismatch; the priority is ${back.issue?.priority ?? 'unreadable'}, expected ${value}.`,
+    data: { identifier, priority: name, verified },
+  };
+}
+
+export interface TeamLabel {
+  id: string;
+  name: string;
+  parent: { id: string; name: string } | null;
+  isGroup: boolean;
+}
+
+/** Every label an issue in `team` can carry: the team's own, its parent team's, and the workspace's. */
+export async function teamLabels(
+  client: LinearClient,
+  team: { id: string; parent: { id: string } | null },
+): Promise<TeamLabel[]> {
+  const teams = team.parent === null ? [team.id] : [team.id, team.parent.id];
+  type Row = TeamLabel & { team: { id: string } | null };
+  const labels = await collectPages<Row>('labels', async (after) => {
+    const data = await client.request<{ issueLabels: PagedNodes<Row> }>(
+      `query TeamLabels($after: String) { issueLabels(first: 100, after: $after) { nodes { id name isGroup team { id } parent { id name } } pageInfo { hasNextPage endCursor } } }`,
+      { after },
+    );
+    return data.issueLabels;
+  });
+  return labels
+    .filter((label) => label.team === null || teams.includes(label.team.id))
+    .map(({ id, name, parent, isGroup }) => ({ id, name, parent, isGroup }));
+}
+
+/** Add labels by name to an issue, keeping the ones it has, and read them back. */
+export async function addLabels(
+  client: LinearClient,
+  identifier: string,
+  names: readonly string[],
+): Promise<Outcome> {
+  const issue = await fetchIssue(client, identifier);
+  const available = await teamLabels(client, issue.team);
+  const wanted: TeamLabel[] = [];
+  for (const name of names) {
+    const label = available.find(
+      (candidate) => !candidate.isGroup && candidate.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (label === undefined)
+      return {
+        ok: false,
+        summary: `No label "${name}" visible to ${issue.team.key}.`,
+        data: { identifier, updated: false, reason: 'label', label: name },
+      };
+    wanted.push(label);
+  }
+  const ids = wanted.map((label) => label.id);
+  const result = await client.request<{
+    issueUpdate: { success: boolean };
+  }>(
+    `mutation IssueAddLabels($id: String!, $labelIds: [String!]!) { issueUpdate(id: $id, input: { addedLabelIds: $labelIds }) { success } }`,
+    { id: issue.id, labelIds: ids },
+  );
+  const back = await client.request<{ issue: { labels: { nodes: { id: string }[] } } | null }>(
+    `query IssueLabels($id: String!) { issue(id: $id) { labels(first: 250) { nodes { id } } } }`,
+    { id: issue.id },
+  );
+  const held = new Set(back.issue?.labels.nodes.map((label) => label.id) ?? []);
+  const verified = result.issueUpdate.success && ids.every((id) => held.has(id));
+  const added = wanted.map((label) => label.name);
+  return {
+    ok: verified,
+    summary: verified
+      ? `${identifier}: labels ${added.join(', ')} (read back).`
+      : `${identifier}: read-back mismatch; not every label in ${added.join(', ')} is on the issue.`,
+    data: { identifier, labels: added, verified },
+  };
+}
+
+/**
+ * Replace an issue's description and read it back. For a rewrite in place (a groomed section, a
+ * split); a dated revision that keeps the old text uses `append`.
+ */
+export async function replaceDescription(
+  client: LinearClient,
+  identifier: string,
+  description: string,
+): Promise<Outcome> {
+  const issue = await fetchIssue(client, identifier);
+  const result = await client.request<{ issueUpdate: { success: boolean } }>(
+    `mutation IssueSetDescription($id: String!, $description: String!) { issueUpdate(id: $id, input: { description: $description }) { success } }`,
+    { id: issue.id, description },
+  );
+  const after = await fetchIssue(client, identifier);
+  const verified =
+    result.issueUpdate.success &&
+    normalizeMarkdown(after.description ?? '') === normalizeMarkdown(description);
+  return {
+    ok: verified,
+    summary: verified
+      ? `${identifier}: description replaced, ${description.length} characters (read back).`
+      : `${identifier}: the description on read-back is not what was written.`,
+    data: { identifier, characters: description.length, verified },
   };
 }
 
@@ -1341,15 +1475,21 @@ export async function releaseLease(
 
 interface Parsed {
   positionals: string[];
+  added: string[];
   options: Map<string, string>;
   flags: Set<string>;
   json: boolean;
 }
 
 function parse(argv: string[], names: string[]): Parsed {
-  const parsed = parseOptions(argv.slice(1), { values: names, flags: ['json', 'release'] });
+  const parsed = parseOptions(argv.slice(1), {
+    values: names,
+    repeated: ['add'],
+    flags: ['json', 'release'],
+  });
   return {
     positionals: parsed.positionals,
+    added: parsed.repeated['add'] ?? [],
     options: new Map(Object.entries(parsed.values)),
     flags: parsed.flags,
     json: parsed.flags.has('json'),
@@ -1386,14 +1526,17 @@ export async function run(
   const command = argv[0];
   if (command === undefined)
     throw new UsageError(
-      'Name a command: read, state, comment, append, create, blockers, block, project-read, project-state, project-update, claim or lease.',
+      'Name a command: read, state, comment, append, describe, create, priority, labels, blockers, block, project-read, project-state, project-update, claim or lease.',
     );
   const known = [
     'read',
     'state',
     'comment',
     'append',
+    'describe',
     'create',
+    'priority',
+    'labels',
     'blockers',
     'block',
     'project-read',
@@ -1421,6 +1564,8 @@ export async function run(
     throw new UsageError('--update applies only to comment.');
   if (command !== 'project-update' && parsed.options.has('health'))
     throw new UsageError('--health applies only to project-update.');
+  if (command !== 'labels' && parsed.added.length > 0)
+    throw new UsageError('--add applies only to labels.');
   const claimLike = command === 'claim' || command === 'lease';
   if (!claimLike && parsed.flags.has('release'))
     throw new UsageError('--release applies only to claim and lease.');
@@ -1451,6 +1596,10 @@ export async function run(
     const [id] = identifierArgument(parsed, 1);
     const body = readFileOption(parsed);
     plan = (client) => appendDescription(client, id as string, body);
+  } else if (command === 'describe') {
+    const [id] = identifierArgument(parsed, 1);
+    const body = readFileOption(parsed);
+    plan = (client) => replaceDescription(client, id as string, body);
   } else if (command === 'create') {
     identifierArgument(parsed, 0);
     const options: CreateOptions = {
@@ -1462,6 +1611,19 @@ export async function run(
       ...(parsed.options.has('state') ? { state: required(parsed, 'state') } : {}),
     };
     plan = (client) => createIssue(client, options);
+  } else if (command === 'priority') {
+    const [id, name] = identifierArgument(parsed, 2);
+    const level = (name as string).toLowerCase();
+    if (!isPriorityName(level))
+      throw new UsageError(
+        `Priority must be one of ${Object.keys(priorityValues).join(', ')}; got "${name}".`,
+      );
+    plan = (client) => setPriority(client, id as string, level);
+  } else if (command === 'labels') {
+    const [id] = identifierArgument(parsed, 1);
+    if (parsed.added.length === 0 || parsed.added.includes(''))
+      throw new UsageError('labels needs at least one non-empty --add <name>.');
+    plan = (client) => addLabels(client, id as string, parsed.added);
   } else if (command === 'blockers') {
     const [id] = identifierArgument(parsed, 1);
     plan = (client) => listBlockers(client, id as string);

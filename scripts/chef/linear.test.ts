@@ -32,6 +32,7 @@ interface FakeIssue {
   teamId: string;
   labelIds: string[];
   projectId: string | null;
+  priority?: number;
 }
 
 interface FakeComment {
@@ -152,6 +153,8 @@ function fakeLinear() {
     endlessProjectPages: false,
     /** Another run's newer claim lands right after this run's claim comment is posted. */
     raceClaim: false,
+    /** `issueUpdate` answers success without changing the priority or the labels. */
+    ignoreTriageUpdate: false,
   };
   let counter = 100;
 
@@ -332,6 +335,40 @@ function fakeLinear() {
             issue: { id: issue.id, identifier: issue.identifier },
           },
         };
+      }
+      case 'IssueSetPriority': {
+        const issue = find(variables['id'])!;
+        if (!switches.ignoreTriageUpdate) issue.priority = variables['priority'];
+        return { issueUpdate: { success: true } };
+      }
+      case 'IssuePriority':
+        return { issue: { priority: find(variables['id'])?.priority ?? 0 } };
+      case 'TeamLabels':
+        return {
+          issueLabels: {
+            nodes: [
+              ...labels.map((label) => ({ ...label, isGroup: false, parent: null })),
+              { id: 'l-group', name: 'Work Type', team: null, isGroup: true, parent: null },
+              {
+                id: 'l-chore',
+                name: 'Chore',
+                team: null,
+                isGroup: false,
+                parent: { id: 'l-group', name: 'Work Type' },
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        };
+      case 'IssueAddLabels': {
+        const issue = find(variables['id'])!;
+        if (!switches.ignoreTriageUpdate)
+          issue.labelIds = [...new Set([...issue.labelIds, ...variables['labelIds']])];
+        return { issueUpdate: { success: true } };
+      }
+      case 'IssueLabels': {
+        const issue = find(variables['id']);
+        return { issue: issue === undefined ? null : { labels: view(issue).labels } };
       }
       case 'IssueCreated': {
         const issue = find(variables['id']);
@@ -783,6 +820,93 @@ describe('state', () => {
     const result = await run(['state', 'COR-1', 'Done'], dependencies(fake));
     expect(result.code).toBe(1);
     expect(result.output).toContain('read-back mismatch');
+  });
+});
+
+describe('describe', () => {
+  test('replaces the description and reads it back as Linear normalizes it', async () => {
+    const fake = fakeLinear();
+    const result = await run(
+      ['describe', 'COR-1', '--file', file('body.md', '* new_body\n')],
+      dependencies(fake),
+    );
+    expect(result.code).toBe(0);
+    expect(fake.issues[0]!.description).toBe('- new\\_body\n');
+  });
+
+  test('exits 1 when the write did not take', async () => {
+    const fake = fakeLinear();
+    fake.switches.ignoreDescription = true;
+    const result = await run(
+      ['describe', 'COR-1', '--file', file('body.md', 'New body')],
+      dependencies(fake),
+    );
+    expect(result.code).toBe(1);
+  });
+});
+
+describe('priority and labels', () => {
+  test('priority sets the level by name and reads it back', async () => {
+    const fake = fakeLinear();
+    const result = await run(['priority', 'COR-1', 'High'], dependencies(fake));
+    expect(result.code).toBe(0);
+    expect(fake.issues[0]!.priority).toBe(2);
+    expect(result.output).toContain('priority high (read back)');
+  });
+
+  test('priority refuses an unknown level before any request', async () => {
+    const fake = fakeLinear();
+    expect(
+      await throwingRejectionOf(run(['priority', 'COR-1', 'whenever'], dependencies(fake))),
+    ).toThrow(UsageError);
+    expect(fake.log).toHaveLength(0);
+  });
+
+  test('priority exits 1 when the read-back shows the write did not take', async () => {
+    const fake = fakeLinear();
+    fake.switches.ignoreTriageUpdate = true;
+    const result = await run(['priority', 'COR-1', 'low'], dependencies(fake));
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('read-back mismatch');
+  });
+
+  test("labels adds the team's, its parent's and workspace labels, keeping the ones held", async () => {
+    const fake = fakeLinear();
+    fake.issues[0]!.labelIds = ['l-existing'];
+    const result = await run(
+      ['labels', 'COR-1', '--add', 'feature', '--add', 'Chore'],
+      dependencies(fake),
+    );
+    expect(result.code).toBe(0);
+    expect(fake.issues[0]!.labelIds).toEqual(['l-existing', 'l-feature', 'l-chore']);
+  });
+
+  test("labels refuses a label of another team, or a group's name, writing nothing", async () => {
+    for (const name of ['Bug', 'Work Type']) {
+      const fake = fakeLinear();
+      const result = await run(['labels', 'COR-1', '--add', name], dependencies(fake));
+      expect(result.code).toBe(1);
+      expect(result.output).toContain(`No label "${name}"`);
+      expect(fake.log.some((entry) => entry.operation === 'IssueAddLabels')).toBe(false);
+    }
+  });
+
+  test('labels exits 1 when the read-back lacks a label', async () => {
+    const fake = fakeLinear();
+    fake.switches.ignoreTriageUpdate = true;
+    const result = await run(['labels', 'COR-1', '--add', 'Feature'], dependencies(fake));
+    expect(result.code).toBe(1);
+  });
+
+  test('--add applies only to labels, and labels needs one', async () => {
+    const fake = fakeLinear();
+    expect(
+      await throwingRejectionOf(run(['read', 'COR-1', '--add', 'Feature'], dependencies(fake))),
+    ).toThrow(UsageError);
+    expect(await throwingRejectionOf(run(['labels', 'COR-1'], dependencies(fake)))).toThrow(
+      UsageError,
+    );
+    expect(fake.log).toHaveLength(0);
   });
 });
 

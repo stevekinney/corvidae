@@ -24,7 +24,7 @@ Once a day, or before a release, launch `bun run harden` in the background, neve
 
 ## Promote Backlog issues to Ready
 
-- Before claiming an issue, check it against the Definition of Ready in [the Linear policy](linear-policy.md); when it holds, move it to Ready with a comment naming what was checked, then claim it.
+- Before claiming a Backlog issue, run `bun scripts/chef/groom.ts --issue <ID>`, which moves it to Ready when the Definition of Ready in [the Linear policy](linear-policy.md) holds; then claim it.
 - A revision is material when it changes the outcome, an acceptance criterion, the scope, the delivery boundary, or the team; a material revision clears the intake gate again before the issue is claimed. When implementation shows an issue's text is wrong, append a dated revision instead of rewriting it.
 
 ## Combined changes

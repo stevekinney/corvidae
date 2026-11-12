@@ -2,7 +2,7 @@
 
 The Linear rules a chef run relies on, so the skill works without any personal skills installed. It covers routing, the issue lifecycle, the Definition of Ready, the shapes of the work-session comments, and the read-back rule. Verify routing and workflow states against live Linear before writing, because a table in a document goes stale.
 
-Shape new work with this repository's own skills: [`create-task`](../../create-task/SKILL.md) for one issue and [`create-project`](../../create-project/SKILL.md) for a project with its milestones and issues. Make every other write with `scripts/chef/linear.ts`, run from the repository root: issues (`read`, `state`, `comment`, `append`, `create`, `blockers`, `block`) and projects (`project-read`, `project-state`, `project-update`). Only creating a project or a milestone goes through the Linear MCP tools (`save_project`, `save_milestone`), because `linear.ts` has no command for it. It reads `LINEAR_API_KEY` through `scripts/chef/credentials.ts`, so no wrapper is needed, and it reads every write back. Each section below says which command performs the step.
+Shape new work with this repository's own skills: [`create-task`](../../create-task/SKILL.md) for one issue and [`create-project`](../../create-project/SKILL.md) for a project with its milestones and issues. Make every other write with `scripts/chef/linear.ts`, run from the repository root: issues (`read`, `state`, `comment`, `append`, `describe`, `create`, `priority`, `labels`, `blockers`, `block`) and projects (`project-read`, `project-state`, `project-update`). Only creating a project or a milestone goes through the Linear MCP tools (`save_project`, `save_milestone`), because `linear.ts` has no command for it. It reads `LINEAR_API_KEY` through `scripts/chef/credentials.ts`, so no wrapper is needed, and it reads every write back. Each section below says which command performs the step.
 
 ## Team routing
 
@@ -13,7 +13,7 @@ Shape new work with this repository's own skills: [`create-task`](../../create-t
 
 ## Lifecycle
 
-- Issues use Backlog, Ready, In Progress, In Review, and Done. `Todo` is not Ready. The coordinator moves an issue to Ready when it meets the Definition of Ready; the worker moves its own issue to In Progress when it starts; the coordinator moves it to In Review when it accepts the submission; and `scripts/chef/deliver.ts` moves it to Done after the merge, with the completion comment, only when the coordinator passes `--closes <ID>`.
+- Issues use Backlog, Ready, In Progress, In Review, and Done. `Todo` is not Ready. `scripts/chef/groom.ts` moves an issue to Ready; the worker moves its own issue to In Progress when it starts; the coordinator moves it to In Review when it accepts the submission; and `scripts/chef/deliver.ts` moves it to Done after the merge, with the completion comment, only when the coordinator passes `--closes <ID>`.
 - Projects use `Backlog`, `Ready`, `In Progress`, `Completed`, and `Canceled`, and the API accepts only those names. Intents such as Candidate, Shaping, Paused, and Verified are predicates that gate a transition, not statuses: write `Backlog` for a candidate, a shaping project, or a paused one (record the reason and any native blocker in a comment), and `Completed` only once every required published, deployed, and downstream artifact is independently verified.
 - Never create a `type:decision` issue, and never put a "Decide …" or "Define the … contract" issue in a project draft. A decision is resolved in conversation, as [decisions](decisions.md) describes, and recorded in the issue or scope it settles. An existing `type:decision` issue is answered, recorded, and closed as Done.
 - Each cohesive batch has its own acceptance criteria, verification, integration boundary, and tracking closeout. Move an independently completed issue to Done as its own gates pass; an unfinished neighbor does not hold it open. Preserve native dependencies, publication, deployment, and explicit whole-program gates.
@@ -27,7 +27,6 @@ An issue is Ready only when it has all of these (the `create-task` skill's [tick
 
 - exactly one target team, which is `COR`;
 - exactly one Work Type label;
-- one owner and working location;
 - binary acceptance criteria, each independently checkable;
 - exact verification commands;
 - a delivery boundary, stating what artifact ends the work;
@@ -36,7 +35,7 @@ An issue is Ready only when it has all of these (the `create-task` skill's [tick
 
 A project is Ready only when its document, teams, milestones, execution-boundary issues, native dependency graph, operational risks, and success evidence are complete, and it has at least one unblocked Ready child issue. Project readiness and issue readiness are separate predicates.
 
-Check the predicates against the issue text and `bun scripts/chef/linear.ts blockers <ID>` before promoting an issue. When a predicate fails, the issue is not Ready; say which one in a comment and leave it in Backlog. Create a new issue with `bun scripts/chef/linear.ts create --team COR --title "<title>" --file <body.md> --label "<Work Type>"`, which refuses a duplicate title and prints the identifier after reading it back. Express a dependency as a native relation, never as prose: `bun scripts/chef/linear.ts block <ID> --by <BLOCKER>` makes the blocker block the issue.
+`bun scripts/chef/groom.ts` is the one readiness gate, for new issues, material revisions and the Backlog alike: Jev sets missing priorities and labels, every predicate is checked, a passing issue moves to Ready, and a failing one stays in Backlog with a comment naming what failed. The [`groom` skill](../../groom/SKILL.md) rewrites the failures and asks the owner, with `AskUserQuestion`, what only the owner can answer. Create a new issue with `bun scripts/chef/linear.ts create --team COR --title "<title>" --file <body.md> --label "<Work Type>"`, which refuses a duplicate title and prints the identifier after reading it back. Express a dependency as a native relation, never as prose: `bun scripts/chef/linear.ts block <ID> --by <BLOCKER>` makes the blocker block the issue.
 
 ## Work-session comments
 
@@ -48,11 +47,11 @@ Write each as a Markdown file and post it with `bun scripts/chef/linear.ts comme
 - A handoff holds enough evidence and next steps to resume without the original transcript.
 - A completion names every verification source and the final external artifact, version, deployment SHA, or an explicit no-op result.
 
-To change an issue description, append a dated revision with `bun scripts/chef/linear.ts append <ID> --file <md>` rather than rewriting history. A material revision (one that changes the outcome, an acceptance criterion, the scope, the delivery boundary, or the team) needs the intake check before the issue is claimed.
+To change an issue description, append a dated revision with `bun scripts/chef/linear.ts append <ID> --file <md>`. The `groom` skill alone rewrites a Backlog issue in place, with `linear.ts describe`. A material revision (one that changes the outcome, an acceptance criterion, the scope, the delivery boundary, or the team) goes back to Backlog and through `groom.ts --issue <ID>` before it is claimed.
 
 ## Writing rules
 
-- Only the primary coordinator writes Linear, with one exception: a worker moves its own issue to In Progress (`linear.ts state <ID> "In Progress"`) when it starts. Every other write, closeout included (Done, completion comments, blockers, handoffs, project updates), is the coordinator's. Planners, verifiers, and workers otherwise are read-only and return proposed changes.
+- Only the primary coordinator writes Linear, with two exceptions: a worker moves its own issue to In Progress (`linear.ts state <ID> "In Progress"`) when it starts, and grooming writes priorities, labels, rewrites, its comments and the move to Ready. Every other write, closeout included (Done, completion comments, blockers, handoffs, project updates), is the coordinator's. Planners, verifiers, and workers otherwise are read-only and return proposed changes.
 - Read immediately before every write, and read every mutation back. `linear.ts` does the read-back and exits 1 on a mismatch; a mismatch is a failure, not a retry prompt.
 - Preview the complete mutation and approve it as coordinator before writing. Routine decisions within the authorized scope do not need renewed user permission.
 - Fail closed on unknown routing, a duplicate, an unreadable relation, a missing approval, or a read-back mismatch.

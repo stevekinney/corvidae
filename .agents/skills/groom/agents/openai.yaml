@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Groom'
+  short_description: 'Groom COR Backlog issues until they meet the Definition of Ready'
+  default_prompt: 'Use $groom to groom the COR Backlog: set missing priorities and labels with Jev, move the issues that pass to Ready, rewrite the ones that fail, and ask me only what an issue cannot answer.'

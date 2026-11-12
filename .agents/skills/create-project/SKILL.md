@@ -28,8 +28,8 @@ Read [the Linear policy](../chef/references/linear-policy.md) first: it owns rou
    - Create the project and its milestones with the Linear MCP tools `save_project` and `save_milestone`, loaded with `ToolSearch`. Leave the project in Backlog.
    - Create each issue with `bun scripts/chef/linear.ts create --team COR --project <id> --title "<title>" --file <md> --label "<Work Type>"`. Leave every issue in Backlog.
    - Set each relation with `bun scripts/chef/linear.ts block <ID> --by <BLOCKER>`.
-   - Move the project with `bun scripts/chef/linear.ts project-state <project> Ready` only when the project Definition of Ready holds. Move no issue to Ready here: `/chef` promotes each one against its own Definition of Ready.
-   - Assign to the owner; never use the Linear `delegate` field. Set a priority or estimate only when the owner gave one.
+   - Move the project with `bun scripts/chef/linear.ts project-state <project> Ready` only when the project Definition of Ready holds. Move no issue to Ready by hand: run `bun scripts/chef/groom.ts --issue <ID> …` on the new issues, which sets each priority the owner did not give, adds the labels, and promotes each issue that meets its Definition of Ready.
+   - Never use the Linear `delegate` field.
 
 ## Failure handling
 
