@@ -46,3 +46,13 @@ Changed defaults the coordinator should capture in Interborough: every Button on
 ## Brief 03 part B result
 
 Done: Callout is the notice (progress snippet, onDismiss/dismissLabel, inline action wraps only when it cannot fit); choice cards (muted rest border, centred label, grid-auto-rows 1fr); drawer sheet header (12px grabber, 28px close, 44px ::after); spinner (track border-control, arc >= quarter); citation (24px hit area, 2px ring, radius-sm); hit areas converted: sortable-list handle, breadcrumbs back, toast action, choice-grid-item sm. Not done: app-bar icon actions, error-state and restart-state summaries, number-input stepper, carousel dot, tabs collapse select (left: painted 44 full-width), full-width rows and docked/modal/tool-call-panel buttons (design paints 44 on purpose). Tests per touched dir: exit 0.
+
+## Brief 03 part A result
+
+HEAD 53e6db86b9c65c08018a5df4eaf648f1644ed174 (one commit). Tests: `cd components/cinder && bun ../../scripts/bun-test.ts --conditions browser --conditions svelte src/components/approval-card src/components/code-block` exit 0 (305 pass); prettier --check on both directories passes. Not run: turbo, lint, typecheck, lint:root, no visual capture.
+
+Done: badge 13px (selector outranks Badge sm), beside the title and wrapping to the line under it (column/order rules removed); row command is CodeBlock; Add a note moved into the decision action row as a muted quiet control; decision-tools row hidden when empty (countdown only); action row margin gives space-3 under metadata (decision and row); negative-margin Why hack removed; command wraps with overflow-wrap break-word and each flag is an atomic inline-block (plain and highlighted; verified in Chromium: flags never split); Copy: transparent at rest, centred on first line (translate), coarse size overrides removed so Button pseudo-element hit area adds no layout; floating strip uses the code surface; Writing label inside padding. Light surface: the command panel outdents by its own padding (approval-card command, decision space-2, row space-1) so text sits on the label column; Shiki contrast forbids an inset fill.
+
+Not verified visually: Copy centring, hit area clipped by the block edge on tight padding, README/schema regeneration diffs (generator output, included). Scroller reserve stays a margin (scrollport shrinks), not padding.
+
+Changed defaults: approval card command panel (outdent), Add a note (muted, in action row), code block wrap, floating Copy.
