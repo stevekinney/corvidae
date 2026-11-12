@@ -144,7 +144,7 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `env` | `string`[] | no | — | Environment variable names only. Values are ignored if accidentally supplied as `NAME=value`. |
 | `expiresAt` | `string` | no | — | Optional ISO timestamp after which a pending approval is treated as expired. |
 | `eyebrow` | `string` | no | — | The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. |
-| `facts` | { label: `string`; monospace?: `boolean`; value: `string` }[] | no | — | Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself without adding repeated visible label rows. |
+| `facts` | { label: `string`; monospace?: `boolean`; value: `string` }[] | no | — | Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself. |
 | `failure` | { detail?: `string`; summary: `string` } | no | — | Why the last answer did not go through, written as a red-toned inline message below the consequence. Nothing was decided, so Deny and Approve stay live; Approve is the retry. |
 | `footnote` | `string` | no | — | A line of text written under the buttons while the approval is pending, such as what happens once you decide. |
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the card title; section headings render one level deeper. Default `3`. |
@@ -154,7 +154,7 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `notice` | `string` | no | — | A notice written beneath a read-only approval, such as why it expired or what happened elsewhere. Without one, an approval that passed its `expiresAt` says when it expired. |
 | `operation` | { argsPreview?: `unknown`; command: `string`; filesTouched?: `string`[]; kind: `"command"` } \| { argsPreview?: `unknown`; filesTouched: `string`[]; kind: `"file-write"` } \| { argsPreview?: `unknown`; diff: `string`; filesTouched?: `string`[]; kind: `"patch"` } \| { argsPreview?: `unknown`; filesTouched?: `string`[]; kind: `"other"` } | yes | — | Operation details shown to the approver. |
 | `outcomeLabel` | `string` | no | — | Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request's question is then the sentence beneath, with no tool named. |
-| `pauseSentence` | `string` | no | — | Shared approval context accepted by callers; the compact `decision` layout does not repeat a generic pause sentence already represented by the surrounding transcript. |
+| `pauseSentence` | `string` | no | — | Shared approval context accepted by callers; the compact decision layout does not repeat a generic pause sentence. |
 | `policyVersion` | `string` | yes | — | Policy version that produced the approval request. |
 | `question` | `string` | no | — | The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. |
 | `rememberScope` | `string` | no | — | Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to Always. |
@@ -176,6 +176,7 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `view` | `"fields"` \| `"json"` | no | `"fields"` | Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch can govern every payload on a page. Default `fields`. |
 | `why` | `string` | no | — | Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". |
 | `context` | `(opaque)` | no | — | A line of context written above the question, such as "Test chat, this runs for real". Not expressible in JSON Schema; see the component types for the signature. |
+| `onAskAgain` | `(opaque)` | no | — | Requests a fresh approval after this one has expired in the decision layout. Not expressible in JSON Schema; see the component types for the signature. |
 | `onResolve` | `(opaque)` | no | — | Called for approve, approve-with-edits, and deny with the complete resolution payload. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
@@ -184,7 +185,8 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-code-block-padding`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents

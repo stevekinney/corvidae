@@ -353,7 +353,7 @@ const schema = {
         required: ['label', 'value'],
       },
       description:
-        'Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself without repeated visible label rows.',
+        'Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself.',
     },
     approveLabel: {
       type: 'string',

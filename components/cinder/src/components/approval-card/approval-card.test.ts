@@ -1316,7 +1316,11 @@ describe('ApprovalCard row layout', () => {
     expect(
       squash(container.querySelector('.cinder-approval-card__input-toggle')?.textContent),
     ).toBe('Input Order ID 4471, Amount $42.00, Reason Arrived damaged');
-    expect(container.querySelector('.cinder-approval-card__command')).not.toBeNull();
+    // The row draws its command as the same CodeBlock the decision layout does.
+    expect(
+      container.querySelector('.cinder-approval-card__command .cinder-code-block--wrap'),
+    ).not.toBeNull();
+    expect(container.querySelector('pre.cinder-approval-card__command')).toBeNull();
     expect(getByRole('button', { name: 'Add a note' })).not.toBeNull();
     expect(container.querySelector('.cinder-approval-card__details')).toBeNull();
   });

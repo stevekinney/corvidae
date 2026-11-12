@@ -802,22 +802,30 @@
     flex: 1 1 0;
   }
 
-  /* "Add a note" is a link in the accent colour, not a button. */
+  /* The action row sits one token under the row's metadata: the body gap plus this margin. */
+  .cinder-approval-card--row .cinder-approval-card__row-actions {
+    margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-1));
+  }
+
+  /* "Add a note" is a quiet control in the action row: muted text, no face, painted at text
+   * height and vertically centred against the buttons. */
   .cinder-approval-card__note-toggle {
     appearance: none;
+    flex: none;
+    align-self: center;
     min-block-size: 24px;
     padding: 0;
     border: 0;
     border-radius: var(--cinder-radius-sm);
     background: none;
-    color: var(--cinder-accent-text);
+    color: var(--cinder-text-muted);
     font: inherit;
     cursor: pointer;
   }
 
   @media (hover: hover) {
     .cinder-approval-card__note-toggle:hover {
-      color: var(--cinder-accent-text-hover);
+      color: var(--cinder-text-default);
       text-decoration: underline;
       text-underline-offset: 0.15em;
     }
@@ -1055,10 +1063,20 @@
 
   /* The command is always open, so it is a code block that wraps: none of it hides behind a
      sideways scroll. */
+  /* One code block in every layout. Its panel reaches past the text column by exactly its own
+   * inline padding, so the command's first character sits on the label column instead of one
+   * padding inside it, in the light scheme where the panel and the card share a white surface. */
   .cinder-approval-card__command {
+    --cinder-code-block-padding: var(--cinder-space-2);
+
     min-inline-size: 0;
     margin: 0;
+    margin-inline: calc(-1 * var(--cinder-code-block-padding));
     text-align: start;
+  }
+
+  .cinder-approval-card--row .cinder-approval-card__command {
+    --cinder-code-block-padding: var(--cinder-space-1);
   }
 
   .cinder-approval-card__decision-tools {
@@ -1069,40 +1087,31 @@
     margin-block-end: 0;
   }
 
+  /* The countdown is the card's only caption row; with no countdown the row is not drawn. */
+  .cinder-approval-card__decision-tools:not(:has(*)) {
+    display: none;
+  }
+
   .cinder-approval-card__decision-tools .cinder-approval-card__countdown {
     margin: 0;
   }
 
-  .cinder-approval-card__irreversible {
+  /* The badge is never smaller than 12px, the smallest type on the card. It sits beside the title
+   * at the inline end; where the title's basis leaves it no room, the flex line wraps and it takes
+   * the line directly under the title, never above it. The extra class outranks the badge's own
+   * size rule. */
+  .cinder-approval-card .cinder-badge.cinder-approval-card__irreversible {
     font-size: var(--cinder-text-sm);
   }
 
-  .cinder-approval-card__decision-tools .cinder-approval-card__note-toggle {
-    flex: none;
-    margin-inline-start: auto;
-  }
-
-  /* The disclosure keeps a 44px coarse hit region, but the following status row should sit
-     against its visible label instead of inheriting a second dead band from the card stack. */
-  .cinder-approval-card__why ~ .cinder-approval-card__decision-tools {
-    margin-block-start: calc(-1 * var(--cinder-space-2));
+  /* Disclosures and "Add a note" are painted at text height (their 44px hit area is a
+   * pseudo-element), so the action row sits one token under the metadata row, not inside a second
+   * dead band: the stack's own gap plus this margin is --cinder-space-3. */
+  .cinder-approval-card--decision .cinder-approval-card__row-actions {
+    margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-2));
   }
 
   @container (inline-size < 24rem) {
-    .cinder-approval-card__decision-head:has(.cinder-approval-card__irreversible) {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: var(--cinder-space-1);
-    }
-
-    .cinder-approval-card__decision-head .cinder-approval-card__decision-title {
-      flex: initial;
-    }
-
-    .cinder-approval-card__decision-head .cinder-approval-card__irreversible {
-      order: -1;
-    }
-
     .cinder-approval-card--decision .cinder-approval-card__row-actions .cinder-button {
       line-height: var(--cinder-leading-tight);
     }
@@ -1435,16 +1444,6 @@
     .cinder-approval-card__input-pairs {
       overflow: visible;
       white-space: normal;
-    }
-
-    .cinder-approval-card__note-toggle {
-      flex: 1 1 100%;
-      text-align: start;
-    }
-
-    .cinder-approval-card__decision-tools .cinder-approval-card__note-toggle {
-      flex: 0 1 auto;
-      margin-inline-start: auto;
     }
 
     /* The status badge sits above the question, in the column beside the risk glyph, so the

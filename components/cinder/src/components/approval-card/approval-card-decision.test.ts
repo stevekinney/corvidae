@@ -156,16 +156,12 @@ describe('ApprovalCard decision layout', () => {
 
   test('offers Add a note, then Deny as secondary on the left and the named primary on the right', () => {
     const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
-    const labels = [
-      ...Array.from(
-        container.querySelectorAll('.cinder-approval-card__decision-tools button'),
-        (button) => squash(button.textContent),
-      ),
-      ...Array.from(
-        container.querySelectorAll('.cinder-approval-card__row-actions button'),
-        (button) => squash(button.textContent),
-      ),
-    ];
+    // "Add a note" is a quiet control in the action row, not a second caption row.
+    expect(container.querySelector('.cinder-approval-card__decision-tools button')).toBeNull();
+    const labels = Array.from(
+      container.querySelectorAll('.cinder-approval-card__row-actions button'),
+      (button) => squash(button.textContent),
+    );
 
     expect(labels).toEqual(['Add a note', 'Deny', 'Refund $42.00']);
     expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
@@ -682,9 +678,43 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).toMatch(
       /\.cinder-approval-card__input-toggle,\s*\.cinder-approval-card__said-toggle\s*\{[\s\S]*?padding-block:\s*var\(--cinder-space-0-5\);/,
     );
-    expect(css).toMatch(
-      /\.cinder-approval-card__why ~ \.cinder-approval-card__decision-tools \{[^}]*margin-block-start:\s*calc\(-1 \* var\(--cinder-space-2\)\)/s,
+    // No negative margin pulls the status row up: the toggles are painted at text height.
+    expect(css).not.toMatch(/__why ~ \.cinder-approval-card__decision-tools/);
+  });
+
+  test('the action row sits one --cinder-space-3 under the metadata row in both layouts', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
     );
+    expect(css).toContain(
+      '.cinder-approval-card--decision .cinder-approval-card__row-actions { margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-2)); }',
+    );
+    expect(css).toContain(
+      '.cinder-approval-card--row .cinder-approval-card__row-actions { margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-1)); }',
+    );
+  });
+
+  test('the irreversible badge is at least 12px and is never moved above the title', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // Outranks the badge's own 10px `sm` size, which has an attribute selector.
+    expect(css).toContain(
+      '.cinder-approval-card .cinder-badge.cinder-approval-card__irreversible { font-size: var(--cinder-text-sm); }',
+    );
+    expect(css).not.toMatch(/__decision-head \.cinder-approval-card__irreversible \{ order:/);
+    expect(css).not.toMatch(/__decision-head:has\(\.cinder-approval-card__irreversible\)/);
+  });
+
+  test('the note toggle is a quiet control that no longer fills a line of its own', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(/__note-toggle \{[^}]*flex: none;[^}]*color: var\(--cinder-text-muted\);/);
+    expect(css).not.toMatch(/__note-toggle \{ flex: 1 1 100%/);
   });
 
   // C#14 (chat stress sweep): at 320 the label column left a long tool identifier a few

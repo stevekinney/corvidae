@@ -27,7 +27,9 @@
   import {
     annotationToneClass,
     decorateHighlightedLines,
+    keepFlagsWhole,
     markNumericTokens,
+    splitFlags,
     lineToneClass,
   } from './code-block-lines.ts';
   import type { CodeBlockAnnotation, CodeBlockProps } from './code-block.types.ts';
@@ -183,7 +185,9 @@
       ></pre>
   {:else}
     <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
-        >{code}{#if streaming}{@render caret()}{/if}</code
+        >{#if wrap}{#each splitFlags(code) as run, index (index)}{#if run.flag}<span
+                class="cinder-code-block__flag">{run.text}</span
+              >{:else}{run.text}{/if}{/each}{:else}{code}{/if}{#if streaming}{@render caret()}{/if}</code
       ></pre>
   {/if}
 {/snippet}
@@ -253,6 +257,7 @@
               ? decorateHighlightedLines(annotations, (found) => (lined = found))
               : noopScrollFadeAttachment}
             {@attach markNumericTokens}
+            {@attach wrap ? keepFlagsWhole : noopScrollFadeAttachment}
           >
             {@html highlighted}
           </div>

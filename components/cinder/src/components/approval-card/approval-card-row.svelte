@@ -93,6 +93,7 @@
   import Button from '../button/button.svelte';
   import Badge from '../badge/badge.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
+  import CodeBlock from '../code-block/code-block.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
@@ -364,7 +365,15 @@
       {/if}
     {:else}
       {#if command !== undefined}
-        <pre class="cinder-approval-card__command" dir="ltr"><code>{command}</code></pre>
+        <div class="cinder-approval-card__command" dir="ltr">
+          <CodeBlock
+            code={command}
+            language="shell"
+            languageLabelVisible={false}
+            copyable={false}
+            wrap
+          />
+        </div>
       {/if}
 
       {#if hasInput}
