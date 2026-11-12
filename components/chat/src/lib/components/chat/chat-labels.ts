@@ -31,6 +31,8 @@ export type ChatLabels = {
   yes: string;
   no: string;
   youAnswered: string;
+  /** The badge above an open question in the transcript, matching the dock's. */
+  needsYou: string;
   change: string;
   yourOwnAnswer: string;
   chooseAnswerPlaceholder: string;
@@ -131,6 +133,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   yes: 'Yes',
   no: 'No',
   youAnswered: 'You answered',
+  needsYou: 'Needs you',
   change: 'Change',
   yourOwnAnswer: 'Your own answer',
   chooseAnswerPlaceholder: 'Type your answer',

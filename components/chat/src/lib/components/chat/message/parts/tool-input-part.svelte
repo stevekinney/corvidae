@@ -13,7 +13,7 @@
 </script>
 
 <script lang="ts">
-  import { validateSchemaFormValue } from '@lostgradient/cinder';
+  import { CircleAlert, validateSchemaFormValue } from '@lostgradient/cinder';
   import ChatQuestion from '../../question/chat-question.svelte';
   import { holdsSecret, issuesOfRejection, recordAnswer } from '../../question/question-answer.ts';
   import type { ChatQuestionIssue } from '../../question/question-answer.ts';
@@ -152,6 +152,13 @@
        falls back to naming the tool. Pending docked questions render only in the shared dock, so
        the transcript never repeats the active or queued prompt. -->
   <section class="chat-tool-input" aria-labelledby={headingId} data-cinder-tool-input>
+    {#if !answered && !resolved && onInputSubmit !== undefined}
+      <!-- The same header as the dock's: the badge, then the question. -->
+      <span class="chat-tool-input-needs" data-chat-question-needs>
+        <CircleAlert class="cinder-icon-sm" aria-hidden="true" />
+        {resolveChatLabels(labels).needsYou}
+      </span>
+    {/if}
     <h4 id={headingId} class="chat-tool-input-heading" dir="auto">{heading}</h4>
     {#if answered || onInputSubmit !== undefined}
       <ChatQuestion
@@ -178,6 +185,19 @@
     display: grid;
     gap: var(--cinder-space-2);
     inline-size: 100%;
+  }
+
+  .chat-tool-input-needs {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    gap: var(--cinder-space-1-5, 0.375rem);
+    padding: var(--cinder-space-0-5, 0.125rem) var(--cinder-space-2);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-weight: var(--cinder-font-semibold);
   }
 
   /* The question: the one heading of the request, in the reading size and weight. */
