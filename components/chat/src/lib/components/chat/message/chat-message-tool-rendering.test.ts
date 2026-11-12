@@ -784,13 +784,13 @@ describe('ChatMessage — tool-call rendering', () => {
 
       // The header is the step count, the tools and the total time, one field each and no
       // separator character between them.
-      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 steps lookup-order ×2 0.7s');
+      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 steps lookup-order ×2 700ms');
       expect(toggle.textContent).not.toContain(String.fromCodePoint(0xb7));
       expect(
         Array.from(toggle.querySelectorAll('.chat-tool-call-summary > *'), (field) =>
           field.textContent?.trim(),
         ),
-      ).toEqual(['2 steps', 'lookup-order ×2', '0.7s']);
+      ).toEqual(['2 steps', 'lookup-order ×2', '700ms']);
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
       expect(list.hidden).toBe(true);
 
@@ -800,8 +800,8 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(list.hidden).toBe(false);
       const rows = callRows(container);
       expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-        'lookup-order 4471 → $42.10, delivered Monday 0.4s',
-        'lookup-order 4402 → $18.00, refunded Oct 12 0.3s',
+        'lookup-order 4471 → $42.10, delivered Monday 400ms',
+        'lookup-order 4402 → $18.00, refunded Oct 12 300ms',
       ]);
 
       await clickAndFlush(rows[1]!);
@@ -1086,7 +1086,7 @@ describe('ChatMessage — tool-call rendering', () => {
         'Compared recent orders…',
       );
       expect(done.querySelector('.chat-tool-call-name')?.textContent).toBe('lookup_order');
-      expect(done.querySelector('.chat-tool-call-duration')?.textContent).toBe('0.4s');
+      expect(done.querySelector('.chat-tool-call-duration')?.textContent).toBe('400ms');
       // The pending call has no answer, so the host words it in the present tense.
       expect(rows[1]!.querySelector('.chat-tool-call-label')?.textContent).toBe(
         'Comparing recent orders…',
@@ -1178,7 +1178,7 @@ describe('ChatMessage — tool-call rendering', () => {
       const rows = callRows(container);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Compared recent orders… lookup_order ×20 6.1s',
+        'Compared recent orders… lookup_order ×20 6s',
       );
       expect(
         container
@@ -1187,7 +1187,7 @@ describe('ChatMessage — tool-call rendering', () => {
       ).toBe('20');
       // The group still counts every step, and its navigation row still counts every call.
       expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        '20 steps Compared recent orders… lookup_order ×20 6.1s',
+        '20 steps Compared recent orders… lookup_order ×20 6s',
       );
       expect(
         container

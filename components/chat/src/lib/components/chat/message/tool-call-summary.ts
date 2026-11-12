@@ -1,4 +1,4 @@
-import type { ApprovalState } from '@lostgradient/cinder';
+import { formatDuration, type ApprovalState } from '@lostgradient/cinder';
 import { stringify } from '../../../utilities/stringify.ts';
 import { toolResultText } from '../../../utilities/tool-result-text.ts';
 import type { ToolCallPair } from '../conversation-model.ts';
@@ -186,27 +186,16 @@ export function toolCallFailure(pair: ToolCallPair, fallback: string): ToolCallF
   };
 }
 
-/** Formats the time a step has been running, in whole seconds: `0s`, `12s`, or `1m 5s`. */
+/** Formats the time a step has been running in whole seconds: `0s`, `12s`, `1m 5s`, `1h 45m`. */
 export function formatToolCallElapsed(milliseconds: number): string {
-  const seconds = Math.floor(Math.max(0, milliseconds) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  return seconds % 60 === 0 ? `${minutes}m` : `${minutes}m ${seconds % 60}s`;
+  const wholeSeconds = Math.floor(Math.max(0, milliseconds) / 1000);
+  return wholeSeconds === 0 ? '0s' : formatDuration(wholeSeconds * 1000);
 }
 
 /** A running step's title ends in an ellipsis, as a sentence still under way does. */
 export function runningStepTitle(title: string): string {
   const trimmed = title.trimEnd();
   return trimmed.endsWith('…') ? trimmed : `${trimmed.replace(/\.+$/u, '')}…`;
-}
-
-/** Formats a duration in milliseconds as `0.4s`, `12s`, or `1m 5s`. */
-export function formatToolCallDuration(milliseconds: number): string {
-  if (milliseconds < 10_000) return `${(Math.max(0, milliseconds) / 1000).toFixed(1)}s`;
-  const seconds = Math.round(milliseconds / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  return seconds % 60 === 0 ? `${minutes}m` : `${minutes}m ${seconds % 60}s`;
 }
 
 /** The tool names in first-use order, with a count when a tool ran more than once. */
@@ -259,7 +248,7 @@ export type ToolCallSummaryParts = {
   problems: string[];
   /** The status each entry of `problems` counts, in the same order, so the header can tone it. */
   problemStatuses: ToolCallRowStatus[];
-  /** The total time, when every call has one ("0.7s"). */
+  /** The total time, when every call has one ("700ms"). */
   duration: string | undefined;
 };
 
@@ -303,7 +292,7 @@ export function toolCallSummaryParts(
     tools: toolNamesSegment(pairs.filter((_pair, index) => !asking(statuses[index]))),
     problems,
     problemStatuses,
-    duration: total === undefined ? undefined : formatToolCallDuration(total),
+    duration: total === undefined ? undefined : formatDuration(total),
   };
 }
 

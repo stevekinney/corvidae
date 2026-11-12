@@ -335,6 +335,8 @@ export type {
   TimeZoneLabelOptions,
 } from './utilities/format-date.ts';
 
+export { formatDuration } from './utilities/format-duration.ts';
+
 export {
   THEME_CHANGING_ATTRIBUTE,
   guardThemeTransitions,

@@ -3,7 +3,6 @@ import { describe, expect, test } from 'bun:test';
 import type { ToolCallPair } from '../conversation-model.ts';
 import {
   foldRepeatedSteps,
-  formatToolCallDuration,
   formatToolCallElapsed,
   nextToolCallApprovalDeadline,
   REPEATED_STEP_MINIMUM,
@@ -47,21 +46,6 @@ describe('toolCallResultLine', () => {
 
   test('has no line for a success without content', () => {
     expect(toolCallResultLine(pairWithResult({ outcome: 'success' }))).toBeUndefined();
-  });
-});
-
-describe('formatToolCallDuration', () => {
-  test('reads sub-ten-second durations with one decimal', () => {
-    expect(formatToolCallDuration(400)).toBe('0.4s');
-  });
-
-  test('reads durations from ten seconds up as whole seconds', () => {
-    expect(formatToolCallDuration(12_400)).toBe('12s');
-  });
-
-  test('reads durations of a minute or more as minutes and seconds', () => {
-    expect(formatToolCallDuration(65_000)).toBe('1m 5s');
-    expect(formatToolCallDuration(120_000)).toBe('2m');
   });
 });
 
@@ -200,7 +184,7 @@ describe('toolCallSummaryParts', () => {
       toolCallSummaryParts([pair], ['succeeded'], [400], (_count, _status) => '', [
         'Compared recent orders…',
       ]),
-    ).toMatchObject({ description: 'Compared recent orders…', tools: 'read', duration: '0.4s' });
+    ).toMatchObject({ description: 'Compared recent orders…', tools: 'read', duration: '400ms' });
   });
   const lookup = { call: { id: 'a', name: 'lookup-order' } } as ToolCallPair;
   const refund = { call: { id: 'b', name: 'issue-refund' } } as ToolCallPair;
@@ -213,7 +197,7 @@ describe('toolCallSummaryParts', () => {
     );
     expect(parts.tools).toBe('lookup-order ×2');
     expect(parts.problems).toEqual(['1 failed', '1 waiting for approval']);
-    expect(parts.duration).toBe('0.8s');
+    expect(parts.duration).toBe('800ms');
   });
 
   test('has no time while a call is still running, and no problems when all succeeded', () => {
@@ -378,6 +362,7 @@ describe('formatToolCallElapsed (COR-2283, R1)', () => {
     expect(formatToolCallElapsed(65_000)).toBe('1m 5s');
     expect(formatToolCallElapsed(120_000)).toBe('2m');
     expect(formatToolCallElapsed(-20)).toBe('0s');
+    expect(formatToolCallElapsed(105 * 60_000)).toBe('1h 45m');
   });
 });
 

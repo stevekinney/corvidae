@@ -14,6 +14,7 @@
     Button,
     Copy,
     CopyButton,
+    formatDuration,
     Spinner,
     Tooltip,
     type ApprovalState,
@@ -28,7 +29,6 @@
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import {
     foldRepeatedSteps,
-    formatToolCallDuration,
     formatToolCallElapsed,
     isProblemStatus,
     nextToolCallApprovalDeadline,
@@ -533,7 +533,7 @@
                 <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
               {/if}
               {#if row.duration !== undefined}
-                <span class="chat-tool-call-duration">{formatToolCallDuration(row.duration)}</span>
+                <span class="chat-tool-call-duration">{formatDuration(row.duration)}</span>
               {/if}
             </button>
             <div id={row.detailsId} class="chat-tool-call-details" hidden={!open}>
@@ -566,7 +566,7 @@
             <code class="chat-tool-call-name">{first.pair.call.name} ×{step.rows.length}</code>
             <span class="chat-tool-call-result"></span>
             {#if total !== undefined}
-              <span class="chat-tool-call-duration">{formatToolCallDuration(total)}</span>
+              <span class="chat-tool-call-duration">{formatDuration(total)}</span>
             {/if}
           </button>
           <div id={`${first.detailsId}-repeated`} class="chat-tool-call-details" hidden={!open}>
