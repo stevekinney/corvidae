@@ -827,7 +827,9 @@ export async function terminateProcessGroup(processGroup: number): Promise<void>
 }
 
 /** Runs `script` through `sh -c` while holding the host lock and resolves to its exit code. */
-export async function runExclusively(options: RunExclusivelyOptions): Promise<number> {
+export async function runExclusively(input: RunExclusivelyOptions): Promise<number> {
+  // Snapshotted, so a caller that changes its options while the run waits cannot change the run.
+  const options = { ...input, ...(input.args === undefined ? {} : { args: [...input.args] }) };
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
   let lock: HeldHostLock | undefined;
   const environment = options.environment ?? rootScriptEnvironment();
@@ -984,15 +986,19 @@ export async function runInProcessGroup(
       : watchForOrphaning({
           ...watchOptions,
           ancestors,
-          onOrphaned: (gone) =>
+          onOrphaned: (gone) => {
+            // The session's end may have closed the pipes this process writes to; a failed write
+            // must not end the wrapper and leave its group running unwatched.
+            for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
             run.report(
               `the session that started this run is gone (pid ${gone} exited); the run ends after ${HANG_GUARD_MILLISECONDS / 1000} s of awake time unless it finishes first`,
-            ),
-          onExpired: () => {
-            run.report(
-              'ending the orphaned run: its session is gone and the hang guard has passed',
             );
+          },
+          onExpired: () => {
             forward('SIGTERM');
+            run.report(
+              'ended the orphaned run: its session is gone and the hang guard has passed',
+            );
           },
         });
   try {
