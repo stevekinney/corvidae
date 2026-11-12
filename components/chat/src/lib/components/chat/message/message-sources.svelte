@@ -355,12 +355,15 @@
     }
   }
 
-  @media (pointer: coarse) {
-    .chat-message-sources-link {
-      display: inline-flex;
-      align-items: center;
-      min-height: var(--cinder-touch-target-min);
-    }
+  .chat-message-sources-link {
+    position: relative;
+  }
+
+  .chat-message-sources-link::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -206,7 +206,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
-    min-height: var(--cinder-touch-target-min);
+    position: relative;
     padding: var(--cinder-space-1-5) var(--cinder-space-3);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
@@ -217,6 +217,14 @@
     box-shadow: var(--cinder-shadow-lg);
     cursor: pointer;
     animation: slide-up var(--cinder-duration-base) var(--cinder-ease-decelerate);
+  }
+
+  /* The painted pill stays compact; its 44px hit area is a pseudo-element that takes no layout. */
+  .chat-new-indicator::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 
   .chat-new-indicator:hover {

@@ -3159,7 +3159,8 @@
     display: inline-flex;
     align-items: center;
     max-inline-size: min(100%, 24rem);
-    min-block-size: var(--cinder-touch-target-min);
+    position: relative;
+    min-block-size: 2rem;
     padding: 0 var(--cinder-space-2);
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
@@ -3169,6 +3170,14 @@
     font: inherit;
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     text-align: start;
+  }
+
+  /* The painted action stays compact; its 44px hit area is a pseudo-element that takes no layout. */
+  .chat-artifact-action::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 
   .chat-artifact-action__label {

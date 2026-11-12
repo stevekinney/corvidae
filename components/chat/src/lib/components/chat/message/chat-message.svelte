@@ -1636,8 +1636,8 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-0-5);
+    position: relative;
     padding: var(--cinder-space-0-5) var(--cinder-space-1);
-    min-height: var(--cinder-touch-target-min);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-accent-text);
@@ -1648,6 +1648,14 @@
 
   .chat-message-expand:hover {
     text-decoration: underline;
+  }
+
+  /* The painted label stays compact; its 44px hit area is a pseudo-element that takes no layout. */
+  .chat-message-expand::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 
   /* The Sources control sits under the body, on its own line, and never widens the message. */
