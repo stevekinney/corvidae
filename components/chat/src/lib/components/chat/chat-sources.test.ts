@@ -157,7 +157,7 @@ describe('Chat — sourcesByMessageId', () => {
     expect(sourcesControl(container, 'user-1')).toBeNull();
   });
 
-  test('keeps transcript Sources in the metadata row before message actions', async () => {
+  test('puts transcript Sources under the prose, never between the time and the actions', async () => {
     const { container } = render(Chat, {
       id: 'sources-metadata-row',
       conversation: sourcedConversation(),
@@ -168,14 +168,21 @@ describe('Chat — sourcesByMessageId', () => {
 
     const article = messageArticle(container, 'assistant-a');
     const line = article.parentElement?.querySelector<HTMLElement>('.chat-message-line');
-    const sources = line?.querySelector<HTMLElement>('.chat-message-sources');
+    const sources = article.parentElement?.querySelector<HTMLElement>('.chat-message-sources');
     const actions = line?.querySelector<HTMLElement>('.chat-message-line-actions');
     expect(line).not.toBeNull();
     expect(sources).not.toBeNull();
-    expect(sources?.parentElement).toBe(line);
-    expect(sources?.compareDocumentPosition(actions!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    expect(line?.querySelector('.chat-message-sources')).toBeNull();
+    expect(sources?.parentElement).toBe(article.parentElement);
+    // Under the prose (after the article) and before the line, which keeps the time and actions.
+    expect(article.compareDocumentPosition(sources!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+    expect(sources?.compareDocumentPosition(line!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(line?.firstElementChild?.tagName).toBe('TIME');
+    expect(actions).not.toBeNull();
 
     await fireEvent.click(sourcesControl(container, 'assistant-a')!);
     await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());

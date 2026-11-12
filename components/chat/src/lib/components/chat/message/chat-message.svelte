@@ -851,19 +851,6 @@
     {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn}
       <time datetime={createdAtValue}>{formattedCreatedAt}</time>
     {/if}
-    {#if transcript && shownSources}
-      <div class="chat-message-sources" dir="ltr" bind:this={sourcesElement}>
-        <MessageSources
-          sources={shownSources}
-          presentation={sourcePresentation}
-          expanded={sourcesExpanded}
-          ontoggle={toggleSourcesExpanded}
-          listId={`${messageId}-sources`}
-          onCitationCloseComplete={completeSourceWithdrawal}
-          labels={messageLabels}
-        />
-      </div>
-    {/if}
     {#if !isPending && !streaming}
       <span class="chat-message-line-actions">
         {@render messageIconActions()}
@@ -923,7 +910,11 @@
 {/snippet}
 
 {#snippet retryConnectionAction()}
-  <RetryButton class="chat-turn-action" label={turnWords.retryNow} onclick={() => onRetryConnection?.(message.id)} />
+  <RetryButton
+    class="chat-turn-action"
+    label={turnWords.retryNow}
+    onclick={() => onRetryConnection?.(message.id)}
+  />
 {/snippet}
 
 <!-- Continue first, as the primary choice, and Discard beside it; each says in its accessible
@@ -1235,6 +1226,21 @@
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
          line again, and an empty one has none, because its row carries its time. -->
     {#if !isEditing && !systemRow && turnPresentation.line}
+      <!-- The sources sit under the prose, on their own block; the line below keeps only the time
+           and the actions, on one row. -->
+      {#if shownSources}
+        <div class="chat-message-sources" dir="ltr" bind:this={sourcesElement}>
+          <MessageSources
+            sources={shownSources}
+            presentation={sourcePresentation}
+            expanded={sourcesExpanded}
+            ontoggle={toggleSourcesExpanded}
+            listId={`${messageId}-sources`}
+            onCitationCloseComplete={completeSourceWithdrawal}
+            labels={messageLabels}
+          />
+        </div>
+      {/if}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
@@ -2058,19 +2064,19 @@
     border-radius: 0;
   }
 
-  /* Sources sit between the answer and its metadata/action line. The article's normal bottom
-   * padding is useful for boxed messages, but it creates a second full rhythm unit in the
-   * borderless transcript when sources are present. Keep the source-to-actions interval equal to
-   * the answer-to-sources interval without changing the content flow itself. */
-  .chat-message-wrapper[data-presentation='transcript'] .chat-message:has(.chat-message-sources) {
+  /* Sources sit under the answer, on their own block above the time and actions line. The
+   * article's normal bottom padding is useful for boxed messages, but it creates a second full
+   * rhythm unit in the borderless transcript when sources are present. */
+  .chat-message-wrapper[data-presentation='transcript']:has(> .chat-message-sources)
+    > .chat-message {
     padding-block-end: 0;
   }
 
   /* Markdown owns paragraph spacing in normal messages. In a transcript with a Sources control,
      that last paragraph margin is a redundant third rhythm unit before the separate 44px target;
      remove only the trailing margin while keeping the target rows disjoint. */
-  .chat-message-wrapper[data-presentation='transcript']
-    .chat-message:has(.chat-message-sources)
+  .chat-message-wrapper[data-presentation='transcript']:has(> .chat-message-sources)
+    > .chat-message
     :global(
       .message-content-preview :is(p, li, blockquote, h1, h2, h3, h4, h5, h6, dt, dd):last-child
     ) {
@@ -2130,18 +2136,6 @@
     align-items: center;
     direction: ltr;
     gap: var(--cinder-space-1);
-  }
-
-  /* Transcript sources share the metadata/action rhythm, while an expanded list occupies the
-   * next flex line instead of stretching the 44px control row. The display-contents wrapper keeps
-   * the existing MessageSources instance, focus return and withdrawal ownership intact. */
-  .chat-message-line > .chat-message-sources {
-    display: contents;
-  }
-
-  .chat-message-line > .chat-message-sources > :global(.chat-message-sources-list) {
-    flex-basis: 100%;
-    order: 10;
   }
 
   /* Message actions stay visible beside the timestamp. */

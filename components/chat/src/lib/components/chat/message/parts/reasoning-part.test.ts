@@ -290,12 +290,20 @@ describe('ReasoningPart — streaming state', () => {
     expect(contentEl?.getAttribute('aria-live')).toBeNull();
   });
 
-  test('shared busy indicator is present in the label when streaming', () => {
+  test('no status dot is drawn while streaming; the name still says in progress', () => {
     const { container } = render(ReasoningPart, {
       props: { part: makePart({ streaming: true }) },
     });
-    expect(container.querySelector('.chat-entry-frame__busy')).not.toBeNull();
-    expect(container.querySelectorAll('.chat-entry-frame__busy')).toHaveLength(1);
+    expect(container.querySelector('.chat-entry-frame__busy')).toBeNull();
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toContain('0 s');
+  });
+
+  test('leading whitespace is trimmed from the reasoning body', () => {
+    const { container } = render(ReasoningPart, {
+      props: { part: makePart({ content: '\n\n  Start here.' }), expanded: true },
+    });
+    // The text is the only pre-wrapped node, so no layout whitespace can lead it.
+    expect(container.querySelector('.chat-reasoning-text')?.textContent).toBe('Start here.');
   });
 
   test('shared busy indicator is absent when not streaming', () => {

@@ -96,6 +96,7 @@
     status={part.streaming ? `${elapsedSeconds} s` : undefined}
     triggerClass="chat-reasoning-toggle"
     busy={part.streaming}
+    busyIndicator={false}
     open={part.streaming || expanded}
     disabled={part.streaming}
     variant="flat"
@@ -114,7 +115,7 @@
           {/each}
         </ul>
       {/if}
-      {part.content}
+      <span class="chat-reasoning-text">{part.content.trimStart()}</span>
     </div>
   </EntryFrame>
 
@@ -142,7 +143,8 @@
     background: transparent;
   }
 
-  .chat-reasoning :global(.chat-entry-frame__trigger) {
+  /* Header and body start on the answer's text edge: no inline padding on either. */
+  .chat-reasoning :global(.chat-entry-frame-shell .chat-entry-frame__trigger) {
     min-block-size: 1.5rem;
     padding-block: 0;
     padding-inline: 0;
@@ -162,12 +164,16 @@
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     color: var(--cinder-chat-reasoning-text);
     line-height: var(--cinder-leading-relaxed, 1.625);
-    white-space: pre-wrap;
     word-break: break-word;
   }
 
+  /* The text keeps the model's line breaks; the markup around it adds no leading space. */
+  .chat-reasoning-text {
+    white-space: pre-wrap;
+  }
+
   @media (any-pointer: coarse) {
-    .chat-reasoning :global(.chat-entry-frame__trigger) {
+    .chat-reasoning :global(.chat-entry-frame-shell .chat-entry-frame__trigger) {
       min-block-size: var(--cinder-touch-target-min);
       padding-block: var(--cinder-space-2);
     }

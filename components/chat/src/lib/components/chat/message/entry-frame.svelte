@@ -12,6 +12,7 @@
     status,
     triggerClass,
     busy = false,
+    busyIndicator = true,
     open = $bindable(false),
     disabled = false,
     onToggle,
@@ -26,6 +27,8 @@
     status?: string | undefined;
     triggerClass?: string | undefined;
     busy?: boolean;
+    /** Draws the pulsing dot while `busy`; the accessible name still says in progress. */
+    busyIndicator?: boolean;
     open?: boolean;
     disabled?: boolean;
     onToggle?: ((open: boolean) => void) | undefined;
@@ -59,7 +62,7 @@
   >
     {@render children()}
   </Collapsible>
-  {#if busy}<span class="chat-entry-frame__busy" aria-hidden="true"></span>{/if}
+  {#if busy && busyIndicator}<span class="chat-entry-frame__busy" aria-hidden="true"></span>{/if}
   {#if status}<span class="chat-entry-frame__status" aria-hidden="true">{status}</span>{/if}
 </div>
 
