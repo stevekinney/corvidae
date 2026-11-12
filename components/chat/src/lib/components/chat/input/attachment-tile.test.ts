@@ -30,7 +30,12 @@ describe('splitFileName', () => {
       new URL('./chat-attachment-preview.svelte', import.meta.url),
     ).text();
     expect(source).toMatch(/bind:this=\{nameElement\}/);
-    expect(source).toMatch(/middleEllipsisFileName\(\s*fullName,\s*element\.clientWidth/s);
+    // The width is the box's fractional width rounded down: a rounded-up `clientWidth` lets a name
+    // that fits 218px into a 217.7px box, and on a phone that name wraps.
+    expect(source).toMatch(
+      /middleEllipsisFileName\(\s*fullName,[^)]*Math\.floor\(element\.getBoundingClientRect\(\)\.width\)/s,
+    );
+    expect(source).not.toMatch(/element\.clientWidth/);
   });
 
   test('preserves a short name and extension while fitting a long name in the middle', () => {

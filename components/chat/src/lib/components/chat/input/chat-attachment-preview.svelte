@@ -55,7 +55,9 @@
       context.font = `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
       displayName = middleEllipsisFileName(
         fullName,
-        element.clientWidth,
+        // Whole pixels rounded down: `clientWidth` rounds to the nearest pixel, so a name measured to
+        // fit 218px in a 217.7px box would wrap on a phone, where the name may wrap.
+        Math.floor(element.getBoundingClientRect().width),
         (value) => context.measureText(value).width,
       );
     };
