@@ -8,7 +8,7 @@
     display: inline-block;
     width: var(--cinder-spinner-size, 1.5rem);
     height: var(--cinder-spinner-size, 1.5rem);
-    border: 2px solid var(--cinder-spinner-track, var(--cinder-border-control));
+    border: 2px solid var(--cinder-spinner-track, var(--cinder-border-contrast));
     border-top-color: var(--cinder-spinner-indicator, currentColor);
     border-radius: 50%;
     vertical-align: -0.125em;
@@ -36,7 +36,7 @@
   }
 
   .cinder-spinner__arc-track {
-    stroke: var(--cinder-spinner-track, var(--cinder-border-control));
+    stroke: var(--cinder-spinner-track, var(--cinder-border-contrast));
   }
 
   .cinder-spinner__arc-indicator {

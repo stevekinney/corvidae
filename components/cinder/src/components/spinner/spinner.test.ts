@@ -116,10 +116,10 @@ describe('Spinner', () => {
     expect(spinner?.getAttribute('aria-label')).toBe('Loading data');
   });
 
-  test('the track is the control border (3:1 against the page) and the arc never shrinks below a quarter turn', async () => {
+  test('the track is the contrast-tier border (3:1 against the page) and the arc never shrinks below a quarter turn', async () => {
     const css = await Bun.file(new URL('./spinner.css', import.meta.url)).text();
     expect(css).not.toContain('currentColor 25%');
-    expect(css).toContain('var(--cinder-spinner-track, var(--cinder-border-control))');
+    expect(css).toContain('var(--cinder-spinner-track, var(--cinder-border-contrast))');
     const circumference = 56.55;
     const from = Number(
       /@keyframes cinder-spinner-arc \{[^}]*from \{\s*stroke-dashoffset: (\d+)/su.exec(css)?.[1],
