@@ -81,10 +81,20 @@
 {/if}
 
 <style>
+  /* The controls float over the transcript's bottom edge, above the composer, and take no height
+   * of their own: no band is reserved, so no line of the transcript is ever sliced by one. */
   .chat-jump-dock {
+    position: absolute;
+    inset-block-end: calc(100% + var(--cinder-space-2));
+    inset-inline: 0;
+    z-index: 1;
     display: flex;
     justify-content: center;
-    padding-inline: var(--cinder-chat-timeline-padding);
+    pointer-events: none;
+  }
+
+  .chat-jump-dock > * {
+    pointer-events: auto;
   }
 
   .chat-jump-dock[data-jump-latest] {
@@ -92,6 +102,7 @@
   }
 
   .chat-jump-dock[data-inline] {
+    position: static;
     padding-inline: 0;
   }
 
@@ -103,15 +114,15 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  /* Jump to Latest Button
-   * Uses --cinder-touch-target-min (44px) for WCAG 2.2 AA touch target compliance */
+  /* Jump to Latest Button: painted 32 px; the hit area reaches 44 px (WCAG 2.2 AA) through an
+   * invisible ::before, so it never changes the layout. */
   .chat-jump-button {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--cinder-touch-target-min);
-    height: var(--cinder-touch-target-min);
+    width: 2rem;
+    height: 2rem;
     padding: 0;
     /* --cinder-surface-raised does not exist in tokens; use --cinder-surface and
      * lean on the shadow + border for elevation against the inset chat timeline. */
@@ -127,6 +138,12 @@
       opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
       transform var(--cinder-duration-fast) var(--cinder-ease-standard);
     animation: jump-button-enter var(--cinder-duration-base) var(--cinder-ease-decelerate);
+  }
+
+  .chat-jump-button::before {
+    content: '';
+    position: absolute;
+    inset: calc((2rem - var(--cinder-touch-target-min)) / 2);
   }
 
   .chat-jump-button > :global(svg) {
@@ -235,36 +252,6 @@
     }
 
     .chat-new-indicator {
-      animation: none;
-    }
-  }
-
-  /* Responsive adjustments */
-  @container (max-width: 480px) {
-    .chat-jump-dock {
-      padding-inline: var(--cinder-chat-narrow-padding);
-    }
-  }
-
-  /* On a phone the controls never float over the transcript, where they would cover the end of a
-   * waiting approval's buttons: each takes its own line at the composer's top edge, outside the
-   * transcript (C#7). */
-  @container (max-width: 30rem) {
-    .chat-jump-button {
-      position: relative;
-      bottom: auto;
-      right: auto;
-      margin: 0 var(--cinder-space-3) var(--cinder-space-1) auto;
-    }
-
-    .chat-new-indicator {
-      position: relative;
-      bottom: auto;
-      left: auto;
-      display: flex;
-      inline-size: fit-content;
-      margin: 0 auto var(--cinder-space-1);
-      transform: none;
       animation: none;
     }
   }

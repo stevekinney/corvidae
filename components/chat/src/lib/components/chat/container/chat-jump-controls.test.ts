@@ -16,17 +16,6 @@ const { default: ChatJumpControls } = await import('./chat-jump-controls.svelte'
 
 afterEach(() => document.body.replaceChildren());
 
-function containerBlock(source: string, query: string): string {
-  const start = source.indexOf(query);
-  if (start === -1) throw new Error(`container query not found: ${query}`);
-  let depth = 0;
-  for (let index = source.indexOf('{', start); index < source.length; index++) {
-    if (source[index] === '{') depth++;
-    else if (source[index] === '}' && --depth === 0) return source.slice(start, index + 1);
-  }
-  throw new Error(`container query not closed: ${query}`);
-}
-
 describe('Jump to latest on a phone', () => {
   test('forwards host labels to the mounted unread-message control', () => {
     const target = document.createElement('div');
@@ -54,12 +43,12 @@ describe('Jump to latest on a phone', () => {
     unmount(instance);
   });
 
-  test('takes its own line at the composer edge instead of floating over the transcript', () => {
-    const narrow = containerBlock(controls, '@container (max-width: 30rem) {');
-    expect(narrow).toMatch(/\.chat-jump-button\s*\{[^}]*position: relative;[^}]*bottom: auto;/);
-    expect(narrow).toMatch(
-      /\.chat-new-indicator\s*\{[^}]*position: relative;[^}]*transform: none;/,
-    );
+  test('floats over the transcript without a band, painted 32 px with a 44 px hit area', () => {
+    expect(controls).toMatch(/\.chat-jump-dock\s*\{[^}]*position: absolute;[^}]*inset-block-end: calc\(100%/);
+    expect(controls).toMatch(/\.chat-jump-button\s*\{[^}]*width: 2rem;[^}]*height: 2rem;/);
+    expect(controls).toMatch(/\.chat-jump-button::before\s*\{[^}]*position: absolute;[^}]*inset: calc\(/);
+    // Nothing moves it back into the flow on a phone, where it would reserve a strip.
+    expect(controls).not.toContain('@container (max-width: 30rem)');
   });
 
   test('stays hidden while the transcript sits where a waiting item lifted it', () => {
