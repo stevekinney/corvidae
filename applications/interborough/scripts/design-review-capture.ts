@@ -42,7 +42,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { withHostSlots } from '../../../scripts/host-slots.ts';
+import { withHostSlots, withMemoryAdmission, type HostSlots } from '../../../scripts/host-slots.ts';
+import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
 import { auditGeometry } from './design-review-geometry.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
@@ -283,5 +284,33 @@ export async function captureDesignReview(
   return captures > 0 ? 0 : 1;
 }
 
-// The specifications run one Playwright worker, so one browser at a time: one host slot.
-if (import.meta.main) process.exitCode = await withHostSlots(1, () => captureDesignReview());
+/**
+ * {@link hostEnvironment}, running its commands under the run's host slots: in a process group of
+ * their own, recorded in the slots, with the slots' environment, so a Playwright run and the server
+ * it starts hold the slots while they live and end with an orphaned run (`scripts/host-slots.ts`).
+ */
+export function underHostSlots<Environment extends { run: CaptureEnvironment['run'] }>(
+  environment: Environment,
+  slots: HostSlots,
+): Environment {
+  return {
+    ...environment,
+    run: (command, variables) =>
+      runInProcessGroup(command, {
+        environment: { ...slots.environment, ...variables },
+        cwd: applicationDirectory,
+        recordProcessGroup: slots.recordProcessGroup,
+        report: (line) => process.stderr.write(`${line}\n`),
+      }),
+  };
+}
+
+// The specifications run one Playwright worker, so one browser at a time: one host slot. The host
+// is checked for memory before the capture starts (`documentation/repository/host-admission.md`).
+if (import.meta.main) {
+  process.exitCode = await withMemoryAdmission(() =>
+    withHostSlots(1, (slots) =>
+      captureDesignReview(undefined, underHostSlots(hostEnvironment, slots)),
+    ),
+  );
+}

@@ -21,6 +21,26 @@ import {
 import type { Runner } from './process-runner.ts';
 
 describe('readGateLog', () => {
+  test('many timeouts in one run say the host was starved, and what to rerun instead of a full run', () => {
+    const timeouts = [
+      ...Array.from(
+        { length: 3 },
+        (_, index) => `(fail) a > b${index}\n  this test timed out after 240000ms.`,
+      ),
+      ...Array.from({ length: 2 }, () => '    Test timeout of 240000ms exceeded.'),
+    ].join('\n');
+    const starved = readGateLog(`HEAD abc LOAD 30.00\n${timeouts}\nGATE_RC=1\n`);
+    expect(starved.timedOut).toBe(5);
+    expect(renderGateSummary(starved)).toContain(
+      'timeouts: 5; if the tests are unrelated, the host was starved: rerun only the failed tests, alone at low workers on a quiet host',
+    );
+    const few = readGateLog(
+      `HEAD abc LOAD 1.00\n(fail) a > b\n  this test timed out after 240000ms.\nGATE_RC=1\n`,
+    );
+    expect(few.timedOut).toBe(1);
+    expect(renderGateSummary(few)).not.toContain('starved');
+  });
+
   test('a log with no exit code reports none, never a pass', () => {
     const summary = readGateLog('HEAD abc LOAD 1.50\nstill going\n');
     expect(summary.exitCode).toBeUndefined();
