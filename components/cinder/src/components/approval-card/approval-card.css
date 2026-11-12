@@ -522,7 +522,9 @@
 
   /* The question may wrap: a long title never truncates. */
   .cinder-approval-card__row-question {
-    flex: 1 1 12rem;
+    /* The title takes the line at its natural size, so a trailing badge is what wraps (the
+     * decision head does the same). */
+    flex: 1 1 auto;
     min-inline-size: 0;
     margin: 0;
     overflow-wrap: anywhere;
@@ -833,7 +835,34 @@
 
   /* Under 30rem of card width the words give way to the icon; they stay the accessible name and
    * the tooltip says them. */
+  /* The ghost face is pulled back by its own inline padding so the glyph and label start on the
+   * card's text column, the edge "Expires in" and the title use. Its 44px hit area comes from the
+   * Button's own pseudo-element, which takes no layout. */
+  .cinder-approval-card
+    .cinder-approval-card__row-actions
+    .cinder-button.cinder-approval-card__note-toggle {
+    align-self: center;
+    min-inline-size: 0;
+    margin-inline-start: calc(-1 * var(--cinder-button-padding-x-sm));
+  }
+
+  /* Under 30rem of card width the toggle takes Button's icon-only geometry: a square face the
+   * height of a small button with the glyph centred, the pull-back reduced to the glyph's own
+   * inset. The words stay the accessible name and the tooltip says them. */
   @container (inline-size < 30rem) {
+    .cinder-approval-card
+      .cinder-approval-card__row-actions
+      .cinder-button.cinder-approval-card__note-toggle {
+      inline-size: var(--cinder-button-height-sm);
+      min-inline-size: var(--cinder-button-height-sm);
+      block-size: var(--cinder-button-height-sm);
+      min-block-size: var(--cinder-button-height-sm);
+      padding-inline: 0;
+      aspect-ratio: 1;
+      justify-content: center;
+      margin-inline-start: calc((var(--cinder-button-height-sm) - 1em) / -2);
+    }
+
     .cinder-approval-card
       .cinder-approval-card__row-actions
       .cinder-approval-card__note-toggle

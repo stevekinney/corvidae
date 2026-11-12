@@ -740,6 +740,28 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
   });
 
+  test('Add a note sits on the text column and is a square icon face under 30rem', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*margin-inline-start: calc\(-1 \* var\(--cinder-button-padding-x-sm\)\);/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{ [^@]*\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*inline-size: var\(--cinder-button-height-sm\);[^}]*block-size: var\(--cinder-button-height-sm\);[^}]*padding-inline: 0;/,
+    );
+  });
+
+  test('a batch row title takes its natural width so the badge is what wraps', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(/__row-question \{[^}]*flex: 1 1 auto;/);
+    expect(css).not.toMatch(/__row-question \{[^}]*flex: 1 1 12rem;/);
+  });
+
   test('the title takes the width and the irreversible badge is the item that wraps', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,

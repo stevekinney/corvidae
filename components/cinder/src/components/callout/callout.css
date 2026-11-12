@@ -259,6 +259,12 @@
       grid-column: 1 / -1;
     }
 
+    /* The message takes the whole row, so it uses its line before it wraps; the action drops
+     * under it at the start edge. */
+    .cinder-callout__body > .cinder-callout__content {
+      flex: 1 1 100%;
+    }
+
     .cinder-callout--with-icon .cinder-callout__content::before {
       content: '';
       float: inline-start;
