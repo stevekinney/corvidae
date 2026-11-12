@@ -11,14 +11,16 @@ export function bindListenerLifetime(
   external: AbortSignal | undefined,
   emitterSignal: AbortSignal,
 ): { readonly signal: AbortSignal; readonly release: () => void } {
+  // The emitter's own signal is held by the emitter, so it needs no controller of its own.
+  if (external === undefined) return { signal: emitterSignal, release: () => undefined };
   const controller = new AbortController();
   const release = (): void => controller.abort();
-  if (external?.aborted || emitterSignal.aborted) {
+  if (external.aborted || emitterSignal.aborted) {
     release();
     return { signal: controller.signal, release };
   }
   const options = { once: true, signal: controller.signal };
-  external?.addEventListener('abort', release, options);
+  external.addEventListener('abort', release, options);
   emitterSignal.addEventListener('abort', release, options);
   return { signal: controller.signal, release };
 }

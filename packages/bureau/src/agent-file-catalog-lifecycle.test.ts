@@ -4,6 +4,8 @@
  * without the safety rescan, and a write whose model cannot be set up is refused.
  */
 import { watch, type FSWatcher } from 'node:fs';
+import { rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
@@ -285,7 +287,10 @@ describe('the watcher', () => {
       });
     for await (const attempt of awakeTurns()) {
       if (reported) break;
-      await fixture.put('watched.md', validAgentFile(`Attempt ${attempt}.\n`));
+      // Renamed into place so no scan reads the file created and not yet written (COR-2374).
+      const temporary = join(fixture.directory, '.watched.md.tmp');
+      await writeFile(temporary, validAgentFile(`Attempt ${attempt}.\n`));
+      await rename(temporary, join(fixture.directory, 'watched.md'));
     }
     expect(reported).toBe(true);
     expect(fixture.catalog.find('watched')).toBeDefined();
