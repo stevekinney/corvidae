@@ -25,8 +25,8 @@ function followUp(content: string, attachmentCount = 0): QueuedFollowUp {
 
 describe('the Up next copy', () => {
   test('says how many wait and when they go, with no separator glyph', () => {
-    expect(followUpQueueSummary(1)).toBe('1 queued, sends when this run finishes');
-    expect(followUpQueueSummary(3)).toBe('3 queued, sends when this run finishes');
+    expect(followUpQueueSummary(1)).toBe('1 queued');
+    expect(followUpQueueSummary(3)).toBe('3 queued');
     expect(followUpQueueSummary(3)).not.toContain(String.fromCodePoint(0xb7));
   });
 

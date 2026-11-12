@@ -45,9 +45,9 @@ export const FOLLOW_UP_RESTORE_LABEL = 'Restore';
 /** The discard drawer's quiet way out, which forgets the follow-ups. */
 export const FOLLOW_UP_DISMISS_LABEL = 'Dismiss';
 
-/** What the Up next drawer says beside its title: how many wait, and when they go. */
+/** What the Up next drawer says beside its title: how many wait. */
 export function followUpQueueSummary(count: number): string {
-  return `${count} queued, sends when this run finishes`;
+  return `${count} queued`;
 }
 
 /** What the discard drawer says: why the queued follow-ups were not sent. */

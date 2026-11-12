@@ -225,7 +225,7 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     expect(drawer).not.toBeNull();
     expect(drawer.querySelector('.chat-follow-up-drawer-title')?.textContent).toBe('Up next');
     expect(drawer.querySelector('.chat-follow-up-drawer-summary')?.textContent).toBe(
-      '1 queued, sends when this run finishes',
+      '1 queued',
     );
     expect(drawer.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(ghostTexts(container)).toEqual(['then check the logs']);
@@ -250,7 +250,7 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     await submit(rendered.container, 'second');
     expect(ghostTexts(rendered.container)).toEqual(['first', 'second']);
     expect(rendered.container.querySelector('.chat-follow-up-drawer-summary')?.textContent).toBe(
-      '2 queued, sends when this run finishes',
+      '2 queued',
     );
 
     await rendered.rerender({ streaming: false });

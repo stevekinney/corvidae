@@ -89,6 +89,8 @@ export type ChatLabels = {
   followUpTitle: string;
   followUpSendNow: string;
   followUpSummary: (count: number) => string;
+  /** The Send-now control's tooltip and accessible description. */
+  followUpSendNowDescription: string;
   followUpEdit: (index: number) => string;
   followUpRemove: (index: number) => string;
   followUpRestore: string;
@@ -171,8 +173,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   attachmentBlockingReason: (count) =>
     count === 1 ? 'Retry or remove 1 file to send' : `Retry or remove ${count} files to send`,
   approvalWaiting: 'Approval waiting',
-  approvalWaitingText:
-    'Waiting for your approval.',
+  approvalWaitingText: 'Waiting for your approval.',
   reviewApproval: 'Review approval',
   copy: 'Copy',
   copyMessage: 'Copy message',
@@ -182,7 +183,8 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   regenerateResponse: 'Regenerate response',
   followUpTitle: 'Up next',
   followUpSendNow: 'Send now instead',
-  followUpSummary: (count) => `${count} queued, sends when this run finishes`,
+  followUpSummary: (count) => `${count} queued`,
+  followUpSendNowDescription: 'Otherwise it sends when this run finishes.',
   followUpEdit: (index) => `Edit queued follow-up ${index}`,
   followUpRemove: (index) => `Remove queued follow-up ${index}`,
   followUpRestore: 'Restore',

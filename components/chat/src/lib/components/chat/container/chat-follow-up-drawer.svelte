@@ -46,7 +46,7 @@
       <span class="chat-follow-up-drawer-summary">{words.followUpSummary(items.length)}</span>
     </h3>
     {#if canSendNow}
-      <Tooltip text={words.followUpSendNow} placement="top">
+      <Tooltip text={words.followUpSendNowDescription} placement="top">
         <Button
           type="button"
           variant="ghost-accent"
@@ -108,9 +108,12 @@
   .chat-follow-up-drawer {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-0-5, 0.125rem);
     margin-block-end: var(--cinder-space-2);
+    overflow: hidden;
     font-size: var(--cinder-text-sm);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
   }
 
   .chat-follow-up-drawer-header {
@@ -118,7 +121,8 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-2);
-    padding-inline-start: 0;
+    padding-inline: var(--cinder-space-3) var(--cinder-space-1);
+    border-block-end: 1px solid var(--cinder-border-muted);
   }
 
   /* The title and the summary are their own elements, never joined by a separator glyph. */
@@ -126,7 +130,10 @@
     line-height: var(--cinder-leading-normal);
     min-inline-size: 0;
     margin: 0;
+    overflow: hidden;
     text-align: start;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: inherit;
     font-weight: inherit;
   }
@@ -156,9 +163,6 @@
     padding: 0;
     overflow-y: auto;
     list-style: none;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface-raised);
   }
 
   .chat-follow-up-ghost {
@@ -168,7 +172,7 @@
     gap: var(--cinder-space-2);
     min-inline-size: 0;
     min-block-size: 2.75rem;
-    padding: 0 var(--cinder-space-2);
+    padding: 0 var(--cinder-space-1) 0 0;
     border-block-end: 1px solid var(--cinder-border-muted);
     color: var(--cinder-text-muted);
   }
@@ -180,7 +184,7 @@
   .chat-follow-up-ghost-index {
     position: absolute;
     inset-inline-start: 0;
-    inline-size: 1rem;
+    inline-size: var(--cinder-space-3);
     color: var(--cinder-text-subtle);
     font-variant-numeric: tabular-nums;
     text-align: center;
@@ -190,7 +194,7 @@
     flex: 1 1 auto;
     min-inline-size: 0;
     margin: 0;
-    padding-inline-start: var(--cinder-space-2);
+    padding-inline-start: var(--cinder-space-3);
     overflow: hidden;
     text-align: start;
     text-overflow: ellipsis;
