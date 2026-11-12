@@ -151,7 +151,12 @@
 {:else if presentation === 'inline' && !compactInline}
   <!-- One chip per source, in the order given and with duplicates kept, as everywhere else. Each
        chip is Citation's own marker, so its panel, URL policy and focus return are unchanged. -->
-  <span class="chat-message-source-chips" role="group" aria-label={labels.sources}>
+  <span
+    class="chat-message-source-chips"
+    role="group"
+    aria-label={labels.sources}
+    bind:this={chipGroup}
+  >
     {#each chipEntries as entry, index (entry.key)}
       {@const source = entry.source}
       {@const chip = sourceChipLabel(source, sources)}
