@@ -15,6 +15,7 @@ import {
   queueDirectoryFor,
   reclaimAbandoned,
   runExclusively,
+  runInProcessGroup,
   withPreflight,
   withTurborepoDefaults,
   type HostLockHolder,
@@ -691,11 +692,34 @@ const staleReservationDoesNotBypassLock = await inScratchDirectory(async (scratc
     pollIntervalMs: 1,
     // A token inherited from a lock that has since been released names nothing now held.
     environment: { [heldLockTokenVariable]: 'not-the-holder' },
+    // This scenario is about the lock; the host's real memory must not make it wait.
+    readMemory: () => undefined,
     report: (line) => reports.push(line),
   });
   while (reports.length === 0) await Bun.sleep(2);
   await holding.release();
   expect(await running).toBe(0);
+});
+
+const environmentSnapshottedBeforeWait = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory, directory } = scratch;
+  const output = join(directory, 'value');
+  const holding = await acquireHostLock({ lockDirectory, holder: holder(scratch) });
+  const reports: string[] = [];
+  const environment: Record<string, string | undefined> = { PATH: process.env['PATH'], X: 'asked' };
+  const running = runExclusively({
+    lockDirectory,
+    script: `printf '%s' "$X" > '${output}'`,
+    pollIntervalMs: 1,
+    environment,
+    readMemory: () => undefined,
+    report: (line) => reports.push(line),
+  });
+  while (reports.length === 0) await Bun.sleep(2);
+  environment['X'] = 'changed while waiting';
+  await holding.release();
+  expect(await running).toBe(0);
+  expect(await readFile(output, 'utf8')).toBe('asked');
 });
 
 describe('a reservation held across stages', () => {
@@ -707,6 +731,43 @@ describe('a reservation held across stages', () => {
 
   test('a token that does not match the current holder does not bypass the lock', () =>
     rethrow(staleReservationDoesNotBypassLock));
+
+  test('the command gets the environment as it was asked for, not as changed while it waited', () =>
+    rethrow(environmentSnapshottedBeforeWait));
+});
+
+const orphanIgnoringSigtermIsKilled = await inScratchDirectory(async (scratch) => {
+  const ready = join(scratch.directory, 'ready');
+  let check: () => void = () => {};
+  let processGroup: number | undefined;
+  const running = runInProcessGroup(['sh', '-c', `trap '' TERM; : > '${ready}'; sleep 30`], {
+    environment: process.env,
+    report: () => {},
+    recordProcessGroup: async (group) => {
+      processGroup = group;
+      scratch.onCleanup(() => killGroup(group));
+    },
+    orphanWatch: {
+      ancestors: [await exitedPid()],
+      every: (watch) => {
+        check = watch;
+        return () => {};
+      },
+      afterAwake: (_milliseconds, onElapsed) => {
+        onElapsed();
+        return () => {};
+      },
+    },
+  });
+  await waitUntil(() => Bun.file(ready).exists());
+  check();
+  expect(await running).toBe(137);
+  expect(processGroup === undefined ? true : isGroupAlive(processGroup)).toBe(false);
+});
+
+describe('an orphaned run', () => {
+  test('a leader that ignores SIGTERM is killed once the hang guard passes', () =>
+    rethrow(orphanIgnoringSigtermIsKilled));
 });
 
 describe('withTurborepoDefaults', () => {

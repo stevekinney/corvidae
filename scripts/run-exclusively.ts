@@ -832,7 +832,8 @@ export async function runExclusively(input: RunExclusivelyOptions): Promise<numb
   const options = { ...input, ...(input.args === undefined ? {} : { args: [...input.args] }) };
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
   let lock: HeldHostLock | undefined;
-  const environment = options.environment ?? rootScriptEnvironment();
+  // Copied too: the command inherits the environment as it was when the run was asked for.
+  const environment = { ...(options.environment ?? rootScriptEnvironment()) };
   try {
     const lockDirectory = options.shared ? undefined : await options.lockDirectory;
     // A parent run that already holds the lock exported its token; a stage it started reuses the
@@ -869,7 +870,7 @@ export async function runExclusively(input: RunExclusivelyOptions): Promise<numb
     // After the lock, so the reading is taken just before the stage starts, not before a long wait.
     const memory = await admitMemory(options, environment, report);
     if (memory !== undefined) return memory;
-    return await runScript(options, lock, report);
+    return await runScript(options, environment, lock, report);
   } finally {
     await lock?.release();
   }
@@ -896,15 +897,13 @@ async function admitMemory(
 /** Runs the wrapped script through `sh -c`, exporting the held lock's token to it. */
 function runScript(
   options: RunExclusivelyOptions,
+  snapshot: Readonly<Record<string, string | undefined>>,
   lock: HeldHostLock | undefined,
   report: (line: string) => void,
 ): Promise<number> {
   const args = options.args ?? [];
   const command = args.length === 0 ? options.script : `${options.script} "$@"`;
-  const environment = {
-    ...(options.environment ?? rootScriptEnvironment()),
-    [memoryAdmittedVariable]: '1',
-  };
+  const environment = { ...snapshot, [memoryAdmittedVariable]: '1' };
   return runInProcessGroup(['sh', '-c', command, 'sh', ...args], {
     environment:
       lock === undefined ? environment : { ...environment, [heldLockTokenVariable]: lock.token },
@@ -995,10 +994,10 @@ export async function runInProcessGroup(
             );
           },
           onExpired: () => {
-            forward('SIGTERM');
-            run.report(
-              'ended the orphaned run: its session is gone and the hang guard has passed',
-            );
+            // The bounded termination, not a bare SIGTERM: a leader that handles SIGTERM and keeps
+            // running would leave `exited` pending and the lock or slots held for ever.
+            void terminateProcessGroup(processGroup);
+            run.report('ended the orphaned run: its session is gone and the hang guard has passed');
           },
         });
   try {
