@@ -300,9 +300,10 @@ test.describe('requests that get no answer from the host', () => {
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
     await stopHost(page);
-    // Workflows leaves its loading and failure to the frame. Goals, Schedules, Hooks and Workers draw
-    // their own under their own headers (`ownsStates` and `ownsStatesOnPatterns` in `views.ts`), so
-    // the frame's unreachable page is never theirs.
+    // The Workflows list draws its own loading and failure under its header (`pageOwnsLoadingOn`
+    // and `pageOwnsFailureOn` in `views.ts`), but a host that does not answer is the frame's: with
+    // nothing to keep, its unreachable page replaces the list. Goals, Schedules, Hooks and Workers
+    // own every state of theirs (`ownsStates`, `ownsStatesOnPatterns`), so it is never theirs.
     await page.getByRole('link', { name: 'Workflows' }).first().click();
 
     const frame = page.locator('[data-view="workflows"]');

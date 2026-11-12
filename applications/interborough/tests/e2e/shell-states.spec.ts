@@ -86,7 +86,11 @@ for (const width of WIDTHS) {
       FORBIDDEN_COPY.title('Hooks'),
     );
     await expect(frame).toContainText(FORBIDDEN_COPY.description);
-    await expect(frame).toContainText(`requires ${VIEW_COPY.hooks.forbidden?.requirement ?? ''}`);
+    // The scope is named as a person reads it, without the Bureau's `bureau.` prefix
+    // (`forbidden-state.svelte`): the copy holds `bureau.hooks:read`, and the page says `hooks:read`.
+    expect(VIEW_COPY.hooks.forbidden?.requirement).toBe('bureau.hooks:read');
+    await expect(frame).toContainText('requires hooks:read');
+    await expect(frame).not.toContainText('bureau.');
     // Row 13a: See your scopes and Back to Home, both secondary, and nothing that asks for access.
     await expect(frame.getByRole('link', { name: 'See your scopes' })).toBeVisible();
     await expect(frame.getByRole('link', { name: 'Back to Home' })).toBeVisible();

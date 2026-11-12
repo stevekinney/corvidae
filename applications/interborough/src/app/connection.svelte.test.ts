@@ -3,10 +3,11 @@
  * back, and what it does about it. The view frame's reading of it is in `states-matrix.test.ts`.
  */
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { QueryClient } from '@tanstack/svelte-query';
+import { QueryClient, QueryObserver } from '@tanstack/svelte-query';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
+  askAgainAfterOutage,
   CONNECTION_MAX_ATTEMPTS,
   connectionBannerPreset,
   ConnectionMonitor,
@@ -312,5 +313,46 @@ describe('ConnectionMonitor', () => {
     expect(monitor.bannerDrawnByPage).toBe(true);
     release();
     expect(monitor.bannerDrawnByPage).toBe(false);
+  });
+});
+
+describe('asking again once the server answers', () => {
+  test('asks again for a view whose request went out while the host was down, and takes the new answer', async () => {
+    // A view opened during the outage: its request went to the dead host and has not been refused
+    // yet when the probe finds the host back, so its query has no data and a fetch in flight. The
+    // view's probe nests a shared load under it, as the Workflows list's does (`probeWorkflowList`).
+    const queryClient = new QueryClient();
+    const refusals: ((error: unknown) => void)[] = [];
+    let loads = 0;
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ['view', 'workflows'],
+      retry: false,
+      queryFn: () =>
+        queryClient.fetchQuery({
+          queryKey: ['catalog'],
+          retry: false,
+          queryFn: ({ signal }) => {
+            loads += 1;
+            if (loads > 1) return Promise.resolve(['digest']);
+            return new Promise<string[]>((_resolve, reject) => {
+              refusals.push(reject);
+              signal.addEventListener('abort', () => undefined);
+            });
+          },
+        }),
+    });
+    const stop = observer.subscribe(() => undefined);
+    await waitUntil(() => loads === 1);
+
+    const asked = askAgainAfterOutage(queryClient);
+    // The dead host's refusal lands after the host came back; it answers nothing now.
+    refusals[0]?.(new TypeError('Failed to fetch'));
+    await asked;
+
+    await waitUntil(() => observer.getCurrentResult().status !== 'pending');
+    expect(observer.getCurrentResult().status).toBe('success');
+    expect(observer.getCurrentResult().data).toEqual(['digest']);
+    expect(loads).toBe(2);
+    stop();
   });
 });

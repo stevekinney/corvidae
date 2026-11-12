@@ -247,6 +247,20 @@ export class ConnectionMonitor {
   }
 }
 
+/**
+ * What the shell does once the server answers again: asks again for everything the page holds. A
+ * request sent while the server was down and not yet settled is cancelled first. Invalidation alone
+ * joins a fetch still in flight for a query that has no data instead of starting another, so a view
+ * that opened during the outage would take the dead host's late refusal as its answer to the
+ * recovery and never ask again (a Workflows list left on the unreachable page with the banner gone).
+ */
+export async function askAgainAfterOutage(
+  queryClient: Pick<QueryClient, 'cancelQueries' | 'invalidateQueries'>,
+): Promise<void> {
+  await queryClient.cancelQueries();
+  await queryClient.invalidateQueries();
+}
+
 const CONNECTION_CONTEXT_KEY = Symbol('interborough-connection');
 
 /** What a page reads of the connection: whether it holds, what the banner counts, and the way back. */

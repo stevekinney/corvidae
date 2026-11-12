@@ -13,7 +13,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
+import { RETRY_LABEL, VIEW_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
 import { STUB_REMOTE_WORKFLOW_DIRECTORY } from '../../lib/bureau-stub.test-support.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -319,6 +319,26 @@ describe('the list of workflows', () => {
     await waitFor(() => expect(rowCount(container)).toBe(4));
     expect(stub?.callsTo('weft.workflows.definitions.list')).toHaveLength(1);
     expect(stub?.callsTo('bureau.workflows.list')).toHaveLength(1);
+  });
+
+  test('says the probe’s failure under its header at once, and asks the Bureau again only for Try again', async () => {
+    stub = installWorkflowWorld(sampleWorld({ failBureauFiles: true }));
+    router.navigate('/workflows', { replace: true });
+    const { container, findByRole } = render(RouteOutletHarness, {
+      props: { client: stub.client, scopes: AUTHORIZATION_SCOPES },
+    } as never);
+    // The frame's probe failed and the page words it (`pageOwnsFailureOn`): the page takes that
+    // answer instead of asking the failed load again, with retries, behind a skeleton.
+    await findByRole('heading', { level: 2, name: VIEW_COPY.workflows.error.title });
+    expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
+      'error',
+    );
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+    expect(stub.callsTo('bureau.workflows.list')).toHaveLength(1);
+    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.list')).toHaveLength(2));
+    await findByRole('heading', { level: 2, name: VIEW_COPY.workflows.error.title });
+    expect(stub.callsTo('bureau.workflows.list')).toHaveLength(2);
   });
 
   test('links each row to its page, and leaves a modified click to the browser', async () => {

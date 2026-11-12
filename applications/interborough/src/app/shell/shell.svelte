@@ -36,6 +36,7 @@
   import { browserWorkspaceStorage } from '../workspace-lifetime.ts';
   import { CONNECTION_COPY } from '../copy.ts';
   import {
+    askAgainAfterOutage,
     CONNECTION_MAX_ATTEMPTS,
     connectionBannerPreset,
     ConnectionMonitor,
@@ -113,7 +114,7 @@
           headers: initialClient.headers,
           cache: 'no-store',
         }),
-      onRecovered: () => void queryClient.invalidateQueries(),
+      onRecovered: () => void askAgainAfterOutage(queryClient),
     }),
   );
   // Armed while the shell initializes, not in an effect, because a child that captures `fetch` when

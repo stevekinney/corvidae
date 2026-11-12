@@ -17,12 +17,17 @@ import type { Page, Route } from '@playwright/test';
 import {
   AGENTS_COPY,
   NOT_FOUND_ROUTE_COPY,
+  RETRY_LABEL,
   SETTINGS_COPY,
   TASK_COPY,
   VIEW_COPY,
 } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
-import { HEALTH_ATTENTION_COPY, HEALTH_COUNTS_COPY } from '../../src/routes/health/health-copy.ts';
+import {
+  HEALTH_ATTENTION_COPY,
+  HEALTH_COUNTS_COPY,
+  HEALTH_TITLE,
+} from '../../src/routes/health/health-copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
@@ -177,6 +182,28 @@ const OWN_STATE_TITLES: Readonly<
   agents: { error: VIEW_COPY.agents.error.title, empty: AGENTS_COPY.empty.title },
   runs: { error: TASK_COPY.list.loadFailed.title, empty: TASK_COPY.empty.title },
 };
+
+/**
+ * The page heading the frame keeps above a view's loading and failed states, or `undefined` when the
+ * state's own title is the page's heading: the view's `header` or `headerByPattern` for its path, and
+ * Health's heading over a Health tab's failure, which the frame draws inside Health's tabs.
+ */
+function frameHeaderOf(view: ViewName, outcome: Outcome): string | undefined {
+  if (outcome === 'error' && (view === 'storage' || view === 'health')) return HEALTH_TITLE;
+  const copy = VIEW_COPY[view];
+  return copy.headerByPattern?.[PATHS[view]] ?? copy.header;
+}
+
+/** Whether the page at the view's path draws this state itself (`pageOwnsLoadingOn`, `pageOwnsFailureOn`). */
+function pageOwnsStateOnRoute(view: ViewName, outcome: Outcome): boolean {
+  const patterns =
+    outcome === 'loading'
+      ? VIEWS[view].pageOwnsLoadingOn
+      : outcome === 'error'
+        ? VIEWS[view].pageOwnsFailureOn
+        : undefined;
+  return patterns?.includes(PATHS[view]) === true;
+}
 
 /** A principal that holds `scopes` and nothing else, as the page and the engine's `principal` operation both report it. */
 async function holdOnlyScopes(page: Page, scopes: readonly string[]): Promise<void> {
@@ -361,11 +388,36 @@ for (const view of VIEW_NAMES) {
                 frame.getByRole('heading', { level: 2, name: title ?? '' }),
               ).toBeVisible();
             }
+          } else if (pageOwnsStateOnRoute(view, outcome)) {
+            // The list draws its own loading skeleton and its own error panel under its own header
+            // (`pageOwnsLoadingOn`, `pageOwnsFailureOn`): the view's name stays the page's heading,
+            // the skeleton says what is loading, and the failure's title is the level-two heading.
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(copy.label);
+            if (outcome === 'loading') {
+              await expect(frame.getByRole('status').filter({ hasText: title ?? '' })).toHaveCount(
+                1,
+              );
+            } else {
+              await expect(
+                frame.getByRole('heading', { level: 2, name: title ?? '' }),
+              ).toBeVisible();
+              await expect(frame.getByRole('button', { name: RETRY_LABEL })).toBeVisible();
+            }
           } else if (outcome === 'empty' && VIEWS[view].pageOwnsEmptyOn?.includes(PATHS[view])) {
             // The list draws its first use under its own header: the view's name stays the page's
             // heading, and the state's title is the level-two heading under it.
             await expect(frame.getByRole('heading', { level: 1 })).toHaveText(copy.label);
             await expect(frame.getByRole('heading', { level: 2, name: title ?? '' })).toBeVisible();
+          } else if (outcome !== 'forbidden' && frameHeaderOf(view, outcome) !== undefined) {
+            // The frame keeps the page's heading above its loading and failed states, and the
+            // state's title drops to the level-two heading under it: one level-one heading a page.
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+              frameHeaderOf(view, outcome) ?? '',
+            );
+            await expect(frame.getByRole('heading', { level: 2, name: title ?? '' })).toBeVisible();
+            if (outcome === 'error') {
+              await expect(frame.getByRole('button', { name: RETRY_LABEL })).toBeVisible();
+            }
           } else {
             await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
           }

@@ -65,6 +65,11 @@
       queryFn: ({ signal }) => loadCatalog(client, { signal }),
       // The frame's probe loaded it a moment ago, under this key.
       staleTime: CATALOG_STALE_TIME_MS,
+      // The page draws the probe's loading and its failure (`pageOwnsLoadingOn`,
+      // `pageOwnsFailureOn`), so it takes the probe's answer as it is: it never retries the load it
+      // shares, and a failed load is shown, not asked again behind a skeleton. Try again asks.
+      retry: false,
+      retryOnMount: false,
     }),
     undefined,
   );

@@ -557,10 +557,10 @@ test.describe('the top bar’s popovers on the sample world', () => {
     await expect(rows).toHaveCount(4);
     await expect(panel.getByText(/answered/i)).toHaveCount(0);
     await expect(rows.nth(0)).toContainText('Refund order 4471');
-    await expect(rows.nth(0)).toContainText('Waiting for your approval, Tool runner');
+    await expect(rows.nth(0)).toContainText('Waiting for your approval from Tool runner');
     await expect(rows.nth(0).locator('.weft-notification-panel__item-time')).toHaveText('4 min');
     await expect(rows.nth(1)).toContainText('Which environment should the release go to?');
-    await expect(rows.nth(1)).toContainText('Waiting for your answer, Request human input');
+    await expect(rows.nth(1)).toContainText('Waiting for your answer from Request human input');
     await expect(rows.nth(1).locator('.weft-notification-panel__item-time')).toHaveText('1 h');
     for (const index of [0, 1]) {
       await expect(rows.nth(index)).toHaveAttribute('data-read', 'false');
