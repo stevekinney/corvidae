@@ -239,7 +239,12 @@ export function measureInPage(options: {
     };
   };
 
-  const smallTargets: { name: string; width: number; height: number }[] = [];
+  const smallTargets: {
+    name: string;
+    width: number;
+    height: number;
+    shortSides: ('left' | 'right' | 'above' | 'below')[];
+  }[] = [];
   const controlGeometry: {
     controlId: string;
     name: string;
@@ -255,6 +260,62 @@ export function measureInPage(options: {
     const controls = elementsInScope<HTMLElement>(
       'button, [role="button"], [role="radio"], [role="checkbox"], a[href], textarea, select, summary',
     );
+    // Every visible control's centre, disabled ones too: adjacent compact controls overlap their
+    // hit areas by design, so a probe nearer to a neighbour's centre belongs to the neighbour.
+    const controlCentres = controls
+      .filter((element) => isVisible(element))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { element, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+    // Cinder and Chat paint a control compact and extend its hit area with a positioned
+    // pseudo-element that takes no layout, so the touch target is what a tap reaches, not the box.
+    const probeHitArea = (
+      element: HTMLElement,
+      centreX: number,
+      centreY: number,
+    ): ('left' | 'right' | 'above' | 'below')[] => {
+      // A 44px hit area ends exactly 22px from the centre and its far edge is exclusive, so the
+      // probe sits half a pixel inside it.
+      const reach = 21.5;
+      const sides: ['left' | 'right' | 'above' | 'below', number, number][] = [
+        ['left', centreX - reach, centreY],
+        ['right', centreX + reach, centreY],
+        ['above', centreX, centreY - reach],
+        ['below', centreX, centreY + reach],
+      ];
+      const short: ('left' | 'right' | 'above' | 'below')[] = [];
+      for (const [side, x, y] of sides) {
+        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+        // A point scrolled out of a scroller's visible box cannot be tapped at all.
+        if (reachableBox(element, new DOMRect(x, y, 1, 1)) === undefined) continue;
+        const hit = document.elementFromPoint(x, y);
+        if (hit === null || hit === element || element.contains(hit)) continue;
+        const nearerToANeighbour = controlCentres.some(
+          (other) =>
+            other.element !== element &&
+            !other.element.contains(element) &&
+            !element.contains(other.element) &&
+            Math.hypot(other.x - x, other.y - y) < reach,
+        );
+        if (nearerToANeighbour) continue;
+        // A fixed or sticky surface (the composer, a docked bar) legitimately covers part of the
+        // area while content scrolls under it; the occlusion guard owns that case.
+        let overlay: Element | null = hit;
+        let coveredByOverlay = false;
+        while (overlay !== null && overlay !== document.body) {
+          const position = getComputedStyle(overlay).position;
+          if ((position === 'fixed' || position === 'sticky') && !overlay.contains(element)) {
+            coveredByOverlay = true;
+            break;
+          }
+          overlay = overlay.parentElement;
+        }
+        if (coveredByOverlay) continue;
+        short.push(side);
+      }
+      return short;
+    };
     for (const [index, element] of controls.entries()) {
       if (!isVisible(element) || element.getAttribute('aria-hidden') === 'true') continue;
       if ((element as HTMLButtonElement).disabled) continue;
@@ -295,11 +356,18 @@ export function measureInPage(options: {
           hitsTarget: hitTargetAt(element, x, y),
         })),
       });
-      if (box.width < 44 || box.height < 44) {
+      // A control whose own centre does not reach it is covered whole; the sample and occlusion
+      // evidence above names that, and no side of it can be probed.
+      const centreX = reachable.left + reachable.width / 2;
+      const centreY = reachable.top + reachable.height / 2;
+      if (!hitTargetAt(element, centreX, centreY)) continue;
+      const shortSides = probeHitArea(element, centreX, centreY);
+      if (shortSides.length > 0) {
         smallTargets.push({
           name: nameOf(element),
           width: Math.round(box.width),
           height: Math.round(box.height),
+          shortSides,
         });
       }
     }

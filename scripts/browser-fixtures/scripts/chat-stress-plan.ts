@@ -144,11 +144,13 @@ export interface PageMeasurement {
   readonly pageErrors: readonly string[];
   /** The document's scroll width and the window's width. */
   readonly documentWidth: { readonly scroll: number; readonly client: number };
-  /** Visible, enabled controls under 44 px in either dimension, named; measured only at a coarse profile. */
+  /** Visible, enabled controls whose hit area, probed 22 px from the centre, is short; measured only at a coarse profile. */
   readonly smallTargets: readonly {
     readonly name: string;
     readonly width: number;
     readonly height: number;
+    /** The sides, measured 22 px from the centre, where a tap no longer reaches the control. */
+    readonly shortSides?: readonly string[];
   }[];
   /** Coarse-pointer controls report their painted content separately from the hit region. */
   readonly controlGeometry?: readonly {
@@ -281,7 +283,7 @@ export function measurementProblems(
   if (profile.coarse) {
     for (const target of measurement.smallTargets) {
       problems.push(
-        `short touch target: ${target.name} is ${target.width} by ${target.height} px, under ${MINIMUM_TOUCH_TARGET}`,
+        `short touch target: ${target.name} is ${target.width} by ${target.height} px and a tap 22 px from its centre misses it ${(target.shortSides ?? ['on every side']).join(', ')}, under ${MINIMUM_TOUCH_TARGET}`,
       );
     }
   }

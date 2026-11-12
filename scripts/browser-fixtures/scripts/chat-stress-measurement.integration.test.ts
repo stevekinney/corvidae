@@ -688,4 +688,63 @@ describe('chat stress visual measurement', () => {
       await browser.close();
     }
   });
+  describe('touch target hit area', () => {
+    // The real mechanism of Cinder's Button (`button.css`): the box is the painted face, and a
+    // positioned pseudo-element reaches 44px without taking layout space.
+    const hitStyle = `
+      <style>
+        body { margin: 0; }
+        main { padding: 40px; }
+        .cinder-button { position: relative; display: inline-block; box-sizing: border-box; width: 24px; height: 24px; padding: 0; border: 0; background: #ccc; vertical-align: top; }
+        .cinder-button[data-cinder-hit-target='44']::before {
+          content: ''; position: absolute;
+          inset-block: min(0px, calc((100% - 44px) / 2));
+          inset-inline: min(0px, calc((100% - 44px) / 2));
+        }
+      </style>`;
+    const smallTargetsFor = async (buttons: string) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+        await page.setContent(`${hitStyle}<main data-testid="chat-stress-shell">${buttons}</main>`);
+        const measurement = await page.evaluate(measureInPage, {
+          coarse: true,
+          rtl: false,
+          settledApproval: false,
+        });
+        return measurement.smallTargets;
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a 24px button whose hit pseudo-element reaches 44px', async () => {
+      expect(
+        await smallTargetsFor(
+          '<button class="cinder-button" data-cinder-hit-target="44" aria-label="Copy"></button>',
+        ),
+      ).toEqual([]);
+    });
+
+    it('fails the same 24px button without the pseudo-element, naming the control and its sides', async () => {
+      const targets = await smallTargetsFor(
+        '<button class="cinder-button" aria-label="Copy"></button>',
+      );
+      expect(targets).toHaveLength(1);
+      expect(targets[0]).toMatchObject({
+        name: 'Copy',
+        width: 24,
+        height: 24,
+        shortSides: ['left', 'right', 'above', 'below'],
+      });
+    });
+
+    it('passes two adjacent 24px buttons at a 28px pitch, whose hit areas overlap by design', async () => {
+      expect(
+        await smallTargetsFor(
+          `<button class="cinder-button" data-cinder-hit-target="44" aria-label="Copy"></button><button class="cinder-button" data-cinder-hit-target="44" aria-label="Retry" style="margin-inline-start:4px"></button>`,
+        ),
+      ).toEqual([]);
+    });
+  });
 });
