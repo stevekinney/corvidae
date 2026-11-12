@@ -153,7 +153,7 @@ describe('the question card on a run waiting for you', () => {
   test('holds a picked choice with one inline line, the status line says so, and Undo takes it back', async () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
     const view = open([]);
-    const production = await view.findByRole('button', { name: /Production/ });
+    const production = await view.findByRole('radio', { name: /Production/ });
     await view.findByText('Question from Request human input, 1 h ago');
     jest.useFakeTimers();
 
@@ -177,10 +177,10 @@ describe('the question card on a run waiting for you', () => {
     expect(view.container.querySelector('[data-run-header]')?.textContent).toContain(
       'answer sent, undo for 5 s',
     );
-    expect(production.getAttribute('aria-pressed')).toBe('true');
-    // The chosen button reads "Selected" in place of its description; the other keeps its label only.
+    expect(production.getAttribute('aria-checked')).toBe('true');
+    // The chosen card reads "Selected" in place of its description; the other keeps its label only.
     expect(production.textContent).toContain('Selected');
-    expect(view.getByRole('button', { name: /Staging/ }).textContent).not.toContain(
+    expect(view.getByRole('radio', { name: /Staging/ }).textContent).not.toContain(
       'Deploys to the staging site',
     );
     expect(stub?.callsTo('bureau.tasks.respond')).toEqual([]);
@@ -197,7 +197,7 @@ describe('the question card on a run waiting for you', () => {
   test('tells the run the answer when the five seconds end', async () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
     const view = open([]);
-    const staging = await view.findByRole('button', { name: /Staging/ });
+    const staging = await view.findByRole('radio', { name: /Staging/ });
     await view.findByText('Question from Request human input, 1 h ago');
     jest.useFakeTimers();
 

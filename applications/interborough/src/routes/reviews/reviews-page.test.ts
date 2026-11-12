@@ -727,7 +727,7 @@ describe('answering a Bureau question', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     stub?.on('bureau.tasks.respond', () => RESPONDED);
-    await fireEvent.click(await findByRole('button', { name: 'production' }));
+    await fireEvent.click(await findByRole('radio', { name: 'production' }));
     await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond').length).toBe(1));
     expect(stub?.callsTo('bureau.tasks.respond')[0]?.params).toMatchObject({
       answer: 'production',
@@ -739,7 +739,7 @@ describe('answering a Bureau question', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     stub?.on('bureau.tasks.respond', () => RESPONDED);
-    await findByRole('button', { name: 'staging' });
+    await findByRole('radio', { name: 'staging' });
     await findByText(REVIEWS_COPY.pickHint);
     expect(press('2', true)).toBe(false);
     expect(stub?.callsTo('bureau.tasks.respond')).toEqual([]);
@@ -754,7 +754,7 @@ describe('answering a Bureau question', () => {
     const { container, findByRole } = open({ reviews: [CHOICES] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await findByRole('button', { name: 'staging' });
+    await findByRole('radio', { name: 'staging' });
     press('9');
     expect(stub?.callsTo('bureau.tasks.respond')).toEqual([]);
   });
@@ -771,7 +771,7 @@ describe('answering a Bureau question', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     stub?.on('bureau.tasks.respond', () => RESPONDED);
-    await fireEvent.click(await findByRole('button', { name: 'Yes' }));
+    await fireEvent.click(await findByRole('radio', { name: 'Yes' }));
     await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond').length).toBe(1));
     expect(stub?.callsTo('bureau.tasks.respond')[0]?.params).toMatchObject({ answer: 'true' });
   });

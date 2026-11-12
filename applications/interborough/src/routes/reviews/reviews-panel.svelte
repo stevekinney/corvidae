@@ -316,7 +316,7 @@
     );
     region
       ?.querySelector<HTMLElement>(
-        'input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])',
+        '[role="radio"]:not([aria-disabled="true"]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])',
       )
       ?.focus();
   }
