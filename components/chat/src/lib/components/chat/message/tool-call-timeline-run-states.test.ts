@@ -204,9 +204,10 @@ describe('R1: the step under way', () => {
     const text = heading(container).textContent?.replace(/\s+/g, ' ').trim() ?? '';
     expect(text).toContain('Compared 2 recent orders…');
     expect(text).not.toContain('Searched sources');
-    expect(heading(container).closest('[data-has-summary-tools="true"]')).not.toBeNull();
-    expect(heading(container).querySelector('.chat-tool-call-summary-tools')?.textContent).toBe(
-      'search_sources ×2',
+    // No system name in a collapsed summary unless it is the repeated rollup.
+    expect(heading(container).querySelector('.chat-tool-call-summary-tools')).toBeNull();
+    expect(container.querySelector('.chat-tool-call-name')?.textContent?.trim()).toBe(
+      'search_sources',
     );
   });
 });

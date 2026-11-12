@@ -493,9 +493,9 @@
           {#if summary.description && showDescription}
             <span class="chat-tool-call-summary-description" dir="auto">{summary.description}</span>
           {/if}
-          <!-- The tool name is run machinery: it shows only when no step title does, or as the
-               repeated rollup's identity ("lookup_order ×20"). -->
-          {#if summary.tools && !hasProblem && !hasHumanAction && (hasRepeatedSummary || !(summary.description && showDescription))}
+          <!-- The tool name is run machinery: the collapsed summary shows it only as the repeated
+               rollup's identity ("lookup_order ×20"); the expanded row keeps the name. -->
+          {#if summary.tools && !hasProblem && !hasHumanAction && hasRepeatedSummary}
             <span class="chat-tool-call-summary-tools">{summary.tools}</span>
           {/if}
           {#if summary.duration}
