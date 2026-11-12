@@ -105,7 +105,63 @@ async function expectAttachmentTarget(
     expectAttachment(box?.height).toBeGreaterThanOrEqual(minimumTarget);
     return;
   }
-  expectAttachment(await button.evaluate(attachmentTargetReached)).toBe(true);
+  if (await button.evaluate(attachmentTargetReached)) return;
+  // A miss names what the taps landed on, so a failure that does not repeat still says why.
+  const detail = await button.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const centreX = rect.left + rect.width / 2;
+    const centreY = rect.top + rect.height / 2;
+    const describe = (x: number, y: number): string => {
+      const hit = document.elementFromPoint(x, y);
+      return hit === null ? 'nothing' : `${hit.tagName.toLowerCase()}.${hit.className}`;
+    };
+    const list = element.closest('.chat-input-attachments');
+    const listRect = list?.getBoundingClientRect();
+    return JSON.stringify({
+      button: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+      list: listRect === undefined ? null : { top: listRect.top, bottom: listRect.bottom },
+      scrollTop: list?.scrollTop ?? null,
+      above: describe(centreX, centreY - 21),
+      below: describe(centreX, centreY + 21),
+      left: describe(centreX - 21, centreY),
+      right: describe(centreX + 21, centreY),
+    });
+  });
+  throw new Error(`attachment control's hit area is not reached: ${detail}`);
+}
+
+/**
+ * Waits until an opened attachment list has stopped moving: its box, scroll offset and fitted
+ * block size are the same on two animation frames in a row. The list refits on the frame after it
+ * opens or its content changes, so a probe taken before that frame measures a layout that is about
+ * to change.
+ */
+async function waitForAttachmentShelfSettled(list: Locator): Promise<void> {
+  await list.evaluate(
+    (element) =>
+      new Promise<void>((_resolve) => {
+        const read = (): string => {
+          const rect = element.getBoundingClientRect();
+          return [
+            rect.top,
+            rect.height,
+            element.scrollTop,
+            element.scrollHeight,
+            (element as HTMLElement).style.maxBlockSize,
+          ].join('|');
+        };
+        let previous = read();
+        let steady = 0;
+        const frame = (): void => {
+          const current = read();
+          steady = current === previous ? steady + 1 : 0;
+          previous = current;
+          if (steady >= 2) _resolve();
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
 }
 
 /**
@@ -1634,9 +1690,11 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
             await list.evaluate((element) => element.clientHeight),
           );
         }
+        await waitForAttachmentShelfSettled(list);
         for (let index = 0; index < step.total; index += 1) {
           const row = list.locator(':scope > li').nth(index);
           await row.scrollIntoViewIfNeeded();
+          await waitForAttachmentShelfSettled(list);
           const [listBox, rowBox] = await Promise.all([list.boundingBox(), row.boundingBox()]);
           expectAttachment(listBox).not.toBeNull();
           expectAttachment(rowBox).not.toBeNull();
