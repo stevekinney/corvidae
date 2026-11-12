@@ -705,8 +705,10 @@ describe('ApprovalCard decision layout stylesheet', () => {
       ' ',
     );
     const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    // Painted at text height: the 44px hit area is a pseudo-element that takes no layout space.
     expect(coarse).toContain(
-      '.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle, .cinder-approval-card__note-toggle { min-block-size: var(--cinder-touch-target-min); }',
+      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before, .cinder-approval-card__note-toggle::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
     );
+    expect(coarse).not.toMatch(/__(?:input|said|note)-toggle\s*\{\s*min-block-size/);
   });
 });

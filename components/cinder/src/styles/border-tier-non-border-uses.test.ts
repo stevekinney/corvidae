@@ -211,12 +211,6 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/button-group/button-group.css': [
     { declaration: 'background: var(--cinder-border-strong);', category: 'hairline' },
   ],
-  'components/cinder/src/components/button/button.css': [
-    {
-      declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-button-border);',
-      category: 'hairline',
-    },
-  ],
   'components/cinder/src/components/chip/chip.css': [
     { declaration: 'var(--cinder-border-strong) 65%', category: 'mix' },
   ],

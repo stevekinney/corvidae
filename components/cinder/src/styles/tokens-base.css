@@ -571,9 +571,9 @@
   /* Extra-small button horizontal padding. */
   --cinder-button-padding-x-xs: var(--cinder-space-1-5);
   /* Small button horizontal padding. */
-  --cinder-button-padding-x-sm: var(--cinder-space-2);
+  --cinder-button-padding-x-sm: var(--cinder-space-3);
   /* Medium button horizontal padding. */
-  --cinder-button-padding-x-md: var(--cinder-space-2-5);
+  --cinder-button-padding-x-md: var(--cinder-space-4);
   /* Large button horizontal padding. */
   --cinder-button-padding-x-lg: var(--cinder-space-3);
   /* Extra-small button vertical padding. */

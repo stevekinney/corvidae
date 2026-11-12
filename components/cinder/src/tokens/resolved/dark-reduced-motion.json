@@ -3295,7 +3295,7 @@
     "$type": "dimension"
   },
   "button.padding.x.sm": {
-    "$value": { "value": 0.5, "unit": "rem" },
+    "$value": { "value": 0.75, "unit": "rem" },
     "$description": "Small button horizontal padding.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3309,7 +3309,7 @@
     "$type": "dimension"
   },
   "button.padding.x.md": {
-    "$value": { "value": 0.625, "unit": "rem" },
+    "$value": { "value": 1, "unit": "rem" },
     "$description": "Medium button horizontal padding.",
     "$extensions": {
       "com.lostgradient.cinder": {

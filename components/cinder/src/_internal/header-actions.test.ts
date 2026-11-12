@@ -92,17 +92,24 @@ describe('coarse pointers get a real touch box without enlarging the painted con
   const rootValue = (name: string) =>
     getComputedStyle(document.documentElement).getPropertyValue(name);
 
-  test('a coarse pointer raises the xs step while compact buttons reserve a real 44px box', () => {
+  test('a coarse pointer raises the xs step while compact buttons reach 44px by a hit-area pseudo-element', () => {
     const clean = emulate('coarse');
     try {
       expect(pixels(rootValue('--cinder-control-height-xs'))).toBe(44);
       expect(pixels(rootValue('--_cinder-compact-control-height'))).toBe(24);
-      expect(buttonCss).toMatch(
+      // The hit region is a pseudo-element reaching 44px that takes no layout space; the box
+      // itself never carries the touch minimum or a transparent border.
+      const hitRule =
+        /\.cinder-button\[data-cinder-hit-target='44'\]::before\s*\{[^}]*\}/s.exec(
+          buttonCss,
+        )?.[0] ?? '';
+      expect(hitRule).toContain('position: absolute;');
+      expect(hitRule).toContain('var(--cinder-touch-target-min)');
+      expect(buttonCss).not.toMatch(
         /\.cinder-button\[data-cinder-hit-target='44'\]\s*\{[^}]*min-height:\s*var\(--cinder-touch-target-min\)/s,
       );
-      expect(buttonCss).not.toContain('.cinder-button[data-cinder-compact]::before');
-      expect(buttonCss).toContain('border: 10px solid transparent;');
-      expect(buttonCss).toContain('background-clip: padding-box');
+      expect(buttonCss).not.toContain('border: 10px solid transparent');
+      expect(buttonCss).not.toContain('background-clip');
     } finally {
       clean();
     }
@@ -123,9 +130,9 @@ describe('coarse pointers get a real touch box without enlarging the painted con
       try {
         const { getByTestId } = render(Harness, { props: { kind, withActions: true } });
         const header = pixels(getComputedStyle(getByTestId('header-button')).minHeight);
-        // The button itself owns the touch region; no pseudo-element can overlap its neighbors.
-        expect(header).toBe(44);
-        expect(pixels(getComputedStyle(getByTestId('body-button')).minHeight)).toBe(44);
+        // The layout box is the painted face; the 44px region is a pseudo-element (asserted above).
+        expect(header).toBe(24);
+        expect(pixels(getComputedStyle(getByTestId('body-button')).minHeight)).toBe(32);
         expect(fineHeight).toBe(24);
       } finally {
         clean();

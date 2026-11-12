@@ -701,6 +701,11 @@
     transform: rotate(90deg);
   }
 
+  /* A collapsed disclosure points toward the inline end, so RTL mirrors it. */
+  .cinder-approval-card__input-toggle:dir(rtl) svg:not([data-cinder-open]) {
+    transform: scaleX(-1);
+  }
+
   .cinder-approval-card__input-word {
     flex: none;
     color: var(--cinder-text-muted);
@@ -875,11 +880,6 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-3);
-    margin-inline-start: auto;
-  }
-
-  .cinder-approval-card__expiry-actions .cinder-button {
-    padding-inline: var(--cinder-space-3);
   }
 
   @container (inline-size < 24rem) {
@@ -889,18 +889,6 @@
 
     .cinder-approval-card__expiry-actions {
       inline-size: 100%;
-      justify-content: space-between;
-    }
-
-    .cinder-approval-card__expiry-actions .cinder-button {
-      margin-inline-start: auto;
-    }
-  }
-
-  @media (any-pointer: coarse) {
-    .cinder-approval-card__expired-row .cinder-button {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
     }
   }
 
@@ -922,7 +910,7 @@
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
-    line-height: var(--cinder-leading-tight);
+    line-height: var(--cinder-leading-snug);
     text-align: start;
   }
 
@@ -1526,20 +1514,27 @@
       block-size: auto;
     }
 
-    .cinder-approval-card--decision .cinder-approval-card__input-toggle,
-    .cinder-approval-card__decision-tools .cinder-approval-card__note-toggle,
     .cinder-approval-card__row-actions .cinder-button[data-cinder-size],
     .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
-      min-block-size: var(--cinder-touch-target-min);
       min-inline-size: var(--cinder-touch-target-min);
     }
 
     /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) and
-     * "Add a note" are text-sized on a desktop; on a touch screen each is a 44px target (C#3). */
+     * "Add a note" are painted at text height; on a touch screen each reaches a 44px hit area
+     * through a pseudo-element that takes no layout space, so the rows keep their rhythm. */
     .cinder-approval-card__input-toggle,
     .cinder-approval-card__said-toggle,
     .cinder-approval-card__note-toggle {
-      min-block-size: var(--cinder-touch-target-min);
+      position: relative;
+    }
+
+    .cinder-approval-card__input-toggle::before,
+    .cinder-approval-card__said-toggle::before,
+    .cinder-approval-card__note-toggle::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 

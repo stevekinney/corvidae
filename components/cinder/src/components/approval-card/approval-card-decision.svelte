@@ -180,7 +180,9 @@
   );
   const factRows = $derived.by(() => {
     const rows: ApprovalFact[] = [...facts];
-    if (tool.irreversible === false) rows.push({ label: 'Reversible', value: 'Yes' });
+    // The irreversible badge states reversibility once; a second "Reversible" row never joins it.
+    if (tool.irreversible === false && !irreversible)
+      rows.push({ label: 'Reversible', value: 'Yes' });
     return rows;
   });
 
@@ -234,13 +236,13 @@
     </svelte:element>
     {#if expiresAt !== undefined || onAskAgain !== undefined}
       <div class="cinder-approval-card__expiry-actions">
-        {#if expiresAt !== undefined}<span class="cinder-approval-card__countdown">{expiresAt}</span
-          >{/if}
         {#if onAskAgain !== undefined}<Button
             type="button"
             variant="secondary"
             size="sm"
             onclick={onAskAgain}>Ask again</Button
+          >{/if}
+        {#if expiresAt !== undefined}<span class="cinder-approval-card__countdown">{expiresAt}</span
           >{/if}
       </div>
     {/if}

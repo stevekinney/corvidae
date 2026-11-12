@@ -639,7 +639,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-button-padding-x-sm` | `var(--cinder-space-2)` | Small button horizontal padding. |
+| `--cinder-button-padding-x-sm` | `var(--cinder-space-3)` | Small button horizontal padding. |
 | `--cinder-button-padding-y-sm` | `var(--cinder-space-1)` | Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`. |
 | `--cinder-button-height-sm` | `var(--cinder-control-height-sm)` | Small button height: `control.height.sm` (28px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. |
 | `--cinder-button-font-size-sm` | `var(--cinder-text-sm)` | Small button label font size. |
@@ -653,7 +653,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-button-padding-x-md` | `var(--cinder-space-2-5)` | Medium button horizontal padding. |
+| `--cinder-button-padding-x-md` | `var(--cinder-space-4)` | Medium button horizontal padding. |
 | `--cinder-button-padding-y-md` | `var(--cinder-space-1-5)` | Medium button vertical padding. |
 | `--cinder-button-height-md` | `var(--cinder-control-height-md)` | Medium button height: `control.height.md` (32px). |
 | `--cinder-button-font-size-md` | `var(--cinder-text-sm)` | Medium button label font size. |
