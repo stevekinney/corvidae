@@ -705,11 +705,19 @@
   );
   const quoteAvailable = $derived(canQuote && !(transcript && isFailed));
   const regenerateAvailable = $derived(canRegenerate && !(transcript && isFailed));
+  // A turn whose outcome notice carries its own recovery (Retry, or Discard and Continue) draws no
+  // Quote or Regenerate beside it: a dim, disabled twin would read as a second recovery control.
+  const outcomeOwnsRecovery = $derived(
+    transcript &&
+      ((turn.kind === 'stopped' && Boolean(onDiscardTurn || onContinueTurn)) ||
+        ((turn.kind === 'failed' || turn.kind === 'empty') && Boolean(onRetryTurn))),
+  );
   const showQuoteAction = $derived(
-    quoteAvailable || (settledAssistantTurn && onQuote !== undefined),
+    !outcomeOwnsRecovery && (quoteAvailable || (settledAssistantTurn && onQuote !== undefined)),
   );
   const showRegenerateAction = $derived(
-    regenerateAvailable || (settledAssistantTurn && onRegenerate !== undefined),
+    !outcomeOwnsRecovery &&
+      (regenerateAvailable || (settledAssistantTurn && onRegenerate !== undefined)),
   );
 
   // The agent's instructions open the transcript as muted text, folded to one line by default.
@@ -2164,6 +2172,12 @@
   .chat-message-wrapper[data-role='user']
     .chat-message:has(:global(.message-attachments:last-child)) {
     padding-block-end: var(--cinder-space-3);
+  }
+
+  /* A bubble that holds only a tile has 12px on all four sides. */
+  .chat-message-wrapper[data-role='user']
+    .chat-message:has(:global(.message-attachments:only-child)) {
+    padding-block: var(--cinder-space-3);
   }
 
   /* An RTL reply's line takes the message's direction: the time at inline start, the actions

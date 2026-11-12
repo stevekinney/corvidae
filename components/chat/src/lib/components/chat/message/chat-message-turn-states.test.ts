@@ -183,6 +183,28 @@ describe('R4: stopped', () => {
     });
     expect((getByRole('button', { name: /Regenerate/u }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  test('an outcome that carries its own recovery hides Quote and Regenerate, and keeps Copy', () => {
+    const turns: Array<Record<string, unknown>> = [
+      { turnState: { kind: 'stopped' }, onContinueTurn: () => undefined },
+      { turnState: { kind: 'empty' }, onRetryTurn: () => undefined },
+      {
+        turnState: { kind: 'failed', cause: 'The connection dropped.' },
+        onRetryTurn: () => undefined,
+      },
+    ];
+    for (const props of turns) {
+      cleanup();
+      const { queryByRole } = mount({
+        ...props,
+        onRegenerate: () => undefined,
+        onQuote: () => undefined,
+      });
+      expect(queryByRole('button', { name: /Regenerate/u })).toBeNull();
+      expect(queryByRole('button', { name: /Quote/u })).toBeNull();
+      expect(queryByRole('button', { name: /Copy/u })).not.toBeNull();
+    }
+  });
 });
 
 describe('R5: failed partway', () => {

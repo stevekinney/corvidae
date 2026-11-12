@@ -782,9 +782,9 @@ describe('ChatMessage — tool-call rendering', () => {
       const toggle = groupToggle(container);
       const list = container.querySelector<HTMLElement>('.chat-tool-call-list')!;
 
-      // The header is the step count, the tools and the total time, one field each and no
-      // separator character between them.
-      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 steps lookup-order ×2 700ms');
+      // The header is the step count and the total time, one field each and no separator
+      // character between them; the tool's name stays in the expanded row, not the summary.
+      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 steps 700ms');
       expect(toggle.textContent).not.toContain(String.fromCodePoint(0xb7));
       expect(
         Array.from(toggle.querySelectorAll('.chat-tool-call-summary > *'), (field) =>
