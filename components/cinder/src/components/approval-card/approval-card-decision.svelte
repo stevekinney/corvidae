@@ -95,6 +95,7 @@
   import Link from '../link/link.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import { describeDecidedAction, STATE_LABELS, UNDECIDED_PREFIX } from './approval-card-state.ts';
   import type { InputSummaryPair } from './approval-card-state.ts';
@@ -480,15 +481,7 @@
     {#if canAnswer}
       <div class="cinder-approval-card__row-actions" role="group" aria-label="Approval actions">
         {#if !noteOpen}
-          <button
-            type="button"
-            class="cinder-approval-card__note-toggle"
-            aria-expanded={noteOpen}
-            disabled={isBusy}
-            onclick={() => (noteOpen = true)}
-          >
-            Add a note
-          </button>
+          <ApprovalCardNoteToggle disabled={isBusy} onOpen={() => (noteOpen = true)} />
         {/if}
         <span class="cinder-approval-card__row-spacer"></span>
         <Button

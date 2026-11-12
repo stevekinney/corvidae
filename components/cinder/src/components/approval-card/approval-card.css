@@ -784,7 +784,7 @@
     flex: 1 0 100%;
     order: 3;
     margin: 0;
-    text-align: end;
+    text-align: start;
   }
 
   /* Approval words are critical confirmation text. Keep them inside the equal action faces even
@@ -822,33 +822,31 @@
     margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-1));
   }
 
-  /* "Add a note" is a quiet control in the action row: muted text, no face, painted at text
-   * height and vertically centred against the buttons. */
-  .cinder-approval-card__note-toggle {
-    appearance: none;
+  /* "Add a note" is a ghost small Cinder Button with a note icon, so it reads as a control and not
+   * as a caption for Deny. The tooltip wrapper is the flex item: it keeps its size, centres against
+   * the buttons and sits --cinder-space-3 from Deny (the row gap is the other --cinder-space-1). */
+  .cinder-approval-card__note-toggle-tip {
     flex: none;
     align-self: center;
-    min-block-size: 24px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--cinder-radius-sm);
-    background: none;
-    color: var(--cinder-text-muted);
-    font: inherit;
-    cursor: pointer;
+    margin-inline-end: var(--cinder-space-2);
   }
 
-  @media (hover: hover) {
-    .cinder-approval-card__note-toggle:hover {
-      color: var(--cinder-text-default);
-      text-decoration: underline;
-      text-underline-offset: 0.15em;
+  /* Under 30rem of card width the words give way to the icon; they stay the accessible name and
+   * the tooltip says them. */
+  @container (inline-size < 30rem) {
+    .cinder-approval-card
+      .cinder-approval-card__row-actions
+      .cinder-approval-card__note-toggle
+      .cinder-button__label {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
-  }
-
-  .cinder-approval-card__note-toggle:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   /* ----------------------------------------
@@ -935,6 +933,12 @@
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
     text-align: start;
+  }
+
+  /* The title takes the available width at its natural size, so when the badge would force the
+   * title to break, the badge is the item that wraps, onto the line directly under the title. */
+  .cinder-approval-card__decision-head .cinder-approval-card__decision-title {
+    flex: 1 1 auto;
   }
 
   .cinder-approval-card__receipt .cinder-approval-card__input-toggle {
@@ -1550,18 +1554,15 @@
       min-inline-size: var(--cinder-touch-target-min);
     }
 
-    /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) and
-     * "Add a note" are painted at text height; on a touch screen each reaches a 44px hit area
+    /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) are painted at text height; on a touch screen each reaches a 44px hit area
      * through a pseudo-element that takes no layout space, so the rows keep their rhythm. */
     .cinder-approval-card__input-toggle,
-    .cinder-approval-card__said-toggle,
-    .cinder-approval-card__note-toggle {
+    .cinder-approval-card__said-toggle {
       position: relative;
     }
 
     .cinder-approval-card__input-toggle::before,
-    .cinder-approval-card__said-toggle::before,
-    .cinder-approval-card__note-toggle::before {
+    .cinder-approval-card__said-toggle::before {
       content: '';
       position: absolute;
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
@@ -1579,8 +1580,7 @@
     }
 
     .cinder-approval-card__risk-icon:focus-visible,
-    .cinder-approval-card__input-toggle:focus-visible,
-    .cinder-approval-card__note-toggle:focus-visible {
+    .cinder-approval-card__input-toggle:focus-visible {
       outline: 2px solid CanvasText;
       outline-offset: 2px;
       box-shadow: none;

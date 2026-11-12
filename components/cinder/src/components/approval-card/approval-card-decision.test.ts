@@ -295,9 +295,13 @@ describe('ApprovalCard decision layout: arming an irreversible action', () => {
     expect(armed.querySelector('.cinder-button__label')?.textContent).toBe(
       'Press again to refund this order for $42.00 immediately',
     );
+    // Compare labels, not elements: a failed element comparison prints the whole DOM tree.
     expect(
-      Array.from(container.querySelectorAll('.cinder-approval-card__row-actions .cinder-button')),
-    ).toEqual([deny, armed]);
+      Array.from(
+        container.querySelectorAll('.cinder-approval-card__row-actions .cinder-button'),
+        (button) => button === deny || button === armed,
+      ),
+    ).toEqual([false, true, true]);
 
     await fireEvent.click(armed);
     expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
@@ -708,13 +712,52 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/__decision-head:has\(\.cinder-approval-card__irreversible\)/);
   });
 
-  test('the note toggle is a quiet control that no longer fills a line of its own', () => {
+  test('Add a note is a ghost small Cinder Button with an icon and a tooltip', () => {
+    const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
+    const toggle = getByRole('button', { name: 'Add a note' });
+    expect(toggle.classList.contains('cinder-button')).toBe(true);
+    expect(toggle.classList.contains('cinder-approval-card__note-toggle')).toBe(true);
+    expect(toggle.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(toggle.getAttribute('data-cinder-size')).toBe('sm');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.querySelector('.cinder-button__icon svg')).not.toBeNull();
+    expect(toggle.closest('.cinder-approval-card__note-toggle-tip')).not.toBeNull();
+    expect(container.querySelector('[role="tooltip"]')?.textContent ?? 'Add a note').toContain(
+      'Add a note',
+    );
+  });
+
+  test('Add a note keeps space-3 before Deny and hides only its words under 30rem', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
-    expect(css).toMatch(/__note-toggle \{[^}]*flex: none;[^}]*color: var\(--cinder-text-muted\);/);
-    expect(css).not.toMatch(/__note-toggle \{ flex: 1 1 100%/);
+    expect(css).toMatch(
+      /__note-toggle-tip \{[^}]*flex: none;[^}]*margin-inline-end: var\(--cinder-space-2\);/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{[^@]*__note-toggle \.cinder-button__label \{[^}]*clip-path: inset\(50%\);/,
+    );
+  });
+
+  test('the title takes the width and the irreversible badge is the item that wraps', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /__decision-head \.cinder-approval-card__decision-title \{ flex: 1 1 auto; \}/,
+    );
+  });
+
+  test('the armed hint sits at the start edge', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /__two-press-hint \{[^}]*flex: 1 0 100%;[^}]*order: 3;[^}]*text-align: start;/,
+    );
   });
 
   // C#14 (chat stress sweep): at 320 the label column left a long tool identifier a few
@@ -728,8 +771,9 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/inline-size < 20rem\).*grid-template-columns: minmax\(0, 1fr\)/);
   });
 
-  // C#3 (chat stress sweep): the disclosures and "Add a note" were text-sized on a phone.
-  test('on a coarse pointer the disclosures and Add a note are 44px targets', () => {
+  // C#3 (chat stress sweep): the disclosures were text-sized on a phone. "Add a note" is a Button
+  // and owns its own hit area.
+  test('on a coarse pointer the disclosures are 44px targets', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -737,7 +781,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
     // Painted at text height: the 44px hit area is a pseudo-element that takes no layout space.
     expect(coarse).toContain(
-      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before, .cinder-approval-card__note-toggle::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
+      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
     );
     expect(coarse).not.toMatch(/__(?:input|said|note)-toggle\s*\{\s*min-block-size/);
   });
