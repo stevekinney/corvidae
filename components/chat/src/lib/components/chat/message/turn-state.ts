@@ -168,9 +168,9 @@ export function presentTurnState(state: ChatTurnState): ChatTurnPresentation {
       return { line: true, caret: false, muted: false, regenerate: false };
     case 'failed':
       return { line: true, caret: false, muted: false, regenerate: false };
-    // The empty row carries the turn's time itself, so no line stands under it with a lone time.
+    // The empty turn's time stands on the turn's own line, like every other turn's, not in its notice.
     case 'empty':
-      return { line: false, caret: false, muted: false, regenerate: false };
+      return { line: true, caret: false, muted: false, regenerate: false };
     case 'complete':
       return { line: true, caret: false, muted: false, regenerate: true };
     default: {

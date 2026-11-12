@@ -1515,8 +1515,10 @@
       {/if}
     </div>
   {:else if notice !== undefined}
-    <!-- Archived or read only: one neutral bar in place of the composer. The secondary action sits
-         on the left and the primary one on the right, after the words. -->
+    <!-- Archived or read only: one neutral bar in place of the composer. It is not a Callout because
+         it is the composer's own box (same frame, role group and tooltip label), not a notice about
+         the transcript above it. The secondary action sits on the left and the primary one on the
+         right, after the words. -->
     <div
       class={classNames('chat-input', 'chat-input-blocked', 'chat-input-notice', className)}
       data-chat-composer-status={notice.kind}

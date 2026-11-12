@@ -151,8 +151,9 @@ describe('presentTurnState', () => {
     }
   });
 
-  test('R6: an empty turn has no line, so no time stands alone under it', () => {
-    expect(presentTurnState(empty).line).toBe(false);
+  test('R6: an empty turn has its line, which carries its time, and no Regenerate', () => {
+    expect(presentTurnState(empty).line).toBe(true);
+    expect(presentTurnState(empty).regenerate).toBe(false);
   });
 
   test('a complete turn has its line and offers Regenerate', () => {

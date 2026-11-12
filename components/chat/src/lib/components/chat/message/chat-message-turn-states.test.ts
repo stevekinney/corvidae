@@ -244,20 +244,22 @@ describe('R6: empty answer', () => {
     expect(row?.querySelector('.chat-turn-text')?.textContent).toBe(
       'The agent finished without writing an answer.',
     );
-    expect(row?.querySelector('time')?.getAttribute('datetime')).toBe(SENT_AT);
-    // The only time on the turn is the row's own: no orphan line or footnote under it.
-    expect(container.querySelector('.chat-message-line')).toBeNull();
+    // The turn's time is on its own line, not inside the notice.
+    expect(row?.querySelector('time')).toBeNull();
+    expect(container.querySelector('.chat-message-line time')?.getAttribute('datetime')).toBe(
+      SENT_AT,
+    );
     expect(container.querySelectorAll('time')).toHaveLength(1);
 
     await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryTurn).toHaveBeenCalledWith('a1');
   });
 
-  test('the default presentation drops its time line for an empty turn too', () => {
+  test('the default presentation keeps the empty turn’s time on its metadata row', () => {
     const { container } = render(ChatMessage, {
       props: { message: reply({ content: '' }), turnState: { kind: 'empty' } },
     } as never);
-    expect(container.querySelector('.chat-message-metadata')).toBeNull();
+    expect(container.querySelector('.chat-message-metadata time')).not.toBeNull();
     expect(container.querySelectorAll('time')).toHaveLength(1);
   });
 
