@@ -735,12 +735,14 @@
     gap: var(--cinder-space-2-5, 0.625rem);
   }
 
-  .chat-question-choices :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
+  /* The card rules anchor on this component's own root: `.chat-question-choices` is a class handed to
+     a child component, so Svelte's scoping would drop any rule that began with it. */
+  .chat-question :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
     padding-block: var(--cinder-space-2);
     gap: var(--cinder-space-2);
   }
 
-  .chat-question-choices
+  .chat-question
     :global(
       .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
     ) {
@@ -749,7 +751,7 @@
   }
 
   /* A description follows its title on the title's line when the whole of it fits, else it wraps below. */
-  .chat-question-choices
+  .chat-question
     :global(.cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__card) {
     display: flex;
     flex-wrap: wrap;

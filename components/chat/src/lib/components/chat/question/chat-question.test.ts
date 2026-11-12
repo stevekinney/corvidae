@@ -464,4 +464,14 @@ describe('the pick of a held answer', () => {
     expect(source).not.toContain('chat-question-choice[data-selected]');
     expect(source).toContain('ChoiceGridItem');
   });
+
+  test('the card layout rules survive Svelte scoping, so a description follows its title', async () => {
+    const { compile } = await import('svelte/compiler');
+    const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
+    const css = compile(source, { filename: 'chat-question.svelte', generate: 'client' }).css?.code;
+    // A rule that began with a class handed to a child component is pruned: assert the emitted CSS.
+    expect(css).toMatch(
+      /\.chat-question\.svelte-[\w-]+\s+\.cinder-choice-grid-item\[data-cinder-variant='card'\] \.cinder-choice-grid-item__card\s*\{[^}]*flex-wrap:\s*wrap[^}]*align-items:\s*baseline/u,
+    );
+  });
 });
