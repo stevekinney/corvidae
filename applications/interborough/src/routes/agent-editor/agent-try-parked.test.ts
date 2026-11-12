@@ -216,7 +216,7 @@ describe('Try it, parked on a question', () => {
     const view = mount();
     await startChat(view);
 
-    await fireEvent.click(await view.findByRole('button', { name: 'production' }));
+    await fireEvent.click(await view.findByRole('radio', { name: 'production' }));
 
     await waitFor(() => expect(resumes).toHaveLength(1));
     expect(JSON.stringify(resumes[0]?.resume)).toContain('production');
