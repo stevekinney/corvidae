@@ -1053,6 +1053,17 @@
         "steps": [
           { "action": "click", "role": "button", "name": "Sources" },
           { "action": "expect-text", "text": "سياسة الاسترداد" },
+          { "action": "scroll", "to": "top", "by": "wheel" },
+          {
+            "action": "expect-offscreen",
+            "selector": ".cinder-approval-card[data-cinder-state=\"pending\"] .cinder-approval-card__row-actions, .cinder-approval-card[data-cinder-state=\"pending\"] .cinder-approval-card__action-row"
+          },
+          {
+            "action": "expect",
+            "role": "button",
+            "name": "Review approval",
+            "scope": "[data-chat-approval-drawer]"
+          },
           { "action": "expect-approval-review" }
         ]
       },
@@ -1747,24 +1758,16 @@
       {
         "name": "reviewed",
         "steps": [
-          { "action": "scroll", "to": "top" },
+          { "action": "scroll", "to": "top", "by": "wheel" },
           {
-            "action": "click",
+            "action": "expect-offscreen",
+            "selector": ".cinder-approval-card[data-cinder-state=\"pending\"] .cinder-approval-card__row-actions, .cinder-approval-card[data-cinder-state=\"pending\"] .cinder-approval-card__action-row"
+          },
+          {
+            "action": "expect",
             "role": "button",
             "name": "Review approval",
             "scope": "[data-chat-approval-drawer]"
-          },
-          {
-            "action": "expect",
-            "role": "button",
-            "name": "Refund $42.00",
-            "scope": ".cinder-approval-card[data-cinder-state=\"pending\"]"
-          },
-          {
-            "action": "expect",
-            "role": "button",
-            "name": "Deny",
-            "scope": ".cinder-approval-card[data-cinder-state=\"pending\"]"
           },
           { "action": "expect-approval-review" }
         ]

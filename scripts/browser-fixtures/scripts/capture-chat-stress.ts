@@ -1015,6 +1015,25 @@ function scrollTranscript(to: 'top' | 'bottom'): void {
   }
 }
 
+/** Runs in the page: where the transcript is on screen and how far it can scroll either way. */
+function wheelTarget(): { x: number; y: number; scrollTop: number; remaining: number } | null {
+  const shell = document.querySelector('[data-testid="chat-stress-shell"]') ?? document.body;
+  for (const element of shell.querySelectorAll('*')) {
+    const style = getComputedStyle(element);
+    const scrolls = style.overflowY === 'auto' || style.overflowY === 'scroll';
+    if (scrolls && element.scrollHeight > element.clientHeight + 1) {
+      const box = element.getBoundingClientRect();
+      return {
+        x: box.left + box.width / 2,
+        y: box.top + box.height / 2,
+        scrollTop: element.scrollTop,
+        remaining: element.scrollHeight - element.clientHeight - element.scrollTop,
+      };
+    }
+  }
+  return null;
+}
+
 /** Case 47's first press must leave both the armed action and its reset hint inside the transcript viewport. */
 async function assertIrreversibleApprovalViewport(page: Page): Promise<void> {
   const valid = await page.evaluate(() => {
@@ -1296,9 +1315,20 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
           const rowBox = row.getBoundingClientRect();
           const box = scroller.getBoundingClientRect();
           if (rowBox.height <= 0 || box.height <= 0) return false;
+          // The box the transcript has without the reminder: its bottom plus the reminder's block
+          // size and margins while the reminder is present, the same box the product judges by.
+          const reminderElement = shell?.querySelector<HTMLElement>('[data-chat-approval-drawer]');
+          let reclaimable = 0;
+          if (reminderElement != null) {
+            const style = getComputedStyle(reminderElement);
+            reclaimable =
+              reminderElement.getBoundingClientRect().height +
+              (Number.parseFloat(style.marginTop) || 0) +
+              (Number.parseFloat(style.marginBottom) || 0);
+          }
           const visible =
             rowBox.top >= box.top - 1 &&
-            rowBox.bottom <= box.bottom + 1 &&
+            rowBox.bottom <= box.bottom + reclaimable + 1 &&
             rowBox.left >= box.left - 1 &&
             rowBox.right <= box.right + 1;
           const reminder = shell?.querySelector('[data-chat-approval-drawer]') != null;
@@ -1667,9 +1697,35 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
           { timeout: DEADLINE },
         );
       return;
-    case 'scroll':
-      await page.evaluate(scrollTranscript, step.to);
+    case 'scroll': {
+      if (step.by !== 'wheel') {
+        await page.evaluate(scrollTranscript, step.to);
+        return;
+      }
+      // A real wheel over the transcript: the product reads it as the person's own scroll.
+      const target = await page.evaluate(wheelTarget);
+      if (target === null) throw new Error('No scrolling transcript to wheel over.');
+      await page.mouse.move(target.x, target.y);
+      await page.mouse.wheel(0, step.to === 'top' ? -target.scrollTop : target.remaining);
+      await page.waitForFunction(
+        (to) => {
+          const shell =
+            document.querySelector('[data-testid="chat-stress-shell"]') ?? document.body;
+          for (const element of shell.querySelectorAll('*')) {
+            const style = getComputedStyle(element);
+            if (style.overflowY !== 'auto' && style.overflowY !== 'scroll') continue;
+            if (element.scrollHeight <= element.clientHeight + 1) continue;
+            return to === 'top'
+              ? element.scrollTop <= 1
+              : element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+          }
+          return false;
+        },
+        step.to,
+        { timeout: DEADLINE },
+      );
       return;
+    }
     default: {
       const unreachable: never = step;
       throw new Error(`Unknown step ${JSON.stringify(unreachable)}.`);

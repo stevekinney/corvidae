@@ -25,11 +25,12 @@ export function approvalCardFitsViewport(
 
 /**
  * The transcript's visible box for an approval, measured the same whether the reminder is on screen
- * or not. The reminder sits in the composer's column and takes room from the transcript while it
- * shows, so the box the transcript reports depends on the reminder; reading "is the row in view"
- * from that box makes the reminder's presence an input to its own cause. The answer here is the box
- * with the reminder's room taken out in both states: `reminderBlockSize` is the room the reminder
- * takes (its height and margins), and `reminderShown` says whether `viewport` already excludes it.
+ * or not: the box the transcript has with the reminder absent (the "tall" box). The reminder sits
+ * in the composer's column and takes room from the transcript while it shows, so the box the
+ * transcript reports depends on the reminder; judging the row against that box makes the
+ * reminder's presence an input to its own cause, and the reminder flaps at the end of the
+ * transcript. `reminderBlockSize` is the room the reminder takes (its height and margins), added
+ * back to the bottom only while `reminderShown` says `viewport` excludes it.
  */
 export function approvalVisibleBox<T extends Pick<DOMRectReadOnly, 'top' | 'bottom'>>(
   viewport: T & Pick<DOMRectReadOnly, 'left' | 'right'>,
@@ -38,7 +39,7 @@ export function approvalVisibleBox<T extends Pick<DOMRectReadOnly, 'top' | 'bott
 ): Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'> {
   return {
     top: viewport.top,
-    bottom: viewport.bottom - (reminderShown ? 0 : reminderBlockSize),
+    bottom: viewport.bottom + (reminderShown ? reminderBlockSize : 0),
     left: viewport.left,
     right: viewport.right,
   };
@@ -46,9 +47,9 @@ export function approvalVisibleBox<T extends Pick<DOMRectReadOnly, 'top' | 'bott
 
 /**
  * Whether a pending approval's row of decision buttons (or the whole card, when it draws none) is
- * wholly inside the transcript's visible box, the single predicate that decides whether the
- * reminder shows: it shows when this is false. It gives the same answer with the reminder on screen
- * and off, because the box excludes the reminder's room in both.
+ * wholly inside the transcript's tall box, the single predicate that decides whether the reminder
+ * shows: it shows when this is false. It gives the same answer with the reminder on screen and off,
+ * because the box is the reminder-absent one in both.
  */
 export function approvalRowVisible(
   row: Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'>,
@@ -56,10 +57,7 @@ export function approvalRowVisible(
   reminderShown: boolean,
   reminderBlockSize: number,
 ): boolean {
-  return approvalCardFitsViewport(
-    row,
-    approvalVisibleBox(viewport, reminderShown, reminderBlockSize),
-  );
+  return approvalCardFitsViewport(row, viewport, reminderShown ? reminderBlockSize : 0);
 }
 
 /** The selector of a pending approval card's row of decision buttons. */

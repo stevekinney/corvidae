@@ -48,7 +48,8 @@ export type StressStep =
   | { action: 'expect-empty-streaming-assistant' }
   | { action: 'expect-streaming-assistant-text'; text: string }
   | { action: 'upload'; files: readonly StressUpload[] }
-  | { action: 'scroll'; to: 'top' | 'bottom' };
+  /** `by: 'wheel'` scrolls with the mouse wheel over the transcript, so it is real user input. */
+  | { action: 'scroll'; to: 'top' | 'bottom'; by?: 'wheel' };
 
 /** A file the `upload` step hands to the composer's real file input. */
 export interface StressUpload {
@@ -220,6 +221,9 @@ function problemsInStep(step: unknown, where: string): string[] {
     problems.push(`${where}: upload needs files`);
   if (action === 'scroll' && step['to'] !== 'top' && step['to'] !== 'bottom') {
     problems.push(`${where}: scroll goes to top or bottom`);
+  }
+  if (action === 'scroll' && step['by'] !== undefined && step['by'] !== 'wheel') {
+    problems.push(`${where}: scroll goes by wheel or not at all`);
   }
   if (needsRole) {
     if (typeof step['role'] !== 'string' || step['role'] === '')

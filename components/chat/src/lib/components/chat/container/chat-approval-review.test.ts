@@ -284,8 +284,7 @@ describe('approval row visibility with and without the reminder', () => {
     expect(answers(row(200, 244))).toEqual([true, true]);
   });
 
-  test('a row partly under the composer or the reminder is not visible either way', () => {
-    expect(answers(row(330, 374))).toEqual([false, false]);
+  test('a row partly under the composer is not visible either way', () => {
     expect(answers(row(380, 424))).toEqual([false, false]);
   });
 
@@ -293,9 +292,10 @@ describe('approval row visibility with and without the reminder', () => {
     expect(answers(row(-20, 24))).toEqual([false, false]);
   });
 
-  test('a row ending at the reminder strip is the edge both states agree on', () => {
-    expect(answers(row(300, 352))).toEqual([true, true]);
-    expect(answers(row(310, 354))).toEqual([false, false]);
+  test('a row ending at or above the tall box bottom is visible in both reminder states', () => {
+    expect(answers(row(330, 374))).toEqual([true, true]);
+    expect(answers(row(356, 400))).toEqual([true, true]);
+    expect(answers(row(358, 402))).toEqual([false, false]);
   });
 
   test('a row clipped on the side is not visible', () => {
@@ -304,14 +304,14 @@ describe('approval row visibility with and without the reminder', () => {
     ).toBe(false);
   });
 
-  test('the visible box drops the reminder only while the box does not already exclude it', () => {
-    expect(approvalVisibleBox(without, false, reminder).bottom).toBe(352);
-    expect(approvalVisibleBox(withReminder, true, reminder).bottom).toBe(352);
+  test('the visible box is the reminder-absent box in both states', () => {
+    expect(approvalVisibleBox(without, false, reminder).bottom).toBe(400);
+    expect(approvalVisibleBox(withReminder, true, reminder).bottom).toBe(400);
   });
 
   test('the arrival scroll targets the same box, so a row it clears is a row the reminder accepts', () => {
-    const rowBox = row(360, 404);
-    const box = approvalVisibleBox(without, false, reminder);
+    const rowBox = row(380, 424);
+    const box = approvalVisibleBox(withReminder, true, reminder);
     const shift = approvalActionRowShift(rowBox, box, 8);
     const moved = row(rowBox.top - shift, rowBox.bottom - shift);
     expect(answers(moved)).toEqual([true, true]);

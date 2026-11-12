@@ -1608,6 +1608,8 @@
   // the composer and any notice above it, and keeps doing so as the layout settles (the notice
   // itself shrinks the transcript) until the person scrolls, wheels, touches or presses a key
   // there, or focus is inside the card. A card taller than the transcript is the lift's to place.
+  // The row is judged against the box the transcript has without the reminder, the same box that
+  // decides whether the reminder shows.
   $effect(() => {
     const scroller = viewport;
     const messageId = approvalWait.messageId;
@@ -1638,18 +1640,8 @@
       );
       if (shift !== 0) {
         scroller.scrollTop += shift;
-        ownScrollTop = scroller.scrollTop;
       }
     };
-    // A scroll up that this effect did not make is the person's (a scrollbar drag, a programmatic
-    // jump): the transcript is theirs from then on, the same as for a wheel or a touch. A scroll
-    // down is not read so: the transcript following its end moves that way on its own.
-    let ownScrollTop = scroller.scrollTop;
-    const releaseOnForeignScroll = (): void => {
-      if (scroller.scrollTop < ownScrollTop - 1) released = true;
-      ownScrollTop = scroller.scrollTop;
-    };
-    scroller.addEventListener('scroll', releaseOnForeignScroll, { passive: true });
     const schedule = (): void => {
       if (frame === 0 && !released) frame = requestAnimationFrame(settle);
     };
@@ -1669,7 +1661,6 @@
       resizes?.disconnect();
       changes.disconnect();
       for (const type of inputs) scroller.removeEventListener(type, release);
-      scroller.removeEventListener('scroll', releaseOnForeignScroll);
     };
   });
 
