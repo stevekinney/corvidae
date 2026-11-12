@@ -65,6 +65,8 @@
   import { useChatFollowUpQueue } from './use-chat-follow-up-queue.svelte.ts';
   import { useChatApprovalWait } from './use-chat-approval-wait.svelte.ts';
   import {
+    approvalActionRow,
+    approvalActionRowShift,
     approvalCardFitsViewport,
     focusPendingApproval,
     pendingApprovalCard,
@@ -1533,12 +1535,16 @@
           approvalFullyVisible = false;
           return;
         }
-        approvalFullyVisible = approvalCardFitsViewport(cardBox, viewportBox);
+        // The reminder is for a card whose decision buttons are out of reach: while its action
+        // row is wholly in view there is nothing to point to. A card that draws no row falls back
+        // to the whole card.
+        const row = approvalActionRow(card);
+        approvalFullyVisible = approvalCardFitsViewport(
+          row === null ? cardBox : row.getBoundingClientRect(),
+          viewportBox,
+        );
       };
-      observer = new IntersectionObserver(
-        updateVisibility,
-        { root: scroller, threshold: 1 },
-      );
+      observer = new IntersectionObserver(updateVisibility, { root: scroller, threshold: 1 });
       resizeObserver = new ResizeObserver(updateVisibility);
       resizeObserver.observe(card);
       resizeObserver.observe(scroller);
@@ -1554,6 +1560,55 @@
       observer?.disconnect();
       resizeObserver?.disconnect();
       changes.disconnect();
+    };
+  });
+
+  // When an approval arrives the transcript scrolls so the card's row of decision buttons clears
+  // the composer and any notice above it, and keeps doing so as the layout settles (the notice
+  // itself shrinks the transcript) until the person scrolls, wheels, touches or presses a key
+  // there, or focus is inside the card. A card taller than the transcript is the lift's to place.
+  $effect(() => {
+    const scroller = viewport;
+    const messageId = approvalWait.messageId;
+    if (scroller === null || !approvalWaiting || messageId === undefined) return undefined;
+    let released = false;
+    let frame = 0;
+    const settle = (): void => {
+      frame = 0;
+      if (released) return;
+      const card = pendingApprovalCard(containerRef, messageId);
+      const row = card === null ? null : approvalActionRow(card);
+      if (card === null || row === null) return;
+      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
+      const viewportBox = scroller.getBoundingClientRect();
+      const cardBox = card.getBoundingClientRect();
+      if (cardBox.height >= viewportBox.height) return;
+      const shift = approvalActionRowShift(
+        row.getBoundingClientRect(),
+        viewportBox,
+        ATTENTION_INSET,
+      );
+      if (shift !== 0) scroller.scrollTop += shift;
+    };
+    const schedule = (): void => {
+      if (frame === 0 && !released) frame = requestAnimationFrame(settle);
+    };
+    const release = (): void => {
+      released = true;
+    };
+    const inputs = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+    for (const type of inputs) scroller.addEventListener(type, release, { passive: true });
+    const resizes =
+      typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
+    resizes?.observe(scroller);
+    const changes = new MutationObserver(schedule);
+    changes.observe(scroller, { childList: true, subtree: true });
+    schedule();
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      resizes?.disconnect();
+      changes.disconnect();
+      for (const type of inputs) scroller.removeEventListener(type, release);
     };
   });
 

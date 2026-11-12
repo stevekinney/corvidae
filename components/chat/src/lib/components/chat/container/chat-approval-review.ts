@@ -2,8 +2,7 @@ import type { ApprovalState } from '@lostgradient/cinder';
 import type { Message } from '../conversation-model.ts';
 
 /** The words the composer drawer says while an approval waits on the person. */
-export const APPROVAL_DRAWER_TEXT =
-  'Waiting for your approval.';
+export const APPROVAL_DRAWER_TEXT = 'Waiting for your approval.';
 
 /** The drawer's action: it takes the person to the approval that waits. */
 export const APPROVAL_DRAWER_ACTION = 'Review approval';
@@ -24,6 +23,34 @@ export function approvalCardFitsViewport(
   );
 }
 
+/** The selector of a pending approval card's row of decision buttons. */
+const APPROVAL_ACTION_ROW_SELECTOR =
+  '.cinder-approval-card__row-actions, .cinder-approval-card__action-row';
+
+/** Returns a card's row of decision buttons, or `null` when the card draws none. */
+export function approvalActionRow(card: ParentNode): HTMLElement | null {
+  return card.querySelector<HTMLElement>(APPROVAL_ACTION_ROW_SELECTOR);
+}
+
+/**
+ * How far the transcript scrolls, in pixels (positive scrolls down), so a card's row of decision
+ * buttons sits wholly inside the transcript with `inset` to spare below it, clear of the composer
+ * and any notice above it. It is 0 when the row already fits or the viewport is too short to hold
+ * it with its inset, and a row above the top scrolls up just far enough to show it.
+ */
+export function approvalActionRowShift(
+  row: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  inset = 0,
+): number {
+  const rowHeight = row.bottom - row.top;
+  if (rowHeight + inset > viewport.bottom - viewport.top) return 0;
+  const below = row.bottom + inset - viewport.bottom;
+  if (below > 0) return below;
+  const above = viewport.top - row.top;
+  return above > 0 ? -above : 0;
+}
+
 /** Returns the pending approval card rendered by the message that is waiting. */
 export function pendingApprovalCard(
   root: ParentNode | null | undefined,
@@ -33,9 +60,8 @@ export function pendingApprovalCard(
     `article[data-message-id="${CSS.escape(messageId)}"]`,
   );
   return (
-    message?.querySelector<HTMLElement>(
-      '.cinder-approval-card[data-cinder-state="pending"]',
-    ) ?? null
+    message?.querySelector<HTMLElement>('.cinder-approval-card[data-cinder-state="pending"]') ??
+    null
   );
 }
 
@@ -129,9 +155,7 @@ export function focusPendingApproval(root: ParentNode | null | undefined): boole
     '.cinder-approval-card[data-cinder-state="pending"][tabindex]',
   );
   if (!card) return false;
-  const actions = card.querySelector<HTMLElement>(
-    '.cinder-approval-card__row-actions, .cinder-approval-card__action-row',
-  );
+  const actions = approvalActionRow(card);
   actions?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   card.focus({ preventScroll: true });
   return card.ownerDocument.activeElement === card;

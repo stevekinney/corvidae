@@ -14,6 +14,7 @@ import { getMessages } from '../utilities/index.ts';
 import {
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
+  approvalActionRowShift,
   approvalCardFitsViewport,
   findPendingApprovalMessageId,
   focusPendingApproval,
@@ -238,5 +239,25 @@ describe('pendingApprovalCard', () => {
     expect(pendingApprovalCard(root, 'waiting')?.id).toBe('waiting-card');
     expect(pendingApprovalCard(root, 'older')?.id).toBe('older-card');
     expect(pendingApprovalCard(root, 'missing')).toBeNull();
+  });
+});
+
+describe('approval action row shift', () => {
+  const viewport = { top: 0, bottom: 400 };
+
+  test('scrolls down just far enough for a row below the transcript to clear its inset', () => {
+    expect(approvalActionRowShift({ top: 380, bottom: 430 }, viewport, 8)).toBe(38);
+  });
+
+  test('leaves a row that already fits where it is', () => {
+    expect(approvalActionRowShift({ top: 300, bottom: 340 }, viewport, 8)).toBe(0);
+  });
+
+  test('scrolls up for a row above the top', () => {
+    expect(approvalActionRowShift({ top: -30, bottom: 10 }, viewport, 8)).toBe(-30);
+  });
+
+  test('does nothing when the row cannot fit the viewport with its inset', () => {
+    expect(approvalActionRowShift({ top: 100, bottom: 500 }, viewport, 8)).toBe(0);
   });
 });

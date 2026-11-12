@@ -112,6 +112,12 @@ function measuredBox(top: number, bottom: number, left = 0, right = 320): DOMRec
   return new DOMRect(left, top, right - left, bottom - top);
 }
 
+const ACTION_ROW = '.cinder-approval-card__row-actions, .cinder-approval-card__action-row';
+const resolvingAdapter: ChatAdapter = {
+  sendMessage: async () => undefined,
+  resolveToolApproval: async () => undefined,
+};
+
 const refundDetails: ChatAdapter['describeApproval'] = () => ({
   irreversible: true,
   approveLabel: 'Refund $42.00',
@@ -164,6 +170,59 @@ describe('Chat composer drawer for a waiting approval', () => {
       'Waiting for your approval.',
     );
     expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
+  });
+
+  test('draws no reminder while the card top is clipped but its action row is in view', () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      if (this.matches('.chat-timeline')) return measuredBox(0, 600);
+      if (this.matches('.cinder-approval-card')) return measuredBox(-60, 420, 16, 304);
+      if (this.matches(ACTION_ROW)) {
+        return measuredBox(370, 410, 16, 304);
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+    try {
+      const { container } = render(Chat, {
+        id: 'chat-drawer-clipped-top',
+        conversation: approvalConversation('drawer-clipped-top'),
+        adapter: resolvingAdapter,
+      });
+
+      expect(container.querySelector(ACTION_ROW)).not.toBeNull();
+      expect(drawerOf(container)).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  test('scrolls the transcript when the approval arrives so the action row clears the bottom', async () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    let scrolled = 0;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      if (this.matches('.chat-timeline')) return measuredBox(0, 600);
+      if (this.matches('.cinder-approval-card')) return measuredBox(330, 700, 16, 304);
+      if (this.matches(ACTION_ROW)) {
+        return measuredBox(650 - scrolled, 690 - scrolled, 16, 304);
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+    try {
+      const { container } = render(Chat, {
+        id: 'chat-drawer-arrival-scroll',
+        conversation: approvalConversation('drawer-arrival-scroll'),
+        adapter: resolvingAdapter,
+      });
+      const timeline = container.querySelector<HTMLElement>('.chat-timeline')!;
+      const before = timeline.scrollTop;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      scrolled = timeline.scrollTop - before;
+      expect(scrolled).toBeGreaterThan(0);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
   });
 
   test('renders host-provided approval drawer labels and accessible names', () => {
