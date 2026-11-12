@@ -331,6 +331,103 @@ export function collectGeometryFacts(): GeometryFacts {
     return bounds;
   }
 
+  /** Whether a point lies outside the visible box of a region around the element that scrolls. */
+  function scrolledOutOfView(element: Element, x: number, y: number): boolean {
+    for (let node = element.parentElement; node !== null; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const scrollsX = style.overflowX === 'auto' || style.overflowX === 'scroll';
+      const scrollsY = style.overflowY === 'auto' || style.overflowY === 'scroll';
+      if (scrollsX || scrollsY) {
+        const rect = node.getBoundingClientRect();
+        const left = rect.left + node.clientLeft;
+        const top = rect.top + node.clientTop;
+        if (scrollsX && (x < left || x >= left + node.clientWidth)) return true;
+        if (scrollsY && (y < top || y >= top + node.clientHeight)) return true;
+      }
+      // A fixed box sits on the viewport: what holds it in the tree scrolls nothing of it.
+      if (style.position === 'fixed') return false;
+    }
+    return false;
+  }
+
+  /**
+   * The sides on which a tap half the touch minimum from the control's center does not reach it,
+   * each with what the tap reaches instead; `null` when the control could not be asked. The box
+   * `hitBounds` reads is what the styles claim. This asks the browser what a finger gets, so a
+   * hit area clipped by a parent, painted over by the next row, or cut by a bar shows up here.
+   */
+  function unreachedSides(element: Element): string[] | null {
+    if (!window.matchMedia('(pointer: coarse)').matches) return null;
+    if (element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true') {
+      return null;
+    }
+    const own = element.getBoundingClientRect();
+    const centerX = own.left + own.width / 2;
+    const centerY = own.top + own.height / 2;
+    const reaches = (x: number, y: number): boolean => {
+      const top = document.elementFromPoint(x, y);
+      if (top === null) return false;
+      if (top === element || element.contains(top)) return true;
+      // A label is part of the checkbox or radio it names.
+      return top.closest('label')?.contains(element) === true;
+    };
+    // A control covered at its center is covered whole, which the covering check reports.
+    if (!reaches(centerX, centerY)) return null;
+    // A 44 pixel hit area ends 22 pixels from the center and its far edge is exclusive, so the
+    // probe sits half a pixel inside it. Chromium answers the neighbor within about three quarters
+    // of a pixel of a shared edge, so a control whose own box reaches that far is asked one pixel
+    // inside its edge instead.
+    const reach = 21.5;
+    const along = (halfExtent: number): number =>
+      halfExtent >= 22 ? Math.min(reach, halfExtent - 1) : reach;
+    const reachX = along(own.width / 2);
+    const reachY = along(own.height / 2);
+    const sides: [string, number, number][] = [
+      ['left', centerX - reachX, centerY],
+      ['right', centerX + reachX, centerY],
+      ['above', centerX, centerY - reachY],
+      ['below', centerX, centerY + reachY],
+    ];
+    const short: string[] = [];
+    let asked = 0;
+    for (const [side, x, y] of sides) {
+      if (x < 0 || y < 0 || x >= viewportWidth || y >= window.innerHeight) continue;
+      // What is scrolled out of a region's visible box cannot be tapped at all; a swipe brings it back.
+      if (scrolledOutOfView(element, x, y)) continue;
+      asked += 1;
+      if (reaches(x, y)) continue;
+      const top = document.elementFromPoint(x, y);
+      if (top === null) continue;
+      // Compact neighbors overlap their hit areas by design: a point outside this control's own box
+      // that reaches another control is that control's tap. Inside the box, it is a neighbor
+      // covering this control's face.
+      const insideOwnBox = x >= own.left && x < own.right && y >= own.top && y < own.bottom;
+      const neighbor = top.closest(CONTROL_SELECTOR);
+      if (
+        !insideOwnBox &&
+        neighbor !== null &&
+        !neighbor.contains(element) &&
+        !element.contains(neighbor)
+      ) {
+        continue;
+      }
+      // A fixed or stuck surface (a composer, a docked bar) covers content that scrolls under it,
+      // which the covering check owns.
+      let pinned = false;
+      for (let node: Element | null = top; node !== null && node !== document.body;) {
+        const position = getComputedStyle(node).position;
+        if ((position === 'fixed' || position === 'sticky') && !node.contains(element)) {
+          pinned = true;
+          break;
+        }
+        node = node.parentElement;
+      }
+      if (pinned) continue;
+      short.push(`${side} (reaches ${nameOf(top)})`);
+    }
+    return asked === 0 ? null : short;
+  }
+
   const parents = new Map<Element, number>();
 
   /** A number shared by the controls of one parent, so the audit can tell which sit in one row. */
@@ -435,6 +532,7 @@ export function collectGeometryFacts(): GeometryFacts {
           hit.top < layout.top ||
           hit.right > layout.right ||
           hit.bottom > layout.bottom,
+        unreached: unreachedSides(element),
         parent: parentOf(element),
         // Filling a container that hugs it is not stretching, so it must also span half the viewport.
         fullWidth: rect.width >= available - 1 && rect.width >= viewportWidth / 2,
