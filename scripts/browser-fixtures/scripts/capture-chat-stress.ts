@@ -358,8 +358,8 @@ export function measureInPage(options: {
       });
       // A control whose own centre does not reach it is covered whole; the sample and occlusion
       // evidence above names that, and no side of it can be probed.
-      const centreX = reachable.left + reachable.width / 2;
-      const centreY = reachable.top + reachable.height / 2;
+      const centreX = box.left + box.width / 2;
+      const centreY = box.top + box.height / 2;
       if (!hitTargetAt(element, centreX, centreY)) continue;
       const shortSides = probeHitArea(element, centreX, centreY);
       if (shortSides.length > 0) {
