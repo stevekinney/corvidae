@@ -182,6 +182,8 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@lostgradient/environmentalist": "catalog:",
+    "@lostgradient/operative": "workspace:*",
+    "@lostgradient/operative-typesafe": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@playwright/test": "catalog:",
     "@shikijs/langs": "catalog:",

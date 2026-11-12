@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   diffSize,
   FILE_LIMIT,
   LINE_LIMIT,
   planSteps,
+  prettierReadable,
   run,
   runChecks,
   sizeWarnings,
@@ -269,5 +273,21 @@ describe('run', () => {
     expect(result.code).toBe(0);
     expect(calls[0]).toEqual(['git', 'rev-parse', '--show-toplevel']);
     expect(calls[1]).toEqual(['git', 'merge-base', 'main', 'HEAD']);
+  });
+});
+
+describe('prettierReadable', () => {
+  test('names a file that exists, and neither a deleted file nor a symbolic link', () => {
+    const root = mkdtempSync(join(tmpdir(), 'focused-checks-'));
+    try {
+      mkdirSync(join(root, 'skill'));
+      writeFileSync(join(root, 'skill', 'SKILL.md'), '# Skill\n');
+      symlinkSync('skill', join(root, 'linked'));
+      expect(prettierReadable(root, 'skill/SKILL.md')).toBe(true);
+      expect(prettierReadable(root, 'linked')).toBe(false);
+      expect(prettierReadable(root, 'gone.md')).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
