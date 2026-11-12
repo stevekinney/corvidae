@@ -1591,14 +1591,24 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
   }
   if (stressCase.id === 47) await assertIrreversibleApprovalViewport(opened.page);
   if (stressCase.id === 45) {
-    await opened.page.waitForFunction(
-      () =>
-        document.querySelector('.cinder-drawer__panel[data-cinder-closing]') === null &&
-        document.activeElement?.matches('.chat-message-action-button[data-citation-focus]') ===
-          true,
-      undefined,
-      { timeout: DEADLINE },
-    );
+    try {
+      await opened.page.waitForFunction(
+        () =>
+          document.querySelector('.cinder-drawer__panel[data-cinder-closing]') === null &&
+          document.activeElement?.matches('.chat-message-action-button[data-citation-focus]') ===
+            true,
+        undefined,
+        { timeout: DEADLINE },
+      );
+    } catch (error) {
+      const state = await opened.page.evaluate(() => ({
+        active: document.activeElement?.outerHTML.slice(0, 240) ?? null,
+        closing: document.querySelector('.cinder-drawer__panel[data-cinder-closing]') !== null,
+      }));
+      throw new Error(`source withdrawal never settled: ${JSON.stringify(state)}`, {
+        cause: error,
+      });
+    }
   }
   if (stressCase.slug === 'approval-expired') {
     await opened.page.getByRole('button', { name: 'Ask again' }).waitFor({

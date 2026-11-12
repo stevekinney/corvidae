@@ -1958,11 +1958,6 @@
         "action": "expect-text",
         "text": "14 files"
       },
-      {
-        "action": "expect",
-        "role": "button",
-        "name": "11 more"
-      },
       { "action": "expect-attachment-shelf", "total": 14 }
     ],
     "variants": [
@@ -1989,7 +1984,6 @@
             ]
           },
           { "action": "expect-text", "text": "14 files" },
-          { "action": "click", "role": "button", "name": "11 more" },
           { "action": "expect-attachment-shelf", "total": 14, "reveal": true },
           { "action": "expect", "role": "button", "name": "Remove receipt-01.pdf" },
           { "action": "expect", "role": "button", "name": "Remove receipt-02.pdf" },
