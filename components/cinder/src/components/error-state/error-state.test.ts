@@ -287,9 +287,11 @@ describe('ErrorState details disclosure', () => {
     const summary = declarationsFor(css, '.cinder-error-state-details-summary');
     expect(summary.get('min-block-size')).toBe('var(--cinder-space-6)');
     expect(css).toMatch(/\.cinder-error-state-details-summary:focus-visible\s*\{/);
-    expect(css).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{[\s\S]*?\.cinder-error-state-details-summary\s*\{[\s\S]*?min-block-size:\s*var\(--cinder-touch-target-min\);/,
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    expect(coarse).toMatch(
+      /\.cinder-error-state-details-summary::after\s*\{[^}]*position: absolute;[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/,
     );
+    expect(coarse).not.toMatch(/min-(block|inline)-size:\s*var\(--cinder-touch-target-min\)/);
   });
 
   test('detailsLabel overrides the disclosure text and the disclosure opens by activation', async () => {

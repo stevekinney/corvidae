@@ -755,7 +755,7 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | `--cinder-carousel-slide-size` | `100%` | Slide inline-size as a percentage of the viewport. `$value` (100) is the percentage number, not a dimension -- CSS `100%` has no DTCG dimension representation. Excluded from the published resolved-context JSON (`nonRepresentableValue`) so a generic consumer does not apply a bare unitless `100` as a CSS length. |
 | `--cinder-carousel-gap` | `var(--cinder-space-3)` | Gap between slides. |
 | `--cinder-carousel-aspect-ratio` | `16 / 9` | Slide aspect ratio (16:9). `$value` is the ratio as a number (16/9); `cssRecipe` emits the exact `16 / 9` CSS `aspect-ratio` syntax. Excluded from the published resolved-context JSON (`nonRepresentableValue`) so a generic consumer does not apply the bare ratio number as a CSS `aspect-ratio` value. |
-| `--cinder-carousel-dot-size` | `2.75rem` | Pagination dot hit-target size. |
+| `--cinder-carousel-dot-size` | `1.5rem` | Pagination dot painted size; its 44px hit area is a pseudo-element. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

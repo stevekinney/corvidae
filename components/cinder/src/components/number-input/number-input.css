@@ -94,10 +94,18 @@
     cursor: not-allowed;
   }
 
+  /* A coarse pointer's 44 by 44 target is a pseudo-element, which takes no layout space, so the
+     stepper keeps its painted width and the field's height. */
   @media (pointer: coarse) {
     .cinder-number-input__stepper {
-      min-inline-size: 2.75rem;
-      min-block-size: 2.75rem;
+      position: relative;
+    }
+
+    .cinder-number-input__stepper::after {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 }

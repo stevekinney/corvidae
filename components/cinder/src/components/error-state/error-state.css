@@ -201,11 +201,18 @@
     transform: rotate(90deg);
   }
 
+  /* On a coarse pointer the summary keeps its painted box; a pseudo-element, which takes no layout
+     space, reaches 44 by 44. */
   @media (any-pointer: coarse) {
     .cinder-error-state-details-summary {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-      align-content: center;
+      position: relative;
+    }
+
+    .cinder-error-state-details-summary::after {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 
