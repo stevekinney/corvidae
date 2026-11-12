@@ -771,6 +771,9 @@
     align-items: flex-start;
     flex-wrap: wrap;
     gap: var(--cinder-space-1);
+    /* When the actions wrap, the next line stands clear of the note toggle's hit-area overhang
+     * (a 44px area on a 28px face), so the armed primary never covers its lower edge. */
+    row-gap: var(--cinder-space-3);
     inline-size: 100%;
     min-inline-size: 0;
     direction: ltr;

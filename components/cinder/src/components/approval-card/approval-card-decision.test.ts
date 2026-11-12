@@ -772,6 +772,10 @@ describe('ApprovalCard decision layout stylesheet', () => {
       /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*align-self:\s*center;/,
     );
     expect(css).not.toMatch(/\.cinder-approval-card__row-actions \{[^}]*align-items:\s*stretch/);
+    // A wrapped line clears the toggle's 10px hit-area overhang.
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \{[^}]*flex-wrap:\s*wrap;[^}]*row-gap:\s*var\(--cinder-space-3\);/,
+    );
   });
 
   test('a batch row title takes its natural width so the badge is what wraps', () => {
