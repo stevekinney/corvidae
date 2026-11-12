@@ -722,6 +722,60 @@ const environmentSnapshottedBeforeWait = await inScratchDirectory(async (scratch
   expect(await readFile(output, 'utf8')).toBe('asked');
 });
 
+// A fresh process, since this file's own process already holds a filled snapshot.
+const snapshotsParentsBeforeQueueing = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory, directory } = scratch;
+  const fixture = join(directory, 'snapshot.ts');
+  const result = join(directory, 'snapshot.json');
+  await writeFile(
+    fixture,
+    `import { writeFile } from 'node:fs/promises';
+import { acquireHostLock, runExclusively } from ${JSON.stringify(join(import.meta.dir, 'run-exclusively.ts'))};
+const parentReads: string[] = [];
+const spawnSync = Bun.spawnSync.bind(Bun);
+// @ts-expect-error: counts the parent snapshots, then behaves as Bun.spawnSync does.
+Bun.spawnSync = (...input: any[]) => {
+  if (String(input[0]).includes('pid=,ppid=')) parentReads.push('read');
+  return (spawnSync as any)(...input);
+};
+const lockDirectory = process.argv[2];
+const holding = await acquireHostLock({
+  lockDirectory,
+  holder: { pid: process.pid, command: 'fixture', cwd: process.cwd(), acquiredAt: new Date().toISOString() },
+});
+let readsWhenWaiting = -1;
+const running = runExclusively({
+  lockDirectory,
+  script: 'exit 0',
+  pollIntervalMs: 1,
+  readMemory: () => undefined,
+  report: (line) => {
+    if (readsWhenWaiting === -1 && line.includes('waiting')) readsWhenWaiting = parentReads.length;
+  },
+});
+while (readsWhenWaiting === -1) await Bun.sleep(2);
+await holding.release();
+const code = await running;
+await writeFile(process.argv[3], JSON.stringify({ code, readsWhenWaiting, reads: parentReads.length }));
+`,
+  );
+  const child = spawnWithHangGuard([process.execPath, fixture, lockDirectory, result], {
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
+  scratch.onCleanup(() => child.kill('SIGKILL'));
+  expect(await child.exited).toBe(0);
+  expect(JSON.parse(await readFile(result, 'utf8'))).toEqual({
+    code: 0,
+    readsWhenWaiting: 1,
+    reads: 1,
+  });
+});
+
+describe('a session that ends while its run is queued', () => {
+  test('the parents are read once, before the run waits, and reused when the command starts', () =>
+    rethrow(snapshotsParentsBeforeQueueing));
+});
+
 describe('a reservation held across stages', () => {
   test('a stage started under the lock reuses it instead of queueing behind its own parent', () =>
     rethrow(nestedStageReusesReservation));

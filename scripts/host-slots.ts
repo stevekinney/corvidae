@@ -53,6 +53,7 @@ import {
   memoryRefusalExitCode,
   pidStartedAtField,
   runInProcessGroup,
+  snapshotParents,
   type MemoryReading,
 } from './run-exclusively.ts';
 
@@ -107,6 +108,7 @@ export async function withHostSlots<T>(
   run: (slots: HostSlots) => Promise<T>,
   input: HostSlotsOptions = {},
 ): Promise<T> {
+  snapshotParents();
   // Snapshotted, so a caller that changes its options after an await cannot change this run.
   const options = { ...input };
   const environment = { ...(options.environment ?? rootScriptEnvironment()) };

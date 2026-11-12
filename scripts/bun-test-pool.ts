@@ -81,6 +81,7 @@ import {
   reclaimAbandoned,
   removeLock,
   runInProcessGroup,
+  snapshotParents,
   tryInstall,
   type HostLockHolder,
   type OwnerRecord,
@@ -701,6 +702,7 @@ export type RunPooledBunTestOptions = {
  * Resolves to its exit code.
  */
 export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<number> {
+  snapshotParents();
   // Snapshotted, so a caller that reuses its options object cannot change a run after an await.
   const options = { ...input, bunTestArguments: [...input.bunTestArguments] };
   const environment = { ...(options.environment ?? rootScriptEnvironment()) };

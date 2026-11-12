@@ -737,6 +737,19 @@ export function readParents(): Map<number, number> | undefined {
   return parents;
 }
 
+let parentSnapshot: { readonly parents: Map<number, number> | undefined } | undefined;
+
+/**
+ * The process's one snapshot of the parents of every process, taken the first time it is asked
+ * for. A run takes it before its first `await`, while it is queued for the lock or its slots: a
+ * session that ends during the wait leaves this process reparented to pid 1, and a snapshot taken
+ * after the wait would find no ancestor to watch, so the run would never be reaped.
+ */
+export function snapshotParents(): Map<number, number> | undefined {
+  parentSnapshot ??= { parents: readParents() };
+  return parentSnapshot.parents;
+}
+
 /** The ancestors of `pid`, nearest first, up to but not including pid 1, which never exits. */
 export function ancestorsOf(pid: number, parents: ReadonlyMap<number, number>): number[] {
   const ancestors: number[] = [];
@@ -840,6 +853,7 @@ export async function terminateProcessGroup(processGroup: number): Promise<void>
 
 /** Runs `script` through `sh -c` while holding the host lock and resolves to its exit code. */
 export async function runExclusively(input: RunExclusivelyOptions): Promise<number> {
+  snapshotParents();
   // Snapshotted, so a caller that changes its options while the run waits cannot change the run.
   const options = { ...input, ...(input.args === undefined ? {} : { args: [...input.args] }) };
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
@@ -960,7 +974,7 @@ export async function runInProcessGroup(
   const watchOptions = run.orphanWatch;
   let ancestors: readonly number[] | undefined;
   if (watchOptions !== false) {
-    const parents = watchOptions?.ancestors === undefined ? readParents() : undefined;
+    const parents = watchOptions?.ancestors === undefined ? snapshotParents() : undefined;
     ancestors = watchOptions?.ancestors ?? (parents && ancestorsOf(process.pid, parents));
   }
   const [program = 'sh', ...rest] = argv;
