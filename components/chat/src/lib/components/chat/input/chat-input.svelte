@@ -277,6 +277,13 @@
    */
   function wholeAttachmentRows(node: HTMLElement): () => void {
     const fit = (): void => {
+      // Growing the list to measure it and shrinking it again clamps its scroll offset twice, which
+      // would move a list the person (or a focus move) has scrolled; the offset is put back.
+      const scrollTop = node.scrollTop;
+      measure();
+      node.scrollTop = scrollTop;
+    };
+    const measure = (): void => {
       node.style.removeProperty('max-block-size');
       if (!node.hasAttribute('data-expanded')) return;
       const rows = [...node.querySelectorAll<HTMLElement>(':scope > li')];
