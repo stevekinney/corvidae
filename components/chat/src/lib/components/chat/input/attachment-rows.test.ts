@@ -47,9 +47,10 @@ describe('wholeAttachmentRowsBlockSize', () => {
 
   test('a short window still holds the tallest row above the fade', () => {
     // Bottoms 46, 109.6 with room 120: only the first row clears the fade, but a row scrolled to
-    // the end edge stops one fade short of it, so the 55.6px row needs 55.6 + 24 of window.
+    // the end edge stops one fade short of it and one padding from the start edge, so the 55.6px
+    // row needs 55.6 + 24 + 8 of window.
     const size = wholeAttachmentRowsBlockSize(measure([38, 55.6, 38, 38], 120))!;
-    expect(size).toBeGreaterThanOrEqual(55.6 + fade);
+    expect(size).toBeGreaterThanOrEqual(55.6 + fade + paddingEnd);
   });
 
   test('uses the larger of the fade and the padding for the end room', () => {
