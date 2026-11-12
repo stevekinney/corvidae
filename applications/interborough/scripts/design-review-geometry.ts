@@ -27,6 +27,7 @@ import {
   GEOMETRY_THRESHOLDS,
   auditCapture,
   consolidateFindings,
+  inventoryPatterns,
   renderGeometryReport,
 } from '@lostgradient/testing/design-review-geometry';
 
@@ -51,6 +52,7 @@ export async function auditGeometry(
 ): Promise<GeometryCoverage & { readonly findings: number }> {
   const captures = await readManifest(directory);
   const findings: GeometryFinding[] = [];
+  const read: { facts: GeometryFacts; capture: GeometryCapture }[] = [];
   let measured = 0;
   let coarse = 0;
   let unscaled = 0;
@@ -63,17 +65,19 @@ export async function auditGeometry(
     if (facts.pointerCoarse) coarse += 1;
     if (facts.spaceScale.length < SCALE_STEPS_MINIMUM) unscaled += 1;
     findings.push(...auditCapture(facts, capture));
+    read.push({ facts, capture });
   }
   const coverage: GeometryCoverage = { captures: captures.length, measured, coarse, unscaled };
   if (measured === 0) return { ...coverage, findings: 0 };
   const consolidated = consolidateFindings(findings);
+  const patterns = inventoryPatterns(read);
   await writeFile(
     join(directory, 'geometry-findings.json'),
-    `${JSON.stringify({ coverage, thresholds: GEOMETRY_THRESHOLDS, findings: consolidated }, null, 2)}\n`,
+    `${JSON.stringify({ coverage, thresholds: GEOMETRY_THRESHOLDS, findings: consolidated, patterns }, null, 2)}\n`,
   );
   await writeFile(
     join(directory, 'geometry-report.md'),
-    renderGeometryReport(consolidated, coverage),
+    renderGeometryReport(consolidated, coverage, patterns),
   );
   return { ...coverage, findings: consolidated.length };
 }

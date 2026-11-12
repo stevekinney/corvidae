@@ -16,9 +16,17 @@ export interface ControlFact {
   readonly hasIcon: boolean;
   /** Whether it is laid out inline in a sentence, which WCAG 2.5.8 exempts from the target size. */
   readonly inline: boolean;
+  /** The Cinder variant it is drawn in, or empty when it names none. */
+  readonly variant: string;
+  /**
+   * The painted face: the border box less any border that draws nothing over a fill clipped inside
+   * it. Every rule about what a person sees (size, padding) reads this.
+   */
   readonly rect: Box;
   /** The visible background/border face, excluding transparent border space used only for hit area. */
   readonly painted: Box;
+  /** The box it takes in the layout, which is larger than `rect` when a transparent border pads it. */
+  readonly layout: Box;
   /** The union of the visible text and icons inside, or `null` when it draws nothing of its own. */
   readonly content: Box | null;
   readonly fontSize: number;
@@ -171,6 +179,8 @@ export interface GeometryCapture {
 export const GEOMETRY_THRESHOLDS = {
   /** A button label needs at least this many times the room beside it as above it. */
   buttonPaddingRatioMinimum: 1.5,
+  /** How many forms one job's button may take under one pointer before the inventory lists it. */
+  formsPerJobMaximum: 2,
   /** At or below this viewport width a page is a phone layout. */
   phoneWidthMaximum: 480,
   /** A single-line control drawn taller than this on a phone is oversized. */
@@ -264,6 +274,10 @@ export const GEOMETRY_RULES = {
   'target-oversized': {
     title: 'Oversized controls on a phone',
     principle: `On a phone or a touch screen a button is drawn no taller than ${GEOMETRY_THRESHOLDS.touchButtonHeightMaximum} pixels, and any other single-line control no taller than ${GEOMETRY_THRESHOLDS.phoneControlHeightMaximum}. A touch target grows through its hit area, not its drawn size: ${GEOMETRY_THRESHOLDS.touchTargetMinimum} pixels is a minimum for the hit area and never a size to draw.`,
+  },
+  'hit-takes-space': {
+    title: 'Hit areas that take layout space',
+    principle: `On a touch screen a button's layout box is its painted face. One that paints ${GEOMETRY_THRESHOLDS.touchButtonHeightMaximum} pixels or less but takes more in the layout (a transparent border, a minimum size) pushes its neighbors away by room nobody sees: wide icon pitch, swollen title rows and dead bands inside cards. The hit area grows through something that takes no space, such as a positioned pseudo-element.`,
   },
   'icon-pitch': {
     title: 'Icon buttons spaced too far apart',
@@ -422,6 +436,17 @@ function auditControls(facts: GeometryFacts, capture: GeometryCapture): Geometry
           'target-oversized',
           control,
           `"${label}" is drawn ${round(control.painted.height)}px tall, over the ${limit}px limit; its hit area is ${round(control.hit.height)}px`,
+        );
+      }
+    }
+    if (facts.pointerCoarse && control.kind === 'button' && !control.inline) {
+      const painted = control.boxed ? rect.height : (control.content?.height ?? 0);
+      const limit = thresholds.touchButtonHeightMaximum;
+      if (painted <= limit && control.layout.height > limit) {
+        add(
+          'hit-takes-space',
+          control,
+          `"${label}" paints ${round(painted)}px tall and takes ${round(control.layout.height)}px in the layout`,
         );
       }
     }
@@ -822,6 +847,83 @@ export function consolidateFindings(findings: readonly GeometryFinding[]): Conso
 }
 
 /** A table cell cannot hold a pipe or a line break. */
+/** Labels that ask for the same thing, so a screen that uses two of them has two patterns for one job. */
+export const LABEL_FAMILIES: Readonly<Record<string, readonly string[]>> = {
+  retry: ['retry', 'try again', 'ask again', 'run again', 'send again', 'resend'],
+  dismiss: ['dismiss', 'close', 'hide', 'got it'],
+  cancel: ['cancel', 'stop', 'abort'],
+};
+
+/** One job a button does, and every way the captures draw it. */
+export interface PatternEntry {
+  /** The family name, or the label itself when it belongs to none. */
+  readonly job: string;
+  /** Every label the job is asked with. */
+  readonly labels: readonly string[];
+  /** Every form it is drawn in under one pointer: name, variant, painted height, boxed or bare. */
+  readonly forms: readonly string[];
+  readonly pointer: 'touch' | 'mouse';
+  readonly examples: readonly string[];
+}
+
+function jobOf(label: string): string {
+  const lower = label.toLowerCase().replace(/[.…!]+$/, '');
+  for (const [family, labels] of Object.entries(LABEL_FAMILIES)) {
+    if (labels.includes(lower)) return family;
+  }
+  return lower;
+}
+
+/**
+ * Groups every labelled button across the captures by the job its label asks for, and answers the
+ * jobs asked with more than one label or drawn in more than {@link GEOMETRY_THRESHOLDS.formsPerJobMaximum}
+ * forms under one pointer. A reviewer reads it as the inventory "One pattern per job" asks for.
+ */
+export function inventoryPatterns(
+  measured: readonly { readonly facts: GeometryFacts; readonly capture: GeometryCapture }[],
+): PatternEntry[] {
+  const jobs = new Map<
+    string,
+    { labels: Set<string>; forms: Set<string>; examples: Set<string>; job: string; coarse: boolean }
+  >();
+  for (const { facts, capture } of measured) {
+    if (capture.source === STRESS_SOURCE) continue;
+    for (const control of facts.controls) {
+      if (control.kind !== 'button' || control.text === '' || control.labelRuns !== 1) continue;
+      const job = jobOf(control.text);
+      const key = `${job}|${facts.pointerCoarse}`;
+      const entry = jobs.get(key) ?? {
+        labels: new Set<string>(),
+        forms: new Set<string>(),
+        examples: new Set<string>(),
+        job,
+        coarse: facts.pointerCoarse,
+      };
+      entry.labels.add(control.text);
+      const painted = control.boxed ? control.rect.height : (control.content?.height ?? 0);
+      entry.forms.add(
+        `${control.name}${control.variant === '' ? '' : `[variant=${control.variant}]`} ${Math.round(painted)}px ${control.boxed ? 'boxed' : 'bare'}`,
+      );
+      if (entry.examples.size < EXAMPLES_MAXIMUM) entry.examples.add(capture.viewport);
+      jobs.set(key, entry);
+    }
+  }
+  return [...jobs.values()]
+    .filter(
+      (entry) => entry.labels.size > 1 || entry.forms.size > GEOMETRY_THRESHOLDS.formsPerJobMaximum,
+    )
+    .map((entry) => ({
+      job: entry.job,
+      labels: [...entry.labels].toSorted(),
+      forms: [...entry.forms].toSorted(),
+      pointer: entry.coarse ? ('touch' as const) : ('mouse' as const),
+      examples: [...entry.examples],
+    }))
+    .toSorted(
+      (left, right) => right.forms.length - left.forms.length || left.job.localeCompare(right.job),
+    );
+}
+
 function cell(text: string): string {
   return text.replaceAll('|', '/').replaceAll(/\s+/g, ' ');
 }
@@ -830,6 +932,7 @@ function cell(text: string): string {
 export function renderGeometryReport(
   findings: readonly ConsolidatedFinding[],
   coverage: GeometryCoverage,
+  patterns: readonly PatternEntry[] = [],
 ): string {
   const lines = [
     '# Geometry audit',
@@ -863,6 +966,22 @@ export function renderGeometryReport(
           : finding.routes.join(', ');
       lines.push(
         `| ${cell(finding.subject)} | ${cell(finding.measured)} | ${finding.captures} | ${finding.widths.join(', ')} | ${cell(routes)} | ${finding.examples.map((example) => `\`${example}\``).join(' ')} |`,
+      );
+    }
+    lines.push('');
+  }
+  if (patterns.length > 0) {
+    lines.push(
+      '## Pattern inventory',
+      '',
+      `Buttons grouped by the job their label asks for, across every capture but the stress pages. A job appears here when it is asked with more than one label or drawn in more than ${GEOMETRY_THRESHOLDS.formsPerJobMaximum} forms under one pointer. It is the inventory "One pattern per job" asks for: each line is a question (which form is the pattern?), not a defect on its own.`,
+      '',
+      '| Job | Pointer | Labels | Forms | Examples |',
+      '| --- | --- | --- | --- | --- |',
+    );
+    for (const entry of patterns) {
+      lines.push(
+        `| ${cell(entry.job)} | ${entry.pointer} | ${cell(entry.labels.map((label) => `"${label}"`).join(', '))} | ${cell(entry.forms.join('; '))} | ${entry.examples.map((example) => `\`${example}\``).join(' ')} |`,
       );
     }
     lines.push('');

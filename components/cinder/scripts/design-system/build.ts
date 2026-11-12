@@ -27,7 +27,7 @@ import {
 import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { withHostSlots } from '../../../../scripts/host-slots.ts';
+import { withHostSlots, withMemoryAdmission } from '../../../../scripts/host-slots.ts';
 import { readArchetypePreviews } from './archetypes.ts';
 import { captureStaticSnapshots, checkArchetypeRenders, checkRenders } from './browser.ts';
 import { buildComponentBundle } from './bundle-build.ts';
@@ -359,4 +359,4 @@ async function main(): Promise<number> {
   return 0;
 }
 
-process.exit(await main());
+process.exit(await withMemoryAdmission(() => main()));

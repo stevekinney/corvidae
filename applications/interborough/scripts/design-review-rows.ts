@@ -6,7 +6,8 @@
  *   rows file:      row-id | board | requirement text
  *   verdicts file:  row-id | verdict | evidence
  *
- * The verdicts must name every input row exactly once, in input order, with a verdict from
+ * A requirement says what should be true; a row that opens with "Was:" states only a defect and is
+ * refused. The verdicts must name every input row exactly once, in input order, with a verdict from
  * {@link ROW_VERDICTS}; `superseded` belongs only to a drift audit and `deferred` only to an
  * implementation review, and every verdict but `matches` carries evidence. A review whose verdicts
  * fail any of this is a failed review, not a partial pass, so the chef close gate and the design
@@ -68,6 +69,13 @@ function fields(line: string): string[] {
   return line.split('|').map((field) => field.trim());
 }
 
+/**
+ * A requirement that is nothing but its "Was:" clause. A row taken from an audit finding says what
+ * should be true and then what was wrong; a reviewer handed only the defect reads it as the
+ * requirement and asks for the defect back.
+ */
+const DEFECT_ONLY = /^was\s*:/i;
+
 /** A rows file read: its rows, or the problems that make it unreadable. */
 export type ParsedRows =
   | { readonly ok: true; readonly rows: readonly DesignRow[] }
@@ -84,6 +92,11 @@ export function parseRows(text: string): ParsedRows {
     if (parts.length < 3 || id === '' || board === '') {
       problems.push(`rows line ${index + 1}: expected "row-id | board | text", got "${line}"`);
       continue;
+    }
+    if (DEFECT_ONLY.test(rest.join(' '))) {
+      problems.push(
+        `rows line ${index + 1}: row ${id} states only what was wrong; say what should be true, then "Was: …"`,
+      );
     }
     if (seen.has(id)) problems.push(`rows line ${index + 1}: row ${id} appears twice`);
     seen.add(id);

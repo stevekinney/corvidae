@@ -868,5 +868,9 @@
     }
   },
   "globalDependencies": [".oxlintrc.json", ".prettierrc.json", ".prettierignore", "tsconfig.json"],
-  "globalPassThroughEnv": ["CORVIDAE_TEST_SLOTS", "CORVIDAE_TEST_SLOTS_TOKEN"]
+  "globalPassThroughEnv": [
+    "CORVIDAE_TEST_SLOTS",
+    "CORVIDAE_TEST_SLOTS_TOKEN",
+    "CORVIDAE_MEMORY_ADMITTED"
+  ]
 }

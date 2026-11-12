@@ -45,6 +45,12 @@
 // `control` runs a command alternately in a candidate and a base tree and compares how often each
 // fails, which tells a shared or pre-existing failure from one the candidate introduced.
 //
+// When many unrelated tests time out together (`read` counts the timeouts and, from
+// `starvedTimeoutCount` of them, says so), the host was starved, not the change broken: rerun only
+// the failed tests, alone at low workers (`--workers=1`, or one file at a time), once the host is
+// quiet (`bun scripts/bun-test-pool.ts status` shows its memory). A pass there is decisive; a
+// second full run or `control` repeats the starvation and proves nothing (COR-2404).
+//
 // Exit codes: `run` the gate's own code, or 128 plus the signal number when it was interrupted; `read` 0 only when the log holds exit code 0; `triage` 1
 // when any failed task maps to a commit since the base (so to a pull request), else 0; `control`
 // 0 when the base fails at least as often as the candidate, else 1; 2 invalid CLI usage.
@@ -105,8 +111,18 @@ export interface GateLogSummary {
   failedTests: string[];
   /** Every distinct failing test, not only the first few. */
   failedTestCount: number;
+  /** Lines where Bun or Playwright reports a test timed out. */
+  timedOut: number;
   overBudget: number;
 }
+
+/**
+ * How many timeouts in one run say the host was starved rather than that the change broke them:
+ * on 2026-11-11, 23 unrelated chromium tests timed out together and passed alone (COR-2404).
+ */
+export const starvedTimeoutCount = 5;
+
+const timeoutPattern = /\btimed out after \d+\s*ms\b|\bTest timeout of \d+ms exceeded\b/;
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, 'g');
 
@@ -124,6 +140,7 @@ export function readGateLog(text: string): GateLogSummary {
   const failedTasks: string[] = [];
   const failedTests: string[] = [];
   let overBudget = 0;
+  let timedOut = 0;
   for (const line of lines) {
     const headMatch = /^HEAD (\S+) LOAD (\S+)/.exec(line);
     if (headMatch) {
@@ -160,6 +177,7 @@ export function readGateLog(text: string): GateLogSummary {
       if (name !== '') failedTests.push(name);
     }
     if (line.includes('over budget')) overBudget += 1;
+    if (timeoutPattern.test(line)) timedOut += 1;
   }
   // The exit code counts only as the log's last non-empty line, where `run` writes it; a lookalike
   // inside the gate's own output, or a line followed by more output, is not the gate's result.
@@ -190,6 +208,7 @@ export function readGateLog(text: string): GateLogSummary {
     failedTasks: [...new Set(failedTasks)],
     failedTests: distinctTests.slice(0, failedTestLimit),
     failedTestCount: distinctTests.length,
+    timedOut,
     overBudget,
   };
 }
@@ -214,6 +233,11 @@ export function renderGateSummary(summary: GateLogSummary): string {
     lines.push(
       `failing tests (${shown < summary.failedTestCount ? `first ${shown} of ${summary.failedTestCount}` : shown}):`,
       ...summary.failedTests.map((name) => `  ${name}`),
+    );
+  }
+  if (summary.timedOut >= starvedTimeoutCount) {
+    lines.push(
+      `timeouts: ${summary.timedOut}; if the tests are unrelated, the host was starved: rerun only the failed tests, alone at low workers on a quiet host (\`bun scripts/bun-test-pool.ts status\` shows its memory), not a second full run or \`control\`; a pass there is decisive`,
     );
   }
   lines.push(`over budget: ${summary.overBudget}`);

@@ -12,9 +12,11 @@ import {
   type ControlFact,
   type GeometryCapture,
   type GeometryFacts,
+  GEOMETRY_RULES,
   GEOMETRY_THRESHOLDS,
   auditCapture,
   consolidateFindings,
+  inventoryPatterns,
   renderGeometryReport,
 } from '@lostgradient/testing/design-review-geometry';
 import { auditGeometry, runGeometryAudit } from './design-review-geometry.ts';
@@ -63,6 +65,7 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     accessibleLabel: '',
     hasIcon: false,
     inline: false,
+    variant: '',
     rect: { x: 100, y: 100, width: labelWidth + inline * 2, height },
     painted: overrides.painted ?? rect,
     content: { x: 100 + inline, y: 100 + block, width: labelWidth, height: height - block * 2 },
@@ -73,9 +76,20 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     labelRuns: 1,
     parent: 0,
     ...overrides,
-    // Nothing extends the area that takes a tap unless a test says so.
-    hit: overrides.hit ?? rect,
+    // Nothing extends the area that takes a tap, or pads the layout, unless a test says so.
+    hit: overrides.hit ?? overrides.layout ?? rect,
+    layout: overrides.layout ?? rect,
   };
+}
+
+/** Every rule some set of facts in this file has broken, for the coverage test at the end. */
+const fired = new Set<string>();
+
+/** {@link auditCapture}, recording which rules the facts broke. */
+function audit(...parameters: Parameters<typeof auditCapture>): ReturnType<typeof auditCapture> {
+  const found = auditCapture(...parameters);
+  for (const finding of found) fired.add(finding.rule);
+  return found;
 }
 
 function rules(found: readonly { rule: string }[]): string[] {
@@ -84,7 +98,7 @@ function rules(found: readonly { rule: string }[]): string[] {
 
 describe('button-padding-ratio', () => {
   test('flags a label with as much room above it as beside it', () => {
-    const found = auditCapture(facts({ controls: [button(10, 8)] }), capture());
+    const found = audit(facts({ controls: [button(10, 8)] }), capture());
     expect(rules(found)).toEqual(['button-padding-ratio']);
     expect(found[0]?.subject).toBe('button.cinder-button[size=md]');
     expect(found[0]?.measured).toContain('10px beside');
@@ -92,7 +106,7 @@ describe('button-padding-ratio', () => {
   });
 
   test('passes a label with twice the room beside it', () => {
-    expect(auditCapture(facts({ controls: [button(16, 8)] }), capture())).toEqual([]);
+    expect(audit(facts({ controls: [button(16, 8)] }), capture())).toEqual([]);
   });
 
   test('ignores an icon-only button, a stretched button, a link and a button that draws no box', () => {
@@ -102,7 +116,7 @@ describe('button-padding-ratio', () => {
       button(10, 8, { fullWidth: true }),
       button(10, 8, { kind: 'link' }),
     ];
-    expect(auditCapture(facts({ controls }), capture())).toEqual([]);
+    expect(audit(facts({ controls }), capture())).toEqual([]);
   });
 });
 
@@ -114,7 +128,7 @@ describe('targets on a phone', () => {
       rect: { x: 16, y: 100, width: 176, height: 56 },
       content: { x: 60, y: 120, width: 88, height: 16 },
     });
-    const found = auditCapture(facts({ ...phone, controls: [tall] }), capture({ width: 375 }));
+    const found = audit(facts({ ...phone, controls: [tall] }), capture({ width: 375 }));
     expect(rules(found)).toEqual(['target-oversized']);
   });
 
@@ -129,10 +143,7 @@ describe('targets on a phone', () => {
       hit: { x: 16, y: 194, width: 120, height: 44 },
     });
     const touch = { ...phone, pointerCoarse: true };
-    const found = auditCapture(
-      facts({ ...touch, controls: [grown, compact] }),
-      capture({ width: 375 }),
-    );
+    const found = audit(facts({ ...touch, controls: [grown, compact] }), capture({ width: 375 }));
     expect(rules(found)).toEqual(['target-oversized']);
     expect(found[0]?.measured).toContain('drawn 44px tall, over the 36px limit');
   });
@@ -140,8 +151,9 @@ describe('targets on a phone', () => {
   test('judges a button that draws no box by its hit area alone, and other controls by the looser limit', () => {
     const ghost = button(10, 14, {
       boxed: false,
-      rect: { x: 16, y: 100, width: 60, height: 44 },
+      rect: { x: 16, y: 108, width: 60, height: 28 },
       content: { x: 26, y: 114, width: 40, height: 16 },
+      hit: { x: 16, y: 100, width: 60, height: 44 },
     });
     const row = button(10, 14, {
       kind: 'other',
@@ -149,9 +161,7 @@ describe('targets on a phone', () => {
       content: { x: 26, y: 214, width: 40, height: 16 },
     });
     const touch = { ...phone, pointerCoarse: true };
-    expect(
-      auditCapture(facts({ ...touch, controls: [ghost, row] }), capture({ width: 375 })),
-    ).toEqual([]);
+    expect(audit(facts({ ...touch, controls: [ghost, row] }), capture({ width: 375 }))).toEqual([]);
   });
 
   test('does not call the same button oversized at desktop width', () => {
@@ -159,7 +169,7 @@ describe('targets on a phone', () => {
       rect: { x: 16, y: 100, width: 176, height: 56 },
       content: { x: 60, y: 120, width: 88, height: 16 },
     });
-    expect(auditCapture(facts({ controls: [tall] }), capture())).toEqual([]);
+    expect(audit(facts({ controls: [tall] }), capture())).toEqual([]);
   });
 
   test('flags a short label stretched across the phone', () => {
@@ -168,21 +178,18 @@ describe('targets on a phone', () => {
       content: { x: 166, y: 108, width: 40, height: 16 },
       fullWidth: true,
     });
-    const found = auditCapture(facts({ ...phone, controls: [wide] }), capture({ width: 375 }));
+    const found = audit(facts({ ...phone, controls: [wide] }), capture({ width: 375 }));
     expect(rules(found)).toEqual(['button-stretched']);
   });
 
   test('flags a long label as a candidate for an icon, but never from the stress data', () => {
     const wordy = button(16, 8, { text: 'Open conversation settings' });
     const controls = [wordy, { ...wordy, name: 'button.row', labelRuns: 3 }];
-    expect(rules(auditCapture(facts({ ...phone, controls }), capture({ width: 375 })))).toEqual([
+    expect(rules(audit(facts({ ...phone, controls }), capture({ width: 375 })))).toEqual([
       'button-wordy',
     ]);
     expect(
-      auditCapture(
-        facts({ ...phone, controls }),
-        capture({ width: 375, source: 'responsive.spec.ts' }),
-      ),
+      audit(facts({ ...phone, controls }), capture({ width: 375, source: 'responsive.spec.ts' })),
     ).toEqual([]);
   });
 });
@@ -196,9 +203,7 @@ describe('target-undersized', () => {
   });
 
   test('flags a control smaller than the minimum on either axis', () => {
-    expect(rules(auditCapture(facts({ controls: [small] }), capture()))).toEqual([
-      'target-undersized',
-    ]);
+    expect(rules(audit(facts({ controls: [small] }), capture()))).toEqual(['target-undersized']);
   });
 
   test('passes one with an extended hit area, and a link inside a sentence', () => {
@@ -206,7 +211,7 @@ describe('target-undersized', () => {
       { ...small, hit: { x: 8, y: 8, width: 24, height: 24 } },
       { ...small, kind: 'link' as const, inline: true },
     ];
-    expect(auditCapture(facts({ controls }), capture())).toEqual([]);
+    expect(audit(facts({ controls }), capture())).toEqual([]);
   });
 
   test('holds the hit area to the touch minimum on a touch screen, but not a text field', () => {
@@ -216,13 +221,92 @@ describe('target-undersized', () => {
     });
     const field = { ...adequate, kind: 'field' as const, name: 'input.cinder-input' };
     const extended = { ...adequate, hit: { x: 10, y: 0, width: 56, height: 44 } };
-    expect(auditCapture(facts({ controls: [adequate] }), capture())).toEqual([]);
-    const found = auditCapture(
+    expect(audit(facts({ controls: [adequate] }), capture())).toEqual([]);
+    const found = audit(
       facts({ pointerCoarse: true, controls: [adequate, field, extended] }),
       capture(),
     );
     expect(rules(found)).toEqual(['target-undersized']);
     expect(found[0]?.measured).toContain('under the 44px minimum on a touch screen');
+  });
+});
+
+describe('hit-takes-space', () => {
+  const touch = { pointerCoarse: true };
+  const padded = { x: 90, y: 94, width: 76, height: 44 };
+
+  test('flags a compact face inside a 44 pixel layout box, and measures padding from the face', () => {
+    // 8 pixels beside the label and 6 above on a 28 pixel face, padded to 44 by a transparent border.
+    const deny = button(8, 6, {
+      text: 'Deny',
+      rect: { x: 100, y: 100, width: 56, height: 28 },
+      content: { x: 108, y: 106, width: 40, height: 16 },
+      layout: padded,
+    });
+    const found = audit(facts({ ...touch, controls: [deny] }), capture({ width: 375 }));
+    expect(rules(found)).toEqual(['button-padding-ratio', 'hit-takes-space']);
+    expect(found[0]?.measured).toContain('8px beside the label, 6px above');
+    expect(found[1]?.measured).toBe('"Deny" paints 28px tall and takes 44px in the layout');
+  });
+
+  test('flags a bare button whose layout box is taller than the limit', () => {
+    const bare = button(0, 0, {
+      boxed: false,
+      content: { x: 100, y: 114, width: 40, height: 16 },
+      layout: padded,
+    });
+    expect(rules(audit(facts({ ...touch, controls: [bare] }), capture()))).toEqual([
+      'hit-takes-space',
+    ]);
+  });
+
+  test('passes a compact face whose hit area takes no space, and any button under a mouse', () => {
+    const extended = button(16, 8, { hit: padded });
+    expect(audit(facts({ ...touch, controls: [extended] }), capture())).toEqual([]);
+    const mouse = button(16, 8, { layout: padded });
+    expect(audit(facts({ controls: [mouse] }), capture())).toEqual([]);
+  });
+});
+
+describe('inventoryPatterns', () => {
+  const retry = (text: string, overrides: Partial<ControlFact> = {}): ControlFact =>
+    button(16, 8, { text, ...overrides });
+
+  test('lists a job asked with several labels and drawn in several forms, per pointer', () => {
+    const entries = inventoryPatterns([
+      { facts: facts({ controls: [retry('Retry')] }), capture: capture() },
+      {
+        facts: facts({ controls: [retry('Try again', { variant: 'ghost', boxed: false })] }),
+        capture: capture({ route: '/runs', viewport: 'screens/runs.png' }),
+      },
+      { facts: facts({ controls: [retry('Save'), retry('Save')] }), capture: capture() },
+    ]);
+    expect(entries).toEqual([
+      {
+        job: 'retry',
+        labels: ['Retry', 'Try again'],
+        forms: [
+          'button.cinder-button[size=md] 32px boxed',
+          'button.cinder-button[size=md][variant=ghost] 16px bare',
+        ],
+        pointer: 'mouse',
+        examples: ['screens/agents--ready--1280--light.png', 'screens/runs.png'],
+      },
+    ]);
+  });
+
+  test('keeps touch and mouse apart, allows two forms of one label, and skips the stress pages', () => {
+    const tall = retry('Retry', { rect: { x: 0, y: 0, width: 72, height: 44 } });
+    expect(
+      inventoryPatterns([
+        { facts: facts({ controls: [retry('Retry')] }), capture: capture() },
+        { facts: facts({ pointerCoarse: true, controls: [tall] }), capture: capture() },
+        {
+          facts: facts({ controls: [retry('Try again')] }),
+          capture: capture({ source: 'responsive.spec.ts' }),
+        },
+      ]),
+    ).toEqual([]);
   });
 });
 
@@ -240,7 +324,7 @@ describe('icon-pitch', () => {
   }
 
   test('flags icon buttons whose glyphs sit several glyphs apart', () => {
-    const found = auditCapture(facts({ controls: [icon(0), icon(48), icon(96)] }), capture());
+    const found = audit(facts({ controls: [icon(0), icon(48), icon(96)] }), capture());
     expect(rules(found)).toEqual(['icon-pitch']);
     expect(found[0]?.measured).toContain('14px glyphs 48px apart');
   });
@@ -253,9 +337,9 @@ describe('icon-pitch', () => {
     ];
     const parents = [icon(200, { parent: 2 }), icon(300, { parent: 3 })];
     const ends = [icon(0, { parent: 4 }), icon(300, { parent: 4 })];
-    expect(
-      auditCapture(facts({ controls: [...tight, ...rows, ...parents, ...ends] }), capture()),
-    ).toEqual([]);
+    expect(audit(facts({ controls: [...tight, ...rows, ...parents, ...ends] }), capture())).toEqual(
+      [],
+    );
   });
 });
 
@@ -266,7 +350,7 @@ describe('type', () => {
 
   test('flags a page that uses more sizes than the limit', () => {
     const sizes = [11, 12, 13, 14, 16, 18, 20, 24];
-    const found = auditCapture(
+    const found = audit(
       facts({ textStyles: sizes.map((size) => style(size, size * 1.5)) }),
       capture(),
     );
@@ -275,7 +359,7 @@ describe('type', () => {
   });
 
   test('flags wrapped text set tighter or looser than the readable range', () => {
-    const found = auditCapture(
+    const found = audit(
       facts({ textStyles: [style(14, 15, true), style(14, 28, true), style(14, 21, true)] }),
       capture(),
     );
@@ -283,18 +367,16 @@ describe('type', () => {
   });
 
   test('does not judge the line height of text that never wraps', () => {
-    expect(auditCapture(facts({ textStyles: [style(13, 13)] }), capture())).toEqual([]);
+    expect(audit(facts({ textStyles: [style(13, 13)] }), capture())).toEqual([]);
   });
 
   test('ignores text set at no size, and a ratio that only rounding puts out of range', () => {
     const textStyles = [style(0, 0), style(13, 16.9, true)];
-    expect(auditCapture(facts({ textStyles }), capture())).toEqual([]);
+    expect(audit(facts({ textStyles }), capture())).toEqual([]);
   });
 
   test('flags text below the smallest readable size', () => {
-    expect(rules(auditCapture(facts({ textStyles: [style(9, 12)] }), capture()))).toEqual([
-      'text-tiny',
-    ]);
+    expect(rules(audit(facts({ textStyles: [style(9, 12)] }), capture()))).toEqual(['text-tiny']);
   });
 });
 
@@ -304,19 +386,19 @@ describe('borders', () => {
   }
 
   test('flags a structural border heavier than a hairline should be', () => {
-    const found = auditCapture(facts({ borders: [border(2.4, false)] }), capture());
+    const found = audit(facts({ borders: [border(2.4, false)] }), capture());
     expect(rules(found)).toEqual(['border-heavy']);
   });
 
   test('holds a control border to the looser control limit', () => {
-    expect(auditCapture(facts({ borders: [border(2.9, true)] }), capture())).toEqual([]);
-    expect(rules(auditCapture(facts({ borders: [border(3.2, true)] }), capture()))).toEqual([
+    expect(audit(facts({ borders: [border(2.9, true)] }), capture())).toEqual([]);
+    expect(rules(audit(facts({ borders: [border(3.2, true)] }), capture()))).toEqual([
       'border-heavy',
     ]);
   });
 
   test('flags a border thicker than one pixel', () => {
-    expect(rules(auditCapture(facts({ borders: [border(1.2, false, 2)] }), capture()))).toEqual([
+    expect(rules(audit(facts({ borders: [border(1.2, false, 2)] }), capture()))).toEqual([
       'border-thick',
     ]);
   });
@@ -325,15 +407,15 @@ describe('borders', () => {
     const borders = [1.1, 1.2, 1.3, 1.4].map((contrast, index) =>
       border(contrast, false, 1, `div.card-${index}`),
     );
-    expect(rules(auditCapture(facts({ borders }), capture()))).toEqual(['border-mixed']);
+    expect(rules(audit(facts({ borders }), capture()))).toEqual(['border-mixed']);
   });
 
   test('counts a dashed border as a weight of its own', () => {
     const solid = [1.1, 1.2, 1.3].map((contrast, index) =>
       border(contrast, false, 1, `div.card-${index}`),
     );
-    expect(auditCapture(facts({ borders: solid }), capture())).toEqual([]);
-    const found = auditCapture(
+    expect(audit(facts({ borders: solid }), capture())).toEqual([]);
+    const found = audit(
       facts({ borders: [...solid, { ...border(1.3, false, 1, 'div.queued'), style: 'dashed' }] }),
       capture(),
     );
@@ -348,7 +430,7 @@ describe('edge-near-miss', () => {
   }
 
   test('flags two left edges a few pixels apart', () => {
-    const found = auditCapture(
+    const found = audit(
       facts({ edges: [edge(24, 6, 'h2.title'), edge(26, 3, 'p.summary'), edge(200, 4, 'td')] }),
       capture(),
     );
@@ -359,7 +441,7 @@ describe('edge-near-miss', () => {
 
   test('treats sub-pixel differences as aligned, and a lone element as noise', () => {
     const edges = [edge(24, 6, 'h2'), edge(24.5, 3, 'p'), edge(27, 1, 'span')];
-    expect(auditCapture(facts({ edges }), capture())).toEqual([]);
+    expect(audit(facts({ edges }), capture())).toEqual([]);
   });
 });
 
@@ -378,7 +460,7 @@ describe('edge-many', () => {
       stack('div.chat-column', false, [8, 8, 8], { lefts: [12, 20, 37, 45] }),
       stack('div.transcript', false, [8, 8], { rights: [605, 688, 752] }),
     ];
-    const found = auditCapture(facts({ stacks }), capture());
+    const found = audit(facts({ stacks }), capture());
     expect(rules(found)).toEqual(['edge-many', 'edge-many']);
     expect(found[0]?.measured).toContain('4 left edges: 12px, 20px, 37px, 45px');
     expect(found[1]?.subject).toBe('div.transcript right edges');
@@ -386,11 +468,9 @@ describe('edge-many', () => {
 
   test('passes two edges, edges a pixel apart, and never judges the stress data', () => {
     const stacks = [stack('section.panel', false, [8, 8], { lefts: [16, 16.5, 17, 40] })];
-    expect(auditCapture(facts({ stacks }), capture())).toEqual([]);
+    expect(audit(facts({ stacks }), capture())).toEqual([]);
     const many = [stack('section.panel', false, [8, 8], { lefts: [16, 24, 40] })];
-    expect(
-      auditCapture(facts({ stacks: many }), capture({ source: 'responsive.spec.ts' })),
-    ).toEqual([]);
+    expect(audit(facts({ stacks: many }), capture({ source: 'responsive.spec.ts' }))).toEqual([]);
   });
 });
 
@@ -407,7 +487,7 @@ describe('occluded', () => {
 
   test('flags a control partly covered, one under a fade, and one lying on text', () => {
     const overlaps = [overlap('covered', 0.4), overlap('faded', 0.5), overlap('over-text', 0.9)];
-    const found = auditCapture(facts({ overlaps }), capture());
+    const found = audit(facts({ overlaps }), capture());
     expect(rules(found)).toEqual(['occluded', 'occluded', 'occluded']);
     expect(found.map((finding) => finding.subject)).toEqual([
       'button.cinder-button[size=sm] under div.bar',
@@ -417,7 +497,7 @@ describe('occluded', () => {
   });
 
   test('passes a fade that only grazes a control', () => {
-    expect(auditCapture(facts({ overlaps: [overlap('faded', 0.1)] }), capture())).toEqual([]);
+    expect(audit(facts({ overlaps: [overlap('faded', 0.1)] }), capture())).toEqual([]);
   });
 });
 
@@ -427,10 +507,10 @@ describe('inset-uneven', () => {
       { name: 'div.cinder-alert', above: 26, below: 12, sample: 'Answer incomplete' },
       { name: 'div.cinder-card', above: 16, below: 12, sample: 'Even enough' },
     ];
-    const found = auditCapture(facts({ insets }), capture());
+    const found = audit(facts({ insets }), capture());
     expect(rules(found)).toEqual(['inset-uneven']);
     expect(found[0]?.measured).toContain('26px above');
-    expect(auditCapture(facts({ insets }), capture({ source: 'responsive.spec.ts' }))).toEqual([]);
+    expect(audit(facts({ insets }), capture({ source: 'responsive.spec.ts' }))).toEqual([]);
   });
 });
 
@@ -438,7 +518,7 @@ describe('chrome-share', () => {
   const chrome = { name: 'div.chat-timeline', top: 8, bottom: 292 };
 
   test('flags fixed chrome that takes more than its share of a phone', () => {
-    const found = auditCapture(
+    const found = audit(
       facts({ viewport: { width: 320, height: 640 }, chrome }),
       capture({ width: 320 }),
     );
@@ -449,40 +529,40 @@ describe('chrome-share', () => {
   test('passes a one-line composer, and the same chrome on a desktop', () => {
     const small = { ...chrome, bottom: 122 };
     expect(
-      auditCapture(facts({ viewport: { width: 320, height: 640 }, chrome: small }), capture()),
+      audit(facts({ viewport: { width: 320, height: 640 }, chrome: small }), capture()),
     ).toEqual([]);
-    expect(auditCapture(facts({ chrome }), capture())).toEqual([]);
+    expect(audit(facts({ chrome }), capture())).toEqual([]);
   });
 });
 
 describe('gaps', () => {
   test('flags a gap between siblings that is not a step of the spacing scale', () => {
     const stacks = [stack('section.panel', false, [16, 18, 16])];
-    const found = auditCapture(facts({ stacks }), capture());
+    const found = audit(facts({ stacks }), capture());
     expect(rules(found)).toEqual(['gap-off-scale']);
     expect(found[0]?.measured).toContain('18px');
   });
 
   test('flags like siblings spaced unevenly', () => {
     const stacks = [stack('ul.list', true, [8, 12, 8])];
-    expect(rules(auditCapture(facts({ stacks }), capture()))).toEqual(['gap-uneven']);
+    expect(rules(audit(facts({ stacks }), capture()))).toEqual(['gap-uneven']);
   });
 
   test('treats a gap wider than the slack limit as layout, not spacing', () => {
     const stacks = [stack('ul.navigation', false, [2, 101])];
-    expect(auditCapture(facts({ stacks }), capture())).toEqual([]);
+    expect(audit(facts({ stacks }), capture())).toEqual([]);
   });
 
   test('does not hold gaps to a scale the probe could not read', () => {
     const stacks = [stack('section.panel', false, [16, 18, 16])];
-    expect(auditCapture(facts({ spaceScale: [0], stacks }), capture())).toEqual([]);
+    expect(audit(facts({ spaceScale: [0], stacks }), capture())).toEqual([]);
     const report = renderGeometryReport([], { captures: 1, measured: 1, coarse: 1, unscaled: 1 });
     expect(report).toContain('1 measured captures declared no `--cinder-space-*` scale');
   });
 
   test('passes unlike siblings spaced by different steps of the scale', () => {
     const stacks = [stack('article', false, [8, 24, 16])];
-    expect(auditCapture(facts({ stacks }), capture())).toEqual([]);
+    expect(audit(facts({ stacks }), capture())).toEqual([]);
   });
 });
 
@@ -497,7 +577,7 @@ describe('leading-space', () => {
   };
 
   test('flags a row whose content starts far from its leading edge', () => {
-    const found = auditCapture(
+    const found = audit(
       facts({ viewport: { width: 375, height: 800 }, leadingSpace: [row] }),
       capture({ width: 375 }),
     );
@@ -509,7 +589,7 @@ describe('leading-space', () => {
     const passing = { ...row, name: 'section.wrapper', leading: 24 };
     const inner = { ...row, name: 'div.inner', within: 1 };
     const deeper = { ...row, name: 'div.deeper', within: 2 };
-    const found = auditCapture(
+    const found = audit(
       facts({ leadingSpace: [passing, { ...row, within: 0 }, inner, deeper] }),
       capture(),
     );
@@ -518,9 +598,9 @@ describe('leading-space', () => {
 
   test('passes centered content, and never judges the stress data', () => {
     const centered = { ...row, leading: 120, trailing: 120 };
-    expect(auditCapture(facts({ leadingSpace: [centered] }), capture())).toEqual([]);
+    expect(audit(facts({ leadingSpace: [centered] }), capture())).toEqual([]);
     expect(
-      auditCapture(facts({ leadingSpace: [row] }), capture({ source: 'responsive.spec.ts' })),
+      audit(facts({ leadingSpace: [row] }), capture({ source: 'responsive.spec.ts' })),
     ).toEqual([]);
   });
 });
@@ -529,8 +609,8 @@ describe('consolidateFindings', () => {
   test('folds one defect seen on many captures into one line that lists where', () => {
     const controls = [button(10, 8)];
     const findings = [
-      ...auditCapture(facts({ controls }), capture()),
-      ...auditCapture(
+      ...audit(facts({ controls }), capture()),
+      ...audit(
         facts({ controls }),
         capture({ route: '/runs', width: 375, viewport: 'screens/runs--ready--375--light.png' }),
       ),
@@ -548,7 +628,7 @@ describe('consolidateFindings', () => {
 
   test('orders rules as the report lists them, the most widespread subject first', () => {
     const found = consolidateFindings([
-      ...auditCapture(
+      ...audit(
         facts({
           textStyles: [
             {
@@ -563,7 +643,7 @@ describe('consolidateFindings', () => {
         }),
         capture(),
       ),
-      ...auditCapture(facts({ controls: [button(10, 8)] }), capture()),
+      ...audit(facts({ controls: [button(10, 8)] }), capture()),
     ]);
     expect(found.map((finding) => finding.rule)).toEqual(['button-padding-ratio', 'text-tiny']);
   });
@@ -572,7 +652,7 @@ describe('consolidateFindings', () => {
 describe('renderGeometryReport', () => {
   test('names each rule, its threshold and where it was seen', () => {
     const consolidated = consolidateFindings(
-      auditCapture(facts({ controls: [button(10, 8)] }), capture()),
+      audit(facts({ controls: [button(10, 8)] }), capture()),
     );
     const report = renderGeometryReport(consolidated, {
       captures: 1,
@@ -662,5 +742,12 @@ describe('auditGeometry', () => {
     await writeFile(join(measured, 'geometry', 'agents.json'), JSON.stringify(facts()));
     expect(await runGeometryAudit(['--capture', measured], write)).toBe(0);
     expect(written.out).toContain('0 geometry findings from 1 measured captures');
+  });
+});
+
+// Last in the file on purpose: it reads what every test above fired.
+describe('every rule', () => {
+  test('is broken by some set of facts in this file, so none passes only because it cannot fail', () => {
+    expect([...fired].toSorted()).toEqual(Object.keys(GEOMETRY_RULES).toSorted());
   });
 });

@@ -16,6 +16,7 @@ import {
   heldSlotsTokenVariable,
   isHolderAlive,
   isTestWorkerCommand,
+  memoryStatusLine,
   poolSize,
   readProcessTable,
   requestedWorkers,
@@ -500,11 +501,14 @@ const statusCommandExitsZero = await inScratchDirectory(async (directory) => {
       '--size',
       '3',
     ],
-    { stdout: 'pipe', stderr: 'inherit' },
+    { stdout: 'pipe', stderr: 'inherit', env: { ...rootScriptEnvironment(), NODE_ENV: 'test' } },
   );
   const output = await new Response(status.stdout).text();
   expect(await status.exited).toBe(0);
-  expect(output).toBe(`test slot pool ${pool}: 0 of 3 held, 3 free, 0 waiting\n`);
+  expect(output).toBe(
+    `test slot pool ${pool}: 0 of 3 held, 3 free, 0 waiting\n` +
+      'memory: could not be read; heavy stages start without the check\n',
+  );
 });
 
 const workerCommand = '/opt/bun/bin/bun test --test-worker --isolate --timeout=240000';
@@ -904,6 +908,21 @@ describe('the status of the pool', () => {
       `test slot pool ${pool}: 2 of 5 held, 3 free, 0 waiting`,
       `  pid ${process.pid} holds 2 slot(s) for 15s in /worktrees/one: --parallel=4 src`,
     ]);
+  });
+
+  test('the memory line reports a fixed reading and what a heavy stage would do', () => {
+    const gibibyte = 1024 ** 3;
+    expect(
+      memoryStatusLine(() => ({
+        totalBytes: 16 * gibibyte,
+        availableBytes: 8 * gibibyte,
+        pressure: 'normal',
+        swapUsedBytes: gibibyte,
+        swapTotalBytes: 3 * gibibyte,
+      })),
+    ).toBe(
+      'memory: 8.0 GiB of 16.0 GiB free, pressure normal, swap 1.0 GiB of 3.0 GiB used; a heavy stage would start',
+    );
   });
 
   test('the status command exits 0', () => rethrow(statusCommandExitsZero));
