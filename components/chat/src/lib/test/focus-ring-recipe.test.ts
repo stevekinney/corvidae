@@ -205,19 +205,43 @@ describe('Chat focus-ring recipes', () => {
     expect(styles.input).toContain('.chat-input[data-ready]');
   });
 
-  test('attachment removal paints its inset ring on the visible chip', () => {
-    const selector = '.chat-input-attachment-remove:focus-visible::before';
-    const base = findRules(styles.input, selector).find((rule) => !isUnderForcedColors(rule));
-    expect(declarationValue(base!, 'box-shadow')).toContain('inset');
-    expect(declarationValue(base!, 'box-shadow')).toContain('var(--cinder-ring-color)');
-    expect(declarationValue(base!, 'box-shadow')).not.toContain(SHARED_BOX_SHADOW);
+  test('attachment Remove, Retry and "more" are Cinder Buttons whose ring wraps the painted face', () => {
+    const source = load('../components/chat/input/chat-input.svelte');
+    for (const name of [
+      'chat-input-attachment-remove',
+      'chat-input-attachment-retry',
+      'chat-input-attachment-more',
+    ]) {
+      expect(source).toMatch(new RegExp(`<Button[^>]*?class="${name}"`, 'u'));
+      // No Chat rule repaints or suppresses the ring: Cinder's own recipe is the only one.
+      expect(styles.input).not.toMatch(new RegExp(`\\.${name}[^{]*:focus`, 'u'));
+      expect(findRules(styles.input, `.${name}::before`)).toEqual([]);
+    }
 
-    const fallback = findRules(styles.input, selector).find((rule) => isUnderForcedColors(rule));
-    expect(declarationValue(fallback!, 'box-shadow')).toBe('none');
-    expect(declarationValue(fallback!, 'outline')).toBe(
-      'var(--cinder-ring-width) solid ButtonText',
+    // Cinder paints that ring as a box-shadow on the button itself, which is the painted face;
+    // the 44px hit extension is the separate ::before pseudo-element and carries no ring.
+    const buttonCss = readFileSync(
+      fileURLToPath(
+        new URL('../../../../cinder/src/components/button/button.css', import.meta.url),
+      ),
+      'utf8',
     );
-    expect(declarationValue(fallback!, 'outline-offset')).toBe('var(--cinder-ring-offset)');
+    const ring = findRules(buttonCss, '.cinder-button:focus-visible').find(
+      (rule) => !isUnderForcedColors(rule),
+    );
+    expect(declarationValue(ring!, 'outline')).toBe(TRANSPARENT_OUTLINE);
+    expect(declarationValue(ring!, 'box-shadow')).toContain('var(--cinder-ring-color)');
+    const forced = findRules(buttonCss, '.cinder-button:focus-visible').find((rule) =>
+      isUnderForcedColors(rule),
+    );
+    expect(declarationValue(forced!, 'outline')).toBe('var(--cinder-ring-width) solid ButtonText');
+    for (const rule of findRules(
+      buttonCss,
+      ".cinder-button[data-cinder-hit-target='44']::before",
+    )) {
+      expect(declarationValue(rule, 'box-shadow')).toBeUndefined();
+      expect(declarationValue(rule, 'outline')).toBeUndefined();
+    }
   });
 
   for (const selector of ['.lightbox-close:focus-visible', '.lightbox-nav:focus-visible']) {
