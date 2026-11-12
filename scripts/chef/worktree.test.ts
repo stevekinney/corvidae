@@ -264,27 +264,50 @@ describe('removeWorktree delivery guard with a fake runner', () => {
     /** What `gh pr view <branch>` answers; `undefined` means gh found no pull request. */
     pullRequest?: { state: string; headRefOid: string } | undefined;
     ghCode?: number;
-    /** What `lsof` answers; the default is exit 1 with no output, which means no process. */
+    /** What `lsof +D` answers; the default is exit 1 with no output, which means no process. */
     lsof?: { code: number; stdout: string; stderr: string };
+    /**
+     * What each host-wide working-directory `lsof` answers, in turn, as `pid cwd` pairs under the
+     * worktree's path (`{}` stands for it); the last answer repeats.
+     */
+    workingDirectories?: string[][];
   }
 
-  type Remove = (options?: { keepRemote?: boolean; retired?: boolean }) => {
+  type Remove = (options?: { keepRemote?: boolean; retired?: boolean; endProcesses?: boolean }) => {
     path: string;
     branch: string | undefined;
     remoteDeleted: boolean;
+    ended: { pid: number; command: string; cwd: string }[];
   };
 
   function removal(
     world: World,
-    body: (remove: Remove, calls: string[][], path: string) => void,
+    body: (
+      remove: Remove,
+      calls: string[][],
+      path: string,
+      signals: [number, NodeJS.Signals][],
+    ) => void,
   ): void {
     const calls: string[][] = [];
+    const signals: [number, NodeJS.Signals][] = [];
     withConfiguration((configPath) => {
       const root = JSON.parse(readFileSync(configPath, 'utf8')).worktreeRoots.claude as string;
       const path = join(root, 'alpha');
+      const listings = [...(world.workingDirectories ?? [[]])];
       const runner: Runner = (command) => {
         calls.push(command);
         const [program, ...rest] = command;
+        if (program === 'lsof' && command.includes('cwd')) {
+          const listing = (listings.length > 1 ? listings.shift() : listings[0]) ?? [];
+          const stdout = listing
+            .map((entry) => {
+              const [pid, cwd = ''] = entry.split(' ');
+              return `p${pid}\ncbun\nn${cwd.replace('{}', path)}\n`;
+            })
+            .join('');
+          return { code: 0, stdout, stderr: '' };
+        }
         if (program === 'lsof') return world.lsof ?? { code: 1, stdout: '', stderr: '' };
         if (program === 'gh') {
           if (world.ghCode !== undefined)
@@ -310,11 +333,88 @@ describe('removeWorktree delivery guard with a fake runner', () => {
       const remove: Remove = (options = {}) =>
         removeWorktree(
           { configPath, provider: 'claude', name: 'alpha', keepRemote: false, ...options },
-          { runner, checkout: '/home/dev/corvidae' },
+          {
+            runner,
+            checkout: '/home/dev/corvidae',
+            endProcesses: {
+              signal: (pid, signal) => signals.push([pid, signal]),
+              sleep: () => {},
+              exclude: new Set([1]),
+            },
+          },
         );
-      body(remove, calls, path);
+      body(remove, calls, path, signals);
     });
   }
+
+  test('ends the processes whose working directory is inside the worktree, and only those', () => {
+    removal(
+      {
+        ancestor: 0,
+        // A sibling sharing the prefix (`alpha-2`), the worktree itself, a directory inside it,
+        // and an excluded ancestor inside it; then, after SIGTERM, nothing is left inside.
+        workingDirectories: [['10 {}', '11 {}/packages/a', '12 {}-2', '13 /elsewhere', '1 {}'], []],
+      },
+      (remove, calls, path, signals) => {
+        const result = remove({ endProcesses: true });
+        expect(result.ended.map((item) => item.pid)).toEqual([10, 11]);
+        expect(signals).toEqual([
+          [10, 'SIGTERM'],
+          [11, 'SIGTERM'],
+        ]);
+        expect(result.path).toBe(path);
+        expect(mutations(calls)).toEqual(['worktree remove', 'branch -D', 'push origin']);
+      },
+    );
+  });
+
+  test('sends SIGKILL to what a fresh listing still shows inside after the grace', () => {
+    removal(
+      {
+        ancestor: 0,
+        // 11 ignores SIGTERM for the whole grace: twelve looks a quarter second apart.
+        workingDirectories: [
+          ['10 {}', '11 {}/x'],
+          ...Array.from({ length: 12 }, () => ['11 {}/x']),
+          [],
+        ],
+      },
+      (remove, _calls, _path, signals) => {
+        remove({ endProcesses: true });
+        expect(signals).toEqual([
+          [10, 'SIGTERM'],
+          [11, 'SIGTERM'],
+          [11, 'SIGKILL'],
+        ]);
+      },
+    );
+  });
+
+  test('ends no process when anything else refuses the removal', () => {
+    removal(
+      {
+        ancestor: 1,
+        pullRequest: { state: 'OPEN', headRefOid: TIP },
+        workingDirectories: [['10 {}']],
+      },
+      (remove, calls, _path, signals) => {
+        expect(() => remove({ endProcesses: true })).toThrow('is not delivered');
+        expect(signals).toEqual([]);
+        expect(mutations(calls)).toEqual([]);
+      },
+    );
+  });
+
+  test('without endProcesses a process inside still refuses the removal', () => {
+    removal(
+      { ancestor: 0, lsof: { code: 0, stdout: 'p10\ncbun\n', stderr: '' } },
+      (remove, calls, _path, signals) => {
+        expect(() => remove()).toThrow('processes are inside it: 10 bun');
+        expect(signals).toEqual([]);
+        expect(mutations(calls)).toEqual([]);
+      },
+    );
+  });
 
   /** The destructive commands a refusal must never have reached. */
   const mutations = (calls: string[][]) =>
@@ -360,7 +460,7 @@ describe('removeWorktree delivery guard with a fake runner', () => {
 
   test('accepts a tip that is an ancestor of origin/<default> without asking GitHub', () => {
     removal({ ancestor: 0 }, (remove, calls, path) => {
-      expect(remove()).toEqual({ path, branch: 'feature/alpha', remoteDeleted: true });
+      expect(remove()).toEqual({ path, branch: 'feature/alpha', remoteDeleted: true, ended: [] });
       expect(calls.some((command) => command[0] === 'gh')).toBe(false);
       expect(calls).toContainEqual(['git', 'merge-base', '--is-ancestor', TIP, 'origin/main']);
     });
@@ -370,7 +470,7 @@ describe('removeWorktree delivery guard with a fake runner', () => {
     removal(
       { ancestor: 1, pullRequest: { state: 'MERGED', headRefOid: TIP } },
       (remove, calls, path) => {
-        expect(remove()).toEqual({ path, branch: 'feature/alpha', remoteDeleted: true });
+        expect(remove()).toEqual({ path, branch: 'feature/alpha', remoteDeleted: true, ended: [] });
         expect(mutations(calls)).toEqual(['worktree remove', 'branch -D', 'push origin']);
         expect(calls).toContainEqual([
           'gh',
@@ -404,6 +504,7 @@ describe('removeWorktree delivery guard with a fake runner', () => {
           path,
           branch: 'feature/alpha',
           remoteDeleted: true,
+          ended: [],
         });
         expect(calls.some((command) => command[0] === 'gh' || command[1] === 'merge-base')).toBe(
           false,

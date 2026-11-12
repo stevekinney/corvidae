@@ -18,7 +18,8 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { portIsFree } from './design-review-capture.ts';
+import { exitCodeOnMemoryRefusal, withHostSlots } from '../../../scripts/host-slots.ts';
+import { portIsFree, underHostSlots } from './design-review-capture.ts';
 import { END_TO_END_PORT_COUNT, endToEndPortOverride } from './environment-configuration.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -118,4 +119,13 @@ export async function runGatedBrowserSuite(
   );
 }
 
-if (import.meta.main) process.exitCode = await runGatedBrowserSuite();
+// The suite runs one Playwright worker (`playwright.config.ts`), so one browser at a time: one host
+// slot, taken whether this script runs under the host lock (`test:browser:interborough`) or
+// directly, as an agent runs one end-to-end spec, after the host is checked for memory.
+if (import.meta.main) {
+  process.exitCode = await exitCodeOnMemoryRefusal(
+    withHostSlots(1, (slots) =>
+      runGatedBrowserSuite(process.argv.slice(2), underHostSlots(hostEnvironment, slots)),
+    ),
+  );
+}

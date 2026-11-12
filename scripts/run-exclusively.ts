@@ -58,6 +58,7 @@ import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'no
 import { constants, cpus, totalmem } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
+import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import { rootScriptEnvironment } from './environment-configuration';
 
 export const ownerFileName = 'owner.json';
@@ -483,6 +484,293 @@ async function waitForTurn(
   }
 }
 
+// --- Memory admission ---------------------------------------------------------------------------
+//
+// The lock and the test slot pool count stages and processes, not memory. On 2026-11-11 the host
+// starved on memory instead (swap 14.2 of 15.4 GB, `fseventsd` holding 7.5 GB), and suites that
+// pass alone failed for load (COR-2404). So a heavy stage reads the host's memory before it starts
+// and waits while the host is short, or refuses with the measurement, rather than starting and
+// reporting red for starvation (`documentation/repository/host-admission.md`).
+
+/** Set in a stage's environment once it is admitted, so the stages it starts are not checked again. */
+export const memoryAdmittedVariable = 'CORVIDAE_MEMORY_ADMITTED';
+
+/** The exit code of a stage refused for memory: `EX_TEMPFAIL`, a condition that may clear. */
+export const memoryRefusalExitCode = 75;
+
+/**
+ * The memory a heavy stage needs free before it starts: a little more than one Bun test worker's
+ * budget (`memoryPerTestWorker` in `scripts/bun-test-pool.ts`). A first estimate, to be tuned by the
+ * load sample COR-2404 asks for.
+ */
+export const minimumAvailableMemory = 4 * 1024 ** 3;
+
+/** How long a stage waits for memory before it refuses, counted in awake polls, not on the clock. */
+const memoryWaitMs = 10 * 60_000;
+const memoryPollMs = 5_000;
+
+export type MemoryReading = {
+  readonly totalBytes: number;
+  /** What the kernel counts free: `kern.memorystatus_level` on macOS, `MemAvailable` on Linux. */
+  readonly availableBytes: number;
+  /** The kernel's own pressure level, where it reports one (macOS). */
+  readonly pressure?: 'normal' | 'warning' | 'critical';
+  readonly swapUsedBytes?: number;
+  readonly swapTotalBytes?: number;
+};
+
+// `kern.memorystatus_vm_pressure_level` reports the dispatch levels of <dispatch/source.h>:
+// DISPATCH_MEMORYPRESSURE_NORMAL 0x01, _WARN 0x02 and _CRITICAL 0x04.
+const darwinPressureLevels: Readonly<Record<string, MemoryReading['pressure']>> = {
+  '1': 'normal',
+  '2': 'warning',
+  '4': 'critical',
+};
+
+const megabytesPattern = /(total|used)\s*=\s*([\d.]+)M/g;
+
+/**
+ * A reading from `sysctl kern.memorystatus_level kern.memorystatus_vm_pressure_level vm.swapusage
+ * hw.memsize`, one `name: value` line each. Swap is reported, never judged: macOS keeps swap in use
+ * long after pressure ends, so the share of swap used says nothing about whether the host is short.
+ */
+export function parseDarwinMemory(text: string): MemoryReading | undefined {
+  const values = new Map<string, string>();
+  for (const line of text.split('\n')) {
+    const separator = line.indexOf(':');
+    if (separator > 0)
+      values.set(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+  }
+  const totalBytes = Number(values.get('hw.memsize'));
+  const freePercent = Number(values.get('kern.memorystatus_level'));
+  if (
+    !(totalBytes > 0) ||
+    !Number.isFinite(freePercent) ||
+    values.get('kern.memorystatus_level') === undefined
+  ) {
+    return undefined;
+  }
+  const pressure = darwinPressureLevels[values.get('kern.memorystatus_vm_pressure_level') ?? ''];
+  const swap = new Map<string, number>();
+  for (const match of (values.get('vm.swapusage') ?? '').matchAll(megabytesPattern)) {
+    swap.set(match[1] ?? '', Number(match[2]) * 1024 ** 2);
+  }
+  const swapUsedBytes = swap.get('used');
+  const swapTotalBytes = swap.get('total');
+  return {
+    totalBytes,
+    availableBytes: Math.round((totalBytes * Math.min(100, Math.max(0, freePercent))) / 100),
+    ...(pressure === undefined ? {} : { pressure }),
+    ...(swapUsedBytes === undefined || swapTotalBytes === undefined
+      ? {}
+      : { swapUsedBytes, swapTotalBytes }),
+  };
+}
+
+/** A reading from `/proc/meminfo`. */
+export function parseLinuxMemory(text: string): MemoryReading | undefined {
+  const kilobytes = new Map<string, number>();
+  for (const match of text.matchAll(/^(\w+):\s+(\d+)\s+kB$/gm)) {
+    kilobytes.set(match[1] ?? '', Number(match[2]) * 1024);
+  }
+  const totalBytes = kilobytes.get('MemTotal');
+  const availableBytes = kilobytes.get('MemAvailable');
+  if (totalBytes === undefined || availableBytes === undefined) return undefined;
+  const swapTotal = kilobytes.get('SwapTotal');
+  const swapFree = kilobytes.get('SwapFree');
+  return {
+    totalBytes,
+    availableBytes,
+    ...(swapTotal === undefined || swapFree === undefined
+      ? {}
+      : { swapUsedBytes: swapTotal - swapFree, swapTotalBytes: swapTotal }),
+  };
+}
+
+/** This host's memory, or undefined where it cannot be read: such a host admits every stage. */
+export function readMemory(): MemoryReading | undefined {
+  try {
+    if (process.platform === 'linux') {
+      const file = Bun.spawnSync(['cat', '/proc/meminfo'], { stdout: 'pipe', stderr: 'ignore' });
+      return file.exitCode === 0 ? parseLinuxMemory(file.stdout.toString()) : undefined;
+    }
+    const result = Bun.spawnSync(
+      [
+        'sysctl',
+        'kern.memorystatus_level',
+        'kern.memorystatus_vm_pressure_level',
+        'vm.swapusage',
+        'hw.memsize',
+      ],
+      { env: processTableEnvironment(), stdout: 'pipe', stderr: 'ignore' },
+    );
+    return result.exitCode === 0 ? parseDarwinMemory(result.stdout.toString()) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function gibibytes(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+}
+
+/** The reading as one line: free memory, the kernel's pressure level, and swap. */
+export function describeMemory(reading: MemoryReading): string {
+  const parts = [`${gibibytes(reading.availableBytes)} of ${gibibytes(reading.totalBytes)} free`];
+  if (reading.pressure !== undefined) parts.push(`pressure ${reading.pressure}`);
+  if (reading.swapUsedBytes !== undefined && reading.swapTotalBytes !== undefined) {
+    parts.push(
+      `swap ${gibibytes(reading.swapUsedBytes)} of ${gibibytes(reading.swapTotalBytes)} used`,
+    );
+  }
+  return parts.join(', ');
+}
+
+/**
+ * Why the host is too short of memory to start a heavy stage, naming the measurement, or undefined
+ * when it may start: the kernel reports warning or critical pressure, or less than `needed` is free.
+ */
+export function memoryShortfall(
+  reading: MemoryReading,
+  needed: number = minimumAvailableMemory,
+): string | undefined {
+  if (reading.pressure === 'warning' || reading.pressure === 'critical') {
+    return `the kernel reports ${reading.pressure} memory pressure (kern.memorystatus_vm_pressure_level)`;
+  }
+  if (reading.availableBytes < needed) {
+    return `${gibibytes(reading.availableBytes)} of memory is free, below the ${gibibytes(needed)} a heavy stage needs`;
+  }
+  return undefined;
+}
+
+export type MemoryAdmissionOptions = {
+  /** Names the stage in every line. */
+  readonly label: string;
+  /** A stage whose environment carries {@link memoryAdmittedVariable} was admitted by its parent. */
+  readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly needed?: number;
+  readonly readMemory?: () => MemoryReading | undefined;
+  readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly pollIntervalMs?: number;
+  /** How long to wait for memory before refusing, counted as polls times the interval. */
+  readonly maximumWaitMs?: number;
+  readonly report: (line: string) => void;
+};
+
+export type MemoryAdmission =
+  | { readonly admitted: true; readonly reason: 'nested' | 'unread' | 'measured' }
+  | { readonly admitted: false; readonly message: string };
+
+/**
+ * Waits until the host has memory for a heavy stage, or refuses once it has waited
+ * `maximumWaitMs` of polls. Waiting is on state: each poll reads the memory again, and a line is
+ * printed when the stage starts waiting and once a minute after. A nested stage and a host whose
+ * memory cannot be read are admitted at once.
+ */
+export async function awaitMemory(options: MemoryAdmissionOptions): Promise<MemoryAdmission> {
+  if ((options.environment[memoryAdmittedVariable] ?? '') !== '') {
+    return { admitted: true, reason: 'nested' };
+  }
+  const read = options.readMemory ?? readMemory;
+  const sleep = options.sleep ?? ((milliseconds: number) => Bun.sleep(milliseconds));
+  const interval = options.pollIntervalMs ?? memoryPollMs;
+  const maximum = options.maximumWaitMs ?? memoryWaitMs;
+  const reportEvery = Math.max(1, Math.round(60_000 / interval));
+  for (let polls = 0; ; polls += 1) {
+    const reading = read();
+    if (reading === undefined)
+      return { admitted: true, reason: polls === 0 ? 'unread' : 'measured' };
+    const shortfall = memoryShortfall(reading, options.needed);
+    if (shortfall === undefined) return { admitted: true, reason: 'measured' };
+    if (polls * interval >= maximum) {
+      return {
+        admitted: false,
+        message: `${options.label}: refused to start after waiting ${Math.round(maximum / 60_000)} minutes for memory: ${shortfall} (${describeMemory(reading)}). Run it again once the host is quieter; ${memoryAdmittedVariable}=1 skips this check.`,
+      };
+    }
+    if (polls % reportEvery === 0) {
+      options.report(
+        `${options.label}: waiting for memory before starting: ${shortfall} (${describeMemory(reading)})`,
+      );
+    }
+    await sleep(interval);
+  }
+}
+
+// --- Orphaned runs -------------------------------------------------------------------------------
+//
+// A run whose agent is gone has no one to read its result, yet a `bun test` from a finished
+// worktree lived for over ten hours (COR-2404). A wrapper notes its ancestors when it starts its
+// command; once one of them is gone, the run is orphaned, and after the awake-time hang guard it
+// terminates its command's process group.
+
+/** The parents of every process, from one `ps` snapshot; undefined when `ps` fails. */
+export function readParents(): Map<number, number> | undefined {
+  const result = Bun.spawnSync(['ps', '-A', '-o', 'pid=,ppid='], {
+    env: processTableEnvironment(),
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
+  if (result.exitCode !== 0) return undefined;
+  const parents = new Map<number, number>();
+  for (const line of result.stdout.toString().split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
+    if (match !== null) parents.set(Number(match[1]), Number(match[2]));
+  }
+  return parents;
+}
+
+/** The ancestors of `pid`, nearest first, up to but not including pid 1, which never exits. */
+export function ancestorsOf(pid: number, parents: ReadonlyMap<number, number>): number[] {
+  const ancestors: number[] = [];
+  const seen = new Set([pid]);
+  for (let parent = parents.get(pid); parent !== undefined && parent > 1;) {
+    if (seen.has(parent)) break;
+    seen.add(parent);
+    ancestors.push(parent);
+    parent = parents.get(parent);
+  }
+  return ancestors;
+}
+
+export type OrphanWatchOptions = {
+  readonly ancestors: readonly number[];
+  readonly onOrphaned: (gone: number) => void;
+  /** Called once the hang guard's awake time has passed since the run was orphaned. */
+  readonly onExpired: () => void;
+  readonly isAlive?: (pid: number) => boolean;
+  /** Calls `check` every `milliseconds` until the returned function is called. */
+  readonly every?: (check: () => void, milliseconds: number) => () => void;
+  readonly afterAwake?: (milliseconds: number, onElapsed: () => void) => () => void;
+  readonly graceMs?: number;
+  readonly pollIntervalMs?: number;
+};
+
+function everyInterval(check: () => void, milliseconds: number): () => void {
+  const timer = setInterval(check, milliseconds);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+/** Watches `ancestors`; resolves to a function that stops watching. */
+export function watchForOrphaning(options: OrphanWatchOptions): () => void {
+  const isAlive = options.isAlive ?? isProcessAlive;
+  const afterAwake = options.afterAwake ?? afterAwakeTime;
+  let cancelGrace: (() => void) | undefined;
+  let stopChecking: () => void = () => {};
+  stopChecking = (options.every ?? everyInterval)(() => {
+    const gone = options.ancestors.find((pid) => !isAlive(pid));
+    if (gone === undefined || cancelGrace !== undefined) return;
+    stopChecking();
+    options.onOrphaned(gone);
+    cancelGrace = afterAwake(options.graceMs ?? HANG_GUARD_MILLISECONDS, options.onExpired);
+  }, options.pollIntervalMs ?? memoryPollMs);
+  return () => {
+    stopChecking();
+    cancelGrace?.();
+  };
+}
+
 export type RunExclusivelyOptions = {
   /** Resolving it may fail; the command then runs without the lock rather than not at all. */
   readonly lockDirectory: string | Promise<string>;
@@ -499,6 +787,9 @@ export type RunExclusivelyOptions = {
    * Turborepo defaults, at half the concurrency.
    */
   readonly shared?: boolean;
+  /** Reads the host's memory before the stage starts; tests substitute a reading. */
+  readonly readMemory?: () => MemoryReading | undefined;
+  readonly sleep?: (milliseconds: number) => Promise<void>;
 };
 
 function describeHolder(holder: HostLockHolder | undefined): string {
@@ -536,14 +827,16 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
   let lock: HeldHostLock | undefined;
   const environment = options.environment ?? rootScriptEnvironment();
   try {
-    if (options.shared) return await runScript(options, undefined, report);
-    const lockDirectory = await options.lockDirectory;
+    const lockDirectory = options.shared ? undefined : await options.lockDirectory;
     // A parent run that already holds the lock exported its token; a stage it started reuses the
     // lock rather than queueing behind its own parent.
     const reserved = environment[heldLockTokenVariable];
-    const current = reserved === undefined ? undefined : await readOwner(lockDirectory);
+    const current =
+      reserved === undefined || lockDirectory === undefined
+        ? undefined
+        : await readOwner(lockDirectory);
     const reusesParentLock = reserved !== undefined && current?.token === reserved;
-    if (!reusesParentLock) {
+    if (lockDirectory !== undefined && !reusesParentLock) {
       lock = await acquireHostLock({
         lockDirectory,
         holder: {
@@ -566,10 +859,31 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
     report(`run-exclusively: running without the host lock: ${(error as Error).message}`);
   }
   try {
+    // After the lock, so the reading is taken just before the stage starts, not before a long wait.
+    const memory = await admitMemory(options, environment, report);
+    if (memory !== undefined) return memory;
     return await runScript(options, lock, report);
   } finally {
     await lock?.release();
   }
+}
+
+/** Undefined when the stage may start; otherwise the refusal is reported and its exit code returned. */
+async function admitMemory(
+  options: RunExclusivelyOptions,
+  environment: Readonly<Record<string, string | undefined>>,
+  report: (line: string) => void,
+): Promise<number | undefined> {
+  const admission = await awaitMemory({
+    label: 'run-exclusively',
+    environment,
+    report,
+    ...(options.readMemory === undefined ? {} : { readMemory: options.readMemory }),
+    ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+  });
+  if (admission.admitted) return undefined;
+  report(admission.message);
+  return memoryRefusalExitCode;
 }
 
 /** Runs the wrapped script through `sh -c`, exporting the held lock's token to it. */
@@ -580,7 +894,10 @@ function runScript(
 ): Promise<number> {
   const args = options.args ?? [];
   const command = args.length === 0 ? options.script : `${options.script} "$@"`;
-  const environment = options.environment ?? rootScriptEnvironment();
+  const environment = {
+    ...(options.environment ?? rootScriptEnvironment()),
+    [memoryAdmittedVariable]: '1',
+  };
   return runInProcessGroup(['sh', '-c', command, 'sh', ...args], {
     environment:
       lock === undefined ? environment : { ...environment, [heldLockTokenVariable]: lock.token },
@@ -601,6 +918,11 @@ export type ProcessGroupRun = {
   /** Records the group in whatever guards it, before the command is awaited. */
   readonly recordProcessGroup?: (processGroup: number) => Promise<void>;
   readonly report: (line: string) => void;
+  /**
+   * How the run notices that the session that started it is gone; `false` turns that off. Defaults
+   * to this process's ancestors from one `ps` snapshot, checked every five seconds.
+   */
+  readonly orphanWatch?: false | Partial<OrphanWatchOptions>;
 };
 
 /**
@@ -609,11 +931,20 @@ export type ProcessGroupRun = {
  * SIGINT, SIGTERM, and SIGHUP to the whole group instead, and terminates what is left of the group
  * once the leader exits. Stdin is closed because a process outside the terminal's foreground group
  * cannot read it, and none of the wrapped commands needs input.
+ *
+ * Once an ancestor of this wrapper exits (the agent or shell that started it is gone), the group
+ * gets the awake-time hang guard to finish, and is then sent SIGTERM like a forwarded signal.
  */
 export async function runInProcessGroup(
   argv: readonly string[],
   run: ProcessGroupRun,
 ): Promise<number> {
+  const watchOptions = run.orphanWatch;
+  let ancestors: readonly number[] | undefined;
+  if (watchOptions !== false) {
+    const parents = watchOptions?.ancestors === undefined ? readParents() : undefined;
+    ancestors = watchOptions?.ancestors ?? (parents && ancestorsOf(process.pid, parents));
+  }
   const [program = 'sh', ...rest] = argv;
   const child = spawn(program, rest, {
     detached: true,
@@ -642,6 +973,23 @@ export async function runInProcessGroup(
   // the wrapper must find the forwarders in place, or the default action ends the wrapper and
   // orphans the group.
   for (const signal of forwarded) process.on(signal, forward);
+  const stopWatching =
+    ancestors === undefined
+      ? () => {}
+      : watchForOrphaning({
+          ...watchOptions,
+          ancestors,
+          onOrphaned: (gone) =>
+            run.report(
+              `the session that started this run is gone (pid ${gone} exited); the run ends after ${HANG_GUARD_MILLISECONDS / 1000} s of awake time unless it finishes first`,
+            ),
+          onExpired: () => {
+            run.report(
+              'ending the orphaned run: its session is gone and the hang guard has passed',
+            );
+            forward('SIGTERM');
+          },
+        });
   try {
     await run.recordProcessGroup?.(processGroup).catch((error: unknown) => {
       run.report(`could not record the command's process group: ${String(error)}`);
@@ -650,6 +998,7 @@ export async function runInProcessGroup(
     if (signal) return 128 + (constants.signals[signal] ?? 0);
     return code ?? 1;
   } finally {
+    stopWatching();
     for (const signal of forwarded) process.off(signal, forward);
     await terminateProcessGroup(processGroup);
   }

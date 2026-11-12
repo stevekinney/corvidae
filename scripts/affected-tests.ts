@@ -45,6 +45,7 @@ import {
   type Selection,
   type WorkspaceSelection,
 } from './affected-tests-selection.ts';
+import { awaitMemory, memoryAdmittedVariable, memoryRefusalExitCode } from './run-exclusively.ts';
 import { exportSourceTarget } from './workspace-exports.ts';
 
 // --- Workspace discovery ----------------------------------------------------------------------
@@ -361,8 +362,24 @@ async function run(root: string, selection: Selection, isolated: boolean): Promi
     return 0;
   }
   const digest = writeManifest(buildManifest(selection), root);
+  let admitted = false;
   for (const step of plan) {
+    // The isolated lanes start processes and servers: like any heavy stage, they wait for memory
+    // first, and refuse with the measurement rather than fail for starvation.
+    if (!admitted && step.tasks.some((task) => task.endsWith(':slow'))) {
+      admitted = true;
+      const memory = await awaitMemory({
+        label: 'affected-tests',
+        environment: process.env,
+        report: (line) => console.error(line),
+      });
+      if (!memory.admitted) {
+        console.error(memory.message);
+        return memoryRefusalExitCode;
+      }
+    }
     const environment = { ...process.env };
+    if (admitted) environment[memoryAdmittedVariable] = '1';
     delete environment[SELECTION_VARIABLE];
     if (step.narrowed) environment[SELECTION_VARIABLE] = digest;
     const label = step.narrowed ? `narrowed by selection ${digest}` : 'whole workspaces';

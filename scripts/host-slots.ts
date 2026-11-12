@@ -42,7 +42,23 @@ import {
   type ProcessTable,
 } from './bun-test-pool.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
-import { gitCommonDirectory, pidStartedAtField, runInProcessGroup } from './run-exclusively.ts';
+import {
+  awaitMemory,
+  gitCommonDirectory,
+  memoryAdmittedVariable,
+  memoryRefusalExitCode,
+  pidStartedAtField,
+  runInProcessGroup,
+  type MemoryReading,
+} from './run-exclusively.ts';
+
+/**
+ * Thrown by {@link withHostSlots} when the host stayed too short of memory to start the run. Its
+ * message names the measurement; a command line exits with {@link memoryRefusalExitCode}.
+ */
+export class MemoryRefusal extends Error {
+  readonly exitCode = memoryRefusalExitCode;
+}
 
 export type HostSlotsOptions = {
   /** Where the holder's token is read from, and what a child inherits; defaults to this process's. */
@@ -59,6 +75,8 @@ export type HostSlotsOptions = {
   /** Waits between looks while the slots are held by others. */
   readonly sleep?: (milliseconds: number) => Promise<void>;
   readonly report?: (line: string) => void;
+  /** Reads the host's memory before the run starts; tests substitute a reading. */
+  readonly readMemory?: () => MemoryReading | undefined;
 };
 
 /** What a run under host slots knows about them. */
@@ -146,6 +164,19 @@ export async function withHostSlots<T>(
     report(`host-slots: running without a host slot: ${(error as Error).message}`);
   }
   try {
+    // Once the slots are held, so the reading is the one the run starts under. A nested run was
+    // admitted with its holder.
+    if (slots.admission !== 'nested') {
+      const memory = await awaitMemory({
+        label: 'host-slots',
+        environment,
+        report,
+        ...(options.readMemory === undefined ? {} : { readMemory: options.readMemory }),
+        ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+      });
+      if (!memory.admitted) throw new MemoryRefusal(memory.message);
+    }
+    slots = { ...slots, environment: { ...slots.environment, [memoryAdmittedVariable]: '1' } };
     return await run(slots);
   } finally {
     await held?.release();
@@ -163,17 +194,37 @@ export function runWithHostSlots(
 ): Promise<number> {
   const command = [...argv];
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
-  return withHostSlots(
-    count,
-    (slots) =>
-      runInProcessGroup(command, {
-        environment: slots.environment,
-        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        recordProcessGroup: slots.recordProcessGroup,
-        report: (line) => report(`host-slots: ${line}`),
-      }),
-    { command: command.join(' '), ...options },
+  return exitCodeOnMemoryRefusal(
+    withHostSlots(
+      count,
+      (slots) =>
+        runInProcessGroup(command, {
+          environment: slots.environment,
+          ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+          recordProcessGroup: slots.recordProcessGroup,
+          report: (line) => report(`host-slots: ${line}`),
+        }),
+      { command: command.join(' '), ...options },
+    ),
+    report,
   );
+}
+
+/**
+ * The run's exit code, or, when the host stayed too short of memory to start it, the refusal's
+ * after reporting its message: what an entry point that holds host slots exits with.
+ */
+export async function exitCodeOnMemoryRefusal(
+  running: Promise<number>,
+  report: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
+): Promise<number> {
+  try {
+    return await running;
+  } catch (error) {
+    if (!(error instanceof MemoryRefusal)) throw error;
+    report(error.message);
+    return error.exitCode;
+  }
 }
 
 /** The slot count and the command from `--slots=<n> -- <command...>`, or the usage error. */

@@ -75,7 +75,16 @@ function inScratchPool(body: (pool: string) => Promise<void>): Promise<unknown> 
 }
 
 function poolOptions(pool: string, size: number, more: HostSlotsOptions = {}): HostSlotsOptions {
-  return { poolDirectory: pool, size, environment: {}, sleep: turn, report: () => {}, ...more };
+  return {
+    poolDirectory: pool,
+    size,
+    environment: {},
+    sleep: turn,
+    report: () => {},
+    // These tests are about the pool; the host's real memory must not make them wait.
+    readMemory: () => undefined,
+    ...more,
+  };
 }
 
 async function heldSlots(pool: string): Promise<number> {

@@ -62,9 +62,12 @@
 //   worktree   unless `--keep-worktree`: `worktree.ts remove` of `--worktree` (its path, under any
 //              root `remove` accepts), told that the worktree's tip is the commit just delivered
 //              (the pinned `--head`, else the pull request's head), because a squash
-//              or direct merge leaves that tip outside the default branch's history. A worktree it
-//              refuses (locked by a live session, uncommitted changes, a process inside it, outside
-//              the roots) is kept and the line says why; that never fails the delivery.
+//              or direct merge leaves that tip outside the default branch's history. Once nothing
+//              else refuses the removal, it ends the processes whose working directory is inside
+//              the worktree (SIGTERM, then SIGKILL), since the delivered worker is done. A worktree
+//              it refuses (locked by a live session, uncommitted changes, a file held open inside
+//              it by a process elsewhere, outside the roots) is kept and the line says why; that
+//              never fails the delivery.
 //
 // Output: at most six lines, or with `--json` one object: pr, branch, merged, mergeCommit,
 // mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail, worktree (`removed` and
@@ -362,8 +365,17 @@ export async function deliver(
           name: path,
           keepRemote: false,
           deliveredTip,
+          // The delivered worker is done: what it left running inside its worktree is ended.
+          endProcesses: true,
         });
-        report.worktree = { removed: true, detail: removed.path };
+        const ended = removed.ended.length;
+        report.worktree = {
+          removed: true,
+          detail:
+            ended === 0
+              ? removed.path
+              : `${removed.path} (ended ${ended} process(es) left running inside it)`,
+        };
       } catch (error) {
         if (!(error instanceof Refusal) && !(error instanceof UsageError)) throw error;
         report.worktree = { removed: false, detail: error.message };
