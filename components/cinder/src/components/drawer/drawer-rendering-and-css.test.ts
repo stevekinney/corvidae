@@ -58,16 +58,25 @@ describe('Drawer', () => {
     });
     expect(container.querySelector('.cinder-drawer__drag-handle')).toBeNull();
   });
-  test('drawer.css close button meets 44px touch target (2.75rem × 2.75rem)', async () => {
+  test('drawer.css paints the close button at 28px and reaches 44px by a pseudo-element hit area', async () => {
     const cssText = drawerCss;
     const closeRule = cssText.split('.cinder-drawer__close {')[1]?.split('}')[0];
-    expect(closeRule).toContain('width: 2.75rem');
-    expect(closeRule).toContain('height: 2.75rem');
+    expect(closeRule).toContain('width: 1.75rem');
+    expect(closeRule).toContain('height: 1.75rem');
+    const hitRule = cssText.split('.cinder-drawer__close::after {')[1]?.split('}')[0];
+    expect(hitRule).toContain('position: absolute');
+    expect(hitRule).toContain('inline-size: 44px');
+    expect(hitRule).toContain('block-size: 44px');
   });
-  test('drawer.css draws the grabber as a 36 by 4 pill in a 20px band', async () => {
+  test('a sheet header is a 12px grabber band plus a 28px button with 6px above and below, about 52px', () => {
+    expect(drawerCss).toMatch(
+      /\.cinder-drawer__panel\[data-cinder-placement='bottom'\] \.cinder-drawer__header \{\s*padding-block: var\(--cinder-space-1-5\);/,
+    );
+  });
+  test('drawer.css draws the grabber as a 36 by 4 pill in a 12px band', async () => {
     const cssText = drawerCss;
     const handleRule = cssText.split('.cinder-drawer__drag-handle {')[1]?.split('}')[0];
-    expect(handleRule).toContain('min-height: var(--cinder-space-5)');
+    expect(handleRule).toContain('min-height: var(--cinder-space-3)');
     const pillRule = cssText.split('.cinder-drawer__drag-handle-pill {')[1]?.split('}')[0];
     expect(pillRule).toContain('width: 2.25rem');
     expect(pillRule).toContain('height: 0.25rem');

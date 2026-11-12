@@ -120,12 +120,12 @@ describe('drawer.css detents (COR-2322 AC1)', () => {
     );
   });
 
-  test('the peek height is the grabber band, the 56px bar and the bottom safe area', () => {
+  test('the peek height is the 12px grabber band, the 56px bar and the bottom safe area', () => {
     const value = declared(
       ".cinder-drawer__panel[data-cinder-detent='peek']",
       '--_cinder-drawer-peek-height',
     );
-    expect(value).toContain('var(--cinder-space-5)');
+    expect(value).toContain('var(--cinder-space-3)');
     expect(value).toContain('3.5rem');
     expect(value).toContain('env(safe-area-inset-bottom)');
   });
