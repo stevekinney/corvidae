@@ -163,7 +163,6 @@
     "typecheck:root": "bunx turbo run types && bun scripts/browser-fixtures/scripts/prepare-manifest.ts && tsc --noEmit && svelte-check --workspace scripts/browser-fixtures --tsconfig ./tsconfig.json --fail-on-warnings",
     "typecheck": "bun scripts/run-exclusively.ts 'bun run typecheck:root && turbo run typecheck'",
     "validate": "bun scripts/run-exclusively.ts 'bun run lint:root && bun run typecheck:root && turbo run lint typecheck test:self test test:browser-fixtures && bun run test:slow && bun run format:check && bun run audit'",
-    "validate:batch": "bun scripts/run-exclusively.ts 'bun run validate && bun run test:browser:chromium && bun run test:browser:interborough'",
     "harden": "bun scripts/run-exclusively.ts 'bun scripts/harden.ts'",
     "lint:root": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json scripts && bun run lint:guards",
     "lint:guards": "bun scripts/check-wait-for-element-assertions.ts && bun scripts/check-wall-clock-assertions.ts && bun scripts/check-load-sensitive-deadlines.ts && bun scripts/check-promise-assertion-modifiers.ts && bun scripts/check-test-process-spawns.ts && bun scripts/check-process-identifier-test-paths.ts && bun scripts/check-tool-result-payload-reads.ts && bun scripts/check-runtime-detection.ts && bun scripts/check-plugin-identities.ts && bun scripts/check-middle-dot-separators.ts && bun scripts/check-hidden-labels.ts && bun scripts/check-combined-signal-listeners.ts",

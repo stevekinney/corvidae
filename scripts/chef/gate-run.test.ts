@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { quietFor } from '../../testing/testing/src/wait-until.ts';
@@ -299,7 +299,6 @@ describe('runGate and signals', () => {
         installCommand: 'true',
         gateCommand: 'the-gate',
         affectedCheckCommand: 'the-gate',
-        batchCommand: 'the-batch',
         mergeMethod: 'squash',
         ...overrides,
       }),
@@ -427,36 +426,6 @@ describe('runGate and signals', () => {
       expect(signals.registered()).toBe(0);
       expect(readFileSync(log, 'utf8')).not.toContain('GATE_INTERRUPTED');
       expect(readFileSync(log, 'utf8').endsWith('GATE_RC=7\n')).toBe(true);
-    } finally {
-      rmSync(sandbox, { recursive: true, force: true });
-    }
-  });
-
-  test('an interrupted batch validate is not recorded as the health of main', async () => {
-    const { sandbox, configPath, log } = sandboxWithConfig();
-    try {
-      const healthFile = join(sandbox, 'health.json');
-      const child = pendingGate(902);
-      const signals = fakeSignals();
-      const running = runGate(
-        { configPath, worktree: sandbox, log, command: 'the-batch', healthFile },
-        {
-          runner: quietRunner,
-          load: () => 1,
-          spawnGate: () => child,
-          killGroup: () => undefined,
-          signals,
-          ...fakeTree().seams,
-          schedule: manualTimer().schedule,
-        },
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-      signals.emit('SIGTERM');
-      child.finish(143);
-      const interrupted = await running;
-      expect(interrupted.code).toBe(143);
-      expect(existsSync(healthFile)).toBe(false);
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }

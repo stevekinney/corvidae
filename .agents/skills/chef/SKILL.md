@@ -45,7 +45,7 @@ Every script path is relative to the repository root and runs with `bun` from th
    - `merge`: `main` moved under the push; launch it again. Other steps are in [review and deliver](references/review-and-deliver.md#exit-codes).
 6. **Record.** After a pull-request delivery, run `bun scripts/chef/linear.ts read <ID>`, and if the issue moved to Done while work remains, run `bun scripts/chef/linear.ts state <ID> "In Progress"`. Keep the note current with `bun scripts/chef/note.ts state <note> --section "<heading>" --file <content>` and append events with `bun scripts/chef/note.ts log <note> --file <entry>`.
 
-Checks follow AGENTS.md "Gate on local checks": the worker runs the focused checks once, a branch delivery runs the text guards and the revert check, and GitHub Actions runs the per-change checks on pull requests and the full suite on `main`, in one shared queue, advisory until COR-2374. Fix a red `main` forward ([triaging a failed gate](references/review-and-deliver.md#triaging-a-failed-gate)).
+Checks follow AGENTS.md "Gate on local checks": the worker runs the focused checks once, a branch delivery runs the text guards and the revert check, and GitHub Actions runs the per-change checks on pull requests and the full suite on `main`, in one shared queue (the full tier). Fix a red `main` forward ([triaging a failed gate](references/review-and-deliver.md#triaging-a-failed-gate)).
 
 Corrections count against the two implementation slots and never move into the coordinator's context. Two unsuccessful attempts at one defect stop patching for a causal reassessment ([escalation](references/planning-and-routing.md#escalation)).
 

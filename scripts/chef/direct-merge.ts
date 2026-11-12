@@ -42,8 +42,7 @@
 // merge never interleave their pushes.
 //
 // A red `main` is a warning in the report, never a refusal. A branch merge has no `--fixes-main`: that
-// flag records a pull request as a repair of a red `main` in the health file, which keys its records
-// by pull request number, and the baseline comparison in step 4 no longer needs a declaration.
+// flag declares a pull request a repair of a red `main`, which is keyed by pull request number, and the baseline comparison in step 4 no longer needs a declaration.
 //
 // This module is a library; it has no command line.
 
@@ -51,7 +50,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { AcquireHostLockOptions } from '../run-exclusively.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { mainHealth, renderMainHealth, resolveHealthFile } from './main-health.ts';
+import { mainCiHealth, mainCiWarning } from './main-ci.ts';
 import { withMergeLock } from './merge-gate.ts';
 import { defaultRunner, UsageError, type Runner } from './process-runner.ts';
 import { loadRepositoryConfig } from './repository-config.ts';
@@ -76,9 +75,7 @@ export interface DirectMergeOptions {
   intended?: string[] | undefined;
   /** A checkout of the repository, where the Git commands run; it is never modified. */
   worktree: string;
-  /** Where the batch-validate record is read; defaults to the main checkout's. */
-  healthFile?: string | undefined;
-  /** Read the main-health record. Library callers opt in; the command line does. */
+  /** Read main's health from the latest `main.yml` run. Library callers opt in; the command line does. */
   checkMainHealth?: boolean | undefined;
   lockDirectory?: string | undefined;
   lockPollIntervalMs?: number | undefined;
@@ -94,7 +91,7 @@ export interface DirectMergeReport {
   base: string | null;
   merged: boolean;
   mergeCommit: string | null;
-  /** Set when `main`'s last batch validate failed; a warning, never a refusal. */
+  /** Set when `main`'s latest `main.yml` run failed or could not be read; a warning, never a refusal. */
   mainHealthWarning?: string;
   /**
    * The guards that failed at step 4 with no finding the base lacks, each with its finding count:
@@ -248,13 +245,12 @@ export function directMerge(
     );
 
   // main health: a warning in the report, never a refusal
-  const healthFile =
-    options.healthFile ??
-    (options.checkMainHealth === true ? resolveHealthFile(runner, options.worktree) : undefined);
-  if (healthFile !== undefined) {
-    const health = mainHealth(runner, options.worktree, defaultBranch, healthFile);
-    if (health.red && health.run !== undefined)
-      report.mainHealthWarning = renderMainHealth(health, defaultBranch).split('\n')[0] ?? '';
+  if (options.checkMainHealth === true) {
+    const warning = mainCiWarning(
+      mainCiHealth(runner, config.repository, defaultBranch),
+      defaultBranch,
+    );
+    if (warning !== undefined) report.mainHealthWarning = warning;
   }
 
   // 4. guards, on the tree that will be pushed
