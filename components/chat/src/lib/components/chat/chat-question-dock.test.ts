@@ -21,8 +21,11 @@ import { QuestionStore, type DockedQuestionTarget } from './question/question-st
 
 setupHappyDom();
 
+const observedElements: Element[] = [];
 class TestResizeObserver {
-  observe(): void {}
+  observe(element: Element): void {
+    observedElements.push(element);
+  }
   unobserve(): void {}
   disconnect(): void {}
 }
@@ -231,6 +234,27 @@ describe('a docked question', () => {
     expect(source).toContain('overflow-y: auto;');
     expect(source).toContain('@media (any-pointer: coarse)');
     expect(source).toContain('display: none;');
+  });
+
+  test('re-snaps the list when the own-answer field changes the room, and keeps its ring inside the body', async () => {
+    const source = await Bun.file(
+      new URL('./question/chat-question-dock.svelte', import.meta.url),
+    ).text();
+    expect(source).toContain('padding-inline: var(--_dock-ring-room);');
+    expect(source).toContain('margin-inline: calc(var(--_dock-ring-room) * -1);');
+    expect(source).toContain('keepSelectedInView();');
+  });
+
+  test('the whole-rows sizing watches the fieldset and the scrolling body, not only the list', async () => {
+    observedElements.length = 0;
+    const { container } = mountDocked('dock-observed', ENVIRONMENT);
+    await settle();
+    const fieldset = container.querySelector('fieldset');
+    const body = container.querySelector('.chat-question-dock-body');
+    expect(fieldset).not.toBeNull();
+    expect(body).not.toBeNull();
+    expect(observedElements.includes(fieldset!)).toBe(true);
+    expect(observedElements.includes(body!)).toBe(true);
   });
 
   test('keeps Answer off, with no helper line, until something is chosen', async () => {

@@ -108,7 +108,19 @@
         const whole = edges.filter((edge) => edge.bottom <= room + 1).at(-1) ?? edges[0]!;
         node.style.setProperty('max-block-size', `${whole.bottom}px`);
       }
+      keepSelectedInView();
       count();
+    };
+
+    // The room changes when the own-answer field opens or closes below the list: the selected row
+    // stays in view after the list re-snaps to whole rows.
+    const keepSelectedInView = (): void => {
+      const selectedRow = node.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]');
+      if (selectedRow === null) return;
+      const { top, bottom } = rowEdges(selectedRow);
+      if (top < node.scrollTop) node.scrollTop = top;
+      else if (bottom > node.scrollTop + node.clientHeight)
+        node.scrollTop = bottom - node.clientHeight;
     };
 
     let frame = 0;
@@ -123,6 +135,12 @@
     const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
     resize?.observe(node);
     if (node.parentElement) resize?.observe(node.parentElement);
+    // The own-answer field sits below the list, so its arrival shrinks the room without resizing
+    // the list's own box: watch the fieldset and the scrolling body that hold both.
+    const fieldset = node.closest('fieldset');
+    if (fieldset) resize?.observe(fieldset);
+    const body = node.closest('.chat-question-dock-body');
+    if (body) resize?.observe(body);
     const mutations =
       typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(schedule);
     mutations?.observe(node, { childList: true, subtree: true });
@@ -371,7 +389,12 @@
 
   /* The dock is capped at half the viewport: this body scrolls and the actions below stay pinned. */
   .chat-question-dock-body {
+    /* `overflow-y: auto` clips inline too: the padding keeps a field's focus ring (its width plus
+       the gap) inside the scroller, and the matching negative margin leaves the text column alone. */
+    --_dock-ring-room: calc(var(--cinder-ring-width, 2px) + 2px);
     min-block-size: 0;
+    padding-inline: var(--_dock-ring-room);
+    margin-inline: calc(var(--_dock-ring-room) * -1);
     overflow-y: auto;
     overscroll-behavior: contain;
   }
