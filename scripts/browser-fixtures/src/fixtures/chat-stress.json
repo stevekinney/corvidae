@@ -1743,7 +1743,8 @@
       },
       {
         "action": "scroll",
-        "to": "top"
+        "to": "top",
+        "by": "wheel"
       },
       {
         "action": "expect-offscreen",

@@ -37,6 +37,24 @@ function sample(overrides: Partial<StressCase> = {}): StressCase {
 }
 
 describe('the committed Chat stress cases', () => {
+  it('scrolls away from a pending approval with the wheel, so the arrival scroll is released', () => {
+    // The product scrolls a pending approval into place on arrival and keeps doing so until the
+    // person's own wheel, touch, pointer or key input. A programmatic scroll is not that input, so
+    // the arrival scroll could land after the case's own scroll and move the page mid-capture.
+    const offscreen = cases.filter((stressCase) => stressCase.params['approvalOffscreen'] === true);
+    expect(offscreen.length).toBeGreaterThan(0);
+    for (const stressCase of offscreen) {
+      const scrolls = [
+        ...stressCase.steps,
+        ...stressCase.variants.flatMap((variant) => variant.steps),
+      ].filter(
+        (step): step is Extract<StressStep, { action: 'scroll' }> => step.action === 'scroll',
+      );
+      expect(scrolls.length).toBeGreaterThan(0);
+      for (const step of scrolls) expect(step.by).toBe('wheel');
+    }
+  });
+
   it('seeds empty content only for the empty-answer turn cases', () => {
     for (const id of [22, 77]) {
       const stressCase = findStressCase(cases, id);
