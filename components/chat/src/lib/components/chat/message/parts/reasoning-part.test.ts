@@ -129,6 +129,18 @@ describe('ReasoningPart — collapsed state (default)', () => {
     const controlsId = button?.getAttribute('aria-controls');
     expect(controlsId).toBeNull();
   });
+
+  test('user can reopen finished reasoning and reveal its content', () => {
+    const { container } = render(ReasoningPart, { props: { part: makePart() } });
+    const button = container.querySelector('button');
+    expect(button?.getAttribute('aria-expanded')).toBe('false');
+
+    button && fireEvent.click(button);
+    flushSync();
+
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.textContent).toContain('This is my extended reasoning about the problem.');
+  });
 });
 
 describe('ReasoningPart — expanded state', () => {
@@ -208,6 +220,23 @@ describe('ReasoningPart — expanded state', () => {
 });
 
 describe('ReasoningPart — streaming state', () => {
+  test('opens while streaming and folds when streaming finishes unless controlled open', () => {
+    const { container, rerender } = render(ReasoningPart, {
+      props: { part: makePart({ streaming: true }) },
+    });
+    const button = container.querySelector('button');
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.textContent).toContain('This is my extended reasoning about the problem.');
+
+    rerender({ part: makePart({ streaming: false }) });
+    flushSync();
+    expect(button?.getAttribute('aria-expanded')).toBe('false');
+
+    rerender({ part: makePart({ streaming: false }), expanded: true });
+    flushSync();
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+  });
+
   test('toggle button is disabled when streaming', () => {
     const { container } = render(ReasoningPart, {
       props: { part: makePart({ streaming: true }) },

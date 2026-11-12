@@ -96,8 +96,9 @@
     status={part.streaming ? `${elapsedSeconds} s` : undefined}
     triggerClass="chat-reasoning-toggle"
     busy={part.streaming}
-    open={expanded}
+    open={part.streaming || expanded}
     disabled={part.streaming}
+    variant="flat"
     onToggle={() => handleToggle()}
   >
     <div
@@ -142,8 +143,8 @@
   }
 
   .chat-reasoning :global(.chat-entry-frame__trigger) {
-    min-block-size: 2rem;
-    padding-block: var(--cinder-space-1);
+    min-block-size: 1.5rem;
+    padding-block: 0;
     padding-inline: 0;
   }
 
@@ -163,6 +164,13 @@
     line-height: var(--cinder-leading-relaxed, 1.625);
     white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  @media (any-pointer: coarse) {
+    .chat-reasoning :global(.chat-entry-frame__trigger) {
+      min-block-size: var(--cinder-touch-target-min);
+      padding-block: var(--cinder-space-2);
+    }
   }
 
   .chat-reasoning-summary {

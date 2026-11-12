@@ -123,4 +123,17 @@ describe('MarkdownTableScroller', () => {
 
     expect(countHiddenColumns(scroller)).toBe(2);
   });
+
+  test('does not count a first column that starts exactly at the scroller edge as hidden', () => {
+    const scroller = document.createElement('div');
+    scroller.innerHTML = tableHtml;
+    setLayout(scroller, { left: 100, right: 300 });
+    const cells = scroller.querySelectorAll('th');
+    cells.forEach((cell, index) => {
+      const left = 100 + index * 100;
+      setLayout(cell, { left, right: left + 100 });
+    });
+
+    expect(countHiddenColumns(scroller)).toBe(2);
+  });
 });

@@ -93,6 +93,20 @@ describe('ToolCallRail row count and summary', () => {
     expect(container.querySelector('[data-cinder-count="waiting"]')).not.toBeNull();
   });
 
+  test('counts expired approvals separately with neutral status words', () => {
+    const { container } = render(ToolCallRail, {
+      props: { calls: [...turn(2), { id: 'expired', name: 'Issue refund', status: 'expired' }] },
+    });
+    expect(text(summary(container))).toBe('Used 3 tools, 1 expired');
+    expect(container.querySelector('[data-cinder-count="expired"]')).not.toBeNull();
+    const row = rows(container).find(
+      (candidate) => candidate.dataset['cinderToolCallRow'] === 'expired',
+    );
+    expect(text(row ?? null)).toContain('Expired: Issue refund');
+    expect(text(row ?? null)).toContain('Approval expired');
+    expect(row?.parentElement?.dataset['cinderStatus']).toBe('expired');
+  });
+
   test('a running turn says so far with a spinner and no counts', () => {
     const calls: Call[] = [
       ...turn(11),

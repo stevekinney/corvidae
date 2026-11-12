@@ -28,9 +28,10 @@
       var(--cinder-surface-inset)
     );
 
-    background: var(--cinder-code-block-background);
-    /* Flat: no border and no inner frame. The fill alone separates the code
-     * field from the surface behind it. */
+    background: var(--cinder-surface-inset);
+    /* A code field is a contained panel. Keep its quiet hairline on the panel
+     * itself; the copy action owns its own control edge. */
+    box-shadow: inset 0 0 0 1px var(--cinder-border-muted);
     /* A code block is a block-level PANEL, not a control: it takes the surface
      * radius, the same step cards and dialogs use. At the control radius it read
      * as a hard-cornered plate at panel width. */
@@ -63,15 +64,7 @@
    * client-side highlighted state. It owns keyboard focus and overflow so the
    * inner pre elements can stay metrically identical. */
   .cinder-code-block__viewport {
-    /* Partial, not full, opacity: a half-covered glyph should still read as a
-     * glyph, not as a hard cutoff — the one edge case in `_scroll-fade.css`
-     * where the endpoint color is deliberately translucent rather than the
-     * viewport's own opaque background. */
-    --_cinder-scroll-fade-color: color-mix(
-      in srgb,
-      var(--cinder-code-block-background) 35%,
-      transparent
-    );
+    --_cinder-scroll-fade-color: var(--cinder-code-block-background);
 
     display: block;
     block-size: var(--cinder-code-block-height);
@@ -544,7 +537,22 @@
   /* The block is at least as tall as the button, so the clipped root never cuts it off. */
   .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) {
     min-block-size: var(--_cinder-code-block-float-reserve);
-    padding-inline-end: var(--_cinder-code-block-float-reserve);
+  }
+
+  /* Keep the scrollport's actual inline size independent from the copy rail. Padding expands the
+   * scrollable content area; an end margin shrinks the scrollport itself, so long lines and their
+   * scroll cue can never run underneath the opaque copy surface. */
+  .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) .cinder-code-block__viewport {
+    scroll-padding-inline-end: var(--_cinder-code-block-float-reserve);
+    margin-inline-end: var(--_cinder-code-block-float-reserve);
+  }
+
+  /* The shared fade normally hugs the scrollport edge. Stop it before the reserved copy rail so
+   * the last visible characters dissolve into the code surface instead of disappearing under the
+   * button. The attachment still controls when this cue appears. */
+  .cinder-code-block--floating-meta
+    .cinder-code-block__viewport.cinder-_scroll-fade-inline-end[data-cinder-overflows-inline-end]::after {
+    inset-inline-end: var(--_cinder-code-block-float-reserve);
   }
 
   .cinder-code-block--floating-meta .cinder-code-block__meta {
@@ -590,11 +598,11 @@
 
   .cinder-code-block__caret {
     display: inline-block;
-    inline-size: 0.5ch;
+    inline-size: 2px;
     block-size: 1lh;
     margin-inline-start: 1px;
     vertical-align: top;
-    background: currentColor;
+    background: var(--cinder-accent-solid);
   }
 
   @media (forced-colors: active) {

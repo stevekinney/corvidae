@@ -192,6 +192,8 @@
     flex-direction: column;
     justify-content: center;
     min-block-size: 0;
+    box-sizing: border-box;
+    inline-size: 100%;
     padding: var(--cinder-chat-timeline-padding, var(--cinder-space-4));
   }
 
@@ -231,12 +233,14 @@
 
   .chat-availability-loading[data-slow] .chat-availability-status {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto auto auto auto;
     flex-wrap: initial;
+    justify-content: start;
   }
 
   .chat-availability-status :global(.cinder-spinner) {
     color: var(--cinder-accent-text);
+    --cinder-spinner-size: 1rem;
     --cinder-spinner-indicator: currentColor;
     --cinder-spinner-track: color-mix(in srgb, currentColor 30%, transparent);
   }

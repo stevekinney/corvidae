@@ -27,6 +27,7 @@
   import Check from '@lucide/svelte/icons/check';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import Clock3 from '@lucide/svelte/icons/clock-3';
   import CircleX from '@lucide/svelte/icons/circle-x';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
   import X from '@lucide/svelte/icons/x';
@@ -71,12 +72,14 @@
       ((count: number, live: boolean) => `Used ${count} tools${live ? ' so far…' : ''}`),
     failed: labels?.failed ?? ((count: number) => `${count} failed`),
     waiting: labels?.waiting ?? ((count: number) => `${count} waiting on you`),
+    expired: labels?.expired ?? ((count: number) => `${count} expired`),
     showMore: labels?.showMore ?? ((count: number) => `Show ${count} more`),
     folded: labels?.folded ?? ((count: number, names: string) => `${count} done: ${names}`),
     foldedShort: labels?.foldedShort ?? ((count: number) => `${count} done`),
     showFewer: labels?.showFewer ?? 'Show fewer',
     running: labels?.running ?? 'Running…',
     waitingResult: labels?.waitingResult ?? 'Waiting on you',
+    expiredResult: labels?.expiredResult ?? 'Approval expired',
     denied: labels?.denied ?? 'Denied',
     interrupted: labels?.interrupted ?? 'Interrupted',
     details: labels?.details ?? 'Details',
@@ -88,12 +91,14 @@
   const plain = $derived(calls.length < 3);
   const failedCount = $derived(calls.filter((call) => call.status === 'failed').length);
   const waitingCount = $derived(calls.filter((call) => call.status === 'waiting').length);
+  const expiredCount = $derived(calls.filter((call) => call.status === 'expired').length);
 
   /** A call that stays on the rail wherever it falls, folded or not. */
   const isPinned = (call: ToolCallRailCall): boolean =>
     call.pinned === true ||
     call.status === 'failed' ||
     call.status === 'waiting' ||
+    call.status === 'expired' ||
     call.status === 'denied' ||
     call.status === 'interrupted' ||
     call.status === 'running';
@@ -158,6 +163,7 @@
   const resultText = (call: ToolCallRailCall): string => {
     if (call.status === 'running') return call.result ?? words.running;
     if (call.status === 'waiting') return call.result ?? words.waitingResult;
+    if (call.status === 'expired') return call.result ?? words.expiredResult;
     if (call.status === 'denied') return call.decision ?? call.result ?? words.denied;
     // An interrupted call has no answer to arrow to: its result is the words for how it ended.
     if (call.status === 'interrupted') return call.result ?? words.interrupted;
@@ -183,7 +189,9 @@
         ? 'Approved'
         : call.status === 'interrupted'
           ? 'Interrupted'
-          : '';
+          : call.status === 'expired'
+            ? 'Expired'
+            : '';
 
   function toggleGroup(id: string): void {
     const next = new Set(openedGroups);
@@ -211,6 +219,8 @@
       <Spinner size="sm" variant="arc" />
     {:else if call.status === 'waiting'}
       <ShieldAlert class="cinder-tool-call-rail__glyph" />
+    {:else if call.status === 'expired'}
+      <Clock3 class="cinder-tool-call-rail__glyph" />
     {:else if call.status === 'denied'}
       <Ban class="cinder-tool-call-rail__glyph" />
     {:else if call.status === 'failed'}
@@ -436,6 +446,14 @@
           <span class="cinder-tool-call-rail__count" data-cinder-count="waiting">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.waiting(waitingCount)}
+          </span>
+        {/if}{#if expiredCount > 0}<span
+            class="cinder-tool-call-rail__summary-separator"
+            aria-hidden="true">,</span
+          >
+          <span class="cinder-tool-call-rail__count" data-cinder-count="expired">
+            <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
+            {words.expired(expiredCount)}
           </span>
         {/if}{#if duration !== undefined && duration !== ''}<span
             class="cinder-tool-call-rail__summary-separator"

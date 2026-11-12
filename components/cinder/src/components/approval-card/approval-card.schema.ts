@@ -353,7 +353,7 @@ const schema = {
         required: ['label', 'value'],
       },
       description:
-        'Extra facts the `decision` layout writes after the tool, such as Target and Amount. Tool, whether it can be undone, and the Command come from the approval itself.',
+        'Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself without repeated visible label rows.',
     },
     approveLabel: {
       type: 'string',
@@ -363,7 +363,7 @@ const schema = {
     pauseSentence: {
       type: 'string',
       description:
-        'One sentence in the `decision` layout about the pause, such as `The agent is paused until you decide.`.',
+        'Shared approval context accepted by callers; the compact decision layout does not repeat a generic pause sentence.',
     },
     why: {
       type: 'string',

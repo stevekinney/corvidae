@@ -87,13 +87,12 @@ for (const name of NAMES) {
       // COR-2014 row 17s is a transient state: hold a choice, capture its inline Undo affordance,
       // then undo before the answer reaches the fixture host so the shared sample world is unchanged.
       if (name === '/chats/:chat (question waiting)' && (width === 375 || width === 1280)) {
-        const staging = page.getByRole('button', { name: 'Staging', exact: true });
+        const staging = page.getByRole('radio', { name: /^Staging\b/, exact: false });
         await expect(staging).toBeVisible();
         await staging.click();
         const heldStatus = page.locator('.chat-question-status[data-state="held"]');
         await expect(heldStatus).toBeVisible();
-        // Cinder renders the boolean marker as an empty data attribute, not "true".
-        await expect(staging).toHaveAttribute('data-selected');
+        await expect(staging).toHaveAttribute('aria-checked', 'true');
         const undo = page.getByRole('button', { name: /Undo/ });
         await expect(undo).toBeVisible();
         await captureForDesignReview(page, {
@@ -105,7 +104,7 @@ for (const name of NAMES) {
         await expect(heldStatus).toHaveCount(0);
         await expect(page.locator('.chat-question-status[data-state="sent"]')).toHaveCount(0);
         await expect(staging).toBeVisible();
-        await expect(staging).not.toHaveAttribute('data-selected');
+        await expect(staging).toHaveAttribute('aria-checked', 'false');
       }
     }
   });

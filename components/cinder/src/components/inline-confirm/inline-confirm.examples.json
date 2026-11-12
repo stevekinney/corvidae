@@ -13,7 +13,7 @@
       "id": "two-press",
       "title": "Two-press irreversible action",
       "description": "Require an explicit second press without adding a competing Cancel action.",
-      "code": "<InlineConfirm presentation=\"two-press\" confirmLabel=\"Refund $42.00\" armedLabel=\"Press again to refund $42.00\" armedHint=\"Reverts in 3 seconds. Escape cancels.\" requestKey=\"refund-42\" />\n"
+      "code": "<InlineConfirm presentation=\"two-press\" confirmLabel=\"Refund $42.00\" armedLabel=\"Press again to refund $42.00\" armedHint=\"Reverts in 3 seconds.\" requestKey=\"refund-42\" />\n"
     }
   ]
 }

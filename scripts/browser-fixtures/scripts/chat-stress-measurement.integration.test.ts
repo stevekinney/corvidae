@@ -1,9 +1,217 @@
 import { chromium } from '@playwright/test';
 import { describe, expect, it } from 'bun:test';
 
-import { locate, measureInPage, readWithdrawal, runStep } from './capture-chat-stress.ts';
+import {
+  locate,
+  measureInPage,
+  readWithdrawal,
+  revealScrollableControls,
+  runStep,
+  waitForCaptureLayout,
+} from './capture-chat-stress.ts';
 
 describe('chat stress visual measurement', () => {
+  it('proves scroll-reveal for a clipped control and rejects fixed-mask interception', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      await page.setContent(`
+        <style>*, *::before, *::after { box-sizing:border-box } body { margin:0 }</style>
+        <main data-testid="chat-stress-shell">
+          <div class="scroll" style="height:44px; overflow:auto">
+            <button data-chat-stress-control-id="control-0" aria-label="Copy" style="margin-top:80px; width:120px; height:44px">Copy</button>
+          </div>
+          <div class="masked" style="height:44px; overflow:auto">
+            <button data-chat-stress-control-id="control-1" aria-label="Copy" style="margin-top:80px; width:120px; height:44px">Copy</button>
+          </div>
+          <div class="unscrollable" style="height:44px; overflow:hidden">
+            <button data-chat-stress-control-id="control-2" aria-label="Copy" style="margin-top:80px; width:120px; height:44px">Copy</button>
+          </div>
+          <div class="fixed-mask" style="position:fixed; left:0; top:44px; width:200px; height:44px; pointer-events:auto"></div>
+        </main>
+      `);
+      const proof = await page.evaluate(revealScrollableControls, [
+        'control-0',
+        'control-1',
+        'control-2',
+      ]);
+      expect(proof).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            controlId: 'control-0',
+            name: 'Copy',
+            initiallyClipped: true,
+            revealed: true,
+            samplesHitTarget: true,
+          }),
+          expect.objectContaining({
+            controlId: 'control-1',
+            name: 'Copy',
+            initiallyClipped: true,
+            revealed: true,
+            samplesHitTarget: false,
+          }),
+        ]),
+      );
+      expect(proof).toContainEqual(
+        expect.objectContaining({
+          controlId: 'control-2',
+          initiallyClipped: true,
+          revealed: false,
+          samplesHitTarget: false,
+        }),
+      );
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('scrolls an inner user-scrollport through an outer hidden clip', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      await page.setContent(`
+        <style>body { margin:0 } *, *::before, *::after { box-sizing:border-box }</style>
+        <main data-testid="chat-stress-shell">
+          <div style="height:44px; overflow:hidden">
+            <div style="height:44px; overflow:auto">
+              <button data-chat-stress-control-id="nested" aria-label="Nested" style="margin-top:20px; width:120px; height:44px">Nested</button>
+            </div>
+          </div>
+        </main>
+      `);
+      expect(await page.evaluate(revealScrollableControls, ['nested'])).toEqual([
+        expect.objectContaining({ controlId: 'nested', revealed: true, samplesHitTarget: true }),
+      ]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('measures the visible question dock and safe-area override, and preserves RTL direction evidence', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 320, height: 640 } });
+      await page.setContent(`
+        <style>body { margin:0 } *, *::before, *::after { box-sizing:border-box }</style>
+        <main data-testid="chat-stress-shell">
+          <section class="chat-timeline" style="width:280px; height:120px; padding:0 16px"></section>
+          <div class="chat-input-area" style="width:280px; height:80px; --_cinder-chat-safe-area-inset-bottom:0px; padding-block-end:8px">
+            <div class="chat-input-shell" style="display:none"></div>
+            <div data-chat-question-dock style="width:280px; height:80px"></div>
+          </div>
+          <p dir="rtl">سياسة الاسترداد</p>
+          <p dir="ltr">Review sources</p>
+        </main>
+      `);
+      const baseline = await page.evaluate(measureInPage, {
+        coarse: true,
+        rtl: true,
+        settledApproval: false,
+      });
+      expect(baseline.readingEdges).toEqual({
+        transcriptLeft: 16,
+        transcriptRight: 264,
+        composerLeft: 0,
+        composerRight: 280,
+      });
+      expect(baseline.composerEdge).toBe(200);
+      expect(baseline.safeArea).toEqual({ inset: 0, paddingBottom: 8 });
+      expect(baseline.directions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ text: 'سياسة الاسترداد', direction: 'rtl' }),
+        ]),
+      );
+
+      await page.locator('.chat-input-area').evaluate((element) => {
+        element.setAttribute(
+          'style',
+          `${element.getAttribute('style')}; --_cinder-chat-safe-area-inset-bottom:24px; padding-block-end:32px`,
+        );
+      });
+      const overridden = await page.evaluate(measureInPage, {
+        coarse: true,
+        rtl: true,
+        settledApproval: false,
+      });
+      expect(overridden.safeArea).toEqual({ inset: 24, paddingBottom: 32 });
+      expect(overridden.safeArea!.paddingBottom - baseline.safeArea!.paddingBottom).toBe(24);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('checks the real streaming assistant article and body, not a guessed message selector', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.setContent(
+        '<main data-testid="chat-stress-shell" data-chat-stress-streaming="true" data-chat-stress-stream-content=""><div class="chat-typing-indicator" aria-label="Assistant is typing" style="height:20px"></div><button data-stop style="height:44px">Stop</button><article class="chat-message" data-message-role="assistant" aria-busy="true"><div class="chat-message-body"></div></article></main>',
+      );
+      await runStep(page, { action: 'expect-empty-streaming-assistant' });
+      await page
+        .locator('.chat-message-body')
+        .evaluate((element) => (element.textContent = 'The ledger is ready.'));
+      await runStep(page, {
+        action: 'expect-streaming-assistant-text',
+        text: 'The ledger is ready.',
+      });
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('waits for the post-font resize delivery and completes without a composer', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      await page.setContent(
+        '<main data-testid="chat-stress-shell"><div class="chat-input" /></main>',
+      );
+      await page.evaluate(() => {
+        let trigger: (() => void) | undefined;
+        class DeferredResizeObserver {
+          constructor(callback: ResizeObserverCallback) {
+            trigger = () => callback([], this);
+          }
+          observe(): void {
+            (
+              window as typeof window & { __triggerCaptureResize?: (() => void) | undefined }
+            ).__triggerCaptureResize = trigger;
+          }
+          disconnect(): void {}
+          unobserve(): void {}
+        }
+        Object.defineProperty(window, 'ResizeObserver', {
+          configurable: true,
+          value: DeferredResizeObserver,
+        });
+      });
+      let settled = false;
+      const pending = waitForCaptureLayout(page).then(() => {
+        settled = true;
+      });
+      await page.waitForFunction(
+        () =>
+          typeof (window as typeof window & { __triggerCaptureResize?: () => void })
+            .__triggerCaptureResize === 'function',
+      );
+      expect(settled).toBe(false);
+      await page.evaluate(() =>
+        (
+          window as typeof window & { __triggerCaptureResize?: () => void }
+        ).__triggerCaptureResize?.(),
+      );
+      await pending;
+      expect(settled).toBe(true);
+
+      await page.setContent('<main data-testid="chat-stress-shell"></main>');
+      await waitForCaptureLayout(page);
+    } finally {
+      await browser.close();
+    }
+  });
+
   it('recognizes a focus ring painted by a pseudo-element after withdrawal', async () => {
     const browser = await chromium.launch();
     try {
@@ -142,6 +350,68 @@ describe('chat stress visual measurement', () => {
     }
   });
 
+  it('keeps target size and reachable hit evidence for a partially clipped control', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      await page.setContent(`
+        <style>body { margin:0 } *, *::before, *::after { box-sizing:border-box }</style>
+        <main data-testid="chat-stress-shell">
+          <div style="height:40px; overflow:hidden">
+            <button style="position:relative; top:20px; width:120px; height:44px">Partially visible</button>
+          </div>
+        </main>
+      `);
+      const measurement = await page.evaluate(measureInPage, {
+        coarse: true,
+        rtl: false,
+        settledApproval: false,
+      });
+      const control = measurement.controlGeometry?.find(
+        (entry) => entry.name === 'Partially visible',
+      );
+      expect(control?.hitHeight).toBe(44);
+      expect(control?.reachableHeight).toBe(20);
+      expect(control?.samples.length).toBeGreaterThan(0);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('keeps same-name hit failures associated with their exact control after one reveal passes', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      await page.setContent(`
+        <style>body { margin:0 } *, *::before, *::after { box-sizing:border-box }</style>
+        <main data-testid="chat-stress-shell">
+          <div style="height:44px; overflow:auto"><button aria-label="Copy" style="margin-top:20px; width:120px; height:44px">Copy</button></div>
+          <div style="height:44px; overflow:auto"><button aria-label="Copy" style="margin-top:20px; width:120px; height:44px">Copy</button></div>
+          <div style="position:fixed; left:0; top:64px; width:200px; height:24px"></div>
+        </main>
+      `);
+      const measurement = await page.evaluate(measureInPage, {
+        coarse: true,
+        rtl: false,
+        settledApproval: false,
+      });
+      const controls = measurement.controlGeometry ?? [];
+      expect(controls.map((control) => control.name)).toEqual(['Copy', 'Copy']);
+      const failures = controls.filter((control) =>
+        control.samples.some((sample) => !sample.hitsTarget),
+      );
+      expect(failures).toHaveLength(1);
+      const proof = await page.evaluate(
+        revealScrollableControls,
+        controls.map((control) => control.controlId),
+      );
+      expect(proof.filter((entry) => entry.revealed && entry.samplesHitTarget)).toHaveLength(1);
+      expect(proof.filter((entry) => !entry.revealed || !entry.samplesHitTarget)).toHaveLength(1);
+    } finally {
+      await browser.close();
+    }
+  });
+
   it('keeps nonmodal popovers interactive and clips each axis independently', async () => {
     const browser = await chromium.launch();
     try {
@@ -188,6 +458,32 @@ describe('chat stress visual measurement', () => {
         'Open example.com',
         'Previous source',
         'Next source',
+      ]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('assigns control identities in shell-then-portal order for identical names', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      await page.setContent(`
+        <main data-testid="chat-stress-shell"><button aria-label="Choose">Choose</button></main>
+        <div role="dialog" aria-label="Menu" style="position:fixed; inset:40px; background:white">
+          <button aria-label="Choose">Choose</button>
+        </div>
+      `);
+      const measurement = await page.evaluate(measureInPage, {
+        coarse: true,
+        rtl: false,
+        settledApproval: false,
+      });
+      expect(
+        measurement.controlGeometry?.map(({ controlId, name }) => ({ controlId, name })),
+      ).toEqual([
+        { controlId: 'control-0', name: 'Choose' },
+        { controlId: 'control-1', name: 'Choose' },
       ]);
     } finally {
       await browser.close();

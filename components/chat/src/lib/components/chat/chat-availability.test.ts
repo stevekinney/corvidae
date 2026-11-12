@@ -208,14 +208,36 @@ describe('a canceled read', () => {
     expect(editor.readOnly).toBe(false);
     const send = buttonNamed(container, 'Send message')!;
     expect(send.disabled).toBe(true);
-    expect(
-      container.querySelector('[data-chat-composer-drawer="drawer-notice"]')?.textContent,
-    ).toContain('Retry loading the conversation before sending.');
-    expect(send.getAttribute('aria-describedby')).toContain('availability-canceled-input-drawer');
+    const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
+    expect(drawer.textContent).toContain('Conversation loading stopped.');
+    expect(drawer.textContent).toContain('Load the conversation to send messages.');
+    expect(drawer.textContent?.match(/Conversation loading stopped\./gu)).toHaveLength(1);
+    expect(drawer.textContent?.match(/Load the conversation to send messages\./gu)).toHaveLength(1);
+    const reason = drawer.querySelector('.chat-input-drawer-reason');
+    expect(reason?.textContent?.trim()).toBe('Load the conversation to send messages.');
+    expect(send.getAttribute('aria-describedby')).toContain(reason?.id ?? 'missing-reason');
 
     await fireEvent.click(retry);
     await fireEvent.click(list);
     expect(calls).toEqual(['retry', 'list']);
+  });
+
+  test('lets the host replace the visible canceled composer state and disabled-send reason separately', () => {
+    const { container } = mountWith('availability-canceled-labels', {
+      kind: 'canceled',
+      onRetry: () => undefined,
+      labels: {
+        canceledComposer: 'History is paused.',
+        sendBlocked: 'Load history before sending.',
+      },
+    });
+
+    const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
+    expect(drawer.textContent).toContain('History is paused.');
+    expect(drawer.textContent).toContain('Load history before sending.');
+    expect(drawer.querySelector('.chat-input-drawer-reason')?.textContent?.trim()).toBe(
+      'Load history before sending.',
+    );
   });
 });
 

@@ -2,10 +2,12 @@
  * One chat session's state over stubbed Bureau requests: what a follow-up sends, what an attach
  * restores, and which approvals the conversation is waiting on.
  */
-import { resolveMessageNotes } from '@lostgradient/chat';
+import { resolveMessageNotes, type ToolAction } from '@lostgradient/chat';
+import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { CHAT_COPY } from '../../app/copy.ts';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';
@@ -694,18 +696,29 @@ function mountOver(answers: {
   start: Array<() => Response>;
   attach?: Array<() => Response>;
   history?: () => Response;
+  forget?: () => Promise<void>;
 }) {
   const requests: string[] = [];
   const bodies: Array<{ messages: unknown[]; resume?: Array<{ interruptId: string }> }> = [];
   const fetchStub: Fetcher = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     // The page also reads the chat's last run for why it stopped; this chat has none.
-    if (url.endsWith('/jsonrpc'))
+    if (url.endsWith('/jsonrpc')) {
+      const body = JSON.parse(bodyText(init)) as { method?: string };
+      if (body.method === 'bureau.contexts.forgetgrants') {
+        await answers.forget?.();
+        return Response.json({
+          jsonrpc: '2.0',
+          id: body.method,
+          result: { forgotten: [] },
+        });
+      }
       return Response.json({
         jsonrpc: '2.0',
         id: 'tasks',
         result: { tasks: [], nextPageToken: null },
       });
+    }
     requests.push(`${init?.method ?? 'GET'} ${url}`);
     if (url.endsWith('/messages')) {
       return answers.history?.() ?? Response.json({ threadId: THREAD, messages: [] });
@@ -825,6 +838,205 @@ const parkedWithThread =
     ]);
 
 describe('an attach to a run parked on an approval', () => {
+  test('Ask again retries the matching expired approval with a fresh turn', async () => {
+    const mountedApproval = mountOver({ start: [second()], attach: [parkedWithThread(approval)] });
+    const attached = open(mountedApproval.fetch);
+    await attached.attach();
+    await until(() => attached.approvals.length === 1 && !attached.streaming);
+    const resultId = attached.conversation.ids.find(
+      (id) => attached.conversation.messages[id]?.toolResult !== undefined,
+    );
+    if (resultId === undefined) throw new Error('The approval result was not restored.');
+    const resultRow = attached.conversation.messages[resultId]!;
+    if (resultRow.toolResult?.action?.type !== 'approval')
+      throw new Error('The approval action was not restored.');
+    attached.conversation = {
+      ...attached.conversation,
+      messages: {
+        ...attached.conversation.messages,
+        [resultId]: {
+          ...resultRow,
+          toolResult: {
+            ...resultRow.toolResult,
+            action: { ...resultRow.toolResult.action, expiresAt: '2020-01-01T00:00:00.000Z' },
+          },
+        },
+      },
+    };
+
+    await attached.retryExpiredApproval('call-refund', {
+      tools: new Map([['issue-refund', { title: null, tier: 'read-only' }]]),
+    });
+    expect(mountedApproval.bodies).toHaveLength(1);
+    expect(mountedApproval.bodies[0]?.messages.at(-1)).toMatchObject({ content: 'Refund it' });
+  });
+
+  test('Ask again honors a durable expiry when the action deadline is stale', async () => {
+    let replaceAction: (() => Promise<void>) | undefined;
+    const mountedApproval = mountOver({
+      start: [second()],
+      attach: [parkedWithThread(approval)],
+      forget: async () => replaceAction?.(),
+    });
+    const attached = open(mountedApproval.fetch);
+    await attached.attach();
+    await until(() => attached.approvals.length === 1);
+    const resultId = attached.conversation.ids.find(
+      (id) => attached.conversation.messages[id]?.toolResult !== undefined,
+    );
+    if (resultId === undefined) throw new Error('The approval result was not restored.');
+    const resultRow = attached.conversation.messages[resultId]!;
+    if (resultRow.toolResult?.action?.type !== 'approval')
+      throw new Error('The approval action was not restored.');
+    attached.conversation = {
+      ...attached.conversation,
+      messages: {
+        ...attached.conversation.messages,
+        [resultId]: {
+          ...resultRow,
+          toolResult: {
+            ...resultRow.toolResult,
+            action: { ...resultRow.toolResult.action, expiresAt: '2999-01-01T00:00:00.000Z' },
+          },
+        },
+      },
+    };
+    replaceAction = async () => {
+      attached.conversation = {
+        ...attached.conversation,
+        messages: {
+          ...attached.conversation.messages,
+          [resultId]: {
+            ...attached.conversation.messages[resultId]!,
+            toolResult: {
+              ...attached.conversation.messages[resultId]!.toolResult!,
+              action: {
+                ...attached.conversation.messages[resultId]!.toolResult!.action!,
+                idempotencyKey: 'approval:replacement',
+              } as Extract<ToolAction, { type: 'approval' }>,
+            },
+          },
+        },
+      };
+    };
+    restore = installFetchImplementation(async (_input, init) => {
+      const body = JSON.parse(bodyText(init)) as { method?: string };
+      if (body.method !== 'bureau.contexts.forgetgrants')
+        return Response.json({ jsonrpc: '2.0', id: body.method, result: { forgotten: [] } });
+      await replaceAction?.();
+      return Response.json({
+        jsonrpc: '2.0',
+        id: body.method,
+        result: { forgotten: [] },
+      });
+    });
+
+    await attached.retryExpiredApproval('call-refund', {
+      tools: new Map([['issue-refund', { title: null, tier: 'mutating' }]]),
+      expiredAt: Date.now() - 1,
+    });
+    expect(mountedApproval.bodies).toHaveLength(0);
+  });
+
+  test('does not retry when the same result row advances to a new approval round while forgetting grants', async () => {
+    let signalForget!: () => void;
+    const forgetEntered = new Promise<void>((resolve) => {
+      signalForget = resolve;
+    });
+    let releaseForget!: () => void;
+    const forgetStarted = new Promise<void>((resolve) => {
+      releaseForget = resolve;
+    });
+    let replaceAction: (() => void) | undefined;
+    const mountedApproval = mountOver({
+      start: [second()],
+      attach: [parkedWithThread(approval)],
+    });
+    const attached = open(mountedApproval.fetch);
+    await attached.attach();
+    await until(() => attached.approvals.length === 1 && !attached.streaming);
+    const resultId = attached.conversation.ids.find(
+      (id) => attached.conversation.messages[id]?.toolResult !== undefined,
+    );
+    if (resultId === undefined) throw new Error('The approval result was not restored.');
+    restore = installFetchImplementation(async (_input, init) => {
+      const body = JSON.parse(bodyText(init)) as { method?: string };
+      if (body.method !== 'bureau.contexts.forgetgrants')
+        return Response.json({ jsonrpc: '2.0', id: body.method, result: { forgotten: [] } });
+      signalForget();
+      await forgetStarted;
+      replaceAction?.();
+      return Response.json({
+        jsonrpc: '2.0',
+        id: body.method,
+        result: { forgotten: [] },
+      });
+    });
+    const retry = attached.retryExpiredApproval('call-refund', {
+      tools: new Map([['issue-refund', { title: null, tier: 'mutating' }]]),
+      expiredAt: Date.now() - 1,
+    });
+    await forgetEntered;
+    replaceAction = () => {
+      attached.conversation = {
+        ...attached.conversation,
+        messages: {
+          ...attached.conversation.messages,
+          [resultId]: {
+            ...attached.conversation.messages[resultId]!,
+            metadata: { '@lostgradient/bureau': { round: 2 } },
+          },
+        },
+      };
+    };
+    releaseForget();
+    await retry;
+
+    expect(mountedApproval.bodies).toHaveLength(0);
+    expect(attached.conversation.messages[resultId]?.metadata).toEqual({
+      '@lostgradient/bureau': { round: 2 },
+    });
+  });
+
+  test('does not retry a missing, invalid, or future approval deadline', async () => {
+    const mountedApproval = mountOver({ start: [second()], attach: [parkedWithThread(approval)] });
+    const attached = open(mountedApproval.fetch);
+    await attached.attach();
+    await until(() => attached.approvals.length === 1);
+    const resultId = attached.conversation.ids.find(
+      (id) => attached.conversation.messages[id]?.toolResult !== undefined,
+    );
+    if (resultId === undefined) throw new Error('The approval result was not restored.');
+    const resultRow = attached.conversation.messages[resultId]!;
+    if (resultRow.toolResult?.action?.type !== 'approval')
+      throw new Error('The approval action was not restored.');
+    for (const expiresAt of [undefined, 'not-a-date', '2999-01-01T00:00:00.000Z'] as const) {
+      attached.conversation = {
+        ...attached.conversation,
+        messages: {
+          ...attached.conversation.messages,
+          [resultId]: {
+            ...resultRow,
+            toolResult: {
+              ...resultRow.toolResult,
+              action: {
+                ...resultRow.toolResult.action,
+                ...(expiresAt === undefined ? {} : { expiresAt }),
+              },
+            },
+          },
+        },
+      };
+      await attached.retryExpiredApproval('call-refund', {
+        tools: new Map([['issue-refund', { title: null, tier: 'read-only' }]]),
+      });
+    }
+    await attached.retryExpiredApproval('different-call', {
+      tools: new Map([['issue-refund', { title: null, tier: 'read-only' }]]),
+    });
+    expect(mountedApproval.bodies).toHaveLength(0);
+  });
+
   test('shows the approval, and deciding it sends the decision as the run’s resume', async () => {
     const mounted = mountOver({ start: [second()], attach: [parkedWithThread(approval)] });
     const session = open(mounted.fetch);
@@ -949,8 +1161,13 @@ describe('a resume the mount refused', () => {
   async function approvedWith(
     answers: Parameters<typeof mountOver>[0]['start'],
     attach: Array<() => Response>,
+    history?: () => Response,
   ) {
-    const mounted = mountOver({ start: [parked(approval), ...answers], attach });
+    const mounted = mountOver({
+      start: [parked(approval), ...answers],
+      attach,
+      ...(history === undefined ? {} : { history }),
+    });
     const session = open(mounted.fetch);
     await session.controller.adapter.sendMessage({ role: 'user', content: 'Refund it' }, []);
     await session.controller.adapter
@@ -994,6 +1211,87 @@ describe('a resume the mount refused', () => {
     expect(mounted.bodies[2]?.resume).toEqual(mounted.bodies[1]?.resume);
     expect(mounted.bodies[3]?.resume).toBeUndefined();
     expect(session.failure).toBeUndefined();
+  });
+
+  test('keeps a genuinely new approval pending after authoritative refresh', async () => {
+    const freshCallId = 'call-refund-fresh';
+    const freshHistory = parkedThread.messages.map((message) => {
+      if (message.role === 'assistant') {
+        return {
+          ...message,
+          id: 'step-fresh',
+          toolCalls: message.toolCalls?.map((call) => ({ ...call, id: freshCallId })),
+        };
+      }
+      if (message.role === 'tool') {
+        return {
+          ...message,
+          id: 'result-fresh',
+          toolCallId: freshCallId,
+          metadata: {
+            ...message.metadata,
+            'conversationalist:toolResult': {
+              ...message.metadata?.['conversationalist:toolResult'],
+              action: {
+                ...message.metadata?.['conversationalist:toolResult']?.action,
+                idempotencyKey: 'approval:refund-fresh',
+              },
+            },
+          },
+        };
+      }
+      return message;
+    });
+    const { mounted, session } = await approvedWith(
+      [refusalOf('THREAD_BUSY', 'Thread has a run in progress'), second(), second()],
+      [parkedWithThread(approval)],
+      () => Response.json({ threadId: THREAD, messages: freshHistory }),
+    );
+
+    expect(
+      await rejectionOf(session.adapter.sendMessage({ role: 'user', content: 'Go on' }, [])),
+    ).toEqual(new Error('Cannot start a new turn while tool approval is pending'));
+    expect(mounted.bodies).toHaveLength(3);
+  });
+
+  test('does not admit a new turn when authoritative refresh fails after the owed resume', async () => {
+    const mounted = mountOver({
+      start: [parked(approval), refusalOf('THREAD_BUSY', 'Thread has a run in progress'), second()],
+      attach: [parkedOn(approval)],
+      history: () => {
+        throw new Error('history unavailable');
+      },
+    });
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Refund it' }, []);
+    await session.adapter
+      .resolveToolApproval?.('call-refund', { decision: 'approve', remember: false })
+      .catch(() => undefined);
+    await until(() => !session.attaching && !session.streaming);
+
+    expect(
+      await rejectionOf(session.adapter.sendMessage({ role: 'user', content: 'Go on' }, [])),
+    ).toEqual(new Error('history unavailable'));
+    expect(mounted.bodies).toHaveLength(3);
+  });
+
+  test('does not admit a new turn when authoritative refresh has no history', async () => {
+    const mounted = mountOver({
+      start: [parked(approval), refusalOf('THREAD_BUSY', 'Thread has a run in progress'), second()],
+      attach: [parkedOn(approval)],
+      history: () => new Response('', { status: 404 }),
+    });
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Refund it' }, []);
+    await session.adapter
+      .resolveToolApproval?.('call-refund', { decision: 'approve', remember: false })
+      .catch(() => undefined);
+    await until(() => !session.attaching && !session.streaming);
+
+    expect(
+      await rejectionOf(session.adapter.sendMessage({ role: 'user', content: 'Go on' }, [])),
+    ).toEqual(new Error(CHAT_COPY.answersNotApplied));
+    expect(mounted.bodies).toHaveLength(3);
   });
 
   test('that failed after the approvals were applied tells the person, keeps no decision, and the next send is a plain message', async () => {

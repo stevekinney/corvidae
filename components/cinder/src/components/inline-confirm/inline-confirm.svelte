@@ -40,6 +40,7 @@
     ariaDisabled,
     armedLabel,
     armedHint,
+    armedEscapeHint,
     loading = false,
     loadingLabel,
     ariaDescribedBy,
@@ -186,6 +187,11 @@
         role="status"
       >
         {armedHint}
+        {#if armedEscapeHint !== undefined}
+          <span class="cinder-inline-confirm__armed-escape">
+            {' '}{armedEscapeHint}
+          </span>
+        {/if}
       </span>
     {/if}
   </span>

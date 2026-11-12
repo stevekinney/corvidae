@@ -48,6 +48,8 @@ describe('a waiting approval', () => {
     const row = container.querySelector('[data-approval-decision]');
 
     expect(row?.getAttribute('tabindex')).toBe('-1');
+    expect(row?.getAttribute('data-cinder-tool-approval')).toBe('true');
+    expect(row?.getAttribute('data-cinder-tool-approval-call-id')).toBe('call-1');
     expect(row?.textContent).toContain('Look up order 4471?');
     expect(getByRole('button', { name: 'Deny' })).not.toBeNull();
     expect(getByRole('button', { name: /^Approve/ })).not.toBeNull();
@@ -80,6 +82,7 @@ describe('a waiting approval', () => {
     const { getByRole } = mount('dangerous', onResolve);
 
     await fireEvent.click(getByRole('button', { name: /^Approve/ }));
+    await fireEvent.click(getByRole('button', { name: 'Press again to approve' }));
 
     expect(onResolve).toHaveBeenCalledTimes(1);
     expect(onResolve.mock.calls[0]?.[0]).toMatchObject({ decision: 'approve' });
@@ -104,5 +107,17 @@ describe('a waiting approval', () => {
     expect(view.container.querySelector('[data-approval-decision]')).toBeNull();
     expect(view.queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(view.container.textContent).toContain('Approved');
+  });
+
+  test('becomes expired when the mounted entry reaches its terminal state', async () => {
+    const view = mount('dangerous');
+    await view.rerender({
+      entry: { ...entry('dangerous'), state: 'expired' },
+      expiresAt: '2026-11-01T00:00:00.000Z',
+    } as never);
+
+    expect(
+      view.container.querySelector('[data-approval-decision]')?.getAttribute('data-cinder-state'),
+    ).toBe('expired');
   });
 });

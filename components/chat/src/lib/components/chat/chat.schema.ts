@@ -219,6 +219,12 @@ const schema = {
           'Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable\nindividual Chat features (attachments, search, copy, editing, retry, quote) as a group\nrather than as six separate boolean props.',
       },
       {
+        name: 'labels',
+        reason: 'unknown-shape',
+        description:
+          'Localized labels for the Messages focus affordance, attachment status, attachment actions and approval drawer controls.',
+      },
+      {
         name: 'composerActions',
         reason: 'function-or-snippet',
         description:
@@ -334,6 +340,12 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           'Called when the user resolves an action-required approval. The complete\nresolution payload is forwarded unchanged. When an adapter is also wired,\nChat calls `adapter.resolveToolApproval(toolCallId, resolution)` first and\nuses this callback only when the adapter does not implement that method.',
+      },
+      {
+        name: 'onApprovalRequestAgain',
+        reason: 'function-or-snippet',
+        description:
+          'Asks the host to retry an interrupted turn with a fresh approval for an expired tool call. Receives the tool call id.',
       },
       {
         name: 'onInputSubmit',

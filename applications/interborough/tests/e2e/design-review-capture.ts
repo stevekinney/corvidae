@@ -22,12 +22,12 @@ import type { Page } from '@playwright/test';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { GEOMETRY_THRESHOLDS } from '../../scripts/design-review-geometry.ts';
+import { GEOMETRY_THRESHOLDS } from '@lostgradient/testing/design-review-geometry';
+import { measureGeometry } from '@lostgradient/testing/design-review-geometry-probe';
 import {
   designReviewCaptureDirectory,
   designReviewColorScheme,
 } from '../../scripts/environment-configuration.ts';
-import { measureGeometry } from './design-review-geometry-probe.ts';
 
 /** At or below this width a capture is of a phone, and is taken with a coarse pointer. */
 const PHONE_WIDTH_MAXIMUM = GEOMETRY_THRESHOLDS.phoneWidthMaximum;
@@ -57,6 +57,35 @@ async function emulateTouch(page: Page): Promise<() => Promise<void>> {
   };
 }
 
+/** Runs capture work while preserving both the capture and pointer-cleanup failures. */
+export async function withPointerCleanup<T>(
+  operation: () => Promise<T>,
+  restorePointer: () => Promise<void>,
+): Promise<T> {
+  let result: T | undefined;
+  let operationError: unknown;
+  try {
+    result = await operation();
+  } catch (error) {
+    operationError = error;
+  }
+  try {
+    await restorePointer();
+  } catch (cleanupError) {
+    if (operationError !== undefined) {
+      const aggregateError = new AggregateError(
+        [operationError, cleanupError],
+        'Capture and pointer cleanup failed',
+        { cause: operationError },
+      );
+      throw aggregateError;
+    }
+    throw cleanupError;
+  }
+  if (operationError !== undefined) throw operationError;
+  return result as T;
+}
+
 /** The smallest phone the application supports, which every phone-width capture is repeated at. */
 const SMALL_PHONE = { width: 320, height: 640 } as const;
 
@@ -73,6 +102,8 @@ export interface DesignReviewCapture {
   readonly tab?: string;
   /** The specification the capture came from, so a reader can find the seed behind it. */
   readonly source: string;
+  /** Condition to re-prove after every helper viewport/remount change and immediately before pixels. */
+  readonly ready?: ((page: Page) => Promise<void>) | undefined;
 }
 
 /** One line of `manifest.jsonl`. */
@@ -124,17 +155,17 @@ export async function captureForDesignReview(
     return;
   }
   const restorePointer = await emulateTouch(page);
-  try {
+  await withPointerCleanup(async () => {
     await captureViewport(page, capture, directory, viewportSize);
     if (viewportSize.width !== SMALL_PHONE.width) {
       await page.setViewportSize(SMALL_PHONE);
       await nextFrame(page);
       await captureViewport(page, capture, directory, SMALL_PHONE);
       await page.setViewportSize(viewportSize);
+      await nextFrame(page);
+      await capture.ready?.(page);
     }
-  } finally {
-    await restorePointer();
-  }
+  }, restorePointer);
 }
 
 /** Screenshots and measures the page at the size it is at, and appends its line to the manifest. */
@@ -147,6 +178,8 @@ async function captureViewport(
   const colorScheme = designReviewColorScheme() ?? 'light';
   const slug = designReviewSlug(capture, viewportSize.width, colorScheme);
   await mkdir(join(directory, 'screens'), { recursive: true });
+
+  await capture.ready?.(page);
 
   const viewport = `screens/${slug}.png`;
   await page.screenshot({
@@ -177,8 +210,11 @@ async function captureViewport(
     full = `screens/${slug}.full.png`;
     const height = Math.min(viewportSize.height + overflow, MAXIMUM_FULL_HEIGHT);
     await page.setViewportSize({ width: viewportSize.width, height });
+    await capture.ready?.(page);
     await page.screenshot({ path: join(directory, full), animations: 'disabled', caret: 'hide' });
     await page.setViewportSize(viewportSize);
+    await nextFrame(page);
+    await capture.ready?.(page);
   }
 
   const entry: DesignReviewManifestEntry = {

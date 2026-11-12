@@ -124,6 +124,15 @@ const contextInputReceiptSchema = z.object({
  */
 export type ContextInputReceipt = z.infer<typeof contextInputReceiptSchema>;
 
+const contextRegenerateReceiptSchema = z.object({
+  contextId: z.string().min(1),
+  messageId: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+});
+
+/** The committed replacement returned by `bureau.contexts.regenerate`. */
+export type ContextRegenerateReceipt = z.infer<typeof contextRegenerateReceiptSchema>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -360,6 +369,20 @@ export async function sendContextInput(
 ): Promise<ContextInputReceipt> {
   return contextInputReceiptSchema.parse(
     await callBureau('bureau.contexts.input', { contextId, input }, options),
+  );
+}
+
+/** Replaces the final ended assistant answer without starting a new turn or running tools. */
+export async function regenerateContext(
+  input: {
+    readonly contextId: string;
+    readonly commandId: string;
+    readonly messageId: string;
+  },
+  options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher },
+): Promise<ContextRegenerateReceipt> {
+  return contextRegenerateReceiptSchema.parse(
+    await callBureau('bureau.contexts.regenerate', input, options),
   );
 }
 

@@ -64,7 +64,9 @@ describe('ChatInput layout CSS', () => {
     const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
 
     const chatContainerBlock =
-      cssBlocks(chatInputSource, '.chat-input-editor-container').at(0) ?? '';
+      cssBlocks(chatInputSource, '.chat-input-editor-container').find((block) =>
+        block.includes('min-height'),
+      ) ?? '';
     expectDeclaration(chatContainerBlock, 'min-height', 'var(--cinder-touch-target-min)');
     expect(chatInputSource).not.toContain('--editor-min-height');
     expect(chatInputSource).not.toContain('markdown-editor');

@@ -131,7 +131,7 @@ describe('ChatInput', () => {
     expect(composer.disabled).toBe(false);
     expect(stop.type).toBe('button');
     expect(stop.hasAttribute('data-stop')).toBe(true);
-    expect(stop.textContent).toContain('Stop');
+    expect(stop.textContent).not.toContain('Stop');
     expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
     expect(
       container.querySelector<HTMLButtonElement>('button[aria-label="Attach file"]')?.disabled,

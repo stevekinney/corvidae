@@ -176,6 +176,7 @@
     gap: var(--cinder-space-1);
     cursor: pointer;
     color: var(--cinder-text-default);
+    min-block-size: var(--cinder-space-6);
     line-height: var(--cinder-leading-normal);
   }
 
@@ -188,6 +189,12 @@
     line-height: 0.875rem;
     text-align: center;
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-error-state-details-summary:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+    border-radius: var(--cinder-radius-sm);
   }
 
   .cinder-error-state-details[open] .cinder-error-state-details-summary::before {

@@ -41,6 +41,8 @@ type InlineConfirmSharedProps = {
   armedLabel?: string;
   /** Status text shown while the two-press action is armed. */
   armedHint?: string;
+  /** Optional keyboard instruction shown beside the armed status on fine pointers. */
+  armedEscapeHint?: string;
   /** Shows a loading state on the action button. */
   loading?: boolean;
   /** Accessible loading label for the action button. */

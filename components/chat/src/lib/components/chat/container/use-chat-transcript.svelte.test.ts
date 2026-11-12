@@ -118,6 +118,19 @@ describe('useChatTranscript live inputs', () => {
     expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
   });
 
+  test('does not append typing below an existing assistant reply before a stream row is reserved', async () => {
+    const fixture = createTranscriptFixture(
+      conversation([message('user-first', 'user'), message('assistant-reply')]),
+    );
+    const { transcript } = fixture;
+
+    fixture.setStreaming(true);
+    await tick();
+
+    expect(transcript.showTypingIndicator).toBe(false);
+    expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
+  });
+
   test('keeps the separate typing row after beginStreaming reserves a row before content arrives', async () => {
     const fixture = createTranscriptFixture(
       conversation([{ ...message('first', 'assistant', { streaming: true }), content: '' }]),

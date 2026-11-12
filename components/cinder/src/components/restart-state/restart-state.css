@@ -130,6 +130,9 @@
   }
 
   .cinder-restart-state__details-summary {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 1.5rem;
     cursor: pointer;
     inline-size: fit-content;
     color: var(--cinder-accent-text);
@@ -160,6 +163,12 @@
   .cinder-restart-state__actions {
     display: flex;
     justify-content: flex-end;
+  }
+
+  @media (pointer: coarse) {
+    .cinder-restart-state__details-summary {
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 
   /* A phone gets the full width and a 44px target for the one action. */

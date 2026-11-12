@@ -7,6 +7,7 @@ import {
   STRESS_PROFILES,
   SUPPLEMENTAL_PROFILE,
   composerEdgeProblems,
+  composerTopProblems,
   countProblems,
   escapeHtml,
   expectedCounts,
@@ -44,6 +45,7 @@ const CLEAN: PageMeasurement = {
   clippedStatuses: [],
   directions: [],
   composerEdge: 600,
+  composerTop: 520,
 };
 
 describe('profiles', () => {
@@ -99,6 +101,37 @@ describe('question witnesses', () => {
   });
 });
 
+describe('approval action focus witness', () => {
+  it('captures both case 39 actions on the narrow dark profile without submitting', () => {
+    const approval = caseNumbered(39);
+    expect(approval.variants).toContainEqual({
+      name: 'actions-focused',
+      profiles: ['320-dark'],
+      steps: [
+        { action: 'focus', role: 'button', name: 'Deny' },
+        { action: 'expect', role: 'button', name: 'Refund $42.00' },
+        { action: 'expect', role: 'button', name: 'Deny' },
+      ],
+    });
+    expect(
+      approval.variants.find((variant) => variant.name === 'actions-focused')?.steps,
+    ).not.toContainEqual({ action: 'click', role: 'button', name: 'Deny' });
+  });
+});
+
+describe('irreversible approval witness', () => {
+  it('observes the armed button by accessible name and keeps the visible three-second hint', () => {
+    const approval = caseNumbered(47);
+    expect(approval.steps).toEqual([
+      { action: 'click', role: 'button', name: 'Refund $42.00' },
+      { action: 'scroll', to: 'bottom' },
+      { action: 'expect', role: 'button', name: 'Press again to refund $42.00' },
+      { action: 'expect-text', text: 'Reverts in 3 seconds.' },
+    ]);
+    expect(approval.steps).not.toContainEqual({ action: 'expect-text', text: 'Press again' });
+  });
+});
+
 describe('image names', () => {
   it('write <width>-<theme>-<case>.png for a primary with a two digit case', () => {
     expect(primaryImageName(narrow, 24)).toBe('320-dark-24.png');
@@ -112,12 +145,12 @@ describe('image names', () => {
 });
 
 describe('expectedCounts', () => {
-  it('hold 320 primaries and 44 fixed variants before any focus image', () => {
+  it('hold 320 primaries and 111 fixed variants before any focus image', () => {
     const counts = expectedCounts(cases, STRESS_PROFILES, {});
     expect(counts.primary).toBe(320);
-    expect(counts.fixedVariants).toBe(44);
+    expect(counts.fixedVariants).toBe(111);
     expect(counts.focus).toBe(0);
-    expect(counts.total).toBe(364);
+    expect(counts.total).toBe(431);
   });
 
   it('add the focus stops each profile found', () => {
@@ -128,7 +161,7 @@ describe('expectedCounts', () => {
       '320-dark': 13,
     });
     expect(counts.focus).toBe(54);
-    expect(counts.total).toBe(418);
+    expect(counts.total).toBe(485);
   });
 });
 
@@ -194,6 +227,7 @@ describe('measurementProblems', () => {
           ...CLEAN,
           controlGeometry: [
             {
+              controlId: 'control-0',
               name: 'Approve',
               hitWidth: 84,
               hitHeight: 44,
@@ -208,7 +242,46 @@ describe('measurementProblems', () => {
         narrow,
         caseNumbered(21),
       ),
-    ).toEqual(['hit region sample missed Approve']);
+    ).toEqual(['hit region sample missed control-0: Approve']);
+  });
+
+  it('keeps same-name hit failures distinct in final problem reconciliation', () => {
+    expect(
+      measurementProblems(
+        {
+          ...CLEAN,
+          controlGeometry: [
+            {
+              controlId: 'control-0',
+              name: 'Copy',
+              hitWidth: 84,
+              hitHeight: 44,
+              paintedWidth: 84,
+              paintedHeight: 44,
+              reachableWidth: 84,
+              reachableHeight: 44,
+              samples: [{ x: 1, y: 1, top: 'mask', hitsTarget: false }],
+            },
+            {
+              controlId: 'control-1',
+              name: 'Copy',
+              hitWidth: 84,
+              hitHeight: 44,
+              paintedWidth: 84,
+              paintedHeight: 44,
+              reachableWidth: 84,
+              reachableHeight: 44,
+              samples: [{ x: 2, y: 2, top: 'mask', hitsTarget: false }],
+            },
+          ],
+        },
+        narrow,
+        caseNumbered(21),
+      ),
+    ).toEqual([
+      'hit region sample missed control-0: Copy',
+      'hit region sample missed control-1: Copy',
+    ]);
   });
 
   it('flags a jump control that covers the transcript and a receipt that still waits', () => {
@@ -222,6 +295,24 @@ describe('measurementProblems', () => {
       'jump control overlaps the transcript',
       'approval still waits after its receipt appears',
     ]);
+  });
+
+  it('rejects a semantic composer transition whose measured top moved', () => {
+    expect(
+      measurementProblems(
+        {
+          ...CLEAN,
+          composerTransition: {
+            from: 'stopped',
+            to: 'failed',
+            before: 520,
+            after: 528,
+          },
+        },
+        narrow,
+        caseNumbered(18),
+      ),
+    ).toContain('composer top moved from 520 to 528 across stopped->failed');
   });
 
   it('checks Arabic direction and alignment, and refuses a case that measured no text', () => {
@@ -305,6 +396,34 @@ describe('composerEdgeProblems', () => {
   });
 });
 
+describe('composerTopProblems', () => {
+  it('accepts paired composer tops within tolerance', () => {
+    expect(
+      composerTopProblems(
+        [caseNumbered(9), caseNumbered(10)],
+        wide,
+        new Map([
+          [9, 520],
+          [10, 520.5],
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  it('names a moved paired composer top', () => {
+    expect(
+      composerTopProblems(
+        [caseNumbered(9), caseNumbered(10)],
+        wide,
+        new Map([
+          [9, 520],
+          [10, 528],
+        ]),
+      ),
+    ).toEqual(['1440-light: composer top moved from 520 to 528 between cases 09 and 10']);
+  });
+});
+
 function record(file: string, overrides: Partial<CaptureRecord> = {}): CaptureRecord {
   return { caseId: 1, profile: '1440-light', kind: 'primary', file, problems: [], ...overrides };
 }
@@ -356,6 +475,7 @@ describe('countProblems', () => {
           }),
         );
         for (const variant of stressCase.variants) {
+          if (variant.profiles !== undefined && !variant.profiles.includes(profile.name)) continue;
           records.push(
             record(variantImageName(profile, stressCase.id, variant.name), {
               caseId: stressCase.id,
@@ -393,7 +513,7 @@ describe('countProblems', () => {
   it('names a missing fixed variant', () => {
     const records = completeRun().filter((entry) => entry.file !== '390-light-33-expanded.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 44 fixed variant images, found 43',
+      'expected 111 fixed variant images, found 110',
     ]);
   });
 

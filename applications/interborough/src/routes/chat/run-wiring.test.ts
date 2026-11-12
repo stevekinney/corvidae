@@ -445,6 +445,58 @@ describe('an attach', () => {
     expect(restored?.ids.map((id) => restored.messages[id]?.content)).toEqual(['Start the work']);
   });
 
+  test('does not attach a terminal run that only replays an expired approval receipt', async () => {
+    const expiredMessages = [
+      { id: 'user-1', role: 'user', content: 'Approve the mutation' },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '',
+        toolCalls: [
+          {
+            id: 'expiring-approval-1',
+            type: 'function',
+            function: { name: 'expiring-approval-mutation', arguments: '{"value":"proof"}' },
+          },
+        ],
+      },
+      {
+        id: 'result-1',
+        role: 'tool',
+        toolCallId: 'expiring-approval-1',
+        content: 'Approve the mutation',
+      },
+    ];
+    const { wiring, sent } = wiringOver(
+      [
+        stream([started(), { type: 'MESSAGES_SNAPSHOT', messages: expiredMessages }]),
+        Response.json({
+          jsonrpc: '2.0',
+          id: 'bureau.tasks.get',
+          result: {
+            id: 'native-1',
+            contextId: THREAD,
+            agentName: 'assistant',
+            owner: 'owner',
+            actor: null,
+            kind: 'chat',
+            status: 'completed',
+            finishReason: 'review-expired',
+            statusMessage: null,
+            createdAt: '2026-11-11T00:00:00.000Z',
+            updatedAt: '2026-11-11T00:00:20.000Z',
+            cleanup: null,
+            openWaits: [],
+          },
+        }),
+      ],
+      empty,
+    );
+
+    expect(await wiring.attach(THREAD)).toBeUndefined();
+    expect(mountRequests(sent)).toHaveLength(1);
+  });
+
   test('is read by the next turn, which ends with the thread and the reply', async () => {
     const { wiring, sent } = wiringOver(
       [stream([started(), snapshot, ...text('reply-1', 'Done.'), finished()])],

@@ -19,7 +19,12 @@
   import { ApprovalCard } from '@lostgradient/cinder';
   import type { ApprovalCardProps } from '@lostgradient/cinder';
 
-  let { part, onApprovalResolve, onApprovalRequestAgain, layout = 'decision' }: ToolApprovalPartProps = $props();
+  let {
+    part,
+    onApprovalResolve,
+    onApprovalRequestAgain,
+    layout = 'decision',
+  }: ToolApprovalPartProps = $props();
 
   const canResolve = $derived(
     part.state === 'pending' && !part.resolutionInFlight && onApprovalResolve !== undefined,
@@ -45,7 +50,8 @@
     };
 
     if (part.details?.approveLabel !== undefined) props.approveLabel = part.details.approveLabel;
-    if (part.details?.pauseSentence !== undefined) props.pauseSentence = part.details.pauseSentence;
+    // The approval card owns its standard pause sentence. Chat adapter details must not duplicate
+    // that sentence in the decision surface when the Cinder default is available.
     if (part.details?.facts !== undefined) props.facts = part.details.facts;
     if (part.details?.why !== undefined) props.why = part.details.why;
     // A decision made here: who, when, and the note that went with it.
@@ -53,6 +59,7 @@
       props.decidedBy = 'you';
       props.decidedAt = part.receipt.decidedAt;
       if (part.receipt.reason !== undefined) props.decisionNote = part.receipt.reason;
+      if (part.receipt.result !== undefined) props.result = part.receipt.result;
     }
 
     if (onApprovalRequestAgain !== undefined) {

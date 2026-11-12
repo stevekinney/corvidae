@@ -157,7 +157,7 @@ describe('the live composer', () => {
     const send = view.container.querySelector<HTMLButtonElement>('[data-chat-send]')!;
 
     expect(send.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(send.textContent?.trim()).toBe('Send');
+    expect(send.textContent?.trim()).toBe('');
     expect(send.querySelector('svg.lucide-send-horizontal')).not.toBeNull();
     expect(send.disabled).toBe(true);
 

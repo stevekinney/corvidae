@@ -30,6 +30,8 @@
     sources = [],
     label = 'Sources',
     labels,
+    closeOnSourceRemoval = false,
+    onCloseComplete,
     children,
     class: customClassName,
     ...rest
@@ -38,6 +40,7 @@
   let open = $state(false);
   let markerElement = $state<HTMLButtonElement | null>(null);
   let preserveMarkerForClose = $state(false);
+  let previousSourceKeys: string[] | undefined;
   const markerDisabled = $derived(sources.length === 0 && !preserveMarkerForClose);
   const source = $derived(sources[page]);
   // Five or fewer sources read as one list; more are paged so the panel stays short.
@@ -51,7 +54,20 @@
     return labels?.open?.(host) ?? (host === undefined ? 'Open source' : `Open ${host}`);
   }
 
+  function sourceKey(entry: CitationSource): string {
+    return `${entry.url ?? ''}\u0000${entry.label}\u0000${entry.detail ?? ''}`;
+  }
+
   $effect(() => {
+    const keys = sources.map(sourceKey);
+    if (
+      closeOnSourceRemoval &&
+      previousSourceKeys !== undefined &&
+      previousSourceKeys.some((key) => !keys.includes(key))
+    ) {
+      open = false;
+    }
+    previousSourceKeys = keys;
     if (sources.length === 0) {
       page = 0;
       if (open) {
@@ -90,6 +106,7 @@
     triggerRef={markerElement}
     onExitComplete={() => {
       preserveMarkerForClose = false;
+      onCloseComplete?.();
     }}
   >
     {#snippet trigger()}<button

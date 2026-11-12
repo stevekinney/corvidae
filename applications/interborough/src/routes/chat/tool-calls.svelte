@@ -55,7 +55,14 @@
   let openDetails = $state<ReadonlySet<string>>(new Set());
   const inline = $derived(onSelect === undefined);
 
-  const byId = $derived(new Map(entries.map((entry) => [entry.callId, entry] as const)));
+  const byId = $derived(
+    new Map(
+      entries.flatMap((entry) => [
+        [entry.callId, entry] as const,
+        ...(entry.railId === undefined ? [] : [[entry.railId, entry] as const]),
+      ]),
+    ),
+  );
   /** A finished revision proposal keeps its inline panel on the rail, whatever the fold. */
   const showsPanel = (entry: ToolCallEntry): boolean =>
     mcpApp !== undefined &&
@@ -65,6 +72,7 @@
   const showsDecision = (entry: ToolCallEntry): boolean =>
     decision !== undefined &&
     (entry.state === 'needs-you' ||
+      entry.state === 'expired' ||
       (entry.decision !== undefined &&
         (entry.decision.outcome === 'denied' ||
           decided.elsewhere?.has(entry.callId) === true ||
@@ -100,36 +108,36 @@
 
 <div class="ib-tools" data-tool-group={id}>
   <ToolCallRail
-    {calls}
-    {running}
-    {duration}
-    {endLabel}
-    label={CHAT_COPY.tools.railLabel}
-    {selectedId}
-    onSelect={onSelect ?? toggleDetails}
+      {calls}
+      {running}
+      {duration}
+      {endLabel}
+      label={CHAT_COPY.tools.railLabel}
+      {selectedId}
+      onSelect={onSelect ?? toggleDetails}
   >
-    {#snippet children(call)}
-      {@const entry = byId.get(call.id)}
-      {#if entry !== undefined}
-        {#if inline && openDetails.has(entry.callId)}
-          <dl class="ib-tool__details" id={`${id}-${entry.callId}-details`}>
-            {#each argumentEntries(entry.arguments) as [key, value] (`argument-${key}`)}
-              <dt>{key}</dt>
-              <dd>{value}</dd>
-            {/each}
-            {#each resultEntries(entry) as [key, value] (`result-${key}`)}
-              <dt>{CHAT_COPY.tools.resultPrefix} {key}</dt>
-              <dd>{value}</dd>
-            {/each}
-          </dl>
+      {#snippet children(call)}
+        {@const entry = byId.get(call.id)}
+        {#if entry !== undefined}
+          {#if inline && openDetails.has(entry.callId)}
+            <dl class="ib-tool__details" id={`${id}-${entry.callId}-details`}>
+              {#each argumentEntries(entry.arguments) as [key, value] (`argument-${key}`)}
+                <dt>{key}</dt>
+                <dd>{value}</dd>
+              {/each}
+              {#each resultEntries(entry) as [key, value] (`result-${key}`)}
+                <dt>{CHAT_COPY.tools.resultPrefix} {key}</dt>
+                <dd>{value}</dd>
+              {/each}
+            </dl>
+          {/if}
+          {#if decision !== undefined && showsDecision(entry)}
+            {@render decision(entry)}
+          {/if}
+          {#if mcpApp !== undefined}
+            {@render mcpApp(entry)}
+          {/if}
         {/if}
-        {#if decision !== undefined && showsDecision(entry)}
-          {@render decision(entry)}
-        {/if}
-        {#if mcpApp !== undefined}
-          {@render mcpApp(entry)}
-        {/if}
-      {/if}
-    {/snippet}
+      {/snippet}
   </ToolCallRail>
 </div>

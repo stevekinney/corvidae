@@ -59,7 +59,7 @@ describe('InlineConfirm', () => {
       presentation: 'two-press',
       confirmLabel: 'Refund $42.00',
       armedLabel: 'Press again to refund $42.00',
-      armedHint: 'Reverts in 3 seconds. Escape cancels.',
+      armedHint: 'Reverts in 3 seconds.',
       requestKey: 'refund-1',
       onConfirm: () => confirmations++,
     });
@@ -70,6 +70,25 @@ describe('InlineConfirm', () => {
     expect(view.queryByRole('button', { name: 'Cancel' })).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'Press again to refund $42.00' }));
     expect(confirmations).toBe(1);
+  });
+
+  test('keeps the keyboard escape hint visible only for fine pointers', async () => {
+    const { container, getByRole } = render(InlineConfirm, {
+      presentation: 'two-press',
+      confirmLabel: 'Refund',
+      armedHint: 'Reverts in 3 seconds.',
+      armedEscapeHint: 'Escape cancels.',
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Refund' }));
+
+    expect(container.querySelector('.cinder-inline-confirm__armed-escape')?.textContent).toContain(
+      'Escape cancels.',
+    );
+    const css = readFileSync(new URL('./inline-confirm.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /@media \(any-pointer: coarse\) \{\s*\.cinder-inline-confirm__armed-escape \{\s*position: absolute;[\s\S]*clip-path: inset\(50%\);/,
+    );
   });
 
   test('two-press presentation resets on request identity and Escape', async () => {

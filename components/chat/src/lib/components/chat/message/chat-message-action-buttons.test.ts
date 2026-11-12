@@ -27,17 +27,17 @@ describe('chat message action buttons', () => {
     expect(source).toContain('class="chat-message-action-button chat-message-edit-button"');
   });
 
-  test('exactly one .chat-message-action-button base selector exists outside the touch block', () => {
+  test('default and transcript action buttons each use the shared base selector', () => {
     const withoutTouchBlock = source.replace(extractTouchMediaBlock(source), '');
     // The selector is wrapped in :global() so Svelte scoping does not prevent it
     // from reaching the CopyButton child component's rendered <button>.
-    // The transcript line restyles the same buttons as words (`.chat-message-line :global(...)`),
-    // a scoped override of the one base rule, so it is not counted as a second base.
+    // Default message actions and transcript line actions have separate layout contexts, so each
+    // owns one base rule while their touch overrides remain inside media blocks.
     const baseRuleMatches = withoutTouchBlock
       .replaceAll('.chat-message-line :global(.chat-message-action-button)', '')
       .match(/(?::global\()?\.chat-message-action-button(?:\))?\s*\{/g);
     expect(baseRuleMatches).not.toBeNull();
-    expect(baseRuleMatches).toHaveLength(1);
+    expect(baseRuleMatches).toHaveLength(2);
   });
 
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
@@ -89,10 +89,22 @@ describe('chat message action buttons', () => {
     expect(source).toContain(
       '.chat-message-line :global(.chat-message-action-button:focus-visible)::before',
     );
-    expect(source).toContain('inset: 0;');
-    expect(source).toContain('inset: var(--cinder-space-1-5);');
+    expect(source).toContain('inline-size: 1.5rem;');
+    expect(source).toContain('block-size: 1.5rem;');
+    expect(source).toContain('transform: translate(-50%, -50%);');
+    expect(source).not.toContain('inset: var(--cinder-space-1-5);');
     expect(source).toContain('.chat-message-not-sent-icon:focus-visible');
     expect(source).toContain('outline: var(--cinder-ring-width) solid var(--cinder-ring-color);');
+  });
+
+  test('anchors the user action focus face to its right-aligned painted glyph', () => {
+    const userFocusRule = extractRule(
+      source,
+      ".chat-message-wrapper[data-role='user']\n    .chat-message-line-actions\n    :global(.chat-message-action-button:focus-visible)::before {",
+    );
+    expect(userFocusRule).toContain('inset-inline-start: auto;');
+    expect(userFocusRule).toContain('inset-inline-end: 0;');
+    expect(userFocusRule).toContain('transform: translateY(-50%);');
   });
 
   test('base rule uses border-box sizing and a transparent reserving border', () => {
@@ -154,6 +166,17 @@ describe('chat message action buttons', () => {
       );
       expect(rule).toContain('padding-top: 0');
     }
+  });
+
+  test('RTL side footers stay on the center-facing edge while actions retain order', () => {
+    expect(source).toContain(
+      ".chat-message-wrapper:dir(rtl)[data-role='user'] .chat-message-footer",
+    );
+    expect(source).toContain(
+      ".chat-message-wrapper:dir(rtl)[data-role='assistant'] .chat-message-footer",
+    );
+    const actionsRule = extractRule(source, '.chat-message-actions {');
+    expect(actionsRule).toContain('direction: ltr;');
   });
 
   test('narrow side footers restore the below-bubble hover bridge', () => {

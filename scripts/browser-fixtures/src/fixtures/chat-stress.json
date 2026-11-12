@@ -210,7 +210,27 @@
         "name": "Stop generating"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "stop-tooltip",
+        "steps": [
+          {
+            "action": "focus",
+            "role": "button",
+            "name": "Stop generating"
+          },
+          {
+            "action": "hover",
+            "role": "button",
+            "name": "Stop generating"
+          },
+          {
+            "action": "expect-tooltip",
+            "text": "Stop generating"
+          }
+        ]
+      }
+    ],
     "focusSweep": false,
     "composerEdgeWith": 10
   },
@@ -239,7 +259,29 @@
         "text": "Up next"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "waiting-to-streaming",
+        "steps": [
+          {
+            "action": "fill",
+            "role": "textbox",
+            "name": "Message",
+            "text": "Check the latest ledger"
+          },
+          { "action": "press", "key": "Enter" },
+          { "action": "expect-text", "text": "Up next" },
+          { "action": "hook", "name": "finishRun" },
+          { "action": "hook", "name": "startStream" },
+          { "action": "expect", "role": "button", "name": "Stop generating" },
+          { "action": "expect-empty-streaming-assistant" },
+          { "action": "measure-composer-top", "name": "before" },
+          { "action": "hook", "name": "pushToken", "argument": "The ledger is ready." },
+          { "action": "expect-streaming-assistant-text", "text": "The ledger is ready." },
+          { "action": "measure-composer-top", "name": "after" }
+        ]
+      }
+    ],
     "focusSweep": false,
     "composerEdgeWith": 9
   },
@@ -442,7 +484,27 @@
         "text": "Stopped"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "stopped-to-failed",
+        "steps": [
+          { "action": "click", "role": "button", "name": "Stop generating" },
+          { "action": "expect-text", "text": "Stopped by you, partial answer" },
+          { "action": "measure-composer-top", "name": "before" },
+          { "action": "click", "role": "button", "name": "Continue" },
+          {
+            "action": "hook",
+            "name": "turnEvent",
+            "argument": {
+              "type": "fail",
+              "cause": "The model provider dropped the connection."
+            }
+          },
+          { "action": "expect-text", "text": "This answer is incomplete." },
+          { "action": "measure-composer-top", "name": "after" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -459,7 +521,7 @@
     "steps": [
       {
         "action": "expect-text",
-        "text": "20 steps"
+        "text": "Compared 20 recent orders…"
       }
     ],
     "variants": [],
@@ -525,7 +587,9 @@
     "source": "Derived from design row R6; the original definition of this number was lost.",
     "rows": ["R6"],
     "scenario": "turn-state",
-    "params": {},
+    "params": {
+      "content": ""
+    },
     "steps": [
       {
         "action": "hook",
@@ -603,12 +667,27 @@
     },
     "steps": [
       {
-        "action": "expect",
-        "role": "heading",
-        "name": "Which environment?"
+        "action": "expect-question-layout"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "phone-docked",
+        "profiles": ["390-light", "320-dark"],
+        "steps": [
+          {
+            "action": "expect",
+            "role": "button",
+            "name": "Reply in chat instead"
+          },
+          {
+            "action": "expect",
+            "role": "button",
+            "name": "Answer"
+          }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -640,7 +719,8 @@
     "rows": ["M4"],
     "scenario": "citations",
     "params": {
-      "presentation": "compact"
+      "presentation": "compact",
+      "sourceSet": "contract"
     },
     "steps": [
       {
@@ -750,7 +830,19 @@
         "name": "Edit queued follow-up 1"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "two-queued-one-editing",
+        "steps": [
+          { "action": "fill", "role": "textbox", "name": "Message", "text": "First follow-up" },
+          { "action": "press", "key": "Enter" },
+          { "action": "fill", "role": "textbox", "name": "Message", "text": "Second follow-up" },
+          { "action": "press", "key": "Enter" },
+          { "action": "click", "role": "button", "name": "Edit queued follow-up 1" },
+          { "action": "expect", "role": "textbox", "name": "Message" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -891,7 +983,8 @@
     "rows": ["M4", "T2"],
     "scenario": "citations",
     "params": {
-      "presentation": "list"
+      "presentation": "list",
+      "sourceSet": "contract"
     },
     "steps": [
       {
@@ -900,7 +993,15 @@
         "name": "Sources"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "source-list-contract",
+        "steps": [
+          { "action": "click", "role": "button", "name": "Sources" },
+          { "action": "expect-source-contract" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -934,19 +1035,43 @@
       "shape": "rtl"
     },
     "steps": [
+      { "action": "expect-text", "text": "هل توافق" },
+      { "action": "expect", "role": "button", "name": "Sources" }
+    ],
+    "variants": [
       {
-        "action": "expect-text",
-        "text": "هل توافق"
+        "name": "rtl-sources-open",
+        "steps": [
+          { "action": "click", "role": "button", "name": "Sources" },
+          { "action": "expect-text", "text": "سياسة الاسترداد" },
+          { "action": "expect-text", "text": "توضح السياسة" }
+        ]
+      },
+      {
+        "name": "sources-review-reachable",
+        "steps": [
+          { "action": "click", "role": "button", "name": "Sources" },
+          { "action": "expect-text", "text": "سياسة الاسترداد" },
+          { "action": "expect-approval-review" }
+        ]
+      },
+      {
+        "name": "actions-focused",
+        "profiles": ["320-dark"],
+        "steps": [
+          { "action": "focus", "role": "button", "name": "Deny" },
+          { "action": "expect", "role": "button", "name": "Refund $42.00" },
+          { "action": "expect", "role": "button", "name": "Deny" }
+        ]
       }
     ],
-    "variants": [],
     "focusSweep": false,
     "direction": "rtl"
   },
   {
     "id": 40,
     "slug": "message-actions",
-    "title": "The line under a reply carries its time, icon-only Copy and Quote, and labeled Regenerate.",
+    "title": "The line under a reply carries its time and icon-only actions with accessible labels.",
     "provenance": "derived",
     "source": "Derived from design row M5; the original definition of this number was lost.",
     "rows": ["M5"],
@@ -1127,8 +1252,17 @@
         "name": "Refund $42.00"
       },
       {
+        "action": "scroll",
+        "to": "bottom"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Press again to refund $42.00"
+      },
+      {
         "action": "expect-text",
-        "text": "Press again"
+        "text": "Reverts in 3 seconds."
       }
     ],
     "variants": [],
@@ -1151,7 +1285,9 @@
         "text": "1 failed"
       }
     ],
-    "variants": [],
+    "variants": [
+      { "name": "expanded", "steps": [{ "action": "expect-text", "text": "1 failed" }] }
+    ],
     "focusSweep": false
   },
   {
@@ -1169,11 +1305,26 @@
       {
         "action": "click",
         "role": "button",
+        "name": "Add a note"
+      },
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Note (optional)",
+        "text": "The duplicate charge was already refunded."
+      },
+      {
+        "action": "click",
+        "role": "button",
         "name": "Deny"
       },
       {
         "action": "expect-text",
         "text": "Denied"
+      },
+      {
+        "action": "expect-text",
+        "text": "The duplicate charge was already refunded."
       }
     ],
     "variants": [],
@@ -1195,7 +1346,7 @@
         "action": "upload",
         "files": [
           {
-            "name": "plan.pdf",
+            "name": "quarterly-reconciliation-report-with-a-very-long-generated-filename.pdf",
             "mimeType": "application/pdf",
             "bytes": 2048
           },
@@ -1208,28 +1359,19 @@
             "name": "receipts.pdf",
             "mimeType": "application/pdf",
             "bytes": 8192
+          },
+          {
+            "name": "notes.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 1024
           }
         ]
       },
       {
         "action": "expect-text",
-        "text": "3 files"
+        "text": "4 files"
       },
-      {
-        "action": "expect",
-        "role": "button",
-        "name": "Remove plan.pdf"
-      },
-      {
-        "action": "expect",
-        "role": "button",
-        "name": "Remove ledger.pdf"
-      },
-      {
-        "action": "expect",
-        "role": "button",
-        "name": "1 more below"
-      }
+      { "action": "expect-attachment-shelf", "total": 4 }
     ],
     "variants": [
       {
@@ -1238,16 +1380,26 @@
           {
             "action": "upload",
             "files": [
-              { "name": "plan.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              {
+                "name": "quarterly-reconciliation-report-with-a-very-long-generated-filename.pdf",
+                "mimeType": "application/pdf",
+                "bytes": 2048
+              },
               { "name": "ledger.pdf", "mimeType": "application/pdf", "bytes": 4096 },
-              { "name": "receipts.pdf", "mimeType": "application/pdf", "bytes": 8192 }
+              { "name": "receipts.pdf", "mimeType": "application/pdf", "bytes": 8192 },
+              { "name": "notes.pdf", "mimeType": "application/pdf", "bytes": 1024 }
             ]
           },
-          { "action": "expect-text", "text": "3 files" },
-          { "action": "click", "role": "button", "name": "1 more below" },
-          { "action": "expect", "role": "button", "name": "Remove plan.pdf" },
+          { "action": "expect-text", "text": "4 files" },
+          { "action": "expect-attachment-shelf", "total": 4, "reveal": true },
+          {
+            "action": "expect",
+            "role": "button",
+            "name": "Remove quarterly-reconciliation-report-with-a-very-long-generated-filename.pdf"
+          },
           { "action": "expect", "role": "button", "name": "Remove ledger.pdf" },
-          { "action": "expect", "role": "button", "name": "Remove receipts.pdf" }
+          { "action": "expect", "role": "button", "name": "Remove receipts.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove notes.pdf" }
         ]
       }
     ],
@@ -1298,9 +1450,57 @@
       {
         "action": "expect-text",
         "text": "need attention"
+      },
+      { "action": "expect-attachment-shelf", "total": 5 }
+    ],
+    "variants": [
+      {
+        "name": "revealed",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "ready-a.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "upload-fail-1.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              {
+                "name": "unsupported-1.exe",
+                "mimeType": "application/x-msdownload",
+                "bytes": 1024
+              },
+              { "name": "uploading-1.pdf", "mimeType": "application/pdf", "bytes": 4096 },
+              { "name": "ready-b.pdf", "mimeType": "application/pdf", "bytes": 2048 }
+            ]
+          },
+          { "action": "expect-text", "text": "need attention" },
+          { "action": "expect-attachment-shelf", "total": 5, "reveal": true },
+          { "action": "expect", "role": "button", "name": "Retry upload-fail-1.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove ready-a.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove upload-fail-1.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove unsupported-1.exe" },
+          { "action": "expect", "role": "button", "name": "Remove uploading-1.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove ready-b.pdf" }
+        ]
+      },
+      {
+        "name": "long-middle-filename",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              {
+                "name": "quarterly-reconciliation-report-with-customer-notes.pdf",
+                "mimeType": "application/pdf",
+                "bytes": 4096
+              },
+              { "name": "uploading-ledger.pdf", "mimeType": "application/pdf", "bytes": 4096 }
+            ]
+          },
+          { "action": "expect-attachment-shelf", "total": 2, "reveal": true },
+          { "action": "expect-text", "text": "42%" },
+          { "action": "expect-text", "text": "quarterly" }
+        ]
       }
     ],
-    "variants": [],
     "focusSweep": false
   },
   {
@@ -1381,14 +1581,65 @@
       {
         "action": "click",
         "role": "button",
+        "name": "Add a note"
+      },
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Note (optional)",
+        "text": "Approved after confirming the duplicate charge."
+      },
+      {
+        "action": "click",
+        "role": "button",
         "name": "Refund $42.00"
       },
       {
         "action": "expect-text",
         "text": "Approved"
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Details"
+      },
+      {
+        "action": "expect-text",
+        "text": "Approved after confirming the duplicate charge.",
+        "scope": ".cinder-approval-card__receipt-details:not([hidden])"
+      },
+      {
+        "action": "expect-text",
+        "text": "Refund completed successfully.",
+        "scope": ".cinder-approval-card__receipt-details:not([hidden])"
+      },
+      {
+        "action": "expect-text",
+        "text": "refund order 4471 --amount 4200",
+        "scope": ".cinder-approval-card__receipt-details:not([hidden])"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "expanded",
+        "steps": [
+          { "action": "click", "role": "button", "name": "Add a note" },
+          {
+            "action": "fill",
+            "role": "textbox",
+            "name": "Note (optional)",
+            "text": "Approved after confirming the duplicate charge."
+          },
+          { "action": "click", "role": "button", "name": "Refund $42.00" },
+          { "action": "click", "role": "button", "name": "Details" },
+          {
+            "action": "expect-text",
+            "text": "Refund completed successfully.",
+            "scope": ".cinder-approval-card__receipt-details:not([hidden])"
+          }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -1434,7 +1685,27 @@
         "name": "Request access"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "grantor-tooltip",
+        "steps": [
+          {
+            "action": "focus",
+            "role": "button",
+            "name": "Read only"
+          },
+          {
+            "action": "hover",
+            "role": "button",
+            "name": "Read only"
+          },
+          {
+            "action": "expect-tooltip",
+            "text": "Support Ops can grant you write access"
+          }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -1499,7 +1770,7 @@
             "name": "Deny",
             "scope": ".cinder-approval-card[data-cinder-state=\"pending\"]"
           },
-          { "action": "expect-absent", "selector": "[data-chat-approval-drawer]" }
+          { "action": "expect-approval-review" }
         ]
       }
     ],
@@ -1540,12 +1811,12 @@
       {
         "action": "click",
         "role": "button",
-        "name": "20 steps"
+        "name": "Compared 20 recent orders…"
       },
       {
         "action": "expect",
         "role": "button",
-        "name": "20 steps"
+        "name": "Compared 20 recent orders…"
       }
     ],
     "variants": [
@@ -1555,7 +1826,7 @@
           {
             "action": "expect",
             "role": "button",
-            "name": "20 steps"
+            "name": "Compared 20 recent orders…"
           }
         ]
       }
@@ -1584,7 +1855,16 @@
         "name": "Send message"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "safe-area-override",
+        "steps": [
+          { "action": "hook", "name": "setSafeAreaInset", "argument": 24 },
+          { "action": "expect", "role": "button", "name": "Attach file" },
+          { "action": "expect", "role": "button", "name": "Send message" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -1682,7 +1962,8 @@
         "action": "expect",
         "role": "button",
         "name": "11 more"
-      }
+      },
+      { "action": "expect-attachment-shelf", "total": 14 }
     ],
     "variants": [
       {
@@ -1709,6 +1990,7 @@
           },
           { "action": "expect-text", "text": "14 files" },
           { "action": "click", "role": "button", "name": "11 more" },
+          { "action": "expect-attachment-shelf", "total": 14, "reveal": true },
           { "action": "expect", "role": "button", "name": "Remove receipt-01.pdf" },
           { "action": "expect", "role": "button", "name": "Remove receipt-02.pdf" },
           { "action": "expect", "role": "button", "name": "Remove receipt-03.pdf" },
@@ -1755,13 +2037,36 @@
           }
         ]
       },
+      { "action": "expect-attachment-shelf", "total": 2 }
+    ],
+    "variants": [
       {
-        "action": "expect",
-        "role": "button",
-        "name": "Retry upload-fail-2.pdf"
+        "name": "revealed",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              {
+                "name": "unsupported-1.exe",
+                "mimeType": "application/x-msdownload",
+                "bytes": 1024
+              },
+              {
+                "name": "upload-fail-2.pdf",
+                "mimeType": "application/pdf",
+                "bytes": 2048
+              }
+            ]
+          },
+          { "action": "expect-attachment-shelf", "total": 2, "reveal": true },
+          {
+            "action": "expect",
+            "role": "button",
+            "name": "Retry upload-fail-2.pdf"
+          }
+        ]
       }
     ],
-    "variants": [],
     "focusSweep": false
   },
   {
@@ -1789,7 +2094,26 @@
         "nth": 1
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "empty-and-ready",
+        "steps": [
+          {
+            "action": "fill",
+            "role": "textbox",
+            "name": "Message",
+            "text": "First chat note",
+            "nth": 0
+          },
+          {
+            "action": "expect",
+            "role": "textbox",
+            "name": "Message",
+            "nth": 1
+          }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -2216,7 +2540,9 @@
     "source": "Derived from design row R6; the original definition of this number was lost.",
     "rows": ["R6"],
     "scenario": "turn-state",
-    "params": {},
+    "params": {
+      "content": ""
+    },
     "steps": [
       {
         "action": "hook",
@@ -2314,7 +2640,68 @@
         "text": "Up next"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "discard-drawer",
+        "steps": [
+          {
+            "action": "fill",
+            "role": "textbox",
+            "name": "Message",
+            "text": "First follow-up"
+          },
+          { "action": "press", "key": "Enter" },
+          {
+            "action": "fill",
+            "role": "textbox",
+            "name": "Message",
+            "text": "Second follow-up"
+          },
+          { "action": "press", "key": "Enter" },
+          {
+            "action": "hook",
+            "name": "turnEvent",
+            "argument": {
+              "type": "fail",
+              "cause": "The model provider dropped the connection."
+            }
+          },
+          { "action": "expect-text", "text": "2 queued follow-ups were not sent" },
+          { "action": "expect", "role": "button", "name": "Restore" }
+        ]
+      },
+      {
+        "name": "restored-after-discard",
+        "steps": [
+          {
+            "action": "fill",
+            "role": "textbox",
+            "name": "Message",
+            "text": "First follow-up"
+          },
+          { "action": "press", "key": "Enter" },
+          {
+            "action": "fill",
+            "role": "textbox",
+            "name": "Message",
+            "text": "Second follow-up"
+          },
+          { "action": "press", "key": "Enter" },
+          {
+            "action": "hook",
+            "name": "turnEvent",
+            "argument": {
+              "type": "fail",
+              "cause": "The model provider dropped the connection."
+            }
+          },
+          { "action": "expect-text", "text": "2 queued follow-ups were not sent" },
+          { "action": "expect", "role": "button", "name": "Restore" },
+          { "action": "click", "role": "button", "name": "Restore" },
+          { "action": "expect-absent", "selector": "[data-chat-follow-up-discard]" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {

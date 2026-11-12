@@ -48,7 +48,7 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 - One or two calls are plain rows: no `Used N tools` line, no rail connector and no fold.
 - From three calls the summary line appears (`Used 3 tools`) and every call still shows. It adds `1 failed` and `1 waiting on you` after commas, each with its dot, only when such calls exist, and the turn's `duration` when you pass one.
 - From eight calls the middle folds: the first 3 and the last 3 stay, with `Show 2 more, 2 done: Lookup order ×2` between them. A folded group hides at least two calls, because hiding one saves nothing, so seven calls show all seven.
-- Calls that failed, were denied, wait on a person or are running are _pinned_: they stay on the rail wherever they fall and split the folded middle into separate groups, each counting only the calls it hides. The group's summary lists the three names that appear most (`×N` when more than once) and counts every other call as `6 others`.
+- Calls that failed, expired, were denied, wait on a person or are running are _pinned_: they stay on the rail wherever they fall and split the folded middle into separate groups, each counting only the calls it hides. The group's summary lists the three names that appear most (`×N` when more than once) and counts every other call as `6 others`.
 - `Show N more` opens that group in place, in time order, and a `Show fewer` button after the last row folds every open group again.
 - Closing the summary line (`open={false}`) leaves the summary and the pinned calls, so nothing that needs a person is ever folded away.
 - While the turn `running`, the summary reads `Used 12 tools so far…` with a spinner and no counts, and the rail keeps the first 3 calls and the ones under way instead of the last 3.
@@ -61,6 +61,7 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 - `approved`: a green dot, for a call a person approved. `decision` writes what was decided in the person's words, without an arrow (`Approved by you 10:33 AM, $18.50 refunded`); without it the row shows `result` after an arrow like a `done` call.
 - `running`: a spinner in place of the dot, `Running…` in place of a result, and the elapsed time.
 - `waiting`: an amber shield and `Waiting on you`, as its own row.
+- `expired`: a neutral clock and `Approval expired`, as its own row. An approval deadline is not a tool failure: it carries no danger text and stays available for the nested approval's retry action.
 - `denied`: a prohibition glyph and neutral words. It is not called failed and carries no error block.
 - `interrupted`: a red circled cross and the result in red with no arrow, for a call the run ended on before it answered. Word it by the tool's risk: `Interrupted, didn't finish` for a tool that only reads, `Interrupted, may have run` for one that changes things. It never folds and is never a green or neutral dot.
 - `failed`: a red cross and the result in red. `failure` adds one danger-text line with an error glyph and the quiet links `Details` (when `onSelect` is set), `Ask the agent to retry` (`onRetry`) and `Copy input` (`onCopyInput`).

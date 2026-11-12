@@ -94,6 +94,10 @@ describe('R3: reconnecting', () => {
     expect(warning?.querySelector('[role="note"]')?.getAttribute('data-cinder-variant')).toBe(
       'warning',
     );
+    expect(warning?.querySelector('.cinder-callout--inline-action')).not.toBeNull();
+    expect(warning?.querySelector('.cinder-callout__action button')?.textContent?.trim()).toBe(
+      'Retry now',
+    );
     expect(warning?.querySelector('.chat-turn-text')?.textContent?.trim()).toBe(
       'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s.',
     );
@@ -124,6 +128,16 @@ describe('R3: reconnecting', () => {
 });
 
 describe('R4: stopped', () => {
+  test('at narrow widths the status title gets its own row above the recovery actions', async () => {
+    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
+    expect(source).toMatch(
+      /@media \(max-width:\s*30rem\)[\s\S]*?:global\(\.chat-turn-stopped-card\) :global\(\.cinder-card__title-row\)[\s\S]*?flex-direction:\s*column;/u,
+    );
+    expect(source).toMatch(
+      /:global\(\.chat-turn-stopped-card\) :global\(\.cinder-card__actions\)[\s\S]*?justify-content:\s*space-between;/u,
+    );
+  });
+
   test('a contained neutral notice keeps Discard and Continue beside the stopped status', async () => {
     const continueTurn = mock((_messageId: string) => undefined);
     const discardTurn = mock((_messageId: string) => undefined);
@@ -134,10 +148,9 @@ describe('R4: stopped', () => {
     });
     const row = outcome(container);
     expect(row?.getAttribute('data-kind')).toBe('stopped');
-    const callout = row?.querySelector('[role="note"]');
-    expect(row?.querySelector('.chat-turn-stopped-card')).not.toBeNull();
-    expect(callout?.getAttribute('data-cinder-variant')).toBe('neutral');
-    expect(callout?.querySelector('.chat-turn-outcome-title')?.textContent?.trim()).toBe(
+    const card = row?.querySelector('.chat-turn-stopped-card');
+    expect(card?.getAttribute('role')).toBe('note');
+    expect(card?.querySelector('.cinder-card__title')?.textContent?.trim()).toBe(
       'Stopped by you, partial answer',
     );
 
@@ -151,7 +164,7 @@ describe('R4: stopped', () => {
     expect(getByRole('button', { name: 'Discard' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
-    expect(row?.querySelector('.chat-turn-stopped .chat-turn-actions')).not.toBeNull();
+    expect(card?.querySelector('.cinder-card__actions')).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Continue' }));
     await fireEvent.click(getByRole('button', { name: 'Discard' }));
@@ -193,6 +206,9 @@ describe('R5: failed partway', () => {
     expect(block?.getAttribute('data-kind')).toBe('failed');
     const alert = block?.querySelector('[role="alert"]');
     expect(alert?.getAttribute('data-cinder-variant')).toBe('danger');
+    expect(getByRole('button', { name: 'Retry' }).getAttribute('data-cinder-variant')).toBe(
+      'secondary',
+    );
     expect(alert?.textContent).toContain('This answer is incomplete.');
     expect(
       block?.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim(),
@@ -256,11 +272,12 @@ describe('R6: empty answer', () => {
     expect(container.querySelectorAll('time')).toHaveLength(1);
   });
 
-  test('the dashed row is drawn with a dashed neutral border', async () => {
-    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
-    expect(source).toMatch(
-      /\.chat-turn-empty\s*\{[^}]*border:\s*1px dashed var\(--cinder-border\);/su,
-    );
+  test('the empty outcome is one compact neutral card without a dashed placeholder edge', () => {
+    const { container } = mount({ turnState: { kind: 'empty' } });
+    const card = container.querySelector('.chat-turn-empty-card');
+    expect(card?.getAttribute('data-cinder-variant')).toBe('well');
+    expect(card?.getAttribute('data-cinder-edge')).toBe('border');
+    expect(card?.classList.contains('chat-turn-empty-card')).toBe(true);
   });
 });
 

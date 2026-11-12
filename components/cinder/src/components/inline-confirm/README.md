@@ -49,6 +49,7 @@ Use `presentation="two-press"` for an irreversible action. It renders one named 
 | `requiresSecondPress` | `boolean` | no | `true` | Requires a second press in two-press presentation. |
 | `armedLabel` | `string` | no | — | Full accessible label shown after the first press. |
 | `armedHint` | `string` | no | — | Status text shown while the two-press action is armed. |
+| `armedEscapeHint` | `string` | no | — | Optional keyboard instruction shown beside the armed status on fine pointers; coarse pointers hide the visual copy while the host can keep an accessible description. |
 | `children` | `(opaque)` | no | — | Additional content rendered below the prompt, above the confirm/cancel actions, while the confirmation is open. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCancel` | `(opaque)` | no | — | Called when the user cancels the action (via the Cancel action or Escape), after `open` is already set to `false`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onConfirm` | `(opaque)` | no | — | Called when the user confirms the action, after `open` is already set to `false`. Not expressible in JSON Schema; see the component types for the signature. |

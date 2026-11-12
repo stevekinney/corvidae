@@ -8,6 +8,13 @@ import type { ChatAttachment } from './chat-attachment.ts';
  */
 export const ATTACHMENT_LIST_CAP = 3;
 
+/** Number of complete attachment rows that fit common narrow viewport heights. */
+export function attachmentViewportCap(width: number, height: number): number {
+  if (width <= 480 && height <= 700) return 1;
+  if (width <= 480 && height <= 860) return 2;
+  return ATTACHMENT_LIST_CAP;
+}
+
 /** The longest extension kept whole beside a truncated name, dot included. */
 const MAXIMUM_EXTENSION_LENGTH = 10;
 
@@ -22,6 +29,39 @@ export function splitFileName(name: string): { stem: string; extension: string }
     return { stem: name, extension: '' };
   }
   return { stem: name.slice(0, dot), extension: name.slice(dot) };
+}
+
+/** Fit a filename to a measured width while preserving its short extension. */
+export function middleEllipsisFileName(
+  name: string,
+  availableWidth: number,
+  measure: (value: string) => number,
+): string {
+  if (availableWidth <= 0 || measure(name) <= availableWidth) return name;
+  const { stem, extension } = splitFileName(name);
+  const marker = '…';
+  if (measure(`${marker}${extension}`) > availableWidth) return marker;
+  const units = Array.from(
+    new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(stem),
+    ({ segment }) => segment,
+  );
+  let low = 0;
+  let high = units.length;
+  let best = `${marker}${extension}`;
+  while (low <= high) {
+    const retained = Math.floor((low + high) / 2);
+    const prefixLength = Math.ceil(retained / 2);
+    const suffixLength = Math.floor(retained / 2);
+    const suffix = suffixLength === 0 ? '' : units.slice(-suffixLength).join('');
+    const candidate = `${units.slice(0, prefixLength).join('')}${marker}${suffix}${extension}`;
+    if (measure(candidate) <= availableWidth) {
+      best = candidate;
+      low = retained + 1;
+    } else {
+      high = retained - 1;
+    }
+  }
+  return best;
 }
 
 const KIND_BADGES: Record<AttachmentKind, string> = {

@@ -40,4 +40,10 @@ describe('chat tool-payload code block', () => {
   test('the CodeBlock is labelled as json', () => {
     expect(source).toContain('language="json"');
   });
+
+  test('fills the tool details measure without narrowing the payload frame', () => {
+    expect(source).toMatch(
+      /\.tool-payload-code\s*\{[\s\S]*?inline-size:\s*100%;[\s\S]*?min-inline-size:\s*0;[\s\S]*?max-inline-size:\s*100%;/,
+    );
+  });
 });

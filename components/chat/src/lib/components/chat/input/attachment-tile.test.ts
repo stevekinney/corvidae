@@ -4,14 +4,17 @@ import {
   acceptedKindsText,
   attachmentBlockingReason,
   attachmentCountText,
+  attachmentViewportCap,
   canRetry,
-  compactAttachmentSelection,
   fileTypeBadge,
+  middleEllipsisFileName,
   needsAttention,
   splitFileName,
   typeNotAcceptedText,
   uploadPercent,
 } from './attachment-tile.ts';
+
+import { DEFAULT_CHAT_LABELS } from '../chat-labels.ts';
 
 describe('splitFileName', () => {
   test('keeps the extension apart so the stem can truncate in the middle', () => {
@@ -20,6 +23,40 @@ describe('splitFileName', () => {
       extension: '.pdf',
     });
     expect(splitFileName('archive.tar.gz')).toEqual({ stem: 'archive.tar', extension: '.gz' });
+  });
+
+  test('keeps the extension stable while the stem owns the truncation space', async () => {
+    const source = await Bun.file(
+      new URL('./chat-attachment-preview.svelte', import.meta.url),
+    ).text();
+    expect(source).toMatch(/bind:this=\{nameElement\}/);
+    expect(source).toMatch(/middleEllipsisFileName\(\s*fullName,\s*element\.clientWidth/s);
+  });
+
+  test('preserves a short name and extension while fitting a long name in the middle', () => {
+    const measure = (value: string) => value.length;
+    expect(middleEllipsisFileName('ledger.pdf', 20, measure)).toBe('ledger.pdf');
+    expect(middleEllipsisFileName('quarterly-reconciliation-report.pdf', 18, measure)).toBe(
+      'quarter…report.pdf',
+    );
+    expect(middleEllipsisFileName('abcdefgh', 5, measure)).toBe('ab…gh');
+    expect(middleEllipsisFileName('résumé-final.pdf', 10, measure)).toContain('…');
+  });
+
+  test('keeps grapheme clusters whole and handles tiny or extensionless widths', () => {
+    const measure = (value: string) =>
+      Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)).length;
+    expect(middleEllipsisFileName('a.pdf', 4, measure)).toBe('…');
+    expect(middleEllipsisFileName('abcdefgh', 4, measure)).toBe('ab…h');
+    expect(middleEllipsisFileName('éclair-final.pdf', 10, measure)).toBe('écl…al.pdf');
+    expect(middleEllipsisFileName('👩‍💻-report.pdf', 8, measure)).toBe('👩‍💻-…t.pdf');
+  });
+
+  test('leaves the tile ring visible outside its clipped filename content', async () => {
+    const source = await Bun.file(
+      new URL('./chat-attachment-preview.svelte', import.meta.url),
+    ).text();
+    expect(source).toMatch(/\.chat-attachment-preview\s*\{[^}]*overflow:\s*visible;/s);
   });
 
   test('treats a name with no extension, a dotfile and a trailing dot as all stem', () => {
@@ -71,6 +108,14 @@ describe('the attention summary', () => {
     expect(attachmentBlockingReason(3)).toBe('Retry or remove 3 files to send');
   });
 
+  test('summarizes files that need attention without a separator glyph', () => {
+    expect(DEFAULT_CHAT_LABELS.attachmentsNeedAttention(1)).toBe('1 file needs attention');
+    expect(DEFAULT_CHAT_LABELS.attachmentsNeedAttention(2)).toBe('2 files need attention');
+    expect(DEFAULT_CHAT_LABELS.attachmentsNeedAttention(2)).not.toContain(
+      String.fromCodePoint(0xb7),
+    );
+  });
+
   test('a failed file needs attention, and only a failed upload offers Retry', () => {
     expect(needsAttention({ status: 'error' })).toBe(true);
     expect(needsAttention({ status: 'ready' })).toBe(false);
@@ -79,17 +124,10 @@ describe('the attention summary', () => {
     expect(canRetry({ status: 'uploading', retryable: true })).toBe(false);
   });
 
-  test('compact shelves promote every attention file before ordinary rows', () => {
-    const attachments = [
-      { id: 'ready-a', status: 'ready' as const },
-      { id: 'failed-a', status: 'error' as const },
-      { id: 'failed-b', status: 'error' as const },
-      { id: 'ready-b', status: 'ready' as const },
-    ];
-    expect(compactAttachmentSelection(attachments).map(({ id }) => id)).toEqual([
-      'failed-a',
-      'failed-b',
-    ]);
+  test('caps complete rows by narrow viewport height without changing desktop cap', () => {
+    expect(attachmentViewportCap(320, 640)).toBe(1);
+    expect(attachmentViewportCap(390, 820)).toBe(2);
+    expect(attachmentViewportCap(1024, 640)).toBe(3);
   });
 });
 

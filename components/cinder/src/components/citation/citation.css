@@ -12,12 +12,14 @@
     align-items: center;
     gap: var(--cinder-space-1);
     border: 0;
+    border-radius: 0;
     background: none;
     color: var(--cinder-accent-text);
     cursor: pointer;
     font: inherit;
-    padding: 0 var(--cinder-space-0-5);
-    vertical-align: middle;
+    padding: 0;
+    vertical-align: baseline;
+    text-decoration: none;
   }
 
   .cinder-citation__marker:focus-visible {

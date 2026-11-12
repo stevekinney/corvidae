@@ -10,6 +10,7 @@
 import type { ApprovalResolution } from '@lostgradient/cinder';
 import type { Snippet } from 'svelte';
 
+import type { ChatLabels } from '../chat-labels.ts';
 import type {
   ChatMessagePart,
   ImageMessagePart,
@@ -125,6 +126,8 @@ export type ChatMessagePartsRendererProps = {
   toolCallStartTimes?: ReadonlyMap<string, number> | undefined;
   /** The words of a step's position, its failed count and a failed step's controls. */
   turnLabels?: Partial<ChatTurnLabels> | undefined;
+  /** Host-overridable Chat UI labels forwarded to nested question controls. */
+  labels?: Partial<ChatLabels> | undefined;
 };
 
 /** A renderable unit: a single body part, a contiguous run of image parts, a group of step parts, or a group of suggestion chips. */

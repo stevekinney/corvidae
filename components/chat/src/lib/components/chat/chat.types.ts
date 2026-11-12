@@ -10,6 +10,7 @@ import type {
   ChatToolApprovalResolution,
 } from './adapter/chat-adapter.ts';
 import type { ResolvedChatArtifact } from './artifact/artifact-viewer.types.ts';
+import type { ChatLabels } from './chat-labels.ts';
 import type { ChatAvailability } from './container/chat-availability.ts';
 import type {
   ChatScrollStateChangeEvent,
@@ -348,6 +349,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
     toolCallId: string,
     resolution: ApprovalResolution,
   ) => void | ChatToolApprovalResolution | Promise<void | ChatToolApprovalResolution>;
+  /** Asks the host to retry the interrupted turn with a fresh approval for this tool call. */
+  onApprovalRequestAgain?: ((toolCallId: string) => void) | undefined;
   /**
    * Called when the user answers an action-required tool result that requests
    * input. Chat draws the action's JSON Schema as the control that fits it
@@ -369,8 +372,9 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   answerInComposer?: boolean | undefined;
   /**
    * Where a question that has choices (a choice, a choice with Something else, a yes or no) is
-   * answered. `'inline'` (default) draws its controls in its transcript row. `'docked'` draws the
-   * question in place of the composer: a Needs you warning, a fieldset named The agent is asking,
+   * answered. `'inline'` (default) draws its controls in its transcript row. On a coarse pointer,
+   * choice questions dock so phone users always get the explicit Reply and Answer controls.
+   * `'docked'` draws the question in place of the composer: a Needs you warning, a fieldset named The agent is asking,
    * radio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
    * secondary Reply in chat instead and a primary Answer, with `Question 2 of 3` when several were
    * asked together. A choice only selects; Answer sends it. Reply in chat instead gives the
@@ -380,6 +384,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   questionPlacement?: 'inline' | 'docked' | undefined;
   /** The words of the docked question, any of which the host can replace. */
   questionLabels?: Partial<ChatQuestionDockLabels> | undefined;
+  /** The composer's attachment and approval-drawer words, any of which the host can replace. */
+  labels?: Partial<ChatLabels> | undefined;
   /**
    * Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.
    */

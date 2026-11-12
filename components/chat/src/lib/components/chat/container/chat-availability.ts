@@ -43,7 +43,9 @@ export interface ChatAvailabilityLabels {
   readonly connectProvider: string;
   /** What Send reads while the conversation loads and Send waits for it. Default `Loading…`. */
   readonly sendWaits: string;
-  /** Why Send is unavailable after a canceled read. */
+  /** The visible composer notice after a canceled read. Default `Conversation loading stopped.`. */
+  readonly canceledComposer: string;
+  /** The visible reason Send is unavailable after a canceled read. */
   readonly sendBlocked: string;
   /** The unit that follows the elapsed number. Default `s`. */
   readonly secondsUnit: string;
@@ -65,7 +67,8 @@ export const DEFAULT_CHAT_AVAILABILITY_LABELS: ChatAvailabilityLabels = {
   unconfiguredDescription: 'The agent needs a model to answer. An admin adds one in Settings.',
   connectProvider: 'Connect provider',
   sendWaits: 'Loading…',
-  sendBlocked: 'Retry loading the conversation before sending.',
+  canceledComposer: 'Conversation loading stopped.',
+  sendBlocked: 'Load the conversation to send messages.',
   secondsUnit: 's',
 };
 

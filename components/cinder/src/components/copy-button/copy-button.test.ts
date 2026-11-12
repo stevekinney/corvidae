@@ -152,6 +152,26 @@ describe('CopyButton', () => {
     expect(button?.querySelector('.sr-only')).toBeNull();
   });
 
+  test('uses the shared compact button with an expanded touch hit target', () => {
+    const { container } = render(CopyButton, {
+      value: 'hello',
+      iconOnly: true,
+      label: 'Copy value',
+      disabled: true,
+    });
+    const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
+
+    expect(button.classList.contains('cinder-button')).toBe(true);
+    expect(button.classList.contains('cinder-copy-button')).toBe(true);
+    expect(button.getAttribute('data-cinder-size')).toBe('xs');
+    expect(button.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(button.hasAttribute('data-cinder-quiet')).toBe(true);
+    expect(button.getAttribute('data-cinder-hit-target')).toBe('44');
+    expect(button.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-label')).toBe('Copy value');
+  });
+
   test('iconOnly mode swaps icon and aria-label after click', async () => {
     mockClipboard();
     const { container } = render(CopyButton, { value: 'hello', iconOnly: true });

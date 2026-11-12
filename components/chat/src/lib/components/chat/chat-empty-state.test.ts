@@ -106,4 +106,13 @@ describe('the default empty state', () => {
     await fireEvent.click(buttons[1]!);
     expect(submitted).toEqual(['Explain like I am five']);
   });
+
+  test('uses Cinder’s compact secondary button contract for prompt faces and hit targets', async () => {
+    const source = await Bun.file(new URL('./container/chat.svelte', import.meta.url)).text();
+    expect(source).toMatch(
+      /<Button\s+type="button"\s+class="chat-empty-prompt"\s+size="sm"\s+variant="secondary"/,
+    );
+    expect(source).not.toMatch(/<button[^>]*class="chat-empty-prompt"/);
+    expect(source).not.toContain('.chat-empty-prompt {');
+  });
 });

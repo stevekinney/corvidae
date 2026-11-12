@@ -231,7 +231,7 @@ describe('Chat — run outcomes on the turn', () => {
     const timeline = container.querySelector<HTMLElement>('.chat-tool-call-timeline');
     expect(timeline).not.toBeNull();
     expect(timeline?.querySelector('.chat-tool-call-summary-count')?.textContent).toBe(
-      'Checked 1 of 2 sources,',
+      'Checked 1 of 2 sources',
     );
     await fireEvent.click(getByRole(timeline!, 'button', { name: 'Retry this step' }));
     expect(retryStep).toHaveBeenCalledWith('source-2');

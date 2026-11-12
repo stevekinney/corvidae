@@ -1,57 +1,36 @@
-/**
- * The design review's geometry audit (`.agents/skills/design-review`). A reviewer reading a
- * screenshot cannot tell a two-pixel misalignment from none, or a button whose label has as much
- * room above it as beside it, so a capture also measures each page (`tests/e2e/design-review-geometry-probe.ts`
- * writes the facts beside the screenshots) and this script holds them to the thresholds the rubric
- * states (`references/rubric.md` "Craft"). It writes `geometry-findings.json` and
- * `geometry-report.md` into the capture directory; one defect seen on forty captures is one line
- * naming where.
- *
- *   bun scripts/design-review-geometry.ts --capture <capture directory>
- *
- * `scripts/design-review-capture.ts` runs it after every capture. Exit 0 when the reports were
- * written, 1 when the directory holds no measured capture, 2 on bad usage. A finding is a measured
- * fact, not a verdict: the reviewer confirms it on the screenshot and routes it, because a
- * threshold cannot see intent (a deliberately indented quotation, a primary action meant to span a
- * phone).
- */
-import { readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-
-/** A box in CSS pixels, in page coordinates. */
 export interface Box {
-  /** The horizontal position of the box in page coordinates. */
   readonly x: number;
-  /** The vertical position of the box in page coordinates. */
   readonly y: number;
-  /** The box's width in CSS pixels. */
   readonly width: number;
-  /** The box's height in CSS pixels. */
   readonly height: number;
 }
-
 /** One control the page shows: a button, a link, a field, or another widget a person operates. */
 export interface ControlFact {
   /** The tag and first class, with a Cinder size when it has one: `button.cinder-button[size=md]`. */
   readonly name: string;
-  /** The kind of control represented by the fact. */
   readonly kind: 'button' | 'link' | 'field' | 'other';
   /** The visible label, collapsed and cut to sixty characters; empty for an icon-only control. */
   readonly text: string;
   /** The `aria-label` or `title`, which names an icon-only control. */
   readonly accessibleLabel: string;
-  /** Whether the control contains a visible icon. */
   readonly hasIcon: boolean;
   /** Whether it is laid out inline in a sentence, which WCAG 2.5.8 exempts from the target size. */
   readonly inline: boolean;
-  /** The control's bounding box in page coordinates. */
   readonly rect: Box;
+  /** The visible background/border face, excluding transparent border space used only for hit area. */
+  readonly painted: Box;
   /** The union of the visible text and icons inside, or `null` when it draws nothing of its own. */
   readonly content: Box | null;
-  /** The computed font size in CSS pixels. */
   readonly fontSize: number;
   /** Whether a positioned pseudo-element extends the area that takes a tap beyond what is drawn. */
   readonly extendedHitArea: boolean;
+  /**
+   * The area that takes a tap: the control, any pseudo-element that extends it invisibly, and the
+   * label around a checkbox or radio. The same as `rect` when nothing extends it.
+   */
+  readonly hit: Box;
+  /** A number shared by the controls of one parent, so controls in one row can be told apart. */
+  readonly parent: number;
   /** Whether it fills its container's inline size and at least half the viewport. */
   readonly fullWidth: boolean;
   /** Whether it draws a box of its own, a border or a fill, so its padding is something a person sees. */
@@ -62,57 +41,51 @@ export interface ControlFact {
 
 /** One combination of size, line height and weight the page sets text in. */
 export interface TextStyleFact {
-  /** The computed font size in CSS pixels. */
   readonly fontSize: number;
   /** The computed line height in pixels, or `null` for `normal`. */
   readonly lineHeight: number | null;
-  /** The computed numeric font weight. */
   readonly fontWeight: number;
   /** How many runs of text use it. */
   readonly count: number;
   /** Whether any of those runs wraps onto a second line, which is when line height shows. */
   readonly multiline: boolean;
-  /** A representative text sample using this style. */
   readonly sample: string;
 }
 
 /** One border as drawn: who draws it, how thick, and how strongly it reads against its ground. */
 export interface BorderFact {
-  /** The element or control that draws the border. */
   readonly name: string;
-  /** The border width in CSS pixels. */
   readonly width: number;
+  /** The line the border is drawn with: `solid`, `dashed`, `dotted`. */
+  readonly style: string;
   /** The WCAG contrast ratio of the border, composited, against the surface outside it. */
   readonly contrast: number;
   /** Whether the element is a control, whose boundary WCAG 1.4.11 covers. */
   readonly interactive: boolean;
-  /** How many borders with these properties were measured. */
   readonly count: number;
 }
 
 /** A left edge that content starts at, and how much content starts there. */
 export interface EdgeFact {
-  /** The horizontal position of the shared edge in page coordinates. */
   readonly x: number;
-  /** How many content boxes begin at this edge. */
   readonly count: number;
-  /** Representative names of content using this edge. */
   readonly samples: readonly string[];
 }
 
 /** The vertical gaps between the stacked children of one container. */
 export interface StackFact {
-  /** The container whose children were measured. */
   readonly name: string;
   /** Whether every child is the same kind of element, so their gaps should match. */
   readonly uniformChildren: boolean;
-  /** The vertical gaps between consecutive children in CSS pixels. */
   readonly gaps: readonly number[];
+  /** The distinct left edges its children's content starts on, lists and quotations aside. */
+  readonly lefts: readonly number[];
+  /** The distinct right edges its wide, boxed children end on. */
+  readonly rights: readonly number[];
 }
 
 /** A wide row whose content starts well inside its leading edge. */
 export interface LeadingSpaceFact {
-  /** The row whose leading and trailing space were measured. */
   readonly name: string;
   /** The row's content-box inline size. */
   readonly width: number;
@@ -122,47 +95,70 @@ export interface LeadingSpaceFact {
   readonly trailing: number;
   /** The index, in the same list, of the nearest row around this one, or `null` for an outermost row. */
   readonly within: number | null;
-  /** Representative text from the row. */
   readonly sample: string;
+}
+
+/** One thing drawn over another where a person needs to read or press it. */
+export interface OverlapFact {
+  /**
+   * `covered`: part of a control sits under another element. `faded`: a scroll fade paints over a
+   * control. `over-text`: a control lifted out of the flow sits on a line of text.
+   */
+  readonly kind: 'covered' | 'faded' | 'over-text';
+  /** The control. */
+  readonly subject: string;
+  readonly label: string;
+  /** What covers it, or for `over-text` the text it covers. */
+  readonly by: string;
+  /** The share of the control, or of the line, that is covered, from 0 to 1. */
+  readonly amount: number;
+}
+
+/** A box with more room above its content than below it. */
+export interface InsetFact {
+  readonly name: string;
+  readonly above: number;
+  readonly below: number;
+  readonly sample: string;
+}
+
+/** How much of the viewport the chrome around the page's scrolling region takes. */
+export interface ChromeFact {
+  /** The region the content scrolls in. */
+  readonly name: string;
+  /** The pixels of viewport above it. */
+  readonly top: number;
+  /** The pixels of viewport below it: a composer, a docked bar, a drawer. */
+  readonly bottom: number;
 }
 
 /** What the probe measured on one captured page. */
 export interface GeometryFacts {
-  /** The viewport dimensions in CSS pixels. */
   readonly viewport: { readonly width: number; readonly height: number };
   /** Whether the page matched `(pointer: coarse)`, so its touch-only styles applied. */
   readonly pointerCoarse: boolean;
   /** Cinder's spacing scale in pixels, read from the page's `--cinder-space-*` properties. */
   readonly spaceScale: readonly number[];
-  /** The controls measured on the page. */
   readonly controls: readonly ControlFact[];
-  /** The distinct text styles measured on the page. */
   readonly textStyles: readonly TextStyleFact[];
-  /** The border styles measured on the page. */
   readonly borders: readonly BorderFact[];
-  /** The aligned content edges measured on the page. */
   readonly edges: readonly EdgeFact[];
-  /** The child stacks and their gaps measured on the page. */
   readonly stacks: readonly StackFact[];
-  /** The wide rows whose leading and trailing space were measured. */
   readonly leadingSpace: readonly LeadingSpaceFact[];
+  readonly overlaps: readonly OverlapFact[];
+  readonly insets: readonly InsetFact[];
+  /** `null` when nothing on the page scrolls. */
+  readonly chrome: ChromeFact | null;
 }
 
 /** The fields of a manifest line the audit reads. */
 export interface GeometryCapture {
-  /** The captured route. */
   readonly route: string;
-  /** The named state represented by the capture. */
   readonly state: string;
-  /** The optional tab represented by the capture. */
   readonly tab?: string;
-  /** The test or fixture source that produced the capture. */
   readonly source: string;
-  /** The viewport width in CSS pixels. */
   readonly width: number;
-  /** The captured color scheme. */
   readonly colorScheme: 'light' | 'dark';
-  /** The viewport name. */
   readonly viewport: string;
   /** The measured facts, relative to the capture directory; absent on a capture taken without the probe. */
   readonly geometry?: string;
@@ -179,6 +175,23 @@ export const GEOMETRY_THRESHOLDS = {
   phoneWidthMaximum: 480,
   /** A single-line control drawn taller than this on a phone is oversized. */
   phoneControlHeightMaximum: 48,
+  /**
+   * A button drawn taller than this on a phone or a touch screen is oversized. A minimum target is
+   * not a goal: the drawn size and the hit area are two numbers.
+   */
+  touchButtonHeightMaximum: 36,
+  /** On a touch screen the area that takes a tap is at least this on both axes (HIG, WCAG 2.5.5). */
+  touchTargetMinimum: 44,
+  /** Icon buttons in a row sit no further apart, center to center, than this many times their glyph. */
+  iconPitchRatioMaximum: 2.5,
+  /** Fixed chrome below the scrolling region takes at most this share of a phone's height. */
+  bottomChromeShareMaximum: 0.35,
+  /** The children of one container start on at most this many left edges, and end on as many right edges. */
+  siblingEdgesMaximum: 2,
+  /** A box may have this much more room above its content than below it. */
+  insetImbalanceMaximum: 4,
+  /** A control this much under a fade, as a share of its height, is covered by it. */
+  fadedShareMinimum: 0.25,
   /** A button this share of a phone's width, with a label this short, is stretched. */
   stretchedButtonWidthShare: 0.8,
   shortLabelCharacters: 16,
@@ -197,8 +210,11 @@ export const GEOMETRY_THRESHOLDS = {
   fontSizeMinimum: 11,
   /** A border between surface and content should read no more strongly than this. */
   structuralBorderContrastMaximum: 1.5,
-  /** A control's border should read no more strongly than this. */
-  controlBorderContrastMaximum: 4.5,
+  /**
+   * A control's resting border should read no more strongly than this: Cinder's `border.control`
+   * is quiet by owner decision and reaches 3:1 only under `prefers-contrast: more`.
+   */
+  controlBorderContrastMaximum: 3,
   /** A border thicker than this is weight, not separation. */
   borderWidthMaximum: 1,
   /** A page drawing structural borders in more weights than this is inconsistent. */
@@ -229,6 +245,14 @@ export const GEOMETRY_RULES = {
     title: 'Uneven gaps between like siblings',
     principle: 'Siblings of one kind sit at one distance from each other.',
   },
+  'edge-many': {
+    title: 'Too many edges among siblings',
+    principle: `The children of one container start on at most ${GEOMETRY_THRESHOLDS.siblingEdgesMaximum} left edges, and its boxes end on at most ${GEOMETRY_THRESHOLDS.siblingEdgesMaximum} right edges. Lists, quotations and code set their own.`,
+  },
+  'inset-uneven': {
+    title: 'More room above than below',
+    principle: `A box has the same room above its content as below it, within ${GEOMETRY_THRESHOLDS.insetImbalanceMaximum} pixels. More above is a row sized by something other than its text, or two paddings stacked.`,
+  },
   'leading-space': {
     title: 'Empty leading side',
     principle: `A row's content starts at its leading edge. Content that starts more than ${GEOMETRY_THRESHOLDS.leadingSpaceShare * 100}% of the way across leaves the side a person reads first empty.`,
@@ -239,7 +263,20 @@ export const GEOMETRY_RULES = {
   },
   'target-oversized': {
     title: 'Oversized controls on a phone',
-    principle: `A single-line control is drawn no taller than ${GEOMETRY_THRESHOLDS.phoneControlHeightMaximum} pixels on a phone. A touch target grows through its hit area, not its drawn size.`,
+    principle: `On a phone or a touch screen a button is drawn no taller than ${GEOMETRY_THRESHOLDS.touchButtonHeightMaximum} pixels, and any other single-line control no taller than ${GEOMETRY_THRESHOLDS.phoneControlHeightMaximum}. A touch target grows through its hit area, not its drawn size: ${GEOMETRY_THRESHOLDS.touchTargetMinimum} pixels is a minimum for the hit area and never a size to draw.`,
+  },
+  'icon-pitch': {
+    title: 'Icon buttons spaced too far apart',
+    principle: `Icon buttons in one row sit at most ${GEOMETRY_THRESHOLDS.iconPitchRatioMaximum} times their glyph apart, center to center. Their hit areas may meet or overlap invisibly; their glyphs read as one group.`,
+  },
+  'chrome-share': {
+    title: 'Fixed chrome crowding a phone',
+    principle: `What stays fixed below the scrolling region (a composer, a docked bar, a drawer) takes at most ${GEOMETRY_THRESHOLDS.bottomChromeShareMaximum * 100}% of a phone's height.`,
+  },
+  occluded: {
+    title: 'Covered controls and text',
+    principle:
+      'Nothing a person presses or reads is partly covered: no control half under a bar, a card or a scroll fade, and no control lying on a line of text. A control is fully in view or fully out.',
   },
   'button-stretched': {
     title: 'Short labels stretched across a phone',
@@ -251,7 +288,7 @@ export const GEOMETRY_RULES = {
   },
   'target-undersized': {
     title: 'Undersized targets',
-    principle: `A control is at least ${GEOMETRY_THRESHOLDS.targetMinimum} by ${GEOMETRY_THRESHOLDS.targetMinimum} pixels, or extends its hit area that far (WCAG 2.5.8).`,
+    principle: `A control's hit area is at least ${GEOMETRY_THRESHOLDS.targetMinimum} by ${GEOMETRY_THRESHOLDS.targetMinimum} pixels (WCAG 2.5.8), and at least ${GEOMETRY_THRESHOLDS.touchTargetMinimum} by ${GEOMETRY_THRESHOLDS.touchTargetMinimum} on a touch screen. The hit area may extend past what is drawn.`,
   },
   'type-sizes': {
     title: 'Too many type sizes',
@@ -279,7 +316,7 @@ export const GEOMETRY_RULES = {
   },
   'border-mixed': {
     title: 'Inconsistent border weights',
-    principle: `A page draws its structural borders in at most ${GEOMETRY_THRESHOLDS.structuralBorderWeightsMaximum} weights.`,
+    principle: `A page draws its structural borders in at most ${GEOMETRY_THRESHOLDS.structuralBorderWeightsMaximum} weights, counting a dashed line as a weight of its own. A dashed border means one thing on a page.`,
   },
 } as const;
 
@@ -288,29 +325,23 @@ export type GeometryRule = keyof typeof GEOMETRY_RULES;
 
 /** One rule broken on one capture. */
 export interface GeometryFinding {
-  /** The rule that the measured capture breaks. */
   readonly rule: GeometryRule;
   /** What broke it, the same on every capture that shows the same defect. */
   readonly subject: string;
   /** The measured values, in words. */
   readonly measured: string;
-  /** The capture containing the finding. */
   readonly capture: GeometryCapture;
 }
 
 /** One defect, with every capture that shows it. */
 export interface ConsolidatedFinding {
-  /** The rule shared by the consolidated findings. */
   readonly rule: GeometryRule;
-  /** The measured subject shared by the consolidated findings. */
   readonly subject: string;
   /** The measured values on the first capture that showed it. */
   readonly measured: string;
   /** How many captures show it. */
   readonly captures: number;
-  /** The viewport widths where the finding appears. */
   readonly widths: readonly number[];
-  /** The routes where the finding appears. */
   readonly routes: readonly string[];
   /** Up to five screenshots that show it, relative to the capture directory. */
   readonly examples: readonly string[];
@@ -378,11 +409,23 @@ function auditControls(facts: GeometryFacts, capture: GeometryCapture): Geometry
         `"${label}": ${round(padding.inline)}px beside the label, ${round(padding.block)}px above and below (${round(padding.inline / padding.block)} to 1) in a ${round(rect.height)}px button`,
       );
     }
-    if (phone && control.kind !== 'field' && !control.inline) {
+    if ((phone || facts.pointerCoarse) && control.kind !== 'field' && !control.inline) {
       const singleLine = control.content !== null && control.content.height <= control.fontSize * 2;
-      if (singleLine && rect.height > thresholds.phoneControlHeightMaximum) {
-        add('target-oversized', control, `"${label}" is drawn ${round(rect.height)}px tall`);
+      // A button that draws no box shows only its label or glyph, whatever area takes the tap.
+      const drawn = control.kind === 'button' && !control.boxed ? 0 : control.painted.height;
+      const limit =
+        control.kind === 'button'
+          ? thresholds.touchButtonHeightMaximum
+          : thresholds.phoneControlHeightMaximum;
+      if (singleLine && drawn > limit) {
+        add(
+          'target-oversized',
+          control,
+          `"${label}" is drawn ${round(control.painted.height)}px tall, over the ${limit}px limit; its hit area is ${round(control.hit.height)}px`,
+        );
       }
+    }
+    if (phone && control.kind !== 'field' && !control.inline) {
       if (
         control.kind === 'button' &&
         control.boxed &&
@@ -410,16 +453,50 @@ function auditControls(facts: GeometryFacts, capture: GeometryCapture): Geometry
         );
       }
     }
-    if (
-      !control.inline &&
-      !control.extendedHitArea &&
-      Math.min(rect.width, rect.height) < thresholds.targetMinimum
-    ) {
+    // A text field is as wide as its row, so it is held to the touch minimum only by its height's floor.
+    const minimum =
+      facts.pointerCoarse && control.kind !== 'field'
+        ? thresholds.touchTargetMinimum
+        : thresholds.targetMinimum;
+    if (!control.inline && Math.min(control.hit.width, control.hit.height) < minimum) {
       add(
         'target-undersized',
         control,
-        `"${label}" is ${round(rect.width)} by ${round(rect.height)}px with no extended hit area`,
+        `"${label}" takes a tap over ${round(control.hit.width)} by ${round(control.hit.height)}px, under the ${minimum}px minimum${minimum === thresholds.touchTargetMinimum ? ' on a touch screen' : ''}; it is drawn ${round(rect.width)} by ${round(rect.height)}px`,
       );
+    }
+  }
+  findings.push(...auditIconPitch(facts, capture));
+  return findings;
+}
+
+/** Icon-only controls that share a parent and a row, held to the pitch their glyphs can carry. */
+function auditIconPitch(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  const findings: GeometryFinding[] = [];
+  const rows = new Map<string, ControlFact[]>();
+  for (const control of facts.controls) {
+    if (control.text !== '' || control.content === null || control.kind === 'field') continue;
+    const key = `${control.parent}|${Math.round((control.rect.y + control.rect.height / 2) / 4)}`;
+    rows.set(key, [...(rows.get(key) ?? []), control]);
+  }
+  for (const row of rows.values()) {
+    const ordered = row.toSorted((left, right) => left.rect.x - right.rect.x);
+    for (const [index, control] of ordered.entries()) {
+      const next = ordered[index + 1];
+      if (next === undefined || control.content === null || next.content === null) continue;
+      const glyph = Math.max(control.content.width, next.content.width);
+      const pitch =
+        next.content.x + next.content.width / 2 - (control.content.x + control.content.width / 2);
+      // Buttons at the two ends of a bar are apart by layout, not by spacing.
+      if (pitch - glyph > GEOMETRY_THRESHOLDS.gapSlackAbove) continue;
+      if (glyph < 1 || pitch <= glyph * GEOMETRY_THRESHOLDS.iconPitchRatioMaximum) continue;
+      findings.push({
+        rule: 'icon-pitch',
+        subject: `${control.name} and ${next.name}`,
+        measured: `"${control.accessibleLabel}" and "${next.accessibleLabel}": ${round(glyph)}px glyphs ${round(pitch)}px apart (${round(pitch / glyph)} times the glyph)`,
+        capture,
+      });
+      break;
     }
   }
   return findings;
@@ -483,12 +560,16 @@ function auditType(facts: GeometryFacts, capture: GeometryCapture): GeometryFind
 function auditBorders(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
   const thresholds = GEOMETRY_THRESHOLDS;
   const findings: GeometryFinding[] = [];
-  const structuralWeights = new Set<number>();
+  const structuralWeights = new Set<string>();
   for (const border of facts.borders) {
     const limit = border.interactive
       ? thresholds.controlBorderContrastMaximum
       : thresholds.structuralBorderContrastMaximum;
-    if (!border.interactive) structuralWeights.add(round(border.contrast));
+    if (!border.interactive) {
+      structuralWeights.add(
+        `${border.style === 'solid' ? '' : `${border.style} `}${round(border.contrast)}:1`,
+      );
+    }
     if (border.contrast > limit) {
       findings.push({
         rule: 'border-heavy',
@@ -507,11 +588,11 @@ function auditBorders(facts: GeometryFacts, capture: GeometryCapture): GeometryF
     }
   }
   if (structuralWeights.size > thresholds.structuralBorderWeightsMaximum) {
-    const listed = [...structuralWeights].toSorted((left, right) => left - right);
+    const listed = [...structuralWeights].toSorted((left, right) => left.localeCompare(right));
     findings.push({
       rule: 'border-mixed',
       subject: 'structural borders',
-      measured: `${listed.length} weights: ${listed.map((weight) => `${weight}:1`).join(', ')}`,
+      measured: `${listed.length} weights: ${listed.join(', ')}`,
       capture,
     });
   }
@@ -543,6 +624,7 @@ function auditEdges(facts: GeometryFacts, capture: GeometryCapture): GeometryFin
 
 function auditStacks(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
   const findings: GeometryFinding[] = [];
+  const stress = capture.source === STRESS_SOURCE;
   const onScale = (gap: number): boolean =>
     gap <= 0.5 ||
     gap > GEOMETRY_THRESHOLDS.gapSlackAbove ||
@@ -570,8 +652,94 @@ function auditStacks(facts: GeometryFacts, capture: GeometryCapture): GeometryFi
         capture,
       });
     }
+    for (const [side, edges] of [
+      ['left', clusterEdges(stack.lefts)],
+      ['right', clusterEdges(stack.rights)],
+    ] as const) {
+      if (stress || edges.length <= GEOMETRY_THRESHOLDS.siblingEdgesMaximum) continue;
+      findings.push({
+        rule: 'edge-many',
+        subject: `${stack.name} ${side} edges`,
+        measured: `its children ${side === 'left' ? 'start' : 'end'} on ${edges.length} ${side} edges: ${edges.map((edge) => `${edge}px`).join(', ')}`,
+        capture,
+      });
+    }
   }
   return findings;
+}
+
+/** Edges within a pixel of each other are one edge. */
+function clusterEdges(edges: readonly number[]): number[] {
+  const clustered: number[] = [];
+  for (const edge of edges.toSorted((left, right) => left - right)) {
+    const last = clustered.at(-1);
+    if (last === undefined || edge - last > GEOMETRY_THRESHOLDS.edgeAlignedWithin) {
+      clustered.push(edge);
+    }
+  }
+  return clustered;
+}
+
+function auditOverlaps(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  const thresholds = GEOMETRY_THRESHOLDS;
+  const findings: GeometryFinding[] = [];
+  for (const overlap of facts.overlaps) {
+    const share = Math.round(overlap.amount * 100);
+    if (overlap.kind === 'faded') {
+      if (overlap.amount < thresholds.fadedShareMinimum) continue;
+      findings.push({
+        rule: 'occluded',
+        subject: `${overlap.subject} under the fade of ${overlap.by}`,
+        measured: `a scroll fade paints over ${share}% of "${overlap.label}"`,
+        capture,
+      });
+    } else if (overlap.kind === 'covered') {
+      findings.push({
+        rule: 'occluded',
+        subject: `${overlap.subject} under ${overlap.by}`,
+        measured: `"${overlap.label}" is partly covered: ${share}% of the points sampled on it`,
+        capture,
+      });
+    } else {
+      findings.push({
+        rule: 'occluded',
+        subject: `${overlap.subject} over ${overlap.by}`,
+        measured: `"${overlap.label}" lies on a line of text, covering ${share}% of its height`,
+        capture,
+      });
+    }
+  }
+  return findings;
+}
+
+function auditInsets(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  if (capture.source === STRESS_SOURCE) return [];
+  const findings: GeometryFinding[] = [];
+  for (const inset of facts.insets) {
+    if (inset.above - inset.below <= GEOMETRY_THRESHOLDS.insetImbalanceMaximum) continue;
+    findings.push({
+      rule: 'inset-uneven',
+      subject: inset.name,
+      measured: `${round(inset.above)}px above its content ("${inset.sample}") and ${round(inset.below)}px below`,
+      capture,
+    });
+  }
+  return findings;
+}
+
+function auditChrome(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  const thresholds = GEOMETRY_THRESHOLDS;
+  const { chrome, viewport } = facts;
+  if (chrome === null || viewport.width > thresholds.phoneWidthMaximum) return [];
+  if (chrome.bottom <= viewport.height * thresholds.bottomChromeShareMaximum) return [];
+  return [
+    {
+      rule: 'chrome-share',
+      subject: `chrome below ${chrome.name}`,
+      measured: `${round(chrome.bottom)}px of a ${viewport.height}px viewport (${Math.round((chrome.bottom / viewport.height) * 100)}%) stays fixed below the scrolling region, and ${round(chrome.top)}px above it`,
+      capture,
+    },
+  ];
 }
 
 function auditLeadingSpace(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
@@ -613,6 +781,9 @@ export function auditCapture(facts: GeometryFacts, capture: GeometryCapture): Ge
     ...auditEdges(facts, capture),
     ...auditStacks(facts, capture),
     ...auditLeadingSpace(facts, capture),
+    ...auditOverlaps(facts, capture),
+    ...auditInsets(facts, capture),
+    ...auditChrome(facts, capture),
   ];
 }
 
@@ -698,76 +869,3 @@ export function renderGeometryReport(
   }
   return `${lines.join('\n').trimEnd()}\n`;
 }
-
-async function readManifest(directory: string): Promise<GeometryCapture[]> {
-  let text: string;
-  try {
-    text = await readFile(join(directory, 'manifest.jsonl'), 'utf8');
-  } catch {
-    return [];
-  }
-  return text
-    .split('\n')
-    .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line) as GeometryCapture);
-}
-
-/** Audits a capture directory and writes its two reports; answers what it read and found. */
-export async function auditGeometry(
-  directory: string,
-): Promise<GeometryCoverage & { readonly findings: number }> {
-  const captures = await readManifest(directory);
-  const findings: GeometryFinding[] = [];
-  let measured = 0;
-  let coarse = 0;
-  let unscaled = 0;
-  for (const capture of captures) {
-    if (capture.geometry === undefined) continue;
-    const facts = JSON.parse(
-      await readFile(join(directory, capture.geometry), 'utf8'),
-    ) as GeometryFacts;
-    measured += 1;
-    if (facts.pointerCoarse) coarse += 1;
-    if (facts.spaceScale.length < SCALE_STEPS_MINIMUM) unscaled += 1;
-    findings.push(...auditCapture(facts, capture));
-  }
-  const coverage: GeometryCoverage = { captures: captures.length, measured, coarse, unscaled };
-  if (measured === 0) return { ...coverage, findings: 0 };
-  const consolidated = consolidateFindings(findings);
-  await writeFile(
-    join(directory, 'geometry-findings.json'),
-    `${JSON.stringify({ coverage, thresholds: GEOMETRY_THRESHOLDS, findings: consolidated }, null, 2)}\n`,
-  );
-  await writeFile(
-    join(directory, 'geometry-report.md'),
-    renderGeometryReport(consolidated, coverage),
-  );
-  return { ...coverage, findings: consolidated.length };
-}
-
-/** Runs the command line and answers the exit code. */
-export async function runGeometryAudit(
-  argv: readonly string[] = process.argv.slice(2),
-  write: { out: (text: string) => void; error: (text: string) => void } = {
-    out: (text) => void process.stdout.write(text),
-    error: (text) => void process.stderr.write(text),
-  },
-): Promise<number> {
-  const [flag, value, ...rest] = argv;
-  if (flag !== '--capture' || value === undefined || rest.length > 0) {
-    write.error('usage: bun scripts/design-review-geometry.ts --capture <capture directory>\n');
-    return 2;
-  }
-  const directory = resolve(value);
-  const result = await auditGeometry(directory);
-  if (result.measured === 0) {
-    write.error(`design review: no measured capture in ${directory}\n`);
-    return 1;
-  }
-  write.out(
-    `design review: ${result.findings} geometry findings from ${result.measured} measured captures: ${join(directory, 'geometry-report.md')}\n`,
-  );
-  return 0;
-}
-
-if (import.meta.main) process.exitCode = await runGeometryAudit();

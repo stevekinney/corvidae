@@ -23,7 +23,6 @@ function loadCss(relativePath: string): string {
   return readFileSync(fullPath, 'utf8');
 }
 
-const copyButtonCss = loadCss('../components/copy-button/copy-button.css');
 const dropdownCss = loadCss('../components/dropdown/dropdown.css');
 const navigationItemCss = loadCss('../components/navigation-item/navigation-item.css');
 const numberInputCss = loadCss('../components/number-input/number-input.css');
@@ -175,11 +174,6 @@ const recipes: Array<{
     name: 'tab panel',
     css: tabsCss,
     selector: '.cinder-tab-panel:focus-visible',
-  },
-  {
-    name: 'standalone copy button',
-    css: copyButtonCss,
-    selector: '.cinder-copy-button:focus-visible',
   },
   {
     name: 'selection-popover cancel action',

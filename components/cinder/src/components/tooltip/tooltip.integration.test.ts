@@ -318,6 +318,20 @@ describe('Tooltip', () => {
     trigger.remove();
   });
 
+  test('triggerRef shows when rebound to an already-focused external trigger', async () => {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    document.body.append(trigger);
+    trigger.focus();
+
+    const view = render(Tooltip, { props: { text: 'Tooltip content', triggerRef: null } });
+    await view.rerender({ text: 'Tooltip content', triggerRef: trigger });
+
+    await waitFor(() => expect(queryTooltip()?.getAttribute('data-cinder-visible')).toBe(''));
+    view.unmount();
+    trigger.remove();
+  });
+
   test('a pending show is cleared, not left to fire later, when triggerRef is swapped away before it resolves (COR-1219)', async () => {
     // Neither `handleFocusOut` nor a native DOM event runs here — the trigger
     // is swapped by reference, not removed or blurred, which is exactly why

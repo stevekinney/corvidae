@@ -97,7 +97,7 @@ describe('Chat attachments', () => {
       [...target.querySelectorAll('.chat-attachment-preview')].map((node) =>
         node.getAttribute('data-state'),
       ),
-    ).toEqual(['ready', 'error', 'error']);
+    ).toEqual(['error', 'error', 'ready']);
     unmount(instance);
   });
 

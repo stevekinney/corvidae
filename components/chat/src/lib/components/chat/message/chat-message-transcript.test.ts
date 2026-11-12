@@ -41,6 +41,20 @@ function mount(props: Record<string, unknown>) {
 }
 
 describe('transcript presentation', () => {
+  test('passes message label overrides through to source controls', () => {
+    const { getByRole } = mount({
+      message: message({ role: 'assistant', content: 'See the policy.' }),
+      sources: [{ label: 'Policy', url: 'https://example.com/policy' }],
+      sourcePresentation: 'list',
+      labels: {
+        sources: 'Quellen',
+        sourcesCount: (count: number) => `Quellen (${count})`,
+      },
+    });
+
+    expect(getByRole('button', { name: 'Quellen (1)' })).toBeTruthy();
+  });
+
   test('a sent message puts its time next to named icon-only Copy and Quote actions', () => {
     const { container, getByRole } = mount({
       message: message({ role: 'assistant', content: 'Order 4398 is $27.25.' }),
@@ -156,6 +170,26 @@ describe('transcript presentation', () => {
       expect(button.querySelector('svg')).not.toBeNull();
       expect(button.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
     }
+  });
+
+  test('message action names come from the host labels', () => {
+    const { getByRole } = mount({
+      message: message({ role: 'assistant', content: 'Order 4398 is $27.25.' }),
+      onQuote: () => undefined,
+      onRegenerate: () => undefined,
+      labels: {
+        copy: 'Copy reply',
+        copyMessage: 'Copy reply message',
+        copied: 'Reply copied',
+        quoteMessage: 'Cite reply',
+        regenerate: 'Run again',
+        regenerateResponse: 'Run response again',
+      },
+    });
+
+    expect(getByRole('button', { name: 'Cite reply' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Run again' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Copy reply' })).not.toBeNull();
   });
 
   test('Regenerate shows only for a finished assistant answer when the host supplies the callback', async () => {

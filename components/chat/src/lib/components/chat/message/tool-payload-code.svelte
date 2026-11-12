@@ -22,8 +22,8 @@
 
 <style>
   .tool-payload-code {
-    inline-size: max-content;
-    min-inline-size: min(18rem, 100%);
+    inline-size: 100%;
+    min-inline-size: 0;
     max-inline-size: 100%;
   }
 

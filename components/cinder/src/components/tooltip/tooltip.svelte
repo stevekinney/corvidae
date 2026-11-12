@@ -240,6 +240,10 @@
     trigger.addEventListener('mouseleave', handleMouseLeave);
     trigger.addEventListener('focusin', handleFocusIn);
     trigger.addEventListener('focusout', handleFocusOut);
+    // A reactive detached anchor can be rebound while it already owns focus (for example when a
+    // tool rail refreshes its canonical row). The new listener cannot observe the focusin that
+    // happened on the previous node, so replay the focus state at bind time.
+    if (document.activeElement === trigger) show();
     return () => {
       teardownAriaDescribedBy?.();
       trigger.removeEventListener('mouseenter', handleMouseEnter);

@@ -9,6 +9,8 @@ import type { HTMLAttributes } from 'svelte/elements';
  *   row is about ("Approved by you 10:33 AM, $18.50 refunded").
  * - `running`: under way; a spinner in place of the dot and "Running…" in place of a result.
  * - `waiting`: parked on a person's decision; an amber shield and "Waiting on you". It never folds.
+ * - `expired`: an approval deadline passed before a person decided; a neutral clock and "Approval
+ *   expired". It never folds and is not a tool failure.
  * - `denied`: a person refused it; a neutral prohibition glyph and neutral words, never red and
  *   never called failed. It never folds.
  * - `failed`: it ended in an error; a red cross and the result in red. It never folds.
@@ -19,7 +21,7 @@ import type { HTMLAttributes } from 'svelte/elements';
  *   green or neutral dot.
  */
 export type ToolCallRailStatus =
-  'done' | 'approved' | 'running' | 'waiting' | 'denied' | 'failed' | 'interrupted';
+  'done' | 'approved' | 'running' | 'waiting' | 'expired' | 'denied' | 'failed' | 'interrupted';
 
 /** One tool call of a turn. */
 export type ToolCallRailCall = {
@@ -78,6 +80,8 @@ export type ToolCallRailLabels = {
   failed?: ((count: number) => string) | undefined;
   /** The summary line's waiting count. Defaults to "1 waiting on you". */
   waiting?: ((count: number) => string) | undefined;
+  /** The summary line's expired count. Defaults to "1 expired". */
+  expired?: ((count: number) => string) | undefined;
   /** The button over a folded group. Defaults to "Show 24 more". */
   showMore?: ((count: number) => string) | undefined;
   /** The summary beside the group button. Defaults to "24 done: Lookup order ×10, 6 others". */
@@ -90,6 +94,8 @@ export type ToolCallRailLabels = {
   running?: string | undefined;
   /** The result of a `waiting` call. Defaults to "Waiting on you". */
   waitingResult?: string | undefined;
+  /** The result of an `expired` call. Defaults to "Approval expired". */
+  expiredResult?: string | undefined;
   /** The result of a `denied` call that has none. Defaults to "Denied". */
   denied?: string | undefined;
   /** The result of an `interrupted` call that has none. Defaults to "Interrupted". */

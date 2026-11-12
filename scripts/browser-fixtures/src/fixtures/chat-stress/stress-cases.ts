@@ -30,14 +30,23 @@ export type StressStep =
   | { action: 'click'; role: string; name: string; nth?: number }
   | { action: 'fill'; role: string; name: string; text: string; nth?: number }
   | { action: 'focus'; role: string; name: string; nth?: number }
+  | { action: 'hover'; role: string; name: string; nth?: number }
   | { action: 'focus-source' }
   | { action: 'expect-source-open' }
   | { action: 'press'; key: string }
   | { action: 'hook'; name: string; argument?: unknown }
   | { action: 'expect'; role: string; name: string; nth?: number; scope?: string }
   | { action: 'expect-text'; text: string; scope?: string; exact?: boolean }
+  | { action: 'expect-tooltip'; text: string }
+  | { action: 'expect-source-contract' }
+  | { action: 'expect-approval-review' }
+  | { action: 'expect-question-layout' }
   | { action: 'expect-offscreen'; selector: string }
   | { action: 'expect-absent'; selector: string }
+  | { action: 'expect-attachment-shelf'; total: number; reveal?: boolean }
+  | { action: 'measure-composer-top'; name: 'before' | 'after' }
+  | { action: 'expect-empty-streaming-assistant' }
+  | { action: 'expect-streaming-assistant-text'; text: string }
   | { action: 'upload'; files: readonly StressUpload[] }
   | { action: 'scroll'; to: 'top' | 'bottom' };
 
@@ -55,6 +64,8 @@ export interface StressVariant {
   readonly name: string;
   /** The flow that reaches the variant, from a fresh load of the case. */
   readonly steps: readonly StressStep[];
+  /** Profiles on which this variant is captured; omitted means every profile. */
+  readonly profiles?: readonly string[];
 }
 
 /** One stress case. */
@@ -98,6 +109,38 @@ export const STRESS_NOW = '2026-11-02T16:46:00.000Z';
 /** The number of cases the board requires. */
 export const STRESS_CASE_COUNT = 80;
 
+/** Required owner-audit scenarios and the durable case/variant that captures each one. */
+export const OWNER_AUDIT_SCENARIO_MAPPING = [
+  [53, 47, undefined],
+  [54, 54, 'expanded'],
+  [55, 49, undefined],
+  [56, 57, undefined],
+  [57, 26, undefined],
+  [58, 48, 'expanded'],
+  [59, 59, 'collapsed'],
+  [60, 30, 'two-queued-one-editing'],
+  [61, 79, 'discard-drawer'],
+  [62, 9, undefined],
+  [63, 63, 'empty-and-ready'],
+  [64, 51, 'long-middle-filename'],
+  [65, 6, undefined],
+  [66, 4, undefined],
+  [67, 1, undefined],
+  [68, 68, 'option2'],
+  [69, 69, 'question-2-of-3'],
+  [70, 67, undefined],
+  [71, 71, 'live'],
+  [72, 72, 'scrolled'],
+  [73, 73, 'focus-1'],
+  [74, 39, 'rtl-sources-open'],
+  [75, 58, undefined],
+  [76, 32, undefined],
+  [77, 11, undefined],
+  [78, 60, 'safe-area-override'],
+  [79, 79, undefined],
+  [80, 23, undefined],
+] as const;
+
 /**
  * The scenario builders a case may name (`stress-scenarios.ts` builds one for each). The list lives
  * here, with no Chat import, so the case tests can check a case's scenario without loading Chat.
@@ -135,14 +178,23 @@ const STEP_ACTIONS = [
   'click',
   'fill',
   'focus',
+  'hover',
   'focus-source',
   'expect-source-open',
   'press',
   'hook',
   'expect',
   'expect-text',
+  'expect-tooltip',
+  'expect-source-contract',
+  'expect-approval-review',
+  'expect-question-layout',
   'expect-offscreen',
   'expect-absent',
+  'expect-attachment-shelf',
+  'measure-composer-top',
+  'expect-empty-streaming-assistant',
+  'expect-streaming-assistant-text',
   'upload',
   'scroll',
 ] as const;
@@ -158,7 +210,11 @@ function problemsInStep(step: unknown, where: string): string[] {
     return [`${where}: unknown step action ${JSON.stringify(action)}`];
   }
   const needsRole =
-    action === 'click' || action === 'fill' || action === 'focus' || action === 'expect';
+    action === 'click' ||
+    action === 'fill' ||
+    action === 'focus' ||
+    action === 'hover' ||
+    action === 'expect';
   const problems: string[] = [];
   if (action === 'upload' && !Array.isArray(step['files']))
     problems.push(`${where}: upload needs files`);
@@ -179,6 +235,16 @@ function problemsInStep(step: unknown, where: string): string[] {
     problems.push(`${where}: hook needs a name`);
   if (action === 'expect-text' && typeof step['text'] !== 'string')
     problems.push(`${where}: expect-text needs text`);
+  if (action === 'expect-tooltip' && typeof step['text'] !== 'string')
+    problems.push(`${where}: expect-tooltip needs text`);
+  if (action === 'expect-attachment-shelf') {
+    if (!Number.isInteger(step['total']) || (step['total'] as number) < 1)
+      problems.push(`${where}: attachment shelf total must be positive`);
+  }
+  if (action === 'measure-composer-top' && step['name'] !== 'before' && step['name'] !== 'after')
+    problems.push(`${where}: measure-composer-top name must be before or after`);
+  if (action === 'expect-streaming-assistant-text' && typeof step['text'] !== 'string')
+    problems.push(`${where}: expect-streaming-assistant-text needs text`);
   return problems;
 }
 
@@ -246,6 +312,15 @@ function problemsInCase(value: unknown, index: number): string[] {
         variantSteps.forEach((step, stepIndex) =>
           problems.push(...problemsInStep(step, `${label} step ${stepIndex + 1}`)),
         );
+      const profiles = variant['profiles'];
+      if (
+        profiles !== undefined &&
+        (!Array.isArray(profiles) ||
+          profiles.length === 0 ||
+          profiles.some((profile) => typeof profile !== 'string'))
+      ) {
+        problems.push(`${label}: profiles must be a non-empty array of names`);
+      }
     });
   }
   return problems;

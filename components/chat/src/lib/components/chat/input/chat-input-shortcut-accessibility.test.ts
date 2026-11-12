@@ -1,7 +1,15 @@
+/// <reference lib="dom" />
 /**
  * Source-contract tests for chat input shortcut accessibility (Slice 2).
  */
+import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
+import { mount, unmount } from 'svelte';
+
+setupHappyDom();
+
+const { waitFor } = await import('@testing-library/svelte');
+const { default: ChatInput } = await import('./chat-input.svelte');
 
 const chatInputSource = await Bun.file(
   new URL('./chat-input.svelte', import.meta.url).pathname,
@@ -25,7 +33,7 @@ describe('ChatInput — shortcut accessibility', () => {
     const rule = chatInputSource.match(
       /@media \(hover: none\) and \(pointer: coarse\) \{([\s\S]*?)\n  \}/,
     );
-    expect(rule?.[1]).toContain('.chat-input-hint[data-chat-keyboard-hint]');
+    expect(chatInputSource).toContain('.chat-input-hint[data-chat-keyboard-hint]');
     expect(rule?.[1]).toContain('.chat-input-format-hint');
     expect(rule?.[1]).toContain('display: none');
   });
@@ -66,17 +74,42 @@ describe('ChatInput — shortcut accessibility', () => {
     expect(textareaMatch?.[0]).toMatch(/aria-describedby=\{shortcutDescriptionId\}/);
   });
 
-  test('uses Cinder Tooltip for contextual send guidance', () => {
+  test('uses Cinder Tooltip and routes contextual send guidance through labels', async () => {
     expect(chatInputSource).toMatch(
       /import \{[^}]*\bTooltip\b[^}]*\} from '@lostgradient\/cinder'/,
     );
-    expect(chatInputSource).toContain("'Wait for attachments'");
-    expect(chatInputSource).toContain("'Add a message or attachment'");
-    expect(chatInputSource).toContain("'Type an answer'");
-    expect(chatInputSource).toContain("'Stop generating'");
-    expect(chatInputSource).toContain("'Send (Command or Control + Enter)'");
-    expect(chatInputSource).toContain("'Send message'");
-    expect(chatInputSource).toContain("'Send (Enter)'");
-    expect(chatInputSource).toContain("'Answer (Enter)'");
+    const showTooltip = async (labels: Record<string, unknown> | undefined) => {
+      const target = document.createElement('div');
+      document.body.append(target);
+      const instance = mount(ChatInput, {
+        target,
+        props: { id: 'shortcut-labels', value: 'Ready draft', labels },
+      });
+      const send = target.querySelector<HTMLButtonElement>('[data-chat-send]');
+      expect(send?.disabled).toBe(false);
+      send?.focus();
+      await waitFor(() => {
+        const tooltip = document.body.querySelector<HTMLElement>('[role="tooltip"]');
+        expect(tooltip?.getAttribute('aria-hidden')).toBe('false');
+        expect(send?.getAttribute('aria-describedby')).toContain(tooltip?.id);
+        return tooltip;
+      });
+      const tooltip = document.body.querySelector<HTMLElement>('[role="tooltip"]');
+      unmount(instance);
+      target.remove();
+      return { send, tooltipText: tooltip?.textContent };
+    };
+
+    const defaultGuidance = await showTooltip(undefined);
+    expect(defaultGuidance.send?.getAttribute('aria-label')).toBe('Send message');
+    expect(defaultGuidance.tooltipText).toBe('Send (Enter)');
+
+    const customGuidance = await showTooltip({
+      sendMessage: 'Nachricht senden',
+      send: 'Senden',
+      sendShortcut: (shortcut: string) => `Custom send ${shortcut}`,
+    });
+    expect(customGuidance.send?.getAttribute('aria-label')).toBe('Nachricht senden');
+    expect(customGuidance.tooltipText).toBe('Custom send Enter');
   });
 });

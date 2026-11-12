@@ -214,11 +214,9 @@ describe('CodeBlock — static structure', () => {
     expect(container.querySelector('.cinder-copy-button')).not.toBeNull();
 
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    expect(css).toMatch(/\.cinder-code-block--floating-meta\s*\{[^}]*position:\s*relative/s);
     expect(css).toMatch(
-      /\.cinder-code-block--floating-meta\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s,
-    );
-    expect(css).toMatch(
-      /\.cinder-code-block--floating-meta \.cinder-code-block__viewport\s*\{[^}]*grid-column:\s*1/s,
+      /\.cinder-code-block--floating-meta \.cinder-code-block__meta\s*\{[^}]*position:\s*absolute/s,
     );
   });
 
@@ -231,7 +229,6 @@ describe('CodeBlock — static structure', () => {
       /\.cinder-code-block--floating-meta:has\(> \.cinder-code-block__meta\) \{([^}]*)\}/.exec(
         css,
       )?.[1];
-    expect(reserve).toContain('padding-inline-end: var(--_cinder-code-block-float-reserve);');
     expect(reserve).toContain('min-block-size: var(--_cinder-code-block-float-reserve);');
     expect(css).toContain(
       '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-1) );',
@@ -241,6 +238,17 @@ describe('CodeBlock — static structure', () => {
         css,
       )?.[1];
     expect(button).toContain('inline-size: var(--_cinder-code-block-float-size);');
+  });
+
+  test('copyFloating gives the viewport its own rail reservation and end cue', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta:has\(> \.cinder-code-block__meta\) \.cinder-code-block__viewport\s*\{[^}]*scroll-padding-inline-end:\s*var\(--_cinder-code-block-float-reserve\);[^}]*margin-inline-end:\s*var\(--_cinder-code-block-float-reserve\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta \.cinder-code-block__viewport\.cinder-_scroll-fade-inline-end\[data-cinder-overflows-inline-end\]::after\s*\{[^}]*inset-inline-end:\s*var\(--_cinder-code-block-float-reserve\);/,
+    );
   });
 
   // C#3 (chat stress sweep): the copy button was 28px on a phone.
@@ -276,6 +284,13 @@ describe('CodeBlock — static structure', () => {
     expect(caret?.getAttribute('aria-hidden')).toBe('true');
     // The caret is drawn, not text: the code reads and copies exactly as written.
     expect(code?.textContent).toBe('SELECT id');
+  });
+
+  test('streaming caret is a two-pixel accent bar', async () => {
+    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-code-block__caret\s*\{[^}]*inline-size:\s*2px;[^}]*background:\s*var\(--cinder-accent-solid\);/s,
+    );
   });
 
   test('streaming does not highlight until the last token, then copy returns', async () => {

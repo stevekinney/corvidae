@@ -129,6 +129,7 @@
     view = $bindable('fields'),
     now,
     onResolve,
+    onAskAgain,
     id,
     class: customClassName,
     ...rest
@@ -136,6 +137,7 @@
 
   const rootId = $derived(id ?? generatedId);
   const rowQuestion = $derived(question ?? `Run ${tool.name}?`);
+  const cardDirection = $derived(/[\u0590-\u08ff]/u.test(rowQuestion) ? 'rtl' : 'ltr');
   const titleId = $derived(`${rootId}-title`);
   const saidId = $derived(`${rootId}-said`);
   let saidOpen = $state(false);
@@ -318,17 +320,21 @@
   const hasDetails = $derived(
     sandbox !== undefined || environmentNames.length > 0 || snapshotId !== undefined,
   );
-  const hasRowInput = $derived(
-    (operation.kind === 'command' && Boolean(operation.command)) ||
-      (operation.kind === 'patch' && Boolean(operation.diff)) ||
-      filesTouched.length > 0 ||
-      hasArgumentsPreview,
-  );
-
   // The decision layout shows the command in the open, so its Input holds only what is left.
   const decisionCommand = $derived(
     operation.kind === 'command' && operation.command ? operation.command : undefined,
   );
+  const hasRowInput = $derived(
+    (operation.kind === 'patch' && Boolean(operation.diff)) ||
+      filesTouched.length > 0 ||
+      (hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand])),
+  );
+  // A command-only preview is already visible in the open command block. Keep an Input
+  // disclosure when the preview contains additional values, but do not repeat the command.
+  const rowInputPairs = $derived(
+    hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand]) ? inputPairs : [],
+  );
+
   // Arguments that only repeat what the facts already show in the open (the command, the target,
   // the tool) get no Input disclosure of their own.
   const argumentsRepeatFacts = $derived(
@@ -499,10 +505,12 @@
     id={rootId}
     class={classNames('cinder-approval-card', 'cinder-approval-card--elsewhere', customClassName)}
     aria-labelledby={titleId}
+    dir="auto"
     data-cinder-state={effectiveState}
     data-cinder-risk={tool.risk}
     data-cinder-layout="card"
   >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
     <Check
       class="cinder-approval-card__elsewhere-glyph"
       size={16}
@@ -522,10 +530,12 @@
     id={rootId}
     class={classNames('cinder-approval-card', 'cinder-approval-card--row', customClassName)}
     aria-labelledby={titleId}
+    dir="auto"
     data-cinder-state={effectiveState}
     data-cinder-risk={tool.risk}
     data-cinder-layout="row"
   >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
     <ApprovalCardRow
       {rootId}
       {titleTag}
@@ -556,8 +566,12 @@
       inputLabel={payloadLabel}
       {context}
       requestKey={idempotencyKey}
-      {inputPairs}
+      inputPairs={rowInputPairs}
       inputBody={hasRowInput ? rowInputBody : undefined}
+      {onAskAgain}
+      expiresAt={expirationTimestamp === undefined
+        ? undefined
+        : formatTimeOfDay(new Date(expirationTimestamp))}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
     />
   </article>
@@ -567,10 +581,12 @@
     id={rootId}
     class={classNames('cinder-approval-card', 'cinder-approval-card--decision', customClassName)}
     aria-labelledby={titleId}
+    dir={cardDirection}
     data-cinder-state={effectiveState}
     data-cinder-risk={tool.risk}
     data-cinder-layout="decision"
   >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
     <ApprovalCardDecision
       {rootId}
       {titleTag}
@@ -578,7 +594,6 @@
       {tool}
       approvalState={effectiveState}
       question={rowQuestion}
-      {pauseSentence}
       {facts}
       command={decisionCommand}
       {why}
@@ -598,6 +613,10 @@
       {decidedIn}
       {decidedInHref}
       {outcomeTime}
+      {onAskAgain}
+      expiresAt={expirationTimestamp === undefined
+        ? undefined
+        : formatTimeOfDay(new Date(expirationTimestamp))}
       {decisionNote}
       {context}
       requestKey={idempotencyKey}
@@ -613,10 +632,12 @@
     id={rootId}
     class={classNames('cinder-approval-card', 'cinder-approval-card--detail', customClassName)}
     aria-labelledby={titleId}
+    dir="auto"
     data-cinder-state={effectiveState}
     data-cinder-risk={tool.risk}
     data-cinder-layout="detail"
   >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
     <header class="cinder-approval-card__detail-header">
       <p class="cinder-approval-card__detail-eyebrow">
         <span
@@ -762,9 +783,11 @@
     id={rootId}
     class={classNames('cinder-approval-card', customClassName)}
     aria-labelledby={titleId}
+    dir="auto"
     data-cinder-state={effectiveState}
     data-cinder-risk={tool.risk}
   >
+    <span class="cinder-sr-only" aria-hidden="true">{question}</span>
     <Card padding="none" class="cinder-approval-card__surface">
       {#snippet header()}
         <div class="cinder-approval-card__header">

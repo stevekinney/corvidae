@@ -1632,6 +1632,22 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           nativeRunIdOf(started.value) ?? String(started.value['runId']),
           read,
         ).catch(() => undefined);
+        // A thread stream can still replay RUN_STARTED after the run has settled. This is most
+        // visible when review expiry closes an input-required run: its durable transcript still
+        // contains the action-required receipt, but there is no live interrupt to re-park it.
+        // Treat terminal task state as history-only so ChatSession does not strip that receipt for
+        // a hidden attach turn that cannot produce another snapshot.
+        if (
+          attachedRun !== undefined &&
+          (attachedRun.status === 'completed' ||
+            attachedRun.status === 'failed' ||
+            attachedRun.status === 'canceled') &&
+          attachedRun.openWaits.length === 0
+        ) {
+          await events.return(undefined);
+          setInterrupts([]);
+          return undefined;
+        }
         restored = await withTaskNotes(
           withStoredMemoryNotes(
             withoutImportTimes(

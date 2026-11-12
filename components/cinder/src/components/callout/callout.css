@@ -108,7 +108,8 @@
   }
 
   .cinder-callout--inline-action {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    justify-content: start;
     align-items: center;
     column-gap: var(--cinder-space-3);
     row-gap: 0;
@@ -134,6 +135,23 @@
 
   .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__action {
     grid-column: 3;
+  }
+
+  @container (inline-size < 30rem) {
+    .cinder-callout--inline-action:has(> .cinder-callout__icon) {
+      display: block;
+    }
+
+    .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__icon {
+      float: inline-start;
+      margin-inline-end: var(--cinder-space-2);
+    }
+
+    .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__content,
+    .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__action {
+      display: block;
+      inline-size: auto;
+    }
   }
 
   /* ----------------------------------------

@@ -49,6 +49,19 @@ describe('empty and ready (C1, C2)', () => {
     expect(sendOf(container).disabled).toBe(false);
   });
 
+  test('keeps translated Send icon-only while naming it accessibly', async () => {
+    const { container } = render(ChatInput, {
+      id: 'state-translated-send',
+      value: 'A translated draft',
+      labels: { send: 'Senden', sendMessage: 'Nachricht senden' },
+    });
+    const send = sendOf(container);
+
+    expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(send.textContent?.trim()).toBe('');
+    expect(send.getAttribute('aria-label')).toBe('Nachricht senden');
+  });
+
   test('the ready ring and the quiet empty Send are drawn by the composer styles', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(
@@ -57,6 +70,20 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).toMatch(
       /:global\(\.chat-input-send:disabled\)\s*\{[^}]*background: transparent;/,
     );
+    expect(source).toMatch(
+      /:global\(\.chat-input-send\[data-offline\]:disabled\)\s*\{[^}]*background: var\(--cinder-surface-inset\);[^}]*color: var\(--cinder-status-warning-text\);/s,
+    );
+    expect(source).toMatch(/\.chat-input-editor\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
+    expect(source).toMatch(/\.chat-input-markdown\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
+    expect(source).toContain('const attachmentScrollFade = overflowFadeEdges();');
+    expect(source).toContain('{@attach attachmentScrollFade}');
+    expect(source).toContain("'cinder-_scroll-fade'");
+    expect(source).toContain('align-items: center;');
+    expect(source).toContain('--_cinder-scroll-fade-color: var(--cinder-control-background);');
+    expect(source).toMatch(
+      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*scroll-padding-block-end:\s*var\(--cinder-space-6\);/s,
+    );
+    expect(source).toContain('.chat-input-attachments[data-expanded]::after');
   });
 });
 
@@ -71,11 +98,8 @@ describe('the run toolbar (C4)', () => {
     });
 
     const running = container.querySelector('[data-chat-running]')!;
-    expect(running.getAttribute('aria-hidden')).toBe('true');
-    expect(running.querySelector('.cinder-spinner')).not.toBeNull();
-    expect(container.querySelector('[data-chat-running-announcement]')?.textContent).toContain(
-      'Running for 0:00',
-    );
+    expect(running.classList.contains('cinder-sr-only')).toBe(true);
+    expect(running.textContent?.replace(/\s+/gu, ' ').trim()).toBe('Running 0:00');
 
     const stop = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Stop generating"]',
@@ -88,7 +112,7 @@ describe('the run toolbar (C4)', () => {
     expect(editorOf(container).placeholder).toBe('Add another follow-up…');
   });
 
-  test('a loading send stays icon-only while its accessible label names the wait', () => {
+  test('a loading send keeps its accessible label while showing only the spinner', () => {
     const { container } = render(ChatInput, {
       id: 'state-starting',
       value: 'Draft',
@@ -97,7 +121,22 @@ describe('the run toolbar (C4)', () => {
     const send = sendOf(container);
     expect(send.getAttribute('aria-label')).toBe('Loading…');
     expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(send.textContent).not.toContain('Loading…');
     expect(send.querySelector('.chat-input-spinner')).not.toBeNull();
+  });
+
+  test('keeps a translated Stop icon-only while naming it accessibly', () => {
+    const { container } = render(ChatInput, {
+      id: 'state-translated-stop',
+      sending: true,
+      labels: { stop: 'Anhalten', stopGenerating: 'Generierung anhalten' },
+      onstop: () => undefined,
+    });
+    const stop = sendOf(container);
+
+    expect(stop.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(stop.textContent?.trim()).toBe('');
+    expect(stop.getAttribute('aria-label')).toBe('Generierung anhalten');
   });
 
   test('an idle composer has no run toolbar and keeps its own placeholder', () => {
@@ -122,7 +161,7 @@ describe('the offline drawer (C5)', () => {
     await tick();
 
     const drawer = container.querySelector<HTMLElement>('[data-chat-composer-drawer="offline"]')!;
-    expect(drawer.querySelector('.chat-input-drawer-callout')?.textContent).toContain(
+    expect(drawer.textContent).toContain(
       "You're offline. Your draft is saved here, and Send comes back when you reconnect.",
     );
     // The drawer sits above the box, outside the text column.
@@ -135,6 +174,7 @@ describe('the offline drawer (C5)', () => {
     expect(editorOf(container).value).toBe('Draft about order 4471');
     const send = sendOf(container);
     expect(send.disabled).toBe(true);
+    expect(send.hasAttribute('data-offline')).toBe(true);
     expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(drawer.id);
   });
 });
@@ -147,9 +187,7 @@ describe('generic drawer notices', () => {
         status: { kind: 'drawer-notice', text: `${tone} notice`, tone },
       });
       const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
-      expect(drawer.querySelector('.cinder-callout')?.getAttribute('data-cinder-variant')).toBe(
-        tone,
-      );
+      expect(drawer.getAttribute('data-cinder-variant')).toBe(tone);
       expect(drawer.textContent).toContain(`${tone} notice`);
       cleanup();
     }
@@ -196,7 +234,7 @@ describe('generic drawer notices', () => {
         action: { label: 'Retry', onclick: () => {} },
       },
     });
-    const callout = container.querySelector('.cinder-callout')!;
+    const callout = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
     expect(callout.classList.contains('cinder-callout--inline-action')).toBe(true);
     expect(callout.querySelector('.cinder-callout__action button')?.textContent).toContain('Retry');
     expect(callout.querySelector('.cinder-callout__content .cinder-button')).toBeNull();
@@ -242,9 +280,7 @@ describe('the draft-restored drawer (C7)', () => {
     const drawer = container.querySelector<HTMLElement>(
       '[data-chat-composer-drawer="draft-restored"]',
     )!;
-    expect(drawer.querySelector('.chat-input-drawer-callout')?.textContent).toContain(
-      'Restored your unsent draft from yesterday at 4:12 PM.',
-    );
+    expect(drawer.textContent).toContain('Restored your unsent draft from yesterday at 4:12 PM.');
     // A restored draft can still be sent.
     expect(sendOf(container).disabled).toBe(false);
 

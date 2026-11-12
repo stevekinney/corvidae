@@ -23,7 +23,7 @@
  * Playwright is used as a library from this process, so the run has no child test runner. The
  * design review that follows reads `gallery.html` and `manifest.jsonl`; it is not part of this tool.
  */
-import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -54,6 +54,7 @@ import { createFixtureServer } from '../src/server.ts';
 import {
   RUN_DIRECTORY_PREFIX,
   composerEdgeProblems,
+  composerTopProblems,
   countProblems,
   focusVariantName,
   galleryImageFiles,
@@ -75,6 +76,17 @@ import { prepareManifest } from './prepare-manifest.ts';
 
 /** The one deadline every wait of the run shares. */
 const DEADLINE = HANG_GUARD_MILLISECONDS;
+// CSSOM scrollport edges are integer-rounded while getBoundingClientRect() preserves fractional
+// layout coordinates. Allow only that subpixel rounding at a row edge; controls must still fit.
+const ROW_EDGE_EPSILON = 0.5;
+const expectAttachment = expect.configure({ timeout: DEADLINE });
+
+/** The capture contract, kept here so it independently checks the responsive component contract. */
+function expectedAttachmentShelfCap(width: number, height: number): number {
+  if (width <= 480 && height <= 700) return 1;
+  if (width <= 480 && height <= 860) return 2;
+  return 3;
+}
 
 const fixtureRoot = resolve(import.meta.dirname, '..');
 const repositoryRoot = resolve(fixtureRoot, '..', '..');
@@ -229,6 +241,7 @@ export function measureInPage(options: {
 
   const smallTargets: { name: string; width: number; height: number }[] = [];
   const controlGeometry: {
+    controlId: string;
     name: string;
     hitWidth: number;
     hitHeight: number;
@@ -242,14 +255,17 @@ export function measureInPage(options: {
     const controls = elementsInScope<HTMLElement>(
       'button, [role="button"], [role="radio"], [role="checkbox"], a[href], textarea, select, summary',
     );
-    for (const element of controls) {
+    for (const [index, element] of controls.entries()) {
       if (!isVisible(element) || element.getAttribute('aria-hidden') === 'true') continue;
       if ((element as HTMLButtonElement).disabled) continue;
       // A link inside a sentence is sized by its text, not by the touch target rule.
       if (element.matches('a') && element.closest('p, li, td') !== null) continue;
       const box = element.getBoundingClientRect();
+      if (box.bottom <= 0 || box.top >= innerHeight) continue;
       const reachable = reachableBox(element, box);
       if (reachable === undefined) continue;
+      const controlId = `control-${index}`;
+      element.dataset['chatStressControlId'] = controlId;
       const painted = paintedBox(element, box);
       const samplePoints: readonly [number, number][] = [
         [reachable.left + reachable.width / 2, reachable.top + reachable.height / 2],
@@ -262,6 +278,7 @@ export function measureInPage(options: {
         ],
       ];
       controlGeometry.push({
+        controlId,
         name: nameOf(element),
         hitWidth: Math.round(box.width * 100) / 100,
         hitHeight: Math.round(box.height * 100) / 100,
@@ -269,6 +286,8 @@ export function measureInPage(options: {
         paintedHeight: Math.round(painted.height * 100) / 100,
         reachableWidth: Math.round(reachable.width * 100) / 100,
         reachableHeight: Math.round(reachable.height * 100) / 100,
+        // A partially clipped control still needs a real hit-test. The points are based on the
+        // reachable intersection above, so an offscreen portion cannot make the evidence vanish.
         samples: samplePoints.map(([x, y]) => ({
           x: Math.round(x * 100) / 100,
           y: Math.round(y * 100) / 100,
@@ -452,11 +471,124 @@ export function measureInPage(options: {
     }
   }
 
-  const composer =
-    shell.querySelector('.chat-input-area > .chat-input-shell') ??
-    shell.querySelector('.chat-input-area');
+  const composer = shell.querySelector<HTMLElement>('.chat-input-area');
+  const visibleQuestionDock = [
+    ...shell.querySelectorAll<HTMLElement>('[data-chat-question-dock]'),
+  ].find(isVisible);
+  const visibleInputShell = [...shell.querySelectorAll<HTMLElement>('.chat-input-shell')].find(
+    isVisible,
+  );
+  const composerShell = visibleQuestionDock ?? visibleInputShell ?? composer;
+  const composerForm = shell.querySelector<HTMLElement>('.chat-input-area form.chat-input');
   const transcript = shell.querySelector('.chat-timeline');
   const jump = shell.querySelector('.chat-jump-button, .chat-new-indicator');
+  const transcriptBox = transcript?.getBoundingClientRect();
+  const transcriptStyle = transcript === null ? undefined : getComputedStyle(transcript);
+  const composerBox = composerShell?.getBoundingClientRect();
+  const readingEdges =
+    transcriptBox !== undefined &&
+    transcriptStyle !== undefined &&
+    composerBox !== undefined &&
+    composer !== null &&
+    isVisible(composer) &&
+    transcript !== null &&
+    isVisible(transcript) &&
+    transcriptBox.width > 0
+      ? {
+          transcriptLeft:
+            Math.round(
+              (transcriptBox.left + Number.parseFloat(transcriptStyle.paddingLeft)) * 100,
+            ) / 100,
+          transcriptRight:
+            Math.round(
+              (transcriptBox.right - Number.parseFloat(transcriptStyle.paddingRight)) * 100,
+            ) / 100,
+          composerLeft: Math.round(composerBox.left * 100) / 100,
+          composerRight: Math.round(composerBox.right * 100) / 100,
+        }
+      : undefined;
+  const wideLayout: NonNullable<InPageMeasurement['wideLayout']>[number][] = [];
+  for (const node of shell.querySelectorAll<HTMLElement>(
+    '.message-content-wide, .tool-payload-code',
+  )) {
+    if (!isVisible(node)) continue;
+    const frame =
+      node.querySelector<HTMLElement>('.message-markdown-table-frame, .cinder-code-block') ?? node;
+    const frameBox = frame.getBoundingClientRect();
+    const clippingAncestors: string[] = [];
+    let ancestor = node.parentElement;
+    while (ancestor !== null && ancestor !== shell.parentElement) {
+      const style = getComputedStyle(ancestor);
+      const clipsInline = ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX);
+      if (clipsInline) {
+        const clip = ancestor.getBoundingClientRect();
+        const left = clip.left + ancestor.clientLeft;
+        const right = left + ancestor.clientWidth;
+        if (frameBox.left < left - 1 || frameBox.right > right + 1) {
+          const label = `${ancestor.tagName.toLowerCase()}${ancestor.className ? `.${ancestor.className.split(/\s+/u).join('.')}` : ''}`;
+          clippingAncestors.push(label);
+        }
+      }
+      ancestor = ancestor.parentElement;
+    }
+    const scroller = node.querySelector<HTMLElement>(
+      '.message-markdown-table-scroller, .cinder-code-block__viewport',
+    );
+    const scrollerBox = scroller?.getBoundingClientRect();
+    const firstCell = scroller?.querySelector<HTMLElement>('tr > :first-child');
+    const details = node.closest<HTMLElement>('.chat-tool-call-details');
+    const detailsStyle = details === null ? undefined : getComputedStyle(details);
+    const detailsContentWidth =
+      details === null || detailsStyle === undefined
+        ? undefined
+        : details.clientWidth -
+          Number.parseFloat(detailsStyle.paddingInlineStart) -
+          Number.parseFloat(detailsStyle.paddingInlineEnd);
+    wideLayout.push({
+      node:
+        node.dataset['cinderMarkdownNode'] ??
+        (node.classList.contains('tool-payload-code') ? 'tool-payload-code' : 'wide-content'),
+      ancestors: [
+        node.parentElement,
+        node.parentElement?.parentElement,
+        node.parentElement?.parentElement?.parentElement,
+      ]
+        .filter((element): element is HTMLElement => element instanceof HTMLElement)
+        .map((element) => ({
+          name: element.className || element.tagName.toLowerCase(),
+          width: Math.round(element.getBoundingClientRect().width * 100) / 100,
+        })),
+      frame: {
+        left: Math.round(frameBox.left * 100) / 100,
+        right: Math.round(frameBox.right * 100) / 100,
+        width: Math.round(frameBox.width * 100) / 100,
+      },
+      ...(detailsContentWidth === undefined
+        ? {}
+        : {
+            contentWidthGap: Math.max(
+              0,
+              Math.round((detailsContentWidth - frameBox.width) * 100) / 100,
+            ),
+          }),
+      ...(scrollerBox === undefined || scroller === null
+        ? {}
+        : {
+            scroller: {
+              left: Math.round(scrollerBox.left * 100) / 100,
+              right: Math.round(scrollerBox.right * 100) / 100,
+              scrollLeft: Math.round(scroller.scrollLeft * 100) / 100,
+            },
+          }),
+      clippingAncestors,
+      leadingColumnClipped:
+        scroller !== null &&
+        firstCell != null &&
+        scrollerBox !== undefined &&
+        scroller.scrollLeft <= 1 &&
+        firstCell.getBoundingClientRect().left < scrollerBox.left - 1,
+    });
+  }
   return {
     documentWidth: {
       scroll: document.documentElement.scrollWidth,
@@ -481,8 +613,175 @@ export function measureInPage(options: {
           summary.textContent.includes('waiting for approval'),
         )),
     composerEdge:
-      composer === null ? null : Math.round(composer.getBoundingClientRect().bottom * 100) / 100,
+      composerShell === null
+        ? null
+        : Math.round(composerShell.getBoundingClientRect().bottom * 100) / 100,
+    composerTop:
+      composerForm === null
+        ? null
+        : Math.round(composerForm.getBoundingClientRect().top * 100) / 100,
+    ...(composer === null
+      ? {}
+      : (() => {
+          const composerStyle = getComputedStyle(composer);
+          const override = Number.parseFloat(
+            composerStyle.getPropertyValue('--_cinder-chat-safe-area-inset-bottom'),
+          );
+          return {
+            safeArea: {
+              inset: Number.isFinite(override) ? override : 0,
+              paddingBottom: Number.parseFloat(composerStyle.paddingBlockEnd),
+            },
+          };
+        })()),
+    ...(readingEdges === undefined ? {} : { readingEdges }),
+    wideLayout,
   };
+}
+
+/** Proves a partially clipped control can be revealed and hit without changing the saved frame. */
+export function revealScrollableControls(controlIds: readonly string[] = []): {
+  controlId: string;
+  name: string;
+  initiallyClipped: boolean;
+  originalBox: { left: number; top: number; right: number; bottom: number };
+  revealedBox: { left: number; top: number; right: number; bottom: number };
+  revealed: boolean;
+  samplesHitTarget: boolean;
+}[] {
+  const controls = [
+    ...document.querySelectorAll<HTMLElement>('[data-chat-stress-control-id]'),
+  ].filter((element) => controlIds.includes(element.dataset['chatStressControlId'] ?? ''));
+  const nameOf = (element: Element): string =>
+    (element.getAttribute('aria-label') ?? element.textContent ?? '').trim().replace(/\s+/gu, ' ');
+  const clippingAncestors = (element: HTMLElement): HTMLElement[] => {
+    const result: HTMLElement[] = [];
+    let ancestor = element.parentElement;
+    while (ancestor !== null) {
+      const style = getComputedStyle(ancestor);
+      if (
+        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowY) ||
+        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX)
+      )
+        result.push(ancestor);
+      ancestor = ancestor.parentElement;
+    }
+    return result;
+  };
+  const axes = (element: HTMLElement) => {
+    const style = getComputedStyle(element);
+    return {
+      x: ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX),
+      y: ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowY),
+      scrollX:
+        ['auto', 'scroll'].includes(style.overflowX) && element.scrollWidth > element.clientWidth,
+      scrollY:
+        ['auto', 'scroll'].includes(style.overflowY) && element.scrollHeight > element.clientHeight,
+    };
+  };
+  const scrollportBox = (element: HTMLElement): DOMRect => {
+    const box = element.getBoundingClientRect();
+    return new DOMRect(
+      box.left + element.clientLeft,
+      box.top + element.clientTop,
+      element.clientWidth,
+      element.clientHeight,
+    );
+  };
+  const serializedBox = (box: DOMRect) => ({
+    left: Math.round(box.left * 100) / 100,
+    top: Math.round(box.top * 100) / 100,
+    right: Math.round(box.right * 100) / 100,
+    bottom: Math.round(box.bottom * 100) / 100,
+  });
+  const pointHitsTarget = (element: HTMLElement, box: DOMRect): boolean => {
+    const points: readonly [number, number][] = [
+      [box.left + box.width / 2, box.top + box.height / 2],
+      [box.left + Math.min(8, box.width / 2), box.top + box.height / 2],
+      [box.right - Math.min(8, box.width / 2), box.top + box.height / 2],
+      [box.left + box.width / 2, box.top + Math.min(8, box.height / 2)],
+      [box.left + box.width / 2, box.bottom - Math.min(8, box.height / 2)],
+    ];
+    return points.every(([x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit === element || (hit instanceof Element && element.contains(hit));
+    });
+  };
+  return controls.flatMap((element) => {
+    if ((element as HTMLButtonElement).disabled || element.getAttribute('aria-hidden') === 'true')
+      return [];
+    const ancestors = clippingAncestors(element);
+    const before = element.getBoundingClientRect();
+    const initiallyClipped = ancestors.some((candidate) => {
+      const box = scrollportBox(candidate);
+      const candidateAxes = axes(candidate);
+      return (
+        (candidateAxes.y && (before.top < box.top || before.bottom > box.bottom)) ||
+        (candidateAxes.x && (before.left < box.left || before.right > box.right))
+      );
+    });
+    if (!initiallyClipped || before.width <= 0 || before.height <= 0) return [];
+    const previouslyFocused = document.activeElement;
+    const positions = ancestors.map((candidate) => ({
+      candidate,
+      top: candidate.scrollTop,
+      left: candidate.scrollLeft,
+    }));
+    const controlId = element.dataset['chatStressControlId'] ?? 'unknown-control';
+    const originalBox = serializedBox(before);
+    let after = before;
+    let revealed = false;
+    let samplesHitTarget = false;
+    try {
+      element.focus({ preventScroll: true });
+      for (const candidate of ancestors) {
+        const candidateAxes = axes(candidate);
+        const box = scrollportBox(candidate);
+        const current = element.getBoundingClientRect();
+        if (candidateAxes.scrollY) {
+          if (current.top < box.top) candidate.scrollTop -= box.top - current.top;
+          else if (current.bottom > box.bottom) candidate.scrollTop += current.bottom - box.bottom;
+        }
+        if (candidateAxes.scrollX) {
+          if (current.left < box.left) candidate.scrollLeft -= box.left - current.left;
+          else if (current.right > box.right) candidate.scrollLeft += current.right - box.right;
+        }
+      }
+      after = element.getBoundingClientRect();
+      revealed =
+        ancestors.every((candidate) => {
+          const box = scrollportBox(candidate);
+          const candidateAxes = axes(candidate);
+          return (
+            (!candidateAxes.y || (after.top >= box.top - 1 && after.bottom <= box.bottom + 1)) &&
+            (!candidateAxes.x || (after.left >= box.left - 1 && after.right <= box.right + 1))
+          );
+        }) &&
+        after.top >= -1 &&
+        after.bottom <= innerHeight + 1 &&
+        after.left >= -1 &&
+        after.right <= innerWidth + 1;
+      samplesHitTarget = revealed && pointHitsTarget(element, after);
+      return [
+        {
+          controlId,
+          name: nameOf(element),
+          initiallyClipped: true,
+          originalBox,
+          revealedBox: serializedBox(after),
+          revealed,
+          samplesHitTarget,
+        },
+      ];
+    } finally {
+      for (const position of positions) {
+        position.candidate.scrollTop = position.top;
+        position.candidate.scrollLeft = position.left;
+      }
+      if (previouslyFocused instanceof HTMLElement)
+        previouslyFocused.focus({ preventScroll: true });
+    }
+  });
 }
 
 type WithdrawalWindow = Window & { stressAnnouncements?: number };
@@ -550,7 +849,10 @@ export function readWithdrawal(): { announcements: number; focusVisible: boolean
     box.bottom > 0 &&
     box.top < innerHeight &&
     document.querySelector('.cinder-citation__panel') === null;
-  return { announcements: host.stressAnnouncements ?? 0, focusVisible };
+  return {
+    announcements: host.stressAnnouncements ?? 0,
+    focusVisible,
+  };
 }
 
 function readApprovalReceiptFits(): boolean {
@@ -577,6 +879,50 @@ function scrollTranscript(to: 'top' | 'bottom'): void {
       return;
     }
   }
+}
+
+/** Case 47's first press must leave both the armed action and its reset hint inside the transcript viewport. */
+async function assertIrreversibleApprovalViewport(page: Page): Promise<void> {
+  const valid = await page.evaluate(() => {
+    const timeline = document.querySelector<HTMLElement>('.chat-timeline');
+    const button = [...document.querySelectorAll('button')].find((candidate) =>
+      candidate.textContent?.includes('Press again to refund $42.00'),
+    );
+    const label = button?.querySelector<HTMLElement>('.cinder-button__label');
+    const hint = document.querySelector<HTMLElement>('.cinder-approval-card__arm-hint');
+    const card = button?.closest<HTMLElement>('.cinder-approval-card');
+    if (timeline === null || button === undefined || label == null || hint === null || card == null)
+      return false;
+    const viewport = timeline.getBoundingClientRect();
+    const buttonBox = button.getBoundingClientRect();
+    const labelBox = label.getBoundingClientRect();
+    const hintBox = hint.getBoundingClientRect();
+    const cardBox = card.getBoundingClientRect();
+    const requiresTouchTarget = matchMedia('(pointer: coarse)').matches;
+    return (
+      buttonBox.width > 0 &&
+      buttonBox.height > 0 &&
+      (!requiresTouchTarget || (buttonBox.width >= 44 && buttonBox.height >= 44)) &&
+      labelBox.width > 0 &&
+      labelBox.height > 0 &&
+      labelBox.left >= buttonBox.left - 1 &&
+      labelBox.right <= buttonBox.right + 1 &&
+      labelBox.top >= buttonBox.top - 1 &&
+      labelBox.bottom <= buttonBox.bottom + 1 &&
+      buttonBox.top >= viewport.top &&
+      buttonBox.bottom <= viewport.bottom &&
+      hintBox.top >= viewport.top &&
+      hintBox.bottom <= viewport.bottom &&
+      buttonBox.left >= cardBox.left &&
+      buttonBox.right <= cardBox.right &&
+      hintBox.left >= cardBox.left &&
+      hintBox.right <= cardBox.right &&
+      buttonBox.top >= 0 &&
+      hintBox.bottom <= innerHeight
+    );
+  });
+  if (!valid)
+    throw new Error('armed approval action or reset hint is clipped or has no visible face');
 }
 
 /** Runs in the page: marks the focused control and says whether it is a new stop inside the shell. */
@@ -635,6 +981,20 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
     case 'focus':
       await locate(page, step).focus({ timeout: DEADLINE });
       return;
+    case 'hover':
+      {
+        const trigger = locate(page, step);
+        // Detached Cinder tooltips bind their real mouse/focus listeners from an effect after the
+        // panel hydrates. Wait for that mounted panel before hovering so the witness exercises the
+        // real tooltip rather than racing hydration or relying on a source-only contract.
+        await page
+          .locator('[role="tooltip"]')
+          .first()
+          .waitFor({ state: 'attached', timeout: DEADLINE });
+        await trigger.focus({ timeout: DEADLINE });
+        await trigger.hover({ timeout: DEADLINE });
+      }
+      return;
     case 'focus-source':
       await page
         .locator('[data-chat-sources-trigger] .cinder-citation__marker')
@@ -668,6 +1028,415 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
         .getByText(step.text, { exact: step.exact === true })
         .first()
         .waitFor({ state: 'visible', timeout: DEADLINE });
+      return;
+    case 'expect-tooltip':
+      try {
+        await page.waitForFunction(
+          (expected) =>
+            [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')].some((tooltip) => {
+              const box = tooltip.getBoundingClientRect();
+              const style = getComputedStyle(tooltip);
+              return (
+                tooltip.textContent?.trim() === expected &&
+                tooltip.getAttribute('aria-hidden') === 'false' &&
+                tooltip.getAttribute('data-cinder-visible') !== null &&
+                tooltip.getAttribute('data-cinder-position-ready') === 'true' &&
+                box.width > 0 &&
+                box.height > 0 &&
+                style.visibility !== 'hidden' &&
+                style.display !== 'none'
+              );
+            }),
+          step.text,
+          { timeout: DEADLINE },
+        );
+      } catch (error) {
+        const state = await page.evaluate((expected) => {
+          const tooltips = [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')]
+            .filter((tooltip) => tooltip.textContent?.trim() === expected)
+            .map((tooltip) => {
+              const box = tooltip.getBoundingClientRect();
+              const style = getComputedStyle(tooltip);
+              return {
+                hidden: tooltip.getAttribute('aria-hidden'),
+                visible: tooltip.hasAttribute('data-cinder-visible'),
+                positioned: tooltip.getAttribute('data-cinder-position-ready'),
+                box: { width: box.width, height: box.height, top: box.top, bottom: box.bottom },
+                visibility: style.visibility,
+                display: style.display,
+              };
+            });
+          const active = document.activeElement;
+          return {
+            active:
+              active instanceof HTMLElement
+                ? {
+                    name: active.getAttribute('aria-label') ?? active.textContent?.trim(),
+                    describedBy: active.getAttribute('aria-describedby'),
+                  }
+                : null,
+            coarse: matchMedia('(pointer: coarse)').matches,
+            anyCoarse: matchMedia('(any-pointer: coarse)').matches,
+            tooltips,
+          };
+        }, step.text);
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}; tooltip diagnostic ${JSON.stringify(state)}`,
+          { cause: error },
+        );
+      }
+      return;
+    case 'expect-source-contract': {
+      const list = page.locator('.chat-message-sources-list');
+      await list.waitFor({ state: 'visible', timeout: DEADLINE });
+      const internal = list
+        .locator('.chat-message-sources-item')
+        .filter({ hasText: 'Internal refund notes' });
+      await expectAttachment(internal.locator('.chat-message-sources-note')).toContainText(
+        'Internal',
+      );
+      await expectAttachment(internal.locator('a')).toHaveCount(0);
+
+      const unsafe = list
+        .locator('.chat-message-sources-item')
+        .filter({ hasText: 'Rejected source address' });
+      await expectAttachment(unsafe.locator('[data-link="rejected"]')).toBeVisible();
+      await expectAttachment(unsafe.locator('a')).toHaveCount(0);
+
+      const longTitle = list
+        .locator('.chat-message-sources-title')
+        .filter({ hasText: 'deliberately long source title' });
+      await expectAttachment(longTitle).toBeVisible();
+      const [titleBox, titleMetrics] = await Promise.all([
+        longTitle.boundingBox(),
+        longTitle.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            lineHeight: Number.parseFloat(style.lineHeight),
+            height: element.getBoundingClientRect().height,
+            lineClamp: style.webkitLineClamp,
+          };
+        }),
+      ]);
+      if (
+        titleBox === null ||
+        !Number.isFinite(titleMetrics.lineHeight) ||
+        titleMetrics.lineHeight <= 0
+      ) {
+        throw new Error('Source contract title did not expose measurable line geometry.');
+      }
+      if (titleMetrics.height > titleMetrics.lineHeight * 2 + 1) {
+        throw new Error(`Long source title exceeded two lines (${titleMetrics.height}px).`);
+      }
+      if (titleMetrics.lineClamp !== '2') {
+        throw new Error(
+          `Long source title did not expose a two-line clamp (got ${titleMetrics.lineClamp}).`,
+        );
+      }
+      return;
+    }
+    case 'expect-approval-review': {
+      const state = await page.evaluate(() => {
+        const shell = document.querySelector('[data-testid="chat-stress-shell"]');
+        const scroller = shell?.querySelector<HTMLElement>('.chat-timeline');
+        const cards = [...(shell?.querySelectorAll<HTMLElement>(
+          '.cinder-approval-card[data-cinder-state="pending"]',
+        ) ?? [])];
+        const card = cards[0] ?? null;
+        const article = card?.closest<HTMLElement>('article');
+        const drawer = shell?.querySelector<HTMLElement>('[data-chat-approval-drawer]') ?? null;
+        const box = (element: HTMLElement | null) => {
+          if (element === null) return null;
+          const rect = element.getBoundingClientRect();
+          return {
+            top: Math.round(rect.top * 100) / 100,
+            bottom: Math.round(rect.bottom * 100) / 100,
+            left: Math.round(rect.left * 100) / 100,
+            right: Math.round(rect.right * 100) / 100,
+          };
+        };
+        return {
+          approvalWaiting: [...(shell?.querySelectorAll('.chat-tool-call-summary') ?? [])].some(
+            (summary) => summary.textContent?.includes('waiting for approval'),
+          ),
+          pendingCards: cards.length,
+          drawer: drawer !== null,
+          card: box(card),
+          article: box(article ?? null),
+          scroller: box(scroller ?? null),
+          viewport: { top: 0, bottom: innerHeight, left: 0, right: innerWidth },
+          scrollerOverflow: scroller === null ? null : getComputedStyle(scroller).overflow,
+        };
+      });
+      if (state.pendingCards !== 1 || state.card === null || state.scroller === null) {
+        throw new Error(`Approval review did not expose one measurable pending card: ${JSON.stringify(state)}`);
+      }
+      const visibleLeft = Math.max(state.scroller.left, state.viewport.left);
+      const visibleRight = Math.min(state.scroller.right, state.viewport.right);
+      const visibleTop = Math.max(state.scroller.top, state.viewport.top);
+      const visibleBottom = Math.min(state.scroller.bottom, state.viewport.bottom);
+      const cardFits =
+        state.card.left >= visibleLeft - 1 &&
+        state.card.right <= visibleRight + 1 &&
+        state.card.top >= visibleTop - 1 &&
+        state.card.bottom <= visibleBottom + 1;
+      if (!cardFits && !state.drawer) {
+        throw new Error(
+          `Clipped approval has no Review fallback after Sources opened: ${JSON.stringify(state)}`,
+        );
+      }
+      const pendingCard = page.locator('.cinder-approval-card[data-cinder-state="pending"]');
+      const deny = pendingCard.getByRole('button', { name: /^Deny$/ });
+      const approve = pendingCard.getByRole('button', { name: /\$42\.00/ });
+      await deny.waitFor({ state: 'visible', timeout: DEADLINE });
+      await approve.waitFor({ state: 'visible', timeout: DEADLINE });
+      if (!cardFits) {
+        await page.getByRole('button', { name: 'Review approval' }).click({ timeout: DEADLINE });
+        await expectAttachment(pendingCard).toBeFocused();
+        const focusableCount = await pendingCard
+          .locator('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])')
+          .count();
+        let reached = false;
+        for (let index = 0; index <= focusableCount + 1; index += 1) {
+          await page.keyboard.press('Tab');
+          if (await approve.evaluate((element) => element === document.activeElement)) {
+            reached = true;
+            break;
+          }
+        }
+        if (!reached) throw new Error('Normal tab traversal did not reach the approval decision.');
+        await expectAttachment(approve).toBeFocused();
+      }
+      await expectAttachment(deny).toBeInViewport({ ratio: 1 });
+      await expectAttachment(approve).toBeInViewport({ ratio: 1 });
+      const decisionIntersection = await Promise.all(
+        [deny, approve].map((locator) =>
+          locator.evaluate((button) => {
+            const scroller = document.querySelector<HTMLElement>('.chat-timeline');
+            if (scroller === null) return { error: 'missing chat scroller' } as const;
+            const box = button.getBoundingClientRect();
+            const scrollerBox = scroller.getBoundingClientRect();
+            const left = Math.max(0, scrollerBox.left);
+            const right = Math.min(innerWidth, scrollerBox.right);
+            const top = Math.max(0, scrollerBox.top);
+            const bottom = Math.min(innerHeight, scrollerBox.bottom);
+            return {
+              label: button.textContent?.trim(),
+              fullyVisible:
+                box.left >= left - 1 &&
+                box.right <= right + 1 &&
+                box.top >= top - 1 &&
+                box.bottom <= bottom + 1,
+            };
+          }),
+        ),
+      );
+      if (
+        decisionIntersection.some(
+          (decision) => !('fullyVisible' in decision) || !decision.fullyVisible,
+        )
+      ) {
+        throw new Error(`Approval decisions are not fully inside the live scroller viewport: ${JSON.stringify(decisionIntersection)}`);
+      }
+      return;
+    }
+    case 'expect-question-layout': {
+      const coarse = await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches);
+      if (coarse) {
+        await expectAttachment(page.locator('[data-chat-question-dock]')).toBeVisible();
+        await expectAttachment(page.getByText('Which environment?', { exact: true })).toBeVisible();
+      } else {
+        await expectAttachment(
+          page.getByRole('heading', { name: 'Which environment?', exact: true }),
+        ).toBeVisible();
+      }
+      return;
+    }
+    case 'expect-attachment-shelf': {
+      const list = page.locator('.chat-input-attachments');
+      const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+      const expectedVisible = Math.min(
+        step.total,
+        expectedAttachmentShelfCap(viewport.width, viewport.height),
+      );
+      await expectAttachment(page.locator('.chat-input-attachment-summary')).toContainText(
+        `${step.total} files`,
+      );
+      await expectAttachment(list.locator(':scope > li')).toHaveCount(expectedVisible);
+      const more = step.total - expectedVisible;
+      if (more > 0) {
+        await expectAttachment(
+          page.getByRole('button', { name: `${more} more below` }),
+        ).toBeVisible();
+      }
+      const rows = list.locator(':scope > li');
+      const coarse = await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches);
+      const minimumTarget = coarse ? 44 : 24;
+      for (let index = 0; index < expectedVisible; index += 1) {
+        const row = rows.nth(index);
+        const rowMain = row.locator('.chat-attachment-preview-main');
+        const actions = row.locator('.chat-attachment-preview-actions');
+        const filename = row.locator('.chat-attachment-preview-name');
+        const [mainBox, actionsBox] = await Promise.all([
+          rowMain.boundingBox(),
+          actions.boundingBox(),
+        ]);
+        expectAttachment(mainBox).not.toBeNull();
+        expectAttachment(actionsBox).not.toBeNull();
+        expectAttachment(Math.abs((mainBox?.y ?? 0) - (actionsBox?.y ?? 0))).toBeLessThanOrEqual(2);
+        const filenameBox = await filename.boundingBox();
+        expectAttachment(filenameBox).not.toBeNull();
+        const filenameRange = await filename.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const rect = range.getBoundingClientRect();
+          return { width: rect.width, text: element.textContent ?? '' };
+        });
+        expectAttachment(filenameRange.width).toBeGreaterThan(0);
+        expectAttachment(filenameRange.width).toBeLessThanOrEqual(
+          (filenameBox?.width ?? 0) + ROW_EDGE_EPSILON,
+        );
+        const filenameText = filenameRange.text;
+        const fullFilename = (await filename.getAttribute('title')) ?? '';
+        expectAttachment(filenameText).toContain(
+          fullFilename.endsWith('.pdf') ? '.pdf' : fullFilename,
+        );
+        if (filenameText !== fullFilename) {
+          expectAttachment(filenameText.match(/…/g)?.length ?? 0).toBe(1);
+        }
+        for (const button of await row.locator('button').all()) {
+          const box = await button.boundingBox();
+          expectAttachment(box?.width).toBeGreaterThanOrEqual(minimumTarget);
+          expectAttachment(box?.height).toBeGreaterThanOrEqual(minimumTarget);
+        }
+      }
+      if (step.reveal === true && more > 0) {
+        await page.getByRole('button', { name: `${more} more below` }).click();
+        await expectAttachment(list.locator(':scope > li')).toHaveCount(step.total);
+        await expectAttachment
+          .poll(async () => list.evaluate((element) => getComputedStyle(element).overflowY))
+          .toBe('auto');
+        const hasOverflow = await list.evaluate(
+          (element) => element.scrollHeight > element.clientHeight,
+        );
+        if (hasOverflow) {
+          expectAttachment(await list.evaluate((element) => element.scrollHeight)).toBeGreaterThan(
+            await list.evaluate((element) => element.clientHeight),
+          );
+        }
+        for (let index = 0; index < step.total; index += 1) {
+          const row = list.locator(':scope > li').nth(index);
+          await row.scrollIntoViewIfNeeded();
+          const [listBox, rowBox] = await Promise.all([list.boundingBox(), row.boundingBox()]);
+          expectAttachment(listBox).not.toBeNull();
+          expectAttachment(rowBox).not.toBeNull();
+          expectAttachment(rowBox?.y ?? 0).toBeGreaterThanOrEqual(
+            (listBox?.y ?? 0) - ROW_EDGE_EPSILON,
+          );
+          expectAttachment((rowBox?.y ?? 0) + (rowBox?.height ?? 0)).toBeLessThanOrEqual(
+            (listBox?.y ?? 0) + (listBox?.height ?? 0) + ROW_EDGE_EPSILON,
+          );
+          const mainBox = await row.locator('.chat-attachment-preview-main').boundingBox();
+          const actionsBox = await row.locator('.chat-attachment-preview-actions').boundingBox();
+          const filename = row.locator('.chat-attachment-preview-name');
+          expectAttachment(mainBox).not.toBeNull();
+          expectAttachment(actionsBox).not.toBeNull();
+          expectAttachment(Math.abs((mainBox?.y ?? 0) - (actionsBox?.y ?? 0))).toBeLessThanOrEqual(
+            2,
+          );
+          const filenameBox = await filename.boundingBox();
+          expectAttachment(filenameBox).not.toBeNull();
+          const filenameRange = await filename.evaluate((element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const rect = range.getBoundingClientRect();
+            return { width: rect.width, text: element.textContent ?? '' };
+          });
+          expectAttachment(filenameRange.width).toBeGreaterThan(0);
+          expectAttachment(filenameRange.width).toBeLessThanOrEqual(
+            (filenameBox?.width ?? 0) + ROW_EDGE_EPSILON,
+          );
+          const filenameText = filenameRange.text;
+          const fullFilename = (await filename.getAttribute('title')) ?? '';
+          expectAttachment(filenameText).toContain(
+            fullFilename.endsWith('.pdf') ? '.pdf' : fullFilename,
+          );
+          if (filenameText !== fullFilename) {
+            expectAttachment(filenameText.match(/…/g)?.length ?? 0).toBe(1);
+          }
+          if ((await row.getAttribute('data-attachment-state')) === 'error') {
+            await expectAttachment(row.locator('[data-attachment-error]')).toBeVisible();
+          }
+          for (const button of await row.locator('button').all()) {
+            const box = await button.boundingBox();
+            expectAttachment(box?.width).toBeGreaterThanOrEqual(minimumTarget);
+            expectAttachment(box?.height).toBeGreaterThanOrEqual(minimumTarget);
+            expectAttachment(box?.y ?? 0).toBeGreaterThanOrEqual(listBox?.y ?? 0);
+            expectAttachment((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
+              (listBox?.y ?? 0) + (listBox?.height ?? 0),
+            );
+          }
+        }
+        await list.evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        await expectAttachment.poll(() => list.evaluate((element) => element.scrollTop)).toBe(0);
+      }
+      return;
+    }
+    case 'measure-composer-top':
+      await waitForCaptureLayout(page);
+      await page.evaluate((name) => {
+        const composer =
+          document.querySelector<HTMLElement>('.chat-input-area form.chat-input') ??
+          document.querySelector<HTMLElement>('.chat-input-area');
+        const host = window as typeof window & {
+          chatStressComposerTop?: Partial<Record<'before' | 'after', number | null>>;
+        };
+        host.chatStressComposerTop = {
+          ...host.chatStressComposerTop,
+          [name]:
+            composer === null ? null : Math.round(composer.getBoundingClientRect().top * 100) / 100,
+        };
+      }, step.name);
+      return;
+    case 'expect-empty-streaming-assistant':
+      await page.waitForFunction(
+        () => {
+          const shell = document.querySelector('[data-testid="chat-stress-shell"]');
+          const typing = shell?.querySelector<HTMLElement>(
+            '.chat-typing-indicator[aria-label="Assistant is typing"]',
+          );
+          const stop = shell?.querySelector<HTMLButtonElement>('[data-stop]');
+          return (
+            shell?.getAttribute('data-chat-stress-streaming') === 'true' &&
+            shell?.getAttribute('data-chat-stress-stream-content') === '' &&
+            typing !== null &&
+            typing !== undefined &&
+            typing.getBoundingClientRect().height > 0 &&
+            stop !== null &&
+            stop !== undefined &&
+            stop.getBoundingClientRect().height > 0
+          );
+        },
+        undefined,
+        { timeout: DEADLINE },
+      );
+      return;
+    case 'expect-streaming-assistant-text':
+      await page.waitForFunction(
+        (expected) => {
+          const messages = [
+            ...document.querySelectorAll<HTMLElement>(
+              '.chat-message[data-message-role="assistant"][aria-busy="true"]',
+            ),
+          ];
+          const assistant = messages.at(-1);
+          return assistant?.querySelector('.chat-message-body')?.textContent?.trim() === expected;
+        },
+        step.text,
+        { timeout: DEADLINE },
+      );
       return;
     case 'expect-offscreen':
       await page.waitForFunction(
@@ -743,7 +1512,10 @@ async function openCase(
     stressCase.slug === 'loading-canceled'
   )
     await context.clock.install({ time: startTime });
-  else await context.clock.setFixedTime(startTime);
+  else if (stressCase.id === 47) {
+    await context.clock.install({ time: new Date() });
+    await context.clock.setFixedTime(startTime);
+  } else await context.clock.setFixedTime(startTime);
   const page = await context.newPage();
   page.setDefaultTimeout(DEADLINE);
   page.setDefaultNavigationTimeout(DEADLINE);
@@ -794,12 +1566,30 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
       { timeout: DEADLINE },
     );
   }
+  if (stressCase.id === 47) {
+    await waitForCaptureLayout(opened.page);
+    // Freeze immediately before the real first press, after the page's layout has settled. This
+    // preserves the armed state for the evidence frame without changing InlineConfirm's 3-second
+    // product timer.
+    await opened.page.clock.pauseAt(new Date());
+  }
   for (const step of steps) {
     // Count announcements from the moment the host withdraws the source, not before.
     if (stressCase.id === 45 && step.action === 'hook' && step.name === 'withdrawSource') {
       await opened.page.evaluate(observeAnnouncements);
     }
     await runStep(opened.page, step);
+  }
+  if (stressCase.id === 47) await assertIrreversibleApprovalViewport(opened.page);
+  if (stressCase.id === 45) {
+    await opened.page.waitForFunction(
+      () =>
+        document.querySelector('.cinder-drawer__panel[data-cinder-closing]') === null &&
+        document.activeElement?.matches('.chat-message-action-button[data-citation-focus]') ===
+          true,
+      undefined,
+      { timeout: DEADLINE },
+    );
   }
   if (stressCase.slug === 'approval-expired') {
     await opened.page.getByRole('button', { name: 'Ask again' }).waitFor({
@@ -814,11 +1604,112 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
   );
 }
 
+async function readComposerTransition(
+  page: Page,
+): Promise<Pick<NonNullable<PageMeasurement['composerTransition']>, 'before' | 'after'>> {
+  return page.evaluate(() => {
+    const host = window as typeof window & {
+      chatStressComposerTop?: Partial<Record<'before' | 'after', number | null>>;
+    };
+    return {
+      before: host.chatStressComposerTop?.before ?? null,
+      after: host.chatStressComposerTop?.after ?? null,
+    };
+  });
+}
+
+/** Waits for font metrics and the composer's first post-font layout delivery before reading it. */
+export async function waitForCaptureLayout(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const windowWithCaptureState = window as typeof window & {
+      cinderCaptureLayoutReady?: boolean;
+      cinderCaptureLayoutCleanup?: (() => void) | undefined;
+    };
+    windowWithCaptureState.cinderCaptureLayoutCleanup?.();
+    windowWithCaptureState.cinderCaptureLayoutReady = false;
+    let observer: ResizeObserver | undefined;
+    let cancelled = false;
+    let pagehideHandler: (() => void) | undefined;
+    const cleanup = (): void => {
+      cancelled = true;
+      observer?.disconnect();
+      observer = undefined;
+      if (pagehideHandler !== undefined) {
+        window.removeEventListener('pagehide', pagehideHandler);
+        pagehideHandler = undefined;
+      }
+      delete windowWithCaptureState.cinderCaptureLayoutCleanup;
+    };
+    windowWithCaptureState.cinderCaptureLayoutCleanup = cleanup;
+    void document.fonts.ready.then(() => {
+      if (cancelled) return undefined;
+      const targets = [...document.querySelectorAll<HTMLElement>('.chat-input-area, .chat-input')];
+      if (targets.length === 0 || typeof ResizeObserver === 'undefined') {
+        windowWithCaptureState.cinderCaptureLayoutReady = true;
+        cleanup();
+        return undefined;
+      }
+      observer = new ResizeObserver(() => {
+        windowWithCaptureState.cinderCaptureLayoutReady = true;
+        cleanup();
+      });
+      for (const target of targets) observer.observe(target);
+      return undefined;
+    });
+    pagehideHandler = cleanup;
+    window.addEventListener('pagehide', pagehideHandler, { once: true });
+  });
+  try {
+    await page.waitForFunction(
+      () =>
+        (window as typeof window & { cinderCaptureLayoutReady?: boolean })
+          .cinderCaptureLayoutReady === true,
+      undefined,
+      { timeout: DEADLINE },
+    );
+  } finally {
+    await page.evaluate(() => {
+      const windowWithCaptureState = window as typeof window & {
+        cinderCaptureLayoutReady?: boolean;
+        cinderCaptureLayoutCleanup?: (() => void) | undefined;
+      };
+      windowWithCaptureState.cinderCaptureLayoutCleanup?.();
+      delete windowWithCaptureState.cinderCaptureLayoutReady;
+    });
+  }
+}
+
+/** Waits for the real Cinder tooltip panel before capturing icon-action focus states. */
+async function waitForFocusedTooltip(page: Page, name: string): Promise<void> {
+  if (name !== 'Copy' && name !== 'Quote message' && name !== 'Regenerate') return;
+  await page.waitForFunction(
+    (expected) =>
+      [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')].some((tooltip) => {
+        const box = tooltip.getBoundingClientRect();
+        const style = getComputedStyle(tooltip);
+        return (
+          tooltip.textContent?.trim() === expected &&
+          tooltip.getAttribute('aria-hidden') === 'false' &&
+          tooltip.getAttribute('data-cinder-visible') !== null &&
+          tooltip.getAttribute('data-cinder-position-ready') === 'true' &&
+          box.width > 0 &&
+          box.height > 0 &&
+          style.visibility !== 'hidden' &&
+          style.display !== 'none'
+        );
+      }),
+    name,
+    { timeout: DEADLINE },
+  );
+}
+
 async function measure(
   opened: OpenCase,
   stressCase: StressCase,
   profile: StressProfile,
+  composerTransition?: PageMeasurement['composerTransition'],
 ): Promise<{ measurement: PageMeasurement; problems: string[] }> {
+  if (stressCase.id !== 47) await waitForCaptureLayout(opened.page);
   const inPage = await opened.page.evaluate(measureInPage, {
     coarse: profile.coarse,
     rtl: stressCase.direction === 'rtl',
@@ -834,8 +1725,49 @@ async function measure(
     ...(stressCase.id === 55
       ? { approvalReceiptFits: await opened.page.evaluate(readApprovalReceiptFits) }
       : {}),
+    ...(composerTransition === undefined ? {} : { composerTransition }),
   };
-  return { measurement, problems: measurementProblems(measurement, profile, stressCase) };
+  const problems = measurementProblems(measurement, profile, stressCase);
+  if (stressCase.id === 19 || stressCase.id === 59) {
+    problems.push(...(await readRepeatedSummaryProblems(opened.page)));
+  }
+  return { measurement, problems };
+}
+
+/** The repeated-call board row must keep its complete work identity and duration visibly painted. */
+async function readRepeatedSummaryProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const timeline = document.querySelector<HTMLElement>(
+      '.chat-tool-call-timeline[data-cinder-tool-call-count="20"]',
+    );
+    const tools = timeline?.querySelector<HTMLElement>('.chat-tool-call-summary-tools');
+    const duration = timeline?.querySelector<HTMLElement>('.chat-tool-call-summary-duration');
+    if (timeline === null || tools === null || duration === null) {
+      return ['repeated summary metadata is missing'];
+    }
+    const visible = (element: HTMLElement): boolean => {
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const timelineBox = timeline.getBoundingClientRect();
+      return (
+        element.textContent?.trim() !== '' &&
+        box.width > 0 &&
+        box.height > 0 &&
+        box.left >= timelineBox.left - 1 &&
+        box.right <= timelineBox.right + 1 &&
+        style.visibility !== 'hidden' &&
+        style.display !== 'none'
+      );
+    };
+    const problems: string[] = [];
+    if (tools.textContent?.trim() !== 'lookup_order ×20' || !visible(tools)) {
+      problems.push('repeated summary tool/count is not fully visible');
+    }
+    if (duration.textContent?.trim() !== '6.1s' || !visible(duration)) {
+      problems.push('repeated summary duration is not fully visible');
+    }
+    return problems;
+  });
 }
 
 interface RunState {
@@ -851,7 +1783,7 @@ function renderInteractionGeometryReport(records: readonly CaptureRecord[]): str
     '',
     'Metrics are recorded from the same page state as each frame. Bottom-chrome share is evidence only; it is not a universal pass/fail threshold.',
     '',
-    '| Frame | Controls (hit → reachable) | Occlusions | Pending highlights | Bottom chrome |',
+    '| Frame | Controls (hit / painted / reachable) | Occlusions | Pending highlights | Bottom chrome |',
     '| --- | --- | ---: | ---: | ---: |',
   ];
   for (const record of records) {
@@ -863,7 +1795,7 @@ function renderInteractionGeometryReport(records: readonly CaptureRecord[]): str
     const controls = (measurement.controlGeometry ?? [])
       .map(
         (control) =>
-          `${control.name}: ${control.hitWidth}×${control.hitHeight} → ${control.reachableWidth}×${control.reachableHeight}`,
+          `${control.name}: hit ${control.hitWidth}×${control.hitHeight} / paint ${control.paintedWidth}×${control.paintedHeight} / reachable ${control.reachableWidth}×${control.reachableHeight}`,
       )
       .join('<br>');
     lines.push(
@@ -912,7 +1844,7 @@ async function captureImage(
   profile: StressProfile,
   stressCase: StressCase,
   image: { kind: 'primary' | 'variant'; variant?: string; steps: readonly StressStep[] },
-): Promise<number | null> {
+): Promise<{ bottom: number | null; top: number | null; safeAreaPadding: number | null }> {
   const file =
     image.kind === 'primary'
       ? primaryImageName(profile, stressCase.id)
@@ -920,21 +1852,42 @@ async function captureImage(
   const label = `case ${caseLabel(stressCase.id)} at ${profile.name}${image.variant === undefined ? '' : ` ${image.variant}`}`;
   let problems: string[] = [];
   let edge: number | null = null;
+  let top: number | null = null;
   let measurement: PageMeasurement | undefined;
   let opened: OpenCase | undefined;
+  let composerTransition: PageMeasurement['composerTransition'];
   try {
     opened = await openCase(context, state.origin, stressCase);
+    const transition =
+      stressCase.id === 10 && image.variant === 'waiting-to-streaming'
+        ? { from: 'waiting', to: 'streaming' }
+        : stressCase.id === 18 && image.variant === 'stopped-to-failed'
+          ? { from: 'stopped', to: 'failed' }
+          : undefined;
     await runSteps(opened, stressCase, image.steps);
-    const measured = await measure(opened, stressCase, profile);
-    problems = measured.problems;
+    if (transition !== undefined) {
+      const endpoints = await readComposerTransition(opened.page);
+      composerTransition = { ...transition, ...endpoints };
+    }
+    const measured = await measure(opened, stressCase, profile, composerTransition);
+    problems.push(...measured.problems);
+    if (stressCase.id === 60 && measured.measurement.safeArea !== undefined) {
+      const expectedInset = image.variant === 'safe-area-override' ? 24 : 0;
+      if (Math.abs(measured.measurement.safeArea.inset - expectedInset) > 0.5)
+        problems.push(
+          `${label}: expected safe-area inset ${expectedInset}px, measured ${measured.measurement.safeArea.inset}px`,
+        );
+    }
     measurement = measured.measurement;
     edge = measured.measurement.composerEdge;
+    top = measured.measurement.composerTop;
   } catch (error) {
     problems = [`flow failed: ${error instanceof Error ? error.message : String(error)}`];
   }
   let written = false;
   if (opened !== undefined) {
     try {
+      if (stressCase.id !== 47) await waitForCaptureLayout(opened.page);
       await opened.page.screenshot({
         path: join(state.directory, file),
         animations: 'disabled',
@@ -947,6 +1900,35 @@ async function captureImage(
         ...problems,
         `screenshot failed: ${error instanceof Error ? error.message : String(error)}`,
       ];
+    }
+    if (written) {
+      const partialControls =
+        measurement?.controlGeometry
+          ?.filter(
+            (control) =>
+              control.reachableWidth < control.hitWidth ||
+              control.reachableHeight < control.hitHeight,
+          )
+          .map((control) => control.controlId) ?? [];
+      const proof = await opened.page.evaluate(revealScrollableControls, partialControls);
+      measurement =
+        measurement === undefined ? undefined : { ...measurement, scrollableRevealProof: proof };
+      const proofIds = new Set(proof.map((entry) => entry.controlId));
+      for (const controlId of partialControls) {
+        if (!proofIds.has(controlId)) {
+          problems.push(`scroll reveal proof missing for ${controlId}`);
+        }
+      }
+      for (const entry of proof) {
+        const control = measurement?.controlGeometry?.find(
+          (candidate) => candidate.controlId === entry.controlId,
+        );
+        const prefix = `hit region sample missed ${entry.controlId}: ${control?.name ?? entry.name}`;
+        if (entry.revealed && entry.samplesHitTarget) {
+          const problemIndex = problems.indexOf(prefix);
+          if (problemIndex >= 0) problems.splice(problemIndex, 1);
+        } else problems.push(`${entry.name} remained clipped or unhit after scroll reveal`);
+      }
     }
     await opened.page.close();
   }
@@ -963,7 +1945,7 @@ async function captureImage(
       ...(stressCase.deferred === undefined ? {} : { deferred: stressCase.deferred }),
     });
   }
-  return edge;
+  return { bottom: edge, top, safeAreaPadding: measurement?.safeArea?.paddingBottom ?? null };
 }
 
 /** Tabs through the case's controls and takes one image per stop, which is the per-control focus sweep. */
@@ -984,12 +1966,14 @@ async function captureFocusSweep(
       if (!stop.inside || !stop.fresh) break;
       const variant = focusVariantName(index);
       const file = variantImageName(profile, stressCase.id, variant);
+      await waitForFocusedTooltip(opened.page, stop.name);
       const measured = await measure(opened, stressCase, profile);
       if (measured.problems.length > 0) {
         state.errors.push(
           `case ${caseLabel(stressCase.id)} at ${profile.name} ${variant}: ${measured.problems.join('; ')}`,
         );
       }
+      await waitForCaptureLayout(opened.page);
       await opened.page.screenshot({
         path: join(state.directory, file),
         animations: 'disabled',
@@ -1049,22 +2033,39 @@ async function captureProfile(
   const context = await openContext();
   try {
     const edges = new Map<number, number | null>();
+    const tops = new Map<number, number | null>();
+    let safeAreaBaseline: number | null = null;
     for (const stressCase of cases) {
-      const caseContext = stressCase.slug === 'approval-expired' ? await openContext() : context;
+      const caseContext =
+        stressCase.slug === 'approval-expired' || stressCase.id === 47
+          ? await openContext()
+          : context;
       try {
-        edges.set(
-          stressCase.id,
-          await captureImage(state, caseContext, profile, stressCase, {
-            kind: 'primary',
-            steps: stressCase.steps,
-          }),
-        );
+        const captured = await captureImage(state, caseContext, profile, stressCase, {
+          kind: 'primary',
+          steps: stressCase.steps,
+        });
+        edges.set(stressCase.id, captured.bottom);
+        tops.set(stressCase.id, captured.top);
+        if (stressCase.id === 60) safeAreaBaseline = captured.safeAreaPadding;
         for (const variant of stressCase.variants) {
-          await captureImage(state, caseContext, profile, stressCase, {
+          if (variant.profiles !== undefined && !variant.profiles.includes(profile.name)) continue;
+          const variantCapture = await captureImage(state, caseContext, profile, stressCase, {
             kind: 'variant',
             variant: variant.name,
             steps: variant.steps,
           });
+          if (stressCase.id === 60 && variant.name === 'safe-area-override') {
+            if (safeAreaBaseline === null || variantCapture.safeAreaPadding === null) {
+              state.errors.push(
+                `case ${caseLabel(stressCase.id)} at ${profile.name}: safe-area baseline missing`,
+              );
+            } else if (Math.abs(variantCapture.safeAreaPadding - safeAreaBaseline - 24) > 0.5) {
+              state.errors.push(
+                `case ${caseLabel(stressCase.id)} at ${profile.name}: safe-area padding changed by ${variantCapture.safeAreaPadding - safeAreaBaseline}px, expected 24px`,
+              );
+            }
+          }
         }
         if (stressCase.focusSweep) await captureFocusSweep(state, caseContext, profile, stressCase);
       } finally {
@@ -1072,6 +2073,7 @@ async function captureProfile(
       }
     }
     state.errors.push(...composerEdgeProblems(cases, profile, edges));
+    state.errors.push(...composerTopProblems(cases, profile, tops));
   } finally {
     await context.close();
   }

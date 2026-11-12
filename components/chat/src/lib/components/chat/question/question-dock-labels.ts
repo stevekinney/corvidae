@@ -34,6 +34,8 @@ export type ChatQuestionDockLabels = {
   typeHint: string;
   /** What a failed send says. Default `The answer could not be sent. Try again.`. */
   failed: string;
+  yes: string;
+  no: string;
 };
 
 /** The value of the choice that opens the own-answer field. */
@@ -54,4 +56,6 @@ export const DEFAULT_QUESTION_DOCK_LABELS: ChatQuestionDockLabels = {
   chooseHint: 'Choose an answer to continue',
   typeHint: 'Type your answer to continue',
   failed: 'The answer could not be sent. Try again.',
+  yes: 'Yes',
+  no: 'No',
 };

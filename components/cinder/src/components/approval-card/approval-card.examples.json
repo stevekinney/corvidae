@@ -84,7 +84,7 @@
     {
       "id": "decision",
       "title": "Explicit decision",
-      "description": "The decision surface: the action as the title with a Can't be undone badge, the pause, Tool, Target, Amount and the open Command, the countdown, Add a note, then Deny and a named primary that arms on its first press.",
+      "description": "The decision surface: the action as the title with a Can't be undone badge, meaningful host facts and readable open Command, the countdown, Add a note, then Deny and a named primary that arms on its first press.",
       "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"decision\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  pauseSentence=\"The agent is paused until you decide.\"\n  facts={[\n    { label: 'Target', value: 'order 4471' },\n    { label: 'Amount', value: '$42.00' },\n  ]}\n  approveLabel=\"Refund\"\n  why=\"The customer reported the parcel arrived damaged.\"\n  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}\n  expiresAt=\"2999-01-01T00:00:00.000Z\"\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-decision-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
     },
     {

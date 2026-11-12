@@ -23,8 +23,6 @@
     approvalState: ApprovalState;
     /** The action the approval asks about, such as "Refund order 4471 for $42.00?". */
     question: string;
-    /** One sentence about the pause. */
-    pauseSentence: string | undefined;
     /** Host facts written after the tool, such as Target and Amount. */
     facts: ApprovalFact[];
     /** The command to run, always visible and monospaced, or `undefined` when the operation has none. */
@@ -63,6 +61,10 @@
     decidedInHref: string | undefined;
     /** When it was decided, such as "10:46 AM". */
     outcomeTime: string | undefined;
+    /** When this request expired, formatted as a time. */
+    expiresAt: string | undefined;
+    /** Requests a fresh approval after expiration. */
+    onAskAgain: (() => void) | undefined;
     /** The note the approver left with the decision. */
     decisionNote: string | undefined;
     /** A line of context written above the action. */
@@ -84,14 +86,14 @@
   import Ban from '@lucide/svelte/icons/ban';
   import Check from '@lucide/svelte/icons/check';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
-  import { onDestroy, untrack } from 'svelte';
+  import { untrack } from 'svelte';
 
-  import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import Badge from '../badge/badge.svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
   import Link from '../link/link.svelte';
+  import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import { describeDecidedAction, STATE_LABELS, UNDECIDED_PREFIX } from './approval-card-state.ts';
@@ -104,7 +106,6 @@
     tool,
     approvalState,
     question,
-    pauseSentence,
     facts,
     command,
     why,
@@ -124,6 +125,8 @@
     decidedIn,
     decidedInHref,
     outcomeTime,
+    expiresAt,
+    onAskAgain,
     decisionNote,
     context,
     requestKey,
@@ -140,9 +143,6 @@
   const hintId = $derived(`${rootId}-arm-hint`);
   const disabledReasonId = $derived(`${rootId}-disabled-reason`);
 
-  /** How long an armed irreversible action waits for its second press before it reverts. */
-  const ARM_MILLISECONDS = 3_000;
-
   let inputOpen = $state(false);
   let whyOpen = $state(false);
   let detailsOpen = $state(false);
@@ -150,19 +150,6 @@
   let note = $state('');
   let remember = $state(false);
   let armed = $state(false);
-
-  let armTimer: ReturnType<typeof setTimeout> | undefined;
-  let releaseEscape: (() => void) | undefined;
-
-  function disarm(): void {
-    if (armTimer !== undefined) {
-      clearTimeout(armTimer);
-      armTimer = undefined;
-    }
-    releaseEscape?.();
-    releaseEscape = undefined;
-    armed = false;
-  }
 
   // The note, the checkbox and an armed press belong to one request. A different request must
   // never inherit what the approver typed or armed for the last one, so the reset compares the
@@ -174,10 +161,7 @@
     note = '';
     remember = false;
     noteOpen = false;
-    disarm();
   });
-
-  onDestroy(disarm);
 
   const isPending = $derived(approvalState === 'pending');
   const isUnavailable = $derived(approvalState === 'unavailable');
@@ -194,21 +178,8 @@
   const armedLabel = $derived(
     `Press again to ${primaryLabel.charAt(0).toLowerCase()}${primaryLabel.slice(1)}`,
   );
-
-  // A reason that appears while the press is armed drops the arm, so the second press never
-  // commits past it; the reason holding the answer back is the one thing to read.
-  $effect(() => {
-    if (armed && (actionsOff || !canAnswer)) disarm();
-  });
-
-  const toolFactValue = $derived(tool.label ?? tool.name);
   const factRows = $derived.by(() => {
-    const rows: ApprovalFact[] = [
-      tool.label === undefined
-        ? { label: 'Tool', value: tool.name, monospace: true }
-        : { label: 'Tool', value: toolFactValue },
-      ...facts,
-    ];
+    const rows: ApprovalFact[] = [...facts];
     if (tool.irreversible === false) rows.push({ label: 'Reversible', value: 'Yes' });
     return rows;
   });
@@ -240,29 +211,8 @@
     resolve?.(resolution);
   }
 
-  function arm(): void {
-    armed = true;
-    armTimer = setTimeout(disarm, ARM_MILLISECONDS);
-    // Escape cancels the press and nothing else: the handler owns the keystroke, so a host that
-    // also listens for Escape on the card sees it as handled.
-    releaseEscape = pushEscapeHandler((event) => {
-      event.preventDefault();
-      disarm();
-    });
-  }
-
-  function pressPrimary(): void {
-    if (!canAnswer || actionsOff) return;
-    if (irreversible && !armed) {
-      arm();
-      return;
-    }
-    disarm();
-    decide('approve');
-  }
-
   function pressDeny(): void {
-    disarm();
+    armed = false;
     decide('deny');
   }
 </script>
@@ -271,7 +221,31 @@
   <div class="cinder-approval-card__context">{@render context()}</div>
 {/if}
 
-{#if isReceipt}
+{#if approvalState === 'expired'}
+  <div class="cinder-approval-card__expired-row">
+    <svelte:element
+      this={titleTag}
+      id={titleId}
+      class="cinder-approval-card__decision-title"
+      dir="auto"
+    >
+      <span class="cinder-approval-card__expired-label">Expired before a decision:</span>{' '}
+      <span class="cinder-approval-card__expired-subject">{question}</span>
+    </svelte:element>
+    {#if expiresAt !== undefined || onAskAgain !== undefined}
+      <div class="cinder-approval-card__expiry-actions">
+        {#if expiresAt !== undefined}<span class="cinder-approval-card__countdown">{expiresAt}</span
+          >{/if}
+        {#if onAskAgain !== undefined}<Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onclick={onAskAgain}>Ask again</Button
+          >{/if}
+      </div>
+    {/if}
+  </div>
+{:else if isReceipt}
   <div class="cinder-approval-card__receipt" data-cinder-tone={outcomeTone}>
     <div class="cinder-approval-card__receipt-head">
       <!-- The title says the outcome to assistive technology, so the badge is the visual mark. -->
@@ -377,7 +351,7 @@
     </svelte:element>
     {#if irreversible && undecidedPrefix === undefined}
       <Badge variant="danger" size="sm" class="cinder-approval-card__irreversible"
-        >Irreversible</Badge
+        >Can't be undone</Badge
       >
     {/if}
     {#if !isPending && undecidedPrefix === undefined}
@@ -386,20 +360,17 @@
       </span>
     {/if}
   </div>
-  {#if pauseSentence !== undefined && isPending}
-    <p class="cinder-approval-card__pause" dir="auto">{pauseSentence}</p>
-  {/if}
   <dl class="cinder-approval-card__facts">
     {#each factRows as fact, index (index)}
       <div class="cinder-approval-card__fact">
-        <dt>{fact.label}</dt>
+        <dt dir="auto">{fact.label}</dt>
         <dd data-cinder-monospace={fact.monospace || undefined} dir="auto">{fact.value}</dd>
       </div>
     {/each}
     {#if command !== undefined}
       <div class="cinder-approval-card__fact cinder-approval-card__fact--command">
-        <dt>Command</dt>
-        <dd>
+        <dt class="cinder-sr-only">Command</dt>
+        <dd class="cinder-approval-card__command-value" dir="auto">
           <div class="cinder-approval-card__command">
             <CodeBlock
               code={command}
@@ -469,9 +440,22 @@
         </div>
       </div>
     {/if}
-    {#if countdown !== undefined}
-      <p class="cinder-approval-card__countdown" data-cinder-countdown>{countdown}</p>
-    {/if}
+    <div class="cinder-approval-card__decision-tools">
+      {#if countdown !== undefined}
+        <p class="cinder-approval-card__countdown" data-cinder-countdown>{countdown}</p>
+      {/if}
+      {#if canAnswer && !noteOpen}
+        <button
+          type="button"
+          class="cinder-approval-card__note-toggle"
+          aria-expanded={noteOpen}
+          disabled={isBusy}
+          onclick={() => (noteOpen = true)}
+        >
+          Add a note
+        </button>
+      {/if}
+    </div>
     {#if canAnswer && failure !== undefined}
       <ApprovalCardFailure {failure} />
     {/if}
@@ -504,17 +488,6 @@
     {/if}
     {#if canAnswer}
       <div class="cinder-approval-card__row-actions" role="group" aria-label="Approval actions">
-        {#if !noteOpen}
-          <button
-            type="button"
-            class="cinder-approval-card__note-toggle"
-            aria-expanded={noteOpen}
-            disabled={isBusy}
-            onclick={() => (noteOpen = true)}
-          >
-            Add a note
-          </button>
-        {/if}
         <span class="cinder-approval-card__row-spacer"></span>
         <Button
           type="button"
@@ -530,30 +503,26 @@
         >
           {resolving === 'deny' ? 'Denying…' : 'Deny'}
         </Button>
-        <Button
-          type="button"
-          variant={armed ? 'danger' : 'primary'}
-          size="sm"
-          mutating
-          disabled={isBusy && resolving !== 'approve'}
-          aria-disabled={disabledReason === undefined ? undefined : 'true'}
+        <InlineConfirm
+          presentation="two-press"
+          bind:armed
+          confirmLabel={primaryLabel}
+          {armedLabel}
+          armedHint="Reverts in 3 seconds."
+          armedEscapeHint="Escape cancels."
+          {requestKey}
+          requiresSecondPress={irreversible}
+          disabled={isBusy}
+          blocked={disabledReason !== undefined}
+          ariaDisabled={disabledReason !== undefined}
           loading={resolving === 'approve'}
-          loadingStatus="Approving…"
-          aria-describedby={disabledReason !== undefined
-            ? disabledReasonId
-            : armed
-              ? hintId
-              : undefined}
-          onclick={pressPrimary}
-        >
-          {resolving === 'approve' ? 'Approving…' : armed ? armedLabel : primaryLabel}
-        </Button>
+          loadingLabel="Approving…"
+          ariaDescribedBy={disabledReason === undefined ? hintId : disabledReasonId}
+          hintClass="cinder-approval-card__arm-hint"
+          {hintId}
+          onConfirm={() => decide('approve')}
+        />
       </div>
-      {#if armed}
-        <p id={hintId} class="cinder-approval-card__arm-hint" role="status" dir="auto">
-          Reverts in 3 seconds. Escape cancels.
-        </p>
-      {/if}
       {#if footnote !== undefined}
         <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
       {/if}

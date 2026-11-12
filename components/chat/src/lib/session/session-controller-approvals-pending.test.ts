@@ -74,6 +74,34 @@ function currentToolResult(history: ConversationHistory): ToolResult | undefined
 }
 
 describe('chat session controller', () => {
+  test('hidden attach turns preserve parked history but do not weaken the ordinary gate', async () => {
+    let conversation = approvalConversation('hidden-attach');
+    const visibleIds = conversation.ids;
+    let requests: ConversationHistory[] = [];
+    const controller = createChatSessionController({
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+      },
+      transport: async (request) => {
+        requests.push(request.conversation);
+        return events([{ type: 'text', text: 'attached' }]);
+      },
+    });
+
+    await controller.sendHiddenMessage();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.ids.slice(0, visibleIds.length)).toEqual([...visibleIds]);
+    expect(conversation.ids[visibleIds.length]).toBe(requests[0]?.ids[visibleIds.length]);
+    expect(currentToolResult(requests[0]!)).toMatchObject({ outcome: 'action_required' });
+    expect(
+      await throwingRejectionOf(
+        controller.adapter.sendMessage({ role: 'user', content: 'next' }, []),
+      ),
+    ).toThrow('Cannot start a new turn while tool approval is pending');
+  });
+
   test('continues after a tool result and invokes approval hooks', async () => {
     let conversation = createConversationHistory({ id: 'tools' });
     let calls = 0;

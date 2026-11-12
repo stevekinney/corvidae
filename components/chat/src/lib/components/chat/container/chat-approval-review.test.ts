@@ -14,9 +14,11 @@ import { getMessages } from '../utilities/index.ts';
 import {
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
+  approvalCardFitsViewport,
   findPendingApprovalMessageId,
   focusPendingApproval,
   nextPendingApprovalDeadline,
+  pendingApprovalCard,
   pendingApprovalMessageIds,
 } from './chat-approval-review.ts';
 
@@ -66,10 +68,41 @@ function withDeadline(messages: readonly Message[], expiresAt: string): readonly
 describe('approval drawer words', () => {
   test('say exactly what is waiting and what the action does', () => {
     expect(APPROVAL_DRAWER_TEXT).toBe(
-      'Waiting for your approval. Anything you send now queues until you decide.',
+      'Waiting for your approval. Anything you send now queues until this run finishes.',
     );
     expect(APPROVAL_DRAWER_ACTION).toBe('Review approval');
     expect(APPROVAL_DRAWER_TEXT).not.toContain(String.fromCodePoint(0xb7));
+  });
+});
+
+describe('approval card viewport criterion', () => {
+  test('keeps the drawer for a top-clipped tall card even when its actions fit', () => {
+    expect(
+      approvalCardFitsViewport(
+        { top: -24, bottom: 180, left: 12, right: 308 },
+        { top: 0, bottom: 200, left: 0, right: 320 },
+        80,
+      ),
+    ).toBe(false);
+  });
+
+  test('reclaims the drawer height without weakening the full-card criterion', () => {
+    expect(
+      approvalCardFitsViewport(
+        { top: 20, bottom: 280, left: 12, right: 308 },
+        { top: 0, bottom: 220, left: 0, right: 320 },
+        64,
+      ),
+    ).toBe(true);
+  });
+
+  test('keeps the drawer for a horizontally clipped card', () => {
+    expect(
+      approvalCardFitsViewport(
+        { top: 20, bottom: 180, left: -8, right: 308 },
+        { top: 0, bottom: 220, left: 0, right: 320 },
+      ),
+    ).toBe(false);
   });
 });
 
@@ -188,5 +221,24 @@ describe('focusPendingApproval', () => {
 
     expect(focusPendingApproval(root)).toBe(false);
     expect(focusPendingApproval(null)).toBe(false);
+  });
+});
+
+describe('pendingApprovalCard', () => {
+  test('selects the waiting card from its message and ignores other pending cards', () => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <article data-message-id="older">
+        <div class="cinder-approval-card" data-cinder-state="pending" id="older-card"></div>
+      </article>
+      <article data-message-id="waiting">
+        <div class="cinder-approval-card" data-cinder-state="approved" id="decided"></div>
+        <div class="cinder-approval-card" data-cinder-state="pending" id="waiting-card"></div>
+      </article>
+    `;
+
+    expect(pendingApprovalCard(root, 'waiting')?.id).toBe('waiting-card');
+    expect(pendingApprovalCard(root, 'older')?.id).toBe('older-card');
+    expect(pendingApprovalCard(root, 'missing')).toBeNull();
   });
 });

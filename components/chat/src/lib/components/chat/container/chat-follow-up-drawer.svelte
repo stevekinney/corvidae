@@ -19,16 +19,19 @@
 
 <script lang="ts">
   import { Button, Pencil, SendHorizontal, Tooltip, X } from '@lostgradient/cinder';
-  import {
-    FOLLOW_UP_DRAWER_TITLE,
-    FOLLOW_UP_SEND_NOW_LABEL,
-    followUpPreview,
-    followUpEditLabel,
-    followUpRemoveLabel,
-    followUpQueueSummary,
-  } from './chat-follow-up-queue.ts';
+  import { resolveChatLabels, type ChatLabels } from '../chat-labels.ts';
+  import { followUpPreview } from './chat-follow-up-queue.ts';
 
-  let { id, items, canSendNow, onsendnow, onedit, onremove }: ChatFollowUpDrawerProps = $props();
+  let {
+    id,
+    items,
+    canSendNow,
+    onsendnow,
+    onedit,
+    onremove,
+    labels,
+  }: ChatFollowUpDrawerProps & { labels?: Partial<ChatLabels> } = $props();
+  const words = $derived(resolveChatLabels(labels));
 
   const titleId = $derived(`${id}-follow-ups-title`);
 </script>
@@ -39,19 +42,19 @@
 <section class="chat-follow-up-drawer" aria-labelledby={titleId} data-chat-follow-up-drawer="">
   <div class="chat-follow-up-drawer-header">
     <h3 class="chat-follow-up-drawer-heading" id={titleId}>
-      <span class="chat-follow-up-drawer-title">{FOLLOW_UP_DRAWER_TITLE}</span>
-      <span class="chat-follow-up-drawer-summary">{followUpQueueSummary(items.length)}</span>
+      <span class="chat-follow-up-drawer-title">{words.followUpTitle}</span>
+      <span class="chat-follow-up-drawer-summary">{words.followUpSummary(items.length)}</span>
     </h3>
     {#if canSendNow}
-      <Tooltip text={FOLLOW_UP_SEND_NOW_LABEL} placement="top">
+      <Tooltip text={words.followUpSendNow} placement="top">
         <Button
           type="button"
           variant="ghost-accent"
           size="sm"
           class="chat-follow-up-drawer-action"
-          label={FOLLOW_UP_SEND_NOW_LABEL}
+          label={words.followUpSendNow}
           iconOnly
-          aria-label={FOLLOW_UP_SEND_NOW_LABEL}
+          aria-label={words.followUpSendNow}
           onclick={onsendnow}
         >
           <SendHorizontal class="cinder-icon-sm" aria-hidden="true" />
@@ -65,31 +68,31 @@
         <span class="chat-follow-up-ghost-index" aria-hidden="true">{index + 1}</span>
         <p class="chat-follow-up-ghost-text" dir="auto">{followUpPreview(item)}</p>
         <div class="chat-follow-up-ghost-actions">
-          <Tooltip text={followUpEditLabel(index + 1)} placement="top">
+          <Tooltip text={words.followUpEdit(index + 1)} placement="top">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               quiet
               class="chat-follow-up-ghost-action"
-              label={followUpEditLabel(index + 1)}
+              label={words.followUpEdit(index + 1)}
               iconOnly
-              aria-label={followUpEditLabel(index + 1)}
+              aria-label={words.followUpEdit(index + 1)}
               onclick={() => onedit(item.id)}
             >
               <Pencil class="cinder-icon-sm" aria-hidden="true" />
             </Button>
           </Tooltip>
-          <Tooltip text={followUpRemoveLabel(index + 1)} placement="top">
+          <Tooltip text={words.followUpRemove(index + 1)} placement="top">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               quiet
               class="chat-follow-up-ghost-action"
-              label={followUpRemoveLabel(index + 1)}
+              label={words.followUpRemove(index + 1)}
               iconOnly
-              aria-label={followUpRemoveLabel(index + 1)}
+              aria-label={words.followUpRemove(index + 1)}
               onclick={() => onremove(item.id)}
             >
               <X class="cinder-icon-xs" aria-hidden="true" />
@@ -159,11 +162,12 @@
   }
 
   .chat-follow-up-ghost {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
-    min-block-size: 2rem;
+    min-block-size: 2.75rem;
     padding: 0 var(--cinder-space-2);
     border-block-end: 1px solid var(--cinder-border-muted);
     color: var(--cinder-text-muted);
@@ -174,8 +178,9 @@
   }
 
   .chat-follow-up-ghost-index {
-    flex: none;
-    min-inline-size: 1rem;
+    position: absolute;
+    inset-inline-start: 0;
+    inline-size: 1rem;
     color: var(--cinder-text-subtle);
     font-variant-numeric: tabular-nums;
     text-align: center;
@@ -185,6 +190,7 @@
     flex: 1 1 auto;
     min-inline-size: 0;
     margin: 0;
+    padding-inline-start: var(--cinder-space-2);
     overflow: hidden;
     text-align: start;
     text-overflow: ellipsis;

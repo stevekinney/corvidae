@@ -34,6 +34,10 @@ const schema = {
       type: 'string',
       description: 'Status text shown while the two-press action is armed.',
     },
+    armedEscapeHint: {
+      type: 'string',
+      description: 'Optional keyboard instruction shown beside the armed status on fine pointers.',
+    },
     loading: {
       type: 'boolean',
       description: 'Shows a loading state on the action button.',

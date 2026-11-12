@@ -1,5 +1,7 @@
 import { isStreamingMessage } from '../builders.ts';
 import type { ConversationHistory, Message, ToolResult } from '../conversation-model.ts';
+import type { ChatTurnState } from '../message/turn-state.ts';
+import { resolveMessageTurnState } from '../message/turn-state.ts';
 import {
   getMessages,
   getMessageText,
@@ -24,6 +26,11 @@ export interface UseChatTranscriptOptions {
     (() => ((message: Message) => string | ReasoningInfo | undefined) | undefined) | undefined;
   getFirstUnreadId: () => string | null;
   getUngroupAllToolCalls: () => boolean;
+  /** Whether the host's run-state surface already communicates progress in place of typing. */
+  getSuppressTypingIndicator?: () => boolean;
+  /** Host-owned state for the active assistant turn, including transport reconnects. */
+  getMessageTurnState?:
+    (() => ((message: Message) => ChatTurnState | undefined) | undefined) | undefined;
   /** Tool calls whose question was answered here, which keep their own row. */
   getAnsweredToolCallIds?: (() => Iterable<string>) | undefined;
 }
@@ -60,6 +67,15 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
   const messageIndexById = $derived(
     new Map(messages.map((message, index) => [message.id, index] as const)),
   );
+  const turnReconnects = $derived.by(() => {
+    const activeMessageId = options.getStreamingMessageId() ?? messages.at(-1)?.id;
+    const activeMessage = messages.find((message) => message.id === activeMessageId);
+    return (
+      activeMessage !== undefined &&
+      resolveMessageTurnState(activeMessage, options.getMessageTurnState?.())?.kind ===
+        'reconnecting'
+    );
+  });
 
   const messageGroups = useChatMessageGroups({
     getMessages: () => messages,
@@ -73,7 +89,8 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
         ungroupedToolCallIds?: ReadonlySet<string>;
       } = {
         firstUnreadId: options.getFirstUnreadId(),
-        showTypingIndicator,
+        showTypingIndicator:
+          showTypingIndicator && !options.getSuppressTypingIndicator?.() && !turnReconnects,
       };
       if (options.getUngroupAllToolCalls()) {
         renderOptions.ungroupedToolCallIds = new Set(
@@ -129,7 +146,18 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
     if (streamingMessageId) return options.getStreamingContent();
     return activeStreamingMessage ? getMessageText(activeStreamingMessage) : '';
   });
-  const hasActiveStreamingText = $derived(activeStreamingText.trim().length > 0);
+  const hasActiveStreamingText = $derived.by(() => {
+    if (activeStreamingText.trim().length > 0) return true;
+
+    // Some hosts mark a run active before reserving a streaming assistant row. If the
+    // conversation already contains the assistant's visible reply, adding a generic
+    // typing row below it is duplicate progress UI. Keep the row for an explicitly
+    // reserved stream (including an empty stream), and only use the completed latest
+    // assistant content as evidence when no stream message id exists.
+    if (options.getStreamingMessageId() !== null) return false;
+    const latestAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
+    return latestAssistant ? getMessageText(latestAssistant).trim().length > 0 : false;
+  });
   const progressState = $derived(
     selectChatProgressState({
       streaming: options.getStreaming(),

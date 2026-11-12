@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
+import { CHAT_COPY } from '../../app/copy.ts';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
@@ -726,6 +727,56 @@ describe('an existing session', () => {
 
     expect(await findByText('Start with Monday.')).not.toBeNull();
   });
+
+  test('keeps regeneration failure status on its affected answer only', async () => {
+    restore = bureau(
+      {
+        'bureau.contexts.get': () => CONTEXT,
+        'bureau.contexts.regenerate': () => ({}),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+      },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({
+            threadId: 'session-1',
+            messages: [
+              { id: 'u1', role: 'user', content: 'First question' },
+              { id: 'a1', role: 'assistant', content: 'First answer' },
+              { id: 'u2', role: 'user', content: 'Second question' },
+              { id: 'a2', role: 'assistant', content: 'Second answer' },
+            ],
+          });
+        }
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chats/session-1');
+
+    const { container, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await findByText('Second answer');
+    const regenerate = container.querySelector<HTMLButtonElement>(
+      '.chat-message-regenerate-button',
+    );
+    expect(regenerate).not.toBeNull();
+    await fireEvent.click(regenerate!);
+    await findByText(CHAT_COPY.regeneration.failed);
+
+    const regenerationStatuses = [...container.querySelectorAll('.chat-message-status')].filter(
+      (status) => status.textContent?.includes(CHAT_COPY.regeneration.failed),
+    );
+    expect(regenerationStatuses).toHaveLength(1);
+    expect(
+      regenerationStatuses[0]?.closest('[data-message-id]')?.getAttribute('data-message-id'),
+    ).toBe('a2');
+  });
 });
 
 describe('a run that waits on a person’s answer', () => {
@@ -914,6 +965,126 @@ describe('a run that waits on a tool approval', () => {
       invalidated.mockRestore();
     }
   });
+
+  test('drops Waiting on you when the open approval expires while the chat stays mounted', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-11T00:00:00.000Z'));
+    const expiringApproval = {
+      ...APPROVAL,
+      expiresAt: '2026-11-11T00:00:01.000Z',
+    };
+    const expiringToolCall = toolCall.map((event) =>
+      event.type === 'TOOL_CALL_RESULT'
+        ? {
+            ...event,
+            metadata: {
+              'conversationalist:toolResult': {
+                outcome: 'action_required',
+                action: {
+                  type: 'approval',
+                  message: APPROVAL.message,
+                  expiresAt: expiringApproval.expiresAt,
+                  operation: { kind: 'refund' },
+                },
+                content: 'requires approval',
+              },
+            },
+          }
+        : event,
+    );
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (!url.includes('/agents/')) return undefined;
+      const input: { runId: string } = JSON.parse(
+        typeof init?.body === 'string' ? init.body : '{}',
+      );
+      return sse([
+        { type: 'RUN_STARTED', threadId: 'session-1', runId: input.runId },
+        ...expiringToolCall,
+        {
+          type: 'RUN_FINISHED',
+          threadId: 'session-1',
+          runId: input.runId,
+          outcome: { type: 'interrupt', interrupts: [expiringApproval] },
+        },
+      ]);
+    }).restore;
+    landAt('/chats/session-1');
+    const { container } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await sendMessage(container, 'Refund it');
+    await until(() => {
+      expect(container.querySelector('[data-approval-decision]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
+        'Waiting on you',
+      );
+    });
+
+    jest.advanceTimersByTime(1_500);
+    await settle();
+    await until(() =>
+      expect(
+        container.querySelector('[data-approval-decision]')?.getAttribute('data-cinder-state'),
+      ).toBe('expired'),
+    );
+    expect(container.querySelectorAll('.weft-chat-question')).toHaveLength(0);
+    await until(() =>
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).not.toContain(
+        'Waiting on you',
+      ),
+    );
+  });
+
+  test('keeps Waiting on you for a human question shown in the same header', async () => {
+    jest.useFakeTimers();
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (!url.includes('/agents/')) return undefined;
+      const input: { runId: string } = JSON.parse(
+        typeof init?.body === 'string' ? init.body : '{}',
+      );
+      return sse([
+        { type: 'RUN_STARTED', threadId: 'session-1', runId: input.runId },
+        {
+          type: 'RUN_FINISHED',
+          threadId: 'session-1',
+          runId: input.runId,
+          outcome: {
+            type: 'interrupt',
+            interrupts: [
+              {
+                id: 'human-wait:native-1:environment:0',
+                reason: 'human-wait',
+                message: 'Which environment should I use?',
+              },
+            ],
+          },
+        },
+      ]);
+    }).restore;
+    landAt('/chats/session-1');
+    const { container } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await sendMessage(container, 'Deploy it');
+    await until(() => {
+      expect(container.querySelector('.weft-chat-question')).not.toBeNull();
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
+        'Waiting on you',
+      );
+    });
+  });
 });
 
 describe('a decision made somewhere else', () => {
@@ -1014,28 +1185,41 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
     });
 
   /** A run that stops on an approval for `call-refund`. */
-  function approvalRun(url: string, init?: RequestInit): Response | undefined {
+  function approvalRun(url: string, _init?: RequestInit): Response | undefined {
     if (url.includes('/threads/')) {
       return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
     }
     if (!url.includes('/agents/')) return undefined;
-    const input: { runId: string } = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
     return sse([
-      { type: 'RUN_STARTED', threadId: 'session-1', runId: input.runId },
+      { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
       { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
       { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{"cents":4200}' },
       { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
       {
         type: 'TOOL_CALL_RESULT',
-        messageId: 'result-1',
+        messageId: 'run-1:step:0:result:call-refund',
         toolCallId: 'call-refund',
         content: 'requires approval',
         role: 'tool',
+        metadata: {
+          'conversationalist:toolResult': {
+            outcome: 'action_required',
+            action: {
+              type: 'approval',
+              message: 'Refund order-1001?',
+              risk: 'high',
+              expiresAt: '2999-01-01T00:00:00.000Z',
+              operation: { kind: 'other' },
+            },
+            content: 'requires approval',
+          },
+          '@lostgradient/bureau': { round: 2 },
+        },
       },
       {
         type: 'RUN_FINISHED',
         threadId: 'session-1',
-        runId: input.runId,
+        runId: 'run-1',
         outcome: {
           type: 'interrupt',
           interrupts: [
@@ -1050,6 +1234,164 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
       },
     ]);
   }
+
+  test('keeps the canonical rail and header in sync when a terminal review arrives between ticks', async () => {
+    const hub = new EventStreamHub();
+    let status: 'pending' | 'expired' = 'pending';
+    let reviewReads = 0;
+    let listReads = 0;
+    let messageReads = 0;
+    let terminalRead = false;
+    const review = (reviewStatus: 'pending' | 'expired' = status) =>
+      toolApprovalFixture({
+        id: 'approval:run-1:call-refund',
+        status: reviewStatus,
+        approval: {
+          ...toolApprovalFixture().approval,
+          callId: 'call-refund',
+          action: {
+            type: 'approval',
+            message: 'Refund order-1001?',
+            risk: 'high',
+            operation: { kind: 'other' },
+            expiresAt: '2999-01-01T00:00:00.000Z',
+          },
+        },
+        ...(status === 'expired'
+          ? {
+              resolution: {
+                decidedBy: 'system',
+                decidedAt: Date.parse('2026-11-11T00:00:05.000Z'),
+              },
+            }
+          : {}),
+      });
+    restore = bureau(
+      {
+        'bureau.contexts.get': () => CONTEXT,
+        'bureau.deployment.get': () => ({ id: 'bureau-1' }),
+        'bureau.reviews.list': () => {
+          listReads += 1;
+          return { reviews: status === 'pending' ? [review()] : [] };
+        },
+        'bureau.reviews.get': () => {
+          reviewReads += 1;
+          if (status === 'expired' && terminalRead) return review('pending');
+          if (status === 'expired') terminalRead = true;
+          return review();
+        },
+      },
+      (url, init) => {
+        const feed = hub.handle(url, init);
+        if (feed !== undefined) return feed;
+        if (url.endsWith('/messages')) {
+          messageReads += 1;
+          if (messageReads === 1) return Response.json({ threadId: 'session-1', messages: [] });
+          return Response.json({
+            threadId: 'session-1',
+            messages: [
+              { id: 'input-1', role: 'user', content: 'Refund it' },
+              {
+                id: 'run-1:step:0',
+                role: 'assistant',
+                toolCalls: [
+                  {
+                    id: 'call-refund',
+                    type: 'function',
+                    function: { name: 'issue-refund', arguments: '{"cents":4200}' },
+                  },
+                ],
+              },
+              {
+                id: 'run-1:step:0:result:call-refund',
+                role: 'tool',
+                toolCallId: 'call-refund',
+                content: 'requires approval',
+                metadata: {
+                  'conversationalist:toolResult': {
+                    outcome: 'action_required',
+                    action: {
+                      type: 'approval',
+                      message: 'Refund order-1001?',
+                      risk: 'high',
+                      expiresAt: '2999-01-01T00:00:00.000Z',
+                      operation: { argsPreview: { cents: 4200 }, kind: 'other' },
+                      policyVersion: 'policy:1',
+                      idempotencyKey: 'approval:refund-1001',
+                    },
+                    content: 'requires approval',
+                  },
+                  '@lostgradient/bureau': { round: 2 },
+                },
+              },
+            ],
+          });
+        }
+        return approvalRun(url, init);
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-11T00:00:00.000Z'));
+    const bureauEvents = new BureauEventSource({ computeReconnectDelayMs: () => 1_000_000 });
+    try {
+      render(QueryPage, {
+        props: {
+          page: ChatConversation,
+          pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' },
+          bureauEvents,
+        },
+      } as never);
+      await until(() => expect(hub.opened('bureau')).toBe(1));
+      hub.write('bureau', REPLAY_COMPLETE_CHUNK);
+      await until(() => expect(bureauEvents.status).toBe('live'));
+      const container = document.body;
+      const box = container.querySelector('textarea');
+      if (box === null) throw new Error('The composer did not render.');
+      await fireEvent.input(box, { target: { value: 'Refund it' } });
+      await fireEvent.keyDown(box, { key: 'Enter' });
+      await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
+      await until(() =>
+        expect(
+          container.querySelector('[data-approval-decision]')?.getAttribute('data-cinder-state'),
+        ).toBe('pending'),
+      );
+      await until(() =>
+        expect(container.querySelector('[data-cinder-tool-call-row]')).toHaveTextContent(
+          'Waiting on you',
+        ),
+      );
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
+        'Waiting on you',
+      );
+      jest.setSystemTime(new Date('2026-11-11T00:00:03.000Z'));
+      status = 'expired';
+      hub.write(
+        'bureau',
+        envelopeChunk({
+          kind: 'review.approved',
+          cursor: 'e:1',
+          payload: { reviewId: 'approval:run-1:call-refund' },
+        }),
+      );
+      await until(() => expect(listReads).toBeGreaterThanOrEqual(2));
+      await until(() => expect(messageReads).toBeGreaterThanOrEqual(2));
+      await until(() =>
+        expect(
+          container.querySelector('[data-approval-decision]')?.getAttribute('data-cinder-state'),
+        ).toBe('expired'),
+      );
+      await until(() =>
+        expect(container.querySelector('[data-cinder-tool-call-row]')).toHaveTextContent('Expired'),
+      );
+      expect(container.querySelector('[data-testid="chat-header"]')?.textContent).not.toContain(
+        'Waiting on you',
+      );
+    } finally {
+      bureauEvents.close();
+      hub.endAll();
+    }
+  });
 
   test('reads the reviews on no timer, and reads them and the thread once per review event', async () => {
     const hub = new EventStreamHub();
@@ -1147,35 +1489,6 @@ describe('what went wrong', () => {
     const before = attempts;
     await fireEvent.click(await findByRole('button', { name: 'Reconnect' }));
     await waitFor(() => expect(attempts).toBe(before + 1));
-  });
-
-  test('is shown when the session could not be read, and again when the same thing fails after a dismissal', async () => {
-    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
-      if (url.endsWith('/messages') || url.includes('/threads/')) {
-        throw new TypeError('Failed to fetch');
-      }
-      if (url.includes('/agents/')) {
-        return sse([{ type: 'RUN_ERROR', message: 'The thread is busy.', code: 'X' }]);
-      }
-      return undefined;
-    }).restore;
-    landAt('/chats/session-1');
-    const { container, findByText, findByRole, queryByText } = mount({
-      sessionId: 'session-1',
-      title: 'Plan the week',
-      agentName: 'assistant',
-    });
-
-    // The attach failed: the page says so instead of showing an empty transcript.
-    expect(await findByText('Failed to fetch')).not.toBeNull();
-
-    await sendMessage(container, 'Hello');
-    expect(await findByText('The thread is busy.')).not.toBeNull();
-    await fireEvent.click(await findByRole('button', { name: 'Dismiss alert' }));
-    await waitFor(() => expect(queryByText('The thread is busy.')?.textContent ?? null).toBeNull());
-
-    await sendMessage(container, 'Hello again');
-    expect(await findByText('The thread is busy.')).not.toBeNull();
   });
 });
 

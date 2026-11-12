@@ -35,6 +35,12 @@ async function send(): Promise<void> {
 }
 
 describe('ChatQuestion draws each kind from its schema and submits a valid answer', () => {
+  test('renders host-provided question labels', async () => {
+    await ask({ type: 'boolean' }, { labels: { send: 'Senden', yes: 'Ja', no: 'Nein' } });
+    expect(screen.getByText('Ja')).toBeTruthy();
+    expect(screen.getByText('Nein')).toBeTruthy();
+  });
+
   test('pick one: a button per choice, labelled, and a click answers', async () => {
     const { submitted } = await ask({
       type: 'string',

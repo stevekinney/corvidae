@@ -110,7 +110,7 @@ Row — a small warning glyph, the title and description read as one sentence, a
 | `icon` | `(opaque)` | no | — | Replaces the glyph in the disc. The default is a warning triangle for the `'danger'` tone and a magnifying glass for `'neutral'`. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRetry` | `(opaque)` | no | — | Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action. Not expressible in JSON Schema; see the component types for the signature. |
 | `retryIcon` | `(opaque)` | no | — | Replaces the refresh glyph on the primary button. Use it when the primary action is not a retry, such as a "New chat" button with a pencil on a not-found page. Decorative. Not expressible in JSON Schema; see the component types for the signature. |
-| `secondaryAction` | `(opaque)` | no | — | A second action rendered after the retry button, such as an "Open Health" link or a "Back to chats" button. Give it the secondary or ghost button variant so the retry button stays the only primary on the page. Not expressible in JSON Schema; see the component types for the signature. |
+| `secondaryAction` | `(opaque)` | no | — | A second action rendered alongside the retry button, such as an "Open Health" link or a "Back to chats" button. Give it the secondary or ghost button variant so the retry button stays the only primary on the page. When both actions are present, the secondary is first in DOM and keyboard order, visually left of the primary. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

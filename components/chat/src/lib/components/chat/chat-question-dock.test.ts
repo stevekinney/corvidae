@@ -179,17 +179,17 @@ describe('a docked question', () => {
     expect(dock.querySelector('.chat-question-dock-question')?.textContent?.trim()).toBe(
       'Which environment?',
     );
-    // The composer is out of sight but kept, and the row holds only the question.
+    // The composer is out of sight but kept, and the pending question is rendered only in the dock.
     expect(container.querySelector('.chat-input-area')!.hasAttribute('data-question-docked')).toBe(
       true,
     );
     expect(composerShell(container)).not.toBeNull();
-    expect(container.querySelector('[data-cinder-tool-input] .chat-question-choices')).toBeNull();
-    expect(container.querySelector('.chat-tool-input-heading')).toBeNull();
-    expect(container.querySelector('.chat-tool-input-waiting')).toBeNull();
-    expect(container.querySelector('[data-cinder-tool-input]')?.getAttribute('aria-label')).toBe(
-      'Which environment?',
-    );
+    expect(
+      Boolean(container.querySelector('[data-cinder-tool-input] .chat-question-choices')),
+    ).toBe(false);
+    expect(Boolean(container.querySelector('.chat-tool-input-heading'))).toBe(false);
+    expect(Boolean(container.querySelector('.chat-tool-input-waiting'))).toBe(false);
+    expect(container.querySelector('[data-cinder-tool-input]')).toBeNull();
   });
 
   test('draws a radio card per choice with its description and the key that chooses it', async () => {
@@ -253,11 +253,12 @@ describe('a docked question', () => {
     const buttons = [
       ...container.querySelectorAll<HTMLButtonElement>('.chat-question-dock-actions button'),
     ];
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      'Reply in chat instead',
-      'Answer',
-    ]);
+    expect(
+      buttons.map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim()),
+    ).toEqual(['Reply in chat instead', 'Answer']);
     expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(buttons[0]!.getAttribute('data-cinder-icon-only')).toBe('');
+    expect(buttons[0]!.closest('.cinder-tooltip-wrapper')).not.toBeNull();
     expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('primary');
   });
 
@@ -342,8 +343,10 @@ describe('a docked question', () => {
     // Keys typed into the field are words, not choices.
     await fireEvent.keyDown(field, { key: '1' });
     expect(radiosOf(container)[2]!.getAttribute('aria-checked')).toBe('true');
-    await fireEvent.input(field, { target: { value: 'canary-2' } });
-    expect(answer.disabled).toBe(false);
+    field.value = 'canary-2';
+    await fireEvent.input(field);
+    await tick();
+    expect(buttonNamed(container, 'Answer')?.disabled).toBe(false);
 
     sendDock(container);
     await settle();
@@ -384,6 +387,23 @@ describe('a docked question', () => {
     await settle();
 
     expect(answers).toEqual([false]);
+  });
+
+  test('a yes or no question uses host label overrides', async () => {
+    const { container } = render(Chat, {
+      id: 'dock-boolean-labels',
+      conversation: single('dock-boolean-labels', { type: 'boolean' }),
+      questionPlacement: 'docked',
+      onInputSubmit: () => undefined,
+      questionLabels: { yes: 'Approve it', no: 'Reject it' },
+    });
+    await settle();
+
+    expect(
+      radiosOf(container).map(
+        (radio) => radio.querySelector('.chat-question-dock-choice-label')?.textContent,
+      ),
+    ).toEqual(['Approve it', 'Reject it']);
   });
 
   test('Reply in chat instead gives the composer back and returns the question to its row', async () => {
@@ -486,12 +506,11 @@ describe('several docked questions', () => {
     expect(container.querySelector('[data-chat-question-progress]')?.textContent?.trim()).toBe(
       'Question 1 of 2',
     );
-    // Only the question the dock asks says to answer below; the next one says it comes after (C#8).
-    expect(
-      [...container.querySelectorAll('.chat-tool-input-waiting')].map((line) =>
-        line.textContent?.trim(),
-      ),
-    ).toEqual(['Waiting for your answer below', 'Asked below after the current question']);
+    // Pending questions belong once in the dock; the transcript has no duplicate prompt or
+    // "asked below" copy for the queued item.
+    expect(container.querySelectorAll('.chat-tool-input-heading')).toHaveLength(0);
+    expect(container.querySelectorAll('.chat-tool-input-waiting')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-cinder-tool-input]')).toHaveLength(0);
 
     await fireEvent.click(radiosOf(container)[0]!);
     sendDock(container);
@@ -504,6 +523,10 @@ describe('several docked questions', () => {
     expect(container.querySelector('[data-chat-question-progress]')?.textContent?.trim()).toBe(
       'Question 2 of 2',
     );
+    const summary = container.querySelector('.chat-tool-call-summary')?.textContent ?? '';
+    expect(summary).toContain('1 answered');
+    expect(summary).not.toContain('2 waiting for input');
+    expect(container.querySelectorAll('.chat-tool-input-waiting')).toHaveLength(0);
 
     await fireEvent.click(radiosOf(container)[1]!);
     sendDock(container);

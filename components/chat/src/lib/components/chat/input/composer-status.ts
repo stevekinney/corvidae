@@ -86,7 +86,7 @@ export type ChatComposerStatus =
   | {
       kind: 'read-only';
       /**
-       * What the `Read only` tooltip says, such as `Dana Reyes removed your write access on Nov 3`.
+       * What the `Read only` tooltip says, such as `Support Ops can grant you write access`.
        * Without it the words carry no tooltip.
        */
       tooltip?: string | undefined;

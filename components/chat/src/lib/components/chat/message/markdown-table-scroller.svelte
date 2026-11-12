@@ -162,6 +162,7 @@
 
   .message-markdown-table-scroller :global(:is(th, td)) {
     white-space: nowrap;
+    border: 0;
   }
 
   /* The header row reads as one band across every column. */

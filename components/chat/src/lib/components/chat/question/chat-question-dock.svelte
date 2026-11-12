@@ -28,7 +28,15 @@
    * right) stays off, with its reason in view, until there is something to send. The keys work only
    * while focus is inside the dock and never inside a field, so they cannot take over typing.
    */
-  import { Button, ChoiceGrid, ChoiceGridItem, CircleAlert, Input } from '@lostgradient/cinder';
+  import {
+    Button,
+    ChoiceGrid,
+    ChoiceGridItem,
+    CircleAlert,
+    Input,
+    MessageSquare,
+    Tooltip,
+  } from '@lostgradient/cinder';
   import { tick } from 'svelte';
 
   import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
@@ -52,8 +60,8 @@
   const choices = $derived<readonly QuestionChoice[]>(
     kind === 'boolean'
       ? [
-          { value: true, label: 'Yes' },
-          { value: false, label: 'No' },
+          { value: true, label: labels.yes },
+          { value: false, label: labels.no },
         ]
       : choicesOf(question.schema),
   );
@@ -235,9 +243,20 @@
     </fieldset>
   </div>
   <div class="chat-question-dock-actions">
-    <Button type="button" variant="secondary" disabled={question.busy} onclick={onReply}>
-      {labels.replyInChat}
-    </Button>
+    <Tooltip text={labels.replyInChat} placement="top" describe={false}>
+      <Button
+        type="button"
+        class="chat-question-dock-reply"
+        size="sm"
+        variant="secondary"
+        iconOnly
+        label={labels.replyInChat}
+        disabled={question.busy}
+        onclick={onReply}
+      >
+        {#snippet leadingIcon()}<MessageSquare aria-hidden="true" />{/snippet}
+      </Button>
+    </Tooltip>
     <Button
       type="submit"
       variant="primary"
@@ -330,6 +349,17 @@
     grid-template-rows: auto minmax(0, 1fr) auto;
     min-block-size: 0;
     gap: var(--cinder-space-1);
+  }
+
+  .chat-question-dock-options:not(:has(.chat-question-dock-options-scroll[data-cinder-overflows])) {
+    align-content: start;
+    grid-template-rows: auto auto auto;
+  }
+
+  /* Cues are only layout content while the option viewport can actually scroll. */
+  .chat-question-dock-options:not(:has(.chat-question-dock-options-scroll[data-cinder-overflows]))
+    > .chat-question-dock-scroll-cue {
+    display: none;
   }
 
   .chat-question-dock-options-scroll {
@@ -458,13 +488,23 @@
 
   @media (max-width: 479.98px), (any-pointer: coarse) {
     .chat-question-dock {
-      block-size: min(26.5rem, calc(100dvh - 2 * var(--cinder-space-3)));
+      block-size: auto;
       max-block-size: min(26.5rem, calc(100dvh - 2 * var(--cinder-space-3)));
+      gap: var(--cinder-space-2);
+    }
+
+    .chat-question-dock-completion {
+      padding-block-start: 0;
     }
 
     .chat-question-dock-actions :global(.cinder-button) {
       flex: 1 1 auto;
       min-block-size: var(--cinder-touch-target-min);
+    }
+
+    .chat-question-dock-actions :global(.chat-question-dock-reply) {
+      flex: 0 0 var(--cinder-touch-target-min);
+      min-inline-size: var(--cinder-touch-target-min);
     }
   }
 </style>

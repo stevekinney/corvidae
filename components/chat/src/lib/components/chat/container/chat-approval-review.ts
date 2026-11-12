@@ -3,10 +3,41 @@ import type { Message } from '../conversation-model.ts';
 
 /** The words the composer drawer says while an approval waits on the person. */
 export const APPROVAL_DRAWER_TEXT =
-  'Waiting for your approval. Anything you send now queues until you decide.';
+  'Waiting for your approval. Anything you send now queues until this run finishes.';
 
 /** The drawer's action: it takes the person to the approval that waits. */
 export const APPROVAL_DRAWER_ACTION = 'Review approval';
+/** Accessible name for the compact group that points to the waiting approval. */
+export const APPROVAL_DRAWER_LABEL = 'Approval waiting';
+
+/** Returns whether the whole approval context fits, allowing space reclaimable by the drawer. */
+export function approvalCardFitsViewport(
+  card: Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'>,
+  reclaimableBlockSize = 0,
+): boolean {
+  return (
+    card.top >= viewport.top - 1 &&
+    card.bottom <= viewport.bottom + reclaimableBlockSize + 1 &&
+    card.left >= viewport.left - 1 &&
+    card.right <= viewport.right + 1
+  );
+}
+
+/** Returns the pending approval card rendered by the message that is waiting. */
+export function pendingApprovalCard(
+  root: ParentNode | null | undefined,
+  messageId: string,
+): HTMLElement | null {
+  const message = root?.querySelector<HTMLElement>(
+    `article[data-message-id="${CSS.escape(messageId)}"]`,
+  );
+  return (
+    message?.querySelector<HTMLElement>(
+      '.cinder-approval-card[data-cinder-state="pending"]',
+    ) ?? null
+  );
+}
 
 /** The time an approval's `expiresAt` names, in epoch milliseconds, or `undefined` for none. */
 function approvalDeadline(expiresAt: string | undefined): number | undefined {

@@ -231,6 +231,7 @@ describe('Callout neutral variant and action', () => {
     expect(root.querySelector('.cinder-callout__action button')?.textContent).toBe('Retry');
     const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
     expect(css).toContain('.cinder-callout--inline-action:has(> .cinder-callout__icon)');
+    expect(css).toContain('grid-template-columns: minmax(0, 1fr) max-content;');
   });
 });
 

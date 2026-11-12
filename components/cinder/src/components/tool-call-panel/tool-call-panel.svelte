@@ -123,6 +123,7 @@
     approved: labels?.status?.approved ?? 'Approved',
     running: labels?.status?.running ?? 'Running',
     waiting: labels?.status?.waiting ?? 'Waiting on you',
+    expired: labels?.status?.expired ?? 'Approval expired',
     denied: labels?.status?.denied ?? 'Denied',
     failed: labels?.status?.failed ?? 'Failed',
     interrupted: labels?.status?.interrupted ?? 'Interrupted',

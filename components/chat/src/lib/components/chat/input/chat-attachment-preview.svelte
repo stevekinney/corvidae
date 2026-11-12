@@ -1,6 +1,7 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
   import type { ChatAttachment } from './chat-attachment.ts';
+  import type { ChatLabels } from '../chat-labels.ts';
 
   export interface ChatAttachmentPreviewProps {
     attachment: ChatAttachment;
@@ -11,13 +12,15 @@
     errorId?: string | undefined;
     /** A control drawn at the end of the chip, inside its border, such as Remove. */
     action?: Snippet | undefined;
+    labels?: ChatLabels;
   }
 </script>
 
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
+  import { DEFAULT_CHAT_LABELS } from '../chat-labels.ts';
   import { formatBytes } from '../../../utilities/format-bytes.ts';
-  import { fileTypeBadge, splitFileName, uploadPercent } from './attachment-tile.ts';
+  import { fileTypeBadge, middleEllipsisFileName, uploadPercent } from './attachment-tile.ts';
 
   let {
     attachment,
@@ -25,13 +28,42 @@
     error,
     errorId,
     action,
+    labels = DEFAULT_CHAT_LABELS,
   }: ChatAttachmentPreviewProps = $props();
 
   const badge = $derived(fileTypeBadge(attachment.file.name, attachment.kind));
-  const name = $derived(splitFileName(attachment.file.name));
+  let nameElement = $state<HTMLElement | null>(null);
+  let displayName = $state('');
   const percent = $derived(
     attachment.status === 'uploading' ? uploadPercent(attachment.progress) : undefined,
   );
+
+  $effect(() => {
+    const element = nameElement;
+    const fullName = attachment.file.name;
+    if (element === null || typeof ResizeObserver === 'undefined') {
+      displayName = fullName;
+      return;
+    }
+    const update = (): void => {
+      const context = document.createElement('canvas').getContext('2d');
+      if (context === null) {
+        displayName = fullName;
+        return;
+      }
+      const style = getComputedStyle(element);
+      context.font = `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      displayName = middleEllipsisFileName(
+        fullName,
+        element.clientWidth,
+        (value) => context.measureText(value).width,
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  });
 </script>
 
 <!--
@@ -47,22 +79,27 @@
   data-error={attachment.status === 'error' || undefined}
   data-pending={attachment.status === 'pending' || attachment.status === 'uploading' || undefined}
 >
-  <span class="chat-attachment-preview-badge" aria-hidden="true">{badge}</span>
-  <span class="chat-attachment-preview-name" title={attachment.file.name} dir="auto"
-    ><span class="chat-attachment-preview-stem">{name.stem}</span><span
-      class="chat-attachment-preview-extension">{name.extension}</span
-    ></span
-  >
-  <span class="chat-attachment-preview-size">{formatBytes(attachment.file.size)}</span>
-  {#if percent !== undefined}
-    <span class="chat-attachment-preview-state">{percent}%</span>
-  {/if}
-
+  <span class="chat-attachment-preview-main">
+    <span class="chat-attachment-preview-badge" aria-hidden="true">{badge}</span>
+    <span
+      bind:this={nameElement}
+      class="chat-attachment-preview-name"
+      title={attachment.file.name}
+      dir="auto">{displayName}</span
+    >
+    <span class="chat-attachment-preview-size">{formatBytes(attachment.file.size)}</span>
+    {#if percent !== undefined}
+      <span class="chat-attachment-preview-state">{percent}%</span>
+    {/if}
+    {#if action}
+      <span class="chat-attachment-preview-actions">{@render action()}</span>
+    {/if}
+  </span>
   {#if percent !== undefined}
     <span
       class="chat-attachment-preview-loading"
       role="progressbar"
-      aria-label="Uploading file"
+      aria-label={labels.uploadingFile}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percent}
@@ -73,7 +110,7 @@
     <span
       class="chat-attachment-preview-loading"
       role="status"
-      aria-label={attachment.status === 'uploading' ? 'Uploading file' : 'Reading file'}
+      aria-label={attachment.status === 'uploading' ? labels.uploadingFile : labels.readingFile}
     >
       <span class="chat-attachment-preview-loading-bar"></span>
     </span>
@@ -81,31 +118,37 @@
 
   {#if attachment.status === 'error'}
     <span class="chat-attachment-preview-error" data-attachment-error={errorId} dir="auto">
-      {error ?? 'Upload failed. Try again, or remove it.'}
+      {error ?? labels.uploadFailed}
     </span>
-  {/if}
-
-  {#if action}
-    {@render action()}
   {/if}
 </span>
 
 <style>
   .chat-attachment-preview {
     position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5, 0.125rem);
     min-inline-size: 0;
+    inline-size: 100%;
     max-inline-size: 100%;
-    padding-block: var(--cinder-space-1);
-    padding-inline: var(--cinder-space-1-5);
-    overflow: hidden;
+    box-sizing: border-box;
+    padding-block: var(--cinder-space-0-5, 0.125rem);
+    padding-inline: var(--cinder-space-1);
+    overflow: visible;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-raised);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     line-height: var(--cinder-leading-normal);
+  }
+
+  .chat-attachment-preview-main {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-0-5, 0.125rem);
+    min-inline-size: 0;
+    inline-size: 100%;
   }
 
   /* The type badge: the extension in capitals, in a quiet box. */
@@ -122,22 +165,13 @@
 
   /* The name truncates in the middle: the stem ellipsizes and the extension never shrinks. */
   .chat-attachment-preview-name {
-    display: inline-flex;
+    display: block;
+    flex: 1 1 0;
     min-inline-size: 0;
     overflow: hidden;
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-medium);
     white-space: nowrap;
-  }
-
-  .chat-attachment-preview-stem {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .chat-attachment-preview-extension {
-    flex: none;
   }
 
   .chat-attachment-preview-state {
@@ -153,12 +187,22 @@
     white-space: nowrap;
   }
 
+  .chat-attachment-preview-actions {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-0-5, 0.125rem);
+    min-inline-size: max-content;
+  }
+
   .chat-attachment-preview-error {
-    flex: 1 1 100%;
+    flex: none;
     min-inline-size: 0;
     color: var(--cinder-status-danger-text);
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   /* A failed file keeps its chip; the colour says which one the reason beside it is about. */

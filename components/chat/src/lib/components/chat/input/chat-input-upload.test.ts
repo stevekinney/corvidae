@@ -141,8 +141,14 @@ describe('an attachment with an upload hook', () => {
     expect(stateOf(target)).toEqual(['error']);
     const send = target.querySelector<HTMLButtonElement>('.chat-input-send')!;
     expect(send.disabled).toBe(true);
+    const preview = target.querySelector<HTMLElement>('.chat-attachment-preview')!;
+    const metadata = preview.querySelector<HTMLElement>('.chat-attachment-preview-main')!;
+    expect(metadata.querySelector('.chat-attachment-preview-name')).not.toBeNull();
+    expect(metadata.querySelector('.chat-input-attachment-remove')).not.toBeNull();
+    expect(preview.querySelector('.chat-attachment-preview-error')).not.toBeNull();
+    expect(preview.querySelector('.chat-attachment-preview-error')?.parentElement).toBe(preview);
     const retry = target.querySelector<HTMLButtonElement>('button[aria-label="Retry photo.png"]')!;
-    expect(retry.textContent?.trim()).toBe('');
+    expect(retry.textContent?.trim()).toBe('Retry');
     expect(retry.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(retry.nextElementSibling?.getAttribute('aria-label')).toBe('Remove photo.png');
 
@@ -392,7 +398,7 @@ describe('attachments already in the composer when its limits change', () => {
     instance.setLimits({ maxFileSize: 100 });
     await tick();
 
-    expect(stateOf(target)).toEqual(['ready', 'error']);
+    expect(stateOf(target)).toEqual(['error', 'ready']);
   });
 
   test('an attachment that was already an error keeps its own words', async () => {

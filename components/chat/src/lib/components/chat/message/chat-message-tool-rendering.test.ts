@@ -99,7 +99,7 @@ describe('ChatMessage — tool-call rendering', () => {
           idempotencyKey: 'approval-1',
         },
       },
-    };
+    } as unknown as ToolCallPair;
     const { container } = render(ChatMessage, {
       props: {
         message: { ...message, content: '' },
@@ -111,6 +111,38 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(container.querySelector('[data-cinder-tool-approval]')).not.toBeNull();
     expect(container.querySelector('.chat-message-line')).not.toBeNull();
     expect(container.querySelectorAll('time')).toHaveLength(0);
+  });
+
+  test('forwards an expired approval retry to the host with its tool call id', async () => {
+    const message = toolCallMessage();
+    const pair: ToolCallPair = {
+      call: message.toolCall!,
+      result: {
+        callId: message.toolCall!.id,
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: {} },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'approval-1',
+          expiresAt: '2020-01-01T00:00:00.000Z',
+        },
+      },
+    };
+    const calls: string[] = [];
+    const { getByRole } = render(ChatMessage, {
+      props: {
+        message: { ...message, content: '' },
+        toolCallPairs: [pair],
+        approvalStates: new Map([['call-1', 'expired' as const]]),
+        onApprovalRequestAgain: (toolCallId: string) => calls.push(toolCallId),
+      },
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Ask again' }));
+    expect(calls).toEqual(['call-1']);
   });
 
   test('threads owning stream activity through message tool rendering', () => {
@@ -289,6 +321,54 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(inactive.container.querySelector('[data-cinder-tool-activity-active]')).toBeNull();
   });
 
+  test('renders host tool labels for counts, statuses, problems, announcements and payloads', async () => {
+    const failed: ToolCallPair = {
+      call: { id: 'failed-labels', name: 'charge_card', arguments: { amount: 20 } },
+      result: {
+        callId: 'failed-labels',
+        outcome: 'error',
+        error: { message: 'Card declined' },
+        content: 'declined',
+      },
+    } as unknown as ToolCallPair;
+    const succeeded: ToolCallPair = {
+      call: { id: 'success-labels', name: 'read_receipt', arguments: { format: 'json' } },
+      result: { callId: 'success-labels', outcome: 'success', content: { ok: true } },
+    };
+    const { container } = render(ToolCallTimeline, {
+      props: {
+        pairs: [failed, succeeded],
+        labels: {
+          calls: (count) => `CALLS ${count}`,
+          steps: (count) => `STEPS ${count}`,
+          stepsDone: (done, total) => `DONE ${done}/${total}`,
+          input: 'IN',
+          output: 'OUT',
+          error: 'ERR',
+          toolStatus: (status) => `STATUS ${status}`,
+          toolProblem: (count, status) => `PROBLEM ${count} ${status}`,
+          toolAnnouncement: (name, status) => `ANN ${name} ${status}`,
+        },
+      },
+    });
+
+    expect(container.querySelector('.chat-tool-call-summary-count')?.textContent).toBe('DONE 1/2');
+    expect(container.querySelector('.chat-tool-call-summary-segment')?.textContent).toBe(
+      'PROBLEM 1 failed',
+    );
+    expect(container.querySelector('.chat-tool-call-list')?.getAttribute('aria-label')).toBe(
+      'CALLS 2',
+    );
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toContain(
+      'ANN charge_card failed',
+    );
+    expect(container.textContent).toContain('STATUS failed');
+    expect(container.textContent).toContain('Card declined');
+    await openCall(container, 1);
+    expect(container.textContent).toContain('IN');
+    expect(container.textContent).toContain('OUT');
+  });
+
   test('result payloads keep ordinary strings as text and structured JSON as code', async () => {
     const textResult = render(ToolCallTimeline, {
       props: {
@@ -418,9 +498,12 @@ describe('ChatMessage — tool-call rendering', () => {
     const view = render(ToolCallTimeline, {
       props: { pairs: [running], messageId: 'running', describeToolCall },
     });
-    expect(view.container.querySelector('h3')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Using Lookup order…',
-    );
+    const runningHeading = view.container
+      .querySelector('h3')
+      ?.textContent?.replace(/\s+/g, ' ')
+      .trim();
+    expect(runningHeading).toContain('Using Lookup order…');
+    expect(runningHeading).toContain('Step 1 of 1');
     cleanup();
 
     const answered = render(ToolCallTimeline, {
@@ -843,9 +926,7 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
       toggle.click();
       await tick();
-      expect(container.querySelector('.chat-tool-call-row-summary')?.textContent).toContain(
-        'Denied',
-      );
+      expect(container.textContent).toContain('Denied');
       expect(container.querySelector('.chat-tool-call-details')).toBeNull();
     });
 
@@ -881,7 +962,7 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(summaryOf(container)).not.toContain('waiting');
     });
 
-    test('joins the header phrases with a comma each, so they read as one sentence (C#15)', async () => {
+    test('separates the header count and status facts without punctuation (C#15)', async () => {
       const failed: ToolCallPair = {
         call: { id: 'refund-2', name: 'issue-refund', arguments: {} },
         result: { callId: 'refund-2', outcome: 'error', content: null },
@@ -897,7 +978,7 @@ describe('ChatMessage — tool-call rendering', () => {
       const phrases = [
         ...container.querySelectorAll('.chat-tool-call-summary-count, [data-problem]'),
       ].map((element) => element.textContent);
-      expect(phrases).toEqual(['0 of 2 steps,', '1 failed,', '1 denied']);
+      expect(phrases).toEqual(['0 of 2 steps', '1 failed', '1 denied']);
     });
 
     test('counts only the calls still waiting in a group with an expired one', async () => {
@@ -1060,7 +1141,7 @@ describe('ChatMessage — tool-call rendering', () => {
         /\.chat-tool-call-summary-tools\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
       );
       expect(source).toMatch(
-        /\.chat-tool-call-summary-count,\s*\.chat-tool-call-summary-segment,\s*\.chat-tool-call-summary-duration\s*\{\s*white-space:\s*nowrap;/,
+        /\.chat-tool-call-summary-count,\s*\.chat-tool-call-summary-description,\s*\.chat-tool-call-summary-segment,\s*\.chat-tool-call-summary-duration\s*\{\s*white-space:\s*nowrap;/,
       );
       // The tool names are cut with an ellipsis, which needs one line: they never wrap.
       expect(source).toMatch(
@@ -1105,7 +1186,7 @@ describe('ChatMessage — tool-call rendering', () => {
       ).toBe('20');
       // The group still counts every step, and its navigation row still counts every call.
       expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        '20 steps lookup_order ×20 6.1s',
+        '20 steps Compared recent orders… lookup_order ×20 6.1s',
       );
       expect(
         container

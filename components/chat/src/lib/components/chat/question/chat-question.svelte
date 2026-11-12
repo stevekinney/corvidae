@@ -1,6 +1,8 @@
 <script lang="ts" module>
   import type { AnswerSendResult } from './answer-hold.svelte.ts';
   import type { ChatQuestionIssue, QuestionAnswerRecord } from './question-answer.ts';
+  import type { ChatLabels } from '../chat-labels.ts';
+  import { resolveChatLabels } from '../chat-labels.ts';
 
   /**
    * The words of a one-click answer while it is held (see `undoMilliseconds`) and after it is sent.
@@ -73,6 +75,7 @@
     externalSubmit?: boolean | undefined;
     /** Called when the person chooses Change on an answered question. */
     onChange?: (() => void) | undefined;
+    labels?: Partial<ChatLabels> | undefined;
   };
 </script>
 
@@ -128,15 +131,18 @@
     onHoldChange,
     holdCopy,
     externalSubmit = false,
+    labels: labelOverrides,
   }: ChatQuestionProps = $props();
+
+  const labels = $derived(resolveChatLabels(labelOverrides));
 
   const kind = $derived(classifyQuestion(schema));
   const choices = $derived(choicesOf(schema));
   const selectableChoices = $derived(
     kind === 'boolean'
       ? [
-          { value: true, label: 'Yes' },
-          { value: false, label: 'No' },
+          { value: true, label: labels.yes },
+          { value: false, label: labels.no },
         ]
       : choices,
   );
@@ -399,11 +405,11 @@
   {#if answer !== undefined}
     <div class="chat-question-receipt">
       <p class="chat-question-answer" role="status">
-        <span class="chat-question-answer-label">You answered</span>
+        <span class="chat-question-answer-label">{labels.youAnswered}</span>
         <span class="chat-question-answer-value" data-question-answer>{answer.summary}</span>
       </p>
       {#if onChange !== undefined}
-        <Button type="button" variant="ghost" size="sm" onclick={onChange}>Change</Button>
+        <Button type="button" variant="ghost" size="sm" onclick={onChange}>{labels.change}</Button>
       {/if}
     </div>
   {:else}
@@ -443,9 +449,9 @@
         >
           <Input
             id={`${id}-other`}
-            label="Your own answer"
+            label={labels.yourOwnAnswer}
             labelVisible={false}
-            placeholder="Choose an answer above, or type your own…"
+            placeholder={labels.chooseAnswerPlaceholder}
             bind:value={text}
             {...maxLengthProp}
             {...errorProp}
@@ -457,7 +463,7 @@
                 type="submit"
                 variant="primary"
                 size="sm"
-                disabled={busy || holding || text === ''}>Answer</Button
+                disabled={busy || holding || text === ''}>{labels.answer}</Button
               >
             {/snippet}
           </Input>
@@ -485,7 +491,9 @@
             />
           {/each}
         </CheckboxGroup>
-        <Button type="submit" variant="primary" disabled={busy || !canSendPicked}>Send</Button>
+        <Button type="submit" variant="primary" disabled={busy || !canSendPicked}
+          >{labels.send}</Button
+        >
       </form>
     {:else if kind === 'boolean'}
       <ChoiceGrid
@@ -496,7 +504,7 @@
         ariaLabel={title}
         bind:value={() => choiceSelection, selectChoice}
       >
-        {#each [{ value: true, label: 'Yes' }, { value: false, label: 'No' }] as option, index (option.label)}
+        {#each [{ value: true, label: labels.yes }, { value: false, label: labels.no }] as option, index (option.label)}
           <ChoiceGridItem value={String(index)} disabled={busy || holding}>
             <span class="chat-question-choice-label" dir="auto">{option.label}</span>
           </ChoiceGridItem>
@@ -508,7 +516,7 @@
       {/if}
     {:else if kind === 'text'}
       {#if answerInComposer}
-        <p class="chat-question-hint">Answer below</p>
+        <p class="chat-question-hint">{labels.answerBelow}</p>
         {#if errorText !== ''}
           <p class="chat-question-error" id={errorId} role="alert">{errorText}</p>
         {/if}
@@ -528,7 +536,9 @@
             {...errorProp}
             disabled={busy}
           />
-          <Button type="submit" variant="primary" disabled={busy || text === ''}>Send</Button>
+          <Button type="submit" variant="primary" disabled={busy || text === ''}
+            >{labels.send}</Button
+          >
         </form>
       {/if}
     {:else if kind === 'number'}
@@ -550,7 +560,8 @@
           {...errorProp}
           disabled={busy}
         />
-        <Button type="submit" variant="primary" disabled={busy || numberDraft === null}>Send</Button
+        <Button type="submit" variant="primary" disabled={busy || numberDraft === null}
+          >{labels.send}</Button
         >
       </form>
     {:else if kind === 'date' || kind === 'time' || kind === 'date-time'}
@@ -581,7 +592,8 @@
         <Button
           type="submit"
           variant="primary"
-          disabled={busy || text === '' || (kind === 'date-time' && timeText === '')}>Send</Button
+          disabled={busy || text === '' || (kind === 'date-time' && timeText === '')}
+          >{labels.send}</Button
         >
       </form>
     {:else if kind === 'rating'}
@@ -623,7 +635,8 @@
             <p class="chat-question-error" id={errorId} role="alert">{errorText}</p>
           {/if}
         {/if}
-        <Button type="submit" variant="primary" disabled={busy || rating === undefined}>Send</Button
+        <Button type="submit" variant="primary" disabled={busy || rating === undefined}
+          >{labels.send}</Button
         >
       </form>
     {:else if kind === 'secret'}
@@ -643,7 +656,8 @@
           {...errorProp}
           disabled={busy}
         />
-        <Button type="submit" variant="primary" disabled={busy || text === ''}>Send</Button>
+        <Button type="submit" variant="primary" disabled={busy || text === ''}>{labels.send}</Button
+        >
       </form>
     {:else if kind === 'file'}
       {#if uploadFile === undefined}
@@ -679,7 +693,7 @@
       />
     {/if}
     {#if failed || holdFailed}
-      <p class="chat-question-error" role="alert">The answer could not be sent. Try again.</p>
+      <p class="chat-question-error" role="alert">{labels.answerFailed}</p>
     {/if}
   {/if}
   <div class="cinder-sr-only" aria-live="polite" aria-atomic="true">{announcer.message}</div>

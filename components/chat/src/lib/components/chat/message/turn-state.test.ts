@@ -269,8 +269,21 @@ describe('turn labels', () => {
     expect(DEFAULT_TURN_LABELS.stepsDone(2, 3)).toBe('2 of 3 steps');
     expect(DEFAULT_TURN_LABELS.retryStep).toBe('Retry this step');
     expect(DEFAULT_TURN_LABELS.copyError).toBe('Copy error');
-    for (const value of Object.values(DEFAULT_TURN_LABELS)) {
-      const text = typeof value === 'function' ? value(1, 2, 3) : value;
+    const texts = [
+      ...Object.values(DEFAULT_TURN_LABELS).filter(
+        (value): value is string => typeof value === 'string',
+      ),
+      DEFAULT_TURN_LABELS.approvalWaiting(1),
+      DEFAULT_TURN_LABELS.reconnecting(1, 2, 3),
+      DEFAULT_TURN_LABELS.stepPosition(1, 2),
+      DEFAULT_TURN_LABELS.stepsDone(1, 2),
+      DEFAULT_TURN_LABELS.steps(1),
+      DEFAULT_TURN_LABELS.calls(1),
+      DEFAULT_TURN_LABELS.toolStatus('succeeded'),
+      DEFAULT_TURN_LABELS.toolProblem(1, 'succeeded'),
+      DEFAULT_TURN_LABELS.toolAnnouncement('Step', 'succeeded'),
+    ];
+    for (const text of texts) {
       expect(text).not.toContain(String.fromCodePoint(0xb7));
     }
   });

@@ -112,9 +112,11 @@ describe('MessageAttachments image layout contract', () => {
     expect(figure?.querySelector('.message-attachment-unavailable-text')?.textContent).toMatch(
       /receipt\.png\s+didn't load/,
     );
+    expect(figure?.querySelector('.message-attachment-unavailable-icon')).not.toBeNull();
     expect(figure?.querySelector('.message-attachment-retry')?.textContent).toContain('Retry');
-    expect(source).toContain('border: 1px solid var(--cinder-border)');
-    expect(source).toContain('grid-template-columns: minmax(0, 1fr) auto');
+    expect(source).toContain('ImageOff');
+    expect(source).not.toContain('border: 1px solid var(--cinder-border)');
+    expect(source).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
   });
 
   test('Retry requests the image again in a fresh element', async () => {

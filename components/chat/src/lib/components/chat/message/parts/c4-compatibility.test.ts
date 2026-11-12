@@ -122,7 +122,7 @@ describe('C4 compatibility — plain conversationalist transcript', () => {
       props: { parts: [step] },
     });
     const ol = container.querySelector('ol');
-    expect(ol?.getAttribute('aria-label')).toBe('Steps');
+    expect(ol?.getAttribute('aria-label')).toBe('1 step');
   });
 
   test('reasoning disclosure is wired through reasoningExpanded and onreasoning props', () => {

@@ -32,6 +32,7 @@ export { default as Heading1 } from '@lucide/svelte/icons/heading-1';
 export { default as Heading2 } from '@lucide/svelte/icons/heading-2';
 export { default as Heading3 } from '@lucide/svelte/icons/heading-3';
 export { default as House } from '@lucide/svelte/icons/house';
+export { default as ImageOff } from '@lucide/svelte/icons/image-off';
 export { default as Inbox } from '@lucide/svelte/icons/inbox';
 export { default as Info } from '@lucide/svelte/icons/info';
 export { default as Italic } from '@lucide/svelte/icons/italic';

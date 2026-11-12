@@ -9,6 +9,14 @@
     "label": {
       "type": "string",
       "description": "Names the marker and the panel, such as `Sources`. The marker reads it with the source count."
+    },
+    "closeOnSourceRemoval": {
+      "type": "boolean",
+      "description": "Closes an open panel when a previously displayed source is withdrawn by the host."
+    },
+    "onCloseComplete": {
+      "type": "function",
+      "description": "Called after an open source panel or sheet has fully closed."
     }
   },
   "additionalProperties": false,

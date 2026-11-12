@@ -18,6 +18,8 @@ export type { ChatNavigationRailProps } from '../chat-navigation-rail/chat-navig
 export { default as ChatNavigationRail } from '../chat-navigation-rail/index.ts';
 export type { ChatSubSessionProps } from '../chat-sub-session/chat-sub-session.types.ts';
 export { default as ChatSubSession } from '../chat-sub-session/index.ts';
+export { DEFAULT_CHAT_LABELS, resolveChatLabels } from './chat-labels.ts';
+export type { ChatLabels } from './chat-labels.ts';
 export type {
   ChatAnnounceLevel,
   ChatCapabilities,

@@ -1,3 +1,5 @@
+import type { ToolCallRowStatus } from './tool-call-summary.ts';
+
 /**
  * The words of a turn's outcome and of the steps under it (COR-2283), kept apart from the
  * components so `ChatProps` can name the type without importing a Svelte file.
@@ -43,6 +45,8 @@ export type ChatTurnLabels = {
    * them. Default `2 of 3 steps`; a host that knows what the steps were can say `Checked 2 of 3 sources`.
    */
   stepsDone: (done: number, total: number) => string;
+  /** The count in a step group's header while all steps are still successful. */
+  steps: (count: number) => string;
   /** What a failed step says when its result says nothing at all. Default `This step failed.`. */
   stepFailed: string;
   /** The button on a failed step that runs it again. Default `Retry this step`. */
@@ -51,6 +55,18 @@ export type ChatTurnLabels = {
   copyError: string;
   /** What Copy error says once it has copied. Default `Copied`. */
   errorCopied: string;
+  calls: (count: number) => string;
+  input: string;
+  output: string;
+  error: string;
+  yes: string;
+  no: string;
+  /** The visible status of one tool step. */
+  toolStatus: (status: ToolCallRowStatus) => string;
+  /** A problem count in a tool summary. */
+  toolProblem: (count: number, status: ToolCallRowStatus) => string;
+  /** The live announcement for one tool step's status. */
+  toolAnnouncement: (name: string, status: ToolCallRowStatus) => string;
 };
 
 /** The words a turn uses when the host sets none. */
@@ -70,10 +86,46 @@ export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
   tryAgain: 'Try again',
   stepPosition: (position, total) => `Step ${position} of ${total}`,
   stepsDone: (done, total) => `${done} of ${total} ${total === 1 ? 'step' : 'steps'}`,
+  steps: (count) => `${count} ${count === 1 ? 'step' : 'steps'}`,
   stepFailed: 'This step failed.',
   retryStep: 'Retry this step',
   copyError: 'Copy error',
   errorCopied: 'Copied',
+  calls: (count) => `${count} consecutive tool ${count === 1 ? 'call' : 'calls'}`,
+  input: 'Input',
+  output: 'Output',
+  error: 'Error',
+  yes: 'Yes',
+  no: 'No',
+  toolStatus: (status) => {
+    const labels: Record<ToolCallRowStatus, string> = {
+      pending: 'Pending',
+      succeeded: 'Complete',
+      failed: 'Failed',
+      denied: 'Denied',
+      expired: 'Expired',
+      waiting: 'Waiting for approval',
+      'waiting-input': 'Waiting for input',
+      approved: 'Approved, resuming',
+      answered: 'Answered',
+    };
+    return labels[status];
+  },
+  toolProblem: (count, status) => {
+    const labels: Record<ToolCallRowStatus, string> = {
+      pending: 'pending',
+      succeeded: 'complete',
+      failed: 'failed',
+      denied: 'denied',
+      expired: 'expired',
+      waiting: 'waiting for approval',
+      'waiting-input': 'waiting for input',
+      approved: 'approved, resuming',
+      answered: 'answered',
+    };
+    return `${count} ${labels[status]}`;
+  },
+  toolAnnouncement: (name, status) => `${name}: ${DEFAULT_TURN_LABELS.toolStatus(status)}`,
 };
 
 /** The host's words over the defaults, one label at a time. */

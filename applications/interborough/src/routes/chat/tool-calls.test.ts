@@ -59,6 +59,65 @@ describe('a turn’s tool calls', () => {
     expect(getByText('Decide on issue-refund')).not.toBeNull();
   });
 
+  test('an expired approval keeps its decision under the canonical rail row', () => {
+    const { container, getByText } = render(Harness, {
+      props: {
+        entries: [
+          entry({
+            callId: 'expired-call',
+            name: 'issue-refund',
+            title: 'Issue refund',
+            state: 'expired',
+            summary: '',
+            result: undefined,
+          }),
+        ],
+      },
+    } as never);
+
+    expect(
+      rowOf(container, 'expired-call')
+        ?.closest('.cinder-tool-call-rail__item')
+        ?.getAttribute('data-cinder-status'),
+    ).toBe('expired');
+    expect(getByText('Decide on issue-refund')).not.toBeNull();
+  });
+
+  test('updates an approval row when its state changes after the rail mounts', async () => {
+    const view = render(Harness, {
+      props: {
+        entries: [
+          entry({
+            callId: 'renewed-call',
+            name: 'issue-refund',
+            title: 'Issue refund',
+            state: 'needs-you',
+            summary: '',
+            result: undefined,
+          }),
+        ],
+      },
+    } as never);
+    await view.rerender({
+      entries: [
+        entry({
+          callId: 'renewed-call',
+          name: 'issue-refund',
+          title: 'Issue refund',
+          state: 'expired',
+          summary: '',
+          result: undefined,
+        }),
+      ],
+    } as never);
+
+    expect(
+      rowOf(view.container, 'renewed-call')
+        ?.closest('.cinder-tool-call-rail__item')
+        ?.getAttribute('data-cinder-status'),
+    ).toBe('expired');
+  });
+
   test('a call the person refused reads Denied in its own words, never Failed', () => {
     const { container } = render(Harness, {
       props: { entries: [entry({ callId: 'c1', state: 'denied', summary: 'Too much' })] },

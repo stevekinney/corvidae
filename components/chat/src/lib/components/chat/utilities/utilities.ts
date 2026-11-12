@@ -506,9 +506,20 @@ function deriveToolApprovalReceiptPart(
   messageId: string,
   callId: string,
   context: MessagePartDerivationContext,
+  completedResult?: ToolResult,
 ): ToolApprovalMessagePart | undefined {
   const held = context.approvalReceipts?.get(callId);
   if (held === undefined) return undefined;
+  const completedText =
+    completedResult?.outcome === 'success' || completedResult?.outcome === 'error'
+      ? completedResult.content !== null
+        ? typeof completedResult.content === 'string'
+          ? completedResult.content
+          : JSON.stringify(completedResult.content)
+        : completedResult.error?.message
+      : undefined;
+  const receipt =
+    completedText === undefined ? held.receipt : { ...held.receipt, result: completedText };
   const part: ToolApprovalMessagePart = {
     type: 'tool-approval',
     key: `${messageId}:tool-approval:${callId}`,
@@ -517,7 +528,7 @@ function deriveToolApprovalReceiptPart(
     action: held.action,
     state: held.state,
     resolutionInFlight: false,
-    receipt: held.receipt,
+    receipt,
   };
   const details = describeApprovalSafely(context, callId, held.toolName, held.action);
   if (details !== undefined) part.details = details;
@@ -650,7 +661,7 @@ export function deriveMessageParts(
     const result = context.toolCallPair.result;
     const actionPart = result
       ? (deriveToolActionPart(message.id, result, context) ??
-        deriveToolApprovalReceiptPart(message.id, result.callId, context))
+        deriveToolApprovalReceiptPart(message.id, result.callId, context, result))
       : undefined;
     const toolCallPart: ToolCallMessagePart = {
       type: 'tool-call',
@@ -686,6 +697,10 @@ export function deriveMessageParts(
     const actionPart = deriveToolActionPart(message.id, result, context);
     if (actionPart) {
       return [...entryParts, actionPart, ...noteParts, ...imageParts];
+    }
+    const receiptPart = deriveToolApprovalReceiptPart(message.id, result.callId, context, result);
+    if (receiptPart !== undefined) {
+      return [...entryParts, receiptPart, ...noteParts, ...imageParts];
     }
     return [
       ...entryParts,

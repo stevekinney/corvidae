@@ -59,6 +59,20 @@ describe('ChatMessage text direction', () => {
     );
   });
 
+  test('RTL assistant transcript chrome follows the reading edge', () => {
+    const { container } = render(ChatMessage, {
+      props: {
+        message: message('assistant', 'تمت مراجعة طلب الاسترداد وتوضيح السياسة.'),
+        presentation: 'transcript',
+        showDefaultActions: true,
+      },
+    });
+
+    expect(
+      container.querySelector('.chat-message-wrapper')?.getAttribute('data-message-direction'),
+    ).toBe('rtl');
+  });
+
   test('code in an Arabic reply keeps its left-to-right layout', () => {
     // The open fence renders its code block at once, inside the `dir="auto"` container that an
     // Arabic first sentence resolves to right to left.

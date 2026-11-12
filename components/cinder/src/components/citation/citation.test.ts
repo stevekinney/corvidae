@@ -109,6 +109,23 @@ describe('Citation', () => {
     );
   });
 
+  test('closes an open panel when a host withdraws a displayed source', async () => {
+    const { container, rerender } = render(Citation, {
+      closeOnSourceRemoval: true,
+      sources: [{ label: 'First' }, { label: 'Second' }],
+    });
+    await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+
+    await rerender({
+      closeOnSourceRemoval: true,
+      sources: [{ label: 'Second' }],
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-citation__panel')?.outerHTML ?? null).toBeNull(),
+    );
+  });
+
   test('lists up to five sources together in the supplied order, with no pager', async () => {
     const sources = [
       { label: 'Second report', url: 'https://example.com/two', detail: 'Revenue rose.' },
@@ -330,6 +347,9 @@ describe('Citation', () => {
 
     expect(marker).toContain('background: none;');
     expect(marker).toContain('border: 0;');
+    expect(marker).toContain('border-radius: 0;');
+    expect(marker).toContain('padding: 0;');
+    expect(marker).toContain('vertical-align: baseline;');
     expect(stylesheet).toMatch(
       /@media \(pointer: coarse\) \{\s*\.cinder-citation__marker \{[^}]*min-block-size: var\(--cinder-touch-target-min\);/s,
     );

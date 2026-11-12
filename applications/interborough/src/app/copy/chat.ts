@@ -169,6 +169,8 @@ export const CHAT_COPY = {
      */
     interruptedReads: 'Interrupted, didn’t finish',
     interruptedChanges: 'Interrupted, may have run',
+    /** The terminal rail result for an approval whose durable deadline elapsed. */
+    expiredBeforeDecision: 'Expired before a decision was made.',
     /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
     runFinishedNoReply: 'Run finished, no reply',
     /**
@@ -237,6 +239,13 @@ export const CHAT_COPY = {
      * it: the run may still be going, and Reconnect shows what it is doing.
      */
     stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
+  },
+  /** The host-owned answer replacement action. */
+  regeneration: {
+    action: 'Regenerate',
+    running: 'Regenerating…',
+    failed: 'Regeneration failed. Try again.',
+    readbackFailed: 'The regenerated answer was not available after the operation completed.',
   },
   /** The chat's header and its strip of runs. */
   strip: {

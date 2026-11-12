@@ -42,8 +42,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { auditGeometry } from '@lostgradient/testing/design-review-geometry';
 import { withHostSlots } from '../../../scripts/host-slots.ts';
+import { auditGeometry } from './design-review-geometry.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');

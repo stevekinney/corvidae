@@ -119,7 +119,7 @@ function messageArticle(container: HTMLElement, id: string): HTMLElement {
 }
 
 function sourcesControl(container: HTMLElement, id: string): HTMLButtonElement | null {
-  return messageArticle(container, id).querySelector<HTMLButtonElement>(
+  return messageArticle(container, id).parentElement?.querySelector<HTMLButtonElement>(
     '.chat-message-sources .cinder-citation__marker',
   );
 }
@@ -151,9 +151,35 @@ describe('Chat — sourcesByMessageId', () => {
     expect(container.querySelectorAll('.chat-message-sources')).toHaveLength(1);
     const control = sourcesControl(container, 'assistant-a');
     expect(control?.getAttribute('aria-label')).toBe('Sources (4)');
+    expect(control?.closest('[data-chat-sources-trigger]')).not.toBeNull();
     expect(control?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Sources 4');
     expect(sourcesControl(container, 'assistant-b')).toBeNull();
     expect(sourcesControl(container, 'user-1')).toBeNull();
+  });
+
+  test('keeps transcript Sources in the metadata row before message actions', async () => {
+    const { container } = render(Chat, {
+      id: 'sources-metadata-row',
+      conversation: sourcedConversation(),
+      variant: 'transcript',
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+    });
+    await tick();
+
+    const article = messageArticle(container, 'assistant-a');
+    const line = article.parentElement?.querySelector<HTMLElement>('.chat-message-line');
+    const sources = line?.querySelector<HTMLElement>('.chat-message-sources');
+    const actions = line?.querySelector<HTMLElement>('.chat-message-line-actions');
+    expect(line).not.toBeNull();
+    expect(sources).not.toBeNull();
+    expect(sources?.parentElement).toBe(line);
+    expect(sources?.compareDocumentPosition(actions!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    await fireEvent.click(sourcesControl(container, 'assistant-a')!);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+    expect(sources?.querySelector('.chat-message-sources-list')).toBeNull();
   });
 
   test('the panel keeps the supplied order, labels and duplicates, and links only safe addresses', async () => {
@@ -455,11 +481,15 @@ describe('Chat — sourcePresentation="inline"', () => {
       sourcePresentation: 'inline',
     });
     await tick();
+    const article = messageArticle(container, 'assistant-a');
 
     expect(container.querySelectorAll('.chat-message-source-chips')).toHaveLength(1);
     expect(container.querySelector('.chat-message-sources-toggle')).toBeNull();
     expect(container.querySelector('.chat-message-sources-citation')).toBeNull();
     expect(chips(container, 'assistant-a')).toHaveLength(4);
+    expect(
+      article.querySelectorAll('[data-chat-sources-trigger][data-chat-source-index]'),
+    ).toHaveLength(4);
     expect(chips(container, 'assistant-b')).toHaveLength(0);
     expect(chips(container, 'user-1')).toHaveLength(0);
     expect(
@@ -504,6 +534,53 @@ describe('Chat — sourcePresentation="inline"', () => {
 
       await rerender({ sourcesByMessageId: new Map() });
       await waitFor(() => expect(document.activeElement === article).toBe(true));
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
+  test('coarse compact Citation closes and returns focus when a displayed source is withdrawn', async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+    try {
+      const { container, rerender } = render(Chat, {
+        id: 'sources-inline-coarse-withdrawal',
+        conversation: sourcedConversation(),
+        sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+        sourcePresentation: 'inline',
+      });
+      await tick();
+      const article = messageArticle(container, 'assistant-a');
+      const compact = article.querySelector<HTMLButtonElement>(
+        '.chat-message-sources-citation .cinder-citation__marker',
+      )!;
+      compact.focus();
+      await rerender({
+        sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(1)]]),
+      });
+      await waitFor(() =>
+        expect(document.activeElement?.matches('.chat-message-action-button')).toBe(true),
+      );
+      expect(
+        [...container.querySelectorAll('[role="status"]')].filter(
+          (region) => region.textContent?.trim() === 'Sources were removed',
+        ),
+      ).toHaveLength(1);
     } finally {
       Object.defineProperty(window, 'matchMedia', {
         configurable: true,
@@ -558,7 +635,7 @@ describe('Chat — sourcePresentation="inline"', () => {
     expect(panel.querySelector('a')?.getAttribute('href')).toBe('https://example.com/annual');
   });
 
-  test('withdrawing the source of an open chip closes its panel, moves focus to the next chip and says so once (C#11)', async () => {
+  test('withdrawing the source of an open chip closes its panel, focuses a message action and says so once (C#11)', async () => {
     const { container, rerender } = render(Chat, {
       id: 'sources-inline-withdraw',
       conversation: sourcedConversation(),

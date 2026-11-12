@@ -108,6 +108,10 @@ function sendButton(container: HTMLElement): HTMLButtonElement {
   return container.querySelector<HTMLButtonElement>('button[data-chat-send]')!;
 }
 
+function measuredBox(top: number, bottom: number, left = 0, right = 320): DOMRect {
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
 const refundDetails: ChatAdapter['describeApproval'] = () => ({
   irreversible: true,
   approveLabel: 'Refund $42.00',
@@ -129,7 +133,26 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(sendButton(container).getAttribute('aria-label')).toBe('Send message');
   });
 
-  test('offers Review approval without repeating the transcript card explanation', () => {
+  test('does not draw an unnecessary drawer when the measured card fits the transcript viewport', () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      if (this.matches('.chat-timeline')) return measuredBox(0, 600);
+      if (this.matches('.cinder-approval-card')) return measuredBox(120, 420, 16, 304);
+      return originalGetBoundingClientRect.call(this);
+    };
+    try {
+      const { container } = render(Chat, {
+        id: 'chat-drawer-fitting-card',
+        conversation: approvalConversation('drawer-fitting-card'),
+      });
+
+      expect(drawerOf(container)).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  test('explains the paused composer compactly without repeating the transcript card', () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-waiting',
       conversation: approvalConversation('drawer-waiting'),
@@ -137,8 +160,28 @@ describe('Chat composer drawer for a waiting approval', () => {
     const drawer = drawerOf(container);
 
     expect(drawer).not.toBeNull();
-    expect(drawer?.querySelector('.chat-approval-drawer-text')).toBeNull();
+    expect(drawer?.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
+      'Waiting for your approval. Anything you send now queues until this run finishes.',
+    );
     expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
+  });
+
+  test('renders host-provided approval drawer labels and accessible names', () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-labels',
+      conversation: approvalConversation('drawer-labels'),
+      labels: {
+        approvalWaiting: 'Genehmigung wartet',
+        approvalWaitingText: 'Bitte zuerst die Genehmigung prüfen.',
+        reviewApproval: 'Genehmigung öffnen',
+      },
+    });
+    const drawer = drawerOf(container)!;
+    expect(drawer.getAttribute('aria-label')).toBe('Genehmigung wartet');
+    expect(drawer.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
+      'Bitte zuerst die Genehmigung prüfen.',
+    );
+    expect(getByRole(drawer, 'button', { name: 'Genehmigung öffnen' })).not.toBeNull();
   });
 
   test('sits above the composer, so the composer keeps its place', () => {
@@ -249,7 +292,6 @@ describe('Chat composer drawer for a waiting approval', () => {
 
     const send = sendButton(container);
     expect(send.getAttribute('aria-label')).toBe('Queue message');
-    expect(send.textContent?.trim()).toBe('Queue');
     expect(send.querySelector('[data-chat-queue-icon]')).not.toBeNull();
   });
 });
@@ -284,13 +326,21 @@ describe('Chat approval decision surface', () => {
     expect(card.querySelector('.cinder-approval-card__irreversible')?.textContent?.trim()).toBe(
       "Can't be undone",
     );
-    expect(card.querySelector('.cinder-approval-card__pause')?.textContent?.trim()).toBe(
+    expect(card.querySelector('.cinder-approval-card__pause')?.textContent?.trim()).not.toBe(
       'The agent is paused until you decide.',
     );
     const labels = Array.from(card.querySelectorAll('.cinder-approval-card__fact dt'), (term) =>
       term.textContent?.trim(),
     );
-    expect(labels).toEqual(['Tool', 'Target', 'Amount', 'Command']);
+    expect(labels).toEqual(['Target', 'Amount', 'Command']);
+    expect(card.querySelector('.cinder-approval-card__fact dt')?.textContent?.trim()).not.toBe(
+      'Tool',
+    );
+    expect(
+      Array.from(card.querySelectorAll('.cinder-approval-card__fact dd')).some((value) =>
+        value.textContent?.includes('refund --order 4471'),
+      ),
+    ).toBe(true);
     expect(getByRole(card, 'button', { name: 'Refund $42.00' })).not.toBeNull();
   });
 

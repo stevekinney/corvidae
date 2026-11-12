@@ -17,6 +17,8 @@
     displayUnreadCount: string;
     /** Whether the count exceeds 99 (for compact badge styling) */
     hasLargeCount: boolean;
+    /** Host-resolved accessible and visible jump labels. */
+    labels: Pick<ChatLabels, 'jumpToLatest' | 'jumpToNewMessages' | 'newMessages'>;
     /** Places the control alongside the approval drawer's action. */
     inline?: boolean;
     /** Callback when jump-to-latest is clicked */
@@ -26,6 +28,7 @@
 
 <script lang="ts">
   import { ChevronDown } from '@lostgradient/cinder';
+  import type { ChatLabels } from '../chat-labels.ts';
 
   let {
     showJumpButton,
@@ -33,6 +36,7 @@
     unreadCount,
     displayUnreadCount,
     hasLargeCount,
+    labels,
     inline = false,
     onJumpToLatest,
   }: ChatJumpControlsProps = $props();
@@ -53,9 +57,7 @@
         type="button"
         class="chat-jump-button"
         onclick={handleJump}
-        aria-label={unreadCount > 0
-          ? `Jump to ${unreadCount} new message${unreadCount !== 1 ? 's' : ''}`
-          : 'Jump to latest'}
+        aria-label={unreadCount > 0 ? labels.jumpToNewMessages(unreadCount) : labels.jumpToLatest}
       >
         <ChevronDown class="cinder-icon-sm" />
         {#if unreadCount > 0}
@@ -69,12 +71,10 @@
         type="button"
         class="chat-new-indicator"
         onclick={handleJump}
-        aria-label="Jump to {displayUnreadCount} new message{unreadCount !== 1 ? 's' : ''}"
+        aria-label={labels.newMessages(unreadCount)}
       >
         <ChevronDown class="cinder-icon-xs" />
-        <span aria-hidden="true"
-          >{displayUnreadCount} new message{unreadCount !== 1 ? 's' : ''}</span
-        >
+        <span aria-hidden="true">{labels.newMessages(unreadCount)}</span>
       </button>
     {/if}
   </div>
@@ -115,7 +115,7 @@
     padding: 0;
     /* --cinder-surface-raised does not exist in tokens; use --cinder-surface and
      * lean on the shadow + border for elevation against the inset chat timeline. */
-    background: var(--cinder-surface);
+    background: transparent;
     border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-full);
     box-shadow: var(--cinder-shadow-md);
@@ -127,6 +127,12 @@
       opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
       transform var(--cinder-duration-fast) var(--cinder-ease-standard);
     animation: jump-button-enter var(--cinder-duration-base) var(--cinder-ease-decelerate);
+  }
+
+  .chat-jump-button > :global(svg) {
+    display: block;
+    color: var(--cinder-text-default);
+    opacity: 1;
   }
 
   @keyframes jump-button-enter {

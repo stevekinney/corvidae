@@ -64,8 +64,10 @@
     createConversationHistory,
     McpApp,
     resolveMessageNotes,
+    type ChatRowContext,
     type MessageNoteInfo,
   } from '@lostgradient/chat';
+  import { parseStepRowIdentifier } from '@lostgradient/operative';
   import { CircleHelp, GitBranch, Workflow } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -107,7 +109,7 @@
   import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
   import { getPanels, loadPluginApp, pluginToolCaller } from '../../lib/host-panels.ts';
   import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
-  import { listBureauReviews } from '../../lib/bureau-reviews.ts';
+  import { getBureauReview, listBureauReviews } from '../../lib/bureau-reviews.ts';
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
@@ -803,6 +805,22 @@
   }
   const retryCommands = createPendingCommandKey();
 
+  /** Replaces the latest completed answer through the host-owned Bureau operation. */
+  function regenerateAnswer(messageId: string): Promise<void> {
+    return session.regenerateAnswer(messageId);
+  }
+
+  /** Replays the exact interrupted turn only when its approval deadline has elapsed. */
+  function askAgain(entry: ToolCallEntry): Promise<void> {
+    return session.retryExpiredApproval(entry.callId, {
+      tools: toolInfo,
+      ...(entry.approvalKey === undefined ? {} : { approvalKey: entry.approvalKey }),
+      // The rail state is already derived from the canonical expired review. Use this session's
+      // clock as the retry fence so a stale/future action timestamp cannot block Ask again.
+      expiredAt: session.clock.now(),
+    });
+  }
+
   /**
    * Runs the last turn again (Retry on the status line under a reply that stopped), after the
    * failed attempt, which stays on record. A call the run was interrupted on that may change things
@@ -1007,6 +1025,63 @@
     return Number.isFinite(time) ? time : undefined;
   }
 
+  /** The Bureau round carried by a result row, used to fence same-row approval renewals. */
+  function approvalRound(
+    row: (typeof session.conversation.messages)[string] | undefined,
+  ): number | undefined {
+    const bureau = row?.metadata['@lostgradient/bureau'];
+    if (typeof bureau !== 'object' || bureau === null) return undefined;
+    const round = Reflect.get(bureau, 'round');
+    return typeof round === 'number' ? round : undefined;
+  }
+
+  // Review expiry is authoritative only for the matching run, call and round. A later pending
+  // review must clear the old terminal marker so a stale read cannot expire fresh approval.
+  let expiredApprovalAt = $state<Record<string, string>>({});
+  let observedPendingApprovalExpiry = $state<
+    Record<string, { readonly expiresAt: string; readonly round: number }>
+  >({});
+  const historicalReviewReads = new Set<string>();
+  const historicalReviewTerminalReads = new Map<string, number>();
+  const historicalReviewKeyByIdentity = new Map<string, string>();
+  let historicalReviewGeneration = 0;
+
+  const approvalReviewCandidates = $derived.by(() =>
+    Object.values(session.conversation.messages).flatMap((row) => {
+      const result = row.toolResult;
+      if (result?.outcome !== 'action_required' || result.action?.type !== 'approval') return [];
+      const parsed = parseStepRowIdentifier(row.id);
+      if (parsed?.kind !== 'result') return [];
+      const rawCallId = parsed.callId ?? result.providerCallId ?? result.callId;
+      return [
+        {
+          callId: result.callId,
+          rawCallId,
+          rowId: row.id,
+          expectedAction: result.action,
+          reviewId: `approval:${parsed.runId}:${rawCallId}`,
+          runId: parsed.runId,
+          key: `approval:${parsed.runId}:${rawCallId}:${row.id}:round:${approvalRound(row) ?? 'unknown'}`,
+          round: approvalRound(row),
+        },
+      ];
+    }),
+  );
+
+  function approvalKeyForResult(
+    result: (typeof session.approvals)[number]['result'],
+  ): string | undefined {
+    const row = Object.values(session.conversation.messages).find(
+      (candidate) =>
+        candidate.toolResult === result && candidate.toolResult.action?.type === 'approval',
+    );
+    const parsed = row === undefined ? undefined : parseStepRowIdentifier(row.id);
+    const rawCallId = parsed?.callId ?? result.providerCallId ?? result.callId;
+    return parsed?.kind === 'result' && row !== undefined
+      ? `approval:${parsed.runId}:${rawCallId}:${row.id}:round:${approvalRound(row) ?? 'unknown'}`
+      : undefined;
+  }
+
   /** Each approval the conversation waits on, as the question it asks and the call it belongs to. */
   const approvals = $derived(
     session.approvals.map(({ message, result }) => {
@@ -1030,8 +1105,28 @@
           review.approval.callId === result.callId,
       );
       const toolName = reviewed?.kind === 'tool-approval' ? reviewed.approval.toolName : call?.name;
+      const approvalKey =
+        approvalKeyForResult(result) ?? session.parkedApprovalKeys.get(result.callId);
+      const observedExpiry =
+        approvalKey === undefined
+          ? undefined
+          : observedPendingApprovalExpiry[approvalKey]?.expiresAt;
+      const durableExpiry = approvalKey === undefined ? undefined : expiredApprovalAt[approvalKey];
       return {
         toolCallId: result.callId,
+        reviewId: reviewed?.id,
+        approvalKey,
+        action:
+          result.action.type === 'approval'
+            ? {
+                ...result.action,
+                ...(observedExpiry !== undefined
+                  ? { expiresAt: observedExpiry }
+                  : result.action.expiresAt === undefined && durableExpiry !== undefined
+                    ? { expiresAt: durableExpiry }
+                    : {}),
+              }
+            : undefined,
         toolName,
         // When the Bureau's review says so; else when the thread recorded the ask, which is the same
         // moment for an approval that was parked on a call.
@@ -1051,6 +1146,17 @@
   const approvalsByCall = $derived(
     new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
+  function displayEntry(entry: ToolCallEntry): ToolCallEntry {
+    if (entry.railId !== undefined) return entry;
+    const reviewId = approvalsByCall.get(entry.callId)?.reviewId;
+    return reviewId === undefined
+      ? entry
+      : { ...entry, railId: `${reviewId}:call:${entry.callId}` };
+  }
+  function approvalIsLive(approval: (typeof approvals)[number]): boolean {
+    const expiry = approval.action?.expiresAt;
+    return expiry === undefined || Date.parse(expiry) > Date.now();
+  }
   // A call with no answer that nothing is working on any more was interrupted.
   // A failure the transcript already says, on the row it belongs to, is not said again above it: a
   // message that never got an answer is marked "Not sent".
@@ -1082,22 +1188,6 @@
       group.entries.every((entry) => entry.state === 'done' || entry.state === 'denied')
     );
   }
-  // The chat's state beside its title, in the shared status words: a person's turn first, then a
-  // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
-  const chatStatus = $derived.by(() => {
-    if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
-    if (endedByRestart) return CHAT_COPY.status.ended;
-    if (
-      approvals.length > 0 ||
-      shownRequests.length > 0 ||
-      context.data?.activity === 'awaiting-input'
-    ) {
-      return CHAT_COPY.status.waiting;
-    }
-    if (runGoing) return CHAT_COPY.status.running;
-    if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
-    return CHAT_COPY.status.done;
-  });
   // The Bureau's time, which a running call's duration counts to. It moves only while a call runs,
   // a tenth of a second at a time, which is the precision the rail prints.
   const RUNNING_CALL_TICK_MILLISECONDS = 100;
@@ -1106,6 +1196,41 @@
     toolGroups(session.conversation, {
       runActive: runGoing,
       tools: toolInfo,
+      expiredApprovalAt: new Map([
+        ...Object.entries(expiredApprovalAt).flatMap(([key, value]) => {
+          const timestamp = Date.parse(value);
+          if (!Number.isFinite(timestamp)) return [];
+          const approval = approvals.find((candidate) => candidate.approvalKey === key);
+          const candidate = approvalReviewCandidates.find((entry) => entry.key === key);
+          const toolCallIds = new Set(
+            [approval?.toolCallId, candidate?.callId, candidate?.rawCallId].filter(
+              (id): id is string => id !== undefined,
+            ),
+          );
+          return toolCallIds.size === 0
+            ? [[key, timestamp] as const]
+            : [
+                [key, timestamp] as const,
+                ...[...toolCallIds].map((id) => [id, timestamp] as const),
+              ];
+        }),
+        ...approvals.flatMap((approval) => {
+          const key = approval.approvalKey;
+          const expiresAt = approval.action?.expiresAt;
+          const timestamp = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
+          if (!Number.isFinite(timestamp) || timestamp > bureauNow) return [];
+          return key === undefined
+            ? [[approval.toolCallId, timestamp] as const]
+            : [[key, timestamp] as const, [approval.toolCallId, timestamp] as const];
+        }),
+      ]),
+      observedApprovalAt: new Map(
+        Object.entries(observedPendingApprovalExpiry).flatMap(([key, value]) => {
+          const timestamp = Date.parse(value.expiresAt);
+          return Number.isFinite(timestamp) ? [[key, timestamp] as const] : [];
+        }),
+      ),
+      carriedApprovalRailIds: session.parkedApprovalRailIds,
       timing: {
         now: bureauNow,
         callStarts: session.callStarts,
@@ -1114,17 +1239,133 @@
       },
     }),
   );
+  // The chat's state beside its title, in the shared status words: a person's turn first, then a
+  // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
+  const chatStatus = $derived.by(() => {
+    if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
+    if (endedByRestart) return CHAT_COPY.status.ended;
+    const hasPendingApproval = [...activity.groups.values()].some((group) =>
+      group.entries.some((entry) => entry.state === 'needs-you'),
+    );
+    if (hasPendingApproval || shownRequests.length > 0) return CHAT_COPY.status.waiting;
+    if (runGoing) return CHAT_COPY.status.running;
+    if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
+    return CHAT_COPY.status.done;
+  });
   // The call whose panel is open, with where it falls in its turn. A call that is gone (the page
   // moved to another chat, or the turn was read again without it) has no panel.
   let selectedCallId = $state<string | undefined>();
   const selectedCall = $derived.by(() => {
     if (selectedCallId === undefined) return undefined;
     for (const group of activity.groups.values()) {
-      const index = group.entries.findIndex((entry) => entry.callId === selectedCallId);
+      const index = group.entries.findIndex(
+        (entry) => (displayEntry(entry).railId ?? entry.callId) === selectedCallId,
+      );
       const entry = group.entries[index];
       if (entry !== undefined) return { entry, number: index + 1, total: group.entries.length };
     }
     return undefined;
+  });
+
+  $effect(() => {
+    // Re-read the canonical review when the pending-review poll changes status or round.
+    void pendingReviews.data;
+    const generation = ++historicalReviewGeneration;
+    for (const candidate of approvalReviewCandidates) {
+      const identity = `${candidate.reviewId}:${candidate.rowId}`;
+      const previousKey = historicalReviewKeyByIdentity.get(identity);
+      if (previousKey !== undefined && previousKey !== candidate.key) {
+        const previousExpiry = expiredApprovalAt[previousKey];
+        if (previousExpiry !== undefined && expiredApprovalAt[candidate.key] === undefined) {
+          expiredApprovalAt = { ...expiredApprovalAt, [candidate.key]: previousExpiry };
+        }
+        const previousTerminalRound = historicalReviewTerminalReads.get(previousKey);
+        if (previousTerminalRound !== undefined) {
+          historicalReviewTerminalReads.set(candidate.key, previousTerminalRound);
+        }
+      }
+      historicalReviewKeyByIdentity.set(identity, candidate.key);
+    }
+    const controllers = new Map<string, AbortController>();
+    for (const candidate of approvalReviewCandidates) {
+      if (historicalReviewReads.has(candidate.key)) continue;
+      historicalReviewReads.add(candidate.key);
+      const controller = new AbortController();
+      controllers.set(candidate.key, controller);
+      void getBureauReview(candidate.reviewId, { signal: controller.signal })
+        .then((review) => {
+          if (controller.signal.aborted || generation !== historicalReviewGeneration)
+            return undefined;
+          if (
+            review.kind !== 'tool-approval' ||
+            review.runId !== candidate.runId ||
+            review.approval.callId !== candidate.rawCallId
+          )
+            return undefined;
+          const terminalRound = historicalReviewTerminalReads.get(candidate.key) ?? -1;
+          if (review.status === 'pending') {
+            // A pending read from the terminal round can be an older request resolving after the
+            // terminal review. It must not restore the future deadline over the authoritative
+            // terminal marker; only a strictly newer round represents a renewed approval.
+            if (review.round <= terminalRound) return undefined;
+            if (review.round > terminalRound) delete expiredApprovalAt[candidate.key];
+            const expiresAt =
+              review.approval.action.type === 'approval'
+                ? review.approval.action.expiresAt
+                : undefined;
+            if (
+              expiresAt !== undefined &&
+              review.round >= (observedPendingApprovalExpiry[candidate.key]?.round ?? -1)
+            ) {
+              session.controller.reconcileApprovalExpiry({
+                toolCallId: candidate.callId,
+                expiresAt,
+                expectedAction: candidate.expectedAction,
+              });
+              observedPendingApprovalExpiry = {
+                ...observedPendingApprovalExpiry,
+                [candidate.key]: { expiresAt, round: review.round },
+              };
+            }
+          } else if (review.status === 'expired' && review.round >= terminalRound) {
+            // A terminal review is authoritative even when the original action deadline was
+            // serialized in a different clock domain or remains future-dated in the transcript.
+            // Use the terminal decision time as the durable expiry marker for the local clock.
+            const now = session.clock.now();
+            const decidedAt = review.resolution?.decidedAt ?? now;
+            const expiresAt = new Date(Math.min(decidedAt, now)).toISOString();
+            // The terminal review can arrive after the approval clock's last tick. Advance the
+            // rail's projection clock with the same observation used to clamp the marker, so the
+            // canonical rail and card settle in the same render.
+            bureauNow = now;
+            session.controller.reconcileApprovalExpiry({
+              toolCallId: candidate.callId,
+              expiresAt,
+              expectedAction: candidate.expectedAction,
+            });
+            expiredApprovalAt = {
+              ...expiredApprovalAt,
+              [candidate.key]: expiresAt,
+            };
+            const { [candidate.key]: _cleared, ...remainingObservedExpiry } =
+              observedPendingApprovalExpiry;
+            observedPendingApprovalExpiry = remainingObservedExpiry;
+            historicalReviewTerminalReads.set(candidate.key, review.round);
+          }
+          return undefined;
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          controllers.delete(candidate.key);
+          historicalReviewReads.delete(candidate.key);
+        });
+    }
+    return () => {
+      for (const [key, controller] of controllers) {
+        controller.abort();
+        historicalReviewReads.delete(key);
+      }
+    };
   });
   function selectCall(callId: string): void {
     selectedCallId = selectedCallId === callId ? undefined : callId;
@@ -1149,9 +1390,16 @@
       group.entries.some((entry) => entry.state === 'running'),
     ),
   );
+  // An approval can expire while its call is parked, so the clock must keep advancing for live
+  // approval deadlines too. Otherwise the expiry projection recomputes against the timestamp from
+  // before the deadline and remains visually pending.
+  const clockNeedsRefresh = $derived(callRunning || approvals.some(approvalIsLive));
   $effect(() => {
-    if (!callRunning) return;
+    // Read once on every dependency transition, including when a terminal review makes the
+    // approval non-live and tears down the interval. Otherwise toolGroups can retain the tick from
+    // before the terminal marker while the card reads the current Bureau clock.
     bureauNow = untrack(() => session.clock.now());
+    if (!clockNeedsRefresh) return;
     // poll-reason: clock
     const timer = setInterval(() => {
       bureauNow = session.clock.now();
@@ -1662,6 +1910,28 @@
     <VisuallyHidden role="status" aria-live="polite" data-testid="chat-decision-announcement">
       {announcement}
     </VisuallyHidden>
+    {#snippet regenerationStatus({ message }: ChatRowContext)}
+      {#if session.regeneration?.messageId === message.id}
+        <Alert variant={session.regeneration.status === 'failed' ? 'danger' : 'info'}>
+          <p class="weft-chat-approval__title">
+            {session.regeneration.status === 'running'
+              ? CHAT_COPY.regeneration.running
+              : CHAT_COPY.regeneration.failed}
+          </p>
+          {#if session.regeneration.status === 'failed'}
+            <p class="weft-chat-approval__message">
+              {session.regeneration.error ?? CHAT_COPY.regeneration.failed}
+            </p>
+            <Button
+              size="sm"
+              variant="secondary"
+              label={CHAT_COPY.regeneration.action}
+              onclick={() => void regenerateAnswer(message.id)}
+            />
+          {/if}
+        </Alert>
+      {/if}
+    {/snippet}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="weft-chat-surface" onclick={openNoteLink}>
       <Chat
@@ -1669,6 +1939,8 @@
         id={`chat-${sessionId}`}
         conversation={choosing ? unstartedConversation : shown}
         adapter={chatAdapter}
+        onRegenerate={regenerateAnswer}
+        messageStatus={regenerationStatus}
         streaming={session.streaming && !choosing}
         surfaceMode="transparent"
         variant="transcript"
@@ -1829,68 +2101,85 @@
           {@const group = activity.groups.get(message.id)}
           {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
           {#if group !== undefined}
-            <ToolCalls
-              id={`tools-${message.id}`}
-              entries={group.entries}
-              decided={decisionContext}
-              selectedId={selectedCallId}
-              onSelect={selectCall}
-              endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
-              duration={group.durationMilliseconds === undefined
-                ? undefined
-                : formatCallDuration(group.durationMilliseconds)}
-            >
-              {#snippet decision(entry)}
-                {@const asked = approvalsByCall.get(entry.callId)}
-                {#if entry.decision !== undefined || asked !== undefined}
-                  <ChatApproval
-                    id={`tools-${message.id}-${entry.callId}`}
-                    {entry}
-                    question={asked?.question ?? ''}
-                    source={agentShown}
-                    unavailableReason={agentUnavailable
-                      ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
-                      : undefined}
-                    providerNote={noProvider
-                      ? CHAT_COPY.approval.continuesOnProvider(agentShown)
-                      : undefined}
-                    requestedAt={asked?.requestedAt}
-                    alwaysAsks={asked?.alwaysAsks}
-                    context={decisionContext}
-                    unreachable={connection.unreachable}
-                    resolving={deciding || session.streaming
-                      ? (decidingAs ?? 'approve')
-                      : undefined}
-                    onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
-                  />
-                {/if}
-              {/snippet}
-              {#snippet mcpApp(entry)}
-                {@const panel = workflowRevisionPanels.find(
-                  (candidate) =>
-                    candidate.opensFromAgentTool === entry.name ||
-                    candidate.opensFromAgentTool === entry.name.replace('__', ':'),
-                )}
-                {@const proposalText = revisionProposalText(entry)}
-                {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
-                  {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
-                  {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
-                  <McpApp
-                    resourceUri={panel.uri}
-                    title={panel.title}
-                    {loadResource}
-                    {onToolCall}
-                    hostContext={mcpHostContext}
-                    maxHeight={560}
-                    toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
-                    toolResult={{
-                      content: [],
-                      structuredContent: proposalText,
-                    }}
-                  />
-                {/if}
-              {/snippet}
-            </ToolCalls>
+            {#key group.entries
+              .map((entry) => `${entry.state}:${entry.approvalExpiresAt ?? ''}`)
+              .join('|')}
+              <ToolCalls
+                id={`tools-${message.id}`}
+                entries={group.entries.map(displayEntry)}
+                decided={decisionContext}
+                selectedId={selectedCallId}
+                onSelect={selectCall}
+                endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
+                duration={group.durationMilliseconds === undefined
+                  ? undefined
+                  : formatCallDuration(group.durationMilliseconds)}
+              >
+                {#snippet decision(entry)}
+                  {@const asked = approvalsByCall.get(entry.callId)}
+                  {@const expired =
+                    entry.state === 'expired' ||
+                    (entry.approvalExpiresAt !== undefined &&
+                      session.clock.now() >= entry.approvalExpiresAt)}
+                  {#if entry.decision !== undefined || asked !== undefined}
+                    {#key `${entry.state}:${entry.approvalExpiresAt ?? ''}`}
+                      <ChatApproval
+                        id={`tools-${message.id}-${entry.callId}`}
+                        {entry}
+                        question={asked?.question ?? ''}
+                        source={agentShown}
+                        unavailableReason={agentUnavailable
+                          ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
+                          : undefined}
+                        providerNote={noProvider
+                          ? CHAT_COPY.approval.continuesOnProvider(agentShown)
+                          : undefined}
+                        requestedAt={asked?.requestedAt}
+                        alwaysAsks={asked?.alwaysAsks}
+                        {...asked?.action?.expiresAt === undefined
+                          ? {}
+                          : { expiresAt: asked.action.expiresAt }}
+                        {...entry.approvalExpiresAt === undefined
+                          ? {}
+                          : { expiresAt: new Date(entry.approvalExpiresAt).toISOString() }}
+                        context={decisionContext}
+                        unreachable={connection.unreachable}
+                        onAskAgain={expired ? () => void askAgain(entry) : undefined}
+                        resolving={deciding || session.streaming
+                          ? (decidingAs ?? 'approve')
+                          : undefined}
+                        onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
+                      />
+                    {/key}
+                  {/if}
+                {/snippet}
+                {#snippet mcpApp(entry)}
+                  {@const panel = workflowRevisionPanels.find(
+                    (candidate) =>
+                      candidate.opensFromAgentTool === entry.name ||
+                      candidate.opensFromAgentTool === entry.name.replace('__', ':'),
+                  )}
+                  {@const proposalText = revisionProposalText(entry)}
+                  {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
+                    {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
+                    {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
+                    <McpApp
+                      resourceUri={panel.uri}
+                      title={panel.title}
+                      {loadResource}
+                      {onToolCall}
+                      hostContext={mcpHostContext}
+                      maxHeight={560}
+                      toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
+                      toolResult={{
+                        content: [],
+                        structuredContent: proposalText,
+                      }}
+                    />
+                  {/if}
+                {/snippet}
+              </ToolCalls>
+            {/key}
             <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
             {#each group.messageIds as rowId (rowId)}
               {@const held = shown.messages[rowId]}

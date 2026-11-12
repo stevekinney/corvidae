@@ -27,7 +27,7 @@
 </script>
 
 <script lang="ts">
-  import { flushSync, tick, untrack } from 'svelte';
+  import { flushSync, tick, untrack, type Snippet } from 'svelte';
   import { isStreamingMessage } from '../builders.ts';
   import type { Message, MessageInput, ToolCallPair } from '../conversation-model.ts';
   import { isComposerNoticeStatus, type ChatComposerStatus } from '../input/composer-status.ts';
@@ -64,7 +64,11 @@
   import { appendToDraft, followUpText, type QueuedFollowUp } from './chat-follow-up-queue.ts';
   import { useChatFollowUpQueue } from './use-chat-follow-up-queue.svelte.ts';
   import { useChatApprovalWait } from './use-chat-approval-wait.svelte.ts';
-  import { focusPendingApproval } from './chat-approval-review.ts';
+  import {
+    approvalCardFitsViewport,
+    focusPendingApproval,
+    pendingApprovalCard,
+  } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
@@ -85,7 +89,10 @@
   import ChatParticipantTyping from './chat-participant-typing.svelte';
   import ChatReadReceipt from '../message/chat-read-receipt.svelte';
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
+  import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
+  import { resolveTurnLabels } from '../message/turn-labels.ts';
+  import { resolveChatLabels } from '../chat-labels.ts';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
   import {
     Button,
@@ -200,11 +207,13 @@
     onSuggestionSelect,
     messageTurnState,
     turnLabels,
+    labels,
     onRetryConnection,
     onContinueTurn,
     onDiscardTurn,
     onRetryTurn,
     onRetryStep,
+    onApprovalRequestAgain,
     style,
     onLoadHistory,
     onStopGenerating,
@@ -230,6 +239,35 @@
     composerAriaAutocomplete,
     ...rest
   }: ChatImplementationProps = $props();
+
+  const chatWords = $derived(resolveTurnLabels(turnLabels));
+  const chatLabels = $derived(resolveChatLabels(labels));
+  // Shared Chat words provide defaults for the dock; an explicit questionLabels override always
+  // wins so hosts can specialize question vocabulary without changing the rest of Chat.
+  const questionDockLabels = $derived({
+    answer: chatLabels.answer,
+    failed: chatLabels.answerFailed,
+    ownAnswer: chatLabels.yourOwnAnswer,
+    ownAnswerPlaceholder: chatLabels.chooseAnswerPlaceholder,
+    yes: chatLabels.yes,
+    no: chatLabels.no,
+    ...questionLabels,
+  });
+  const initialCoarsePointer =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(any-pointer: coarse)').matches
+      : false;
+  let coarsePointer = $state(initialCoarsePointer);
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(any-pointer: coarse)');
+    const update = (): void => {
+      coarsePointer = media.matches;
+    };
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  });
 
   function updateAtBottomBinding(value: boolean): void {
     atBottom = value;
@@ -439,7 +477,9 @@
       isComposerNoticeStatus(composerStatus) ||
       availabilityReplacesComposer(availability)
         ? 'inline'
-        : questionPlacement,
+        : coarsePointer
+          ? 'docked'
+          : questionPlacement,
   );
   provideQuestionStore(questions);
 
@@ -562,6 +602,8 @@
     getStreamingContent: () => streamingState.content,
     getMessageReasoning: () => messageReasoning,
     getFirstUnreadId: () => unreadState.firstUnreadId,
+    getSuppressTypingIndicator: () => composerStatus?.kind === 'reconnecting',
+    getMessageTurnState: () => messageTurnState,
     // A call whose question was answered here, or whose approval was decided here, keeps its own
     // row so the answer or the receipt stays readable once the run resumes. So does a call that
     // carries reasoning or steps of its own, which a group does not draw, and, while the host
@@ -680,6 +722,24 @@
       const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
       return pair ? [{ message, pair }] : [];
     });
+  }
+
+  function actionRequiredApprovalMessages(groupMessages: readonly Message[]): Message[] {
+    return toolCallGroupPairs(groupMessages)
+      .filter(
+        ({ pair }) =>
+          pair.result?.outcome === 'action_required' && pair.result.action?.type === 'approval',
+      )
+      .map(({ message }) => message);
+  }
+
+  function actionRequiredInputMessages(groupMessages: readonly Message[]): Message[] {
+    return toolCallGroupPairs(groupMessages)
+      .filter(
+        ({ pair }) =>
+          pair.result?.outcome === 'action_required' && pair.result.action?.type === 'input',
+      )
+      .map(({ message }) => message);
   }
 
   /** How long each call took, from its message to its result's, when both have times. */
@@ -934,6 +994,18 @@
   const typingIndicatorState = useChatTypingIndicator({
     getTypingParticipants: () => typingParticipants,
   });
+
+  // Reconnecting already owns the visible progress state; a second typing bubble would duplicate
+  // it and push the composer below the decision surface.
+  const participantTypingCount = $derived(
+    composerStatus?.kind === 'reconnecting' ||
+      streaming ||
+      streamingStatus !== undefined ||
+      transcript.reasoningStreaming ||
+      transcript.toolActivity
+      ? 0
+      : typingIndicatorState.participantCount,
+  );
 
   // The empty state, composer and footer are one centered block only while nothing has been said.
   const composerCentered = $derived(
@@ -1387,8 +1459,16 @@
   const transcriptHidden = $derived(availability !== undefined);
   const composerHidden = $derived(availabilityReplacesComposer(availability));
   const composerWaitsForHistory = $derived(
-    availability?.kind === 'loading' || availability?.kind === 'canceled'
-      ? availabilityLabels(availability).sendWaits
+    availability?.kind === 'loading' ? availabilityLabels(availability).sendWaits : undefined,
+  );
+  const availabilityComposerStatus = $derived<ChatComposerStatus | undefined>(
+    availability?.kind === 'canceled'
+      ? {
+          kind: 'drawer-notice',
+          text: availabilityLabels(availability).canceledComposer,
+          tone: 'neutral',
+          sendDisabledReason: availabilityLabels(availability).sendBlocked,
+        }
       : undefined,
   );
   // While a question Chat draws waits on the composer, its placeholder says what to do: a free-text
@@ -1419,6 +1499,63 @@
       composerStatus?.kind !== 'blocked' &&
       !isComposerNoticeStatus(composerStatus),
   );
+  let approvalFullyVisible = $state(false);
+  $effect(() => {
+    const scroller = viewport;
+    const messageId = approvalWait.messageId;
+    if (scroller === null || !approvalWaiting || messageId === undefined) {
+      approvalFullyVisible = false;
+      return undefined;
+    }
+
+    let observer: IntersectionObserver | undefined;
+    let resizeObserver: ResizeObserver | undefined;
+    const attach = (): void => {
+      observer?.disconnect();
+      resizeObserver?.disconnect();
+      const card = pendingApprovalCard(containerRef, messageId);
+      if (card === null) {
+        approvalFullyVisible = false;
+        return;
+      }
+      const updateVisibility = (): void => {
+        const cardBox = card.getBoundingClientRect();
+        const viewportBox = scroller.getBoundingClientRect();
+        // Happy DOM and an initial browser layout can report zero-sized boxes before the first
+        // real layout delivery. Treat that state as unknown so the safety drawer stays available;
+        // the observer will replace it once measurable geometry arrives.
+        if (
+          cardBox.width <= 0 ||
+          cardBox.height <= 0 ||
+          viewportBox.width <= 0 ||
+          viewportBox.height <= 0
+        ) {
+          approvalFullyVisible = false;
+          return;
+        }
+        approvalFullyVisible = approvalCardFitsViewport(cardBox, viewportBox);
+      };
+      observer = new IntersectionObserver(
+        updateVisibility,
+        { root: scroller, threshold: 1 },
+      );
+      resizeObserver = new ResizeObserver(updateVisibility);
+      resizeObserver.observe(card);
+      resizeObserver.observe(scroller);
+      // Keep the full context criterion. If the drawer itself reduced the viewport, its measured
+      // block size is reclaimable; genuinely top-clipped or taller cards still keep the drawer.
+      observer.observe(card);
+      updateVisibility();
+    };
+    const changes = new MutationObserver(attach);
+    changes.observe(scroller, { childList: true, subtree: true });
+    attach();
+    return () => {
+      observer?.disconnect();
+      resizeObserver?.disconnect();
+      changes.disconnect();
+    };
+  });
 
   // A pending approval or question taller than the room left would land with only its buttons in
   // view when the transcript pins to its end. While the transcript sits at its end, the item's top
@@ -1518,6 +1655,15 @@
   const followUps = useChatFollowUpQueue({
     isEnabled: () => followUpsEnabled && !composerCompact,
     isRunActive: () => composerSending || approvalWaiting,
+    isSendNowAvailable: () => composerStatus?.kind !== 'offline',
+    getRunOutcome: () => {
+      const latestAssistant = messages.findLast((message) => message.role === 'assistant');
+      const outcome =
+        latestAssistant === undefined
+          ? undefined
+          : resolveMessageTurnState(latestAssistant, messageTurnState)?.kind;
+      return outcome === 'stopped' || outcome === 'failed' ? outcome : undefined;
+    },
     getConversationIdentity: () => conversationId,
     submit: (message, attachments, onOutcome) => handleSubmit(message, attachments, onOutcome),
   });
@@ -2085,7 +2231,21 @@
       </button>
     {/snippet}
 
-    {#snippet renderMessageRow(messageRow: ChatMessageRenderRow)}
+    {#snippet renderApprovalPart(part: BodyMessagePart, renderDefault: Snippet<[BodyMessagePart]>)}
+      {#if part.type !== 'tool-call'}
+        {#if messagePart !== undefined}
+          {@render messagePart(part, renderDefault)}
+        {:else}
+          {@render renderDefault(part)}
+        {/if}
+      {/if}
+    {/snippet}
+
+    {#snippet renderMessageRow(
+      messageRow: ChatMessageRenderRow,
+      suppressToolCall = false,
+      approvalLayout: 'decision' | 'row' = 'decision',
+    )}
       {@const message = messageRow.message}
       {@const pairs = message.toolCall?.id
         ? (toolCallPairsByCallId.get(message.toolCall.id) ?? [])
@@ -2153,7 +2313,9 @@
           {message}
           {...receipt ? { metadata: readReceiptMetadata } : {}}
           toolCallPairs={pairs}
-          {messagePart}
+          messagePart={suppressToolCall ? renderApprovalPart : messagePart}
+          labels={chatLabels}
+          {approvalLayout}
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           presentation={variant === 'transcript' ? 'transcript' : 'default'}
@@ -2218,6 +2380,7 @@
           {onRetryTurn}
           {onRetryStep}
           onAnnounce={(text) => announcements.announce(text)}
+          {onApprovalRequestAgain}
           toolCallDurations={ownToolCallPairs.length > 0
             ? toolCallDurations(ownToolCallPairs)
             : undefined}
@@ -2252,11 +2415,19 @@
 
     {#snippet renderChatRow(renderRow: ChatRenderRow)}
       {#if renderRow.type === 'date'}
-        <ChatDateSeparator date={renderRow.date} />
+        <ChatDateSeparator
+          date={renderRow.date}
+          labels={{
+            today: chatLabels.today,
+            yesterday: chatLabels.yesterday,
+            invalidDate: chatLabels.invalidDate,
+            messagesFrom: chatLabels.messagesFrom,
+          }}
+        />
       {:else if renderRow.type === 'unread-divider'}
-        <div class="chat-unread-divider" role="separator" aria-label="New messages below">
+        <div class="chat-unread-divider" role="separator" aria-label={chatLabels.newMessagesBelow}>
           <span class="chat-unread-divider-line" aria-hidden="true"></span>
-          <span class="chat-unread-divider-label">New</span>
+          <span class="chat-unread-divider-label">{chatLabels.newMessagesLabel}</span>
           <span class="chat-unread-divider-line" aria-hidden="true"></span>
         </div>
       {:else if renderRow.type === 'typing'}
@@ -2264,21 +2435,47 @@
       {:else if renderRow.type === 'tool-call-group'}
         {@const artifacts = artifactsForToolCallMessages(renderRow.messages)}
         {@const groupPairs = toolCallGroupPairs(renderRow.messages)}
-        <ToolCallTimeline
-          messageId={renderRow.messages[0]!.id}
-          activityActive={progressState === 'tool' &&
-            renderRow.messages.some((message) => activeTurnMessageIds.has(message.id))}
-          describeToolCall={adapter?.describeToolCall
-            ? (pair) => describeToolCallSafely(pair.call, pair.result)
-            : undefined}
-          pairs={groupPairs.map(({ pair }) => pair)}
-          approvalStates={commandActions.approvalStates}
-          durations={toolCallDurations(groupPairs)}
-          startTimes={toolCallStartTimes(groupPairs)}
-          {onRetryStep}
-          labels={turnLabels}
-          onToggle={onExpandedChange}
-        />
+        {@const approvalMessages = actionRequiredApprovalMessages(renderRow.messages)}
+        {@const inputMessages = actionRequiredInputMessages(renderRow.messages)}
+        {@const compactApprovalMessages = approvalMessages.length > 1 ? approvalMessages : []}
+        {@const approvalIds = new Set(compactApprovalMessages.map((message) => message.id))}
+        {@const ordinaryPairs = groupPairs.filter(({ message }) => !approvalIds.has(message.id))}
+        <div class="chat-tool-call-group">
+          {#if compactApprovalMessages.length > 1}
+            <h3 class="chat-approval-group-heading">
+              {chatWords.approvalWaiting(compactApprovalMessages.length)}
+            </h3>
+          {/if}
+          {#if ordinaryPairs.length > 0}
+            <ToolCallTimeline
+              messageId={renderRow.messages[0]!.id}
+              activityActive={progressState === 'tool' &&
+                renderRow.messages.some((message) => activeTurnMessageIds.has(message.id))}
+              describeToolCall={adapter?.describeToolCall
+                ? (pair) => describeToolCallSafely(pair.call, pair.result)
+                : undefined}
+              pairs={ordinaryPairs.map(({ pair }) => pair)}
+              approvalStates={commandActions.approvalStates}
+              durations={toolCallDurations(ordinaryPairs)}
+              startTimes={toolCallStartTimes(ordinaryPairs)}
+              {onRetryStep}
+              labels={turnLabels}
+              onToggle={onExpandedChange}
+            />
+          {/if}
+          <div class="chat-approval-group-rows">
+            {#each approvalMessages as actionRequiredMessage (actionRequiredMessage.id)}
+              {@render renderMessageRow(
+                { type: 'message', message: actionRequiredMessage },
+                true,
+                compactApprovalMessages.length > 1 ? 'row' : 'decision',
+              )}
+            {/each}
+          </div>
+          {#each inputMessages.filter((message) => !approvalIds.has(message.id)) as inputMessage (inputMessage.id)}
+            {@render renderMessageRow({ type: 'message', message: inputMessage }, true)}
+          {/each}
+        </div>
         {#if artifacts.length > 0}
           <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">
             {#each artifacts as artifact (artifact.id)}
@@ -2294,9 +2491,15 @@
     {#snippet emptyPromptButtons()}
       <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
         {#each emptyPrompts ?? [] as prompt, index (index)}
-          <button type="button" class="chat-empty-prompt" onclick={() => handlePromptClick(prompt)}>
+          <Button
+            type="button"
+            class="chat-empty-prompt"
+            size="sm"
+            variant="secondary"
+            onclick={() => handlePromptClick(prompt)}
+          >
             {prompt}
-          </button>
+          </Button>
         {/each}
       </div>
     {/snippet}
@@ -2311,7 +2514,7 @@
           scrollFadeVisible && 'cinder-_scroll-fade cinder-_scroll-fade-start',
         )}
         role="log"
-        aria-label="Messages"
+        aria-label={chatLabels.messages}
         aria-describedby={statusId}
         aria-live={isVirtualized ? 'off' : 'polite'}
         aria-relevant={isVirtualized ? undefined : 'additions'}
@@ -2329,6 +2532,9 @@
         {@attach viewportAttach}
         {@attach timelineScrollFadeAttachment}
       >
+        <span class="chat-timeline-focus-label" data-label={chatLabels.messages} aria-hidden="true"
+          >{chatLabels.messages}</span
+        >
         {#if showHistoryTrigger}
           <ChatHistoryTrigger
             bind:this={historyTriggerRef}
@@ -2389,7 +2595,7 @@
            IntersectionObserver fires correctly when the typing region gains height. -->
         <ChatParticipantTyping
           typingLabel={typingIndicatorState.typingLabel}
-          participantCount={typingIndicatorState.participantCount}
+          participantCount={participantTypingCount}
         />
 
         {#if trailing}
@@ -2415,6 +2621,7 @@
         unreadCount={unreadState.unreadCount}
         displayUnreadCount={unreadState.displayUnreadCount}
         hasLargeCount={unreadState.hasLargeCount}
+        labels={chatLabels}
         onJumpToLatest={handleJumpToLatest}
       />
 
@@ -2437,12 +2644,13 @@
             {@render composerLead()}
           </div>
         {/if}
-        {#if approvalWaiting}
-          <ChatApprovalDrawer onreview={reviewPendingApproval} />
+        {#if approvalWaiting && !approvalFullyVisible}
+          <ChatApprovalDrawer labels={chatLabels} onreview={reviewPendingApproval} />
         {/if}
         {#if followUps.discarded !== undefined}
           <ChatFollowUpDiscardDrawer
             discarded={followUps.discarded}
+            labels={chatLabels}
             onrestore={restoreDiscardedFollowUps}
             ondismiss={followUps.dismiss}
           />
@@ -2451,6 +2659,7 @@
           <ChatFollowUpDrawer
             id={inputId}
             items={followUps.items}
+            labels={chatLabels}
             canSendNow={followUps.canSendNow}
             onsendnow={followUps.sendNow}
             onedit={editQueuedFollowUp}
@@ -2465,11 +2674,12 @@
               position={dockedPosition}
               total={dockedTotal}
               onReply={() => replyInChatInstead(dockedQuestion.toolCallId)}
-              labels={questionLabels}
+              labels={questionDockLabels}
             />
           {/key}
         {/if}
         <ChatInput
+          labels={chatLabels}
           id={inputId}
           bind:this={inputRef}
           onsubmit={handleComposerSubmit}
@@ -2491,7 +2701,7 @@
           toolbar={composerToolbar}
           formattingToolbar={composerFormattingToolbar}
           markdownStyling={composerMarkdownStyling}
-          status={resolvedComposerStatus}
+          status={resolvedComposerStatus ?? availabilityComposerStatus}
           {allowAttachments}
           onstop={composerSending ? stopGenerating : undefined}
           {onComposerInput}
@@ -2613,6 +2823,11 @@
     /* Narrow-viewport tokens: tighter padding/gap at ≤480px (comfortable density). */
     --cinder-chat-narrow-padding: var(--cinder-space-3);
     --cinder-chat-narrow-gap: var(--cinder-space-2);
+    --cinder-chat-reading-max-width: min(100%, var(--cinder-chat-message-max-width, 48rem));
+    --cinder-chat-reading-inline-padding: max(
+      var(--cinder-chat-timeline-padding),
+      calc((100% - var(--cinder-chat-reading-max-width)) / 2)
+    );
   }
 
   .chat-container[data-cinder-density='compact'] {
@@ -2654,9 +2869,11 @@
 
   /* Timeline / Message Area */
   .chat-timeline {
+    position: relative;
     flex: 1;
     overflow-y: auto;
-    padding: var(--cinder-chat-timeline-padding);
+    scroll-padding-block: var(--cinder-space-2);
+    padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
     display: flex;
     flex-direction: column;
     gap: var(--cinder-chat-message-gap);
@@ -2667,14 +2884,59 @@
      it is present before an asynchronously loaded public-wrapper stylesheet. */
   .chat-timeline:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: inset 0 0 0 var(--cinder-ring-width)
-      var(--_cinder-chat-timeline-ring, var(--cinder-ring-color));
+    box-shadow: none;
+  }
+
+  .chat-timeline-focus-label {
+    position: sticky;
+    inset-block-start: var(--cinder-space-2);
+    align-self: flex-start;
+    z-index: 1;
+    inline-size: 0;
+    block-size: 0;
+    min-inline-size: 0;
+    min-block-size: 0;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    font-size: 0;
+    line-height: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .chat-timeline-focus-label::after {
+    content: attr(data-label);
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-block-size: 24px;
+    inline-size: 7rem;
+    max-inline-size: calc(100vw - 2 * var(--cinder-chat-reading-inline-padding));
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    overflow: hidden;
+    color: var(--cinder-accent-text);
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+    border: 1px solid var(--cinder-accent-solid);
+    border-radius: var(--cinder-radius-full);
+    font-size: var(--cinder-text-xs);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .chat-timeline:focus-visible .chat-timeline-focus-label {
+    opacity: 1;
   }
 
   @media (forced-colors: active) {
-    .chat-timeline:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: calc(var(--cinder-ring-width) * -1);
+    .chat-timeline-focus-label::after {
+      color: CanvasText;
+      background: Canvas;
+      border-color: ButtonText;
     }
   }
 
@@ -2722,14 +2984,25 @@
    * in default surfaceMode; embedded contexts using surfaceMode="transparent"
    * inherit their host's background. */
   .chat-container[data-surface-mode='default'] {
-    --_cinder-chat-shared-surface: light-dark(
-      var(--cinder-surface-inset),
-      var(--cinder-surface-canvas)
-    );
+    --_cinder-chat-shared-surface: var(--cinder-surface-canvas);
+    background: var(--_cinder-chat-shared-surface);
   }
 
   .chat-container[data-surface-mode='default'] .chat-timeline {
     background: var(--_cinder-chat-shared-surface);
+  }
+
+  .chat-container[data-surface-mode='default'] > :global(.chat-availability) {
+    background: var(--_cinder-chat-shared-surface);
+  }
+
+  /* Availability and the composer occupy the same bounded reading measure. The surrounding
+     container keeps the quiet canvas surface, so the old full-width white composer strip cannot
+     split loading states from the transcript. */
+  .chat-container[data-surface-mode='default'] > :global(.chat-availability),
+  .chat-container[data-surface-mode='default'] .chat-input-wrapper {
+    inline-size: min(calc(100% - 2rem), var(--cinder-chat-message-max-width, 48rem));
+    align-self: center;
   }
 
   /* Scroll-fade color must match the background set immediately above — the
@@ -2816,38 +3089,6 @@
     justify-content: center;
     max-width: 36rem;
     padding: 0 var(--cinder-space-4);
-  }
-
-  .chat-empty-prompt {
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    color: var(--cinder-text-default);
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-    cursor: pointer;
-    transition:
-      background var(--cinder-duration-fast) var(--cinder-ease-standard),
-      border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  @media (hover: hover) {
-    .chat-empty-prompt:hover {
-      background: var(--cinder-surface-hover);
-      border-color: var(--cinder-accent-solid);
-    }
-  }
-
-  .chat-empty-prompt:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  @media (forced-colors: active) {
-    .chat-empty-prompt:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: 3px;
-    }
   }
 
   /* Unread Divider */
@@ -2974,6 +3215,16 @@
   .chat-input-wrapper {
     position: relative;
     flex-shrink: 0;
+    inline-size: calc(100% - 2rem);
+    max-inline-size: var(--cinder-chat-reading-max-width);
+    margin-inline: auto;
+  }
+
+  @container (min-width: 481px) {
+    .chat-input-wrapper {
+      inline-size: calc(100% - 2rem);
+      max-inline-size: var(--cinder-chat-message-max-width, 48rem);
+    }
   }
 
   /* Centered placement: with nothing said yet, the empty state, the composer and the footer under
@@ -2992,12 +3243,62 @@
 
   .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
     align-self: center;
-    inline-size: 100%;
+    inline-size: calc(100% - 2rem);
     max-inline-size: 52rem;
+  }
+
+  @container (max-width: 64rem) {
+    .chat-input-wrapper,
+    .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
+      inline-size: calc(100% - 2rem);
+    }
+  }
+
+  @container (max-width: 480px) {
+    .chat-input-wrapper,
+    .chat-container[data-composer-placement='centered'] .chat-input-wrapper,
+    .chat-container[data-surface-mode='default'] .chat-input-wrapper {
+      inline-size: 100%;
+    }
+  }
+
+  @media (min-width: 481px) and (max-width: 64rem) {
+    .chat-input-wrapper,
+    .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
+      inline-size: calc(100% - 2rem);
+    }
   }
 
   .chat-composer-footer {
     margin-block-start: var(--cinder-space-4);
+  }
+
+  .chat-approval-group-heading {
+    margin: 0 0 var(--cinder-space-2);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .chat-tool-call-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+    max-inline-size: var(--cinder-chat-message-max-width, 48rem);
+    min-inline-size: 0;
+  }
+
+  .chat-approval-group-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .chat-approval-group-rows :global(.chat-message-wrapper) {
+    inline-size: 100%;
+    max-inline-size: 100%;
   }
 
   /* The host's note above the composer, such as where a new chat was started from. */
@@ -3008,15 +3309,41 @@
   /* Input Area */
   .chat-input-area {
     flex-shrink: 0;
-    padding: var(--cinder-chat-timeline-padding);
+    box-sizing: border-box;
+    inline-size: 100%;
+    padding: var(--cinder-chat-timeline-padding) 0;
     /* On a phone with a home indicator the composer keeps clear of it: the area's own bottom
        padding grows by the safe-area inset, which is 0 wherever the page has none. */
-    padding-block-end: calc(var(--cinder-chat-timeline-padding) + env(safe-area-inset-bottom, 0px));
+    padding-block-end: calc(
+      var(--cinder-chat-timeline-padding) +
+        var(--_cinder-chat-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
+    );
     background: var(--cinder-surface);
+  }
+
+  /* The input area's reading inset already aligns the composer with the transcript. Keep the
+   * editor's ink on that same edge; its own padding is for standalone ChatInput consumers. */
+  .chat-input-area :global(.chat-input-editor),
+  .chat-input-area :global(.chat-input-markdown) {
+    padding-inline: 0;
+  }
+
+  .chat-container[data-surface-mode='default'] .chat-input-area {
+    background: var(--_cinder-chat-shared-surface);
   }
 
   .chat-container[data-surface-mode='transparent'] .chat-input-area {
     background: transparent;
+  }
+
+  .chat-input-area > :global(.chat-input-shell),
+  .chat-input-area > .chat-composer-lead,
+  .chat-input-area > :global(.chat-follow-up-drawer),
+  .chat-input-area > :global(.chat-follow-up-discard),
+  .chat-input-area > :global(.chat-question-dock),
+  .chat-input-area > .chat-composer-footer {
+    max-inline-size: 100%;
+    margin-inline: auto;
   }
 
   /* A docked question takes the composer's place. The composer stays mounted, so a draft and its
@@ -3035,7 +3362,8 @@
     }
 
     .chat-input-area {
-      padding: var(--cinder-chat-narrow-padding);
+      padding-inline: var(--cinder-chat-narrow-padding);
+      padding-block-start: var(--cinder-chat-narrow-padding);
     }
   }
 

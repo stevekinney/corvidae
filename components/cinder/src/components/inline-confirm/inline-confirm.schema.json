@@ -33,6 +33,10 @@
     "class": {
       "type": "string",
       "description": "Additional class merged with the component's root class."
+    },
+    "armedEscapeHint": {
+      "type": "string",
+      "description": "Optional keyboard instruction shown beside the armed status on fine pointers."
     }
   },
   "additionalProperties": false,

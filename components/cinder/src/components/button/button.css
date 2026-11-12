@@ -707,6 +707,13 @@
       border-width: 2px;
     }
 
+    /* Text buttons need their touch height, not an artificial inline gutter. Their labels already
+       supply the inline face; keep the icon-only square's symmetric border expansion below. */
+    .cinder-button[data-cinder-hit-target='44']:not([data-cinder-icon-only]) {
+      min-inline-size: var(--cinder-touch-target-min);
+      border-inline-width: 0;
+    }
+
     /* The inset ring is clipped to the padding box, so outlined faces remain compact while their
        transparent border continues to provide the full hit region. Filled and ghost text faces
        intentionally remain borderless. */

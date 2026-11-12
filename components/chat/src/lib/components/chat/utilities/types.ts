@@ -154,6 +154,8 @@ export type ToolApprovalReceipt = {
   decidedAt: number;
   /** The note that went with the decision, when the person left one. */
   reason?: string;
+  /** The host result received after the approval was applied, when one exists. */
+  result?: string;
 };
 
 /**

@@ -112,8 +112,19 @@ export function expectedCounts(
   focusStopsByProfile: Readonly<Record<string, number>>,
 ): ExpectedCounts {
   const primary = cases.length * profiles.length;
-  const fixedVariants =
-    cases.reduce((sum, stressCase) => sum + stressCase.variants.length, 0) * profiles.length;
+  const fixedVariants = profiles.reduce(
+    (sum, profile) =>
+      sum +
+      cases.reduce(
+        (caseSum, stressCase) =>
+          caseSum +
+          stressCase.variants.filter(
+            (variant) => variant.profiles === undefined || variant.profiles.includes(profile.name),
+          ).length,
+        0,
+      ),
+    0,
+  );
   const focus = profiles.reduce(
     (sum, profile) =>
       sum +
@@ -141,6 +152,7 @@ export interface PageMeasurement {
   }[];
   /** Coarse-pointer controls report their painted content separately from the hit region. */
   readonly controlGeometry?: readonly {
+    readonly controlId: string;
     readonly name: string;
     readonly hitWidth: number;
     readonly hitHeight: number;
@@ -154,6 +166,26 @@ export interface PageMeasurement {
       readonly top: string;
       readonly hitsTarget: boolean;
     }[];
+  }[];
+  /** Before/after proof for controls initially clipped by a scrollable ancestor. */
+  readonly scrollableRevealProof?: readonly {
+    readonly controlId: string;
+    readonly name: string;
+    readonly initiallyClipped: boolean;
+    readonly originalBox: {
+      readonly left: number;
+      readonly top: number;
+      readonly right: number;
+      readonly bottom: number;
+    };
+    readonly revealedBox: {
+      readonly left: number;
+      readonly top: number;
+      readonly right: number;
+      readonly bottom: number;
+    };
+    readonly revealed: boolean;
+    readonly samplesHitTarget: boolean;
   }[];
   /** Positioned masks, fades, and overlays sampled over important controls or code. */
   readonly occlusions?: readonly {
@@ -185,6 +217,17 @@ export interface PageMeasurement {
   }[];
   /** The composer's bottom edge in CSS pixels, or `null` when no composer is drawn. */
   readonly composerEdge: number | null;
+  /** The composer's top edge in CSS pixels, or `null` when no composer is drawn. */
+  readonly composerTop: number | null;
+  /** The composer's measured bottom padding and resolved safe-area contribution. */
+  readonly safeArea?: { readonly inset: number; readonly paddingBottom: number };
+  /** Same-page endpoint measurements for a semantic turn transition. */
+  readonly composerTransition?: {
+    readonly from: string;
+    readonly to: string;
+    readonly before: number | null;
+    readonly after: number | null;
+  };
   /** A jump control uses its own row outside the transcript's scrollport. */
   readonly jumpOverlapsTranscript?: boolean;
   /** The composer or step summary still asks for approval after its decision. */
@@ -193,6 +236,28 @@ export interface PageMeasurement {
   readonly withdrawal?: { readonly announcements: number; readonly focusVisible: boolean };
   /** The host-supplied approval receipt uses the available width in the message status slot. */
   readonly approvalReceiptFits?: boolean;
+  /** Wide markdown nodes retain their leading edge through every outer clipping ancestor. */
+  readonly wideLayout?: readonly {
+    readonly node: string;
+    readonly ancestors: readonly { readonly name: string; readonly width: number }[];
+    readonly frame: { readonly left: number; readonly right: number; readonly width: number };
+    /** For tool payloads, the code frame should fill the details content measure. */
+    readonly contentWidthGap?: number;
+    readonly scroller?: {
+      readonly left: number;
+      readonly right: number;
+      readonly scrollLeft: number;
+    };
+    readonly clippingAncestors: readonly string[];
+    readonly leadingColumnClipped: boolean;
+  }[];
+  /** The transcript content and composer share the same inline reading edges. */
+  readonly readingEdges?: {
+    readonly transcriptLeft: number;
+    readonly transcriptRight: number;
+    readonly composerLeft: number;
+    readonly composerRight: number;
+  };
 }
 
 /** Everything wrong with one page's measurement; an empty list means it passed. */
@@ -228,12 +293,37 @@ export function measurementProblems(
   }
   for (const control of measurement.controlGeometry ?? []) {
     if (control.samples.some((sample) => !sample.hitsTarget)) {
-      problems.push(`hit region sample missed ${control.name}`);
+      problems.push(`hit region sample missed ${control.controlId}: ${control.name}`);
     }
   }
   if (measurement.jumpOverlapsTranscript) problems.push('jump control overlaps the transcript');
   if (measurement.approvalStillWaiting)
     problems.push('approval still waits after its receipt appears');
+  for (const wide of measurement.wideLayout ?? []) {
+    if (wide.clippingAncestors.length > 0) {
+      problems.push(
+        `${wide.node} extends beyond clipping ancestor(s): ${wide.clippingAncestors.join(', ')}`,
+      );
+    }
+    if (wide.leadingColumnClipped) {
+      problems.push(`${wide.node} leading column is clipped at the initial scroll position`);
+    }
+    if (wide.contentWidthGap !== undefined && wide.contentWidthGap > 1) {
+      problems.push(`${wide.node} is ${wide.contentWidthGap}px narrower than its details measure`);
+    }
+  }
+  if (measurement.readingEdges !== undefined) {
+    const { transcriptLeft, transcriptRight, composerLeft, composerRight } =
+      measurement.readingEdges;
+    if (
+      Math.abs(transcriptLeft - composerLeft) > 1 ||
+      Math.abs(transcriptRight - composerRight) > 1
+    ) {
+      problems.push(
+        `composer edges ${composerLeft}/${composerRight} do not match transcript ${transcriptLeft}/${transcriptRight}`,
+      );
+    }
+  }
   if (stressCase.direction === 'rtl') {
     if (measurement.directions.length === 0) problems.push('no right-to-left text was measured');
     for (const block of measurement.directions) {
@@ -259,6 +349,16 @@ export function measurementProblems(
   if (stressCase.id === 55 && measurement.approvalReceiptFits !== true) {
     problems.push('the external approval receipt did not fill its message status slot');
   }
+  const transition = measurement.composerTransition;
+  if (transition !== undefined) {
+    if (transition.before === null || transition.after === null) {
+      problems.push(`composer top missing for ${transition.from}->${transition.to}`);
+    } else if (Math.abs(transition.before - transition.after) > COMPOSER_EDGE_TOLERANCE) {
+      problems.push(
+        `composer top moved from ${transition.before} to ${transition.after} across ${transition.from}->${transition.to}`,
+      );
+    }
+  }
   return problems;
 }
 
@@ -282,6 +382,32 @@ export function composerEdgeProblems(
     } else if (Math.abs(first - second) > COMPOSER_EDGE_TOLERANCE) {
       problems.push(
         `${profile.name}: composer edge moved from ${first} to ${second} between cases ${caseLabel(stressCase.id)} and ${caseLabel(partner)}`,
+      );
+    }
+  }
+  return problems;
+}
+
+/** The paired cases must also keep the composer's top edge stable, not only its bottom edge. */
+export function composerTopProblems(
+  cases: readonly StressCase[],
+  profile: StressProfile,
+  edges: ReadonlyMap<number, number | null>,
+): string[] {
+  const problems: string[] = [];
+  for (const stressCase of cases) {
+    const partner = stressCase.composerEdgeWith;
+    if (partner === undefined || partner < stressCase.id) continue;
+    const first = edges.get(stressCase.id);
+    const second = edges.get(partner);
+    if (first === undefined || second === undefined) continue;
+    if (first === null || second === null) {
+      problems.push(
+        `${profile.name}: composer top missing in case ${caseLabel(first === null ? stressCase.id : partner)}`,
+      );
+    } else if (Math.abs(first - second) > COMPOSER_EDGE_TOLERANCE) {
+      problems.push(
+        `${profile.name}: composer top moved from ${first} to ${second} between cases ${caseLabel(stressCase.id)} and ${caseLabel(partner)}`,
       );
     }
   }

@@ -104,6 +104,9 @@
       </div>
       {#if onRetry || secondaryAction}
         <div class="cinder-error-state-action">
+          {#if secondaryAction}
+            {@render secondaryAction()}
+          {/if}
           {#if onRetry}
             {#if retryIcon}
               <Button variant="secondary" size="sm" label={retryLabel} onclick={() => onRetry()}>
@@ -112,9 +115,6 @@
             {:else}
               <Button variant="secondary" size="sm" label={retryLabel} onclick={() => onRetry()} />
             {/if}
-          {/if}
-          {#if secondaryAction}
-            {@render secondaryAction()}
           {/if}
         </div>
       {/if}
@@ -145,6 +145,9 @@
       {/if}
       {#if onRetry || secondaryAction}
         <div class="cinder-error-state-action">
+          {#if secondaryAction}
+            {@render secondaryAction()}
+          {/if}
           {#if onRetry}
             {#if compact}
               {#if retryIcon}
@@ -174,9 +177,6 @@
                 {/snippet}
               </Button>
             {/if}
-          {/if}
-          {#if secondaryAction}
-            {@render secondaryAction()}
           {/if}
         </div>
       {/if}

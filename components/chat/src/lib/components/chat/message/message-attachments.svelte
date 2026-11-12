@@ -19,7 +19,7 @@
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
   import { mediaDisplayUrl } from '../builders.ts';
-  import { Button, Maximize2, RotateCcw } from '@lostgradient/cinder';
+  import { Button, ImageOff, Maximize2, RotateCcw } from '@lostgradient/cinder';
   import { SvelteMap } from 'svelte/reactivity';
   import ImageLightbox from './image-lightbox.svelte';
 
@@ -131,6 +131,26 @@
     {@const displayIndex = loopIndex + 1}
     {@const alt = getAltText(image, displayIndex)}
     {@const unavailable = failedUrls.includes(url)}
+    {#snippet unavailableFallback()}
+      <div class="message-attachment-unavailable">
+        <ImageOff class="message-attachment-unavailable-icon cinder-icon-sm" aria-hidden="true" />
+        <p class="message-attachment-unavailable-text" dir="auto">
+          <span class="message-attachment-unavailable-name">{alt}</span>
+          didn't load
+        </p>
+        <Button
+          type="button"
+          class="message-attachment-retry"
+          size="xs"
+          variant="ghost-accent"
+          aria-label={`Retry loading ${alt}`}
+          onclick={() => retryImage(url)}
+        >
+          <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
+          Retry
+        </Button>
+      </div>
+    {/snippet}
     <figure
       class="message-attachment"
       role="listitem"
@@ -139,25 +159,8 @@
       style={dimensions ? `aspect-ratio: ${dimensions.width} / ${dimensions.height}` : undefined}
     >
       {#if unavailable}
-        <!-- The image failed: the same reserved box names what did not load and offers Retry,
-             with no zoom and no native broken-image glyph. -->
-        <div class="message-attachment-unavailable">
-          <p class="message-attachment-unavailable-text" dir="auto">
-            <span class="message-attachment-unavailable-name">{alt}</span>
-            didn't load
-          </p>
-          <Button
-            type="button"
-            class="message-attachment-retry"
-            size="xs"
-            variant="ghost-accent"
-            aria-label={`Retry loading ${alt}`}
-            onclick={() => retryImage(url)}
-          >
-            <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
-            Retry
-          </Button>
-        </div>
+        <!-- The image failed: the reserved box names what did not load and offers Retry. -->
+        {@render unavailableFallback()}
       {:else}
         <button
           type="button"
@@ -232,9 +235,8 @@
     inline-size: min(20rem, 100%);
   }
 
-  /* A failed image keeps its footprint as a dashed outline, so the layout does not move. */
+  /* A failed image keeps its footprint without adding a second framed dropzone. */
   .message-attachment[data-unavailable] {
-    border: 1px solid var(--cinder-border);
     background: var(--cinder-surface-inset);
   }
 
@@ -245,13 +247,17 @@
 
   .message-attachment-unavailable {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     justify-content: stretch;
     gap: var(--cinder-space-2);
     block-size: 100%;
     padding: var(--cinder-space-3);
     text-align: start;
+  }
+
+  .message-attachment-unavailable-icon {
+    color: var(--cinder-text-muted);
   }
 
   .message-attachment-unavailable-text {

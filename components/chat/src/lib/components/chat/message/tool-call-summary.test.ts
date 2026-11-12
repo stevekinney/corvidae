@@ -61,6 +61,7 @@ describe('formatToolCallDuration', () => {
 
   test('reads durations of a minute or more as minutes and seconds', () => {
     expect(formatToolCallDuration(65_000)).toBe('1m 5s');
+    expect(formatToolCallDuration(120_000)).toBe('2m');
   });
 });
 
@@ -110,7 +111,9 @@ describe('an approval with a deadline (COR-2280)', () => {
     const status = toolCallRowStatus(pair, 'approved', NOW);
     expect(status).toBe('approved');
     expect(toolCallRowStatus(pair, 'approved_with_edits', NOW)).toBe('approved');
-    expect(toolCallSummaryParts([pair], [status], [undefined]).problems).toEqual(['1 approved']);
+    expect(toolCallSummaryParts([pair], [status], [undefined]).problems).toEqual([
+      '1 approved, resuming',
+    ]);
   });
 
   test('waits on an approval with no valid deadline', () => {
@@ -160,7 +163,7 @@ describe('an approval with a deadline (COR-2280)', () => {
     const pairs = [approvalPair('a', at(-1_000)), approvalPair('b', at(60_000))];
     const statuses = pairs.map((pair) => toolCallRowStatus(pair, undefined, NOW));
     const parts = toolCallSummaryParts(pairs, statuses, [undefined, undefined]);
-    expect(parts.tools).toBe('issue-refund ×2');
+    expect(parts.tools).toBe('issue-refund');
     expect(parts.problems).toEqual(['1 expired', '1 waiting for approval']);
   });
 
@@ -191,6 +194,14 @@ describe('totalToolCallDuration', () => {
 });
 
 describe('toolCallSummaryParts', () => {
+  test('keeps the first host-provided semantic description in the rolled-up summary', () => {
+    const pair = pairWithResult({ outcome: 'success', content: 'done' });
+    expect(
+      toolCallSummaryParts([pair], ['succeeded'], [400], (_count, _status) => '', [
+        'Compared recent orders…',
+      ]),
+    ).toMatchObject({ description: 'Compared recent orders…', tools: 'read', duration: '0.4s' });
+  });
   const lookup = { call: { id: 'a', name: 'lookup-order' } } as ToolCallPair;
   const refund = { call: { id: 'b', name: 'issue-refund' } } as ToolCallPair;
 
@@ -200,7 +211,7 @@ describe('toolCallSummaryParts', () => {
       ['succeeded', 'failed', 'waiting'],
       [400, 300, 100],
     );
-    expect(parts.tools).toBe('lookup-order ×2, issue-refund');
+    expect(parts.tools).toBe('lookup-order ×2');
     expect(parts.problems).toEqual(['1 failed', '1 waiting for approval']);
     expect(parts.duration).toBe('0.8s');
   });
@@ -235,7 +246,7 @@ describe('toolCallSummaryParts', () => {
         ['waiting-input'],
         [undefined],
       ).tools,
-    ).toBe('Requested input');
+    ).toBe('');
   });
 });
 
@@ -365,6 +376,7 @@ describe('formatToolCallElapsed (COR-2283, R1)', () => {
     expect(formatToolCallElapsed(0)).toBe('0s');
     expect(formatToolCallElapsed(4_900)).toBe('4s');
     expect(formatToolCallElapsed(65_000)).toBe('1m 5s');
+    expect(formatToolCallElapsed(120_000)).toBe('2m');
     expect(formatToolCallElapsed(-20)).toBe('0s');
   });
 });
