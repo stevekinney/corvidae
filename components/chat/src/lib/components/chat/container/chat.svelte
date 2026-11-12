@@ -3447,6 +3447,18 @@
     max-inline-size: 100%;
   }
 
+  /* A decision row has no message actions of its own. On a coarse pointer the message reserves a
+   * touch-target row under any bubble whose footer holds actions, which left two batch cards
+   * 36 to 40px apart: the rows of one batch sit a space apart and draw no footer. The doubled class
+   * outranks the message's own reserve whichever stylesheet loads last. */
+  .chat-approval-group-rows :global(.chat-message-wrapper.chat-message-wrapper) {
+    margin-block-end: 0;
+  }
+
+  .chat-approval-group-rows :global(.chat-message-wrapper .chat-message-footer) {
+    display: none;
+  }
+
   /* The host's note above the composer, such as where a new chat was started from. */
   .chat-composer-lead {
     margin-block-end: var(--cinder-space-2);

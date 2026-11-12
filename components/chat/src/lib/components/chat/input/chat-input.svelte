@@ -2686,6 +2686,9 @@
     justify-content: space-between;
     gap: var(--cinder-space-2);
     padding-inline: var(--cinder-space-2);
+    /* The two-row composer's action row stands as far from the bottom border as from the sides:
+     * the composer's own 2px block padding plus this makes the inline inset. */
+    padding-block-end: calc(var(--cinder-space-2) - var(--cinder-space-0-5, 0.125rem));
   }
 
   .chat-input-footer-left,
