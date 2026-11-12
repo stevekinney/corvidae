@@ -485,13 +485,17 @@
               data-problem
               data-tone={pendingStatuses.has(summary.problemStatuses[problemIndex]!)
                 ? 'warning'
-                : undefined}>{problem}</span
+                : summary.problemStatuses[problemIndex] === 'failed'
+                  ? undefined
+                  : 'muted'}>{problem}</span
             >
           {/each}
           {#if summary.description && showDescription}
             <span class="chat-tool-call-summary-description" dir="auto">{summary.description}</span>
           {/if}
-          {#if summary.tools && !hasProblem && !hasHumanAction}
+          <!-- The tool name is run machinery: it shows only when no step title does, or as the
+               repeated rollup's identity ("lookup_order ×20"). -->
+          {#if summary.tools && !hasProblem && !hasHumanAction && (hasRepeatedSummary || !(summary.description && showDescription))}
             <span class="chat-tool-call-summary-tools">{summary.tools}</span>
           {/if}
           {#if summary.duration}
@@ -734,6 +738,11 @@
     color: var(--cinder-status-warning-text);
   }
 
+  /* Danger is for failed counts only: answered, approved and denied read as quiet text. */
+  .chat-tool-call-summary-segment[data-problem][data-tone='muted'] {
+    color: var(--cinder-text-muted);
+  }
+
   .chat-tool-call-summary-duration {
     flex: 0 0 auto;
     margin-inline-start: auto;
@@ -778,10 +787,6 @@
    * work keeps its tool/count identity in the collapsed header. The semantic title yields space
    * first, so the work identity and duration remain readable on a phone. */
   @container (max-width: 21.99rem) {
-    .chat-tool-call-timeline:not([data-has-repeated-summary='true']) .chat-tool-call-summary-tools {
-      display: none;
-    }
-
     /* Give the marker only the title line. Supporting text can use the whole row. */
     .chat-tool-call-row {
       display: grid;

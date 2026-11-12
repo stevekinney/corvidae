@@ -1016,9 +1016,6 @@
       >
         {#snippet icon()}<Info aria-hidden="true" />{/snippet}
         <p class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</p>
-        {#if createdAtValue && formattedCreatedAt}
-          <time class="chat-turn-time" datetime={createdAtValue}>{formattedCreatedAt}</time>
-        {/if}
       </Callout>
     </div>
   {/if}
@@ -1220,7 +1217,7 @@
   {#if transcript}
     <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
-         line again, and an empty one has none, because its row carries its time. -->
+         line again, and so does an empty one, which carries its time there. -->
     {#if !isEditing && !systemRow && turnPresentation.line}
       <!-- The sources sit under the prose, on their own block; the line below keeps only the time
            and the actions, on one row. -->
@@ -1246,7 +1243,7 @@
     {/if}
   {/if}
 
-  {#if hasMetadata && !transcript && turn.kind !== 'empty'}
+  {#if hasMetadata && !transcript}
     <div class="chat-message-metadata">
       {#if createdAtValue && formattedCreatedAt}
         <time datetime={createdAtValue}>{formattedCreatedAt}</time>
@@ -2470,23 +2467,6 @@
     block-size: 1em;
     margin-inline-end: var(--cinder-space-1);
     vertical-align: -0.125em;
-  }
-
-  /* An empty answer is a compact neutral row in the transcript: the words, the turn's time and
-   * Try again. */
-  .chat-turn-time {
-    color: var(--cinder-text-muted);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-
-  /* A stopped turn is one contained card: a neutral Callout is otherwise bare text, so this one
-   * takes the hairline and surface the other notices have. */
-  .chat-turn-outcome :global(.chat-turn-stopped-card) {
-    padding-inline: var(--cinder-space-4);
-    border-color: var(--cinder-border);
-    background: var(--cinder-surface);
   }
 
   /* RTL message chrome follows the prose edge even when the narrow-screen footer rule moves
