@@ -3,6 +3,7 @@ import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import type { LoopDetector } from './core/loop-detection';
 import type { ToolboxEventMap } from './event-types';
 import type { ExecutionLifecycle } from './execution-lifecycle';
+import { bindListenerLifetime } from './listener-lifetime';
 import type { ToolboxEventDispatcher, ToolboxEvents, ToolboxEventType } from './toolbox-contracts';
 import {
   ToolboxCallEvent,
@@ -112,15 +113,15 @@ export function createToolboxEventEmitter(
     listener: (event: ToolboxEventMap[K]) => void | Promise<void>,
     options?: AddEventListenerOptions,
   ): (() => void) => {
-    const mergedOptions: AddEventListenerOptions = {
-      ...options,
-      signal: options?.signal ? AbortSignal.any([options.signal, emitter.signal]) : emitter.signal,
-    };
+    const lifetime = bindListenerLifetime(options?.signal, emitter.signal);
     const wrapped = (event: ToolboxEventMap[K]): void => {
       void listener(event);
     };
-    emitter.addEventListener(type, wrapped, mergedOptions);
-    return () => emitter.removeEventListener(type, wrapped, options);
+    emitter.addEventListener(type, wrapped, { ...options, signal: lifetime.signal });
+    return () => {
+      emitter.removeEventListener(type, wrapped, options);
+      lifetime.release();
+    };
   };
 
   return {

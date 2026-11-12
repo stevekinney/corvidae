@@ -49,7 +49,7 @@ describe('watching the agent directory', () => {
   it('picks up an added file', async () => {
     const fixture = await start();
     const changed = fixture.nextChange((change) => change.added.includes('late'));
-    await fixture.put('late.md', validAgentFile());
+    await publish(fixture, 'late.md', validAgentFile());
     await changed;
     expect(fixture.catalog.find('late')).toBeDefined();
   });
@@ -82,11 +82,11 @@ describe('watching the agent directory', () => {
     await fixture.put('one.md', validAgentFile());
     await fixture.catalog.refresh();
     const broken = fixture.nextChange((change) => change.changed.includes('one'));
-    await fixture.put('one.md', agentFileText({ model: 'anthropic/none' }));
+    await publish(fixture, 'one.md', agentFileText({ model: 'anthropic/none' }));
     await broken;
     expect(fixture.catalog.list()[0]?.state).toBe('invalid');
     const repaired = fixture.nextChange((change) => change.changed.includes('one'));
-    await fixture.put('one.md', validAgentFile());
+    await publish(fixture, 'one.md', validAgentFile());
     await repaired;
     expect(fixture.catalog.list()[0]?.state).toBe('ready');
     const removed = fixture.nextChange((change) => change.removed.includes('one'));
@@ -106,7 +106,7 @@ describe('watching the agent directory', () => {
     expect(fixture.catalog.list()).toEqual([]);
     const added = fixture.nextChange((change) => change.added.includes('two'));
     await mkdir(fixture.directory);
-    await fixture.put('two.md', validAgentFile());
+    await publish(fixture, 'two.md', validAgentFile());
     await added;
     expect(fixture.catalog.find('two')).toBeDefined();
   });
@@ -116,7 +116,7 @@ describe('watching the agent directory', () => {
     expect(fixture.catalog.list()).toEqual([]);
     const added = fixture.nextChange((change) => change.added.includes('first'));
     await mkdir(fixture.directory);
-    await fixture.put('first.md', validAgentFile());
+    await publish(fixture, 'first.md', validAgentFile());
     await added;
     expect(fixture.catalog.find('first')).toBeDefined();
   });

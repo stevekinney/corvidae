@@ -32,11 +32,23 @@ afterEach(async () => {
   for (const fixture of fixtures.splice(0)) await fixture.dispose();
 });
 
+/**
+ * Writes `text` to a temporary file the directory ignores and renames it over `name`, so a scan
+ * reads the file as it was before or as `text`, never between the two. `fixture.put` writes in
+ * place, which a watcher scan can read after the file is created and before its bytes land, and
+ * the catalog then rightly reports it invalid before ready (COR-2374).
+ */
+async function publish(fixture: WorkflowFileFixture, name: string, text: string): Promise<void> {
+  const temporary = join(fixture.directory, `.${name}.tmp`);
+  await writeFile(temporary, text);
+  await rename(temporary, join(fixture.directory, name));
+}
+
 describe('watching the workflow directory', () => {
   it('picks up an added file', async () => {
     const fixture = await start();
     const changed = fixture.nextChange((change) => change.added.includes('late'));
-    await fixture.put('late.json', workflowFileText('late'));
+    await publish(fixture, 'late.json', workflowFileText('late'));
     await changed;
     expect(fixture.catalog.find('late')).toBeDefined();
   });
@@ -72,11 +84,11 @@ describe('watching the workflow directory', () => {
     await fixture.put('one.json', workflowFileText('one'));
     await fixture.catalog.refresh();
     const broken = fixture.nextChange((change) => change.changed.includes('one'));
-    await fixture.put('one.json', '{');
+    await publish(fixture, 'one.json', '{');
     await broken;
     expect(fixture.catalog.list()[0]?.state).toBe('invalid');
     const repaired = fixture.nextChange((change) => change.changed.includes('one'));
-    await fixture.put('one.json', workflowFileText('one'));
+    await publish(fixture, 'one.json', workflowFileText('one'));
     await repaired;
     expect(fixture.catalog.list()[0]?.state).toBe('ready');
     const removed = fixture.nextChange((change) => change.removed.includes('one'));
@@ -90,14 +102,14 @@ describe('watching the workflow directory', () => {
     expect(fixture.catalog.list()).toEqual([]);
     const added = fixture.nextChange((change) => change.added.includes('first'));
     await mkdir(fixture.directory);
-    await fixture.put('first.json', workflowFileText('first'));
+    await publish(fixture, 'first.json', workflowFileText('first'));
     await added;
     const removed = fixture.nextChange((change) => change.removed.includes('first'));
     await rm(fixture.directory, { recursive: true });
     await removed;
     const again = fixture.nextChange((change) => change.added.includes('second'));
     await mkdir(fixture.directory);
-    await fixture.put('second.json', workflowFileText('second'));
+    await publish(fixture, 'second.json', workflowFileText('second'));
     await again;
     expect(fixture.catalog.find('second')).toBeDefined();
   });
@@ -106,7 +118,7 @@ describe('watching the workflow directory', () => {
     const fixture = await start();
     const changes: string[][] = [];
     fixture.catalog.onChange((change) => changes.push([...change.added]));
-    await fixture.put('one.json', workflowFileText('one'));
+    await publish(fixture, 'one.json', workflowFileText('one'));
     await fixture.catalog.refresh();
     await fixture.catalog.refresh();
     expect(changes).toEqual([['one']]);
