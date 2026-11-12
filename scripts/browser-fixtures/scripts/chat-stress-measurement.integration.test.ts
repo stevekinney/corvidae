@@ -2,6 +2,7 @@ import { chromium } from '@playwright/test';
 import { describe, expect, it } from 'bun:test';
 
 import {
+  attachmentTargetReached,
   locate,
   measureInPage,
   readFailureSummaryProblems,
@@ -162,6 +163,78 @@ describe('chat stress visual measurement', () => {
           samplesHitTarget: false,
         }),
       );
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('reveals a control at the centre of its scroller, clear of a floating corner button', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      const scroller = (identifier: string) => `
+        <div style="height:300px; overflow:auto">
+          <div style="height:500px"></div>
+          <button data-chat-stress-control-id="${identifier}" aria-label="Copy" style="width:80px; height:32px">Copy</button>
+          <div style="height:500px"></div>
+        </div>`;
+      await page.setContent(`
+        <style>*, *::before, *::after { box-sizing:border-box } body { margin:0 }</style>
+        <main data-testid="chat-stress-shell">
+          ${scroller('edge')}
+          <div style="position:fixed; left:0; top:256px; width:200px; height:44px"></div>
+        </main>
+      `);
+      // The nearest-edge position (bottom of the scroller) sits under the floating button; the centre does not.
+      expect(await page.evaluate(revealScrollableControls, ['edge'])).toEqual([
+        expect.objectContaining({ controlId: 'edge', revealed: true, samplesHitTarget: true }),
+      ]);
+      await page.setContent(`
+        <style>*, *::before, *::after { box-sizing:border-box } body { margin:0 }</style>
+        <main data-testid="chat-stress-shell">
+          ${scroller('covered')}
+          <div style="position:fixed; left:0; top:0; width:200px; height:300px"></div>
+        </main>
+      `);
+      expect(await page.evaluate(revealScrollableControls, ['covered'])).toEqual([
+        expect.objectContaining({ controlId: 'covered', revealed: true, samplesHitTarget: false }),
+      ]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it('holds a coarse attachment control to its hit area on all four sides, excusing a neighbouring control', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      const row = (between: string, surround: string): string => `
+        <style>
+          *, *::before, *::after { box-sizing:border-box } body { margin:0 }
+          .row { display:flex; align-items:center; gap:4px; padding:40px; ${surround} }
+          .row button { width:28px; height:28px; padding:0; position:relative }
+          .row button.target::after { content:''; position:absolute; left:50%; top:50%; width:${between}; height:44px; transform:translate(-50%,-50%) }
+        </style>`;
+      const reached = async (markup: string): Promise<boolean> => {
+        await page.setContent(markup);
+        return page.locator('.target').evaluate(attachmentTargetReached);
+      };
+      // Reaches 44px in both axes, with other controls beside it: every probe lands on a control.
+      expect(
+        await reached(
+          `${row('44px', '')}<div class="row"><button>A</button><button class="target">B</button><button>C</button></div>`,
+        ),
+      ).toBe(true);
+      // The hit area stops short horizontally and plain space lies beside it: a tap there reaches nothing.
+      expect(
+        await reached(`${row('28px', '')}<div class="row"><button class="target">B</button></div>`),
+      ).toBe(false);
+      // A neighbour overlapping the horizontal reach is excused only because it is another control.
+      expect(
+        await reached(
+          `${row('28px', '')}<div class="row"><button>A</button><button class="target">B</button><span style="display:block;width:28px;height:28px"></span></div>`,
+        ),
+      ).toBe(false);
     } finally {
       await browser.close();
     }

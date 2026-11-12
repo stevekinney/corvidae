@@ -105,16 +105,33 @@ async function expectAttachmentTarget(
     expectAttachment(box?.height).toBeGreaterThanOrEqual(minimumTarget);
     return;
   }
-  const reachesTarget = await button.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const centreX = rect.left + rect.width / 2;
-    const centreY = rect.top + rect.height / 2;
-    return [-21, 21].every(
-      (offset) =>
-        document.elementFromPoint(centreX, centreY + offset)?.closest('button') === element,
-    );
+  expectAttachment(await button.evaluate(attachmentTargetReached)).toBe(true);
+}
+
+/**
+ * Runs in the page: a coarse control's 44px hit area is reached 21px above, below, left and right
+ * of its centre. Above and below must land on the control. Left and right may land on a
+ * neighbouring control when the point is outside this control's own box (the main touch-target
+ * guard's neighbour rule), and must otherwise land on this one.
+ */
+export function attachmentTargetReached(element: Element): boolean {
+  const rect = element.getBoundingClientRect();
+  const centreX = rect.left + rect.width / 2;
+  const centreY = rect.top + rect.height / 2;
+  const interactive =
+    'button, a[href], input, select, textarea, summary, [role="button"], [tabindex]';
+  const vertical = [-21, 21].every(
+    (offset) => document.elementFromPoint(centreX, centreY + offset)?.closest('button') === element,
+  );
+  const horizontal = [-21, 21].every((offset) => {
+    const x = centreX + offset;
+    const hit = document.elementFromPoint(x, centreY);
+    if (hit?.closest('button') === element) return true;
+    const outside = x < rect.left || x > rect.right;
+    const neighbour = hit?.closest(interactive);
+    return outside && neighbour != null && neighbour !== element && !element.contains(neighbour);
   });
-  expectAttachment(reachesTarget).toBe(true);
+  return vertical && horizontal;
 }
 
 /** The capture contract, kept here so it independently checks the responsive component contract. */
@@ -904,8 +921,10 @@ export function revealScrollableControls(controlIds: readonly string[] = []): {
         const box = scrollportBox(candidate);
         const current = element.getBoundingClientRect();
         if (candidateAxes.scrollY) {
-          if (current.top < box.top) candidate.scrollTop -= box.top - current.top;
-          else if (current.bottom > box.bottom) candidate.scrollTop += current.bottom - box.bottom;
+          // A floating control may cover an edge, so a clipped control is brought to the centre of
+          // the visible box (the browser clamps at the scroll limits), where nothing floats over it.
+          if (current.top < box.top || current.bottom > box.bottom)
+            candidate.scrollTop += current.top + current.height / 2 - (box.top + box.height / 2);
         }
         if (candidateAxes.scrollX) {
           if (current.left < box.left) candidate.scrollLeft -= box.left - current.left;
