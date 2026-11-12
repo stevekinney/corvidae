@@ -227,12 +227,11 @@
     getMessageText,
   } from '../utilities/utilities.ts';
   import {
-    Alert,
     Button,
-    Card,
     Callout,
     CircleAlert,
     CopyButton,
+    Info,
     Pencil,
     Popover,
     Progress,
@@ -241,10 +240,10 @@
     RefreshCw,
     RotateCcw,
     Tooltip,
-    TriangleAlert,
     WifiOff,
   } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
+  import RetryButton from './retry-button.svelte';
   import MessageSources from './message-sources.svelte';
   import { sourceChipKeys } from './source-chip-label.ts';
   import { resolveTurnLabels } from './turn-labels.ts';
@@ -924,40 +923,45 @@
 {/snippet}
 
 {#snippet retryConnectionAction()}
-  <Button
-    type="button"
-    class="chat-turn-action"
-    size="xs"
-    variant="secondary"
-    onclick={() => onRetryConnection?.(message.id)}
-  >
-    {turnWords.retryNow}
-  </Button>
+  <RetryButton class="chat-turn-action" label={turnWords.retryNow} onclick={() => onRetryConnection?.(message.id)} />
+{/snippet}
+
+<!-- Continue first, as the primary choice, and Discard beside it; each says in its accessible
+     description what it does to the partial answer above. -->
+{#snippet stoppedTurnActions()}
+  <span class="chat-turn-actions">
+    {#if onContinueTurn}
+      <Button
+        type="button"
+        class="chat-turn-action"
+        size="sm"
+        variant="primary"
+        aria-describedby={`${messageId}-continue-description`}
+        onclick={() => onContinueTurn(message.id)}>{turnWords.continue}</Button
+      >
+      <span id={`${messageId}-continue-description`} class="cinder-sr-only"
+        >{turnWords.continueDescription}</span
+      >
+    {/if}
+    {#if onDiscardTurn}
+      <Button
+        type="button"
+        class="chat-turn-action"
+        size="sm"
+        variant="secondary"
+        aria-describedby={`${messageId}-discard-description`}
+        onclick={() => onDiscardTurn(message.id)}>{turnWords.discard}</Button
+      >
+      <span id={`${messageId}-discard-description`} class="cinder-sr-only"
+        >{turnWords.discardDescription}</span
+      >
+    {/if}
+  </span>
 {/snippet}
 
 <!-- What a turn that has not simply finished says on itself (COR-2283), with the controls that
-     recover it. A streaming or complete turn draws nothing here. -->
-{#snippet stoppedTurnActions()}
-  {#if onDiscardTurn}
-    <Button
-      type="button"
-      class="chat-turn-action"
-      size="xs"
-      variant="secondary"
-      onclick={() => onDiscardTurn(message.id)}>{turnWords.discard}</Button
-    >
-  {/if}
-  {#if onContinueTurn}
-    <Button
-      type="button"
-      class="chat-turn-action"
-      size="xs"
-      variant="primary"
-      onclick={() => onContinueTurn(message.id)}>{turnWords.continue}</Button
-    >
-  {/if}
-{/snippet}
-
+     recover it. Every notice is the one Cinder Callout: the tone icon, the text, and the action
+     inline at the end. A streaming or complete turn draws nothing here. -->
 {#snippet turnOutcome()}
   {#if turn.kind === 'reconnecting'}
     <div class="chat-turn-outcome" data-kind="reconnecting">
@@ -968,83 +972,77 @@
         actionLayout="inline"
         {...onRetryConnection ? { action: retryConnectionAction } : {}}
       >
+        {#snippet icon()}<WifiOff aria-hidden="true" />{/snippet}
         <p class="chat-turn-text" dir="auto">
-          <WifiOff class="chat-turn-inline-icon" aria-hidden="true" />
           {turnWords.reconnecting(turn.attempt, turn.attempts, turn.nextTryIn)}
         </p>
-        <Progress
-          class="chat-turn-wait"
-          value={Math.round(reconnectWaitFraction(turn) * 100)}
-          max={100}
-          size="sm"
-          ariaLabel={turnWords.nextTry}
-          label={`${turn.nextTryIn} s`}
-        />
+        {#snippet progress()}
+          <Progress
+            class="chat-turn-wait"
+            value={Math.round(reconnectWaitFraction(turn) * 100)}
+            max={100}
+            size="sm"
+            ariaLabel={turnWords.nextTry}
+            label={`${turn.nextTryIn} s`}
+          />
+        {/snippet}
       </Callout>
     </div>
   {:else if turn.kind === 'stopped'}
     <div class="chat-turn-outcome" data-kind="stopped">
-      <Card
-        variant="card"
-        edge="border"
-        padding="none"
-        class="chat-turn-stopped-card"
-        role="note"
-        title={turnWords.stopped}
-        {...onDiscardTurn || onContinueTurn ? { actions: stoppedTurnActions } : {}}
+      <Callout
+        variant="neutral"
+        semantic="note"
+        class="chat-turn-callout chat-turn-stopped-card"
+        actionLayout="inline"
+        {...onDiscardTurn || onContinueTurn ? { action: stoppedTurnActions } : {}}
       >
-        {#snippet children()}{/snippet}
-      </Card>
+        {#snippet icon()}<Info aria-hidden="true" />{/snippet}
+        <p class="chat-turn-text" dir="auto">{turnWords.stopped}</p>
+      </Callout>
     </div>
   {:else if turn.kind === 'failed'}
     <div class="chat-turn-outcome" data-kind="failed">
-      <Alert variant="danger" class="chat-turn-alert">
-        <div class="chat-turn-alert-header">
-          <p class="chat-turn-alert-title" dir="auto">
-            <TriangleAlert class="chat-turn-inline-icon" aria-hidden="true" />
-            {turnWords.incomplete}
-          </p>
-          {#if onRetryTurn}
-            <Button
-              type="button"
-              class="chat-turn-action"
-              size="sm"
-              variant="secondary"
-              onclick={() => onRetryTurn?.(message.id)}
-            >
-              {turnWords.retry}
-            </Button>
-          {/if}
-        </div>
+      <Callout
+        variant="danger"
+        semantic="note"
+        class="chat-turn-callout chat-turn-alert"
+        actionLayout="inline"
+        title={turnWords.incomplete}
+        {...onRetryTurn ? { action: retryTurnAction } : {}}
+      >
+        {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
         <p class="chat-turn-text chat-turn-failure-body" dir="auto">
           {turn.cause}
           {turn.keeps ?? turnWords.retryKeeps}
         </p>
-      </Alert>
+      </Callout>
     </div>
   {:else if turn.kind === 'empty'}
-    <Card variant="well" edge="border" padding="none" class="chat-turn-empty-card" role="note">
-      <div class="chat-turn-outcome chat-turn-row chat-turn-empty" data-kind="empty">
-        <span class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</span>
+    <div class="chat-turn-outcome chat-turn-empty" data-kind="empty">
+      <Callout
+        variant="neutral"
+        semantic="note"
+        class="chat-turn-callout chat-turn-empty-card"
+        actionLayout="inline"
+        {...onRetryTurn ? { action: retryTurnAction } : {}}
+      >
+        {#snippet icon()}<Info aria-hidden="true" />{/snippet}
+        <p class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</p>
         {#if createdAtValue && formattedCreatedAt}
           <time class="chat-turn-time" datetime={createdAtValue}>{formattedCreatedAt}</time>
         {/if}
-        {#if onRetryTurn}
-          <span class="chat-turn-actions">
-            <Button
-              type="button"
-              class="chat-turn-action"
-              size="xs"
-              variant="secondary"
-              onclick={() => onRetryTurn(message.id)}
-            >
-              {turnWords.tryAgain}
-            </Button>
-          </span>
-        {/if}
-      </div>
-    </Card>
+      </Callout>
+    </div>
   {/if}
+{/snippet}
+
+{#snippet retryTurnAction()}
+  <RetryButton
+    class="chat-turn-action"
+    label={turn.kind === 'empty' ? turnWords.tryAgain : turnWords.retry}
+    onclick={() => onRetryTurn?.(message.id)}
+  />
 {/snippet}
 
 <div
@@ -2438,26 +2436,8 @@
     padding-inline: var(--cinder-space-3);
   }
 
-  .chat-turn-text,
-  .chat-turn-alert-title {
+  .chat-turn-text {
     margin: 0;
-  }
-
-  .chat-turn-outcome-title {
-    display: block;
-    margin: 0;
-    font-weight: var(--cinder-font-semibold);
-  }
-
-  .chat-turn-alert-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--cinder-space-2);
-  }
-
-  .chat-turn-alert-title {
-    font-weight: var(--cinder-font-semibold);
   }
 
   .chat-turn-failure-body {
@@ -2472,26 +2452,8 @@
     vertical-align: -0.125em;
   }
 
-  .chat-turn-outcome :global(.chat-turn-alert) {
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-  }
-
-  .chat-turn-alert-header :global(.chat-turn-action) {
-    flex: none;
-  }
-
   /* An empty answer is a compact neutral row in the transcript: the words, the turn's time and
    * Try again. */
-  .chat-turn-empty {
-    box-sizing: border-box;
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    color: var(--cinder-text-muted);
-  }
-
-  .chat-turn-empty-card {
-    border-radius: var(--cinder-radius-md);
-  }
-
   .chat-turn-time {
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
@@ -2503,27 +2465,6 @@
   @media (pointer: coarse) {
     .chat-turn-outcome :global(.chat-turn-action) {
       min-block-size: var(--cinder-touch-target-min);
-    }
-  }
-
-  /* At phone widths the stopped sentence is the primary status. Give it a full row before the
-   * secondary/primary recovery actions, rather than letting Card's title row squeeze it beside
-   * two buttons. The actions keep their natural compact faces and remain separated left/right. */
-  @media (max-width: 30rem) {
-    :global(.chat-turn-stopped-card) :global(.cinder-card__title-row) {
-      align-items: stretch;
-      flex-direction: column;
-      gap: var(--cinder-space-2);
-    }
-
-    :global(.chat-turn-stopped-card) :global(.cinder-card__title-group) {
-      inline-size: 100%;
-    }
-
-    :global(.chat-turn-stopped-card) :global(.cinder-card__actions) {
-      inline-size: 100%;
-      justify-content: space-between;
-      margin-block: 0;
     }
   }
 

@@ -261,13 +261,13 @@ describe('turn labels', () => {
   });
 
   test('R4 to R7: the default words, with no middle dot as a separator', () => {
-    expect(DEFAULT_TURN_LABELS.stopped).toBe('Stopped by you, partial answer');
+    expect(DEFAULT_TURN_LABELS.stopped).toBe('Stopped. The answer above is partial.');
     expect(DEFAULT_TURN_LABELS.incomplete).toBe('This answer is incomplete.');
     expect(DEFAULT_TURN_LABELS.empty).toBe('The agent finished without writing an answer.');
-    expect(DEFAULT_TURN_LABELS.tryAgain).toBe('Try again');
+    expect(DEFAULT_TURN_LABELS.tryAgain).toBe('Retry');
     expect(DEFAULT_TURN_LABELS.stepPosition(2, 3)).toBe('Step 2 of 3');
     expect(DEFAULT_TURN_LABELS.stepsDone(2, 3)).toBe('2 of 3 steps');
-    expect(DEFAULT_TURN_LABELS.retryStep).toBe('Retry this step');
+    expect(DEFAULT_TURN_LABELS.retryStep).toBe('Retry');
     expect(DEFAULT_TURN_LABELS.copyError).toBe('Copy error');
     const texts = [
       ...Object.values(DEFAULT_TURN_LABELS).filter(
@@ -293,7 +293,7 @@ describe('turn labels', () => {
       stepsDone: (done, total) => `Checked ${done} of ${total} sources`,
     });
     expect(labels.stepsDone(2, 3)).toBe('Checked 2 of 3 sources');
-    expect(labels.retryStep).toBe('Retry this step');
+    expect(labels.retryStep).toBe('Retry');
     expect(resolveTurnLabels(undefined)).toBe(DEFAULT_TURN_LABELS);
   });
 });

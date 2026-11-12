@@ -325,7 +325,7 @@ describe('R7: a failed step', () => {
     const tooltip = actions?.querySelector('[role="tooltip"]');
     expect(tooltip?.textContent).toBe('Copy error');
     expect(tooltip?.hasAttribute('data-cinder-visible')).toBe(false);
-    await fireEvent.click(getByRole('button', { name: 'Retry this step' }));
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryStep).toHaveBeenCalledWith('s3');
   });
 
@@ -353,7 +353,7 @@ describe('R7: a failed step', () => {
     });
     await tick();
     expect(container.querySelector('.chat-tool-call-failure')).toBeNull();
-    expect(queryByRole('button', { name: 'Retry this step' })).toBeNull();
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(container.textContent).toContain('The user denied this call');
   });
 
@@ -362,7 +362,7 @@ describe('R7: a failed step', () => {
       props: { pairs: [failed('s1')], describeToolCall },
     });
     await tick();
-    expect(queryByRole('button', { name: 'Retry this step' })).toBeNull();
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(getByRole('button', { name: 'Copy error' })).not.toBeNull();
   });
 

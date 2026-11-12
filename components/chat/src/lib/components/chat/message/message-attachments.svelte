@@ -19,7 +19,8 @@
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
   import { mediaDisplayUrl } from '../builders.ts';
-  import { Button, ImageOff, Maximize2, RotateCcw } from '@lostgradient/cinder';
+  import { ImageOff, Maximize2 } from '@lostgradient/cinder';
+  import RetryButton from './retry-button.svelte';
   import { SvelteMap } from 'svelte/reactivity';
   import ImageLightbox from './image-lightbox.svelte';
 
@@ -138,17 +139,12 @@
           <span class="message-attachment-unavailable-name">{alt}</span>
           didn't load
         </p>
-        <Button
-          type="button"
+        <RetryButton
           class="message-attachment-retry"
-          size="xs"
-          variant="ghost-accent"
-          aria-label={`Retry loading ${alt}`}
+          iconOnly
+          ariaLabel={`Retry loading ${alt}`}
           onclick={() => retryImage(url)}
-        >
-          <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
-          Retry
-        </Button>
+        />
       </div>
     {/snippet}
     <figure
@@ -156,7 +152,7 @@
       role="listitem"
       data-cinder-image-placeholder={dimensions ? undefined : ''}
       data-unavailable={unavailable ? '' : undefined}
-      style={dimensions ? `aspect-ratio: ${dimensions.width} / ${dimensions.height}` : undefined}
+      style={dimensions && !unavailable ? `aspect-ratio: ${dimensions.width} / ${dimensions.height}` : undefined}
     >
       {#if unavailable}
         <!-- The image failed: the reserved box names what did not load and offers Retry. -->
@@ -235,14 +231,18 @@
     inline-size: min(20rem, 100%);
   }
 
-  /* A failed image keeps its footprint without adding a second framed dropzone. */
+  /* A failed image is a compact attachment row (icon, name, "didn't load", Retry), not a frame
+   * that keeps the image's aspect ratio. */
   .message-attachment[data-unavailable] {
+    aspect-ratio: auto;
+    min-block-size: 0;
+    max-block-size: none;
+    align-self: start;
     background: var(--cinder-surface-inset);
   }
 
   .message-attachments[data-count='1'] .message-attachment[data-unavailable] {
-    inline-size: min(20rem, 100%);
-    min-block-size: 6rem;
+    inline-size: min(24rem, 100%);
   }
 
   .message-attachment-unavailable {
@@ -251,8 +251,7 @@
     align-items: center;
     justify-content: stretch;
     gap: var(--cinder-space-2);
-    block-size: 100%;
-    padding: var(--cinder-space-3);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
     text-align: start;
   }
 

@@ -11,7 +11,6 @@
     Search,
     Terminal,
     X,
-    Button,
     Copy,
     CopyButton,
     formatDuration,
@@ -24,6 +23,7 @@
   import type { ToolCallPair } from '../conversation-model.ts';
   import type { ToolCallPresentation } from '../utilities/types.ts';
   import { formatToolCallProse } from '../utilities/utilities.ts';
+  import RetryButton from './retry-button.svelte';
   import ToolPayloadCode from './tool-payload-code.svelte';
   import { resolveTurnLabels, type ChatTurnLabels } from './turn-labels.ts';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
@@ -377,7 +377,7 @@
 {/snippet}
 
 <!-- A failed step (R7): what went wrong in one danger line, the rest of the error wrapping under
-     it, and Copy error then Retry this step. -->
+     it, and Retry, then Copy error. -->
 {#snippet failure(pair: ToolCallPair)}
   {@const failed = toolCallFailure(pair, words.stepFailed)}
   {#if failed}
@@ -390,6 +390,13 @@
         <pre class="chat-tool-call-diagnostic" dir="auto">{failed.diagnostic}</pre>
       {/if}
       <div class="chat-tool-call-failure-actions">
+        {#if onRetryStep}
+          <RetryButton
+            class="chat-tool-call-failure-action"
+            label={words.retryStep}
+            onclick={() => onRetryStep(pair.call.id)}
+          />
+        {/if}
         <Tooltip text={words.copyError} placement="top" describe={false}>
           <CopyButton
             value={failed.copy}
@@ -402,17 +409,6 @@
             <Copy class="cinder-icon-xs" aria-hidden="true" />
           </CopyButton>
         </Tooltip>
-        {#if onRetryStep}
-          <Button
-            type="button"
-            class="chat-tool-call-failure-action"
-            size="xs"
-            variant="secondary"
-            onclick={() => onRetryStep(pair.call.id)}
-          >
-            {words.retryStep}
-          </Button>
-        {/if}
       </div>
     </div>
   {/if}

@@ -18,12 +18,16 @@ export type ChatTurnLabels = {
    * `Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s.`
    */
   reconnecting: (attempt: number, attempts: number, nextTryIn: number) => string;
-  /** The button that tries the connection again at once. Default `Retry now`. */
+  /** The button that tries the connection again at once. Default `Retry`. */
   retryNow: string;
   /** The accessible name of the bar that drains until the next try. Default `Time until the next try`. */
   nextTry: string;
-  /** The pill on a turn the person stopped. Default `Stopped by you, partial answer`. */
+  /** The one neutral card on a turn the person stopped. Default `Stopped. The answer above is partial.`. */
   stopped: string;
+  /** What Continue does, as its accessible description. Default `Pick the answer up again where it stopped.`. */
+  continueDescription: string;
+  /** What Discard does, as its accessible description. Default `Throw the partial answer away.`. */
+  discardDescription: string;
   /** The primary button that picks a stopped turn up again. Default `Continue`. */
   continue: string;
   /** The secondary button that throws a stopped turn's partial answer away. Default `Discard`. */
@@ -36,7 +40,7 @@ export type ChatTurnLabels = {
   retry: string;
   /** The row on a turn that finished without an answer. Default `The agent finished without writing an answer.`. */
   empty: string;
-  /** The button on that row that asks again. Default `Try again`. */
+  /** The button on that row that asks again. Default `Retry`. */
   tryAgain: string;
   /** Where the step under way falls among the steps so far. Default `Step 2 of 3`. */
   stepPosition: (position: number, total: number) => string;
@@ -49,7 +53,7 @@ export type ChatTurnLabels = {
   steps: (count: number) => string;
   /** What a failed step says when its result says nothing at all. Default `This step failed.`. */
   stepFailed: string;
-  /** The button on a failed step that runs it again. Default `Retry this step`. */
+  /** The button on a failed step that runs it again. Default `Retry`. */
   retryStep: string;
   /** The button on a failed step that copies its error. Default `Copy error`. */
   copyError: string;
@@ -74,21 +78,23 @@ export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
   approvalWaiting: (count) => `${count} approvals waiting`,
   reconnecting: (attempt, attempts, nextTryIn) =>
     `Connection lost. Reconnecting, attempt ${attempt} of ${attempts}. Next try in ${nextTryIn} s.`,
-  retryNow: 'Retry now',
+  retryNow: 'Retry',
   nextTry: 'Time until the next try',
-  stopped: 'Stopped by you, partial answer',
+  stopped: 'Stopped. The answer above is partial.',
+  continueDescription: 'Pick the answer up again where it stopped.',
+  discardDescription: 'Throw the partial answer away.',
   continue: 'Continue',
   discard: 'Discard',
   incomplete: 'This answer is incomplete.',
   retryKeeps: 'Retry keeps what was written so far.',
   retry: 'Retry',
   empty: 'The agent finished without writing an answer.',
-  tryAgain: 'Try again',
+  tryAgain: 'Retry',
   stepPosition: (position, total) => `Step ${position} of ${total}`,
   stepsDone: (done, total) => `${done} of ${total} ${total === 1 ? 'step' : 'steps'}`,
   steps: (count) => `${count} ${count === 1 ? 'step' : 'steps'}`,
   stepFailed: 'This step failed.',
-  retryStep: 'Retry this step',
+  retryStep: 'Retry',
   copyError: 'Copy error',
   errorCopied: 'Copied',
   calls: (count) => `${count} consecutive tool ${count === 1 ? 'call' : 'calls'}`,

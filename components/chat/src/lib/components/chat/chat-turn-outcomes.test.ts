@@ -131,8 +131,8 @@ describe('Chat — run outcomes on the turn', () => {
     await tick();
     expect(kindOf()).toBe('reconnecting');
     const reconnecting = view.container.querySelector('.chat-turn-callout')!;
-    expect(reconnecting.querySelector('.cinder-callout__icon')).toBeNull();
-    expect(reconnecting.querySelector('.chat-turn-text svg')?.getAttribute('aria-hidden')).toBe(
+    expect(reconnecting.querySelector('.cinder-callout__icon')).not.toBeNull();
+    expect(reconnecting.querySelector('.cinder-callout__icon svg')?.getAttribute('aria-hidden')).toBe(
       'true',
     );
     expect(view.container.textContent).toContain(
@@ -144,7 +144,7 @@ describe('Chat — run outcomes on the turn', () => {
     await tick();
     expect(kindOf()).toBe('failed');
     const failed = view.container.querySelector('.chat-turn-alert')!;
-    expect(failed.querySelector('.chat-turn-alert-header button')?.textContent?.trim()).toBe(
+    expect(failed.querySelector('.cinder-callout__action button')?.textContent?.trim()).toBe(
       'Retry',
     );
     expect(failed.querySelector('.chat-turn-failure-body')?.textContent).toContain(
@@ -233,7 +233,7 @@ describe('Chat — run outcomes on the turn', () => {
     expect(timeline?.querySelector('.chat-tool-call-summary-count')?.textContent).toBe(
       'Checked 1 of 2 sources',
     );
-    await fireEvent.click(getByRole(timeline!, 'button', { name: 'Retry this step' }));
+    await fireEvent.click(getByRole(timeline!, 'button', { name: 'Retry' }));
     expect(retryStep).toHaveBeenCalledWith('source-2');
   });
 });
@@ -333,7 +333,7 @@ describe('tool-call grouping under host customization (COR-2289)', () => {
       '1',
       '1',
     ]);
-    await fireEvent.click(getByRole(timelines[2]!, 'button', { name: 'Retry this step' }));
+    await fireEvent.click(getByRole(timelines[2]!, 'button', { name: 'Retry' }));
     expect(retryStep).toHaveBeenCalledWith('lookup-4473');
   });
 });

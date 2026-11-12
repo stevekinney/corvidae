@@ -96,7 +96,7 @@ describe('R3: reconnecting', () => {
     );
     expect(warning?.querySelector('.cinder-callout--inline-action')).not.toBeNull();
     expect(warning?.querySelector('.cinder-callout__action button')?.textContent?.trim()).toBe(
-      'Retry now',
+      'Retry',
     );
     expect(warning?.querySelector('.chat-turn-text')?.textContent?.trim()).toBe(
       'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s.',
@@ -106,7 +106,7 @@ describe('R3: reconnecting', () => {
     expect(bar.getAttribute('aria-valuenow')).toBe('80');
     expect(bar.getAttribute('aria-valuetext')).toBe('8 s');
 
-    await fireEvent.click(getByRole('button', { name: 'Retry now' }));
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryConnection).toHaveBeenCalledWith('a1');
   });
 
@@ -123,21 +123,11 @@ describe('R3: reconnecting', () => {
 
   test('without the callback there is no Retry now', () => {
     const { queryByRole } = mount({ turnState: reconnecting });
-    expect(queryByRole('button', { name: 'Retry now' })).toBeNull();
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });
 
 describe('R4: stopped', () => {
-  test('at narrow widths the status title gets its own row above the recovery actions', async () => {
-    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
-    expect(source).toMatch(
-      /@media \(max-width:\s*30rem\)[\s\S]*?:global\(\.chat-turn-stopped-card\) :global\(\.cinder-card__title-row\)[\s\S]*?flex-direction:\s*column;/u,
-    );
-    expect(source).toMatch(
-      /:global\(\.chat-turn-stopped-card\) :global\(\.cinder-card__actions\)[\s\S]*?justify-content:\s*space-between;/u,
-    );
-  });
-
   test('a contained neutral notice keeps Discard and Continue beside the stopped status', async () => {
     const continueTurn = mock((_messageId: string) => undefined);
     const discardTurn = mock((_messageId: string) => undefined);
@@ -150,21 +140,21 @@ describe('R4: stopped', () => {
     expect(row?.getAttribute('data-kind')).toBe('stopped');
     const card = row?.querySelector('.chat-turn-stopped-card');
     expect(card?.getAttribute('role')).toBe('note');
-    expect(card?.querySelector('.cinder-card__title')?.textContent?.trim()).toBe(
-      'Stopped by you, partial answer',
-    );
+    expect(card?.textContent).toContain('Stopped. The answer above is partial.');
 
     const buttons = Array.from(row?.querySelectorAll('button') ?? [], (button) =>
       button.textContent?.trim(),
     );
-    expect(buttons).toEqual(['Discard', 'Continue']);
+    expect(buttons).toEqual(['Continue', 'Discard']);
+    expect(getByRole('button', { name: 'Continue' }).getAttribute('aria-describedby')).not.toBeNull();
+    expect(getByRole('button', { name: 'Discard' }).getAttribute('aria-describedby')).not.toBeNull();
     expect(getByRole('button', { name: 'Continue' }).getAttribute('data-cinder-variant')).toBe(
       'primary',
     );
     expect(getByRole('button', { name: 'Discard' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
-    expect(card?.querySelector('.cinder-card__actions')).not.toBeNull();
+    expect(card?.querySelector('.cinder-callout__action')).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Continue' }));
     await fireEvent.click(getByRole('button', { name: 'Discard' }));
@@ -204,7 +194,7 @@ describe('R5: failed partway', () => {
     });
     const block = outcome(container);
     expect(block?.getAttribute('data-kind')).toBe('failed');
-    const alert = block?.querySelector('[role="alert"]');
+    const alert = block?.querySelector('.cinder-callout');
     expect(alert?.getAttribute('data-cinder-variant')).toBe('danger');
     expect(getByRole('button', { name: 'Retry' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
@@ -219,11 +209,6 @@ describe('R5: failed partway', () => {
     expect(retryTurn).toHaveBeenCalledWith('a1');
     // The partial answer stays readable above the alert.
     expect(container.querySelector('.chat-message-body')?.textContent).toContain('Order 4398');
-  });
-
-  test('the failed heading aligns to the top of its recovery action', async () => {
-    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
-    expect(source).toMatch(/\.chat-turn-alert-header\s*\{[^}]*align-items:\s*flex-start;/su);
   });
 
   test('without a host sentence, the alert says what Retry keeps in Chat’s words', () => {
@@ -260,7 +245,7 @@ describe('R6: empty answer', () => {
     expect(container.querySelector('.chat-message-line')).toBeNull();
     expect(container.querySelectorAll('time')).toHaveLength(1);
 
-    await fireEvent.click(getByRole('button', { name: 'Try again' }));
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryTurn).toHaveBeenCalledWith('a1');
   });
 
@@ -275,9 +260,9 @@ describe('R6: empty answer', () => {
   test('the empty outcome is one compact neutral card without a dashed placeholder edge', () => {
     const { container } = mount({ turnState: { kind: 'empty' } });
     const card = container.querySelector('.chat-turn-empty-card');
-    expect(card?.getAttribute('data-cinder-variant')).toBe('well');
-    expect(card?.getAttribute('data-cinder-edge')).toBe('border');
-    expect(card?.classList.contains('chat-turn-empty-card')).toBe(true);
+    expect(card?.classList.contains('cinder-callout')).toBe(true);
+    expect(card?.getAttribute('data-cinder-variant')).toBe('neutral');
+    expect(card?.querySelector('.cinder-callout__icon')).not.toBeNull();
   });
 });
 
