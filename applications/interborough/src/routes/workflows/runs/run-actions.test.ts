@@ -311,7 +311,7 @@ describe('what a run is waiting on', () => {
     }));
 
     await view.findByText('Which environment should the release go to?');
-    await fireEvent.click(view.getByRole('button', { name: 'Yes' }));
+    await fireEvent.click(view.getByRole('radio', { name: 'Yes' }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond')).toHaveLength(1));
     expect(stub?.callsTo('bureau.tasks.respond')[0]?.params).toMatchObject({ answer: 'true' });
