@@ -330,8 +330,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: var(--cinder-touch-target-min);
-    block-size: var(--cinder-touch-target-min);
+    inline-size: 2rem;
+    block-size: 2rem;
     color: var(--cinder-text-default);
     background: color-mix(in oklch, var(--cinder-surface), transparent 12%);
     border-radius: var(--cinder-radius-full);

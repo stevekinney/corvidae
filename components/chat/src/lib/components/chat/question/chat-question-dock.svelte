@@ -487,12 +487,10 @@
 
     .chat-question-dock-actions :global(.cinder-button) {
       flex: 1 1 auto;
-      min-block-size: var(--cinder-touch-target-min);
     }
 
     .chat-question-dock-actions :global(.chat-question-dock-reply) {
-      flex: 0 0 var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
+      flex: 0 0 auto;
     }
   }
 </style>

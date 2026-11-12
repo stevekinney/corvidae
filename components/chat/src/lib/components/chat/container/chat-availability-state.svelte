@@ -194,13 +194,6 @@
 {/snippet}
 
 <style>
-  @media (any-pointer: coarse) {
-    :global(.chat-availability-connect) {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-    }
-  }
-
   .chat-availability {
     display: flex;
     flex: 1;

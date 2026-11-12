@@ -207,13 +207,5 @@
     flex: none;
     align-items: center;
   }
-
-  /* Coarse pointers get targets of at least 44 px. */
-  @media (any-pointer: coarse) {
-    .chat-follow-up-drawer :global(.chat-follow-up-drawer-action),
-    .chat-follow-up-drawer :global(.chat-follow-up-ghost-action) {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-    }
-  }
+  /* The Cinder icon Buttons paint compact and take their 44 px hit area from a pseudo-element. */
 </style>

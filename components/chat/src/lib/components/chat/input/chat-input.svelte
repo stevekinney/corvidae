@@ -1709,14 +1709,18 @@
               >{attachmentCountText(attachments.length)}</span
             >
             {#if hiddenAttachmentCount > 0}
-              <button
+              <Button
                 type="button"
+                variant="ghost-accent"
+                size="xs"
+                quiet
                 class="chat-input-attachment-more"
                 aria-controls={attachmentListId}
                 aria-expanded="false"
                 onclick={() => (attachmentsExpanded = true)}
-                >{labels.moreAttachments(hiddenAttachmentCount)}</button
               >
+                {labels.moreAttachments(hiddenAttachmentCount)}
+              </Button>
             {/if}
           </p>
           <ul
@@ -1743,24 +1747,33 @@
                 >
                   {#snippet action()}
                     {#if canRetry(attachment) && uploadAttachment !== undefined}
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="sm"
+                        quiet
+                        iconOnly
                         class="chat-input-attachment-retry"
-                        onclick={() => retryAttachment(attachment.id)}
+                        label={labels.retryAttachment}
                         aria-label={labels.retryAttachmentAccessible(attachment.file.name)}
+                        onclick={() => retryAttachment(attachment.id)}
                       >
                         <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
-                        <span class="cinder-sr-only">{labels.retryAttachment}</span>
-                      </button>
+                      </Button>
                     {/if}
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
+                      quiet
+                      iconOnly
                       class="chat-input-attachment-remove"
-                      onclick={() => removeAttachment(attachment.id)}
+                      label={labels.removeAttachment}
                       aria-label={labels.removeAttachmentAccessible(attachment.file.name)}
+                      onclick={() => removeAttachment(attachment.id)}
                     >
-                      <X class="cinder-icon-xs" />
-                    </button>
+                      <X class="cinder-icon-xs" aria-hidden="true" />
+                    </Button>
                   {/snippet}
                 </ChatAttachmentPreview>
               </li>
@@ -2137,6 +2150,11 @@
     align-items: center;
     gap: 0 var(--cinder-space-2);
     margin: 0;
+    /* The header of a bordered box: the same inset and minimum height with or without a trailing
+     * control, so "5 files" and "5 files + more" are one height. */
+    padding-block: var(--cinder-space-2);
+    min-block-size: 1.5rem;
+    box-sizing: content-box;
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
     text-align: start;
@@ -2214,60 +2232,14 @@
     }
   }
 
-  .chat-input-attachment-more {
+  .chat-input-attachment-summary :global(.chat-input-attachment-more) {
     align-self: center;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-inline-size: 1.5rem;
-    min-block-size: 1.5rem;
-    padding: 0 var(--cinder-space-1);
-    border: none;
-    background: transparent;
-    color: var(--cinder-accent-text);
-    font: inherit;
-    font-size: var(--cinder-text-xs);
-    cursor: pointer;
-  }
-
-  /* Retry sits before the cross on a tile whose upload failed. */
-  .chat-input-attachment-retry {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    min-inline-size: 1.5rem;
-    min-block-size: 1.5rem;
-    padding: 0 var(--cinder-space-0-5, 0.125rem);
-    border: none;
-    border-radius: var(--cinder-radius-sm);
-    background: transparent;
-    color: var(--cinder-accent-text);
-    font: inherit;
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    cursor: pointer;
-  }
-
-  @media (any-pointer: coarse) {
-    .chat-input-attachment-more,
-    .chat-input-attachment-retry {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-    }
-  }
-
-  @container (max-inline-size: 30rem) {
-    .chat-input-attachment-retry {
-      inline-size: var(--cinder-touch-target-min, 2.75rem);
-      padding-inline: 0;
-      font-size: 0;
-    }
   }
 
   /* Why Send is off while files need attention, under the composer. */
   .chat-input-attachment-reason {
     margin: 0;
-    padding-inline: var(--cinder-space-3);
+    /* The shelf's own inline padding already puts this on the placeholder's edge. */
     font-size: var(--cinder-text-xs);
     color: var(--cinder-status-danger-text);
   }
@@ -2282,78 +2254,21 @@
     max-inline-size: 100%;
   }
 
-  /* The remove control sits at the end of the chip, a touch-sized target around a small cross. */
-  .chat-input-attachment-remove {
-    position: relative;
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    min-inline-size: 1.5rem;
-    min-block-size: 1.5rem;
-    margin-inline-end: 0;
-    padding: 0;
-    border: none;
-    border-radius: var(--cinder-radius-sm);
-    background: transparent;
-    color: var(--cinder-text-muted);
-    cursor: pointer;
-  }
-
-  @media (any-pointer: coarse) {
-    .chat-input-attachment-remove {
-      min-inline-size: var(--cinder-touch-target-min);
-      min-block-size: var(--cinder-touch-target-min);
-    }
-  }
-
-  @media (hover: hover) {
-    .chat-input-attachment-remove:hover {
-      color: var(--cinder-text-default);
-    }
-    .chat-input-attachment-retry:hover,
-    .chat-input-attachment-more:hover {
-      text-decoration: underline;
-    }
-  }
-
-  .chat-input-attachment-remove:focus-visible {
-    outline: none;
-  }
-
-  .chat-input-attachment-remove:focus-visible::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: inset 0 0 0 var(--cinder-ring-width)
-      var(--_cinder-chat-input-attachment-remove-ring, var(--cinder-ring-color));
-    pointer-events: none;
-  }
-
-  @media (forced-colors: active) {
-    .chat-input-attachment-remove:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: var(--cinder-ring-offset);
-    }
-    .chat-input-attachment-remove:focus-visible::before {
-      box-shadow: none;
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: var(--cinder-ring-offset);
-    }
-  }
-
   /* Editor container */
   .chat-input-editor-container {
-    min-height: var(--cinder-touch-target-min);
+    --_chat-input-row-height: var(--_cinder-painted-height-sm, 1.75rem);
+    min-block-size: var(--_chat-input-row-height);
   }
 
+  /* The first line shares a centre with Send or Stop: the editor is as tall as that button and its
+   * block padding centres one line in it. */
   .chat-input-editor {
     display: block;
     width: 100%;
-    min-height: var(--cinder-touch-target-min);
+    min-block-size: var(--_chat-input-row-height);
     max-height: min(12rem, 35dvh);
-    padding: var(--cinder-space-1) var(--cinder-space-3);
+    padding-block: calc((var(--_chat-input-row-height) - 1lh) / 2);
+    padding-inline: var(--cinder-space-3);
     resize: none;
     field-sizing: content;
     overflow-y: auto;
@@ -2409,7 +2324,8 @@
     position: absolute;
     inset: 0;
     overflow: hidden;
-    padding: var(--cinder-space-1) var(--cinder-space-3);
+    padding-block: calc((var(--_chat-input-row-height) - 1lh) / 2);
+    padding-inline: var(--cinder-space-3);
     font: inherit;
     font-size: var(--cinder-text-base);
     line-height: var(--cinder-leading-normal);
@@ -2652,13 +2568,6 @@
 
     .chat-input-notice .chat-input-blocked-actions :global(.cinder-button) {
       flex: 0 0 auto;
-    }
-  }
-
-  @media (any-pointer: coarse) {
-    .chat-input-notice-label {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
     }
   }
 
