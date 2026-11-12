@@ -21,9 +21,13 @@
  * so a `bun test` or another wrapper it starts runs inside them too. The token is honoured only
  * while a live slot names it.
  *
- * Memory: once a run that is not nested holds its slots, it reads the host's memory and waits
- * while the host is short, or throws {@link MemoryRefusal} naming the measurement
- * (`awaitMemory` in `scripts/run-exclusively.ts`); the command line exits 75 then.
+ * Memory: a script admits the host's memory once, however many phases it has
+ * ({@link withMemoryAdmission}): it reads before any work starts, waits while the host is short,
+ * and exits 75, never 1, once the host stays short (`awaitMemory` in `scripts/run-exclusively.ts`),
+ * then marks its environment admitted so its phases and children never read again. A
+ * {@link withHostSlots} run outside such a script reads once its slots are held, and throws
+ * {@link MemoryRefusal} naming the measurement. A nested run was admitted with its holder, CI
+ * reads once, reports and admits, and a test that passes no reader never reads real memory.
  *
  * A request above the pool's size is clamped to it, and the run learns how many slots it holds, so
  * it can bound its own fan-out to them. When the pool cannot be used at all (no Git checkout, as in

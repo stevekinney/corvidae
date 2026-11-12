@@ -965,7 +965,11 @@ export type ProcessGroupRun = {
  * cannot read it, and none of the wrapped commands needs input.
  *
  * Once an ancestor of this wrapper exits (the agent or shell that started it is gone), the group
- * gets the awake-time hang guard to finish, and is then sent SIGTERM like a forwarded signal.
+ * gets the awake-time hang guard to finish, and is then sent SIGTERM like a forwarded signal, and
+ * SIGKILL if the leader outlives that. The ancestors come from the process's one parent snapshot
+ * ({@link snapshotParents}), which `runExclusively`, `withHostSlots` and `runPooledBunTest` take
+ * before their first `await`, so a session that ends while the run is queued is still noticed; an
+ * explicit `orphanWatch.ancestors` wins, and a parent of pid 1 is never treated as orphaned.
  */
 export async function runInProcessGroup(
   argv: readonly string[],
