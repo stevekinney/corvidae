@@ -268,6 +268,56 @@
 
   const attachmentScrollFade = overflowFadeEdges();
 
+  /**
+   * Sizes an opened attachment list to whole rows plus their gaps, so no row is ever cut in half
+   * under the fade. The list's block padding is the room for its end rows' hit-area overhang; the
+   * matching negative margin keeps it out of the layout, so the header-to-first-row and
+   * last-row-to-hint distances equal the collapsed shelf's.
+   */
+  function wholeAttachmentRows(node: HTMLElement): () => void {
+    const fit = (): void => {
+      node.style.removeProperty('max-block-size');
+      if (!node.hasAttribute('data-expanded')) return;
+      const rows = [...node.querySelectorAll<HTMLElement>(':scope > li')];
+      const nodeTop = node.getBoundingClientRect().top;
+      const room = node.clientHeight;
+      const bottoms = rows.map(
+        (row) => row.getBoundingClientRect().bottom - nodeTop + node.scrollTop,
+      );
+      const lastBottom = bottoms.at(-1);
+      if (lastBottom === undefined || lastBottom <= room + 1) return;
+      const paddingEnd = Number.parseFloat(getComputedStyle(node).paddingBlockEnd) || 0;
+      const whole = bottoms.filter((bottom) => bottom <= room + 1).at(-1) ?? bottoms[0]!;
+      node.style.setProperty('max-block-size', `${whole + paddingEnd}px`);
+    };
+
+    let frame = 0;
+    const schedule = (): void => {
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        fit();
+      });
+    };
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
+    resize?.observe(node);
+    const mutations =
+      typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(schedule);
+    // Only the open state is watched as an attribute: this function writes `style` itself.
+    mutations?.observe(node, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-expanded'],
+    });
+    fit();
+    return () => {
+      cancelAnimationFrame(frame);
+      resize?.disconnect();
+      mutations?.disconnect();
+    };
+  }
+
   // Per-instance fallback factory for attachments whose file metadata is unavailable
   // AND as a collision-disambiguation counter when two files share identical metadata.
   const attachmentIdFactory = createIdFactory('attachment');
@@ -1732,6 +1782,7 @@
               attachmentsExpanded && 'cinder-_scroll-fade',
             )}
             {@attach attachmentScrollFade}
+            {@attach wholeAttachmentRows}
             aria-label={labels.attachedFiles}
             data-expanded={attachmentsExpanded || undefined}
           >
@@ -2201,8 +2252,12 @@
       gap: var(--cinder-space-2);
     }
 
+    /* The end rows' overhang room is padding the list takes back with a negative margin, so it
+     * costs no layout: the header and the hint stand where the collapsed shelf puts them. */
     .chat-input-attachments[data-expanded] {
+      box-sizing: border-box;
       padding-block: var(--cinder-space-2);
+      margin-block: calc(var(--cinder-space-2) * -1);
     }
   }
 

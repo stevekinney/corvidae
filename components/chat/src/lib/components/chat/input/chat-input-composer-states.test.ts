@@ -84,6 +84,15 @@ describe('empty and ready (C1, C2)', () => {
     );
     expect(source).toContain('.chat-input-attachments[data-expanded]::after');
   });
+
+  test('an opened list shows whole rows and takes its hit-area room back from the layout', async () => {
+    const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
+    expect(source).toContain('{@attach wholeAttachmentRows}');
+    expect(source).toContain('function wholeAttachmentRows(node: HTMLElement)');
+    expect(source).toMatch(
+      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
+    );
+  });
 });
 
 describe('the run toolbar (C4)', () => {
