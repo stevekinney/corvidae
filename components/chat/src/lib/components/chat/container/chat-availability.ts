@@ -151,7 +151,8 @@ export function availabilityLabels(
 
 /**
  * The elapsed time as the status line reads it, in the compact form of Cinder's `formatDuration`:
- * `12s`, or `3m 12s` past a minute. (Cinder does not export that helper from its package entry.)
+ * `12s`, or `3m 12s` past a minute. It stays local because Cinder's `formatDuration` reads the
+ * first second as `0ms`, and this line starts at `0s` the moment a read begins.
  */
 export function formatElapsedSeconds(seconds: number): string {
   const whole = Math.max(0, Math.trunc(seconds));
