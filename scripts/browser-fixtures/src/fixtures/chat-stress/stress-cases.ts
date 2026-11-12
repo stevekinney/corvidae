@@ -29,14 +29,23 @@ export type StressProvenance = 'issue-named' | 'derived';
 export type StressStep = StressStepAction & {
   /**
    * Runs the step only while the page matches: `transcript-overflows` when a transcript scrolls,
-   * `transcript-fits` when none does. The capture evaluates it in the page when the step runs, so a
+   * `transcript-fits` when none does, `approval-row-offscreen` when the pending approval's decision
+   * row is wholly outside the transcript, `approval-row-in-view` when it and its card, with room
+   * to spare, are wholly inside it. The capture evaluates it in the page when the step runs, so a
    * case states one contract per layout instead of naming profiles.
    */
   when?: StressStepCondition;
 };
 
 /** What a step's `when` asks of the page. */
-export type StressStepCondition = 'transcript-overflows' | 'transcript-fits';
+export const STEP_CONDITIONS = [
+  'transcript-overflows',
+  'transcript-fits',
+  'approval-row-offscreen',
+  'approval-row-in-view',
+] as const;
+
+export type StressStepCondition = (typeof STEP_CONDITIONS)[number];
 
 type StressStepAction =
   | { action: 'click'; role: string; name: string; nth?: number }
@@ -230,8 +239,8 @@ function problemsInStep(step: unknown, where: string): string[] {
     action === 'expect';
   const problems: string[] = [];
   const when = step['when'];
-  if (when !== undefined && when !== 'transcript-overflows' && when !== 'transcript-fits') {
-    problems.push(`${where}: when is transcript-overflows or transcript-fits`);
+  if (when !== undefined && !(STEP_CONDITIONS as readonly unknown[]).includes(when)) {
+    problems.push(`${where}: when is one of ${STEP_CONDITIONS.join(', ')}`);
   }
   if (action === 'upload' && !Array.isArray(step['files']))
     problems.push(`${where}: upload needs files`);

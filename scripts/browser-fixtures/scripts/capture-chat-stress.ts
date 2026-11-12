@@ -49,6 +49,7 @@ import {
   parseStressCases,
   type StressCase,
   type StressStep,
+  type StressStepCondition,
 } from '../src/fixtures/chat-stress/stress-cases.ts';
 import { createFixtureServer } from '../src/server.ts';
 import {
@@ -1131,10 +1132,42 @@ export function locate(page: Page, step: Extract<StressStep, { role: string }>) 
   return root.getByRole(step.role as Role, { name: step.name }).nth(step.nth ?? 0);
 }
 
+/** Evaluates a step's `when` in the page, at the moment the step runs. */
+async function conditionHolds(page: Page, when: StressStepCondition): Promise<boolean> {
+  if (when === 'transcript-overflows' || when === 'transcript-fits') {
+    const overflows = (await page.evaluate(wheelTarget)) !== null;
+    return overflows === (when === 'transcript-overflows');
+  }
+  return page.evaluate((condition) => {
+    const scroller = document.querySelector<HTMLElement>(
+      '[data-testid="chat-stress-shell"] .chat-timeline',
+    );
+    const card = document.querySelector<HTMLElement>(
+      '.cinder-approval-card[data-cinder-state="pending"]',
+    );
+    if (scroller === null || card === null) return false;
+    const row =
+      card.querySelector<HTMLElement>(
+        '.cinder-approval-card__row-actions, .cinder-approval-card__action-row',
+      ) ?? card;
+    const rowBox = row.getBoundingClientRect();
+    const box = scroller.getBoundingClientRect();
+    if (condition === 'approval-row-offscreen') {
+      return rowBox.bottom <= box.top || rowBox.top >= box.bottom;
+    }
+    // 12px is the product's clearance below the card (`--cinder-space-3`).
+    return (
+      rowBox.top >= box.top &&
+      card.getBoundingClientRect().bottom + 12 <= box.bottom &&
+      rowBox.left >= box.left &&
+      rowBox.right <= box.right
+    );
+  }, when);
+}
+
 export async function runStep(page: Page, step: StressStep): Promise<void> {
   if (step.when !== undefined) {
-    const overflows = (await page.evaluate(wheelTarget)) !== null;
-    if (overflows !== (step.when === 'transcript-overflows')) return;
+    if (!(await conditionHolds(page, step.when))) return;
   }
   switch (step.action) {
     case 'click':
@@ -1833,7 +1866,12 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
     if (stressCase.id === 45 && step.action === 'hook' && step.name === 'withdrawSource') {
       await opened.page.evaluate(observeAnnouncements);
     }
-    await runStep(opened.page, step);
+    try {
+      await runStep(opened.page, step);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`step ${step.action}: ${message}`, { cause: error });
+    }
   }
   if (stressCase.id === 47) await assertIrreversibleApprovalViewport(opened.page);
   if (stressCase.id === 45) {
