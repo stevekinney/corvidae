@@ -434,7 +434,7 @@ describe('Chat — sourcePresentation="inline"', () => {
     );
   }
 
-  test('withdrawing an open inline source closes its panel and focuses a message action', async () => {
+  test('withdrawing an open inline source closes its panel and moves focus to the next chip', async () => {
     const { container, rerender } = render(Chat, {
       id: 'sources-inline-withdrawal',
       conversation: sourcedConversation(),
@@ -454,6 +454,33 @@ describe('Chat — sourcePresentation="inline"', () => {
       sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(1, 2)]]),
     });
 
+    await waitFor(() => expect(document.activeElement === remaining).toBe(true));
+    expect(removed.isConnected).toBe(false);
+    expect(container.querySelector('[data-citation-focus]')).toBeNull();
+    expect(document.querySelector('.cinder-citation__panel')).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('[aria-live="polite"]')).filter(
+        (region) => region.textContent?.trim() === 'A source was withdrawn.',
+      ),
+    ).toHaveLength(1);
+  });
+
+  test('withdrawing the last inline source closes its panel and focuses a message action', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-inline-withdrawal-last',
+      conversation: sourcedConversation(),
+      sourcePresentation: 'inline',
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(0, 1)]]),
+    });
+    await tick();
+    const article = messageArticle(container, 'assistant-a');
+    const removed = article.querySelector<HTMLButtonElement>('.cinder-citation__marker')!;
+    removed.focus();
+    await fireEvent.click(removed);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+
+    await rerender({ sourcesByMessageId: new Map() });
+
     await waitFor(() =>
       expect(document.activeElement === container.querySelector('[data-citation-focus]')).toBe(
         true,
@@ -461,7 +488,6 @@ describe('Chat — sourcePresentation="inline"', () => {
     );
     expect(document.activeElement?.classList.contains('chat-message-copy')).toBe(true);
     expect(removed.isConnected).toBe(false);
-    expect(remaining.isConnected).toBe(true);
     expect(document.querySelector('.cinder-citation__panel')).toBeNull();
     expect(
       Array.from(container.querySelectorAll('[role="status"]')).filter(
@@ -635,7 +661,7 @@ describe('Chat — sourcePresentation="inline"', () => {
     expect(panel.querySelector('a')?.getAttribute('href')).toBe('https://example.com/annual');
   });
 
-  test('withdrawing the source of an open chip closes its panel, focuses a message action and says so once (C#11)', async () => {
+  test('withdrawing the source of an open chip closes its panel, moves focus to the next chip and says so once (C#11)', async () => {
     const { container, rerender } = render(Chat, {
       id: 'sources-inline-withdraw',
       conversation: sourcedConversation(),

@@ -196,6 +196,7 @@
         row.status === 'answered',
     ),
   );
+  const pendingStatuses = new Set<string>(['waiting', 'waiting-input', 'expired']);
   const summary = $derived(
     toolCallSummaryParts(
       pairs,
@@ -475,8 +476,14 @@
           <!-- Counts, status and duration are separate facts. The flex gap supplies their reading
                space without punctuation that makes the status look like part of the count. -->
           <span class="chat-tool-call-summary-count">{countText}</span>
-          {#each summary.problems as problem (problem)}
-            <span class="chat-tool-call-summary-segment" data-problem>{problem}</span>
+          {#each summary.problems as problem, problemIndex (problem)}
+            <span
+              class="chat-tool-call-summary-segment"
+              data-problem
+              data-tone={pendingStatuses.has(summary.problemStatuses[problemIndex]!)
+                ? 'warning'
+                : undefined}>{problem}</span
+            >
           {/each}
           {#if summary.description && showDescription}
             <span class="chat-tool-call-summary-description" dir="auto">{summary.description}</span>
@@ -522,7 +529,7 @@
               <span class="chat-tool-call-result">
                 {#if row.status !== 'failed' && row.resultLine}→ {row.resultLine}{/if}
               </span>
-              {#if row.status !== 'succeeded'}
+              {#if row.status !== 'succeeded' && row.status !== 'failed'}
                 <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
               {/if}
               {#if row.duration !== undefined}
@@ -699,13 +706,9 @@
     color: var(--cinder-text-default);
   }
 
-  .chat-tool-call-timeline[data-has-summary-tools='true'] .chat-tool-call-summary-count {
-    /* Reserve the tool identity and duration first; the semantic count is the only field that
-     * may give up inline space, so the repeated-work metadata remains fully readable. */
-    flex: 1 1 0;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  /* The count is never shrunk or cut: the description and the tool name yield first. */
+  .chat-tool-call-summary-count {
+    flex: 0 0 auto;
   }
 
   .chat-tool-call-summary-description {
@@ -723,6 +726,11 @@
     color: var(--cinder-status-danger-text);
   }
 
+  /* Waiting and expired are pending states, not failures: the warning tone, never danger. */
+  .chat-tool-call-summary-segment[data-problem][data-tone='warning'] {
+    color: var(--cinder-status-warning-text);
+  }
+
   .chat-tool-call-summary-duration {
     flex: 0 0 auto;
     margin-inline-start: auto;
@@ -737,9 +745,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--cinder-font-mono);
-    font-size: 12px;
-    white-space: nowrap;
+    font-family: inherit;
+    font-size: inherit;
   }
 
   .chat-tool-call-timeline[data-has-repeated-summary='true'] .chat-tool-call-summary {
@@ -750,9 +757,6 @@
 
   .chat-tool-call-timeline[data-has-repeated-summary='true'] .chat-tool-call-summary-count {
     grid-column: 1 / -1;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .chat-tool-call-timeline[data-has-repeated-summary='true'] .chat-tool-call-summary-tools {
@@ -771,14 +775,8 @@
    * work keeps its tool/count identity in the collapsed header. The semantic title yields space
    * first, so the work identity and duration remain readable on a phone. */
   @container (max-width: 21.99rem) {
-    .chat-tool-call-timeline:not([data-has-summary-tools='true']) .chat-tool-call-summary-tools {
+    .chat-tool-call-summary-tools {
       display: none;
-    }
-
-    .chat-tool-call-timeline[data-has-summary-tools='true'] .chat-tool-call-summary-count {
-      min-inline-size: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
 
     /* Give the marker only the title line. Supporting text can use the whole row. */

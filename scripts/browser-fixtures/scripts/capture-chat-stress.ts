@@ -1595,8 +1595,9 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
       await opened.page.waitForFunction(
         () =>
           document.querySelector('.cinder-drawer__panel[data-cinder-closing]') === null &&
-          document.activeElement?.matches('.chat-message-action-button[data-citation-focus]') ===
-            true,
+          document.activeElement?.matches(
+            '.cinder-citation__marker, .chat-message-action-button[data-citation-focus]',
+          ) === true,
         undefined,
         { timeout: DEADLINE },
       );
@@ -1884,15 +1885,15 @@ export const repeatedSummaryGuard: PaintGuard = {
   apart: [['tool/count', 'duration']],
 };
 
-/** The failed-step guard: a failed step row keeps its status word and its duration apart. */
+/** The failed-step guard: a failed step row keeps its tool name and its duration apart. The row no longer carries a separate "Failed" word (the title and the cause line say it once). */
 export const failedStepGuard: PaintGuard = {
   label: 'failed step',
   scope: '.chat-tool-call-item[data-cinder-tool-call-status="failed"] .chat-tool-call-row',
   items: [
-    { name: 'status', selector: '.chat-tool-call-status', pattern: '^\\S.*$' },
+    { name: 'tool', selector: '.chat-tool-call-name', pattern: '^\\S.*$' },
     { name: 'duration', selector: '.chat-tool-call-duration', pattern: '^\\S.*$' },
   ],
-  apart: [['status', 'duration']],
+  apart: [['tool', 'duration']],
 };
 
 /** The repeated-call board row must keep its complete work identity and duration visibly painted. */
@@ -1900,7 +1901,7 @@ export async function readRepeatedSummaryProblems(page: Page): Promise<string[]>
   return readPaintProblems(page, repeatedSummaryGuard);
 }
 
-/** A failed step's status and duration must stay separate, painted facts. */
+/** A failed step's tool name and duration must stay separate, painted facts. */
 export async function readFailureSummaryProblems(page: Page): Promise<string[]> {
   return readPaintProblems(page, failedStepGuard);
 }

@@ -362,7 +362,8 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(container.querySelector('[aria-live="polite"]')?.textContent).toContain(
       'ANN charge_card failed',
     );
-    expect(container.textContent).toContain('STATUS failed');
+    // A failed step says it once, through its title and cause line: no separate status word.
+    expect(container.textContent).not.toContain('STATUS failed');
     expect(container.textContent).toContain('Card declined');
     await openCall(container, 1);
     expect(container.textContent).toContain('IN');

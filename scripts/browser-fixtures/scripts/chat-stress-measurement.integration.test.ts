@@ -75,7 +75,6 @@ describe('chat stress visual measurement', () => {
         .chat-tool-call-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 4px; inline-size: 100%; font: 12px monospace; }
         .chat-tool-call-label { grid-column: 2; grid-row: 1; }
         .chat-tool-call-name { grid-column: 2; grid-row: 2; }
-        .chat-tool-call-status { grid-column: 3; grid-row: 1; white-space: nowrap; }
         .chat-tool-call-duration { grid-area: ${durationArea}; white-space: nowrap; }
       </style>
       <main data-testid="chat-stress-shell" style="width:320px">
@@ -85,7 +84,6 @@ describe('chat stress visual measurement', () => {
               <span>x</span>
               <span class="chat-tool-call-label">Looked up an order</span>
               <code class="chat-tool-call-name">lookup_order</code>
-              <span class="chat-tool-call-status">Failed</span>
               <span class="chat-tool-call-duration">1m</span>
             </button>
           </li>
@@ -103,13 +101,13 @@ describe('chat stress visual measurement', () => {
       }
     };
 
-    it('fails when the status and duration share one grid cell', async () => {
-      expect(await problemsFor(failedRow('1 / 3 / 2 / 4'))).toContain(
-        'failed step status overlaps duration',
+    it('fails when the tool name and duration share one grid cell', async () => {
+      expect(await problemsFor(failedRow('2 / 2 / 3 / 4'))).toContain(
+        'failed step tool overlaps duration',
       );
     });
 
-    it('passes when the duration sits on the row below the status, sharing its column', async () => {
+    it('passes when the duration sits beside the tool name in its own column', async () => {
       expect(await problemsFor(failedRow('2 / 3 / 3 / 4'))).toEqual([]);
     });
   });

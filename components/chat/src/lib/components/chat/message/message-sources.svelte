@@ -295,12 +295,17 @@
   @media (any-pointer: coarse) {
     :global(.chat-message-sources-citation .cinder-citation__marker),
     .chat-message-sources-toggle {
-      min-height: var(--cinder-touch-target-min);
-      padding-block: var(--cinder-space-2);
+      position: relative;
     }
 
-    .chat-message-sources-link {
-      min-block-size: var(--cinder-touch-target-min);
+    /* The 44px hit region is invisible and takes no layout, so a message with Sources keeps the
+       same distance from its text to the action row as one without. */
+    :global(.chat-message-sources-citation .cinder-citation__marker)::after,
+    .chat-message-sources-toggle::after {
+      content: '';
+      position: absolute;
+      inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
+      inset-inline: 0;
     }
   }
 

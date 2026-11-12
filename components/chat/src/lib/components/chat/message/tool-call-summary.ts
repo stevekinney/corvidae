@@ -257,6 +257,8 @@ export type ToolCallSummaryParts = {
    * question the person settled counts as approved or answered, never as waiting.
    */
   problems: string[];
+  /** The status each entry of `problems` counts, in the same order, so the header can tone it. */
+  problemStatuses: ToolCallRowStatus[];
   /** The total time, when every call has one ("0.7s"). */
   duration: string | undefined;
 };
@@ -271,20 +273,26 @@ export function toolCallSummaryParts(
 ): ToolCallSummaryParts {
   const count = (status: ToolCallRowStatus) => statuses.filter((value) => value === status).length;
   const problems: string[] = [];
+  const problemStatuses: ToolCallRowStatus[] = [];
+  const add = (amount: number, status: ToolCallRowStatus): void => {
+    if (amount <= 0) return;
+    problems.push(problemText(amount, status));
+    problemStatuses.push(status);
+  };
   const failed = count('failed');
   const denied = count('denied');
   const expired = count('expired');
   const waiting = count('waiting');
   const waitingInput = count('waiting-input');
-  if (failed > 0) problems.push(problemText(failed, 'failed'));
-  if (denied > 0) problems.push(problemText(denied, 'denied'));
-  if (expired > 0) problems.push(problemText(expired, 'expired'));
-  if (waiting > 0) problems.push(problemText(waiting, 'waiting'));
-  if (waitingInput > 0) problems.push(problemText(waitingInput, 'waiting-input'));
+  add(failed, 'failed');
+  add(denied, 'denied');
+  add(expired, 'expired');
+  add(waiting, 'waiting');
+  add(waitingInput, 'waiting-input');
   const approved = count('approved');
   const answered = count('answered');
-  if (approved > 0) problems.push(problemText(approved, 'approved'));
-  if (answered > 0) problems.push(problemText(answered, 'answered'));
+  add(approved, 'approved');
+  add(answered, 'answered');
   const total = totalToolCallDuration(durations);
   const asking = (status: ToolCallRowStatus | undefined) =>
     status === 'waiting' || status === 'waiting-input' || status === 'answered';
@@ -294,6 +302,7 @@ export function toolCallSummaryParts(
     ),
     tools: toolNamesSegment(pairs.filter((_pair, index) => !asking(statuses[index]))),
     problems,
+    problemStatuses,
     duration: total === undefined ? undefined : formatToolCallDuration(total),
   };
 }

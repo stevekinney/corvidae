@@ -182,12 +182,12 @@ describe('R4: stopped', () => {
     expect(container.textContent).not.toContain('You stopped the run.');
   });
 
-  test('a stopped turn offers no Regenerate', () => {
-    const { queryByRole } = mount({
+  test('a stopped turn shows Regenerate disabled, so every settled turn has the same actions', () => {
+    const { getByRole } = mount({
       turnState: { kind: 'stopped' },
       onRegenerate: () => undefined,
     });
-    expect(queryByRole('button', { name: /Regenerate/u })).toBeNull();
+    expect((getByRole('button', { name: /Regenerate/u }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

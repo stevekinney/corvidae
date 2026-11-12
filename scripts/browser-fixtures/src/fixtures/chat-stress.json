@@ -1184,7 +1184,7 @@
   {
     "id": 45,
     "slug": "citation-withdrawal",
-    "title": "Withdrawing the source of an open inline citation announces once and leaves focus on a visible action.",
+    "title": "Withdrawing the source of an open inline citation announces once and moves focus to the next remaining chip, or to a visible message action when none remains.",
     "provenance": "issue-named",
     "source": "COR-2289 acceptance: 45 is an actual withdrawal with one announcement and visible action focus. The fixture opens a real citation and withdraws its source through the host update.",
     "rows": ["M4"],

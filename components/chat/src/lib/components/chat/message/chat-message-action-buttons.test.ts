@@ -37,14 +37,14 @@ describe('chat message action buttons', () => {
       .replaceAll('.chat-message-line :global(.chat-message-action-button)', '')
       .match(/(?::global\()?\.chat-message-action-button(?:\))?\s*\{/g);
     expect(baseRuleMatches).not.toBeNull();
-    expect(baseRuleMatches).toHaveLength(2);
+    expect(baseRuleMatches).toHaveLength(1);
   });
 
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
     const lineRule = extractRule(source, '.chat-message-line {\n    display: flex;');
     expect(lineRule).toContain('gap: var(--cinder-space-1)');
-    const actionsRule = extractRule(source, '.chat-message-line-actions {');
-    expect(actionsRule).toContain('gap: 0');
+    const actionsRule = extractRule(source, '\n  .chat-message-line-actions {');
+    expect(actionsRule).toContain('gap: var(--cinder-space-1)');
     const buttonRule = extractRule(
       source,
       '.chat-message-line :global(.chat-message-action-button) {',
@@ -54,14 +54,16 @@ describe('chat message action buttons', () => {
     expect(buttonRule).toContain('min-inline-size: 1.5rem;');
   });
 
-  test('on a touch screen each line action is a full touch target that keeps the line height (C#3)', () => {
+  test('on a touch screen each line action keeps its painted box and takes a layout-free 44px hit region (C#3)', () => {
     const coarse = extractMediaBlock(
       source,
       '@media (any-pointer: coarse) {',
-      '.chat-message-line :global(.chat-message-action-button)',
+      ':global(.chat-message-action-button:not(.cinder-button))::after',
     );
-    expect(coarse).toContain('min-block-size: var(--cinder-touch-target-min)');
-    expect(coarse).toContain('margin-block: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
+    expect(coarse).toContain('inset: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
+    expect(source).not.toContain(
+      'min-block-size: var(--cinder-touch-target-min);\n      margin-block',
+    );
   });
 
   test('Regenerate is an optional action that follows Quote, in both presentations', () => {
@@ -85,26 +87,31 @@ describe('chat message action buttons', () => {
     expect(buttonRule).toContain('min-height: var(--cinder-touch-target-min);');
   });
 
-  test('keeps keyboard focus visible for both fine and coarse action targets', () => {
-    expect(source).toContain(
+  test('keeps keyboard focus visible on the painted face of each action', () => {
+    const focusRule = extractRule(
+      source,
+      '.chat-message-line :global(.chat-message-action-button:focus-visible) {',
+    );
+    expect(focusRule).toContain('box-shadow: var(--_cinder-focus-ring-shadow);');
+    expect(source).not.toContain(
       '.chat-message-line :global(.chat-message-action-button:focus-visible)::before',
     );
-    expect(source).toContain('inline-size: 1.5rem;');
-    expect(source).toContain('block-size: 1.5rem;');
-    expect(source).toContain('transform: translate(-50%, -50%);');
-    expect(source).not.toContain('inset: var(--cinder-space-1-5);');
     expect(source).toContain('.chat-message-not-sent-icon:focus-visible');
     expect(source).toContain('outline: var(--cinder-ring-width) solid var(--cinder-ring-color);');
   });
 
-  test('anchors the user action focus face to its right-aligned painted glyph', () => {
-    const userFocusRule = extractRule(
+  test('a settled assistant turn draws an unavailable action disabled rather than omitting it', () => {
+    expect(source).toContain('disabled={!regenerateAvailable}');
+    expect(source).toContain('disabled={quoteDisabled || !quoteAvailable}');
+  });
+
+  test('an RTL reply line takes the message direction, time first', () => {
+    const rule = extractRule(
       source,
-      ".chat-message-wrapper[data-role='user']\n    .chat-message-line-actions\n    :global(.chat-message-action-button:focus-visible)::before {",
+      ".chat-message-wrapper[data-message-direction='rtl'][data-role='assistant'] .chat-message-line {",
     );
-    expect(userFocusRule).toContain('inset-inline-start: auto;');
-    expect(userFocusRule).toContain('inset-inline-end: 0;');
-    expect(userFocusRule).toContain('transform: translateY(-50%);');
+    expect(rule).toContain('direction: rtl;');
+    expect(rule).toContain('justify-content: flex-start;');
   });
 
   test('base rule uses border-box sizing and a transparent reserving border', () => {

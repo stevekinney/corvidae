@@ -269,7 +269,7 @@ describe('R7: a failed step', () => {
     ).toContain('issue_refund');
   });
 
-  test('the failed row opens with Failed in view, a danger summary and a wrapping diagnostic', async () => {
+  test('the failed row opens with its failure in view, a danger summary and a wrapping diagnostic', async () => {
     const { container } = render(ToolCallTimeline, {
       props: { pairs: [done('s1'), done('s2'), failed('s3')], describeToolCall },
     });
@@ -277,7 +277,7 @@ describe('R7: a failed step', () => {
     const item = container.querySelector('[data-cinder-tool-call-status="failed"]');
     const row = item?.querySelector('.chat-tool-call-row');
     expect(row?.getAttribute('aria-expanded')).toBe('true');
-    expect(row?.querySelector('.chat-tool-call-status')?.textContent).toBe('Failed');
+    expect(row?.querySelector('.chat-tool-call-status')).toBeNull();
     const failure = item?.querySelector('.chat-tool-call-failure');
     expect(failure?.querySelector('.chat-tool-call-failure-summary')?.textContent?.trim()).toBe(
       'parcelly.example did not answer within 10 s.',
@@ -367,11 +367,9 @@ describe('R7: a failed step', () => {
     );
   });
 
-  test('repeated-work metadata stays fixed while the semantic count yields space', async () => {
+  test('the count is never shrunk; the description and tool name yield space', async () => {
     const source = await Bun.file(new URL('./tool-call-timeline.svelte', import.meta.url)).text();
-    expect(source).toMatch(
-      /\.chat-tool-call-timeline\[data-has-summary-tools='true'\]\s+\.chat-tool-call-summary-count\s*\{\s*\/\*[\s\S]*?\*\/\s*flex:\s*1 1 0;/su,
-    );
+    expect(source).toMatch(/\.chat-tool-call-summary-count\s*\{\s*flex:\s*0 0 auto;/su);
     expect(source).toMatch(
       /data-has-repeated-summary='true'\]\s+\.chat-tool-call-summary\s*\{\s*display:\s*grid;/su,
     );

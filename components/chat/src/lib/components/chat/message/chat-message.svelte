@@ -481,10 +481,18 @@
       const compactPanelOpen =
         (active !== null && active.closest('dialog') !== null) ||
         sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null;
+      // While another chip remains in this message (not the one compact marker), the sources control moves focus to the next
+      // chip and says so itself; the message action takes focus only when no chip is left.
+      const chipRemains =
+        inline &&
+        shown &&
+        currentKeys.length > 0 &&
+        sourcesElement.querySelector('.chat-message-sources-citation') === null;
       if (
-        withdrawnOpenChip ||
-        withdrawnSource ||
-        (!shown && sourceOwnsFocus(sourcesElement, active))
+        !chipRemains &&
+        (withdrawnOpenChip ||
+          withdrawnSource ||
+          (!shown && sourceOwnsFocus(sourcesElement, active)))
       ) {
         sourceAnnouncement = 'Sources were removed';
         const preferAction = withdrawnOpenChip || withdrawnSource;
@@ -684,6 +692,26 @@
   // render as a sibling AFTER it — exactly where MessageAttachments used to sit,
   // so the flex layout and spacing are unchanged.
   const transcript = $derived(presentation === 'transcript');
+
+  // A settled assistant turn in the transcript shows the same actions every time: an action the
+  // host offers that this turn cannot take is drawn disabled rather than left out, so the row never
+  // changes shape from one turn to the next. A host that offers no handler gets no action.
+  const settledAssistantTurn = $derived(
+    transcript &&
+      message.role === 'assistant' &&
+      !isPending &&
+      !streaming &&
+      !isStreamingMessage(message),
+  );
+  const quoteAvailable = $derived(canQuote && !(transcript && isFailed));
+  const regenerateAvailable = $derived(canRegenerate && !(transcript && isFailed));
+  const showQuoteAction = $derived(
+    quoteAvailable || (settledAssistantTurn && onQuote !== undefined),
+  );
+  const showRegenerateAction = $derived(
+    regenerateAvailable || (settledAssistantTurn && onRegenerate !== undefined),
+  );
+
   // The agent's instructions open the transcript as muted text, folded to one line by default.
   const systemRow = $derived(transcript && message.role === 'system');
   let systemOpen = $state(false);
@@ -866,26 +894,27 @@
       />
     </Tooltip>
   {/if}
-  {#if canQuote && (!transcript || !isFailed)}
+  {#if showQuoteAction}
     <Tooltip text={messageLabels.quoteMessage} placement="bottom" describe={false}>
       <button
         type="button"
         class="chat-message-action-button chat-message-quote-button"
         onclick={quoteMessage}
-        disabled={quoteDisabled}
+        disabled={quoteDisabled || !quoteAvailable}
         aria-label={messageLabels.quoteMessage}
-        aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
+        aria-describedby={quoteDisabled && quoteAvailable ? quoteDisabledDescriptionId : undefined}
       >
         <Quote class="cinder-icon-xs" aria-hidden="true" />
       </button>
     </Tooltip>
   {/if}
-  {#if canRegenerate && (!transcript || !isFailed)}
+  {#if showRegenerateAction}
     <Tooltip text={messageLabels.regenerate} placement="bottom" describe={false}>
       <button
         type="button"
         class="chat-message-action-button chat-message-regenerate-button"
         onclick={regenerateMessage}
+        disabled={!regenerateAvailable}
         aria-label={transcript ? messageLabels.regenerate : messageLabels.regenerateResponse}
       >
         <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
@@ -2085,8 +2114,16 @@
     justify-content: flex-end;
   }
 
+  /* An RTL reply's line takes the message's direction: the time at inline start, the actions
+   * following it. */
   .chat-message-wrapper[data-message-direction='rtl'][data-role='assistant'] .chat-message-line {
-    justify-content: flex-end;
+    direction: rtl;
+    justify-content: flex-start;
+  }
+
+  .chat-message-wrapper[data-message-direction='rtl'][data-role='assistant']
+    .chat-message-line-actions {
+    direction: rtl;
   }
 
   .chat-message-line-actions {
@@ -2094,7 +2131,7 @@
     flex-wrap: wrap;
     align-items: center;
     direction: ltr;
-    gap: 0;
+    gap: var(--cinder-space-1);
   }
 
   /* Transcript sources share the metadata/action rhythm, while an expanded list occupies the
@@ -2126,19 +2163,14 @@
     cursor: pointer;
   }
 
-  /* User bubbles are right-aligned. Keep the visible Copy glyph at the bubble edge while the
-     action button retains its full coarse-pointer hit cell. */
-  .chat-message-wrapper[data-role='user']
-    .chat-message-line-actions
-    :global(.chat-message-action-button) {
-    justify-content: flex-end;
-  }
-
+  /* On a touch screen an action keeps its painted 1.5rem box and takes the 44px hit region from a
+   * pseudo-element that adds no layout, so the glyphs pitch at the painted size plus the gap and
+   * their hit regions overlap invisibly. Copy is a Cinder Button, which draws its own region. */
   @media (any-pointer: coarse) {
-    .chat-message-line :global(.chat-message-action-button) {
-      min-inline-size: var(--cinder-touch-target-min);
-      min-block-size: var(--cinder-touch-target-min);
-      margin-block: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
+    .chat-message-line :global(.chat-message-action-button:not(.cinder-button))::after {
+      content: '';
+      position: absolute;
+      inset: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
     }
   }
 
@@ -2153,49 +2185,10 @@
     text-decoration: none;
   }
 
-  /* On a touch screen each action is a full touch target, grown into the line's own space with a
-   * negative block margin, so the line keeps its height and its rhythm (C#3). */
-  @media (any-pointer: coarse) {
-    .chat-message-line :global(.chat-message-action-button) {
-      min-block-size: var(--cinder-touch-target-min);
-      margin-block: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
-    }
-  }
-
-  .chat-message-line :global(.chat-message-action-button:focus-visible),
-  .chat-message-not-sent-icon:focus-visible {
-    outline: none;
-    box-shadow: none;
-  }
-
-  .chat-message-line :global(.chat-message-action-button:focus-visible)::before {
-    content: '';
-    position: absolute;
-    inset: auto;
-    inset-block-start: 50%;
-    inset-inline-start: 50%;
-    inline-size: 1.5rem;
-    block-size: 1.5rem;
-    transform: translate(-50%, -50%);
-    border-radius: var(--cinder-radius-sm);
-    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
-    pointer-events: none;
-  }
-
-  /* User actions keep their compact painted face at the bubble edge while the coarse target
-   * grows inward. Keep the focus paint on that face instead of centering it in the larger hit
-   * cell, so the visible glyph and its focus affordance describe the same control. */
-  .chat-message-wrapper[data-role='user']
-    .chat-message-line-actions
-    :global(.chat-message-action-button:focus-visible)::before {
-    inset-inline-start: auto;
-    inset-inline-end: 0;
-    transform: translateY(-50%);
-  }
-
+  /* The ring wraps the painted face, which is the whole box now. */
   .chat-message-line :global(.chat-message-action-button:focus-visible) {
-    outline: none;
-    box-shadow: none;
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   .chat-message-not-sent-icon:focus-visible {
