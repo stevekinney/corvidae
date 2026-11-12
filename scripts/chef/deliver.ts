@@ -7,8 +7,7 @@
 //
 // It runs no test gate and never merges the default branch into the change. The worker ran its
 // focused checks before pushing, and GitHub Actions' full suite on every push to `main` is the
-// backstop (AGENTS.md "Gate on local checks"; a local batch validate is in
-// `.agents/skills/chef/references/program-runs.md`), so the default branch moving is not a reason
+// backstop (AGENTS.md "Gate on local checks"), so the default branch moving is not a reason
 // to repeat either.
 //
 // Usage:
@@ -132,7 +131,7 @@ export interface DeliverReport {
   mergeCommit: string | null;
   /** GitHub's `mergeable` value at the last read; `null` when it was not read. */
   mergeable: string | null;
-  /** Set when `main`'s last batch validate failed: a warning, never a refusal. */
+  /** Set when `main`'s latest `main.yml` run failed or could not be read: a warning, never a refusal. */
   mainHealthWarning: string | null;
   /**
    * Text guards that fail on the merged tree with only findings `main` already has (a branch merge

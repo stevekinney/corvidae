@@ -12,6 +12,7 @@ import type {
   ToolExecuteWithOptions,
   ToolMetadata,
 } from '../is-tool';
+import { bindListenerLifetime } from '../listener-lifetime';
 import type { ToolCallReturn } from '../types';
 import { createKnownToolEvent } from './events';
 import type { NamedTool } from './options';
@@ -135,14 +136,12 @@ function eventMethods(
       listener: (event: ToolEventMap[K]) => void | Promise<void>,
       options?: AddEventListenerOptions,
     ) {
-      const mergedOptions: AddEventListenerOptions = {
-        ...options,
-        signal: options?.signal
-          ? AbortSignal.any([options.signal, emitter.signal])
-          : emitter.signal,
+      const lifetime = bindListenerLifetime(options?.signal, emitter.signal);
+      emitter.addEventListener(type, listener, { ...options, signal: lifetime.signal });
+      return () => {
+        emitter.removeEventListener(type, listener, options);
+        lifetime.release();
       };
-      emitter.addEventListener(type, listener, mergedOptions);
-      return () => emitter.removeEventListener(type, listener, options);
     },
     dispatchEvent: (event: Event) => emitter.dispatchEvent(event),
     emit,

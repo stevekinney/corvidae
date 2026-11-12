@@ -39,6 +39,16 @@ describe('parseRows', () => {
     });
   });
 
+  test('refuses a row that states only what was wrong, and keeps one that says what should be true first', () => {
+    const defect = parseRows('A5 | Chat | Was: action rows float 35px under the text');
+    expect(defect.ok).toBe(false);
+    if (!defect.ok) expect(defect.problems[0]).toContain('row A5 states only what was wrong');
+    const outcome = parseRows(
+      'A5 | Chat | An action row sits at most 8px under its message. Was: it floated 35px under.',
+    );
+    expect(outcome.ok).toBe(true);
+  });
+
   test('refuses a line without a board and a row named twice', () => {
     const parsed = parseRows('11a | chat-header | one\n11a | chat-header | two\nbroken');
     expect(parsed).toEqual({

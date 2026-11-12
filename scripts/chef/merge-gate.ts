@@ -5,7 +5,7 @@
 //
 // It runs no test gate. A worker runs its focused checks before opening the pull request, and
 // GitHub Actions' full suite on every push to `main` is the backstop (AGENTS.md "Gate on local
-// checks"; a local batch validate is in `.agents/skills/chef/references/program-runs.md`); `main`
+// checks"); `main`
 // moving is not a reason to repeat either. It refuses only for the reasons below, each a fast check.
 //
 // Usage:
@@ -21,9 +21,10 @@
 //                     `mergeStateStatus` `DIRTY` refuses at `conflict`; `UNKNOWN` is read again, up to
 //                     five times two seconds apart, and still `UNKNOWN` refuses at `mergeable`. A base
 //                     that merely moved (`BEHIND`) is not a refusal;
-//   3b. main-health   `main`'s last batch validate (`main-health.ts`) at a head on `origin/<default>`'s
-//                     first-parent history failed: the report carries a `mainHealthWarning` and the
-//                     merge goes ahead. `--fixes-main` also records the pull request as a repair;
+//   3b. main health   the latest completed `main.yml` run on `<default>` (`main-ci.ts`, read with
+//                     `gh run list`) failed, or GitHub cannot say: the report carries a
+//                     `mainHealthWarning` (`main health unknown` when unread) and the merge goes
+//                     ahead. `--fixes-main` marks the pull request as a declared repair;
 //   4. threads        every review thread is resolved, and SEEN equals TOTAL;
 //   5. comment        post the comment file (skipped with --dry-run);
 //   6. merge          `gh pr merge --<method> --match-head-commit <head>` (skipped with --dry-run);
@@ -38,7 +39,7 @@
 // a lock whose holder died is reclaimed.
 //
 // It prints { pr, head, base, mergeable, threads, merged, mergeCommit, treesMatch, failedStep },
-// plus `mainHealthWarning` when `main` is red.
+// plus `mainHealthWarning` when `main` is red or its health is unknown.
 //
 // Spend record (optional): `--usage-log <file>` with one or more `--transcript <path>` (a
 // transcript file, or a directory searched recursively) totals those transcripts' tokens with
@@ -69,7 +70,7 @@ import {
   type HostLockHolder,
 } from '../run-exclusively.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { mainHealth, recordFix, renderMainHealth, resolveHealthFile } from './main-health.ts';
+import { mainCiHealth, mainCiWarning } from './main-ci.ts';
 import {
   defaultRunner,
   emitResult,
@@ -97,11 +98,9 @@ export interface MergeGateOptions {
   dryRun: boolean;
   /** The head pinned at acceptance; when given, the pull request's head must equal it. */
   expectedHead?: string | undefined;
-  /** The batch-validate record to check; defaults to the main checkout's when `checkMainHealth`. */
-  healthFile?: string | undefined;
-  /** Check main's health at the default location. Library callers opt in; the command line does. */
+  /** Read main's health from the latest `main.yml` run. Library callers opt in; the command line does. */
   checkMainHealth?: boolean | undefined;
-  /** Declares this pull request a repair of a red `main`; recorded in the health file. */
+  /** Declares this pull request a repair of a red `main`; a warning is still given. */
   fixesMain?: boolean | undefined;
   /** Where the cross-session merge lock lives; defaults to the Git common directory. */
   lockDirectory?: string | undefined;
@@ -126,7 +125,7 @@ export interface MergeGateReport {
   mergeCommit: string | null;
   /** Whether the merge commit's tree equals the expected tree; `null` when it was not checked. */
   treesMatch: boolean | null;
-  /** Set when `main`'s last batch validate failed; a warning, never a refusal. */
+  /** Set when `main`'s latest `main.yml` run failed or could not be read; a warning, never a refusal. */
   mainHealthWarning?: string;
   /** Whether the pull request was declared a repair of a red `main` (`--fixes-main`). */
   fixesMain?: boolean;
@@ -269,23 +268,13 @@ export function mergeGate(
     sleep(MERGEABLE_INTERVAL_MS);
   }
 
-  // 3b. main-health: a warning in the report, never a refusal
-  const healthFile =
-    options.healthFile ??
-    (options.checkMainHealth === true ? resolveHealthFile(runner, options.worktree) : undefined);
-  if (healthFile !== undefined) {
-    const health = mainHealth(runner, options.worktree, defaultBranch, healthFile);
-    if (health.red && health.run !== undefined) {
-      report.mainHealthWarning = renderMainHealth(health, defaultBranch).split('\n')[0] ?? '';
-      if (options.fixesMain === true) {
-        report.fixesMain = true;
-        if (!options.dryRun)
-          recordFix(healthFile, {
-            pr: options.pr,
-            time: (partial.now ?? (() => new Date()))().toISOString(),
-            blockedHead: health.run.head,
-          });
-      }
+  // 3b. main health: a warning in the report, never a refusal
+  if (options.checkMainHealth === true) {
+    const health = mainCiHealth(runner, repository, defaultBranch);
+    const warning = mainCiWarning(health, defaultBranch);
+    if (warning !== undefined) {
+      report.mainHealthWarning = warning;
+      if (health.red && options.fixesMain === true) report.fixesMain = true;
     }
   }
 
@@ -511,7 +500,7 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
 
 function parseArguments(argv: string[]): { options: MergeGateOptions; json: boolean } {
   const parsed = parseOptions(argv, {
-    values: ['config', 'pr', 'worktree', 'comment-file', 'usage-log', 'health-file', 'head'],
+    values: ['config', 'pr', 'worktree', 'comment-file', 'usage-log', 'head'],
     repeated: ['transcript'],
     flags: ['dry-run', 'json', 'fixes-main'],
   });
@@ -530,7 +519,6 @@ function parseArguments(argv: string[]): { options: MergeGateOptions; json: bool
       worktree: requireOption(parsed, 'worktree'),
       commentFile: requireOption(parsed, 'comment-file'),
       dryRun: parsed.flags.has('dry-run'),
-      healthFile: parsed.values['health-file'],
       checkMainHealth: true,
       fixesMain: parsed.flags.has('fixes-main'),
       expectedHead,

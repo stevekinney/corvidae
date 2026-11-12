@@ -1,7 +1,6 @@
 /**
- * Runs Interborough's end-to-end Playwright suite (`tests/e2e`, the `chromium` project) the way the
- * batch validate gates it (`bun run test:browser:interborough` at the repository root, the last step
- * of `validate:batch`).
+ * Runs Interborough's end-to-end Playwright suite (`tests/e2e`, the `chromium` project) the way a
+ * browser gate runs it (`bun run test:browser:interborough` at the repository root).
  *
  * Playwright reuses a server already listening on the end-to-end port outside CI, and on a shared
  * host that is often another checkout's build, or a design-review capture's, on the default port

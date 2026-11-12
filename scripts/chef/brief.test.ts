@@ -297,7 +297,7 @@ describe('charter rules', () => {
       agents,
       'bun scripts/affected-tests.ts run --isolated',
     ],
-    ['a full `bun run validate` only for a one-way door', agents, 'touches a one-way door'],
+    ['the full suite only for a one-way door', agents, 'to a one-way door'],
     ['delivery runs no gate', agents, 'delivery runs no gate'],
     [
       'a red `main` is a warning',

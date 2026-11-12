@@ -12,7 +12,7 @@ import {
 } from '@lostgradient/bureau';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -192,7 +192,10 @@ describe('the host’s agent directory', () => {
       });
     });
     await mkdir(join(home, 'agents'), { recursive: true });
-    await writeFile(join(home, 'agents', 'late.md'), RESEARCHER);
+    // Renamed into place so a watcher scan never reads the file created and not yet written, which
+    // the catalog would report invalid before ready (COR-2374).
+    await writeFile(join(home, 'agents', '.late.md.tmp'), RESEARCHER);
+    await rename(join(home, 'agents', '.late.md.tmp'), join(home, 'agents', 'late.md'));
     expect(await added).toContain('late');
     expect(host.bureau.agents.list().find((listing) => listing.id === 'late')?.state).toBe('ready');
   });
