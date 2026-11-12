@@ -76,12 +76,10 @@
 
   const pickingOther = $derived(selected === OTHER_CHOICE);
   const ready = $derived(selected !== null && (!pickingOther || text.trim() !== ''));
-  const reason = $derived(pickingOther ? labels.typeHint : labels.chooseHint);
   const errorText = $derived(question.issues.map((issue) => issue.message).join(' '));
 
   const questionId = $derived(`${id}-question`);
   const legendId = $derived(`${id}-legend`);
-  const hintId = $derived(`${id}-hint`);
   const errorId = $derived(`${id}-error`);
 
   /** The answer the chosen card stands for, or the person's own words. */
@@ -162,7 +160,7 @@
   </div>
   <div class="chat-question-dock-body">
     <fieldset class="chat-question-dock-fieldset">
-      <legend id={legendId} class="chat-question-dock-legend" dir="auto">{labels.legend}</legend>
+      <legend id={legendId} class="cinder-sr-only" dir="auto">{labels.legend}</legend>
       {#if question.message !== undefined && question.message !== ''}
         <p id={questionId} class="chat-question-dock-question" dir="auto">{question.message}</p>
       {/if}
@@ -236,9 +234,6 @@
         {:else if question.failed}
           <p id={errorId} class="chat-question-dock-error" role="alert">{labels.failed}</p>
         {/if}
-        {#if !ready}
-          <p id={hintId} class="chat-question-dock-hint" dir="auto">{reason}</p>
-        {/if}
       </div>
     </fieldset>
   </div>
@@ -257,12 +252,7 @@
         {#snippet leadingIcon()}<MessageSquare aria-hidden="true" />{/snippet}
       </Button>
     </Tooltip>
-    <Button
-      type="submit"
-      variant="primary"
-      disabled={!ready || question.busy}
-      aria-describedby={ready ? undefined : hintId}
-    >
+    <Button type="submit" variant="primary" disabled={!ready || question.busy}>
       {labels.answer}
     </Button>
   </div>
@@ -270,9 +260,6 @@
 
 <style>
   .chat-question-dock {
-    /* Radios at least 52 px tall: the card variant's own minimum, set once for the whole dock. */
-    --_cinder-choice-card-min-block-size: 3.25rem;
-
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     box-sizing: border-box;
@@ -283,7 +270,7 @@
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised, var(--cinder-surface));
-    max-block-size: min(100%, 28rem);
+    max-block-size: min(100%, 50dvh);
   }
 
   .chat-question-dock-header {
@@ -321,63 +308,68 @@
     border: 0;
   }
 
+  /* The dock is capped at half the viewport: this body scrolls and the actions below stay pinned. */
   .chat-question-dock-body {
     min-block-size: 0;
-    overflow: clip;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .chat-question-dock-fieldset {
-    position: relative;
     grid-template-areas:
       'question'
       'options'
       'completion';
     grid-template-rows: auto minmax(0, 1fr) auto;
     block-size: 100%;
-    padding-block-start: var(--cinder-space-5);
-  }
-
-  .chat-question-dock-legend {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline: 0;
   }
 
   .chat-question-dock-options {
     grid-area: options;
+    --_chat-question-dock-cue-size: 1.5rem;
+
+    position: relative;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
     min-block-size: 0;
-    gap: var(--cinder-space-1);
-  }
-
-  .chat-question-dock-options:not(:has(.chat-question-dock-options-scroll[data-cinder-overflows])) {
-    align-content: start;
-    grid-template-rows: auto auto auto;
-  }
-
-  /* Cues are only layout content while the option viewport can actually scroll. */
-  .chat-question-dock-options:not(:has(.chat-question-dock-options-scroll[data-cinder-overflows]))
-    > .chat-question-dock-scroll-cue {
-    display: none;
   }
 
   .chat-question-dock-options-scroll {
     min-block-size: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scroll-padding-block: var(--cinder-space-2);
+    scroll-padding-block: var(--_chat-question-dock-cue-size);
     scroll-snap-type: block mandatory;
     scrollbar-gutter: stable;
   }
 
+  /*
+   * A cue is drawn over the viewport's edge on an opaque strip, so the border of a row clipped
+   * there never shows beside it. Rows snap clear of the strip when the list rests.
+   */
   .chat-question-dock-scroll-cue {
+    position: absolute;
+    inset-inline: 0;
+    z-index: 1;
     display: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    block-size: var(--_chat-question-dock-cue-size);
     margin: 0;
+    background: var(--cinder-surface-raised, var(--cinder-surface));
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     line-height: var(--cinder-leading-tight, 1.25);
-    text-align: center;
+    pointer-events: none;
+  }
+
+  .chat-question-dock-scroll-cue-above {
+    inset-block-start: 0;
+  }
+
+  .chat-question-dock-scroll-cue-below {
+    inset-block-end: 0;
   }
 
   .chat-question-dock-options:has(
@@ -387,7 +379,7 @@
   :global(
     .chat-question-dock-options-scroll[data-cinder-overflows] ~ .chat-question-dock-scroll-cue-below
   ) {
-    display: block;
+    display: flex;
   }
 
   .chat-question-dock-completion {
@@ -395,7 +387,7 @@
     display: grid;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
-    padding: var(--cinder-space-2) var(--cinder-space-1) var(--cinder-space-1);
+    padding: var(--cinder-space-2) 0 var(--cinder-space-1);
   }
 
   .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
@@ -409,14 +401,18 @@
     :global(
       .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
     ) {
+    flex: 1 1 auto;
     line-height: var(--cinder-leading-tight, 1.25);
   }
 
-  .chat-question-dock-legend {
-    margin-block-end: var(--cinder-space-1);
-    padding: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+  /* A description follows its title on the title's line when the whole of it fits, else it wraps below. */
+  .chat-question-dock-body
+    :global(.cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__card) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--cinder-space-2);
+    row-gap: 0;
   }
 
   .chat-question-dock-question {
@@ -431,9 +427,7 @@
   .chat-question-dock-choice {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-3);
-    inline-size: 100%;
+    gap: var(--cinder-space-2);
   }
 
   .chat-question-dock-choice-label {
@@ -460,12 +454,6 @@
     }
   }
 
-  .chat-question-dock-hint {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-  }
-
   .chat-question-dock-error {
     margin: 0;
     padding: var(--cinder-space-2) var(--cinder-space-3);
@@ -489,7 +477,7 @@
   @media (max-width: 479.98px), (any-pointer: coarse) {
     .chat-question-dock {
       block-size: auto;
-      max-block-size: min(26.5rem, calc(100dvh - 2 * var(--cinder-space-3)));
+      max-block-size: min(50dvh, calc(100dvh - 2 * var(--cinder-space-3)));
       gap: var(--cinder-space-2);
     }
 

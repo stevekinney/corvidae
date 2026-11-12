@@ -95,7 +95,7 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
     cleanup();
 
     const second = await ask(schema);
-    const field = screen.getByPlaceholderText('Choose an answer above, or type your own…');
+    const field = screen.getByPlaceholderText('Type your answer');
     expect(screen.getByRole('button', { name: 'Answer' }).hasAttribute('disabled')).toBe(true);
     await fireEvent.input(field, { target: { value: 'teal' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
@@ -111,7 +111,7 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
       },
       { answerInComposer: true },
     );
-    expect(screen.queryByPlaceholderText('Choose an answer above, or type your own…')).toBeNull();
+    expect(screen.queryByPlaceholderText('Type your answer')).toBeNull();
     expect(screen.getAllByRole('radio').map((radio) => radio.textContent?.trim())).toEqual([
       'red',
       'blue',
@@ -440,11 +440,23 @@ describe('ChatQuestion Change on a moment', () => {
   });
 });
 
+describe('the question unit reads as one thing in the dock and the transcript', () => {
+  test('Change is a visible secondary control and a description follows its title', async () => {
+    for (const name of ['./chat-question.svelte', './chat-question-dock.svelte']) {
+      const source = await Bun.file(new URL(name, import.meta.url)).text();
+      expect(source).toContain('flex-wrap: wrap;');
+      expect(source).toContain('cinder-choice-grid-item__card');
+    }
+    const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
+    expect(source).toContain('variant="secondary" size="sm" onclick={onChange}');
+  });
+});
+
 describe('the pick of a held answer', () => {
   test('uses Cinder card selection so the radio indicator and label share one state', async () => {
     const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
     expect(source).toContain('variant="card"');
-    expect(source).toContain('--_cinder-choice-card-min-block-size: 3.25rem;');
+    expect(source).not.toContain('--_cinder-choice-card-min-block-size');
   });
 
   test('leaves selected-state colour and contrast to the shared ChoiceGridItem component', async () => {

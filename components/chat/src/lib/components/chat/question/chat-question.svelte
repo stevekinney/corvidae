@@ -409,7 +409,9 @@
         <span class="chat-question-answer-value" data-question-answer>{answer.summary}</span>
       </p>
       {#if onChange !== undefined}
-        <Button type="button" variant="ghost" size="sm" onclick={onChange}>{labels.change}</Button>
+        <Button type="button" variant="secondary" size="sm" onclick={onChange}
+          >{labels.change}</Button
+        >
       {/if}
     </div>
   {:else}
@@ -726,9 +728,8 @@
     inline-size: 100%;
   }
 
-  /* Choices sit side by side and wrap; a host that wants them to share the row sets the grow. */
+  /* One column of cards. Cinder's cards own their rest border, centred label and equal rows. */
   .chat-question-choices {
-    --_cinder-choice-card-min-block-size: 3.25rem;
     display: grid;
     gap: var(--cinder-space-2-5, 0.625rem);
   }
@@ -742,7 +743,18 @@
     :global(
       .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
     ) {
+    flex: 1 1 auto;
     line-height: var(--cinder-leading-tight, 1.25);
+  }
+
+  /* A description follows its title on the title's line when the whole of it fits, else it wraps below. */
+  .chat-question-choices
+    :global(.cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__card) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--cinder-space-2);
+    row-gap: 0;
   }
 
   .chat-question-choice-label {

@@ -251,7 +251,7 @@ describe('a one-click answer is held for a short Undo window', () => {
       },
     });
     await fireEvent.input(
-      screen.getByPlaceholderText('Choose an answer above, or type your own…'),
+      screen.getByPlaceholderText('Type your answer'),
       {
         target: { value: 'canary' },
       },

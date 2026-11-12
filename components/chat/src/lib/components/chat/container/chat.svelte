@@ -250,7 +250,6 @@
     answer: chatLabels.answer,
     failed: chatLabels.answerFailed,
     ownAnswer: chatLabels.yourOwnAnswer,
-    ownAnswerPlaceholder: chatLabels.chooseAnswerPlaceholder,
     yes: chatLabels.yes,
     no: chatLabels.no,
     ...questionLabels,

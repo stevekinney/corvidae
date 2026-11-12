@@ -173,9 +173,10 @@ describe('a docked question', () => {
 
     const dock = dockOf(container)!;
     expect(dock.querySelector('[data-chat-question-needs]')?.textContent?.trim()).toBe('Needs you');
-    expect(dock.querySelector('fieldset > legend')?.textContent?.trim()).toBe(
-      'The agent is asking',
-    );
+    // The eyebrow is gone: the legend is read aloud, never drawn.
+    const legend = dock.querySelector('fieldset > legend')!;
+    expect(legend.classList.contains('cinder-sr-only')).toBe(true);
+    expect(dock.textContent).not.toContain('The agent is asking');
     expect(dock.querySelector('.chat-question-dock-question')?.textContent?.trim()).toBe(
       'Which environment?',
     );
@@ -213,13 +214,13 @@ describe('a docked question', () => {
     );
   });
 
-  test('sets the minimum height of its radios to 52 px', async () => {
+  test('leaves its radios the height and rest border Cinder gives them', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),
     ).text();
 
-    expect(source).toContain('--_cinder-choice-card-min-block-size: 3.25rem;');
-    expect(source).toContain('chat-question-dock-legend');
+    expect(source).not.toContain('--_cinder-choice-card-min-block-size');
+    expect(source).toContain('max-block-size: min(100%, 50dvh);');
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
     expect(source).toContain('moreChoicesAbove');
@@ -230,19 +231,17 @@ describe('a docked question', () => {
     expect(source).toContain('display: none;');
   });
 
-  test('keeps Answer off, with its reason in view and named, until something is chosen', async () => {
+  test('keeps Answer off, with no helper line, until something is chosen', async () => {
     const { container } = mountDocked('dock-reason', ENVIRONMENT);
     await settle();
 
     const answer = buttonNamed(container, 'Answer')!;
     expect(answer.disabled).toBe(true);
-    const hint = container.querySelector('.chat-question-dock-hint')!;
-    expect(hint.textContent?.trim()).toBe('Choose an answer to continue');
-    expect(answer.getAttribute('aria-describedby')).toBe(hint.id);
+    expect(container.querySelector('.chat-question-dock-hint')).toBeNull();
+    expect(dockOf(container)!.textContent).not.toContain('Choose an answer to continue');
 
     await fireEvent.click(radiosOf(container)[1]!);
     expect(answer.disabled).toBe(false);
-    expect(container.querySelector('.chat-question-dock-hint')).toBeNull();
     expect(answer.hasAttribute('aria-describedby')).toBe(false);
   });
 
@@ -336,9 +335,8 @@ describe('a docked question', () => {
     );
     const answer = buttonNamed(container, 'Answer')!;
     expect(answer.disabled).toBe(true);
-    expect(container.querySelector('.chat-question-dock-hint')?.textContent?.trim()).toBe(
-      'Type your answer to continue',
-    );
+    expect(field.placeholder).toBe('Type your answer');
+    expect(container.querySelector('.chat-question-dock-hint')).toBeNull();
 
     // Keys typed into the field are words, not choices.
     await fireEvent.keyDown(field, { key: '1' });

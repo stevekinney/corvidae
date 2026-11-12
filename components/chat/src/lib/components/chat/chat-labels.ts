@@ -133,7 +133,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   youAnswered: 'You answered',
   change: 'Change',
   yourOwnAnswer: 'Your own answer',
-  chooseAnswerPlaceholder: 'Choose an answer above, or type your own…',
+  chooseAnswerPlaceholder: 'Type your answer',
   answerBelow: 'Answer below',
   sendOffline: 'Send comes back when you reconnect',
   waitForAttachments: 'Wait for attachments',
