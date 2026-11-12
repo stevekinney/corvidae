@@ -90,10 +90,24 @@ const parkedStart = (interrupts: unknown[]) => () =>
     },
   ]);
 
+/** The thread as the Bureau keeps it once a resume has continued the parked run; `mount` clears it. */
+let settledThread: Body['messages'] | undefined;
+
 /** The success of a resume that continued the parked run: the thread's snapshot with the run's answer rows, then a reply. */
 function continuedResume(opener: () => { id: string; content: unknown }, answers: string[][]) {
-  return (body: Body) =>
-    sse([
+  return (body: Body) => {
+    // The Bureau keeps what the resume carried, so a later read of the thread returns it.
+    settledThread = [
+      { id: opener().id, role: 'user', content: opener().content },
+      { id: `${NATIVE}:step:0`, role: 'assistant', content: 'Asking.' },
+      ...answers.map(([signal, text]) => ({
+        id: `${NATIVE}:signal:${signal}:0`,
+        role: 'user',
+        content: `[signal:${signal}] ${JSON.stringify(text)}`,
+      })),
+      { id: `${NATIVE}:step:1`, role: 'assistant', content: 'Done.' },
+    ];
+    return sse([
       { type: 'RUN_STARTED', threadId: THREAD, runId: body.runId, metadata: meta },
       {
         type: 'MESSAGES_SNAPSHOT',
@@ -118,6 +132,7 @@ function continuedResume(opener: () => { id: string; content: unknown }, answers
         metadata: meta,
       },
     ]);
+  };
 }
 
 const plainSuccess = (body: Body) =>
@@ -143,6 +158,7 @@ function mount(
 ) {
   const bodies: Body[] = [];
   const requests: string[] = [];
+  settledThread = undefined;
   const fetchStub: Fetcher = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     // The page also reads the chat's last run for why it stopped; this chat has none.
@@ -154,7 +170,10 @@ function mount(
       });
     requests.push(`${init?.method ?? 'GET'} ${url}`);
     if (url.endsWith('/messages'))
-      return Response.json({ threadId: THREAD, messages: bodies[0]?.messages ?? [] });
+      return Response.json({
+        threadId: THREAD,
+        messages: settledThread ?? bodies[0]?.messages ?? [],
+      });
     if (url.includes('/threads/') && url.endsWith('/run')) {
       return (
         attaches.shift()?.(bodies[0]?.messages ?? []) ??

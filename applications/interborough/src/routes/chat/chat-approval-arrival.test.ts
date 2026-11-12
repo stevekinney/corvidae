@@ -109,12 +109,14 @@ describe('a chat that opens on an approval', () => {
     landAt('/chats/session-1');
     const { container } = mount();
 
+    // The row is drawn again when the joined run's state arrives, so the focus is read on the row
+    // that is on the page once it settles, not on the first one drawn.
     const row = await waitFor(() => {
       const found = container.querySelector<HTMLElement>('[data-approval-decision]');
       if (found === null) throw new Error('The approval did not render.');
+      if (document.activeElement !== found) throw new Error('The approval has not taken focus.');
       return found;
     });
-    await waitFor(() => expect(document.activeElement === row).toBe(true));
     expect(scrolled.includes(row)).toBe(true);
     // Cinder's approval row is an article named by the question it asks.
     expect(row.tagName).toBe('ARTICLE');

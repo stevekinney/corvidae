@@ -678,13 +678,22 @@
 
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
   async function focusApproval(): Promise<void> {
+    let focused = false;
     for (let frame = 0; frame < ARRIVAL_FRAMES; frame += 1) {
       await tick();
       const row = route?.querySelector<HTMLElement>('[data-approval-decision]');
       if (row !== null && row !== undefined) {
-        row.scrollIntoView?.({ block: 'center' });
-        row.focus({ preventScroll: true });
-        return;
+        // The row is drawn again when its state or deadline arrives with the joined run, which
+        // drops the focus it held. While nothing else holds focus, the new row takes it back;
+        // once the person has moved focus elsewhere, it is theirs.
+        const lost = document.activeElement === null || document.activeElement === document.body;
+        if (!focused || lost) {
+          row.scrollIntoView?.({ block: 'center' });
+          row.focus({ preventScroll: true });
+          focused = true;
+        } else if (!row.isConnected || document.activeElement !== row) {
+          return;
+        }
       }
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
