@@ -19,3 +19,11 @@
     pointer-events: none;
   }
 }
+
+@layer cinder.components {
+  /* Every card in one group shares one row height, so a row with no description is not shorter
+   * than its neighbours. */
+  .cinder-choice-grid[data-cinder-variant='card'] {
+    grid-auto-rows: 1fr;
+  }
+}
