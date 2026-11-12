@@ -790,7 +790,7 @@ describe('ChatMessage — tool-call rendering', () => {
         Array.from(toggle.querySelectorAll('.chat-tool-call-summary > *'), (field) =>
           field.textContent?.trim(),
         ),
-      ).toEqual(['2 steps', 'lookup-order ×2', '700ms']);
+      ).toEqual(['2 steps', '700ms']);
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
       expect(list.hidden).toBe(true);
 
