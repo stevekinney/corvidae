@@ -60,6 +60,28 @@ export function approvalRowVisible(
   return approvalCardFitsViewport(row, viewport, reminderShown ? reminderBlockSize : 0);
 }
 
+/**
+ * The room kept clear below a pending approval card, in pixels: the visible gap of `--cinder-space-3`
+ * (0.75rem at the root size). The decision buttons' hit area reaches below their painted edge, so a
+ * card pressed against the composer would leave that overhang under the composer.
+ */
+export const APPROVAL_BOTTOM_CLEARANCE = 12;
+
+/**
+ * The box an approval must show inside the transcript: from the decision row's top down to the
+ * card's bottom edge plus the clearance, so the buttons and their hit overhang clear the composer.
+ * A card that draws no row, or one taller than the transcript box, is judged by the row alone.
+ */
+export function approvalReviewBox(
+  row: Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'>,
+  card: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  boxBlockSize: number,
+): Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'> {
+  const bottom = card.bottom + APPROVAL_BOTTOM_CLEARANCE;
+  if (bottom - row.top > boxBlockSize) return row;
+  return { top: row.top, bottom: Math.max(row.bottom, bottom), left: row.left, right: row.right };
+}
+
 /** The selector of a pending approval card's row of decision buttons. */
 const APPROVAL_ACTION_ROW_SELECTOR =
   '.cinder-approval-card__row-actions, .cinder-approval-card__action-row';

@@ -1053,16 +1053,23 @@
         "steps": [
           { "action": "click", "role": "button", "name": "Sources" },
           { "action": "expect-text", "text": "سياسة الاسترداد" },
-          { "action": "scroll", "to": "top", "by": "wheel" },
+          { "action": "scroll", "to": "top", "by": "wheel", "when": "transcript-overflows" },
           {
             "action": "expect-offscreen",
-            "selector": ".cinder-approval-card[data-cinder-state=\"pending\"] .cinder-approval-card__row-actions, .cinder-approval-card[data-cinder-state=\"pending\"] .cinder-approval-card__action-row"
+            "selector": ".cinder-approval-card[data-cinder-state=\"pending\"] .cinder-approval-card__row-actions, .cinder-approval-card[data-cinder-state=\"pending\"] .cinder-approval-card__action-row",
+            "when": "transcript-overflows"
           },
           {
             "action": "expect",
             "role": "button",
             "name": "Review approval",
-            "scope": "[data-chat-approval-drawer]"
+            "scope": "[data-chat-approval-drawer]",
+            "when": "transcript-overflows"
+          },
+          {
+            "action": "expect-absent",
+            "selector": "[data-chat-approval-drawer]",
+            "when": "transcript-fits"
           },
           { "action": "expect-approval-review" }
         ]

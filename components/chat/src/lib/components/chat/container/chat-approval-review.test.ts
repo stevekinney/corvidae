@@ -12,10 +12,12 @@ import {
 import type { Message } from '../conversation-model.ts';
 import { getMessages } from '../utilities/index.ts';
 import {
+  APPROVAL_BOTTOM_CLEARANCE,
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
   approvalActionRowShift,
   approvalCardFitsViewport,
+  approvalReviewBox,
   approvalRowVisible,
   approvalVisibleBox,
   findPendingApprovalMessageId,
@@ -261,6 +263,32 @@ describe('approval action row shift', () => {
 
   test('does nothing when the row cannot fit the viewport with its inset', () => {
     expect(approvalActionRowShift({ top: 100, bottom: 500 }, viewport, 8)).toBe(0);
+  });
+});
+
+describe('approval review box', () => {
+  const row = { top: 330, bottom: 370, left: 10, right: 290 };
+  const viewport = { top: 0, bottom: 400, left: 0, right: 300 };
+
+  test('reaches the card bottom plus the clearance when the card fits', () => {
+    const box = approvalReviewBox(row, { top: 100, bottom: 380 }, 400);
+    expect(box).toEqual({ ...row, bottom: 380 + APPROVAL_BOTTOM_CLEARANCE });
+  });
+
+  test('a row flush against the transcript bottom is not visible, so the reminder shows', () => {
+    const flush = { top: 340, bottom: 380, left: 10, right: 290 };
+    const box = approvalReviewBox(flush, { top: 100, bottom: 392 }, 400);
+    expect(approvalRowVisible(box, viewport, false, 0)).toBe(false);
+  });
+
+  test('scrolls until the clearance sits below the card', () => {
+    const flush = { top: 360, bottom: 400, left: 10, right: 290 };
+    const box = approvalReviewBox(flush, { top: 100, bottom: 412 }, 400);
+    expect(approvalActionRowShift(box, viewport, 0)).toBe(24);
+  });
+
+  test('falls back to the row when the card with its clearance is taller than the box', () => {
+    expect(approvalReviewBox(row, { top: 0, bottom: 395 }, 70)).toBe(row);
   });
 });
 

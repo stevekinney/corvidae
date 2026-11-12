@@ -1132,6 +1132,10 @@ export function locate(page: Page, step: Extract<StressStep, { role: string }>) 
 }
 
 export async function runStep(page: Page, step: StressStep): Promise<void> {
+  if (step.when !== undefined) {
+    const overflows = (await page.evaluate(wheelTarget)) !== null;
+    if (overflows !== (step.when === 'transcript-overflows')) return;
+  }
   switch (step.action) {
     case 'click':
       await locate(page, step).click({ timeout: DEADLINE });
@@ -1326,9 +1330,13 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
               (Number.parseFloat(style.marginTop) || 0) +
               (Number.parseFloat(style.marginBottom) || 0);
           }
+          // The product keeps the card's bottom edge plus 12px (`--cinder-space-3`) clear of the
+          // composer when the card fits, so its buttons' hit overhang is never under the composer.
+          const cardBottom = card.getBoundingClientRect().bottom + 12;
+          const fitsWithClearance = cardBottom - rowBox.top <= box.height + reclaimable;
           const visible =
             rowBox.top >= box.top - 1 &&
-            rowBox.bottom <= box.bottom + reclaimable + 1 &&
+            (fitsWithClearance ? cardBottom : rowBox.bottom) <= box.bottom + reclaimable + 1 &&
             rowBox.left >= box.left - 1 &&
             rowBox.right <= box.right + 1;
           const reminder = shell?.querySelector('[data-chat-approval-drawer]') != null;
@@ -1706,7 +1714,12 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       const target = await page.evaluate(wheelTarget);
       if (target === null) throw new Error('No scrolling transcript to wheel over.');
       await page.mouse.move(target.x, target.y);
-      await page.mouse.wheel(0, step.to === 'top' ? -target.scrollTop : target.remaining);
+      // Wheel past the end and let the browser clamp: the distance never depends on a position read
+      // before a settle scroll moved it.
+      const distance = await page.evaluate(() =>
+        Math.max(...[...document.querySelectorAll('*')].map((element) => element.scrollHeight)),
+      );
+      await page.mouse.wheel(0, step.to === 'top' ? -distance : distance);
       await page.waitForFunction(
         (to) => {
           const shell =

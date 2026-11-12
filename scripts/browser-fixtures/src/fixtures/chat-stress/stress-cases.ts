@@ -26,7 +26,19 @@ export type StressProvenance = 'issue-named' | 'derived';
  *
  * A role step takes the first match unless `nth` (from zero) picks another, as with two composers.
  */
-export type StressStep =
+export type StressStep = StressStepAction & {
+  /**
+   * Runs the step only while the page matches: `transcript-overflows` when a transcript scrolls,
+   * `transcript-fits` when none does. The capture evaluates it in the page when the step runs, so a
+   * case states one contract per layout instead of naming profiles.
+   */
+  when?: StressStepCondition;
+};
+
+/** What a step's `when` asks of the page. */
+export type StressStepCondition = 'transcript-overflows' | 'transcript-fits';
+
+type StressStepAction =
   | { action: 'click'; role: string; name: string; nth?: number }
   | { action: 'fill'; role: string; name: string; text: string; nth?: number }
   | { action: 'focus'; role: string; name: string; nth?: number }
@@ -217,6 +229,10 @@ function problemsInStep(step: unknown, where: string): string[] {
     action === 'hover' ||
     action === 'expect';
   const problems: string[] = [];
+  const when = step['when'];
+  if (when !== undefined && when !== 'transcript-overflows' && when !== 'transcript-fits') {
+    problems.push(`${where}: when is transcript-overflows or transcript-fits`);
+  }
   if (action === 'upload' && !Array.isArray(step['files']))
     problems.push(`${where}: upload needs files`);
   if (action === 'scroll' && step['to'] !== 'top' && step['to'] !== 'bottom') {

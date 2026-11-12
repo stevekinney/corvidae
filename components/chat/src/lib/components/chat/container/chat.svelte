@@ -67,6 +67,7 @@
   import {
     approvalActionRow,
     approvalActionRowShift,
+    approvalReviewBox,
     approvalRowVisible,
     approvalVisibleBox,
     focusPendingApproval,
@@ -1572,7 +1573,13 @@
         const actionRow = approvalActionRow(card);
         const reminder = readApprovalReminder();
         approvalFullyVisible = approvalRowVisible(
-          actionRow === null ? cardBox : actionRow.getBoundingClientRect(),
+          actionRow === null
+            ? cardBox
+            : approvalReviewBox(
+                actionRow.getBoundingClientRect(),
+                cardBox,
+                viewportBox.bottom - viewportBox.top + (reminder.shown ? reminder.blockSize : 0),
+              ),
           viewportBox,
           reminder.shown,
           reminder.blockSize,
@@ -1634,9 +1641,13 @@
       const cardBox = card.getBoundingClientRect();
       if (cardBox.height >= viewportBox.bottom - viewportBox.top) return;
       const shift = approvalActionRowShift(
-        actionRow.getBoundingClientRect(),
+        approvalReviewBox(
+          actionRow.getBoundingClientRect(),
+          cardBox,
+          viewportBox.bottom - viewportBox.top,
+        ),
         viewportBox,
-        ATTENTION_INSET,
+        0,
       );
       if (shift !== 0) {
         scroller.scrollTop += shift;

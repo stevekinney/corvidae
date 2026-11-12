@@ -723,10 +723,15 @@ describe('the reminder follows the decision row, not its own presence', () => {
 
     // The row ends inside the strip the reminder takes, but within the box the transcript has
     // without the reminder: it is visible in both states, so the reminder goes and stays gone.
-    await scrollTo(scroller, 330);
+    // The card's bottom, 16 below the row, plus the 12 of clearance must also be inside that box.
+    await scrollTo(scroller, 328);
     expect(drawerOf(container)).toBeNull();
-    await scrollTo(scroller, 330);
+    await scrollTo(scroller, 328);
     expect(drawerOf(container)).toBeNull();
+
+    // A row whose card clears the box by less than the clearance keeps the reminder.
+    await scrollTo(scroller, 340);
+    expect(drawerOf(container)).not.toBeNull();
 
     // A row ending below the tall box brings the reminder back.
     await scrollTo(scroller, 380);
@@ -740,12 +745,13 @@ describe('the reminder follows the decision row, not its own presence', () => {
   });
 
   test('at maximum scroll the arrival scroll hides the reminder and a clamp does not bring it back', async () => {
-    // Content is 700 tall and the row sits at 640 to 684 in it, near the end. The reminder starts
-    // shown (a 352 tall transcript, maximum scroll 348), so the row at maximum scroll is at 292 to
-    // 336. It is inside the tall box, so the reminder hides; the transcript then grows to 400, its
-    // maximum scroll falls to 300 and `scrollTop` clamps, which moves the row to 340 to 384. That is
-    // still inside the tall box, so the reminder stays hidden instead of coming back and flapping.
-    const rowDocumentTop = 640;
+    // Content is 700 tall and the row sits at 600 to 644 in it, near the end. The reminder starts
+    // shown (a 352 tall transcript, maximum scroll 348), so the row at maximum scroll is at 252 to
+    // 296. It is inside the tall box, so the reminder hides; the transcript then grows to 400, its
+    // maximum scroll falls to 300 and `scrollTop` clamps, which moves the row to 300 to 344 (its
+    // card, with the clearance, ends at 372). That is still inside the tall box, so the reminder
+    // stays hidden instead of coming back and flapping.
+    const rowDocumentTop = 600;
     rowTop = rowDocumentTop - 348;
     const { container } = render(Chat, {
       id: 'chat-reminder-clamp',
