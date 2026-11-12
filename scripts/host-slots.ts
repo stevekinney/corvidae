@@ -21,6 +21,14 @@
  * so a `bun test` or another wrapper it starts runs inside them too. The token is honoured only
  * while a live slot names it.
  *
+ * Memory: a script admits the host's memory once, however many phases it has
+ * ({@link withMemoryAdmission}): it reads before any work starts, waits while the host is short,
+ * and exits 75, never 1, once the host stays short (`awaitMemory` in `scripts/run-exclusively.ts`),
+ * then marks its environment admitted so its phases and children never read again. A
+ * {@link withHostSlots} run outside such a script reads once its slots are held, and throws
+ * {@link MemoryRefusal} naming the measurement. A nested run was admitted with its holder, CI
+ * reads once, reports and admits, and a test that passes no reader never reads real memory.
+ *
  * A request above the pool's size is clamped to it, and the run learns how many slots it holds, so
  * it can bound its own fan-out to them. When the pool cannot be used at all (no Git checkout, as in
  * the renderer's container), the run warns and runs without a slot.
@@ -42,7 +50,24 @@ import {
   type ProcessTable,
 } from './bun-test-pool.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
-import { gitCommonDirectory, pidStartedAtField, runInProcessGroup } from './run-exclusively.ts';
+import {
+  awaitMemory,
+  gitCommonDirectory,
+  memoryAdmittedVariable,
+  memoryRefusalExitCode,
+  pidStartedAtField,
+  runInProcessGroup,
+  snapshotParents,
+  type MemoryReading,
+} from './run-exclusively.ts';
+
+/**
+ * Thrown by {@link withHostSlots} when the host stayed too short of memory to start the run. Its
+ * message names the measurement; a command line exits with {@link memoryRefusalExitCode}.
+ */
+export class MemoryRefusal extends Error {
+  readonly exitCode = memoryRefusalExitCode;
+}
 
 export type HostSlotsOptions = {
   /** Where the holder's token is read from, and what a child inherits; defaults to this process's. */
@@ -59,6 +84,8 @@ export type HostSlotsOptions = {
   /** Waits between looks while the slots are held by others. */
   readonly sleep?: (milliseconds: number) => Promise<void>;
   readonly report?: (line: string) => void;
+  /** Reads the host's memory before the run starts; tests substitute a reading. */
+  readonly readMemory?: () => MemoryReading | undefined;
 };
 
 /** What a run under host slots knows about them. */
@@ -85,6 +112,7 @@ export async function withHostSlots<T>(
   run: (slots: HostSlots) => Promise<T>,
   input: HostSlotsOptions = {},
 ): Promise<T> {
+  snapshotParents();
   // Snapshotted, so a caller that changes its options after an await cannot change this run.
   const options = { ...input };
   const environment = { ...(options.environment ?? rootScriptEnvironment()) };
@@ -146,6 +174,19 @@ export async function withHostSlots<T>(
     report(`host-slots: running without a host slot: ${(error as Error).message}`);
   }
   try {
+    // Once the slots are held, so the reading is the one the run starts under. A nested run was
+    // admitted with its holder.
+    if (slots.admission !== 'nested') {
+      const memory = await awaitMemory({
+        label: 'host-slots',
+        environment,
+        report,
+        ...(options.readMemory === undefined ? {} : { readMemory: options.readMemory }),
+        ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+      });
+      if (!memory.admitted) throw new MemoryRefusal(memory.message);
+    }
+    slots = { ...slots, environment: { ...slots.environment, [memoryAdmittedVariable]: '1' } };
     return await run(slots);
   } finally {
     await held?.release();
@@ -163,17 +204,72 @@ export function runWithHostSlots(
 ): Promise<number> {
   const command = [...argv];
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
-  return withHostSlots(
-    count,
-    (slots) =>
-      runInProcessGroup(command, {
-        environment: slots.environment,
-        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        recordProcessGroup: slots.recordProcessGroup,
-        report: (line) => report(`host-slots: ${line}`),
-      }),
-    { command: command.join(' '), ...options },
+  return withMemoryAdmission(
+    (environment) =>
+      withHostSlots(
+        count,
+        (slots) =>
+          runInProcessGroup(command, {
+            environment: slots.environment,
+            ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+            recordProcessGroup: slots.recordProcessGroup,
+            report: (line) => report(`host-slots: ${line}`),
+          }),
+        { command: command.join(' '), ...options, environment },
+      ),
+    { ...options, report },
   );
+}
+
+export type MemoryAdmissionRun = {
+  /** The script's environment; defaults to `process.env`, which is then marked admitted. */
+  readonly environment?: Readonly<Record<string, string | undefined>>;
+  readonly report?: (line: string) => void;
+  readonly readMemory?: () => MemoryReading | undefined;
+  readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly pollIntervalMs?: number;
+  readonly maximumWaitMs?: number;
+};
+
+/**
+ * The one memory admission of a script that takes host slots, however many phases it has: checks
+ * the host's memory before any work starts, then runs `main` with the environment marked admitted
+ * ({@link memoryAdmittedVariable}), so every `withHostSlots` phase inside it, and every child, runs
+ * without reading again. By default the mark goes on `process.env`; a caller that passes an
+ * environment gets a marked copy, handed to `main`, and its own is left as it was. When the host
+ * stays too short of memory, the refusal is reported and the exit code is
+ * {@link memoryRefusalExitCode} (75), never 1, and `main` never starts.
+ */
+export async function withMemoryAdmission(
+  main: (environment: Record<string, string | undefined>) => Promise<number>,
+  options: MemoryAdmissionRun = {},
+): Promise<number> {
+  const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
+  const source = options.environment ?? rootScriptEnvironment();
+  try {
+    const memory = await awaitMemory({
+      label: 'host-slots',
+      environment: source,
+      report,
+      ...(options.readMemory === undefined ? {} : { readMemory: options.readMemory }),
+      ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+      ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
+      ...(options.maximumWaitMs === undefined ? {} : { maximumWaitMs: options.maximumWaitMs }),
+    });
+    if (!memory.admitted) throw new MemoryRefusal(memory.message);
+    let environment: Record<string, string | undefined>;
+    if (options.environment === undefined) {
+      environment = rootScriptEnvironment();
+      environment[memoryAdmittedVariable] = '1';
+    } else {
+      environment = { ...options.environment, [memoryAdmittedVariable]: '1' };
+    }
+    return await main(environment);
+  } catch (error) {
+    if (!(error instanceof MemoryRefusal)) throw error;
+    report(error.message);
+    return error.exitCode;
+  }
 }
 
 /** The slot count and the command from `--slots=<n> -- <command...>`, or the usage error. */

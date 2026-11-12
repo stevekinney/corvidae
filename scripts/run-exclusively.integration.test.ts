@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
+import { rootScriptEnvironment } from './environment-configuration.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import {
   acquireHostLock,
@@ -15,6 +16,7 @@ import {
   queueDirectoryFor,
   reclaimAbandoned,
   runExclusively,
+  runInProcessGroup,
   withPreflight,
   withTurborepoDefaults,
   type HostLockHolder,
@@ -691,11 +693,91 @@ const staleReservationDoesNotBypassLock = await inScratchDirectory(async (scratc
     pollIntervalMs: 1,
     // A token inherited from a lock that has since been released names nothing now held.
     environment: { [heldLockTokenVariable]: 'not-the-holder' },
+    // This scenario is about the lock; the host's real memory must not make it wait.
+    readMemory: () => undefined,
     report: (line) => reports.push(line),
   });
   while (reports.length === 0) await Bun.sleep(2);
   await holding.release();
   expect(await running).toBe(0);
+});
+
+const environmentSnapshottedBeforeWait = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory, directory } = scratch;
+  const output = join(directory, 'value');
+  const holding = await acquireHostLock({ lockDirectory, holder: holder(scratch) });
+  const reports: string[] = [];
+  const environment: Record<string, string | undefined> = {
+    PATH: rootScriptEnvironment()['PATH'],
+    X: 'asked',
+  };
+  const running = runExclusively({
+    lockDirectory,
+    script: `printf '%s' "$X" > '${output}'`,
+    pollIntervalMs: 1,
+    environment,
+    readMemory: () => undefined,
+    report: (line) => reports.push(line),
+  });
+  while (reports.length === 0) await Bun.sleep(2);
+  environment['X'] = 'changed while waiting';
+  await holding.release();
+  expect(await running).toBe(0);
+  expect(await readFile(output, 'utf8')).toBe('asked');
+});
+
+// A fresh process, since this file's own process already holds a filled snapshot.
+const snapshotsParentsBeforeQueueing = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory, directory } = scratch;
+  const fixture = join(directory, 'snapshot.ts');
+  const result = join(directory, 'snapshot.json');
+  await writeFile(
+    fixture,
+    `import { writeFile } from 'node:fs/promises';
+import { acquireHostLock, runExclusively } from ${JSON.stringify(join(import.meta.dir, 'run-exclusively.ts'))};
+const parentReads: string[] = [];
+const spawnSync = Bun.spawnSync.bind(Bun);
+// @ts-expect-error: counts the parent snapshots, then behaves as Bun.spawnSync does.
+Bun.spawnSync = (...input: any[]) => {
+  if (String(input[0]).includes('pid=,ppid=')) parentReads.push('read');
+  return (spawnSync as any)(...input);
+};
+const lockDirectory = process.argv[2];
+const holding = await acquireHostLock({
+  lockDirectory,
+  holder: { pid: process.pid, command: 'fixture', cwd: process.cwd(), acquiredAt: new Date().toISOString() },
+});
+let readsWhenWaiting = -1;
+const running = runExclusively({
+  lockDirectory,
+  script: 'exit 0',
+  pollIntervalMs: 1,
+  readMemory: () => undefined,
+  report: (line) => {
+    if (readsWhenWaiting === -1 && line.includes('waiting')) readsWhenWaiting = parentReads.length;
+  },
+});
+while (readsWhenWaiting === -1) await Bun.sleep(2);
+await holding.release();
+const code = await running;
+await writeFile(process.argv[3], JSON.stringify({ code, readsWhenWaiting, reads: parentReads.length }));
+`,
+  );
+  const child = spawnWithHangGuard([process.execPath, fixture, lockDirectory, result], {
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
+  scratch.onCleanup(() => child.kill('SIGKILL'));
+  expect(await child.exited).toBe(0);
+  expect(JSON.parse(await readFile(result, 'utf8'))).toEqual({
+    code: 0,
+    readsWhenWaiting: 1,
+    reads: 1,
+  });
+});
+
+describe('a session that ends while its run is queued', () => {
+  test('the parents are read once, before the run waits, and reused when the command starts', () =>
+    rethrow(snapshotsParentsBeforeQueueing));
 });
 
 describe('a reservation held across stages', () => {
@@ -707,6 +789,43 @@ describe('a reservation held across stages', () => {
 
   test('a token that does not match the current holder does not bypass the lock', () =>
     rethrow(staleReservationDoesNotBypassLock));
+
+  test('the command gets the environment as it was asked for, not as changed while it waited', () =>
+    rethrow(environmentSnapshottedBeforeWait));
+});
+
+const orphanIgnoringSigtermIsKilled = await inScratchDirectory(async (scratch) => {
+  const ready = join(scratch.directory, 'ready');
+  let check: () => void = () => {};
+  let processGroup: number | undefined;
+  const running = runInProcessGroup(['sh', '-c', `trap '' TERM; : > '${ready}'; sleep 30`], {
+    environment: rootScriptEnvironment(),
+    report: () => {},
+    recordProcessGroup: async (group) => {
+      processGroup = group;
+      scratch.onCleanup(() => killGroup(group));
+    },
+    orphanWatch: {
+      ancestors: [await exitedPid()],
+      every: (watch) => {
+        check = watch;
+        return () => {};
+      },
+      afterAwake: (_milliseconds, onElapsed) => {
+        onElapsed();
+        return () => {};
+      },
+    },
+  });
+  await waitUntil(() => Bun.file(ready).exists());
+  check();
+  expect(await running).toBe(137);
+  expect(processGroup === undefined ? true : isGroupAlive(processGroup)).toBe(false);
+});
+
+describe('an orphaned run', () => {
+  test('a leader that ignores SIGTERM is killed once the hang guard passes', () =>
+    rethrow(orphanIgnoringSigtermIsKilled));
 });
 
 describe('withTurborepoDefaults', () => {

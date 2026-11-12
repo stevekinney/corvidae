@@ -181,7 +181,12 @@ scenarios.describe('removeWorktree', () => {
     const created = create();
     git(created.path, 'push', '-q', 'origin', 'feature/alpha');
     const result = remove();
-    expect(result).toEqual({ path: created.path, branch: 'feature/alpha', remoteDeleted: true });
+    expect(result).toEqual({
+      path: created.path,
+      branch: 'feature/alpha',
+      remoteDeleted: true,
+      ended: [],
+    });
     expect(existsSync(created.path)).toBe(false);
     expect(git(checkout, 'branch', '--list', 'feature/alpha')).toBe('');
     expect(git(checkout, 'ls-remote', '--heads', 'origin', 'feature/alpha')).toBe('');

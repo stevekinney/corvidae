@@ -77,6 +77,8 @@ function seams(
     merge?: MergeGateReport;
     refusal?: string;
     usageError?: string;
+    /** The processes the removal reports it ended. */
+    ended?: { pid: number; command: string; cwd: string }[];
     /** The identifier whose state change Linear rejects. */
     failState?: string;
   } = {},
@@ -151,7 +153,7 @@ function seams(
         record.removeCalls.push(removeOptions);
         if (overrides.refusal !== undefined) throw new Refusal(overrides.refusal);
         if (overrides.usageError !== undefined) throw new UsageError(overrides.usageError);
-        return { path: '/c/alpha', branch: 'b', remoteDeleted: true };
+        return { path: '/c/alpha', branch: 'b', remoteDeleted: true, ended: overrides.ended ?? [] };
       },
       client,
     },
@@ -420,9 +422,24 @@ describe('deliver', () => {
     expect(report).toMatchObject({ merged: true, failedStep: null });
     expect(report.worktree).toEqual({ removed: true, detail: '/c/alpha' });
     expect(record.removeCalls).toEqual([
-      { configPath: options.configPath, name: sandbox, keepRemote: false, deliveredTip: HEAD },
+      {
+        configPath: options.configPath,
+        name: sandbox,
+        keepRemote: false,
+        deliveredTip: HEAD,
+        endProcesses: true,
+      },
     ]);
     expect(renderDeliver(report).split('\n')[1]).toBe('worktree removed: /c/alpha');
+  });
+
+  test('names the processes the removal ended inside the delivered worktree', async () => {
+    const { partial } = seams({ ended: [{ pid: 10, command: 'bun', cwd: '/c/alpha' }] });
+    const report = await deliver({ ...options, expectedHead: HEAD }, partial);
+    expect(report.worktree).toEqual({
+      removed: true,
+      detail: '/c/alpha (ended 1 process(es) left running inside it)',
+    });
   });
 
   test('a pull request delivery with no --head names the pull request head as the delivered tip', async () => {

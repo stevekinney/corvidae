@@ -26,7 +26,8 @@
  * every quarter second and prints a line whenever what it waits for changes. Waiting has no deadline,
  * because running past it would break the cap; it is bounded by the holders. The hang guard bounds a
  * `bun test` holder's tests; nothing times out a holder through `scripts/host-slots.ts` (a browser
- * suite, a capture, the Docker renderer), which holds its slots for as long as its run lasts.
+ * suite, a capture, the Docker renderer), which holds its slots for as long as its run lasts, unless
+ * its session is gone (`runInProcessGroup` in `scripts/run-exclusively.ts`).
  *
  * Bun's `--parallel` workers (`bun test --test-worker`) are children of the `bun test` leader but
  * each leads a process group of its own, and they outlive a leader killed with SIGKILL. So while a
@@ -65,20 +66,25 @@ import { join } from 'node:path';
 
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import {
+  describeMemory,
   enqueue,
   gitCommonDirectory,
   liveFront,
+  memoryShortfall,
   ownerFileName,
   pidStartedAtField,
   processStartTime,
   processTableEnvironment,
+  readMemory,
   readOwner,
   readTicket,
   reclaimAbandoned,
   removeLock,
   runInProcessGroup,
+  snapshotParents,
   tryInstall,
   type HostLockHolder,
+  type MemoryReading,
   type OwnerRecord,
 } from './run-exclusively.ts';
 import { TEST_TIMEOUT_ARGUMENT } from './test-deadlines.ts';
@@ -445,6 +451,7 @@ function describeOwner(owner: SlotOwner | OwnerRecord | undefined): string {
 
 /** Waits until it holds `slots` slots of the pool. */
 export async function acquireTestSlots(options: AcquireTestSlotsOptions): Promise<HeldTestSlots> {
+  snapshotParents();
   const count = Math.min(Math.max(1, options.slots), options.size);
   const self: SlotOwner = { ...options.holder, token: crypto.randomUUID(), slots: count };
   const queue = queueDirectory(options.poolDirectory);
@@ -697,6 +704,7 @@ export type RunPooledBunTestOptions = {
  * Resolves to its exit code.
  */
 export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<number> {
+  snapshotParents();
   // Snapshotted, so a caller that reuses its options object cannot change a run after an await.
   const options = { ...input, bunTestArguments: [...input.bunTestArguments] };
   const environment = { ...(options.environment ?? rootScriptEnvironment()) };
@@ -763,6 +771,15 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
   }
 }
 
+/** The status command's memory line: what a heavy stage's memory check would do right now. */
+export function memoryStatusLine(read: () => MemoryReading | undefined): string {
+  const memory = read();
+  if (memory === undefined)
+    return 'memory: could not be read; heavy stages start without the check';
+  const shortfall = memoryShortfall(memory);
+  return `memory: ${describeMemory(memory)}; ${shortfall === undefined ? 'a heavy stage would start' : `a heavy stage would wait: ${shortfall}`}`;
+}
+
 function optionValue(argumentsList: readonly string[], name: string): string | undefined {
   const index = argumentsList.indexOf(name);
   return index === -1 ? undefined : argumentsList[index + 1];
@@ -782,6 +799,10 @@ if (import.meta.main) {
       for (const line of await describePool(poolDirectory, size, readProcessTable())) {
         process.stdout.write(`${line}\n`);
       }
+      // What a heavy stage's memory check reads (`awaitMemory` in `scripts/run-exclusively.ts`); a
+      // test process never reads the host's real memory, so it reports an unreadable host.
+      const inTest = rootScriptEnvironment()['NODE_ENV'] === 'test';
+      process.stdout.write(`${memoryStatusLine(inTest ? () => undefined : readMemory)}\n`);
     }
   } else {
     process.stderr.write(

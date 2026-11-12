@@ -16,11 +16,14 @@
 // without it every provider's root is accepted. `stale` lists, read-only, every worktree under the
 // accepted roots with its branch, age, cleanliness, lock, live processes and delivered state (the
 // two tests, and their limits, are on `classifyDelivered`); `--remove` removes those that are clean,
-// unlocked, free of processes and delivered, never the main checkout or the worktree it runs from,
-// and keeps the remote branches. It reads `origin/<default>` as last fetched (`--remove` fetches
-// first). A live process in the listing is one whose working directory is inside the worktree, seen
-// by one host-wide `lsof` that shows only the running user's processes; `--remove` re-checks open
-// files. A branch with no commit of its own counts as delivered (its tip is in `origin/<default>`).
+// unlocked and delivered, never the main checkout or the worktree it runs from, and keeps the
+// remote branches. It reads `origin/<default>` as last fetched (`--remove` fetches first). A live
+// process in the listing is one whose working directory is inside the worktree, seen by one
+// host-wide `lsof` that shows only the running user's processes. A worktree whose branch was
+// squash-merged (`changes-in-default`) is finished, so `--remove` ends the processes left inside it
+// (`endProcessesInside`); one whose tip is a commit of the default branch looks like a worktree a
+// session has just created, so a live process keeps it. `--remove` re-checks open files. A branch
+// with no commit of its own counts as delivered (its tip is in `origin/<default>`).
 //
 // `create` runs the default-branch ownership preflight (it never attaches the default branch),
 // fetches the default branch, adds the worktree on a new branch from `--base` (default
@@ -29,7 +32,9 @@
 // prints the path, HEAD and install exit code.
 //
 // `remove` refuses, changing nothing, when the worktree has uncommitted or untracked changes, when
-// any process has its working directory or open files inside it, when Git reports the worktree
+// any process has its working directory or open files inside it (`deliver.ts` and `stale --remove`
+// first end the processes whose working directory is inside, once nothing else refuses the
+// removal; files held open from elsewhere still refuse it), when Git reports the worktree
 // locked, or when it is not a worktree under the provider's root (`~/.agent-worktrees/<provider>/corvidae`)
 // or under `<main checkout>/.claude/worktrees`, where Claude Code's Agent tool makes them. It also
 // refuses, because the branch is deleted with `git branch -D` and
@@ -48,6 +53,7 @@
 
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { ancestorsOf } from '../run-exclusively.ts';
 import { findWorktreeProcesses, ProbeError } from './leftovers.ts';
 import {
   defaultRunner,
@@ -124,11 +130,13 @@ export interface WorktreeDependencies {
   runner: Runner;
   /** The main checkout where branch and worktree commands run; resolved from Git when absent. */
   checkout?: string;
+  /** How `endProcesses` signals and waits; tests substitute recorders. */
+  endProcesses?: EndProcessesDependencies;
 }
 
 function resolveDependencies(
   partial: Partial<WorktreeDependencies>,
-): Required<WorktreeDependencies> {
+): Required<Omit<WorktreeDependencies, 'endProcesses'>> {
   const runner = partial.runner ?? defaultRunner;
   return {
     runner,
@@ -284,12 +292,27 @@ export interface RemoveOptions {
    * tip still equals it; any other tip goes through the ordinary check.
    */
   deliveredTip?: string | undefined;
+  /**
+   * The branch (without `refs/heads/`) the caller saw at `deliveredTip`; `undefined` for a
+   * detached head. `endProcesses` refuses unless the worktree's head is `deliveredTip` and, when this
+   * key is given, its branch is this one (a delivery pins the head, not the local branch name),
+   * so a path reused by a new session is never emptied of its processes.
+   */
+  deliveredBranch?: string | undefined;
+  /**
+   * End the processes whose working directory is inside the worktree once nothing else refuses
+   * its removal, instead of refusing for them (`endProcessesInside`). Open files of processes
+   * elsewhere still refuse it.
+   */
+  endProcesses?: boolean;
 }
 
 export interface RemoveResult {
   path: string;
   branch: string | undefined;
   remoteDeleted: boolean;
+  /** The processes `endProcesses` signalled before the removal. */
+  ended: WorkingDirectoryProcess[];
 }
 
 /**
@@ -381,18 +404,6 @@ export function removeWorktree(
       `it has ${status.stdout.trim().split('\n').length} uncommitted or untracked path(s)`,
     );
   }
-  try {
-    const holders = findWorktreeProcesses(path, runner);
-    if (holders.length > 0) {
-      reasons.push(
-        `processes are inside it: ${holders.map((item) => `${item.pid} ${item.command}`).join(', ')}`,
-      );
-    }
-  } catch (error) {
-    // An `lsof` that could not run proves nothing about the worktree, so it blocks the removal.
-    if (!(error instanceof ProbeError)) throw error;
-    reasons.push(`it could not be checked for processes (${error.message})`);
-  }
   const tipDelivered =
     options.deliveredTip !== undefined &&
     branch !== undefined &&
@@ -406,6 +417,35 @@ export function removeWorktree(
   ) {
     const undelivered = undeliveredReason(runner, checkout, config, branch);
     if (undelivered !== undefined) reasons.push(undelivered);
+  }
+  if (
+    options.endProcesses === true &&
+    (entry.head === undefined ||
+      entry.head !== options.deliveredTip ||
+      ('deliveredBranch' in options && branch !== options.deliveredBranch))
+  ) {
+    reasons.push(
+      `its branch and head are not the ones recorded as delivered (${branch ?? 'detached'} at ${entry.head ?? 'unknown'}), so it may be a worktree reused since, and its processes are not ended`,
+    );
+  }
+  let ended: WorkingDirectoryProcess[] = [];
+  try {
+    // Only once nothing else refuses the removal: a refused worktree keeps its processes.
+    if (options.endProcesses === true && reasons.length === 0) {
+      ended = endProcessesInside(path, runner, partial.endProcesses);
+    }
+    // Then every open file, not only working directories: an editor or a server holding a file
+    // inside still refuses the removal.
+    const holders = findWorktreeProcesses(path, runner);
+    if (holders.length > 0) {
+      reasons.push(
+        `processes are inside it: ${holders.map((item) => `${item.pid} ${item.command}`).join(', ')}`,
+      );
+    }
+  } catch (error) {
+    // An `lsof` that could not run proves nothing about the worktree, so it blocks the removal.
+    if (!(error instanceof ProbeError)) throw error;
+    reasons.push(`it could not be checked for processes (${error.message})`);
   }
   if (reasons.length > 0) throw new Refusal(`Refusing to remove ${path}: ${reasons.join('; ')}.`);
 
@@ -424,7 +464,124 @@ export function removeWorktree(
       }
     }
   }
-  return { path, branch, remoteDeleted };
+  return { path, branch, remoteDeleted, ended };
+}
+
+/** A process and its working directory, from `lsof -d cwd`. */
+export interface WorkingDirectoryProcess {
+  pid: number;
+  command: string;
+  cwd: string;
+}
+
+/**
+ * The processes whose working directory is `root` or inside it, less `exclude`. `root` must be
+ * resolved, as `lsof` prints resolved paths. A sibling that only shares the prefix (`/w/a-1` beside
+ * `/w/a-10`) is not inside.
+ */
+export function processesInside(
+  root: string,
+  processes: readonly WorkingDirectoryProcess[],
+  exclude: ReadonlySet<number> = new Set(),
+): WorkingDirectoryProcess[] {
+  return processes.filter(
+    (item) => !exclude.has(item.pid) && (item.cwd === root || item.cwd.startsWith(root + sep)),
+  );
+}
+
+/** Every process's working directory, from one host-wide `lsof`; `undefined` when it failed. */
+function workingDirectories(runner: Runner): WorkingDirectoryProcess[] | undefined {
+  const open = runner(['lsof', '-w', '-a', '-d', 'cwd', '-F', 'pcn']);
+  if (open.code !== 0 && open.stdout.trim() === '') return undefined;
+  return [...lsofOpenFiles(open.stdout)].map((file) => ({
+    pid: file.pid,
+    command: file.command,
+    cwd: file.name,
+  }));
+}
+
+export interface EndProcessesDependencies {
+  signal?: (pid: number, signal: NodeJS.Signals) => void;
+  sleep?: (milliseconds: number) => void;
+  /** Never signalled; defaults to this process and its ancestors. */
+  exclude?: ReadonlySet<number>;
+  /**
+   * The parents of every process, for finding this process's ancestors; `undefined` stands for an
+   * unreadable process table. Absent, it is read with the runner's `ps`.
+   */
+  parents?: ReadonlyMap<number, number> | undefined;
+}
+
+const endGraceMs = 3000;
+const endPollMs = 250;
+
+/** The parents of every process from the runner's `ps`; `undefined` when `ps` fails. */
+function readParentsWith(runner: Runner): Map<number, number> | undefined {
+  const result = runner(['ps', '-A', '-o', 'pid=,ppid=']);
+  if (result.code !== 0) return undefined;
+  const parents = new Map<number, number>();
+  for (const line of result.stdout.split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
+    if (match !== null) parents.set(Number(match[1]), Number(match[2]));
+  }
+  return parents;
+}
+
+/**
+ * This process, its parent whatever the process table says, and its ancestors when `parents` can
+ * name them: an unreadable table must never leave the caller's own session signalled.
+ */
+function thisProcessAndItsAncestors(parents: ReadonlyMap<number, number> | undefined): Set<number> {
+  return new Set([process.pid, process.ppid, ...ancestorsOf(process.pid, parents ?? new Map())]);
+}
+
+function signalProcess(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // Already gone, or not ours to signal; the re-check after the grace reports it.
+  }
+}
+
+/**
+ * Ends the processes whose working directory is inside `path` (COR-2404: a removed worktree's
+ * `bun test` lived for ten hours): SIGTERM, then SIGKILL to whatever a fresh listing still shows
+ * inside after a grace. Every signal goes only to a pid that the listing just taken shows inside,
+ * and never to this process or its ancestors. Resolves to the processes it signalled; throws
+ * `ProbeError` when `lsof` cannot list.
+ */
+export function endProcessesInside(
+  path: string,
+  runner: Runner,
+  dependencies: EndProcessesDependencies = {},
+): WorkingDirectoryProcess[] {
+  const root = realpath(path);
+  const exclude =
+    dependencies.exclude ??
+    thisProcessAndItsAncestors(
+      'parents' in dependencies ? dependencies.parents : readParentsWith(runner),
+    );
+  const send = dependencies.signal ?? signalProcess;
+  const sleep = dependencies.sleep ?? ((milliseconds: number) => Bun.sleepSync(milliseconds));
+  const inside = (): WorkingDirectoryProcess[] => {
+    const all = workingDirectories(runner);
+    if (all === undefined) throw new ProbeError(`lsof could not list working directories`);
+    return processesInside(root, all, exclude);
+  };
+  const ended = new Map<number, WorkingDirectoryProcess>();
+  let remaining = inside();
+  for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
+    if (remaining.length === 0) break;
+    for (const item of remaining) {
+      ended.set(item.pid, item);
+      send(item.pid, signal);
+    }
+    for (let waited = 0; waited < endGraceMs && remaining.length > 0; waited += endPollMs) {
+      sleep(endPollMs);
+      remaining = inside();
+    }
+  }
+  return [...ended.values()];
 }
 
 /** How a worktree's branch was shown to be delivered: see `classifyDelivered`. */
@@ -460,7 +617,7 @@ export interface StaleOptions {
 export interface StaleResult {
   entries: StaleEntry[];
   /** Filled only with `remove`: the worktrees removed, then those a re-check refused. */
-  removed: { path: string; branch: string | undefined }[];
+  removed: { path: string; branch: string | undefined; ended: number }[];
   refused: { path: string; reason: string }[];
 }
 
@@ -595,8 +752,15 @@ export function staleWorktrees(
     if (stale.locked) stale.keep.push('locked');
     if (stale.clean === undefined) stale.keep.push('git status failed');
     else if (!stale.clean) stale.keep.push('uncommitted or untracked changes');
+    // A worktree whose branch was squash-merged is finished, and `--remove` ends what is left
+    // running inside it. One whose tip is a commit of the default branch looks the same as one a
+    // session has just created, so its processes keep it.
     if (stale.processes === undefined) stale.keep.push('processes could not be checked');
-    else if (stale.processes > 0) stale.keep.push(`${stale.processes} live process(es)`);
+    else if (stale.processes > 0 && deliveredBy !== 'changes-in-default') {
+      stale.keep.push(
+        `${stale.processes} live process(es), and its tip is a commit of ${config.defaultBranch}, as a worktree a session has just created is`,
+      );
+    }
     if (!stale.delivered) stale.keep.push('branch not delivered');
     if (branch === config.defaultBranch) stale.keep.push('default branch checked out');
     return stale;
@@ -612,10 +776,18 @@ export function staleWorktrees(
           name: entry.path,
           keepRemote: true,
           deliveredTip: entry.tip,
+          deliveredBranch: entry.branch,
+          // Never for a tip on the default branch: a session may have started there since the
+          // listing, and the removal then refuses for its processes instead.
+          endProcesses: entry.deliveredBy === 'changes-in-default',
         },
         partial,
       );
-      result.removed.push({ path: removed.path, branch: removed.branch });
+      result.removed.push({
+        path: removed.path,
+        branch: removed.branch,
+        ended: removed.ended.length,
+      });
     } catch (error) {
       if (!(error instanceof Refusal)) throw error;
       result.refused.push({ path: entry.path, reason: error.message });
@@ -648,7 +820,9 @@ export function renderStale(result: StaleResult, remove: boolean): string {
   );
   if (remove) {
     for (const item of result.removed)
-      lines.push(`removed ${item.path}${item.branch === undefined ? '' : ` (${item.branch})`}`);
+      lines.push(
+        `removed ${item.path}${item.branch === undefined ? '' : ` (${item.branch})`}${item.ended === 0 ? '' : `, ended ${item.ended} process(es) left inside it`}`,
+      );
     for (const item of result.refused) lines.push(`kept ${item.path}: ${item.reason}`);
     lines.push(
       `removed ${result.removed.length}, kept ${result.entries.length - result.removed.length}`,
