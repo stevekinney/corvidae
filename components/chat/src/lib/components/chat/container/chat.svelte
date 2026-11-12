@@ -1544,9 +1544,9 @@
         // The reminder is for a card whose decision buttons are out of reach: while its action
         // row is wholly in view there is nothing to point to. A card that draws no row falls back
         // to the whole card.
-        const row = approvalActionRow(card);
+        const actionRow = approvalActionRow(card);
         approvalFullyVisible = approvalCardFitsViewport(
-          row === null ? cardBox : row.getBoundingClientRect(),
+          actionRow === null ? cardBox : actionRow.getBoundingClientRect(),
           viewportBox,
         );
       };
@@ -1583,14 +1583,14 @@
       frame = 0;
       if (released) return;
       const card = pendingApprovalCard(containerRef, messageId);
-      const row = card === null ? null : approvalActionRow(card);
-      if (card === null || row === null) return;
+      const actionRow = card === null ? null : approvalActionRow(card);
+      if (card === null || actionRow === null) return;
       if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
       const viewportBox = scroller.getBoundingClientRect();
       const cardBox = card.getBoundingClientRect();
       if (cardBox.height >= viewportBox.height) return;
       const shift = approvalActionRowShift(
-        row.getBoundingClientRect(),
+        actionRow.getBoundingClientRect(),
         viewportBox,
         ATTENTION_INSET,
       );
