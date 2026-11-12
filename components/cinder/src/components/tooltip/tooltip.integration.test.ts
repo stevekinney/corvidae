@@ -238,6 +238,40 @@ describe('Tooltip', () => {
     expect(html).not.toContain('aria-describedby');
   });
 
+  test('a tooltip with empty text renders no panel, links nothing, and never shows', async () => {
+    // A caller that gates its hint (`text={reason ?? ''}`) otherwise leaves an empty
+    // `role="tooltip"`, which axe reports as `aria-tooltip-name`, and a trigger described by nothing.
+    for (const text of ['', '   ']) {
+      const { container, unmount } = render(Tooltip, {
+        props: { text, children: triggerSnippet },
+      });
+      const wrapper = requiredInstance(
+        container.querySelector('.cinder-tooltip-wrapper'),
+        HTMLElement,
+      );
+      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      expect(container.querySelector('button')?.hasAttribute('aria-describedby')).toBe(false);
+
+      await triggerDelayedTooltipShow(wrapper);
+      flushSync();
+      expect(queryTooltip()).toBeNull();
+      unmount();
+    }
+  });
+
+  test('a tooltip with empty text and a triggerRef links nothing to the trigger', () => {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    document.body.append(trigger);
+
+    const { container } = render(Tooltip, { props: { text: '', triggerRef: trigger } });
+
+    expect(container.querySelector('[role="tooltip"]')).toBeNull();
+    expect(trigger.hasAttribute('aria-describedby')).toBe(false);
+
+    trigger.remove();
+  });
+
   test('triggerRef renders only the panel, with no wrapper around a trigger', () => {
     // Anchored-by-reference mode exists so a Tooltip can be used where the
     // surrounding markup constrains its children — AvatarGroup wraps each avatar

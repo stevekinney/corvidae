@@ -84,6 +84,13 @@ export const E2E_CONNECT_URL = `http://127.0.0.1:${E2E_CONNECT_PORT}`;
 export const E2E_SHOWCASE_PORT = E2E_PORT + 6;
 export const E2E_SHOWCASE_URL = `http://127.0.0.1:${E2E_SHOWCASE_PORT}`;
 
+/**
+ * An agent file the server writes into the showcase host, so the showcase has one agent the editor
+ * can open: the sample world's own agents are defined in code, and the editor answers those with
+ * not-found because a code-defined agent cannot be written.
+ */
+export const E2E_SHOWCASE_EDITABLE_AGENT = 'showcase-editable';
+
 /** The bearer token the connect host's MCP server accepts. It is made up, and printed nowhere. */
 export const E2E_CONNECT_TOKEN = 'e2e-connect-token-4f81c2a9d6';
 

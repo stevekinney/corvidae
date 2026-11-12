@@ -53,6 +53,7 @@ import {
   E2E_LONG_POLL_QUEUE,
   E2E_PORT,
   E2E_RECONNECT_GRACE_PERIOD_MS,
+  E2E_SHOWCASE_EDITABLE_AGENT,
   E2E_SHOWCASE_PORT,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
@@ -626,6 +627,34 @@ const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost] = secon
     return result.value;
   },
 ) as [Host, Host, Host, ConnectHost, Host];
+// One agent file in the showcase host, which the agent editor can open: the sample world's agents
+// are all defined in code (`00-showcase.spec.ts`, COR-2412).
+{
+  const created = await fetch(new URL('/bureau/jsonrpc', showcaseHost.url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 'showcase-editable-agent',
+      method: 'bureau.agents.definitions.create',
+      params: {
+        id: E2E_SHOWCASE_EDITABLE_AGENT,
+        definition: {
+          name: 'Showcase editable agent',
+          description: 'An agent file the showcase editor opens',
+          model: 'anthropic/claude-sonnet-5-5',
+          tools: [],
+          card: [],
+          instructions: 'You are an agent the showcase editor opens.',
+        },
+      },
+    }),
+  });
+  const answer = (await created.json()) as { error?: { message: string } };
+  if (answer.error !== undefined) {
+    throw new Error(`The showcase editable agent was not created: ${answer.error.message}`);
+  }
+}
 startupComplete = true;
 process.off('SIGINT', handleStartupSignal);
 process.off('SIGTERM', handleStartupSignal);
