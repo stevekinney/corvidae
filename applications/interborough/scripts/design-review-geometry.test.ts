@@ -74,6 +74,7 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     boxed: true,
     labelRuns: 1,
     parent: 0,
+    unreached: null,
     ...overrides,
     // Nothing extends the area that takes a tap, or pads the layout, unless a test says so.
     hit: overrides.hit ?? overrides.layout ?? rect,
@@ -264,6 +265,48 @@ describe('hit-takes-space', () => {
     expect(audit(facts({ ...touch, controls: [extended] }), capture())).toEqual([]);
     const mouse = button(16, 8, { layout: padded });
     expect(audit(facts({ controls: [mouse] }), capture())).toEqual([]);
+  });
+});
+
+describe('hit-unreached', () => {
+  const touch = { pointerCoarse: true };
+  const extended = { x: 92, y: 94, width: 72, height: 44 };
+
+  test('flags a compact button whose extended hit area a tap does not reach', () => {
+    const clipped = button(16, 8, { hit: extended, unreached: ['below (reaches div.card)'] });
+    const found = audit(facts({ ...touch, controls: [clipped] }), capture());
+    expect(rules(found)).toEqual(['hit-unreached']);
+    expect(found[0]?.measured).toBe(
+      '"Save" claims a 72 by 44px hit area that a tap does not reach: below (reaches div.card)',
+    );
+  });
+
+  test('passes a control every side reaches, one that was not asked, and any control under a mouse', () => {
+    const reached = button(16, 8, { hit: extended, unreached: [] });
+    const unasked = button(16, 8, { hit: extended, unreached: null });
+    expect(audit(facts({ ...touch, controls: [reached, unasked] }), capture())).toEqual([]);
+    const mouse = button(16, 8, { hit: extended, unreached: ['below (reaches div.card)'] });
+    expect(audit(facts({ controls: [mouse] }), capture())).toEqual([]);
+  });
+
+  test('leaves a short hit area to the size rule and a covered face to the covering rule', () => {
+    const short = button(16, 8, { unreached: ['above (reaches div.card)'] });
+    expect(rules(audit(facts({ ...touch, controls: [short] }), capture()))).toEqual([
+      'target-undersized',
+    ]);
+    const covered = button(16, 8, { hit: extended, unreached: ['right (reaches div.bar)'] });
+    const overlaps = [
+      {
+        kind: 'covered' as const,
+        subject: covered.name,
+        label: 'Save',
+        by: 'div.bar',
+        amount: 0.2,
+      },
+    ];
+    expect(rules(audit(facts({ ...touch, controls: [covered], overlaps }), capture()))).toEqual([
+      'occluded',
+    ]);
   });
 });
 

@@ -194,3 +194,84 @@ test('the probe measures hit areas, covering, sibling edges, insets and fixed ch
   expect(subjects('inset-uneven')).toEqual(['div.alert']);
   expect(subjects('chrome-share')).toEqual(['chrome below div.scroller']);
 });
+
+/**
+ * Compact buttons whose styles claim a 44 pixel hit area, on a touch screen. Three lose part of it
+ * the way a Cinder Chat fix run lost it (a parent that clips the overhang, the next row painted
+ * over it, a bar on the last pixels of the face); the rest keep it or share it with a neighbor.
+ */
+const REACH_PAGE = `
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; font: 14px/1.5 sans-serif; }
+    button { font: inherit; margin: 0; }
+    section { margin-bottom: 32px; }
+    .compact { position: relative; display: block; height: 28px; padding: 0 24px; border: 1px solid #ccc; background: #fff; }
+    .compact::before { content: ''; position: absolute; inset: -9px -1px; }
+    .card { overflow: hidden; padding: 4px; background: #eee; }
+    .line { height: 28px; }
+    .next { position: relative; height: 28px; background: #eef; }
+    .holder { position: relative; width: 120px; }
+    .barred { display: block; width: 120px; height: 44px; border: 1px solid #ccc; background: #fff; }
+    .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #06c; }
+    .icons { display: flex; }
+    .icons button { position: relative; width: 28px; height: 28px; border: 0; background: none; padding: 0; }
+    .icons button::before { content: ''; position: absolute; inset: -8px; }
+    .icons svg { width: 14px; height: 14px; display: block; margin: auto; }
+    .touching { display: flex; }
+    .touching button { width: 44px; height: 44px; border: 0; background: #ddd; padding: 0; }
+    .scroller { height: 80px; overflow-y: auto; }
+    .scroller .filler { height: 200px; }
+  </style>
+  <section><button class="compact free">Free</button></section>
+  <section class="card"><button class="compact clipped">Clipped</button></section>
+  <section><div class="line"><button class="compact first">First</button></div><div class="next">Next row</div></section>
+  <section class="holder"><button class="barred">Barred</button><div class="bar"></div></section>
+  <section class="icons">
+    <button aria-label="Like"><svg viewBox="0 0 14 14"><rect width="14" height="14" /></svg></button>
+    <button aria-label="Share"><svg viewBox="0 0 14 14"><rect width="14" height="14" /></svg></button>
+  </section>
+  <section class="touching"><button aria-label="Back">‹</button><button aria-label="Forward">›</button></section>
+  <section class="scroller"><button class="compact scrolled">Scrolled</button><div class="filler"></div></section>
+`;
+
+test('the probe asks the browser whether a tap reaches each hit area, and the audit names the ones it does not', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await page.setContent(REACH_PAGE);
+  const facts = await measureGeometry(page);
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+
+  expect(facts.pointerCoarse).toBe(true);
+  const unreached = Object.fromEntries(
+    facts.controls.map((control) => [
+      control.text === '' ? control.accessibleLabel : control.text,
+      control.unreached,
+    ]),
+  );
+  expect(unreached).toEqual({
+    // Room around it, so every side answers.
+    Free: [],
+    // The card's 4 pixels of padding are less than the 9 pixel overhang, and it clips the rest.
+    Clipped: ['above (reaches body)', 'below (reaches body)'],
+    // The next row is positioned, so it paints over the overhang and takes the tap.
+    First: ['below (reaches div.next)'],
+    // A 2 pixel bar on the last pixels of the face, which the covering check's inset steps over.
+    Barred: ['below (reaches div.bar)'],
+    // Compact neighbors share their overhang, and two 44 pixel boxes meet at an edge.
+    Like: [],
+    Share: [],
+    '‹': [],
+    '›': [],
+    // The point above it is outside the scroller's visible box, which a swipe changes.
+    Scrolled: [],
+  });
+  const found = auditCapture(facts, { ...capture, width: 375 });
+  expect(
+    found.filter((finding) => finding.rule === 'hit-unreached').map((finding) => finding.subject),
+  ).toEqual(['button.compact', 'button.compact', 'button.barred']);
+  expect(found.some((finding) => finding.rule === 'occluded')).toBe(false);
+});
