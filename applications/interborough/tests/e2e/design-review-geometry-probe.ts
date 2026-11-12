@@ -234,6 +234,24 @@ export function collectGeometryFacts(): GeometryFacts {
    * The area that takes a tap: the control, any pseudo-element that extends it invisibly, and the
    * label around a checkbox or radio.
    */
+  function faceBounds(element: Element, style: CSSStyleDeclaration): Bounds {
+    const rect = element.getBoundingClientRect();
+    // A fill clipped to the padding box leaves a transparent border undrawn: the border is room
+    // the control takes, usually to be easier to tap, and no part of the face a person sees.
+    const fills = style.backgroundClip === 'border-box' && colorOf(style.backgroundColor)[3] > 0;
+    const hidden = (width: string, lineStyle: string, color: string): number =>
+      !fills && (lineStyle === 'none' || colorOf(color)[3] === 0) ? Number.parseFloat(width) : 0;
+    return {
+      left: rect.left + hidden(style.borderLeftWidth, style.borderLeftStyle, style.borderLeftColor),
+      top: rect.top + hidden(style.borderTopWidth, style.borderTopStyle, style.borderTopColor),
+      right:
+        rect.right - hidden(style.borderRightWidth, style.borderRightStyle, style.borderRightColor),
+      bottom:
+        rect.bottom -
+        hidden(style.borderBottomWidth, style.borderBottomStyle, style.borderBottomColor),
+    };
+  }
+
   function hitBounds(element: Element): Bounds {
     let bounds = union(null, element.getBoundingClientRect());
     for (const pseudo of ['::before', '::after'] as const) {
@@ -286,8 +304,17 @@ export function collectGeometryFacts(): GeometryFacts {
     const found: GeometryFacts['controls'][number][] = [];
     for (const element of document.querySelectorAll(CONTROL_SELECTOR)) {
       if (!isShown(element)) continue;
-      const rect = element.getBoundingClientRect();
+      const layout = element.getBoundingClientRect();
       const style = getComputedStyle(element);
+      const face = faceBounds(element, style);
+      const rect = {
+        left: face.left,
+        top: face.top,
+        right: face.right,
+        bottom: face.bottom,
+        width: face.right - face.left,
+        height: face.bottom - face.top,
+      };
       // A label cut off with an ellipsis still measures its full length, so keep what the control shows.
       const whole = contentBounds(element);
       const content =
@@ -318,6 +345,8 @@ export function collectGeometryFacts(): GeometryFacts {
         accessibleLabel: element.getAttribute('aria-label') ?? element.getAttribute('title') ?? '',
         hasIcon: element.querySelector('svg, img') !== null,
         inline: style.display === 'inline',
+        variant: element.getAttribute('data-cinder-variant') ?? '',
+        layout: boxOf(union(null, layout)),
         rect: {
           x: half(rect.left),
           y: half(rect.top),

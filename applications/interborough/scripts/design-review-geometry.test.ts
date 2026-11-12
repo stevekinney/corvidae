@@ -17,6 +17,7 @@ import {
   auditCapture,
   auditGeometry,
   consolidateFindings,
+  inventoryPatterns,
   renderGeometryReport,
   runGeometryAudit,
 } from './design-review-geometry.ts';
@@ -65,6 +66,7 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     accessibleLabel: '',
     hasIcon: false,
     inline: false,
+    variant: '',
     rect: { x: 100, y: 100, width: labelWidth + inline * 2, height },
     content: { x: 100 + inline, y: 100 + block, width: labelWidth, height: height - block * 2 },
     fontSize: 13,
@@ -73,8 +75,9 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     labelRuns: 1,
     parent: 0,
     ...overrides,
-    // Nothing extends the area that takes a tap unless a test says so.
-    hit: overrides.hit ?? rect,
+    // Nothing extends the area that takes a tap, or pads the layout, unless a test says so.
+    hit: overrides.hit ?? overrides.layout ?? rect,
+    layout: overrides.layout ?? rect,
   };
 }
 
@@ -147,8 +150,9 @@ describe('targets on a phone', () => {
   test('judges a button that draws no box by its hit area alone, and other controls by the looser limit', () => {
     const ghost = button(10, 14, {
       boxed: false,
-      rect: { x: 16, y: 100, width: 60, height: 44 },
+      rect: { x: 16, y: 108, width: 60, height: 28 },
       content: { x: 26, y: 114, width: 40, height: 16 },
+      hit: { x: 16, y: 100, width: 60, height: 44 },
     });
     const row = button(10, 14, {
       kind: 'other',
@@ -223,6 +227,85 @@ describe('target-undersized', () => {
     );
     expect(rules(found)).toEqual(['target-undersized']);
     expect(found[0]?.measured).toContain('under the 44px minimum on a touch screen');
+  });
+});
+
+describe('hit-takes-space', () => {
+  const touch = { pointerCoarse: true };
+  const padded = { x: 90, y: 94, width: 76, height: 44 };
+
+  test('flags a compact face inside a 44 pixel layout box, and measures padding from the face', () => {
+    // 8 pixels beside the label and 6 above on a 28 pixel face, padded to 44 by a transparent border.
+    const deny = button(8, 6, {
+      text: 'Deny',
+      rect: { x: 100, y: 100, width: 56, height: 28 },
+      content: { x: 108, y: 106, width: 40, height: 16 },
+      layout: padded,
+    });
+    const found = audit(facts({ ...touch, controls: [deny] }), capture({ width: 375 }));
+    expect(rules(found)).toEqual(['button-padding-ratio', 'hit-takes-space']);
+    expect(found[0]?.measured).toContain('8px beside the label, 6px above');
+    expect(found[1]?.measured).toBe('"Deny" paints 28px tall and takes 44px in the layout');
+  });
+
+  test('flags a bare button whose layout box is taller than the limit', () => {
+    const bare = button(0, 0, {
+      boxed: false,
+      content: { x: 100, y: 114, width: 40, height: 16 },
+      layout: padded,
+    });
+    expect(rules(audit(facts({ ...touch, controls: [bare] }), capture()))).toEqual([
+      'hit-takes-space',
+    ]);
+  });
+
+  test('passes a compact face whose hit area takes no space, and any button under a mouse', () => {
+    const extended = button(16, 8, { hit: padded });
+    expect(audit(facts({ ...touch, controls: [extended] }), capture())).toEqual([]);
+    const mouse = button(16, 8, { layout: padded });
+    expect(audit(facts({ controls: [mouse] }), capture())).toEqual([]);
+  });
+});
+
+describe('inventoryPatterns', () => {
+  const retry = (text: string, overrides: Partial<ControlFact> = {}): ControlFact =>
+    button(16, 8, { text, ...overrides });
+
+  test('lists a job asked with several labels and drawn in several forms, per pointer', () => {
+    const entries = inventoryPatterns([
+      { facts: facts({ controls: [retry('Retry')] }), capture: capture() },
+      {
+        facts: facts({ controls: [retry('Try again', { variant: 'ghost', boxed: false })] }),
+        capture: capture({ route: '/runs', viewport: 'screens/runs.png' }),
+      },
+      { facts: facts({ controls: [retry('Save'), retry('Save')] }), capture: capture() },
+    ]);
+    expect(entries).toEqual([
+      {
+        job: 'retry',
+        labels: ['Retry', 'Try again'],
+        forms: [
+          'button.cinder-button[size=md] 32px boxed',
+          'button.cinder-button[size=md][variant=ghost] 16px bare',
+        ],
+        pointer: 'mouse',
+        examples: ['screens/agents--ready--1280--light.png', 'screens/runs.png'],
+      },
+    ]);
+  });
+
+  test('keeps touch and mouse apart, allows two forms of one label, and skips the stress pages', () => {
+    const tall = retry('Retry', { rect: { x: 0, y: 0, width: 72, height: 44 } });
+    expect(
+      inventoryPatterns([
+        { facts: facts({ controls: [retry('Retry')] }), capture: capture() },
+        { facts: facts({ pointerCoarse: true, controls: [tall] }), capture: capture() },
+        {
+          facts: facts({ controls: [retry('Try again')] }),
+          capture: capture({ source: 'responsive.spec.ts' }),
+        },
+      ]),
+    ).toEqual([]);
   });
 });
 

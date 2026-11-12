@@ -89,11 +89,13 @@ const TOUCH_PAGE = `
     .grown { height: 44px; padding: 0 24px; border: 1px solid #ccc; background: #fff; }
     .compact { position: relative; height: 32px; padding: 0 24px; border: 1px solid #ccc; background: #fff; }
     .compact::before { content: ''; position: absolute; inset: -7px 0; }
+    /* The transparent-border hit target a Cinder Chat fix run gave Button: a compact face in a 44px box. */
+    .padded { min-height: 44px; padding: 6px 8px; border: 8px solid transparent; background: #fff; background-clip: padding-box; font-size: 13px; line-height: 16px; }
     .bare { height: 28px; padding: 0 24px; border: 1px solid #ccc; background: #fff; }
     .icons { display: flex; margin: 8px 0; }
     .icons button { width: 48px; height: 44px; border: 0; background: none; padding: 0; }
-    .icons.tight button { position: relative; width: 28px; }
-    .icons.tight button::before { content: ''; position: absolute; inset: 0 -8px; }
+    .icons.tight button { position: relative; width: 28px; height: 28px; }
+    .icons.tight button::before { content: ''; position: absolute; inset: -8px; }
     .icons svg { width: 14px; height: 14px; display: block; margin: auto; }
     .code { position: relative; margin: 8px 0; }
     .code pre { margin: 0; white-space: pre; }
@@ -117,6 +119,7 @@ const TOUCH_PAGE = `
     <button class="grown">Deny</button>
     <button class="compact">Allow</button>
     <button class="bare">Skip</button>
+    <button class="padded">Hold</button>
     <div class="icons loose">
       <button aria-label="Copy"><svg viewBox="0 0 14 14"><rect width="14" height="14" /></svg></button>
       <button aria-label="Quote"><svg viewBox="0 0 14 14"><rect width="14" height="14" /></svg></button>
@@ -169,6 +172,12 @@ test('the probe measures hit areas, covering, sibling edges, insets and fixed ch
   // Drawn at the touch minimum is oversized; drawn compact with a taller hit area is the pattern.
   expect(subjects('target-oversized')).toEqual(['button.grown', 'button.copy', 'button.last']);
   expect(subjects('target-undersized')).toEqual(['button.bare']);
+  // A transparent border is room the button takes, not face: size and padding are read inside it.
+  const padded = facts.controls.find((control) => control.name === 'button.padded');
+  expect(padded?.layout.height).toBe(44);
+  expect(padded?.rect.height).toBe(28);
+  expect(subjects('hit-takes-space')).toEqual(['button.padded', 'button', 'button']);
+  expect(subjects('button-padding-ratio')).toEqual(['button.padded', 'button.copy']);
   expect(subjects('icon-pitch')).toEqual(['button and button']);
   expect(found.filter((finding) => finding.rule === 'icon-pitch')[0]?.measured).toContain(
     '"Copy" and "Quote"',
