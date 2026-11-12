@@ -735,8 +735,13 @@ describe('chat stress visual measurement', () => {
         name: 'Copy',
         width: 24,
         height: 24,
-        shortSides: ['left', 'right', 'above', 'below'],
       });
+      expect(targets[0]?.shortSides?.map((side) => side.split(' ')[0])).toEqual([
+        'left',
+        'right',
+        'above',
+        'below',
+      ]);
     });
 
     it('fails a hit area cut off by an overflow: hidden parent', async () => {

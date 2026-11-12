@@ -250,7 +250,7 @@ export function measureInPage(options: {
     name: string;
     width: number;
     height: number;
-    shortSides: ('left' | 'right' | 'above' | 'below')[];
+    shortSides: string[];
   }[] = [];
   const controlGeometry: {
     controlId: string;
@@ -277,11 +277,7 @@ export function measureInPage(options: {
       });
     // Cinder and Chat paint a control compact and extend its hit area with a positioned
     // pseudo-element that takes no layout, so the touch target is what a tap reaches, not the box.
-    const probeHitArea = (
-      element: HTMLElement,
-      centreX: number,
-      centreY: number,
-    ): ('left' | 'right' | 'above' | 'below')[] => {
+    const probeHitArea = (element: HTMLElement, centreX: number, centreY: number): string[] => {
       // A 44px hit area ends exactly 22px from the centre and its far edge is exclusive, so the
       // probe sits half a pixel inside it.
       const reach = 21.5;
@@ -291,7 +287,7 @@ export function measureInPage(options: {
         ['above', centreX, centreY - reach],
         ['below', centreX, centreY + reach],
       ];
-      const short: ('left' | 'right' | 'above' | 'below')[] = [];
+      const short: string[] = [];
       for (const [side, x, y] of sides) {
         if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
         // A point scrolled out of a scroller's visible box cannot be tapped at all.
@@ -319,7 +315,7 @@ export function measureInPage(options: {
           overlay = overlay.parentElement;
         }
         if (coveredByOverlay) continue;
-        short.push(side);
+        short.push(`${side} (reaches ${nameOf(hit) || hit.tagName.toLowerCase()})`);
       }
       return short;
     };
