@@ -1523,11 +1523,11 @@
     if (reminder === null || reminder === undefined) {
       return { shown: false, blockSize: approvalReminderBlockSize };
     }
-    const style = getComputedStyle(reminder);
+    const reminderStyle = getComputedStyle(reminder);
     const blockSize =
       reminder.getBoundingClientRect().height +
-      (Number.parseFloat(style.marginTop) || 0) +
-      (Number.parseFloat(style.marginBottom) || 0);
+      (Number.parseFloat(reminderStyle.marginTop) || 0) +
+      (Number.parseFloat(reminderStyle.marginBottom) || 0);
     if (blockSize > 0) approvalReminderBlockSize = blockSize;
     return { shown: true, blockSize: approvalReminderBlockSize };
   }

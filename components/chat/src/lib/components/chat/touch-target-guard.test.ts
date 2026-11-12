@@ -29,7 +29,8 @@ describe('Chat touch-target sizing', () => {
     const root = import.meta.dir;
     const found: Record<string, number> = {};
     for await (const path of new Glob('**/*.{svelte,css}').scan({ cwd: root, absolute: true })) {
-      const matches = (await Bun.file(path).text()).match(sizingDeclaration);
+      const text = await Bun.file(path).text();
+      const matches = text.match(sizingDeclaration);
       if (matches !== null) found[relative(root, path)] = matches.length;
     }
     for (const [file, count] of Object.entries(found)) {
