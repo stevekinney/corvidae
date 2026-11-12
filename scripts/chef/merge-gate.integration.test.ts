@@ -179,6 +179,9 @@ function fake(world: World = {}) {
     }
     if (program === 'gh' && rest[0] === 'pr' && rest[1] === 'merge')
       return { code: world.mergeCode ?? 0, stdout: '', stderr: 'not mergeable' };
+    // main's health: green unless a test overrides it
+    if (program === 'gh' && rest[0] === 'run' && rest[1] === 'list')
+      return { code: 0, stdout: '[{"conclusion":"success"}]', stderr: '' };
     throw new Error(`unexpected command ${command.join(' ')}`);
   };
   const posted = () => calls.some((call) => call[0] === 'gh' && call[2] === 'comment');
@@ -191,74 +194,102 @@ function fake(world: World = {}) {
 describe('mergeGate', () => {
   describe('main health', () => {
     const redHead = 'e'.repeat(40);
-    function writeHealth(exitCode: number) {
-      options.healthFile = join(sandbox, 'tmp', 'main-health.json');
-      mkdirSync(join(sandbox, 'tmp'), { recursive: true });
-      writeFileSync(
-        options.healthFile,
-        JSON.stringify({
-          runs: [{ head: redHead, exitCode, time: 't', command: 'bun run validate' }],
-          fixes: [],
-        }),
-      );
-    }
-    /** `fake`, plus a first-parent history that holds the validated head. */
-    function withHistory(history: string[] = [BASE, redHead]) {
+    /** `fake`, plus a fake `gh run list` source answering with `answer`. */
+    function withRuns(answer: { code?: number; stdout?: string; stderr?: string }) {
       const world = fake();
       const inner = world.runner;
-      const runner: Runner = (command, runnerOptions) =>
-        command[1] === 'rev-list'
-          ? { code: 0, stdout: `${history.join('\n')}\n`, stderr: '' }
-          : inner(command, runnerOptions);
-      return { ...world, runner };
+      const asked: string[][] = [];
+      const runner: Runner = (command, runnerOptions) => {
+        if (command[0] === 'gh' && command[1] === 'run') {
+          asked.push(command);
+          return {
+            code: answer.code ?? 0,
+            stdout: answer.stdout ?? '',
+            stderr: answer.stderr ?? '',
+          };
+        }
+        return inner(command, runnerOptions);
+      };
+      return { ...world, runner, asked };
     }
+    const latest = (conclusion: string) =>
+      JSON.stringify([
+        { conclusion, headSha: redHead, url: 'https://github.example/run/1', createdAt: 't' },
+      ]);
+
+    test('reads the latest completed main.yml run on the default branch', () => {
+      const { runner, asked } = withRuns({ stdout: latest('success') });
+      mergeGate({ ...options, checkMainHealth: true }, { runner });
+      expect(asked).toEqual([
+        [
+          'gh',
+          'run',
+          'list',
+          '--repo',
+          'acme/widgets',
+          '--workflow',
+          'main.yml',
+          '--branch',
+          'main',
+          '--status',
+          'completed',
+          '--limit',
+          '10',
+          '--json',
+          'conclusion,headSha,url,createdAt',
+        ],
+      ]);
+    });
 
     test('a red main is a warning in the report, never a refusal', () => {
-      writeHealth(1);
-      const { runner, merged, posted } = withHistory();
-      const report = mergeGate(options, { runner });
+      const { runner, merged, posted } = withRuns({ stdout: latest('failure') });
+      const report = mergeGate({ ...options, checkMainHealth: true }, { runner });
       expect(report.failedStep).toBeNull();
       expect(report.merged).toBe(true);
       expect(report.mainHealthWarning).toContain('RED');
+      expect(report.mainHealthWarning).toContain('https://github.example/run/1');
       expect(report.fixesMain).toBeUndefined();
       expect(merged() && posted()).toBe(true);
       expect(renderMergeGate(report, false)).toContain('WARNING main health:');
     });
 
-    test('records the pull request as a repair when it is declared the fix', () => {
-      writeHealth(1);
-      options.fixesMain = true;
-      const { runner } = withHistory();
-      const report = mergeGate(options, { runner, now: () => new Date('2026-10-23T00:00:00Z') });
+    test('marks the pull request as the declared fix', () => {
+      const { runner } = withRuns({ stdout: latest('failure') });
+      const report = mergeGate({ ...options, checkMainHealth: true, fixesMain: true }, { runner });
       expect(report.failedStep).toBeNull();
       expect(report.fixesMain).toBe(true);
-      expect(JSON.parse(readFileSync(options.healthFile as string, 'utf8')).fixes).toEqual([
-        { pr: 12, time: '2026-10-23T00:00:00.000Z', blockedHead: redHead },
-      ]);
-    });
-
-    test('a dry run warns without recording the fix', () => {
-      writeHealth(1);
-      options.fixesMain = true;
-      const report = mergeGate({ ...options, dryRun: true }, { runner: withHistory().runner });
-      expect(report.mainHealthWarning).toContain('RED');
-      expect(JSON.parse(readFileSync(options.healthFile as string, 'utf8')).fixes).toEqual([]);
     });
 
     test('a green main carries no warning and marks no fix', () => {
-      writeHealth(0);
-      options.fixesMain = true;
-      const report = mergeGate(options, { runner: withHistory().runner });
+      const { runner } = withRuns({ stdout: latest('success') });
+      const report = mergeGate({ ...options, checkMainHealth: true, fixesMain: true }, { runner });
       expect(report.failedStep).toBeNull();
       expect(report.mainHealthWarning).toBeUndefined();
       expect(report.fixesMain).toBeUndefined();
     });
 
-    test('a failure at a head that is not on main is not a warning either', () => {
-      writeHealth(1);
-      const report = mergeGate(options, { runner: withHistory([BASE]).runner });
+    test('GitHub unreachable reports main health unknown and the merge proceeds', () => {
+      const { runner, merged } = withRuns({ code: 1, stderr: 'could not resolve host\n' });
+      const report = mergeGate({ ...options, checkMainHealth: true }, { runner });
       expect(report.failedStep).toBeNull();
-      expect(report.mainHealthWarning).toBeUndefined();
+      expect(report.merged).toBe(true);
+      expect(merged()).toBe(true);
+      expect(report.mainHealthWarning).toContain('main health unknown');
+    });
+
+    test('no completed run yet is unknown, not red', () => {
+      const { runner } = withRuns({ stdout: '[]' });
+      const report = mergeGate({ ...options, checkMainHealth: true }, { runner });
+      expect(report.failedStep).toBeNull();
+      expect(report.mainHealthWarning).toContain('main health unknown');
+    });
+
+    test('a cancelled latest run is skipped: the run before it decides', () => {
+      const earlier = JSON.parse(latest('failure')) as unknown[];
+      const stdout = JSON.stringify([{ conclusion: 'cancelled' }, ...earlier]);
+      const { runner } = withRuns({ stdout });
+      const report = mergeGate({ ...options, checkMainHealth: true }, { runner });
+      expect(report.mainHealthWarning).toContain('RED');
     });
   });
 
@@ -708,8 +739,8 @@ describe('run', () => {
     // The gate and the waivers are gone: their flags are unknown options now.
     for (const removed of ['--gate-log', '--waive-load-flake', '--control-head', '--reason'])
       expect(() => run([...argv(), removed, 'x'], { runner })).toThrow(UsageError);
-    for (const removed of ['--waive-main-health'])
-      expect(() => run([...argv(), removed], { runner })).toThrow(UsageError);
+    // So are the health file's flags: main's health is read from GitHub.
+    expect(() => run([...argv(), '--health-file', 'x'], { runner })).toThrow(UsageError);
     writeFileSync(options.commentFile, '  \n');
     expect(() => run(argv(), { runner })).toThrow('is empty');
     expect(calls).toEqual([]);

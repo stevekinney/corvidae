@@ -9,7 +9,6 @@
   "installCommand": "bun install --frozen-lockfile",
   "gateCommand": "bun run check",
   "affectedCheckCommand": "bun run check",
-  "batchCommand": "bun run validate:batch",
   "lockPattern": "^[^ ]*bun [^ ]*run-exclusively\\.ts [^-]",
   "mergeMethod": "squash"
 }

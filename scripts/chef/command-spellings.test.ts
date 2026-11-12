@@ -34,7 +34,7 @@ const minimumInvocations: Record<string, number> = {
   '.agents/skills/chef/references/execution-report.md': 3,
   '.agents/skills/chef/references/linear-policy.md': 5,
   '.agents/skills/chef/references/planning-and-routing.md': 1,
-  '.agents/skills/chef/references/program-runs.md': 6,
+  '.agents/skills/chef/references/program-runs.md': 4,
   '.agents/skills/chef/references/review-and-deliver.md': 8,
   '.agents/skills/chef/SKILL.md': 9,
   '.agents/skills/create-project/SKILL.md': 3,

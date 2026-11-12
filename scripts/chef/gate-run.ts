@@ -5,7 +5,6 @@
 //
 // Usage:
 //   bun scripts/chef/gate-run.ts run [--config <json>] --worktree <dir> --log <file> [--command <shell>]
-//                                   [--health-file <path>]
 //   bun scripts/chef/gate-run.ts read <log> [--json]
 //   bun scripts/chef/gate-run.ts triage <log> --base <sha> [--repository <dir>] [--json]
 //   bun scripts/chef/gate-run.ts control --candidate <dir> --base <dir> --command <shell>
@@ -18,10 +17,6 @@
 // command in the worktree with all output going to the log, appends `TREE_END clean=... head=...`
 // and `GATE_RC=<n>`, and exits with the gate's code. `clean` is whether `git status --porcelain`
 // printed nothing, so ignored files (logs under `tmp/`, `test-output/`) are not dirt.
-//
-// When the command is the configuration's `batchCommand` (the batch validate), `run` also records its
-// head, exit code and time in `<main checkout>/tmp/chef/main-health.json` (`main-health.ts`), which
-// `merge-gate.ts` reads to refuse a merge into a red `main`.
 //
 // `read` summarizes a log: its head, the tree state at the start and end, the exit code, failed
 // tasks, the first failing tests and the over-budget count. It also reads older logs that end in
@@ -40,13 +35,12 @@
 // and a commit with no `(#123)` suffix is named by its short hash.
 //
 // The gate runs as an asynchronous child in its own process group, so a signal to `run` (or to
-// `deliver.ts` and `batch-validate.ts`, which call it) is handled instead of orphaning the gate's
+// `deliver.ts`, which calls it) is handled instead of orphaning the gate's
 // turbo and test workers. On SIGTERM, SIGINT or SIGHUP it collects the descendant tree by parent pid
 // (`run-exclusively.ts` starts turbo in a session of its own, outside the group), sends SIGTERM to the
 // group, then SIGKILL to the group and every collected process after a short grace (or at once on a
 // second signal), waits until every collected process is gone, writes `GATE_INTERRUPTED <signal>`,
-// and records `GATE_RC=128+signal`, never 0. An interrupted batch validate is not recorded as main's
-// health, because a run someone stopped says nothing about `main`.
+// and records `GATE_RC=128+signal`, never 0.
 //
 // `control` runs a command alternately in a candidate and a base tree and compares how often each
 // fails, which tells a shared or pre-existing failure from one the candidate introduced.
@@ -71,7 +65,6 @@ import { loadavg, constants as signalConstants } from 'node:os';
 import { dirname, join } from 'node:path';
 import { workspaceParentDirectories } from '../workspace-directories.ts';
 import { findLockProcesses } from './leftovers.ts';
-import { recordBatchRun, resolveHealthFile } from './main-health.ts';
 import {
   defaultRunner,
   emitResult,
@@ -486,8 +479,6 @@ export interface GateRunOptions {
   worktree: string;
   log: string;
   command?: string | undefined;
-  /** Where to record a batch validate's result; defaults to the main checkout's `tmp/chef/`. */
-  healthFile?: string | undefined;
 }
 
 export interface GateRunResult {
@@ -571,22 +562,6 @@ export async function runGate(
     appendFileSync(options.log, `GATE_INTERRUPTED ${result.interrupted}\n`);
   const end = snapshotTree(runner, options.worktree);
   appendFileSync(options.log, `${treeLine('END', end)}GATE_RC=${result.code}\n`);
-  // The batch validate's result is main's health; a branch's own run of it is not, so it is
-  // recorded under its head and `merge-gate.ts` counts it only when that head is on main.
-  if (
-    config.batchCommand !== undefined &&
-    command === config.batchCommand &&
-    result.interrupted === undefined
-  ) {
-    const healthFile = options.healthFile ?? resolveHealthFile(runner, options.worktree);
-    if (healthFile !== undefined)
-      recordBatchRun(healthFile, {
-        head,
-        exitCode: result.code,
-        time: dependencies.now().toISOString(),
-        command,
-      });
-  }
   return {
     code: result.code,
     head,
@@ -874,7 +849,7 @@ export async function runCommand(
   const [command, ...rest] = argv;
   if (command !== 'run') return run(argv, dependencies);
   const parsed = parseOptions(rest, {
-    values: ['config', 'worktree', 'log', 'command', 'health-file'],
+    values: ['config', 'worktree', 'log', 'command'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
@@ -883,7 +858,6 @@ export async function runCommand(
     worktree: requireOption(parsed, 'worktree'),
     log: requireOption(parsed, 'log'),
     command: parsed.values['command'],
-    healthFile: parsed.values['health-file'],
   };
   const result = await runGate(options, dependencies);
   const outcome =
