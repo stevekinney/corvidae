@@ -7,7 +7,9 @@
 # So its shards run in that image on an arm64 runner, where Playwright's own Chromium and the image's
 # fonts are the baseline renderer's; an x64 runner with `playwright install` rasterizes differently.
 # `scripts/browser-fixtures/scripts/browser-suites-workflow.test.ts` keeps the image tag equal to the Playwright that `bun.lock`
-# resolves. Interborough's end-to-end suite compares no screenshots, so it runs on the standard runner.
+# resolves. Interborough's end-to-end suite compares no screenshots, but its layout checks measure text,
+# and Cinder's font stack is the system's: a bare runner's default sans (DejaVu Sans) is wider than the
+# image's and cuts off text that fits on macOS (COR-2412). So it runs in the same image, on x64.
 #
 # Both call Playwright directly: the root `test:browser:*` scripts wrap it in the shared development
 # host's lock and slot pool (`scripts/run-exclusively.ts`, `scripts/host-slots.ts`), which a runner
@@ -90,11 +92,17 @@ jobs:
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # The image ships the Chromium the lockfile's Playwright launches, so there is no browser install.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-jammy
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
     steps:
+      # The image has neither Git (which `actions/checkout` needs for a repository rather than a
+      # tarball) nor `unzip` (which `setup-bun` needs).
+      - run: apt-get update && apt-get install -y --no-install-recommends git unzip
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -103,7 +111,6 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
       # The gated runner picks a free block of ports and never reuses a server; it passes every
       # argument on to `playwright test`.
       - run: >-
