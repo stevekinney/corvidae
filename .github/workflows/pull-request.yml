@@ -1,6 +1,7 @@
 # Advisory checks for pull requests (COR-2369). Nothing here is a required status check; the jobs
 # produce evidence for making CI the full tier. This is the quick tier, `bun run check`, split into
-# jobs. The full tier runs from `main.yml`.
+# jobs, plus the browser suites (`browser-suites.yml`) when a change reaches them. The full tier runs
+# from `main.yml`.
 name: Pull request
 
 on:
@@ -85,3 +86,44 @@ jobs:
       # at the cost of only the tests the change reaches. The `main` workflow's slow job runs them
       # all, but only after the merge.
       - run: bun scripts/affected-tests.ts run --isolated --base "$TURBO_SCM_BASE"
+
+  # The browser suites run only when the change reaches them, by the selection the `workspaces` job
+  # uses: Turborepo's affected packages, which include a workspace's dependents. Their own workflow
+  # sits in no workspace, so a change to it selects both by name.
+  browser-selection:
+    name: Browser suites selection
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      fixtures: ${{ steps.select.outputs.fixtures }}
+      interborough: ${{ steps.select.outputs.interborough }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - id: select
+        run: |
+          affected="$(bunx turbo ls --affected --output=json | jq -r '.packages.items[].name')"
+          workflow=false
+          if git diff --name-only "$TURBO_SCM_BASE...HEAD" | grep -qx '.github/workflows/browser-suites.yml'; then
+            workflow=true
+          fi
+          reaches() { [ "$workflow" = true ] || grep -qx "$1" <<< "$affected"; }
+          if reaches @lostgradient/browser-fixtures; then fixtures=true; else fixtures=false; fi
+          if reaches @lostgradient/interborough; then interborough=true; else interborough=false; fi
+          echo "fixtures=$fixtures" >> "$GITHUB_OUTPUT"
+          echo "interborough=$interborough" >> "$GITHUB_OUTPUT"
+          echo "Chromium fixtures: $fixtures; Interborough end-to-end: $interborough"
+
+  browser:
+    name: Browser suites
+    needs: browser-selection
+    uses: ./.github/workflows/browser-suites.yml
+    with:
+      fixtures: ${{ needs.browser-selection.outputs.fixtures == 'true' }}
+      interborough: ${{ needs.browser-selection.outputs.interborough == 'true' }}

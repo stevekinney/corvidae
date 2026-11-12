@@ -3,8 +3,8 @@
 # at 7.8 GB under coverage on a laptop, so it still runs alone). Nothing here is a required status
 # check. Coverage (`bun run coverage`) and the publish-surface sweep (`bun run release:check`) are
 # not part of `validate` and not run here.
-# Playwright browser suites (`bun run test:browser:chromium`) are not run; see the pull request
-# that added this file.
+# The Playwright browser suites, the Chromium fixture suite with screenshot comparison and
+# Interborough's end-to-end suite, run in the `browser` job (`browser-suites.yml`, COR-2411).
 name: Main
 
 on:
@@ -160,6 +160,13 @@ jobs:
       - run: bun run test:slow --continue --filter=!@lostgradient/ventriloquist
       - run: bunx turbo run test:slow --concurrency=1 --filter=@lostgradient/ventriloquist
         if: ${{ !cancelled() }}
+
+  browser:
+    name: Browser suites
+    uses: ./.github/workflows/browser-suites.yml
+    with:
+      fixtures: true
+      interborough: true
 
   # `check-test-durations` reads every workspace's JUnit report from the working tree, and each
   # shard above runs on its own runner, so the shards upload their reports and this job gathers
