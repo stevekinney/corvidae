@@ -623,7 +623,7 @@
       { "action": "expect", "role": "button", "name": "Ask again" },
       {
         "action": "expect-text",
-        "text": "1 expired"
+        "text": "Expired before a decision"
       }
     ],
     "variants": [],

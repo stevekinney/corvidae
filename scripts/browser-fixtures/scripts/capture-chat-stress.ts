@@ -1654,10 +1654,8 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
     await opened.page.clock.fastForward(1_000);
   }
   if (stressCase.slug === 'approval-expired') {
-    await opened.page
-      .getByText('1 waiting for approval', { exact: false })
-      .first()
-      .waitFor({ state: 'visible', timeout: DEADLINE });
+    // The approval card owns the waiting state on screen, so the step summary does not repeat it
+    // (`cardOwnedCallIds`): the card is what to wait for, and the summary must stay silent.
     await opened.page.locator('.cinder-approval-card').first().waitFor({
       state: 'visible',
       timeout: DEADLINE,
@@ -1669,8 +1667,11 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
         const summaries = [...document.querySelectorAll('.chat-tool-call-summary')];
         return (
           card?.textContent?.toLowerCase().includes('expired') === true &&
-          summaries.some((summary) => summary.textContent?.includes('1 expired')) &&
-          summaries.every((summary) => !summary.textContent?.includes('waiting for approval'))
+          summaries.every(
+            (summary) =>
+              !summary.textContent?.includes('waiting for approval') &&
+              !summary.textContent?.includes('expired'),
+          )
         );
       },
       undefined,
