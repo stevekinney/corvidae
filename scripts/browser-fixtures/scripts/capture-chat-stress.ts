@@ -196,6 +196,9 @@ export function measureInPage(options: {
           bottom = Math.min(bottom, clipTop + ancestor.clientHeight);
         }
       }
+      // A fixed box sits on the viewport: the overflow of what holds it in the tree (a sheet
+      // opened from inside the transcript) clips nothing of it.
+      if (style.position === 'fixed') break;
       ancestor = ancestor.parentElement;
     }
     return right > left && bottom > top
@@ -703,11 +706,33 @@ export function measureInPage(options: {
     pendingHighlights: shell.querySelectorAll('[data-cinder-highlight-state="pending"]').length,
     clippedStatuses,
     directions,
-    jumpOverlapsTranscript:
+    jumpMisplaced:
       transcript !== null &&
       jump !== null &&
       isVisible(jump) &&
-      jump.getBoundingClientRect().top < transcript.getBoundingClientRect().bottom,
+      (() => {
+        const box = jump.getBoundingClientRect();
+        const inside = transcript.getBoundingClientRect();
+        const meets = (other: DOMRect): boolean =>
+          box.left < other.right &&
+          box.right > other.left &&
+          box.top < other.bottom &&
+          box.bottom > other.top;
+        const covered = [
+          ...(composerShell === undefined || composerShell === null ? [] : [composerShell]),
+          ...document.querySelectorAll<HTMLElement>('.cinder-drawer__panel'),
+          ...[...shell.querySelectorAll<HTMLElement>('button, a[href], input, textarea, select')]
+            .filter((control) => !transcript.contains(control) && !jump.contains(control))
+            .filter((control) => !composerShell?.contains(control)),
+        ].filter((element) => isVisible(element) && !element.contains(jump));
+        return (
+          box.left < inside.left - 1 ||
+          box.right > inside.right + 1 ||
+          box.top < inside.top - 1 ||
+          box.bottom > inside.bottom + 1 ||
+          covered.some((element) => meets(element.getBoundingClientRect()))
+        );
+      })(),
     approvalStillWaiting:
       options.settledApproval &&
       (shell.querySelector('[data-chat-approval-drawer]') !== null ||
@@ -766,6 +791,8 @@ export function revealScrollableControls(controlIds: readonly string[] = []): {
         ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX)
       )
         result.push(ancestor);
+      // A fixed box sits on the viewport, so what holds it in the tree clips nothing of it.
+      if (style.position === 'fixed') break;
       ancestor = ancestor.parentElement;
     }
     return result;
@@ -897,7 +924,10 @@ function observeAnnouncements(): void {
       '[aria-live], [role="status"], [role="alert"]',
     )) {
       const message = (region.textContent ?? '').trim();
-      if (message === 'Sources were removed' && regions.get(region) !== message) {
+      // The last source says the message's own sentence; a withdrawal that leaves other chips says
+      // the chip group's.
+      const announced = message === 'Sources were removed' || message === 'A source was withdrawn.';
+      if (announced && regions.get(region) !== message) {
         host.stressAnnouncements = (host.stressAnnouncements ?? 0) + 1;
       }
       regions.set(region, message);
@@ -943,7 +973,9 @@ export function readWithdrawal(): { announcements: number; focusVisible: boolean
     hasPaint('::after');
   const box = active?.getBoundingClientRect();
   const focusVisible =
-    active?.matches('.chat-message-action-button') === true &&
+    // Focus lands on the message action when no source is left, or on the next remaining chip.
+    (active?.matches('.chat-message-action-button') === true ||
+      active?.matches('.chat-message-source-chips .cinder-citation__marker') === true) &&
     shell?.contains(active) === true &&
     focusPainted &&
     box !== undefined &&
@@ -1001,10 +1033,18 @@ async function assertIrreversibleApprovalViewport(page: Page): Promise<void> {
     const hintBox = hint.getBoundingClientRect();
     const cardBox = card.getBoundingClientRect();
     const requiresTouchTarget = matchMedia('(pointer: coarse)').matches;
+    // A coarse control is painted compact and reaches 44px with a positioned hit area, so the
+    // 44px is what a tap above and below its centre reaches, not the painted box.
+    const centreX = buttonBox.left + buttonBox.width / 2;
+    const centreY = buttonBox.top + buttonBox.height / 2;
+    const reachesTouchTarget = [-21, 21].every(
+      (offset) =>
+        document.elementFromPoint(centreX, centreY + offset)?.closest('button') === button,
+    );
     return (
       buttonBox.width > 0 &&
       buttonBox.height > 0 &&
-      (!requiresTouchTarget || (buttonBox.width >= 44 && buttonBox.height >= 44)) &&
+      (!requiresTouchTarget || (buttonBox.width >= 44 && reachesTouchTarget)) &&
       labelBox.width > 0 &&
       labelBox.height > 0 &&
       labelBox.left >= buttonBox.left - 1 &&

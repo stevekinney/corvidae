@@ -284,15 +284,15 @@ describe('measurementProblems', () => {
     ]);
   });
 
-  it('flags a jump control that covers the transcript and a receipt that still waits', () => {
+  it('flags a misplaced jump control and a receipt that still waits', () => {
     expect(
       measurementProblems(
-        { ...CLEAN, jumpOverlapsTranscript: true, approvalStillWaiting: true },
+        { ...CLEAN, jumpMisplaced: true, approvalStillWaiting: true },
         narrow,
         caseNumbered(23),
       ),
     ).toEqual([
-      'jump control overlaps the transcript',
+      'jump control leaves the transcript or covers the composer, a drawer or a control',
       'approval still waits after its receipt appears',
     ]);
   });

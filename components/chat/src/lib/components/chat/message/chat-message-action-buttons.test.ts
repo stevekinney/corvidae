@@ -40,6 +40,14 @@ describe('chat message action buttons', () => {
     expect(baseRuleMatches).toHaveLength(1);
   });
 
+  test('a message that ends on an answered question receipt is never content-skipped', () => {
+    // `content-visibility: auto` contains paint at the message's edge and would cut the 44px
+    // area of the receipt's Change action where the message ends.
+    expect(source).toMatch(
+      /\.chat-message:has\(:global\(\.chat-question-receipt\)\) \{\s*content-visibility: visible;/,
+    );
+  });
+
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
     const lineRule = extractRule(source, '.chat-message-line {\n    position: relative;');
     expect(lineRule).toContain('gap: var(--cinder-space-1)');

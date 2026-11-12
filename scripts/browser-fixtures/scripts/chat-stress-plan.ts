@@ -230,8 +230,11 @@ export interface PageMeasurement {
     readonly before: number | null;
     readonly after: number | null;
   };
-  /** A jump control uses its own row outside the transcript's scrollport. */
-  readonly jumpOverlapsTranscript?: boolean;
+  /**
+   * A jump control floats over the transcript's trailing corner by design. It is misplaced when it
+   * leaves the transcript's box or covers the composer, a drawer or a control outside the transcript.
+   */
+  readonly jumpMisplaced?: boolean;
   /** The composer or step summary still asks for approval after its decision. */
   readonly approvalStillWaiting?: boolean;
   /** For a withdrawal case: how many announcements followed and whether the focused control shows a ring. */
@@ -298,7 +301,10 @@ export function measurementProblems(
       problems.push(`hit region sample missed ${control.controlId}: ${control.name}`);
     }
   }
-  if (measurement.jumpOverlapsTranscript) problems.push('jump control overlaps the transcript');
+  if (measurement.jumpMisplaced)
+    problems.push(
+      'jump control leaves the transcript or covers the composer, a drawer or a control',
+    );
   if (measurement.approvalStillWaiting)
     problems.push('approval still waits after its receipt appears');
   for (const wide of measurement.wideLayout ?? []) {

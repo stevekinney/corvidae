@@ -1351,6 +1351,14 @@
     content-visibility: visible;
   }
 
+  /* An answered question ends its message on the receipt's "Change" action, whose 44px hit area
+   * overhangs the 28px control. `content-visibility: auto` contains paint at the message's own
+   * edge, so the overhang below the last line would not be hit-testable; the row is laid out in
+   * full instead (one receipt is a few lines, so nothing is saved by skipping it). */
+  .chat-message:has(:global(.chat-question-receipt)) {
+    content-visibility: visible;
+  }
+
   /* Escape hatch for a deliberate programmatic scroll-to-bottom
      (use-chat-scroll-state.svelte.ts): while `.chat-timeline` carries
      `data-cinder-force-visible`, every row lays out at its real height up

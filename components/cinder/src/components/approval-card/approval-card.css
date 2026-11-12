@@ -1175,6 +1175,11 @@
   .cinder-approval-card--decision:has(> .cinder-approval-card__receipt) {
     gap: 0;
     padding-block: var(--cinder-space-2);
+
+    /* The card clips its content (rounded corners), and so does the message that holds it: the
+       24px Details control's 44px area overhangs it by 10px, so the last row keeps that much
+       room beneath it. */
+    padding-block-end: var(--cinder-space-2-5);
   }
 
   .cinder-approval-card__receipt-meta {

@@ -44,9 +44,13 @@ describe('Jump to latest on a phone', () => {
   });
 
   test('floats over the transcript without a band, painted 32 px with a 44 px hit area', () => {
-    expect(controls).toMatch(/\.chat-jump-dock\s*\{[^}]*position: absolute;[^}]*inset-block-end: calc\(100%/);
+    expect(controls).toMatch(
+      /\.chat-jump-dock\s*\{[^}]*position: absolute;[^}]*inset-block-end: calc\(100%/,
+    );
     expect(controls).toMatch(/\.chat-jump-button\s*\{[^}]*width: 2rem;[^}]*height: 2rem;/);
-    expect(controls).toMatch(/\.chat-jump-button::before\s*\{[^}]*position: absolute;[^}]*inset: calc\(/);
+    expect(controls).toMatch(
+      /\.chat-jump-button::before\s*\{[^}]*position: absolute;[^}]*inset: calc\([^;]*- 1px\);/,
+    );
     // Nothing moves it back into the flow on a phone, where it would reserve a strip.
     expect(controls).not.toContain('@container (max-width: 30rem)');
   });

@@ -2691,6 +2691,14 @@ describe('ApprovalCard on a phone', () => {
     );
   });
 
+  test('a receipt card keeps room under its last row for the 44px Details area', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /\.cinder-approval-card--decision:has\(> \.cinder-approval-card__receipt\) \{[\s\S]*?padding-block-end: var\(--cinder-space-2-5\);/,
+    );
+  });
+
   test('keeps grouped row cards compact without weakening action targets', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 

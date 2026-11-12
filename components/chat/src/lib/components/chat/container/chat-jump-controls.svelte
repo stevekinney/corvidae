@@ -143,7 +143,9 @@
   .chat-jump-button::before {
     content: '';
     position: absolute;
-    inset: calc((2rem - var(--cinder-touch-target-min)) / 2);
+    /* An absolute box insets from the padding edge, inside the 1px border, so the border is
+     * added back: the area is 44 px, centred on the painted 32 px. */
+    inset: calc((2rem - var(--cinder-touch-target-min)) / 2 - 1px);
   }
 
   .chat-jump-button > :global(svg) {

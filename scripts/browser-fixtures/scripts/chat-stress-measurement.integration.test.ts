@@ -328,6 +328,21 @@ describe('chat stress visual measurement', () => {
     }
   });
 
+  it('recognizes the next remaining source chip as the withdrawal focus', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      await page.setContent(
+        '<main data-testid="chat-stress-shell"><span class="chat-message-source-chips"><button class="cinder-citation__marker">Support playbook</button></span></main><style>.cinder-citation__marker:focus-visible { outline: 2px solid #06f; }</style>',
+      );
+      await page.locator('button').focus();
+      const measurement = await page.evaluate(readWithdrawal);
+      expect(measurement.focusVisible).toBe(true);
+    } finally {
+      await browser.close();
+    }
+  });
+
   it('rejects a focused action whose pseudo-element focus face is hidden', async () => {
     const browser = await chromium.launch();
     try {
