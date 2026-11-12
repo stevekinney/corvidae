@@ -1278,19 +1278,34 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       return;
     }
     case 'expect-approval-review': {
-      // The reminder follows the card's row of decision buttons and the transcript scrolls that row
-      // clear of the composer on a frame after the card arrives, so let the layout settle first.
-      await page.evaluate(
-        () =>
-          new Promise<void>((resolve) => {
-            let frames = 0;
-            const next = (): void => {
-              frames += 1;
-              if (frames >= 6) resolve();
-              else requestAnimationFrame(next);
-            };
-            requestAnimationFrame(next);
-          }),
+      // The product guarantees one thing the capture waits on: the reminder is on screen if and only
+      // if the pending card's row of decision buttons is not wholly inside the transcript's box.
+      // Wait for that agreement, with a card present, rather than for a count of frames.
+      await page.waitForFunction(
+        () => {
+          const shell = document.querySelector('[data-testid="chat-stress-shell"]');
+          const scroller = shell?.querySelector<HTMLElement>('.chat-timeline');
+          const card = shell?.querySelector<HTMLElement>(
+            '.cinder-approval-card[data-cinder-state="pending"]',
+          );
+          if (scroller == null || card == null) return false;
+          const row =
+            card.querySelector<HTMLElement>(
+              '.cinder-approval-card__row-actions, .cinder-approval-card__action-row',
+            ) ?? card;
+          const rowBox = row.getBoundingClientRect();
+          const box = scroller.getBoundingClientRect();
+          if (rowBox.height <= 0 || box.height <= 0) return false;
+          const visible =
+            rowBox.top >= box.top - 1 &&
+            rowBox.bottom <= box.bottom + 1 &&
+            rowBox.left >= box.left - 1 &&
+            rowBox.right <= box.right + 1;
+          const reminder = shell?.querySelector('[data-chat-approval-drawer]') != null;
+          return reminder === !visible;
+        },
+        undefined,
+        { timeout: DEADLINE },
       );
       const state = await page.evaluate(() => {
         const shell = document.querySelector('[data-testid="chat-stress-shell"]');

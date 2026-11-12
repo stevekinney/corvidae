@@ -23,6 +23,45 @@ export function approvalCardFitsViewport(
   );
 }
 
+/**
+ * The transcript's visible box for an approval, measured the same whether the reminder is on screen
+ * or not. The reminder sits in the composer's column and takes room from the transcript while it
+ * shows, so the box the transcript reports depends on the reminder; reading "is the row in view"
+ * from that box makes the reminder's presence an input to its own cause. The answer here is the box
+ * with the reminder's room taken out in both states: `reminderBlockSize` is the room the reminder
+ * takes (its height and margins), and `reminderShown` says whether `viewport` already excludes it.
+ */
+export function approvalVisibleBox<T extends Pick<DOMRectReadOnly, 'top' | 'bottom'>>(
+  viewport: T & Pick<DOMRectReadOnly, 'left' | 'right'>,
+  reminderShown: boolean,
+  reminderBlockSize: number,
+): Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'> {
+  return {
+    top: viewport.top,
+    bottom: viewport.bottom - (reminderShown ? 0 : reminderBlockSize),
+    left: viewport.left,
+    right: viewport.right,
+  };
+}
+
+/**
+ * Whether a pending approval's row of decision buttons (or the whole card, when it draws none) is
+ * wholly inside the transcript's visible box, the single predicate that decides whether the
+ * reminder shows: it shows when this is false. It gives the same answer with the reminder on screen
+ * and off, because the box excludes the reminder's room in both.
+ */
+export function approvalRowVisible(
+  row: Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom' | 'left' | 'right'>,
+  reminderShown: boolean,
+  reminderBlockSize: number,
+): boolean {
+  return approvalCardFitsViewport(
+    row,
+    approvalVisibleBox(viewport, reminderShown, reminderBlockSize),
+  );
+}
+
 /** The selector of a pending approval card's row of decision buttons. */
 const APPROVAL_ACTION_ROW_SELECTOR =
   '.cinder-approval-card__row-actions, .cinder-approval-card__action-row';

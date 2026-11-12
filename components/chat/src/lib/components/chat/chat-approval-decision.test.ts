@@ -659,3 +659,96 @@ describe('Chat approval receipt', () => {
     expect(view.container.querySelector('[data-cinder-tool-approval]')).toBeNull();
   });
 });
+
+describe('the reminder follows the decision row, not its own presence', () => {
+  const REMINDER_HEIGHT = 48;
+  const originalRect = HTMLElement.prototype.getBoundingClientRect;
+  let rowTop = 0;
+
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect;
+  });
+
+  /** Lays the page out by hand: the transcript loses the reminder's room while the reminder shows. */
+  function layOut(container: HTMLElement): HTMLElement {
+    const box = (top: number, bottom: number): DOMRect =>
+      ({
+        top,
+        bottom,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: bottom - top,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.matches('[data-chat-approval-drawer]')) return box(0, REMINDER_HEIGHT);
+      if (this.classList.contains('chat-timeline')) {
+        const shown = container.querySelector('[data-chat-approval-drawer]') !== null;
+        return box(0, 400 - (shown ? REMINDER_HEIGHT : 0));
+      }
+      if (this.matches('.cinder-approval-card__row-actions, .cinder-approval-card__action-row')) {
+        return box(rowTop, rowTop + 44);
+      }
+      if (this.matches('.cinder-approval-card')) return box(rowTop - 80, rowTop + 60);
+      return originalRect.call(this);
+    };
+    return container.querySelector<HTMLElement>('.chat-timeline')!;
+  }
+
+  async function scrollTo(scroller: HTMLElement, top: number): Promise<void> {
+    rowTop = top;
+    scroller.dispatchEvent(new Event('scroll'));
+    await tick();
+    await tick();
+  }
+
+  test('arrival, scrolling away, scrolling back and Review keep one answer per row position', async () => {
+    rowTop = 150;
+    const { container } = render(Chat, {
+      id: 'chat-reminder-geometry',
+      conversation: approvalConversation('reminder-geometry'),
+      adapter: resolvingAdapter,
+    });
+    const scroller = layOut(container);
+    await scrollTo(scroller, 150);
+    // The row is in view with the reminder off: nothing to point to.
+    expect(drawerOf(container)).toBeNull();
+
+    // Scrolled away: the row is above the fold, so the reminder shows.
+    await scrollTo(scroller, -200);
+    expect(drawerOf(container)).not.toBeNull();
+
+    // The row ends inside the strip the reminder takes: with the reminder on screen the transcript
+    // is shorter, and the row is out of its box, so the reminder stays and does not flap.
+    await scrollTo(scroller, 330);
+    expect(drawerOf(container)).not.toBeNull();
+    await scrollTo(scroller, 330);
+    expect(drawerOf(container)).not.toBeNull();
+
+    // Back in view above the strip, it goes.
+    await scrollTo(scroller, 200);
+    expect(drawerOf(container)).toBeNull();
+
+    // And the same strip with the reminder off is not "in view" either: the reminder returns.
+    await scrollTo(scroller, 330);
+    expect(drawerOf(container)).not.toBeNull();
+  });
+
+  test('Review approval focuses the card and does not answer it', async () => {
+    rowTop = -200;
+    const { container } = render(Chat, {
+      id: 'chat-reminder-review',
+      conversation: approvalConversation('reminder-review'),
+      adapter: resolvingAdapter,
+    });
+    const scroller = layOut(container);
+    await scrollTo(scroller, -200);
+    const card = getByRole(container, 'article', { name: QUESTION });
+    await fireEvent.click(getByRole(drawerOf(container)!, 'button', { name: 'Review approval' }));
+    await tick();
+    expect(document.activeElement).toBe(card);
+  });
+});

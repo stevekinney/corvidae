@@ -67,7 +67,8 @@
   import {
     approvalActionRow,
     approvalActionRowShift,
-    approvalCardFitsViewport,
+    approvalRowVisible,
+    approvalVisibleBox,
     focusPendingApproval,
     pendingApprovalCard,
   } from './chat-approval-review.ts';
@@ -1508,6 +1509,27 @@
       !isComposerNoticeStatus(composerStatus),
   );
   let approvalFullyVisible = $state(false);
+  // The room the reminder takes from the transcript (its height and margins), last read while it
+  // was on screen; the estimate holds until the first read. It is not state: nothing renders from
+  // it, and it only keeps the box the row is judged against the same with the reminder on and off.
+  let approvalReminderBlockSize = 48;
+  /**
+   * Reads the reminder from the page, not from state: what the transcript's box excludes is what is
+   * drawn now, and a state update the page has not yet drawn would count the reminder twice.
+   */
+  function readApprovalReminder(): { shown: boolean; blockSize: number } {
+    const reminder = containerRef?.querySelector<HTMLElement>('[data-chat-approval-drawer]');
+    if (reminder === null || reminder === undefined) {
+      return { shown: false, blockSize: approvalReminderBlockSize };
+    }
+    const style = getComputedStyle(reminder);
+    const blockSize =
+      reminder.getBoundingClientRect().height +
+      (Number.parseFloat(style.marginTop) || 0) +
+      (Number.parseFloat(style.marginBottom) || 0);
+    if (blockSize > 0) approvalReminderBlockSize = blockSize;
+    return { shown: true, blockSize: approvalReminderBlockSize };
+  }
   $effect(() => {
     const scroller = viewport;
     const messageId = approvalWait.messageId;
@@ -1548,9 +1570,12 @@
         // row is wholly in view there is nothing to point to. A card that draws no row falls back
         // to the whole card.
         const actionRow = approvalActionRow(card);
-        approvalFullyVisible = approvalCardFitsViewport(
+        const reminder = readApprovalReminder();
+        approvalFullyVisible = approvalRowVisible(
           actionRow === null ? cardBox : actionRow.getBoundingClientRect(),
           viewportBox,
+          reminder.shown,
+          reminder.blockSize,
         );
       };
       observer = new IntersectionObserver(updateVisibility, { root: scroller, threshold: 1 });
@@ -1596,16 +1621,35 @@
       const actionRow = card === null ? null : approvalActionRow(card);
       if (card === null || actionRow === null) return;
       if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
-      const viewportBox = scroller.getBoundingClientRect();
+      // The same box the reminder is judged against, so a row this puts in view is one the
+      // reminder agrees is in view, with it on screen or not.
+      const reminder = readApprovalReminder();
+      const viewportBox = approvalVisibleBox(
+        scroller.getBoundingClientRect(),
+        reminder.shown,
+        reminder.blockSize,
+      );
       const cardBox = card.getBoundingClientRect();
-      if (cardBox.height >= viewportBox.height) return;
+      if (cardBox.height >= viewportBox.bottom - viewportBox.top) return;
       const shift = approvalActionRowShift(
         actionRow.getBoundingClientRect(),
         viewportBox,
         ATTENTION_INSET,
       );
-      if (shift !== 0) scroller.scrollTop += shift;
+      if (shift !== 0) {
+        scroller.scrollTop += shift;
+        ownScrollTop = scroller.scrollTop;
+      }
     };
+    // A scroll up that this effect did not make is the person's (a scrollbar drag, a programmatic
+    // jump): the transcript is theirs from then on, the same as for a wheel or a touch. A scroll
+    // down is not read so: the transcript following its end moves that way on its own.
+    let ownScrollTop = scroller.scrollTop;
+    const releaseOnForeignScroll = (): void => {
+      if (scroller.scrollTop < ownScrollTop - 1) released = true;
+      ownScrollTop = scroller.scrollTop;
+    };
+    scroller.addEventListener('scroll', releaseOnForeignScroll, { passive: true });
     const schedule = (): void => {
       if (frame === 0 && !released) frame = requestAnimationFrame(settle);
     };
@@ -1625,6 +1669,7 @@
       resizes?.disconnect();
       changes.disconnect();
       for (const type of inputs) scroller.removeEventListener(type, release);
+      scroller.removeEventListener('scroll', releaseOnForeignScroll);
     };
   });
 

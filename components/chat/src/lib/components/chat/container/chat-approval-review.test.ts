@@ -16,6 +16,8 @@ import {
   APPROVAL_DRAWER_TEXT,
   approvalActionRowShift,
   approvalCardFitsViewport,
+  approvalRowVisible,
+  approvalVisibleBox,
   findPendingApprovalMessageId,
   focusPendingApproval,
   nextPendingApprovalDeadline,
@@ -259,5 +261,59 @@ describe('approval action row shift', () => {
 
   test('does nothing when the row cannot fit the viewport with its inset', () => {
     expect(approvalActionRowShift({ top: 100, bottom: 500 }, viewport, 8)).toBe(0);
+  });
+});
+
+describe('approval row visibility with and without the reminder', () => {
+  const reminder = 48;
+  // The transcript's box with the reminder off screen, and the box it has while the reminder
+  // takes its room from the bottom.
+  const without = { top: 0, bottom: 400, left: 0, right: 300 };
+  const withReminder = { top: 0, bottom: 400 - reminder, left: 0, right: 300 };
+  const row = (top: number, bottom: number) => ({ top, bottom, left: 10, right: 290 });
+
+  /** The answer must not depend on whether the box it reads already excludes the reminder. */
+  function answers(rowBox: ReturnType<typeof row>): [boolean, boolean] {
+    return [
+      approvalRowVisible(rowBox, without, false, reminder),
+      approvalRowVisible(rowBox, withReminder, true, reminder),
+    ];
+  }
+
+  test('a row wholly in view is visible either way', () => {
+    expect(answers(row(200, 244))).toEqual([true, true]);
+  });
+
+  test('a row partly under the composer or the reminder is not visible either way', () => {
+    expect(answers(row(330, 374))).toEqual([false, false]);
+    expect(answers(row(380, 424))).toEqual([false, false]);
+  });
+
+  test('a row above the fold is not visible either way', () => {
+    expect(answers(row(-20, 24))).toEqual([false, false]);
+  });
+
+  test('a row ending at the reminder strip is the edge both states agree on', () => {
+    expect(answers(row(300, 352))).toEqual([true, true]);
+    expect(answers(row(310, 354))).toEqual([false, false]);
+  });
+
+  test('a row clipped on the side is not visible', () => {
+    expect(
+      approvalRowVisible({ top: 100, bottom: 140, left: -5, right: 290 }, without, false, 0),
+    ).toBe(false);
+  });
+
+  test('the visible box drops the reminder only while the box does not already exclude it', () => {
+    expect(approvalVisibleBox(without, false, reminder).bottom).toBe(352);
+    expect(approvalVisibleBox(withReminder, true, reminder).bottom).toBe(352);
+  });
+
+  test('the arrival scroll targets the same box, so a row it clears is a row the reminder accepts', () => {
+    const rowBox = row(360, 404);
+    const box = approvalVisibleBox(without, false, reminder);
+    const shift = approvalActionRowShift(rowBox, box, 8);
+    const moved = row(rowBox.top - shift, rowBox.bottom - shift);
+    expect(answers(moved)).toEqual([true, true]);
   });
 });
