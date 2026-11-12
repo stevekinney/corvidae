@@ -26,6 +26,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { seedDynamicSources } from '../../fixtures/dynamic-sources.ts';
+import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
@@ -377,6 +378,9 @@ const host = await startHost({
   // One setting the deployment holds to its code option, so the settings page's locked state is
   // exercised against the real Bureau (`settings.spec.ts`). It is a `restart` key nothing else reads.
   settings: { locked: { [E2E_LOCKED_SETTING]: 'deployment' } },
+  // The clean-up's nightly time is named in the host's zone, which defaults to the process's: on a
+  // UTC runner that reads "GMT+00:00", not a zone's name (COR-2412). The sample zone holds it still.
+  nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
   port: E2E_PORT,
   buildDirectory,
   createConsoleEngine: async () => {
