@@ -1159,13 +1159,13 @@
     if (entry.railId !== undefined) return entry;
     // The rail keys its rows by this id, so an id that changed under a drawn row would remount it
     // and drop what the approver had ticked or typed: the first id a call is shown with stays.
-    let shown = shownRailIds.get(entry.callId);
-    if (shown === undefined) {
+    let drawnId = shownRailIds.get(entry.callId);
+    if (drawnId === undefined) {
       const reviewId = approvalsByCall.get(entry.callId)?.reviewId;
-      shown = reviewId === undefined ? entry.callId : `${reviewId}:call:${entry.callId}`;
-      shownRailIds.set(entry.callId, shown);
+      drawnId = reviewId === undefined ? entry.callId : `${reviewId}:call:${entry.callId}`;
+      shownRailIds.set(entry.callId, drawnId);
     }
-    return shown === entry.callId ? entry : { ...entry, railId: shown };
+    return drawnId === entry.callId ? entry : { ...entry, railId: drawnId };
   }
   /** Not reactive on purpose: it only remembers, so a render never reads its own write. */
   const shownRailIds = new Map<string, string>();
