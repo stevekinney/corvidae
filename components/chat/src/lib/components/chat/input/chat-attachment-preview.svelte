@@ -56,7 +56,7 @@
       displayName = middleEllipsisFileName(
         fullName,
         // Whole pixels rounded down: `clientWidth` rounds to the nearest pixel, so a name measured to
-        // fit 218px in a 217.7px box would wrap on a phone, where the name may wrap.
+        // fit 218px in a 217.7px box would overflow it by a fraction of a pixel.
         Math.floor(element.getBoundingClientRect().width),
         (value) => context.measureText(value).width,
       );
@@ -64,7 +64,21 @@
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
-    return () => observer.disconnect();
+    // The fit is measured in the font that is current when it runs. A web font that finishes
+    // loading later changes the width of the same text without resizing the box, so a fit made in
+    // the fallback font is refitted when fonts are ready and whenever a later load completes.
+    let disposed = false;
+    const refit = (): void => {
+      if (!disposed) update();
+    };
+    const fonts = typeof document === 'undefined' ? undefined : document.fonts;
+    void fonts?.ready.then(refit);
+    fonts?.addEventListener('loadingdone', refit);
+    return () => {
+      disposed = true;
+      fonts?.removeEventListener('loadingdone', refit);
+      observer.disconnect();
+    };
   });
 </script>
 

@@ -263,10 +263,11 @@ describe('the controls snippet is told when the composer is narrow', () => {
     expect(source).toMatch(
       /@container \(max-inline-size: 30rem\)\s*\{\s*\.chat-input-attachments\s*\{\s*align-items: stretch;/,
     );
-    // The name wraps there instead of being cut to its first letter.
-    expect(source).toMatch(
-      /:global\(\.chat-attachment-preview-name\)\s*\{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;/,
-    );
+    // The name never wraps there: the script shortens it to one line, and a wrapped name would
+    // move the row's controls and height whenever the fit overshoots.
+    const phoneRule = source.match(/:global\(\.chat-attachment-preview-name\)\s*\{[^}]*\}/)?.[0];
+    expect(phoneRule).toMatch(/white-space: nowrap;/);
+    expect(phoneRule).not.toMatch(/white-space: normal|overflow-wrap/);
   });
 
   test('Attach and Send keep a compact face with the 44px hit area from Cinder, and the one-row form is the default', async () => {

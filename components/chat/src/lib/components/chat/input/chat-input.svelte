@@ -2285,8 +2285,10 @@
     border-radius: var(--cinder-radius-full);
   }
 
-  /* On a phone each file is a row the width of the composer, and its name wraps rather than being
-   * cut, so the person can tell which file failed and which one they are removing. */
+  /* On a phone each file is a row the width of the composer. Its name stays on one line: the
+   * script has already shortened it in the middle to fit that line, so the extension shows and the
+   * person can tell which file failed. A name allowed to wrap would, on any overshoot (a font that
+   * loads late, a fraction of a pixel), take a second line and move the row's controls. */
   @container (max-inline-size: 30rem) {
     .chat-input-attachments {
       align-items: stretch;
@@ -2298,9 +2300,8 @@
 
     .chat-input-attachment-wrapper :global(.chat-attachment-preview-name) {
       display: block;
-      flex: 1 1 auto;
-      white-space: normal;
-      overflow-wrap: anywhere;
+      flex: 1 1 0;
+      white-space: nowrap;
     }
 
     .chat-input-attachment-wrapper :global(.chat-attachment-preview-stem) {
