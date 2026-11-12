@@ -7,7 +7,9 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
+import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
+import { expect } from './fixtures.ts';
 
 type EngineEntry = {
   status: 'pending' | 'completed';
@@ -76,4 +78,30 @@ export async function listEngineReviews(page: Page, request: APIRequestContext):
     answer.result.reviews = [...answer.result.reviews, ...entries.map(listedEngineReview)];
     await route.fulfill({ response, json: answer });
   });
+}
+
+/**
+ * Waits until Reviews has settled, then requires its address to say so. At a desktop width the list
+ * opens its first row beside it and names it in the address (ListDetail's `openFirst`, a replace),
+ * so a page with a waiting review settles on `/reviews?review=<key of the first row>`; a page with
+ * none shows "Nothing waiting on you" and stays on the bare `/reviews`. The bare `/reviews` of a
+ * page that has rows lasts only until the list has a width, so this waits for a row or the empty
+ * state to show before it reads the address, and never accepts that passing moment.
+ */
+export async function expectReviewsSettled(page: Page): Promise<void> {
+  const firstRow = page.locator('[data-review-row]').first();
+  const emptyState = page.getByText(REVIEWS_COPY.allCaughtUp, { exact: true });
+  await expect(firstRow.or(emptyState)).toBeVisible();
+  if (await firstRow.isVisible()) {
+    const first = await firstRow.getAttribute('data-review-row');
+    expect(first).not.toBeNull();
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === '/reviews' &&
+        url.searchParams.size === 1 &&
+        url.searchParams.get('review') === first,
+    );
+    return;
+  }
+  await expect(page).toHaveURL((url) => url.pathname === '/reviews' && url.searchParams.size === 0);
 }

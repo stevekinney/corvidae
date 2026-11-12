@@ -8,6 +8,7 @@
  * Read-only, so it can run anywhere in the order; `05-bulk-retry-confirm.spec.ts` retries every
  * failed workflow and must stay after it.
  */
+import { expectAuditSettled } from './audit-support.ts';
 import { expect, test } from './fixtures.ts';
 
 const VIEWPORTS = [
@@ -75,6 +76,6 @@ test('Overview shows its four counts, Needs attention, Recent activity and the m
   ).toHaveAttribute('aria-expanded', 'false');
 
   await activity.getByRole('link', { name: /^Open audit log/ }).click();
-  await expect(page).toHaveURL(/\/health\/audit$/);
+  await expectAuditSettled(page);
   await checkA11y('engine overview');
 });
