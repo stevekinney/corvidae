@@ -23,10 +23,10 @@
     size="sm"
     class="cinder-approval-card__note-toggle"
     aria-expanded={false}
+    label="Add a note"
     {disabled}
     onclick={onOpen}
   >
     {#snippet leadingIcon()}<NotebookPen aria-hidden="true" />{/snippet}
-    Add a note
   </Button>
 </Tooltip>

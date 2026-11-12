@@ -183,8 +183,7 @@
   }
 
   .chat-follow-up-ghost-index {
-    position: absolute;
-    inset-inline-start: var(--cinder-space-3);
+    flex: none;
     inline-size: var(--cinder-space-3);
     color: var(--cinder-text-subtle);
     font-variant-numeric: tabular-nums;
@@ -195,7 +194,6 @@
     flex: 1 1 auto;
     min-inline-size: 0;
     margin: 0;
-    padding-inline-start: var(--cinder-space-3);
     overflow: hidden;
     text-align: start;
     text-overflow: ellipsis;

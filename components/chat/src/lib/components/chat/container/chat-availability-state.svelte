@@ -205,6 +205,14 @@
     padding: var(--cinder-chat-timeline-padding, var(--cinder-space-4));
   }
 
+  /* On a phone the composer and the other notices above it start at the narrow padding; the
+     notice stands on the same edge. */
+  @container (max-width: 480px) {
+    .chat-availability {
+      padding: var(--cinder-chat-narrow-padding, var(--cinder-space-3));
+    }
+  }
+
   .chat-availability-loading {
     justify-content: flex-start;
     gap: var(--cinder-space-6);

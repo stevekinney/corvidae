@@ -3393,7 +3393,8 @@
   @container (max-width: 480px) {
     .chat-input-wrapper,
     .chat-container[data-composer-placement='centered'] .chat-input-wrapper,
-    .chat-container[data-surface-mode='default'] .chat-input-wrapper {
+    .chat-container[data-surface-mode='default'] .chat-input-wrapper,
+    .chat-container[data-surface-mode='default'] > :global(.chat-availability) {
       inline-size: 100%;
     }
   }
