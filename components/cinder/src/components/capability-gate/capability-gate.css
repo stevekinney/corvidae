@@ -67,89 +67,12 @@
     color: var(--cinder-text-default);
   }
 
+  /* The actions are Cinder Buttons (and Links) the page passes in: the gate lays them out and
+   * never restyles them, so the grant action is a real primary Button and cannot drift from it. */
   .cinder-capability-gate__actions {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--cinder-space-1);
+    gap: var(--cinder-space-2);
     align-items: center;
-  }
-
-  .cinder-capability-gate__primary,
-  .cinder-capability-gate__fallback,
-  .cinder-capability-gate__dismiss {
-    display: inline-flex;
-    align-items: center;
-    padding: var(--cinder-space-1) var(--cinder-space-2);
-    border-radius: var(--cinder-radius-sm);
-    font-size: var(--cinder-text-sm);
-    font-weight: var(--cinder-font-medium);
-    cursor: pointer;
-    border: 1px solid transparent;
-    text-decoration: none;
-  }
-
-  .cinder-capability-gate__primary {
-    background-color: var(--cinder-accent-solid);
-    color: var(--cinder-accent-contrast);
-    border-color: var(--cinder-accent-solid);
-  }
-
-  @media (hover: hover) {
-    .cinder-capability-gate__primary:hover {
-      background-color: var(--cinder-accent-solid-hover);
-      border-color: var(--cinder-accent-solid-hover);
-    }
-  }
-
-  .cinder-capability-gate__primary:focus-visible,
-  .cinder-capability-gate__fallback:focus-visible,
-  .cinder-capability-gate__dismiss:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow:
-      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
-  }
-
-  /* The primary action is a solid accent fill: gap, then ring (COR-1498). */
-  .cinder-capability-gate__primary:focus-visible {
-    box-shadow: var(--_cinder-focus-ring-filled-shadow);
-  }
-
-  @media (forced-colors: active) {
-    .cinder-capability-gate__primary:focus-visible,
-    .cinder-capability-gate__fallback:focus-visible,
-    .cinder-capability-gate__dismiss:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      /* 3px separates the outline from ButtonBorder (which renders in forced-colors
-         on all button-like controls and shares the ButtonText color family in HCM);
-         at 2px the ring and border can visually merge. */
-      outline-offset: 3px;
-      box-shadow: none;
-    }
-  }
-
-  .cinder-capability-gate__fallback {
-    background-color: transparent;
-    color: var(--cinder-text-default);
-    border-color: var(--cinder-border);
-  }
-
-  @media (hover: hover) {
-    .cinder-capability-gate__fallback:hover {
-      background-color: var(--cinder-surface-raised);
-    }
-  }
-
-  .cinder-capability-gate__dismiss {
-    background-color: transparent;
-    color: var(--cinder-text-muted);
-    margin-inline-start: auto;
-  }
-
-  @media (hover: hover) {
-    .cinder-capability-gate__dismiss:hover {
-      background-color: var(--cinder-surface-hover);
-      color: var(--cinder-text-default);
-    }
   }
 }

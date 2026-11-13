@@ -25,6 +25,7 @@
       {#snippet actions()}
         <Button
           size="sm"
+          variant="primary"
           label="Allow microphone"
           onclick={() => {
             capabilityState = 'supported';
