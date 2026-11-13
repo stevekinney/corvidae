@@ -923,6 +923,29 @@ describe('chat stress visual measurement', () => {
       expect(problems[0]).toContain('action row .cinder-callout__action ends');
     });
 
+    it('fails a wrapped primary left on a leading line, though an earlier control touches the trailing edge', async () => {
+      // Discard fills the first line edge to edge, so the trailing-most control of the row touches
+      // the edge; Continue, the last control, wraps to a second line that starts at the leading edge.
+      const filling =
+        '<style>.cinder-callout__action button:first-child { flex: 1 1 100%; }</style>';
+      const problems = await problemsFor(notice('justify-content: flex-start;', 'ltr', filling));
+      expect(problems).toHaveLength(1);
+      // The same wrap with the second line ending at the trailing edge passes.
+      expect(await problemsFor(notice('justify-content: flex-end;', 'ltr', filling))).toEqual([]);
+    });
+
+    it('measures a control that is itself the row, such as a submit button', async () => {
+      const submit = (placement: string): string => `
+        <style>
+          body { margin: 0; }
+          .chat-question-stack { display: grid; inline-size: 320px; padding: 12px; box-sizing: border-box; }
+          button { font: 12px sans-serif; padding: 4px 12px; ${placement} }
+        </style>
+        <form class="chat-question-stack"><input aria-label="Answer"><button type="submit">Send</button></form>`;
+      expect(await problemsFor(submit('justify-self: end;'))).toEqual([]);
+      expect(await problemsFor(submit('justify-self: start;'))).toHaveLength(1);
+    });
+
     it('fails a right-to-left row that starts at its leading (right) edge', async () => {
       const problems = await problemsFor(notice('justify-content: flex-start;', 'rtl'));
       expect(problems).toHaveLength(1);

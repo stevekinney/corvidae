@@ -424,8 +424,9 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Where each assistant turn stands, as the host knows it (COR-2283). Called per assistant
    * message; return a {@link ChatTurnState} to draw the turn's outcome on the turn itself, or
    * `undefined` to leave it streaming while text arrives and complete after. `reconnecting`
-   * mutes the partial text and drops its caret under the warning "Connection lost. Reconnecting,
-   * attempt 2 of 5. Next try in 8 s." with Retry and a bar that drains until the next try;
+   * mutes the partial text and drops its caret, and draws the warning "Connection lost.
+   * Reconnecting, attempt 2 of 5. Next try in 8 s." with Retry and a bar that drains until the
+   * next try by the composer, where the connection is felt, not under the partial text;
    * `stopped` draws a neutral card with Discard and Continue; `failed` a danger alert that says the
    * answer is incomplete, why, and what Retry keeps, with Retry; `empty` a neutral row with the
    * turn's time and Retry in place of its line. `advanceTurnState` moves a state on as the run

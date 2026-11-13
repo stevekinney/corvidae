@@ -123,8 +123,11 @@
     margin-block-start: var(--cinder-space-3);
   }
 
+  /* A start-aligned state reads from the start, but its action row spans the state and ends at the
+   * trailing content edge, the primary last. A centred state keeps its centred action. */
   .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-action {
-    justify-content: flex-start;
+    align-self: stretch;
+    justify-content: flex-end;
   }
 
   /* Compact fits a tab or a panel: less padding, a smaller disc, and quieter type. */

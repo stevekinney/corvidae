@@ -154,8 +154,15 @@
     margin-block-start: var(--cinder-space-4);
   }
 
+  /* The flat state reads from the start, but its action row spans the state and ends at the
+   * trailing content edge, the primary last. */
+  .cinder-error-state[data-cinder-variant='flat'] .cinder-error-state-body {
+    align-self: stretch;
+  }
+
   .cinder-error-state[data-cinder-variant='flat'] .cinder-error-state-action {
-    justify-content: flex-start;
+    align-self: stretch;
+    justify-content: flex-end;
     margin-block-start: var(--cinder-space-3);
   }
 

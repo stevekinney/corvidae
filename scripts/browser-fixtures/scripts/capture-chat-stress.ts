@@ -2323,6 +2323,16 @@ export const ACTION_ROW_SELECTORS: readonly string[] = [
   '.chat-message-edit-actions',
   '.chat-message-not-sent-actions',
   '.chat-tool-call-failure-actions',
+  '.cinder-docked-action-bar__actions',
+  // A control that is itself the row: a question's submit button and its receipt's Change.
+  '.chat-question-stack > button[type="submit"]',
+  '.chat-question-row > button[type="submit"]',
+  '.chat-question-receipt > .cinder-button',
+  // A centred empty or error state keeps its centred action; the start-aligned, flat and row
+  // layouts end at the trailing edge.
+  '.cinder-empty-state[data-cinder-align="start"] .cinder-empty-state-action',
+  '.cinder-empty-state[data-cinder-layout="row"] .cinder-empty-state-action',
+  '.cinder-error-state[data-cinder-variant="flat"] .cinder-error-state-action',
 ];
 
 /** How far the last control of an action row may sit from the trailing content edge, in pixels. */
@@ -2347,13 +2357,14 @@ export async function readActionRowProblems(
         if (parent === null) continue;
         const own = getComputedStyle(row);
         if (own.display === 'none' || own.visibility === 'hidden') continue;
-        const controls = [...row.querySelectorAll<HTMLElement>('button, a[href]')].filter(
-          (control) => {
-            if (control.closest('[role="tooltip"], .cinder-sr-only') !== null) return false;
-            const rectangle = control.getBoundingClientRect();
-            return rectangle.width > 0 && rectangle.height > 0;
-          },
-        );
+        const candidates = row.matches('button, a[href]')
+          ? [row]
+          : [...row.querySelectorAll<HTMLElement>('button, a[href]')];
+        const controls = candidates.filter((control) => {
+          if (control.closest('[role="tooltip"], .cinder-sr-only') !== null) return false;
+          const rectangle = control.getBoundingClientRect();
+          return rectangle.width > 0 && rectangle.height > 0;
+        });
         if (controls.length === 0) continue;
         const style = getComputedStyle(parent);
         const rtl = getComputedStyle(row).direction === 'rtl';
@@ -2367,9 +2378,10 @@ export async function readActionRowProblems(
           const gap = parseFloat(getComputedStyle(dismiss).marginInlineStart);
           edge = rtl ? dismissBox.right + gap : dismissBox.left - gap;
         }
-        const trailing = rtl
-          ? Math.min(...controls.map((control) => control.getBoundingClientRect().left))
-          : Math.max(...controls.map((control) => control.getBoundingClientRect().right));
+        // The last control in reading order is the primary action: it must be the one that ends
+        // the row, so an earlier control touching the edge never excuses a primary left behind.
+        const last = controls[controls.length - 1]!.getBoundingClientRect();
+        const trailing = rtl ? last.left : last.right;
         const distance = Math.abs(trailing - edge);
         if (distance > spec.tolerance) {
           const label = (row.className.split(/\s+/)[0] ?? row.tagName).trim();
