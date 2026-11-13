@@ -158,17 +158,16 @@ describe('icons/index', () => {
 
   it('exports the file-type glyphs a file chip picks from, each its own Lucide glyph', async () => {
     const root = await import('@lostgradient/cinder');
-    const expected = {
-      FileIcon: 'lucide-file',
-      FileArchive: 'lucide-file-archive',
-      FileAudio: 'lucide-file-headphone',
-      FileImage: 'lucide-file-image',
-      FileSpreadsheet: 'lucide-file-spreadsheet',
-      FileVideo: 'lucide-file-video-camera',
-    } as const;
-    for (const [name, glyph] of Object.entries(expected)) {
-      const icon = icons[name as keyof typeof expected];
-      expect(root[name as keyof typeof expected], `${name} from the package root`).toBe(icon);
+    const expected = [
+      ['FileIcon', icons.FileIcon, root.FileIcon, 'lucide-file'],
+      ['FileArchive', icons.FileArchive, root.FileArchive, 'lucide-file-archive'],
+      ['FileAudio', icons.FileAudio, root.FileAudio, 'lucide-file-headphone'],
+      ['FileImage', icons.FileImage, root.FileImage, 'lucide-file-image'],
+      ['FileSpreadsheet', icons.FileSpreadsheet, root.FileSpreadsheet, 'lucide-file-spreadsheet'],
+      ['FileVideo', icons.FileVideo, root.FileVideo, 'lucide-file-video-camera'],
+    ] as const;
+    for (const [name, icon, fromRoot, glyph] of expected) {
+      expect(fromRoot, `${name} from the package root`).toBe(icon);
       const result = render(icon, { 'aria-hidden': 'true' });
       try {
         expect(result.container.querySelector('svg')?.getAttribute('class')).toContain(glyph);
