@@ -6,7 +6,7 @@
 
 Each row shows the source's title (clamped to two lines), its domain in small muted text under it, and its excerpt in quotation marks when it has one. With a safe web address the whole row is the link and an open-in-new glyph ends it. Without an address the row is not a link and its muted line reads "Internal document, no public link"; with a refused address it reads "Link hidden: the address isn't a safe web link". `resolveCitationLink` applies the same policy for a host that draws sources itself. Pass `labels` to translate the words Citation draws.
 
-The panel is as tall as its rows up to about half the viewport, then the list scrolls; on a phone it opens as a bottom sheet. Pass `current` (an index into `sources`) when the reader followed a marker for one source: that row is marked, announced as current with `aria-current`, and scrolled into view when the list opens, so a marker in the text opens the same list as any other. Pass `inPlace` to open the list under the marker on a viewport at least as wide as a phone instead of in a floating popover; `expanded` and `onExpandedChange` drive that state, and `shownInPlace` reports whether the list is currently under the marker (it is not on a phone, where the sheet is used).
+The panel is as tall as its rows up to about half the viewport, then the list scrolls; on a phone it opens as a bottom sheet. Pass `current` (an index into `sources`) when the reader followed a marker for one source: that row is marked, announced as current with `aria-current`, and scrolled into view when the list opens, so a marker in the text opens the same list as any other. Pass `inPlace` to open the list under the marker on a viewport at least as wide as a phone instead of in a floating popover; `expanded` and `onExpandedChange` drive that state; on a phone the sheet is used and they are not. `markerLabel` names a marker whose children already say how many sources there are.
 
 ## Usage
 
@@ -31,7 +31,6 @@ The panel is as tall as its rows up to about half the viewport, then the list sc
 | `inPlace` | `boolean` | no | — | Opens the sources under the marker instead of in a floating popover, on a viewport at least as wide as a phone. On a phone they still open in the bottom sheet. |
 | `label` | `string` | no | — | Names the marker and the panel, such as `Sources`. The marker reads it with the source count. |
 | `markerLabel` | `string` | no | — | The marker's accessible name when it has sources, for a marker whose children already say how many ("3 sources"). Defaults to `label` and the count, such as "Sources (3)". |
-| `shownInPlace` | `boolean` | no | — | Reports whether the sources are shown under the marker (`inPlace` on a wide viewport) or in the sheet or popover. Bindable, read only. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `labels` | `(opaque)` | no | — | The words Citation draws itself, for a host that translates them. Each one left out keeps its English default. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCloseComplete` | `(opaque)` | no | — | Called after an open source panel or sheet has fully closed. Not expressible in JSON Schema; see the component types for the signature. |

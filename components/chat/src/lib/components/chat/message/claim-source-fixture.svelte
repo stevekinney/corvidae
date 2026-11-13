@@ -38,7 +38,10 @@
             class="claim-source-marker"
             data-claim-marker={segment.marker.key}
             data-source-id={source.id}
-            ><Citation sources={[source]} label={source.label}
+            ><Citation
+              sources={stream.sources}
+              current={stream.sources.indexOf(source)}
+              markerLabel={source.label}
               ><span
                 class="claim-source-marker-number"
                 data-number={segment.marker.number}
@@ -53,7 +56,11 @@
     <ol class="claim-source-footer" aria-label="Sources" data-testid="claim-source-footer">
       {#each view.footer as source (source.id)}
         <li data-source-entry={source.id}>
-          <Citation sources={[source]} label={source.label}>{source.label}</Citation>
+          <Citation
+            sources={stream.sources}
+            current={stream.sources.indexOf(source)}
+            markerLabel={source.label}>{source.label}</Citation
+          >
         </li>
       {/each}
     </ol>

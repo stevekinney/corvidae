@@ -465,6 +465,48 @@ describe('Chat — sourcesByMessageId', () => {
     expect(document.activeElement === kept).toBe(true);
   });
 
+  test('withdrawing a source while focus is on the open control leaves focus on the control', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-withdraw-control',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+    });
+    await tick();
+    const control = sourcesControl(container, 'assistant-a')!;
+    await fireEvent.click(control);
+    control.focus();
+
+    await rerender({ sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(1)]]) });
+    await tick();
+
+    expect(document.activeElement === control).toBe(true);
+    expect(control.textContent?.trim()).toBe('3 sources');
+    expect(sourceRows(container, 'assistant-a')).toHaveLength(3);
+  });
+
+  test('on a phone, withdrawing a source while its sheet is open closes the sheet and focuses a message action', async () => {
+    await onPhone(async () => {
+      const { container, rerender } = render(Chat, {
+        id: 'sources-withdraw-sheet',
+        conversation: sourcedConversation(),
+        variant: 'transcript',
+        sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      });
+      await tick();
+      const control = sourcesControl(container, 'assistant-a')!;
+      await fireEvent.click(control);
+      await waitFor(() => expect(document.querySelector('.cinder-popover__sheet')).not.toBeNull());
+      const row = document.querySelector<HTMLElement>('.cinder-popover__sheet a');
+      row?.focus();
+
+      await rerender({ sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(1)]]) });
+
+      await waitFor(() =>
+        expect(document.activeElement?.matches('.chat-message-action-button')).toBe(true),
+      );
+    });
+  });
+
   test('removing the sources while the message is inert behind their sheet still moves focus to the message', async () => {
     const { container, rerender } = render(Chat, {
       id: 'sources-inert',

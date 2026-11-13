@@ -21,8 +21,6 @@ export type CitationProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   expanded?: boolean | undefined;
   /** With `inPlace`, called after the marker toggles `expanded`, with the new value. */
   onExpandedChange?: ((expanded: boolean) => void) | undefined;
-  /** Reports whether the sources are shown under the marker (`inPlace` on a wide viewport) or in the sheet or popover. Bindable, read only. */
-  shownInPlace?: boolean | undefined;
   /** Closes an open panel when a previously displayed source is withdrawn by the host. */
   closeOnSourceRemoval?: boolean;
   /** Called after an open source panel or sheet has fully closed. */

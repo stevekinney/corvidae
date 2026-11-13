@@ -167,8 +167,8 @@ describe.each(REPRESENTATIONS)('claim source references (%s)', (representation) 
     const { root } = await mountBoth();
 
     expect(markers(root).map((marker) => marker.getAttribute('aria-label'))).toEqual([
-      'Annual report (1)',
-      'Investor call (1)',
+      'Annual report',
+      'Investor call',
     ]);
     expect(root.querySelectorAll('[data-claim-marker]')).toHaveLength(2);
     expect(
@@ -196,10 +196,14 @@ describe.each(REPRESENTATIONS)('claim source references (%s)', (representation) 
       for (const [index, button] of buttons.entries()) {
         const source = index === 0 ? SOURCE_A : SOURCE_B;
         const preview = await open(button);
-        expect(preview.getAttribute('aria-label'), `${group} ${index}`).toBe(source.label);
-        expect(preview.querySelector('strong')?.textContent).toBe(source.label);
-        expect(preview.textContent).toContain(source.detail!);
-        expect(preview.querySelector('a')?.getAttribute('href') ?? null).toBe(source.url ?? null);
+        // The same list for every marker, with the cited source's row marked as current.
+        expect(preview.getAttribute('aria-label'), `${group} ${index}`).toBe('Sources');
+        expect(preview.querySelectorAll('li')).toHaveLength(2);
+        const cited = preview.querySelector('[aria-current="true"]')!;
+        expect(preview.querySelectorAll('[aria-current]')).toHaveLength(1);
+        expect(cited.querySelector('strong')?.textContent).toBe(source.label);
+        expect(cited.textContent).toContain(source.detail!);
+        expect(cited.getAttribute('href') ?? null).toBe(source.url ?? null);
         await pressEscape();
         await waitFor(() => expect(document.activeElement === button).toBe(true));
       }
@@ -321,7 +325,9 @@ describe.each(REPRESENTATIONS)('claim source references (%s)', (representation) 
     const previews: string[] = [];
     for (const marker of found) {
       const preview = await open(marker);
-      previews.push(preview.getAttribute('aria-label')!);
+      previews.push(
+        preview.querySelector('[aria-current="true"] .cinder-citation__title')!.textContent!,
+      );
       await pressEscape();
     }
     expect(previews).toEqual(['Annual report', 'Investor call']);
@@ -394,7 +400,7 @@ describe.each(REPRESENTATIONS)('claim source references (%s)', (representation) 
       ...replay(representation, [{ text: 'Fresh claim.', sourceId: 'source-c' }]),
     );
     expect(markers(root).map((marker) => marker.getAttribute('aria-label'))).toEqual([
-      'New source (1)',
+      'New source',
     ]);
     expect(footerButtons(root).map((button) => button.textContent)).toEqual(['New source']);
   });

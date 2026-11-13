@@ -36,7 +36,6 @@
     inPlace = false,
     expanded = $bindable(false),
     onExpandedChange,
-    shownInPlace = $bindable(false),
     closeOnSourceRemoval = false,
     onCloseComplete,
     children,
@@ -54,9 +53,6 @@
   // On a phone the sources open in the sheet whatever `inPlace` says; wider, `inPlace` keeps them
   // under the marker instead of in a floating popover.
   const placedHere = $derived(inPlace && !phone.current);
-  $effect.pre(() => {
-    shownInPlace = placedHere;
-  });
   const markerDisabled = $derived(sources.length === 0 && !preserveMarkerForClose);
   const noLinkText = $derived(labels?.noLink ?? 'Internal document, no public link');
   const unsafeLinkText = $derived(

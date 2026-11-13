@@ -33,11 +33,6 @@ const schema = {
       description:
         'With `inPlace`, whether the sources are open under the marker. Bindable; the marker toggles it.',
     },
-    shownInPlace: {
-      type: 'boolean',
-      description:
-        'Reports whether the sources are shown under the marker (`inPlace` on a wide viewport) or in the sheet or popover. Bindable, read only.',
-    },
     closeOnSourceRemoval: {
       type: 'boolean',
       description:

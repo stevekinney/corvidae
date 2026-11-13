@@ -451,9 +451,10 @@
       const anySourceWithdrawn = previousKeys.some((key) => !currentKeys.includes(key));
       // Focus on a row of the list under the control: the row that was withdrawn hands focus to the
       // next row that is a link, or to a message action when none is left. A row that stays keeps it.
+      const inPlace = sourcesElement.querySelector('.cinder-citation--in-place') !== null;
       const focusedRow = active?.closest('.cinder-citation__item') ?? null;
       const rowPosition =
-        focusedRow !== null && sourcesElement.contains(focusedRow)
+        inPlace && focusedRow !== null && sourcesElement.contains(focusedRow)
           ? Array.from(focusedRow.parentElement?.children ?? []).indexOf(focusedRow)
           : -1;
       const rowWithdrawn =
@@ -462,13 +463,17 @@
         previousKeys[rowPosition] !== undefined &&
         !currentKeys.includes(previousKeys[rowPosition]!);
       const withdrawnSource =
+        !inPlace &&
         rowPosition === -1 &&
         shown &&
         anySourceWithdrawn &&
         sourceOwnsFocus(sourcesElement, active);
+      // The list under the line is not a sheet: only the phone's bottom sheet closes under a
+      // withdrawal and hands focus back once it has gone.
       const sheetOpen =
-        (active !== null && active.closest('dialog') !== null) ||
-        sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null;
+        !inPlace &&
+        ((active !== null && active.closest('dialog') !== null) ||
+          sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null);
       if (rowWithdrawn || withdrawnSource || (!shown && sourceOwnsFocus(sourcesElement, active))) {
         if (rowWithdrawn) {
           // Said once, through the host's announcer outside the transcript's log when there is one.

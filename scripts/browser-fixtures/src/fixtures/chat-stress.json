@@ -720,7 +720,6 @@
     "rows": ["M4"],
     "scenario": "citations",
     "params": {
-      "presentation": "compact",
       "sourceSet": "contract"
     },
     "steps": [
@@ -962,16 +961,14 @@
   },
   {
     "id": 36,
-    "slug": "inline-citations",
-    "title": "Inline citation chips sit in the text flow and show a host or a label.",
-    "provenance": "derived",
-    "source": "Derived from design row M4; the original definition of this number was lost.",
+    "slug": "sources-control",
+    "title": "A message's sources are one control at the trailing end of its message line, the count and the word in the time's small muted text with a chevron, the same for any count and any width.",
+    "provenance": "issue-named",
+    "source": "Owner review of 2026-11-13: why do we have two different paradigms for sources, and the Sources row now feels crammed.",
     "rows": ["M4"],
     "scenario": "citations",
-    "params": {
-      "presentation": "inline"
-    },
-    "steps": [{ "action": "focus-source" }],
+    "params": {},
+    "steps": [{ "action": "focus-source" }, { "action": "expect-source-control" }],
     "variants": [],
     "focusSweep": false
   },
@@ -984,15 +981,15 @@
     "rows": ["M4", "T2"],
     "scenario": "citations",
     "params": {
-      "presentation": "list",
       "sourceSet": "contract"
     },
     "steps": [
       {
         "action": "expect",
         "role": "button",
-        "name": "Sources"
-      }
+        "name": "sources"
+      },
+      { "action": "expect-source-control" }
     ],
     "variants": [
       {
@@ -1113,26 +1110,20 @@
   },
   {
     "id": 41,
-    "slug": "citation-pagination",
-    "title": "Next source in Citation's panel moves to the next source of the message.",
+    "slug": "sources-one-list",
+    "title": "Six sources open as one list with every row shown, each row the link with an open glyph at its end, and no pager.",
     "provenance": "issue-named",
-    "source": "COR-2263: in 320 px Chromium case 41, tapping Next source changed one source's copy to the next.",
+    "source": "Owner review of 2026-11-13: the pagination is crammed, and the open link need not be separate from the title of the source.",
     "rows": ["M4"],
     "scenario": "citations",
-    "params": {
-      "presentation": "compact"
-    },
+    "params": {},
     "steps": [
       {
         "action": "click",
         "role": "button",
-        "name": "Sources"
+        "name": "sources"
       },
-      {
-        "action": "click",
-        "role": "button",
-        "name": "Next source"
-      },
+      { "action": "expect-source-contract" },
       {
         "action": "expect-text",
         "text": "Order 4471 audit log"
@@ -1203,13 +1194,12 @@
   {
     "id": 45,
     "slug": "citation-withdrawal",
-    "title": "Withdrawing the source of an open inline citation announces once and moves focus to the next remaining chip, or to a visible message action when none remains.",
+    "title": "Withdrawing the source whose row has focus in the open list announces once and moves focus to the next row that is a link, or to a visible message action when none remains.",
     "provenance": "issue-named",
     "source": "COR-2289 acceptance: 45 is an actual withdrawal with one announcement and visible action focus. The fixture opens a real citation and withdraws its source through the host update.",
     "rows": ["M4"],
     "scenario": "citations",
     "params": {
-      "presentation": "inline",
       "withdrawable": true
     },
     "steps": [
@@ -1219,6 +1209,7 @@
         "key": "Enter"
       },
       { "action": "expect-source-open" },
+      { "action": "focus", "role": "link", "name": "Q3 refund policy" },
       {
         "action": "hook",
         "name": "withdrawSource",
@@ -1553,7 +1544,8 @@
         "role": "radio",
         "name": "Canary",
         "scope": "[data-chat-question-dock] fieldset"
-      }
+      },
+      { "action": "expect-question-dock", "choices": 7 }
     ],
     "variants": [],
     "focusSweep": false
@@ -2271,7 +2263,8 @@
             "action": "expect",
             "role": "textbox",
             "name": "Your own answer"
-          }
+          },
+          { "action": "expect-question-dock", "choices": 4 }
         ]
       }
     ],

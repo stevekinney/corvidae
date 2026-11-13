@@ -1084,16 +1084,17 @@ export function readWithdrawal(): { announcements: number; focusVisible: boolean
     hasPaint('::after');
   const box = active?.getBoundingClientRect();
   const focusVisible =
-    // Focus lands on the message action when no source is left, or on the next remaining chip.
-    (active?.matches('.chat-message-action-button') === true ||
-      active?.matches('.chat-message-source-chips .cinder-citation__marker') === true) &&
+    // Focus lands on the next row that is a link (the list stays open under the line), or on the
+    // message action when no row is left (the list is gone).
+    (active?.matches('a.cinder-citation__row') === true ||
+      (active?.matches('.chat-message-action-button') === true &&
+        document.querySelector('.cinder-citation__panel') === null)) &&
     shell?.contains(active) === true &&
     focusPainted &&
     box !== undefined &&
     box.width > 0 &&
     box.bottom > 0 &&
-    box.top < innerHeight &&
-    document.querySelector('.cinder-citation__panel') === null;
+    box.top < innerHeight;
   return {
     announcements: host.stressAnnouncements ?? 0,
     focusVisible,
@@ -1395,24 +1396,70 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       }
       return;
     case 'expect-source-contract': {
-      const list = page.locator('.chat-message-sources-list');
+      // One list for every entry point: every row is shown (the list may scroll inside its
+      // sheet), a linked row is the link with an open glyph at its end and a domain under its
+      // title, and nothing pages, counts "N of M" or draws a separate "Open ..." line.
+      const list = page.locator('.cinder-citation__panel').first();
       await list.waitFor({ state: 'visible', timeout: DEADLINE });
+      const contract = await list.evaluate((panel) => {
+        const rows = [...panel.querySelectorAll<HTMLElement>('.cinder-citation__item')];
+        const linked = rows.filter((row) => row.querySelector('a.cinder-citation__row') !== null);
+        const viewportHeight = innerHeight;
+        const inPlace = panel.closest('.chat-message-line') !== null;
+        return {
+          rows: rows.length,
+          linked: linked.length,
+          pager: document.querySelector(
+            '[aria-label="Next source"], [aria-label="Previous source"]',
+          ),
+          counter: /\b\d+ of \d+\b/.test(panel.textContent ?? ''),
+          openLines: [...panel.querySelectorAll('a')].filter((link) =>
+            /^\s*Open\b/.test(link.textContent ?? ''),
+          ).length,
+          glyphs: linked.filter((row) => {
+            const glyph = row.querySelector('a.cinder-citation__row > svg:last-child');
+            const title = row.querySelector('.cinder-citation__title');
+            if (glyph === null || title === null) return false;
+            // The glyph is never taller than the title's line.
+            return glyph.getBoundingClientRect().height <= title.getBoundingClientRect().height;
+          }).length,
+          domains: linked.filter((row) => row.querySelector('.cinder-citation__domain') !== null)
+            .length,
+          withinHalf: inPlace || panel.getBoundingClientRect().height <= viewportHeight * 0.5 + 1,
+        };
+      });
+      if (contract.rows < 1) throw new Error('The source list has no rows.');
+      if (contract.pager !== null || contract.counter) {
+        throw new Error(
+          `The source list has a pager or an "N of M" count: ${JSON.stringify(contract)}`,
+        );
+      }
+      if (contract.openLines !== 0) {
+        throw new Error(`The source list draws a separate Open line: ${JSON.stringify(contract)}`);
+      }
+      if (contract.glyphs !== contract.linked || contract.domains !== contract.linked) {
+        throw new Error(`A linked row lacks its glyph or domain: ${JSON.stringify(contract)}`);
+      }
+      if (!contract.withinHalf) {
+        throw new Error(
+          `The source sheet is taller than half the viewport: ${JSON.stringify(contract)}`,
+        );
+      }
       const internal = list
-        .locator('.chat-message-sources-item')
+        .locator('.cinder-citation__item')
         .filter({ hasText: 'Internal refund notes' });
-      await expectAttachment(internal.locator('.chat-message-sources-note')).toContainText(
-        'Internal',
-      );
+      if ((await internal.count()) === 0) return;
+      await expectAttachment(internal.locator('.cinder-citation__note')).toContainText('Internal');
       await expectAttachment(internal.locator('a')).toHaveCount(0);
 
       const unsafe = list
-        .locator('.chat-message-sources-item')
+        .locator('.cinder-citation__item')
         .filter({ hasText: 'Rejected source address' });
-      await expectAttachment(unsafe.locator('[data-link="rejected"]')).toBeVisible();
+      await expectAttachment(unsafe.locator('[data-cinder-link="rejected"]')).toBeVisible();
       await expectAttachment(unsafe.locator('a')).toHaveCount(0);
 
       const longTitle = list
-        .locator('.chat-message-sources-title')
+        .locator('.cinder-citation__title')
         .filter({ hasText: 'deliberately long source title' });
       await expectAttachment(longTitle).toBeVisible();
       const [titleBox, titleMetrics] = await Promise.all([
@@ -1440,6 +1487,141 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
         throw new Error(
           `Long source title did not expose a two-line clamp (got ${titleMetrics.lineClamp}).`,
         );
+      }
+      return;
+    }
+    case 'expect-source-control': {
+      // One control on the message line: the last item of the line, in the time's size and muted
+      // colour, reading "N sources" with a chevron no taller than its text, and no row of its own
+      // between the prose and the line.
+      const control = page.locator('[data-chat-sources-trigger] .cinder-citation__marker').first();
+      await control.waitFor({ state: 'visible', timeout: DEADLINE });
+      const facts = await control.evaluate((marker) => {
+        const line = marker.closest('.chat-message-line');
+        const time = line?.querySelector('time');
+        const markerStyle = getComputedStyle(marker);
+        const chevron = marker.querySelector('svg');
+        const items = line === null ? [] : [...line.children];
+        const holder = marker.closest('.chat-message-line-sources');
+        const markerBox = marker.getBoundingClientRect();
+        const lineBox = line?.getBoundingClientRect();
+        return {
+          inLine: line !== null,
+          text: (marker.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          last: holder !== null && items.at(-1) === holder,
+          sameSize:
+            time !== null &&
+            time !== undefined &&
+            getComputedStyle(time).fontSize === markerStyle.fontSize,
+          chevronFits:
+            chevron !== null &&
+            chevron.getBoundingClientRect().height <=
+              Number.parseFloat(markerStyle.lineHeight || markerStyle.fontSize) + 1,
+          trailing:
+            lineBox === undefined
+              ? false
+              : Math.abs(lineBox.right - markerBox.right) <= 24 ||
+                Math.abs(markerBox.left - lineBox.left) <= 24,
+          rowBetween:
+            document.querySelector('.chat-message-wrapper > .chat-message-sources') !== null,
+          legacy:
+            document.querySelector('.chat-message-sources-toggle, .chat-message-sources-link') !==
+            null,
+        };
+      });
+      if (
+        !facts.inLine ||
+        !facts.last ||
+        !facts.sameSize ||
+        !facts.chevronFits ||
+        !facts.trailing
+      ) {
+        throw new Error(
+          `The Sources control is not the trailing item of the message line: ${JSON.stringify(facts)}`,
+        );
+      }
+      if (!/^\d+ sources?$/.test(facts.text) || facts.rowBetween || facts.legacy) {
+        throw new Error(`The Sources control reads or sits wrong: ${JSON.stringify(facts)}`);
+      }
+      return;
+    }
+    case 'expect-question-dock': {
+      // The docked question shows every choice with no "N more" count; the panel is within 80% of
+      // the viewport; the question, the own-answer area and the actions stay in view while only the
+      // list of choices scrolls; the question and the choices are 14px (the question semibold);
+      // the submit is compact at the trailing end.
+      const dock = page.locator('[data-chat-question-dock]');
+      await dock.waitFor({ state: 'visible', timeout: DEADLINE });
+      const facts = await dock.evaluate((panel) => {
+        const radios = [...panel.querySelectorAll<HTMLElement>('[role="radio"]')];
+        const question = panel.querySelector<HTMLElement>('.chat-question-dock-question');
+        const scroller = panel.querySelector<HTMLElement>('.chat-question-dock-options-scroll');
+        const body = panel.querySelector<HTMLElement>('.chat-question-dock-body');
+        const submit = panel.querySelector<HTMLElement>('button[type="submit"]');
+        const label = panel.querySelector<HTMLElement>('.chat-question-dock-choice');
+        const box = panel.getBoundingClientRect();
+        const coarse = matchMedia('(any-pointer: coarse)').matches;
+        const actions = panel.querySelector<HTMLElement>('.chat-question-dock-actions');
+        const submitBox = submit?.getBoundingClientRect();
+        const inView = (element: Element | null): boolean => {
+          if (element === null) return false;
+          const edges = element.getBoundingClientRect();
+          return edges.top >= box.top - 1 && edges.bottom <= box.bottom + 1 && edges.height > 0;
+        };
+        const hit = (radio: HTMLElement): number => {
+          const before = getComputedStyle(radio, '::before');
+          return coarse && before.content !== 'none'
+            ? Math.max(radio.getBoundingClientRect().height, Number.parseFloat(before.height))
+            : radio.getBoundingClientRect().height;
+        };
+        return {
+          radios: radios.length,
+          noMoreCount: !/\b\d+ more\b/.test(panel.textContent ?? ''),
+          withinEighty: box.height <= innerHeight * 0.8 + 1,
+          bodyOverflow: body === null ? '' : getComputedStyle(body).overflowY,
+          scrollerOverflow: scroller === null ? '' : getComputedStyle(scroller).overflowY,
+          scrollerScrolls: scroller !== null && scroller.scrollHeight > scroller.clientHeight + 1,
+          questionInView: inView(question),
+          actionsInView: inView(actions),
+          questionSize: question === null ? '' : getComputedStyle(question).fontSize,
+          questionWeight: question === null ? '' : getComputedStyle(question).fontWeight,
+          labelSize: label === null ? '' : getComputedStyle(label).fontSize,
+          submitCompact: submitBox !== undefined && submitBox.height <= 40,
+          submitTrailing:
+            submitBox !== undefined &&
+            actions !== null &&
+            Math.abs(actions.getBoundingClientRect().right - submitBox.right) <= 24 + 12,
+          // The list scrolls inside the panel: it never overflows past the actions below it.
+          listAboveActions:
+            scroller !== null &&
+            actions !== null &&
+            scroller.getBoundingClientRect().bottom <= actions.getBoundingClientRect().top + 1,
+          hitAreas: radios.every((radio) => hit(radio) >= (coarse ? 44 : 24)),
+        };
+      });
+      const radiosOk = facts.radios === step.choices;
+      const sizesOk =
+        facts.questionSize === '14px' &&
+        facts.labelSize === '14px' &&
+        Number(facts.questionWeight) >= 600;
+      const scrollOk =
+        facts.bodyOverflow !== 'auto' &&
+        facts.bodyOverflow !== 'scroll' &&
+        (!facts.scrollerScrolls || facts.scrollerOverflow === 'auto');
+      if (
+        !radiosOk ||
+        !facts.noMoreCount ||
+        !facts.withinEighty ||
+        !sizesOk ||
+        !scrollOk ||
+        !facts.questionInView ||
+        !facts.actionsInView ||
+        !facts.submitCompact ||
+        !facts.submitTrailing ||
+        !facts.hitAreas ||
+        !facts.listAboveActions
+      ) {
+        throw new Error(`The docked question breaks its contract: ${JSON.stringify(facts)}`);
       }
       return;
     }
@@ -1991,7 +2173,7 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
         () =>
           document.querySelector('.cinder-drawer__panel[data-cinder-closing]') === null &&
           document.activeElement?.matches(
-            '.cinder-citation__marker, .chat-message-action-button[data-citation-focus]',
+            'a.cinder-citation__row, .chat-message-action-button[data-citation-focus]',
           ) === true,
         undefined,
         { timeout: DEADLINE },
