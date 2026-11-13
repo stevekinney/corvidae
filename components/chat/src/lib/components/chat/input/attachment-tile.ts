@@ -1,27 +1,17 @@
 import type { AttachmentKind } from './attachment-kind.ts';
-import type { ChatAttachment } from './chat-attachment.ts';
-
-/**
- * How many attachment tiles the composer shows before it caps the list: exactly these show, each
- * whole, and the rest wait behind a count under it, so a pile of files never pushes Send off a
- * phone.
- */
-export const ATTACHMENT_LIST_CAP = 2;
-
-/** Number of complete attachment rows that fit common narrow viewport heights. */
-export function attachmentViewportCap(width: number, height: number): number {
-  if (width <= 480 && height <= 700) return 1;
-  if (width <= 480 && height <= 860) return 2;
-  return ATTACHMENT_LIST_CAP;
-}
+import {
+  ChatAttachmentUploadError,
+  type ChatAttachment,
+  type ChatAttachmentFailureKind,
+} from './chat-attachment.ts';
 
 /** The longest extension kept whole beside a truncated name, dot included. */
 const MAXIMUM_EXTENSION_LENGTH = 10;
 
 /**
- * A file name in two parts, so the stem can truncate in the middle of the name while the extension
- * stays whole: `quarterly-report-final.pdf` is `quarterly-report-final` and `.pdf`. A name with no
- * extension, a dotfile such as `.env`, or an extension too long to be one is all stem.
+ * A file name in two parts, so the stem can truncate at its end while the extension stays whole:
+ * `quarterly-report-final.pdf` is `quarterly-report-final` and `.pdf`. A name with no extension, a
+ * dotfile such as `.env`, or an extension too long to be one is all stem.
  */
 export function splitFileName(name: string): { stem: string; extension: string } {
   const dot = name.lastIndexOf('.');
@@ -31,54 +21,77 @@ export function splitFileName(name: string): { stem: string; extension: string }
   return { stem: name.slice(0, dot), extension: name.slice(dot) };
 }
 
-/** Fit a filename to a measured width while preserving its short extension. */
-export function middleEllipsisFileName(
-  name: string,
-  availableWidth: number,
-  measure: (value: string) => number,
-): string {
-  if (availableWidth <= 0 || measure(name) <= availableWidth) return name;
-  const { stem, extension } = splitFileName(name);
-  const marker = '…';
-  if (measure(`${marker}${extension}`) > availableWidth) return marker;
-  const units = Array.from(
-    new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(stem),
-    ({ segment }) => segment,
-  );
-  let low = 0;
-  let high = units.length;
-  let best = `${marker}${extension}`;
-  while (low <= high) {
-    const retained = Math.floor((low + high) / 2);
-    const prefixLength = Math.ceil(retained / 2);
-    const suffixLength = Math.floor(retained / 2);
-    const suffix = suffixLength === 0 ? '' : units.slice(-suffixLength).join('');
-    const candidate = `${units.slice(0, prefixLength).join('')}${marker}${suffix}${extension}`;
-    if (measure(candidate) <= availableWidth) {
-      best = candidate;
-      low = retained + 1;
-    } else {
-      high = retained - 1;
-    }
-  }
-  return best;
-}
+/** The glyph a file wears on its chip: what kind of file it is, in the person's words. */
+export type AttachmentGlyph =
+  'image' | 'document' | 'spreadsheet' | 'archive' | 'audio' | 'video' | 'code' | 'file';
 
-const KIND_BADGES: Record<AttachmentKind, string> = {
-  image: 'IMG',
-  code: 'CODE',
-  document: 'DOC',
-};
+const SPREADSHEET_EXTENSIONS = new Set([
+  '.xls',
+  '.xlsx',
+  '.xlsm',
+  '.csv',
+  '.tsv',
+  '.ods',
+  '.numbers',
+]);
+const ARCHIVE_EXTENSIONS = new Set(['.zip', '.tar', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.rar']);
+const DOCUMENT_EXTENSIONS = new Set([
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.odt',
+  '.rtf',
+  '.txt',
+  '.md',
+  '.pages',
+  '.ppt',
+  '.pptx',
+  '.key',
+]);
 
 /**
- * The short type badge on a tile: the file's extension in capitals (at most four letters), or a
- * word for its kind when it has none.
+ * Which glyph a file wears. The media type decides first, then the extension for the types a
+ * browser reports as nothing or as a generic `application/octet-stream`; a file that is none of
+ * these gets the plain file glyph. `kind` is the composer's own reading and settles an image or a
+ * piece of code.
  */
-export function fileTypeBadge(name: string, kind: AttachmentKind): string {
-  const { extension } = splitFileName(name);
-  const letters = extension.slice(1).toUpperCase();
-  if (letters === '' || letters.length > 4) return KIND_BADGES[kind];
-  return letters;
+export function attachmentGlyph(
+  name: string,
+  mediaType: string,
+  kind: AttachmentKind,
+): AttachmentGlyph {
+  const type = mediaType.toLowerCase();
+  const extension = splitFileName(name.toLowerCase()).extension;
+  if (kind === 'image' || type.startsWith('image/')) return 'image';
+  if (type.startsWith('audio/')) return 'audio';
+  if (type.startsWith('video/')) return 'video';
+  if (
+    SPREADSHEET_EXTENSIONS.has(extension) ||
+    type.includes('spreadsheet') ||
+    type === 'application/vnd.ms-excel' ||
+    type === 'text/csv'
+  ) {
+    return 'spreadsheet';
+  }
+  if (
+    ARCHIVE_EXTENSIONS.has(extension) ||
+    type === 'application/zip' ||
+    type === 'application/gzip' ||
+    type === 'application/x-tar' ||
+    type === 'application/x-7z-compressed'
+  ) {
+    return 'archive';
+  }
+  if (kind === 'code') return DOCUMENT_EXTENSIONS.has(extension) ? 'document' : 'code';
+  if (
+    DOCUMENT_EXTENSIONS.has(extension) ||
+    type === 'application/pdf' ||
+    type.includes('wordprocessing') ||
+    type === 'application/msword'
+  ) {
+    return 'document';
+  }
+  return 'file';
 }
 
 /** Whether an attachment blocks Send until it is retried or removed. */
@@ -91,14 +104,72 @@ export function canRetry(attachment: Pick<ChatAttachment, 'status' | 'retryable'
   return attachment.status === 'error' && attachment.retryable === true;
 }
 
-/** The count the summary over the tiles starts with: `3 files`. */
-export function attachmentCountText(count: number): string {
-  return count === 1 ? '1 file' : `${count} files`;
+/** Whether trying again can fix a failure of this kind. */
+export function isRetryableFailure(kind: ChatAttachmentFailureKind): boolean {
+  return kind === 'network' || kind === 'unknown';
 }
 
-/** Why Send is off while files need attention, shown under the composer and named by Send. */
-export function attachmentBlockingReason(count: number): string {
-  return count === 1 ? 'Retry or remove 1 file to send' : `Retry or remove ${count} files to send`;
+/** Why a failed attachment failed: what its host said, or `unknown` when it said nothing. */
+export function failureKindOf(
+  attachment: Pick<ChatAttachment, 'failureKind'>,
+): ChatAttachmentFailureKind {
+  return attachment.failureKind ?? 'unknown';
+}
+
+/**
+ * What a rejected upload was: the kind an upload hook named with a `ChatAttachmentUploadError`; a
+ * `TypeError`, which is what `fetch` rejects with when the request never completes, reads as
+ * `network`; anything else is `unknown`.
+ */
+export function classifyUploadFailure(error: unknown): {
+  kind: ChatAttachmentFailureKind;
+  maxFileSize?: number;
+} {
+  if (error instanceof ChatAttachmentUploadError) {
+    return error.maxFileSize === undefined
+      ? { kind: error.kind }
+      : { kind: error.kind, maxFileSize: error.maxFileSize };
+  }
+  if (error instanceof TypeError) return { kind: 'network' };
+  return { kind: 'unknown' };
+}
+
+/** The one line under the strip while a failure blocks Send, before it is put in words. */
+export type AttachmentFailureLine =
+  | {
+      readonly type: 'one';
+      readonly attachment: ChatAttachment;
+      readonly kind: ChatAttachmentFailureKind;
+      /** What its action does: a file that can be tried again is retried, any other is removed. */
+      readonly action: 'retry' | 'remove';
+    }
+  | { readonly type: 'many'; readonly count: number; readonly action: 'retry-all' | 'remove-all' };
+
+/**
+ * What the line under the strip says. One failed file is named, with the action that fits it. Several
+ * say how many failed and offer to retry them all, or to remove them all when none can be retried.
+ * When the person has picked one of several (`pickedId`), the line is about that file alone.
+ */
+export function attachmentFailureLine(
+  attachments: readonly ChatAttachment[],
+  pickedId?: string,
+): AttachmentFailureLine | undefined {
+  const failed = attachments.filter(needsAttention);
+  if (failed.length === 0) return undefined;
+  const picked = failed.length === 1 ? failed[0] : failed.find((entry) => entry.id === pickedId);
+  if (picked !== undefined) {
+    return {
+      type: 'one',
+      attachment: picked,
+      kind: failureKindOf(picked),
+      action: canRetry(picked) ? 'retry' : 'remove',
+    };
+  }
+  return {
+    type: 'many',
+    count: failed.length,
+    action: failed.some(canRetry) ? 'retry-all' : 'remove-all',
+  };
 }
 
 /** An upload's progress as a whole percentage between 0 and 100, or `undefined` when unknown. */

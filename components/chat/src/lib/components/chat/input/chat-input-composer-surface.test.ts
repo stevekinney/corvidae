@@ -254,20 +254,24 @@ describe('the controls snippet is told when the composer is narrow', () => {
     expect(source).not.toMatch(/\.chat-input-footer :global\(\.cinder-button\)\s*\{/);
   });
 
-  test('a capped attachment list is no scroll box, and on a phone each file is a full-width row (C#4)', async () => {
+  test('the attachment strip is one row that scrolls sideways, with no scrollbar, count or second row (C#4)', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
-    expect(source).toMatch(
-      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*max-block-size: 12rem;[^}]*overflow-y: auto;/,
-    );
+    const strip = source.match(/\.chat-input-attachments\s*\{[^}]*\}/)?.[0];
+    expect(strip).toMatch(/flex-flow: row nowrap;/);
+    expect(strip).toMatch(/overflow-x: auto;/);
+    expect(strip).toMatch(/scrollbar-width: none;/);
     expect(source).not.toContain('mask-image');
+    // Nothing counts, caps or reveals the files: a chip cut by the edge is the only sign of more.
+    expect(source).not.toContain('chat-input-attachment-summary');
+    expect(source).not.toContain('chat-input-attachment-more');
+    expect(source).not.toContain('chat-input-attachment-scroll-cue');
+    expect(source).not.toContain('data-expanded');
+    expect(source).not.toContain('wholeAttachmentRows');
+    // A scroller clips its hit-area overhang, so a coarse pointer pads the strip by it and takes the
+    // room back with a negative margin: it costs no layout.
     expect(source).toMatch(
-      /@container \(max-inline-size: 30rem\)\s*\{\s*\.chat-input-attachments\s*\{\s*align-items: stretch;/,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-input-attachments\s*\{[^}]*padding-block: var\(--cinder-space-2\);[^}]*margin-block: calc\(var\(--cinder-space-2\) \* -1\);/,
     );
-    // The name never wraps there: the script shortens it to one line, and a wrapped name would
-    // move the row's controls and height whenever the fit overshoots.
-    const phoneRule = source.match(/:global\(\.chat-attachment-preview-name\)\s*\{[^}]*\}/)?.[0];
-    expect(phoneRule).toMatch(/white-space: nowrap;/);
-    expect(phoneRule).not.toMatch(/white-space: normal|overflow-wrap/);
   });
 
   test('Attach and Send keep a compact face with the 44px hit area from Cinder, and the one-row form is the default', async () => {
@@ -291,22 +295,22 @@ describe('attachments', () => {
     return { target, instance };
   }
 
-  test('an attached file is a removable tile with its type badge, name and size', async () => {
+  test('an attached file is a removable chip: a glyph, its name and Remove, with no size or badge', async () => {
     const { target, instance } = mountInput();
     instance.addFiles([png('refund-photo.png')]);
     await tick();
 
     const chip = target.querySelector('.chat-attachment-preview')!;
-    expect(chip.textContent?.replace(/\s+/g, ' ').trim()).toBe('PNG refund-photo.png 240 KB');
+    expect(chip.textContent?.replace(/\s+/g, ' ').trim()).toBe('refund-photo.png');
     const filename = chip.querySelector<HTMLElement>('.chat-attachment-preview-name');
     expect(filename?.textContent).toBe('refund-photo.png');
-    expect(filename?.getAttribute('title')).toBe('refund-photo.png');
+    expect(chip.getAttribute('title')).toBe('refund-photo.png');
     expect(chip.querySelector('button[aria-label="Remove refund-photo.png"]')).not.toBeNull();
-    expect(target.querySelector('[data-attachment-error]')).toBeNull();
+    expect(target.querySelector('.chat-input-attachment-reason')).toBeNull();
     unmount(instance);
   });
 
-  test('the attachment shelf sits above the text and before the controls', async () => {
+  test('the attachment strip sits above the text and before the controls', async () => {
     const { target, instance } = mountInput();
     instance.addFiles([png('refund-photo.png')]);
     await tick();
@@ -327,22 +331,38 @@ describe('attachments', () => {
     const { target, instance } = mountInput({
       labels: {
         attachedFiles: 'Angehängte Dateien',
-        moreAttachments: (count: number) => `${count} weitere unten`,
         retryAttachment: 'Erneut versuchen',
         retryAttachmentAccessible: (name: string) => `Erneut versuchen: ${name}`,
         removeAttachment: 'Entfernen',
         removeAttachmentAccessible: (name: string) => `Entfernen: ${name}`,
         attachmentBlockingReason: () => 'Bitte Dateien erneut versuchen oder entfernen',
+        attachmentFailureTooLarge: (name: string, limit: string | undefined) =>
+          `${name} ist größer als ${limit ?? 'das Limit'}.`,
+        attachmentFailureMany: (count: number) => `${count} Dateien nicht hochgeladen`,
+        retryAllAttachments: 'Alle erneut versuchen',
+        removeAllFailedAttachments: 'Alle fehlgeschlagenen entfernen',
       },
+      maxFileSize: 100,
     });
-    instance.addFiles(Array.from({ length: 4 }, (_, index) => png(`foto-${index}.png`)));
+    instance.addFiles([png('foto-0.png')]);
     await tick();
 
     expect(target.querySelector('[aria-label="Angehängte Dateien"]')).not.toBeNull();
-    expect(target.querySelector('.chat-input-attachment-more')?.textContent?.trim()).toBe(
-      '2 weitere unten',
+    expect(target.querySelector('button[aria-label="Entfernen: foto-0.png"]')).not.toBeNull();
+    expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      'foto-0.png ist größer als 100 B.',
     );
-    expect(target.querySelector('button[aria-label="Entfernen: foto-1.png"]')).not.toBeNull();
+    expect(target.querySelector('.chat-input-attachment-reason button')?.textContent?.trim()).toBe(
+      'Entfernen',
+    );
+    instance.addFiles([png('foto-1.png')]);
+    await tick();
+    expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      '2 Dateien nicht hochgeladen',
+    );
+    expect(target.querySelector('.chat-input-attachment-reason button')?.textContent?.trim()).toBe(
+      'Alle fehlgeschlagenen entfernen',
+    );
     unmount(instance);
   });
 
@@ -361,7 +381,7 @@ describe('attachments', () => {
     unmount(instance);
   });
 
-  test('a refused file keeps its tile, with the reason beside it and only the cross to remove it', async () => {
+  test('a refused file keeps its chip, with its reason in the one line and only the cross to remove it', async () => {
     const { target, instance } = mountInput({
       maxFileSize: 100,
       formatAttachmentError: () => 'Can’t attach: 240 KB is over the 100 B limit.',
@@ -370,9 +390,13 @@ describe('attachments', () => {
     await tick();
 
     const item = target.querySelector('[data-attachment-state="error"]')!;
-    expect(item.querySelector('.chat-attachment-preview')?.textContent).toContain('photo.png');
-    expect(item.querySelector('[data-attachment-error]')?.textContent).toBe(
-      'Can’t attach: 240 KB is over the 100 B limit.',
+    expect(item.querySelector('.chat-attachment-preview')?.textContent?.trim()).toBe('photo.png');
+    // The host's words are the chip's tooltip; the line under the strip says what happened.
+    expect(item.querySelector('.chat-attachment-preview')?.getAttribute('title')).toBe(
+      'photo.png. Can’t attach: 240 KB is over the 100 B limit.',
+    );
+    expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      'photo.png is over the 100 B limit.',
     );
     // A file the composer refused cannot be retried; it is removed with the same cross as any tile.
     expect(item.querySelector('button[aria-label="Retry photo.png"]')).toBeNull();
@@ -384,7 +408,7 @@ describe('attachments', () => {
     unmount(instance);
   });
 
-  test('a failed file turns Send off, keeps its reason in the shelf, and Send names it', async () => {
+  test('a failed file turns Send off, keeps its reason in the line under the strip, and Send names it', async () => {
     const submissions: unknown[] = [];
     const { target, instance } = mountInput({
       maxFileSize: 100,
@@ -399,9 +423,15 @@ describe('attachments', () => {
     const send = target.querySelector<HTMLButtonElement>('[data-chat-send]')!;
     expect(send.disabled).toBe(true);
     const reason = target.querySelector<HTMLElement>('.chat-input-attachment-reason')!;
-    expect(reason.textContent?.trim()).toBe('Retry or remove 1 file to send');
+    expect(reason.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      'photo.png is over the 100 B limit.',
+    );
     expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(reason.id);
-    expect(target.querySelector('.chat-input-attachment-shelf')?.contains(reason)).toBe(true);
+    expect(target.querySelector('.chat-input-attachment-strip')?.contains(reason)).toBe(true);
+    // No separate visible line says "Retry or remove N files to send": that stays Send's tooltip.
+    expect(target.querySelector('.chat-input-attachment-strip')?.textContent).not.toContain(
+      'Retry or remove',
+    );
 
     await fireEvent.keyDown(editor, { key: 'Enter' });
     await tick();
@@ -417,21 +447,21 @@ describe('attachments', () => {
     unmount(instance);
   });
 
-  test('the count over the tiles names the files, and the shelf says what blocks Send (C#16)', async () => {
+  test('several failures say how many, in one line under the strip, and no file is counted (C#16)', async () => {
     const { target, instance } = mountInput({ maxFileSize: 1024 });
     instance.addFiles([png('small.png', 10), png('big.png'), png('bigger.png')]);
     await tick();
 
-    const summary = target.querySelector('[data-chat-attachment-summary]')!;
-    expect(summary.textContent?.replace(/\s+/g, ' ').trim()).toBe('3 files 1 more below');
-    expect(target.querySelector('.chat-input-attachment-reason')?.textContent?.trim()).toBe(
-      'Retry or remove 2 files to send',
+    expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      "2 files didn't upload",
     );
+    expect(target.querySelectorAll('.chat-input-attachment-reason')).toHaveLength(1);
+    expect(target.textContent).not.toContain('3 files');
     expect(target.textContent).not.toContain('need attention');
     unmount(instance);
   });
 
-  test('a long list is capped, with a count of the rest under it that opens the whole list', async () => {
+  test('a long list is one row of every chip: nothing is capped, counted or revealed', async () => {
     const { target, instance } = mountInput();
     instance.addFiles(
       Array.from({ length: 14 }, (_, index) => png(`page-${String(index + 1)}.png`, 10)),
@@ -439,20 +469,11 @@ describe('attachments', () => {
     await tick();
 
     const list = target.querySelector<HTMLElement>('[aria-label="Attached files"]')!;
-    expect(list.hasAttribute('data-expanded')).toBe(false);
-    // Exactly the tiles shown are drawn, so the count under them is the rest of the files (C#4).
-    expect(list.querySelectorAll('li')).toHaveLength(2);
-    const more = target.querySelector<HTMLButtonElement>('.chat-input-attachment-more')!;
-    expect(more.textContent?.trim()).toBe('12 more below');
-    expect(more.getAttribute('aria-controls')).toBe(list.id);
-
-    await fireEvent.click(more);
-    await tick();
-
     expect(list.querySelectorAll('li')).toHaveLength(14);
-    expect(list.hasAttribute('data-expanded')).toBe(true);
+    expect(list.hasAttribute('data-expanded')).toBe(false);
     expect(target.querySelector('.chat-input-attachment-more')).toBeNull();
-    // Every file can still be removed, and Send stays a control of the composer.
+    expect(target.querySelector('.chat-input-attachment-reason')).toBeNull();
+    // Every file can be removed, and Send stays a control of the composer.
     expect(target.querySelector('[aria-label="Remove page-14.png"]')).not.toBeNull();
     expect(target.querySelector('[data-chat-send]')).not.toBeNull();
     unmount(instance);

@@ -74,13 +74,12 @@ describe('ChatInput layout CSS', () => {
     expect(chatInputSource).not.toContain('ProseMirror');
   });
 
-  test('keeps the collapsed attachment rows content-sized and reserves overflow only after reveal', async () => {
+  test('keeps the attachment strip one content-sized row that scrolls sideways', async () => {
     const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
-    expect(chatInputSource).toMatch(/data-expanded=\{attachmentsExpanded \|\| undefined\}/);
-    expect(chatInputSource).toMatch(
-      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*max-block-size:\s*12rem;[^}]*overflow-y:\s*auto;/,
-    );
+    expect(chatInputSource).not.toContain('data-expanded');
     const base = cssBlocks(chatInputSource, '.chat-input-attachments {')[0] ?? '';
+    expectDeclaration(base, 'flex-flow', 'row nowrap');
+    expectDeclaration(base, 'overflow-x', 'auto');
     expect(base).not.toContain('max-block-size');
     expect(base).not.toContain('overflow-y');
   });

@@ -74,25 +74,19 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).not.toContain('data-offline');
     expect(source).toMatch(/\.chat-input-editor\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
     expect(source).toMatch(/\.chat-input-markdown\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
-    // The opened list ends on a whole row with no fade over a part row; a line under it counts
-    // the files still below.
+    // No fade over a cut chip: the cut itself is the sign that the strip scrolls.
     expect(source).not.toContain('attachmentScrollFade');
-    expect(source).not.toContain('.chat-input-attachments[data-expanded]::after');
+    expect(source).not.toContain('.chat-input-attachments::after');
     expect(source).toContain('align-items: center;');
-    expect(source).toContain('class="chat-input-attachment-scroll-cue"');
-    expect(source).toContain('labels.moreAttachments(hiddenListedAttachments)');
   });
 
-  test('an opened list shows whole rows and takes its hit-area room back from the layout', async () => {
+  test('the strip takes its hit-area room back from the layout, and a chip scrolled in stops short of the edge', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
-    expect(source).toContain('{@attach wholeAttachmentRows}');
-    expect(source).toContain('function wholeAttachmentRows(node: HTMLElement)');
     expect(source).toMatch(
-      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-input-attachments\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
     );
-    // A row scrolled into view stops one padding short of either edge, so its hit area is not clipped.
     expect(source).toMatch(
-      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*scroll-padding-block:\s*var\(--cinder-space-2\);/s,
+      /\.chat-input-attachments\s*\{[^}]*scroll-padding-inline:\s*var\(--cinder-space-2\);/s,
     );
   });
 });

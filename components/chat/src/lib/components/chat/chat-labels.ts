@@ -70,7 +70,22 @@ export type ChatLabels = {
   /** Visible label inside the unread divider. */
   newMessagesLabel: string;
   attachedFiles: string;
-  moreAttachments: (count: number) => string;
+  /**
+   * The line under the attachment strip while failed files block Send. A file that did not upload
+   * for want of a connection, a file over the limit (`limit` is the limit in words, such as
+   * "25 MB", or `undefined` when the host did not say), a file the composer cannot take, and a file
+   * that failed for another reason.
+   */
+  attachmentFailureNetwork: (name: string) => string;
+  attachmentFailureTooLarge: (name: string, limit: string | undefined) => string;
+  attachmentFailureUnsupported: (name: string) => string;
+  attachmentFailureUnknown: (name: string) => string;
+  /** The line when several files failed. */
+  attachmentFailureMany: (count: number) => string;
+  retryAllAttachments: string;
+  removeAllFailedAttachments: string;
+  /** Accessible name of a failed chip that shows why its file failed, when several failed. */
+  showAttachmentFailureAccessible: (name: string) => string;
   retryAttachment: string;
   retryAttachmentAccessible: (name: string) => string;
   removeAttachment: string;
@@ -172,7 +187,15 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   newMessagesBelow: 'New messages below',
   newMessagesLabel: 'New',
   attachedFiles: 'Attached files',
-  moreAttachments: (count) => `${count} more below`,
+  attachmentFailureNetwork: (name) => `${name} didn't upload. Check your connection.`,
+  attachmentFailureTooLarge: (name, limit) =>
+    limit === undefined ? `${name} is over the limit.` : `${name} is over the ${limit} limit.`,
+  attachmentFailureUnsupported: (name) => `${name} can't be attached.`,
+  attachmentFailureUnknown: (name) => `${name} didn't upload.`,
+  attachmentFailureMany: (count) => `${count} files didn't upload`,
+  retryAllAttachments: 'Retry all',
+  removeAllFailedAttachments: 'Remove all failed',
+  showAttachmentFailureAccessible: (name) => `Why ${name} failed`,
   retryAttachment: 'Retry',
   retryAttachmentAccessible: (name) => `Retry ${name}`,
   removeAttachment: 'Remove',

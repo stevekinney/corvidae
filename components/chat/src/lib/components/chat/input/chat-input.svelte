@@ -239,7 +239,6 @@
     List,
     Paperclip,
     ListOrdered,
-    RotateCcw,
     SendHorizontal,
     Square,
     Callout,
@@ -267,84 +266,15 @@
   } from './composer-run-clock.ts';
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import {
-    ATTACHMENT_LIST_CAP,
-    attachmentViewportCap,
-    typeNotAcceptedText,
-    attachmentCountText,
+    attachmentFailureLine,
     canRetry,
+    classifyUploadFailure,
+    isRetryableFailure,
     needsAttention,
+    typeNotAcceptedText,
   } from './attachment-tile.ts';
-  import { hiddenRowCounts, wholeRowsBlockSize, type RowEdges } from '../whole-rows.ts';
+  import { formatBytes } from '../../../utilities/format-bytes.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
-
-  /** The files still out of sight below an opened list, for the "N more" line under it. */
-  let hiddenListedAttachments = $state(0);
-
-  /**
-   * Sizes an opened attachment list to whole rows plus their gaps, so it ends on a row and no part
-   * of the next one shows; the "N more" line under it says how many remain. The list's block
-   * padding is the room for its end rows' hit-area overhang; the matching negative margin keeps it
-   * out of the layout, so the header-to-first-row and last-row-to-hint distances equal the
-   * collapsed shelf's.
-   */
-  function wholeAttachmentRows(node: HTMLElement): () => void {
-    const edgesOf = (): RowEdges[] => {
-      const nodeTop = node.getBoundingClientRect().top;
-      return [...node.querySelectorAll<HTMLElement>(':scope > li')].map((row) => {
-        const box = row.getBoundingClientRect();
-        const top = box.top - nodeTop + node.scrollTop;
-        return { top, bottom: top + box.height };
-      });
-    };
-    const count = (): void => {
-      hiddenListedAttachments = node.hasAttribute('data-expanded')
-        ? hiddenRowCounts(edgesOf(), node.scrollTop, node.clientHeight).below
-        : 0;
-    };
-    const fit = (): void => {
-      // Growing the list to measure it and shrinking it again clamps its scroll offset twice, which
-      // would move a list the person (or a focus move) has scrolled; the offset is put back.
-      const scrollTop = node.scrollTop;
-      measure();
-      node.scrollTop = scrollTop;
-      count();
-    };
-    const measure = (): void => {
-      node.style.removeProperty('max-block-size');
-      if (!node.hasAttribute('data-expanded')) return;
-      const paddingEnd = Number.parseFloat(getComputedStyle(node).paddingBlockEnd) || 0;
-      const blockSize = wholeRowsBlockSize(edgesOf(), node.clientHeight, paddingEnd);
-      if (blockSize !== undefined) node.style.setProperty('max-block-size', `${blockSize}px`);
-    };
-
-    let frame = 0;
-    const schedule = (): void => {
-      if (frame !== 0) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        fit();
-      });
-    };
-    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
-    resize?.observe(node);
-    const mutations =
-      typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(schedule);
-    // Only the open state is watched as an attribute: this function writes `style` itself.
-    mutations?.observe(node, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['data-expanded'],
-    });
-    node.addEventListener('scroll', count, { passive: true });
-    fit();
-    return () => {
-      cancelAnimationFrame(frame);
-      resize?.disconnect();
-      mutations?.disconnect();
-      node.removeEventListener('scroll', count);
-    };
-  }
 
   // Per-instance fallback factory for attachments whose file metadata is unavailable
   // AND as a collision-disambiguation counter when two files share identical metadata.
@@ -681,30 +611,51 @@
   );
   /** The files that block Send until each is retried or removed. */
   const attentionCount = $derived(attachments.filter(needsAttention).length);
-  // A long list is capped: the first tiles show, the last of them fades, and a count under the list
-  // shows the rest. The list itself scrolls once it is open, so Send stays in the pane.
-  let attachmentsExpanded = $state(false);
-  let visibleAttachmentCap = $state(ATTACHMENT_LIST_CAP);
+  // With several failed files, the person can pick one to read why it failed: the line under the
+  // strip then speaks of that file alone. The pick lapses once its file is no longer failed, or only
+  // one file is left that failed.
+  let pickedFailureId = $state<string | undefined>(undefined);
   $effect(() => {
-    if (attachments.length <= ATTACHMENT_LIST_CAP) attachmentsExpanded = false;
+    if (pickedFailureId === undefined) return;
+    const failed = attachments.filter(needsAttention);
+    if (failed.length < 2 || !failed.some((entry) => entry.id === pickedFailureId)) {
+      pickedFailureId = undefined;
+    }
   });
-  const shownAttachments = $derived(
-    attachmentsExpanded
-      ? attachments
-      : attachments
-          .toSorted((left, right) => Number(needsAttention(right)) - Number(needsAttention(left)))
-          .slice(0, visibleAttachmentCap),
+  /** The one line under the strip while a failure blocks Send, before it is put in words. */
+  const failureLine = $derived(attachmentFailureLine(attachments, pickedFailureId));
+  const failureLineText = $derived.by((): string | undefined => {
+    if (failureLine === undefined) return undefined;
+    if (failureLine.type === 'many') return labels.attachmentFailureMany(failureLine.count);
+    const { attachment, kind } = failureLine;
+    const fileName = attachment.file.name;
+    if (kind === 'network') return labels.attachmentFailureNetwork(fileName);
+    if (kind === 'unsupported-type') return labels.attachmentFailureUnsupported(fileName);
+    if (kind === 'unknown') return labels.attachmentFailureUnknown(fileName);
+    return labels.attachmentFailureTooLarge(
+      fileName,
+      attachment.maxFileSize === undefined ? undefined : formatBytes(attachment.maxFileSize),
+    );
+  });
+  const failureLineActionLabel = $derived(
+    failureLine === undefined
+      ? undefined
+      : failureLine.action === 'retry'
+        ? labels.retryAttachment
+        : failureLine.action === 'remove'
+          ? labels.removeAttachment
+          : failureLine.action === 'retry-all'
+            ? labels.retryAllAttachments
+            : labels.removeAllFailedAttachments,
   );
-  const hiddenAttachmentCount = $derived(attachments.length - shownAttachments.length);
+  // The line is announced through the composer's live region when it appears or changes, as the
+  // status line is: it is not a live region itself, and a file's failure is told once, here.
+  let announcedFailureText: string | undefined;
   $effect(() => {
-    if (typeof window === 'undefined') return;
-    const updateViewportCap = (): void => {
-      if (window.innerWidth <= 0 || window.innerHeight <= 0) return;
-      visibleAttachmentCap = attachmentViewportCap(window.innerWidth, window.innerHeight);
-    };
-    updateViewportCap();
-    window.addEventListener('resize', updateViewportCap);
-    return () => window.removeEventListener('resize', updateViewportCap);
+    const text = failureLineText;
+    if (text === announcedFailureText) return;
+    announcedFailureText = text;
+    if (text !== undefined) untrack(() => announcer.announce(text));
   });
   const hasReadyPromotedPaste = $derived(
     attachments.some(
@@ -901,10 +852,24 @@
     return undefined;
   }
 
+  /** What a refusal is, as the attachment keeps it: the kind that words it, and the limit. */
+  function refusalDetails(
+    refusal: ChatAttachmentFailure,
+  ): Pick<ChatAttachment, 'failureKind' | 'maxFileSize'> {
+    if (refusal.kind === 'too-large') {
+      return { failureKind: 'too-large', maxFileSize: refusal.maxFileSize };
+    }
+    return { failureKind: 'unsupported-type' };
+  }
+
   /** `attachment` as an `error` row: its upload reference is dropped, so it can never be sent. */
-  function refused(attachment: ChatAttachment, message: string): ChatAttachment {
+  function refused(
+    attachment: ChatAttachment,
+    message: string,
+    refusal: ChatAttachmentFailure,
+  ): ChatAttachment {
     const { reference: _reference, progress: _progress, ...others } = attachment;
-    return { ...others, status: 'error', error: message };
+    return { ...others, status: 'error', error: message, ...refusalDetails(refusal) };
   }
 
   /**
@@ -925,10 +890,9 @@
         abortUploads([attachment.id]);
         const message = describeFailure(refusal);
         attachments = attachments.map((entry) =>
-          entry.id === attachment.id ? refused(entry, message) : entry,
+          entry.id === attachment.id ? refused(entry, message, refusal) : entry,
         );
         onAttachmentFailure?.(attachment.file, message);
-        announcer.announce(`${attachment.file.name} was not attached: ${message}`);
       }
     });
   });
@@ -955,9 +919,9 @@
             kind,
             status: 'error',
             error: message,
+            ...refusalDetails(refusal),
           },
         ];
-        announcer.announce(`${file.name} was not attached: ${message}`);
       }
       return null;
     }
@@ -1001,7 +965,12 @@
         () => {
           attachments = attachments.map((a) =>
             a.id === attachment.id
-              ? { ...a, status: 'error' as const, error: 'Failed to read file' }
+              ? {
+                  ...a,
+                  status: 'error' as const,
+                  error: 'Failed to read file',
+                  failureKind: 'unknown' as const,
+                }
               : a,
           );
           return undefined;
@@ -1041,8 +1010,14 @@
           file: attachment.file,
           error: failure,
         });
-        settle({ status: 'error', error: message, retryable: true });
-        announcer.announce(`${attachment.file.name} could not be uploaded: ${message}`);
+        const { kind, maxFileSize: limit } = classifyUploadFailure(failure);
+        settle({
+          status: 'error',
+          error: message,
+          failureKind: kind,
+          ...(limit === undefined ? {} : { maxFileSize: limit }),
+          retryable: isRetryableFailure(kind),
+        });
       } finally {
         uploadControllers.delete(attachment.id);
       }
@@ -1050,21 +1025,79 @@
   }
 
   /** Uploads a failed attachment again, as it was first uploaded. */
-  function retryAttachment(attachmentId: string): void {
+  function retryAttachment(attachmentId: string): boolean {
     const upload = uploadAttachment;
     const attachment = attachments.find((entry) => entry.id === attachmentId);
-    if (upload === undefined || attachment === undefined || !canRetry(attachment)) return;
+    if (upload === undefined || attachment === undefined || !canRetry(attachment)) return false;
     const {
       error: _error,
       progress: _progress,
       retryable: _retryable,
       reference: _reference,
+      failureKind: _failureKind,
+      maxFileSize: _maxFileSize,
       ...others
     } = attachment;
     const retrying: ChatAttachment = { ...others, status: 'uploading' };
     attachments = attachments.map((entry) => (entry.id === attachmentId ? retrying : entry));
-    announcer.announce(`Retrying ${attachment.file.name}`);
     startUpload(retrying, upload);
+    return true;
+  }
+
+  /**
+   * Retries what the line under the strip offers: one file, or every failed file that can be tried
+   * again. The controls that asked go away with the failure, so focus moves to the first retried
+   * chip's remove control, which stays.
+   */
+  async function retryFailed(attachmentIds: readonly string[]): Promise<void> {
+    const retried = attachmentIds.filter((attachmentId) => retryAttachment(attachmentId));
+    const [first] = retried;
+    if (first === undefined) return;
+    announcer.announce(
+      retried.length === 1
+        ? `Retrying ${attachments.find((entry) => entry.id === first)?.file.name ?? ''}`
+        : `Retrying ${retried.length} files`,
+    );
+    await tick();
+    removeControlOf(first)?.focus();
+  }
+
+  /** Removes the failed files the line under the strip is about, and moves focus on. */
+  function removeFailed(attachmentIds: readonly string[]): void {
+    const before = attachments.map((entry) => entry.id);
+    const removed = new Set(attachmentIds);
+    for (const attachmentId of attachmentIds) removeAttachment(attachmentId, { moveFocus: false });
+    void focusStripAfterRemoval(before, removed);
+  }
+
+  /** What the line's action does, for the failed files it speaks of. */
+  function runFailureLineAction(): void {
+    const line = failureLine;
+    if (line === undefined) return;
+    const failed = attachments.filter(needsAttention);
+    if (line.type === 'one') {
+      if (line.action === 'retry') void retryFailed([line.attachment.id]);
+      else removeFailed([line.attachment.id]);
+    } else if (line.action === 'retry-all') {
+      void retryFailed(failed.filter(canRetry).map((entry) => entry.id));
+    } else {
+      removeFailed(failed.map((entry) => entry.id));
+    }
+  }
+
+  /**
+   * What activating a failed chip's main area does. One failed file is retried, when it can be.
+   * Among several, the chip is picked and the line says why that file failed; activating the picked
+   * chip again lets the line speak of them all.
+   */
+  function chipActivation(attachment: ChatAttachment): (() => void) | undefined {
+    if (!needsAttention(attachment)) return undefined;
+    if (attachments.filter(needsAttention).length > 1) {
+      return () => {
+        pickedFailureId = pickedFailureId === attachment.id ? undefined : attachment.id;
+      };
+    }
+    return canRetry(attachment) ? () => void retryFailed([attachment.id]) : undefined;
   }
 
   function abortUploads(ids?: readonly string[]): void {
@@ -1073,9 +1106,48 @@
     }
   }
 
-  function removeAttachment(attachmentId: string): void {
+  /** The remove control of an attached file's chip, which stays while the chip's other controls go. */
+  function removeControlOf(attachmentId: string): HTMLElement | null {
+    return (
+      formElement?.querySelector<HTMLElement>(
+        `[data-attachment-id="${CSS.escape(attachmentId)}"] .chat-input-attachment-remove`,
+      ) ?? null
+    );
+  }
+
+  /**
+   * Puts focus back where it can act once the chips it was on are gone: the remove control of the
+   * chip that took the first one's place, else the one before it, else the text field. `before` is
+   * the strip's order before the removal.
+   */
+  async function focusStripAfterRemoval(before: readonly string[], removed: ReadonlySet<string>) {
+    const first = before.findIndex((entryId) => removed.has(entryId));
+    await tick();
+    const remaining = before.filter((entryId) => !removed.has(entryId));
+    const following = before.slice(first + 1).find((entryId) => !removed.has(entryId));
+    const preceding = before
+      .slice(0, Math.max(first, 0))
+      .findLast((entryId) => !removed.has(entryId));
+    const target = following ?? preceding;
+    const control =
+      target === undefined || !remaining.includes(target) ? null : removeControlOf(target);
+    (control ?? editorElement)?.focus();
+  }
+
+  function removeAttachment(attachmentId: string, options: { moveFocus?: boolean } = {}): void {
     const attachment = attachments.find((a) => a.id === attachmentId);
     if (attachment) {
+      const before = attachments.map((entry) => entry.id);
+      const held = formElement?.contains(document.activeElement) === true;
+      const moveFocus =
+        options.moveFocus ??
+        (held &&
+          document.activeElement
+            ?.closest('[data-attachment-id]')
+            ?.getAttribute('data-attachment-id') === attachmentId);
+      if (moveFocus && attachment.restoreText === undefined) {
+        void focusStripAfterRemoval(before, new Set([attachmentId]));
+      }
       abortUploads([attachmentId]);
       URL.revokeObjectURL(attachment.previewUrl);
       attachments = attachments.filter((a) => a.id !== attachmentId);
@@ -1788,37 +1860,16 @@
         </div>
       {/if}
 
-      <!-- Attachments: a count over a tile each. A failed file says why beside its tile, with Retry
-           when its upload can be tried again, and every tile is removed with the same cross. -->
+      <!-- Attachments: one strip of chips that scrolls sideways when they do not fit, and, only
+           while a failure blocks Send, one line under it that says what happened. -->
       {#if attachments.length > 0}
-        <div class="chat-input-attachment-shelf">
-          <p class="chat-input-attachment-summary" data-chat-attachment-summary="">
-            <span class="chat-input-attachment-count"
-              >{attachmentCountText(attachments.length)}</span
-            >
-            {#if hiddenAttachmentCount > 0}
-              <Button
-                type="button"
-                variant="ghost-accent"
-                size="xs"
-                quiet
-                class="chat-input-attachment-more"
-                aria-controls={attachmentListId}
-                aria-expanded="false"
-                onclick={() => (attachmentsExpanded = true)}
-              >
-                {labels.moreAttachments(hiddenAttachmentCount)}
-              </Button>
-            {/if}
-          </p>
+        <div class="chat-input-attachment-strip">
           <ul
             id={attachmentListId}
             class="chat-input-attachments"
-            {@attach wholeAttachmentRows}
             aria-label={labels.attachedFiles}
-            data-expanded={attachmentsExpanded || undefined}
           >
-            {#each shownAttachments as attachment (attachment.id)}
+            {#each attachments as attachment (attachment.id)}
               <li
                 class="chat-input-attachment-wrapper"
                 data-attachment-state={attachment.status}
@@ -1826,30 +1877,20 @@
               >
                 <ChatAttachmentPreview
                   {attachment}
-                  error={attachment.error}
-                  errorId={attachment.id}
                   {labels}
+                  picked={pickedFailureId === undefined
+                    ? undefined
+                    : pickedFailureId === attachment.id}
+                  onactivate={chipActivation(attachment)}
+                  activateLabel={attachments.filter(needsAttention).length > 1
+                    ? labels.showAttachmentFailureAccessible(attachment.file.name)
+                    : labels.retryAttachmentAccessible(attachment.file.name)}
                 >
                   {#snippet action()}
-                    {#if canRetry(attachment) && uploadAttachment !== undefined}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        quiet
-                        iconOnly
-                        class="chat-input-attachment-retry"
-                        label={labels.retryAttachment}
-                        aria-label={labels.retryAttachmentAccessible(attachment.file.name)}
-                        onclick={() => retryAttachment(attachment.id)}
-                      >
-                        <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
-                      </Button>
-                    {/if}
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
+                      size="xs"
                       quiet
                       iconOnly
                       class="chat-input-attachment-remove"
@@ -1864,14 +1905,19 @@
               </li>
             {/each}
           </ul>
-          {#if attachmentsExpanded && hiddenListedAttachments > 0}
-            <p class="chat-input-attachment-scroll-cue" aria-hidden="true">
-              {labels.moreAttachments(hiddenListedAttachments)}
-            </p>
-          {/if}
-          {#if attentionCount > 0}
+          {#if failureLine !== undefined}
             <p id={attachmentReasonId} class="chat-input-attachment-reason">
-              {labels.attachmentBlockingReason(attentionCount)}
+              <span class="chat-input-attachment-reason-text" dir="auto">{failureLineText}</span>
+              <Button
+                type="button"
+                variant="ghost-accent"
+                size="xs"
+                quiet
+                class="chat-input-attachment-reason-action"
+                onclick={runFailureLineAction}
+              >
+                {failureLineActionLabel}
+              </Button>
             </p>
           {/if}
         </div>
@@ -2233,146 +2279,74 @@
     pointer-events: none;
   }
 
-  /* Attachments: a count, then a tile a row. A file that failed shows its reason beside its tile. */
-  .chat-input-attachment-shelf {
+  /* Attachments: one strip of chips above the text field. It scrolls sideways when they do not fit,
+   * and a chip cut by the trailing edge is the only sign that there are more, so it has no
+   * scrollbar. A failure that blocks Send says what happened in one line under it. */
+  .chat-input-attachment-strip {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-1);
+    min-inline-size: 0;
     padding-inline: var(--cinder-space-3);
   }
 
-  .chat-input-attachment-summary {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0 var(--cinder-space-2);
-    margin: 0;
-    /* The header of a bordered box: the same inset and minimum height with or without a trailing
-     * control, so "5 files" and "5 files + more" are one height. */
-    padding-block: var(--cinder-space-2);
-    min-block-size: 1.5rem;
-    box-sizing: content-box;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-muted);
-    text-align: start;
-  }
-
-  /* A capped list shows exactly its first tiles, each whole with its reason, and the count under it
-   * says how many more there are. Only the whole list, once opened, is bounded and scrolls, so a
-   * pile of files keeps Send in the pane (C#4). */
   .chat-input-attachments {
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--cinder-space-1);
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
     margin: 0;
     padding: 0;
     list-style: none;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    /* A chip scrolled to either edge stops where its remove control's hit area is not clipped. */
+    scroll-padding-inline: var(--cinder-space-2);
   }
 
-  .chat-input-attachments[data-expanded] {
-    max-block-size: 12rem;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-    scrollbar-width: thin;
-    scrollbar-color: var(--cinder-scrollbar-thumb) var(--cinder-scrollbar-track);
+  .chat-input-attachments::-webkit-scrollbar {
+    display: none;
   }
 
-  /* The count of files still below an opened list, at the start edge like the question dock's. */
-  .chat-input-attachment-scroll-cue {
-    margin: 0;
-    font-size: var(--cinder-text-xs);
-    line-height: var(--cinder-leading-tight, 1.25);
-    color: var(--cinder-text-muted);
-    text-align: start;
-  }
-
-  /* A row's Remove or Retry reaches 44px by a hit area that overhangs its row. A later row paints
-   * over an earlier one's overhang, and the scrolling list clips the first and last, so on a
-   * coarse pointer the rows stand a hit-area overhang apart and the list pads its ends. */
+  /* A scroller clips on both axes, and a coarse pointer's remove control reaches 44px by a hit
+   * area that overhangs its 28px chip. The strip pads by that overhang and takes it back with a
+   * negative margin, so the room costs no layout and the hit area is not clipped. */
   @media (any-pointer: coarse) {
     .chat-input-attachments {
-      gap: var(--cinder-space-2);
-    }
-
-    /* The end rows' overhang room is padding the list takes back with a negative margin, so it
-     * costs no layout: the header and the hint stand where the collapsed shelf puts them. */
-    .chat-input-attachments[data-expanded] {
       box-sizing: border-box;
       padding-block: var(--cinder-space-2);
       margin-block: calc(var(--cinder-space-2) * -1);
-      /* A row scrolled to either edge stops one padding short of it, so its Remove or Retry hit
-       * area is not clipped there either. */
-      scroll-padding-block: var(--cinder-space-2);
+      padding-inline-end: var(--cinder-space-2);
     }
-  }
-
-  .chat-input-attachments[data-expanded]::-webkit-scrollbar {
-    inline-size: var(--cinder-scrollbar-size);
-  }
-
-  .chat-input-attachments[data-expanded]::-webkit-scrollbar-track {
-    background: var(--cinder-scrollbar-track);
-  }
-
-  .chat-input-attachments[data-expanded]::-webkit-scrollbar-thumb {
-    background: var(--cinder-scrollbar-thumb);
-    border-radius: var(--cinder-radius-full);
-  }
-
-  /* On a phone each file is a row the width of the composer. Its name stays on one line: the
-   * script has already shortened it in the middle to fit that line, so the extension shows and the
-   * person can tell which file failed. A name allowed to wrap would, on any overshoot (a font that
-   * loads late, a fraction of a pixel), take a second line and move the row's controls. */
-  @container (max-inline-size: 30rem) {
-    .chat-input-attachments {
-      align-items: stretch;
-    }
-
-    .chat-input-attachment-wrapper > :global(.chat-attachment-preview) {
-      flex: 1 1 auto;
-    }
-
-    .chat-input-attachment-wrapper :global(.chat-attachment-preview-name) {
-      display: block;
-      flex: 1 1 0;
-      white-space: nowrap;
-    }
-
-    .chat-input-attachment-wrapper :global(.chat-attachment-preview-stem) {
-      overflow: visible;
-    }
-
-    .chat-input-attachment-wrapper :global(.chat-attachment-preview-error) {
-      order: 3;
-    }
-
-    .chat-input-attachment-wrapper :global(.chat-input-attachment-retry),
-    .chat-input-attachment-wrapper :global(.chat-input-attachment-remove) {
-      order: 2;
-    }
-  }
-
-  .chat-input-attachment-summary :global(.chat-input-attachment-more) {
-    align-self: center;
-  }
-
-  /* Why Send is off while files need attention, under the composer. */
-  .chat-input-attachment-reason {
-    margin: 0;
-    /* The shelf's own inline padding already puts this on the placeholder's edge. */
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-status-danger-text);
   }
 
   .chat-input-attachment-wrapper {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0;
+    flex: none;
     min-inline-size: 0;
-    inline-size: 100%;
-    max-inline-size: 100%;
+    max-inline-size: min(100%, 16rem);
+  }
+
+  /* The one line a failure that blocks Send gets, with its action at the trailing end. */
+  .chat-input-attachment-reason {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-status-danger-text);
+  }
+
+  .chat-input-attachment-reason-text {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .chat-input-attachment-reason :global(.chat-input-attachment-reason-action) {
+    flex: none;
   }
 
   /* Editor container */

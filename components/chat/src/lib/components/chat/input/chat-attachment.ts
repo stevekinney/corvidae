@@ -36,6 +36,38 @@ export type ChatAttachmentFailure =
     }
   | { readonly kind: 'upload-failed'; readonly file: File; readonly error: unknown };
 
+/**
+ * What went wrong with a file, in the four ways the composer words differently. `network` is a
+ * failure that trying again can fix; `too-large` and `unsupported-type` are about the file, so it
+ * can only be removed; `unknown` is anything else, and is tried again.
+ */
+export type ChatAttachmentFailureKind = 'network' | 'too-large' | 'unsupported-type' | 'unknown';
+
+/**
+ * What an upload hook rejects with when it knows why the upload failed. A rejection that is not
+ * one reads as `network` when it is a `TypeError` (what `fetch` rejects with when the request
+ * never completes) and as `unknown` otherwise.
+ */
+export class ChatAttachmentUploadError extends Error {
+  readonly kind: ChatAttachmentFailureKind;
+  /** The limit in bytes, for `too-large`. */
+  readonly maxFileSize: number | undefined;
+
+  constructor(
+    kind: ChatAttachmentFailureKind,
+    options: {
+      readonly message?: string;
+      readonly cause?: unknown;
+      readonly maxFileSize?: number;
+    } = {},
+  ) {
+    super(options.message ?? `Attachment upload failed: ${kind}`, { cause: options.cause });
+    this.name = 'ChatAttachmentUploadError';
+    this.kind = kind;
+    this.maxFileSize = options.maxFileSize;
+  }
+}
+
 /** The words shown for a failure. */
 export type ChatAttachmentErrorFormatter = (failure: ChatAttachmentFailure) => string;
 
@@ -52,6 +84,13 @@ export interface ChatAttachment {
   restoreRange?: { start: number; end: number };
   status: FileUploadStatus;
   error?: string;
+  /**
+   * Why an `error` attachment failed, so the composer can word it and say whether trying again can
+   * work. A host that sets none reads as `unknown`.
+   */
+  failureKind?: ChatAttachmentFailureKind;
+  /** The limit in bytes a `too-large` attachment is over, when it is known. */
+  maxFileSize?: number;
   /** What the host's `uploadAttachment` hook answered, once the attachment is `ready`. */
   reference?: ChatAttachmentReference;
   /** How much of an `uploading` attachment has been sent, from 0 to 1, when the hook reports it. */

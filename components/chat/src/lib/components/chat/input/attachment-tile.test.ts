@@ -2,66 +2,36 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   acceptedKindsText,
-  attachmentBlockingReason,
-  attachmentCountText,
-  attachmentViewportCap,
+  attachmentFailureLine,
+  attachmentGlyph,
   canRetry,
-  fileTypeBadge,
-  middleEllipsisFileName,
+  classifyUploadFailure,
+  failureKindOf,
+  isRetryableFailure,
   needsAttention,
   splitFileName,
   typeNotAcceptedText,
   uploadPercent,
 } from './attachment-tile.ts';
+import { ChatAttachmentUploadError, type ChatAttachment } from './chat-attachment.ts';
 
-import { DEFAULT_CHAT_LABELS } from '../chat-labels.ts';
+function attachment(overrides: Partial<ChatAttachment> & { id: string }): ChatAttachment {
+  return {
+    file: new File(['x'], `${overrides.id}.pdf`, { type: 'application/pdf' }),
+    previewUrl: '',
+    kind: 'document',
+    status: 'ready',
+    ...overrides,
+  };
+}
 
 describe('splitFileName', () => {
-  test('keeps the extension apart so the stem can truncate in the middle', () => {
+  test('keeps the extension apart so the stem can shorten at its end', () => {
     expect(splitFileName('quarterly-report-final.pdf')).toEqual({
       stem: 'quarterly-report-final',
       extension: '.pdf',
     });
     expect(splitFileName('archive.tar.gz')).toEqual({ stem: 'archive.tar', extension: '.gz' });
-  });
-
-  test('keeps the extension stable while the stem owns the truncation space', async () => {
-    const source = await Bun.file(
-      new URL('./chat-attachment-preview.svelte', import.meta.url),
-    ).text();
-    expect(source).toMatch(/bind:this=\{nameElement\}/);
-    // The width is the box's fractional width rounded down: a rounded-up `clientWidth` lets a name
-    // that fits 218px into a 217.7px box, and on a phone that name wraps.
-    expect(source).toMatch(
-      /middleEllipsisFileName\(\s*fullName,[^)]*Math\.floor\(element\.getBoundingClientRect\(\)\.width\)/s,
-    );
-    expect(source).not.toMatch(/element\.clientWidth/);
-  });
-
-  test('preserves a short name and extension while fitting a long name in the middle', () => {
-    const measure = (value: string) => value.length;
-    expect(middleEllipsisFileName('ledger.pdf', 20, measure)).toBe('ledger.pdf');
-    expect(middleEllipsisFileName('quarterly-reconciliation-report.pdf', 18, measure)).toBe(
-      'quarter…report.pdf',
-    );
-    expect(middleEllipsisFileName('abcdefgh', 5, measure)).toBe('ab…gh');
-    expect(middleEllipsisFileName('résumé-final.pdf', 10, measure)).toContain('…');
-  });
-
-  test('keeps grapheme clusters whole and handles tiny or extensionless widths', () => {
-    const measure = (value: string) =>
-      Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)).length;
-    expect(middleEllipsisFileName('a.pdf', 4, measure)).toBe('…');
-    expect(middleEllipsisFileName('abcdefgh', 4, measure)).toBe('ab…h');
-    expect(middleEllipsisFileName('éclair-final.pdf', 10, measure)).toBe('écl…al.pdf');
-    expect(middleEllipsisFileName('👩‍💻-report.pdf', 8, measure)).toBe('👩‍💻-…t.pdf');
-  });
-
-  test('leaves the tile ring visible outside its clipped filename content', async () => {
-    const source = await Bun.file(
-      new URL('./chat-attachment-preview.svelte', import.meta.url),
-    ).text();
-    expect(source).toMatch(/\.chat-attachment-preview\s*\{[^}]*overflow:\s*visible;/s);
   });
 
   test('treats a name with no extension, a dotfile and a trailing dot as all stem', () => {
@@ -78,45 +48,27 @@ describe('splitFileName', () => {
   });
 });
 
-describe('fileTypeBadge', () => {
-  test('reads the extension in capitals', () => {
-    expect(fileTypeBadge('photo.png', 'image')).toBe('PNG');
-    expect(fileTypeBadge('index.ts', 'code')).toBe('TS');
-    expect(fileTypeBadge('brief.docx', 'document')).toBe('DOCX');
+describe('attachmentGlyph', () => {
+  test('reads the media type first, then the extension', () => {
+    expect(attachmentGlyph('photo.png', 'image/png', 'image')).toBe('image');
+    expect(attachmentGlyph('song.mp3', 'audio/mpeg', 'document')).toBe('audio');
+    expect(attachmentGlyph('clip.mov', 'video/quicktime', 'document')).toBe('video');
+    expect(attachmentGlyph('brief.pdf', 'application/pdf', 'document')).toBe('document');
+    expect(attachmentGlyph('numbers.xlsx', '', 'document')).toBe('spreadsheet');
+    expect(attachmentGlyph('table.csv', 'text/csv', 'code')).toBe('spreadsheet');
+    expect(attachmentGlyph('bundle.zip', 'application/zip', 'document')).toBe('archive');
+    expect(attachmentGlyph('archive.tar.gz', '', 'document')).toBe('archive');
+    expect(attachmentGlyph('index.ts', 'text/typescript', 'code')).toBe('code');
+    expect(attachmentGlyph('notes.txt', 'text/plain', 'code')).toBe('document');
   });
 
-  test('falls back to the kind without a short extension', () => {
-    expect(fileTypeBadge('pasted-text', 'document')).toBe('DOC');
-    expect(fileTypeBadge('scan.jpeg2000', 'image')).toBe('IMG');
+  test('falls back to the plain file glyph for anything else', () => {
+    expect(attachmentGlyph('thing.bin', 'application/octet-stream', 'document')).toBe('file');
+    expect(attachmentGlyph('pasted-text', '', 'document')).toBe('file');
   });
 });
 
-describe('the attention summary', () => {
-  test('counts files in words without a separator glyph', () => {
-    expect(attachmentCountText(1)).toBe('1 file');
-    expect(attachmentCountText(14)).toBe('14 files');
-    expect(attachmentCountText(3)).not.toContain(String.fromCodePoint(0xb7));
-  });
-
-  test('a refused type says so in the person’s words, and names what the composer takes (C#16)', () => {
-    expect(typeNotAcceptedText(['image/*', 'application/pdf', 'text/plain'])).toBe(
-      'This file type can’t be attached. Attach an image, a PDF or a text file.',
-    );
-    expect(acceptedKindsText(['image/png', 'image/jpeg'])).toBe('an image');
-    expect(acceptedKindsText(['.csv', 'application/zip'])).toBe('a CSV file or a ZIP file');
-    expect(acceptedKindsText([])).toBe('another kind of file');
-    expect(typeNotAcceptedText(['image/*'])).not.toMatch(/\/|application|\*/);
-  });
-
-  test('says how to unblock Send', () => {
-    expect(attachmentBlockingReason(1)).toBe('Retry or remove 1 file to send');
-    expect(attachmentBlockingReason(3)).toBe('Retry or remove 3 files to send');
-  });
-
-  test('the header states no count of failed files: the rows and the hint say it', () => {
-    expect('attachmentsNeedAttention' in DEFAULT_CHAT_LABELS).toBe(false);
-  });
-
+describe('failures', () => {
   test('a failed file needs attention, and only a failed upload offers Retry', () => {
     expect(needsAttention({ status: 'error' })).toBe(true);
     expect(needsAttention({ status: 'ready' })).toBe(false);
@@ -125,10 +77,88 @@ describe('the attention summary', () => {
     expect(canRetry({ status: 'uploading', retryable: true })).toBe(false);
   });
 
-  test('caps complete rows by narrow viewport height without changing desktop cap', () => {
-    expect(attachmentViewportCap(320, 640)).toBe(1);
-    expect(attachmentViewportCap(390, 820)).toBe(2);
-    expect(attachmentViewportCap(1024, 640)).toBe(2);
+  test('retrying can work for a connection or an unknown fault, never for the file itself', () => {
+    expect(isRetryableFailure('network')).toBe(true);
+    expect(isRetryableFailure('unknown')).toBe(true);
+    expect(isRetryableFailure('too-large')).toBe(false);
+    expect(isRetryableFailure('unsupported-type')).toBe(false);
+  });
+
+  test('a host that names no kind gets unknown', () => {
+    expect(failureKindOf({})).toBe('unknown');
+    expect(failureKindOf({ failureKind: 'network' })).toBe('network');
+  });
+
+  test('an upload rejection reads as the kind its host named, a TypeError as the network', () => {
+    expect(
+      classifyUploadFailure(new ChatAttachmentUploadError('too-large', { maxFileSize: 1024 })),
+    ).toEqual({ kind: 'too-large', maxFileSize: 1024 });
+    expect(classifyUploadFailure(new ChatAttachmentUploadError('unsupported-type'))).toEqual({
+      kind: 'unsupported-type',
+    });
+    expect(classifyUploadFailure(new TypeError('Failed to fetch'))).toEqual({ kind: 'network' });
+    expect(classifyUploadFailure(new Error('The service said no'))).toEqual({ kind: 'unknown' });
+    expect(classifyUploadFailure('nope')).toEqual({ kind: 'unknown' });
+  });
+
+  test('no failure means no line', () => {
+    expect(attachmentFailureLine([attachment({ id: 'a' })])).toBeUndefined();
+  });
+
+  test('one failed file is named, with Retry when it can be tried again and Remove when not', () => {
+    const retryable = attachment({
+      id: 'a',
+      status: 'error',
+      failureKind: 'network',
+      retryable: true,
+    });
+    const refused = attachment({ id: 'b', status: 'error', failureKind: 'too-large' });
+    expect(attachmentFailureLine([attachment({ id: 'c' }), retryable])).toMatchObject({
+      type: 'one',
+      kind: 'network',
+      action: 'retry',
+    });
+    expect(attachmentFailureLine([refused])).toMatchObject({
+      type: 'one',
+      kind: 'too-large',
+      action: 'remove',
+    });
+  });
+
+  test('several failures count, and retry all unless none can be retried', () => {
+    const retryable = attachment({ id: 'a', status: 'error', retryable: true });
+    const refused = attachment({ id: 'b', status: 'error', failureKind: 'unsupported-type' });
+    expect(attachmentFailureLine([retryable, refused])).toEqual({
+      type: 'many',
+      count: 2,
+      action: 'retry-all',
+    });
+    expect(
+      attachmentFailureLine([refused, { ...refused, id: 'c' }, attachment({ id: 'd' })]),
+    ).toEqual({ type: 'many', count: 2, action: 'remove-all' });
+  });
+
+  test('a picked failed file is the line’s one subject among several', () => {
+    const first = attachment({ id: 'a', status: 'error', failureKind: 'network', retryable: true });
+    const second = attachment({ id: 'b', status: 'error', failureKind: 'too-large' });
+    expect(attachmentFailureLine([first, second], 'b')).toMatchObject({
+      type: 'one',
+      kind: 'too-large',
+      action: 'remove',
+    });
+    expect(attachmentFailureLine([first, second], 'missing')).toMatchObject({ type: 'many' });
+  });
+});
+
+describe('typeNotAcceptedText', () => {
+  test('a refused type says so in the person’s words, and names what the composer takes (C#16)', () => {
+    expect(typeNotAcceptedText(['image/*', 'application/pdf', 'text/plain'])).toBe(
+      'This file type can’t be attached. Attach an image, a PDF or a text file.',
+    );
+    expect(acceptedKindsText(['image/png', 'image/jpeg'])).toBe('an image');
+    expect(acceptedKindsText(['.csv', 'application/zip'])).toBe('a CSV file or a ZIP file');
+    expect(acceptedKindsText([])).toBe('another kind of file');
+    expect(typeNotAcceptedText(['image/*'])).not.toMatch(/\/|application|\*/);
   });
 });
 

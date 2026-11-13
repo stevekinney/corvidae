@@ -19,7 +19,10 @@ import type {
 
 setupHappyDom();
 
+const { ChatAttachmentUploadError } = await import('./chat-attachment.ts');
+
 const { fireEvent, cleanup } = await import('@testing-library/svelte');
+const { waitUntil } = await import('@lostgradient/testing/wait-until');
 const { default: ChatInput } = await import('./chat-input.svelte');
 
 afterEach(() => {
@@ -125,11 +128,17 @@ describe('an attachment with an upload hook', () => {
     expect(stateOf(target)).toEqual(['error']);
     expect(failures).toHaveLength(1);
     expect(failures[0]).toMatchObject({ kind: 'upload-failed' });
-    expect(target.textContent).toContain('Could not upload that.');
+    // The host's words are the chip's tooltip; the one line under the strip is the only text.
+    expect(target.querySelector('.chat-attachment-preview')?.getAttribute('title')).toBe(
+      'photo.png. Could not upload that.',
+    );
+    expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      "photo.png didn't upload.",
+    );
     unmount(instance);
   });
 
-  test('Retry, before the cross, uploads a failed file again, and the message sends once it is ready', async () => {
+  test('Retry, on the line under the strip, uploads a failed file again, and the message sends once it is ready', async () => {
     const { upload, calls } = heldUpload();
     const { target, instance } = mountInput({ uploadAttachment: upload });
     instance.addFiles([png()]);
@@ -142,22 +151,30 @@ describe('an attachment with an upload hook', () => {
     const send = target.querySelector<HTMLButtonElement>('.chat-input-send')!;
     expect(send.disabled).toBe(true);
     const preview = target.querySelector<HTMLElement>('.chat-attachment-preview')!;
-    const metadata = preview.querySelector<HTMLElement>('.chat-attachment-preview-main')!;
-    expect(metadata.querySelector('.chat-attachment-preview-name')).not.toBeNull();
-    expect(metadata.querySelector('.chat-input-attachment-remove')).not.toBeNull();
-    expect(preview.querySelector('.chat-attachment-preview-error')).not.toBeNull();
-    expect(preview.querySelector('.chat-attachment-preview-error')?.parentElement).toBe(preview);
-    const retry = target.querySelector<HTMLButtonElement>('button[aria-label="Retry photo.png"]')!;
-    // An icon-only Cinder Button: the name is the aria-label, there is no visible text.
-    expect(retry.textContent?.trim()).toBe('');
-    expect(retry.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
-    expect(retry.nextElementSibling?.getAttribute('aria-label')).toBe('Remove photo.png');
+    // The chip is a glyph, a name and Remove: no Retry button of its own, no sentence.
+    expect(preview.querySelector('.chat-attachment-preview-name')).not.toBeNull();
+    expect(preview.querySelector('.chat-input-attachment-remove')).not.toBeNull();
+    expect(preview.querySelectorAll('.chat-input-attachment-remove')).toHaveLength(1);
+    expect(preview.querySelector('.chat-attachment-preview-error')).toBeNull();
+    const line = target.querySelector<HTMLElement>('.chat-input-attachment-reason')!;
+    expect(line.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      "photo.png didn't upload.",
+    );
+    const retry = line.querySelector<HTMLButtonElement>('button')!;
+    expect(retry.textContent?.trim()).toBe('Retry');
+    // Send is described by the line, not by a second sentence.
+    expect(send.getAttribute('aria-describedby')).toContain(line.id);
 
     await fireEvent.click(retry);
+    await tick();
 
     expect(calls).toHaveLength(2);
     expect(stateOf(target)).toEqual(['uploading']);
-    expect(target.querySelector('[data-attachment-error]')).toBeNull();
+    expect(target.querySelector('.chat-input-attachment-reason')).toBeNull();
+    // The line's Retry is gone with the failure: focus moves to the chip's own Remove.
+    expect(document.activeElement).toBe(
+      target.querySelector('[aria-label="Remove photo.png"]') as HTMLElement,
+    );
     calls[1]!.resolve({ id: 'asset-2' });
     await tick();
     await tick();
@@ -167,7 +184,26 @@ describe('an attachment with an upload hook', () => {
     unmount(instance);
   });
 
-  test('shows the percentage the hook reports, and a moving bar until it reports', async () => {
+  test('activating a failed chip’s main area retries it', async () => {
+    const { upload, calls } = heldUpload();
+    const { target, instance } = mountInput({ uploadAttachment: upload });
+    instance.addFiles([png()]);
+    await tick();
+    calls[0]!.reject(new Error('boom'));
+    await tick();
+    await tick();
+
+    const main = target.querySelector<HTMLButtonElement>('button.chat-attachment-preview-main')!;
+    expect(main.getAttribute('aria-label')).toBe('Retry photo.png');
+    await fireEvent.click(main);
+    await tick();
+
+    expect(calls).toHaveLength(2);
+    expect(stateOf(target)).toEqual(['uploading']);
+    unmount(instance);
+  });
+
+  test('shows the percentage the hook reports as a ring, and a ring that turns until it reports', async () => {
     let report: (fraction: number) => void = () => undefined;
     const upload = (
       _file: File,
@@ -183,15 +219,17 @@ describe('an attachment with an upload hook', () => {
     instance.addFiles([png()]);
     await tick();
 
-    expect(target.querySelector('.chat-attachment-preview [role="status"]')).not.toBeNull();
-    expect(target.querySelector('[role="progressbar"]')).toBeNull();
+    const ring = () => target.querySelector('.chat-attachment-preview [role="progressbar"]')!;
+    expect(ring().hasAttribute('aria-valuenow')).toBe(false);
+    expect(ring().hasAttribute('data-cinder-indeterminate')).toBe(true);
 
     report(0.42);
     await tick();
 
-    const bar = target.querySelector('[role="progressbar"]')!;
-    expect(bar.getAttribute('aria-valuenow')).toBe('42');
-    expect(target.querySelector('.chat-attachment-preview-state')?.textContent).toBe('42%');
+    expect(ring().getAttribute('aria-valuenow')).toBe('42');
+    expect(ring().hasAttribute('data-cinder-indeterminate')).toBe(false);
+    // The ring takes the glyph's place and no figure is written beside the name.
+    expect(target.querySelector('.chat-attachment-preview-state')).toBeNull();
     unmount(instance);
   });
 
@@ -273,7 +311,16 @@ describe('a file the composer refuses', () => {
     expect(stateOf(target)).toEqual(['error']);
     expect(formatted[0]).toMatchObject({ kind: 'too-large', maxFileSize: 4 });
     expect(failed[0]?.error).toBe('Over the limit.');
-    expect(target.textContent).toContain('Over the limit.');
+    expect(target.querySelector('.chat-attachment-preview')?.getAttribute('title')).toBe(
+      'photo.png. Over the limit.',
+    );
+    expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      'photo.png is over the 4 B limit.',
+    );
+    // A file the composer refused is removed, never retried.
+    expect(target.querySelector('.chat-input-attachment-reason button')?.textContent?.trim()).toBe(
+      'Remove',
+    );
     unmount(instance);
   });
 
@@ -298,6 +345,12 @@ describe('a file the composer refuses', () => {
       kind: 'type-not-accepted',
       acceptedTypes: ['application/pdf'],
     });
+    expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      "photo.png can't be attached.",
+    );
+    expect(target.querySelector('.chat-input-attachment-reason button')?.textContent?.trim()).toBe(
+      'Remove',
+    );
     unmount(instance);
   });
 
@@ -309,7 +362,9 @@ describe('a file the composer refuses', () => {
     await tick();
 
     expect(stateOf(target)).toEqual(['error']);
-    expect(target.textContent).toContain('exceeds');
+    expect(target.querySelector('.chat-attachment-preview')?.getAttribute('title')).toContain(
+      'exceeds',
+    );
     expect(target.querySelector<HTMLButtonElement>('.chat-input-send')?.disabled).toBe(true);
 
     await fireEvent.click(
@@ -317,6 +372,155 @@ describe('a file the composer refuses', () => {
     );
     await tick();
     expect(target.querySelector<HTMLButtonElement>('.chat-input-send')?.disabled).toBe(false);
+    unmount(instance);
+  });
+});
+
+describe('the failure line under the strip', () => {
+  const lineText = (target: HTMLElement) =>
+    target.querySelector('.chat-input-attachment-reason-text')?.textContent;
+  const lineAction = (target: HTMLElement) =>
+    target.querySelector<HTMLButtonElement>('.chat-input-attachment-reason button');
+
+  async function settleFailures(
+    errors: unknown[],
+    files = errors.map((_, index) => png(`file-${index + 1}.png`)),
+  ) {
+    const { upload, calls } = heldUpload();
+    const { target, instance } = mountInput({ uploadAttachment: upload });
+    instance.addFiles(files);
+    await tick();
+    errors.forEach((error, index) => calls[index]!.reject(error));
+    await tick();
+    await tick();
+    return { target, instance, calls };
+  }
+
+  test('a rejection that is not a failure of the network or a named kind is unknown, with Retry', async () => {
+    const { target, instance } = await settleFailures([new Error('boom')]);
+    expect(
+      target.querySelector('.chat-attachment-preview')?.getAttribute('data-failure-kind'),
+    ).toBe('unknown');
+    expect(lineText(target)).toBe("file-1.png didn't upload.");
+    expect(lineAction(target)?.textContent?.trim()).toBe('Retry');
+    unmount(instance);
+  });
+
+  test('a TypeError, which is what fetch rejects with, says to check the connection and offers Retry', async () => {
+    const { target, instance } = await settleFailures([new TypeError('Failed to fetch')]);
+    expect(lineText(target)).toBe("file-1.png didn't upload. Check your connection.");
+    expect(lineAction(target)?.textContent?.trim()).toBe('Retry');
+    // A retry glyph stands where the file's glyph was.
+    expect(
+      target.querySelector('.chat-attachment-preview-glyph svg')?.getAttribute('class'),
+    ).toContain('lucide-rotate-ccw');
+    unmount(instance);
+  });
+
+  test('a host that says the file is too large carries its limit, and the file is removed, not retried', async () => {
+    const { target, instance } = await settleFailures([
+      new ChatAttachmentUploadError('too-large', { maxFileSize: 25 * 1024 * 1024 }),
+    ]);
+    expect(lineText(target)).toBe('file-1.png is over the 25 MB limit.');
+    expect(lineAction(target)?.textContent?.trim()).toBe('Remove');
+    expect(
+      target.querySelector('.chat-attachment-preview-glyph svg')?.getAttribute('class'),
+    ).toContain('lucide-triangle-alert');
+    expect(target.querySelector('button.chat-attachment-preview-main')).toBeNull();
+    await fireEvent.click(lineAction(target)!);
+    await tick();
+    expect(stateOf(target)).toEqual([]);
+    expect(target.querySelector('.chat-input-attachment-reason')).toBeNull();
+    // With nothing left to remove, focus lands in the text field.
+    expect(document.activeElement).toBe(target.querySelector('textarea'));
+    unmount(instance);
+  });
+
+  test('a host that says the type is unsupported offers Remove only', async () => {
+    const { target, instance } = await settleFailures([
+      new ChatAttachmentUploadError('unsupported-type'),
+    ]);
+    expect(lineText(target)).toBe("file-1.png can't be attached.");
+    expect(lineAction(target)?.textContent?.trim()).toBe('Remove');
+    unmount(instance);
+  });
+
+  test('several failures are counted, retried all at once, and each file keeps its reason', async () => {
+    const { target, instance, calls } = await settleFailures([
+      new TypeError('offline'),
+      new ChatAttachmentUploadError('too-large', { maxFileSize: 1024 }),
+      new Error('boom'),
+    ]);
+    expect(lineText(target)).toBe("3 files didn't upload");
+    expect(lineAction(target)?.textContent?.trim()).toBe('Retry all');
+    // Activating a failed chip makes the line speak of that file alone, and again goes back.
+    const chips = [...target.querySelectorAll<HTMLElement>('.chat-attachment-preview')];
+    const second = chips[1]!.querySelector<HTMLButtonElement>(
+      'button.chat-attachment-preview-main',
+    )!;
+    expect(second.getAttribute('aria-label')).toBe('Why file-2.png failed');
+    await fireEvent.click(second);
+    await tick();
+    expect(lineText(target)).toBe('file-2.png is over the 1 KB limit.');
+    expect(lineAction(target)?.textContent?.trim()).toBe('Remove');
+    await fireEvent.click(second);
+    await tick();
+    expect(lineText(target)).toBe("3 files didn't upload");
+
+    await fireEvent.click(lineAction(target)!);
+    await tick();
+    // Only the two that can be tried again are; the one over the limit stays failed.
+    expect(calls).toHaveLength(5);
+    expect(stateOf(target)).toEqual(['uploading', 'error', 'uploading']);
+    expect(lineText(target)).toBe('file-2.png is over the 1 KB limit.');
+    unmount(instance);
+  });
+
+  test('several failures that cannot be retried offer to remove them all', async () => {
+    const { target, instance } = await settleFailures([
+      new ChatAttachmentUploadError('unsupported-type'),
+      new ChatAttachmentUploadError('too-large'),
+    ]);
+    expect(lineText(target)).toBe("2 files didn't upload");
+    expect(lineAction(target)?.textContent?.trim()).toBe('Remove all failed');
+    await fireEvent.click(lineAction(target)!);
+    await tick();
+    expect(stateOf(target)).toEqual([]);
+    unmount(instance);
+  });
+
+  test('is told once, through the composer’s live region, and the chip says nothing', async () => {
+    const { target, instance } = await settleFailures([new TypeError('offline')]);
+    const told = () =>
+      [...document.querySelectorAll('[aria-live]')]
+        .map((node) => node.textContent)
+        .join(' ')
+        .match(/file-1\.png didn't upload\. Check your connection\./g);
+    await waitUntil(() => told() !== null);
+    expect(told()).toHaveLength(1);
+    expect(target.querySelector('.chat-input-attachment-reason')?.hasAttribute('aria-live')).toBe(
+      false,
+    );
+    unmount(instance);
+  });
+
+  test('removing a chip moves focus to the next chip’s Remove, else the previous, else the text field', async () => {
+    const { upload } = heldUpload();
+    const { target, instance } = mountInput({ uploadAttachment: upload });
+    instance.addFiles([png('one.png'), png('two.png'), png('three.png')]);
+    await tick();
+    const remove = (name: string) =>
+      target.querySelector<HTMLButtonElement>(`[aria-label="Remove ${name}"]`)!;
+    remove('two.png').focus();
+    await fireEvent.click(remove('two.png'));
+    await tick();
+    expect(document.activeElement).toBe(remove('three.png'));
+    await fireEvent.click(remove('three.png'));
+    await tick();
+    expect(document.activeElement).toBe(remove('one.png'));
+    await fireEvent.click(remove('one.png'));
+    await tick();
+    expect(document.activeElement).toBe(target.querySelector('textarea'));
     unmount(instance);
   });
 });
@@ -356,7 +560,9 @@ describe('attachments already in the composer when its limits change', () => {
     await tick();
 
     expect(stateOf(target)).toEqual(['error']);
-    expect(target.textContent).toContain('refused type-not-accepted');
+    expect(target.querySelector('.chat-attachment-preview')?.getAttribute('title')).toContain(
+      'refused type-not-accepted',
+    );
     expect(failed.map((entry) => entry.error)).toEqual(['refused type-not-accepted']);
     // COR-2277: the refused file blocks Send until it is removed, and then the text sends alone.
     await fireEvent.submit(target.querySelector('form')!);
@@ -399,7 +605,7 @@ describe('attachments already in the composer when its limits change', () => {
     instance.setLimits({ maxFileSize: 100 });
     await tick();
 
-    expect(stateOf(target)).toEqual(['error', 'ready']);
+    expect(stateOf(target)).toEqual(['ready', 'error']);
   });
 
   test('an attachment that was already an error keeps its own words', async () => {
