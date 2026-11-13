@@ -144,6 +144,10 @@
 
   function show() {
     clearPendingShow();
+    // A tooltip with no text has nothing to say: an empty panel is a `role="tooltip"` node with no
+    // accessible name, so a trigger whose reason is sometimes absent (a gate with no reason once it
+    // opens) never shows one.
+    if (text.trim() === '') return;
     registerPendingEscape();
     showTimer = setTimeout(() => {
       showTimer = undefined;
