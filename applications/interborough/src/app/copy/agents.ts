@@ -592,6 +592,40 @@ function joinedWithAnd(words: readonly string[]): string {
   return `${words.slice(0, -1).join(', ')} and ${words.at(-1) ?? ''}`;
 }
 
+/**
+ * The behaviors of a code agent that an agent file cannot state, by the names the Bureau uses on
+ * the wire, in a person's words: each is a name and what the copy does instead. A `Record`, so a
+ * sixth name here fails the type-check until it has words; a name the Bureau adds first is shown as
+ * it is by {@link droppedBehaviorWords}, never left out.
+ */
+const DROPPED_BEHAVIOR_WORDS: Record<
+  'generate' | 'stopWhen' | 'approvals' | 'outputSchema' | 'guardrails',
+  { readonly name: string; readonly effect: string }
+> = {
+  guardrails: { name: 'Guardrails.', effect: 'The copy runs only the default guardrails.' },
+  approvals: { name: 'Asks.', effect: 'Every tool in the copy starts at its default.' },
+  outputSchema: { name: 'Structured output.', effect: 'The copy’s replies have no fixed shape.' },
+  stopWhen: { name: 'When it stops.', effect: 'The copy stops at its step limit.' },
+  generate: {
+    name: 'Its own way of answering.',
+    effect: 'The copy answers with a model instead.',
+  },
+};
+
+/**
+ * One item of the Duplicate confirmation: the name in bold and the sentence after it. A name the
+ * page has no words for is its own name with no sentence, so nothing the Bureau says is lost is hidden.
+ */
+export function droppedBehaviorWords(wireName: string): {
+  readonly name: string;
+  readonly effect: string | null;
+} {
+  const known: ReadonlyMap<string, { readonly name: string; readonly effect: string }> = new Map(
+    Object.entries(DROPPED_BEHAVIOR_WORDS),
+  );
+  return known.get(wireName) ?? { name: wireName, effect: null };
+}
+
 /** The words of an agent's page: its tabs, the controls over its chats, its instructions and its settings. */
 export const AGENT_PAGE_COPY = {
   tabsLabel: 'Sections of this agent',
@@ -618,6 +652,18 @@ export const AGENT_PAGE_COPY = {
     status: (state: string, chats: string): string => `${state}, ${chats}`,
     needsProvider: 'Can’t answer until a provider is connected,',
     connectProvider: 'Connect a provider',
+    /**
+     * The line on a copy whose source has changed since the copy was made: "Copied from Triager at
+     * 1.0.0. It is at 1.1.0 now." The source's name is the link between `lead` and the rest. The
+     * source's version is shown as it is written, never as "Version N", which on this page is the
+     * copy's own saved revision. A source whose version is a file's fingerprint has no number to
+     * show, so the line says only that it changed.
+     */
+    copiedFrom: {
+      lead: 'Copied from',
+      changedFrom: (then: string, now: string): string => ` at ${then}. It is at ${now} now.`,
+      changed: '. It has changed since.',
+    },
   },
   /**
    * What a tab body shows when it has nothing to show yet or its read failed (board PageAgent,
@@ -687,6 +733,17 @@ export const AGENT_PAGE_COPY = {
     notLoaded: 'This agent is not loaded now, so it cannot be duplicated.',
     forbidden: 'You may not add agents.',
     failed: 'The agent could not be duplicated.',
+    /**
+     * The question before a copy that leaves something out: the Bureau states what the copy loses
+     * before any write, and the list is each item's name and what the copy does instead.
+     */
+    confirm: {
+      title: (agent: string): string => `Duplicate ${agent}?`,
+      description:
+        'The copy is an agent file you can edit. A file can’t hold everything this agent does in code, so the copy leaves these out.',
+      busy: 'Duplicating…',
+      errorTitle: 'Couldn’t duplicate the agent.',
+    },
   },
   /**
    * The Instructions tab (board PageAgent, rows 38i, 38j and 39r): the version line, the agent
@@ -944,6 +1001,7 @@ export const AGENT_PAGE_COPY = {
       skills: 'Skills',
       references: 'Reference documents',
       a2a: 'A2A',
+      from: 'Copied from',
     },
     viewAction: 'View',
     viewLabel: (revision: number): string => `View Version ${String(revision)}`,

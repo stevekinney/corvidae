@@ -1,7 +1,6 @@
 import type { Snippet } from 'svelte';
 import type { HTMLButtonAttributes } from 'svelte/elements';
 
-export type ActionRowDensity = 'comfortable' | 'condensed';
 export type ActionRowSelectedState = 'pressed' | 'current';
 export type ActionRowCurrentValue = 'page' | 'step' | 'location' | 'date' | 'time' | 'true';
 
@@ -9,11 +8,6 @@ export type ActionRowProps = Omit<
   HTMLButtonAttributes,
   'aria-current' | 'aria-pressed' | 'class' | 'title' | 'type'
 > & {
-  /**
-   * Density token surfaced as `data-cinder-density`.
-   * @default "comfortable"
-   */
-  density?: ActionRowDensity;
   /**
    * Whether the row is currently selected.
    * @default false
@@ -51,11 +45,6 @@ export type ActionRowProps = Omit<
 
 /** Schema generator surface for ActionRow — excludes native button attributes except supported styling hooks. */
 export interface ActionRowSchemaProps {
-  /**
-   * Density token surfaced as `data-cinder-density`.
-   * @default "comfortable"
-   */
-  density?: ActionRowDensity;
   /**
    * Whether the row is currently selected.
    * @default false

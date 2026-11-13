@@ -298,6 +298,25 @@ describe('ConfirmDialog failure', () => {
     expect(view.container.querySelector('.cinder-confirm-dialog__failure')).toBe(region);
   });
 
+  test('the alert region sits in the footer above the actions, never in the scrolling body', () => {
+    // On a short phone the body scrolls; a failure inside it would be a faded strip under the
+    // footer with the next step out of view, so it is drawn outside the scroll, above the buttons.
+    const { container } = render(ConfirmDialog, {
+      props: { ...base, error: 'Nothing was removed.', errorTitle: 'Couldn’t delete the key.' },
+    });
+    const region = requiredInstance(
+      container.querySelector('.cinder-confirm-dialog__failure'),
+      HTMLElement,
+    );
+    expect(region.closest('.cinder-modal__body')).toBeNull();
+    expect(region.closest('.cinder-modal__footer')).not.toBeNull();
+    const [firstButton] = footerButtons(container);
+    if (!firstButton) throw new Error('Expected footer buttons.');
+    expect(region.compareDocumentPosition(firstButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   test('the typed text survives a failure and the confirm button stays armed to retry', async () => {
     const onConfirm = mock(() => {});
     const view = render(ConfirmDialog, {

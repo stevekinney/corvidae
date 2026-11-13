@@ -345,10 +345,9 @@
   }
 
   /* The small Button height on a fine pointer (matches the sm Buttons in the
-   * footer, so header and footer share one row height); the existing pointer-aware
-   * convention (see number-input's `.cinder-number-input__stepper`) bumps it
-   * to the 44px WCAG 2.2 AA touch target on a coarse pointer instead of
-   * enlarging every desktop icon. */
+   * footer, so header and footer share one row height). On a touch screen that
+   * token rises to 44px, so the face is held at 2rem there and the 44px WCAG 2.2 AA
+   * target comes from a hit area that takes no layout. */
   .link-popover-close {
     display: flex;
     align-items: center;
@@ -368,8 +367,21 @@
 
   @media (pointer: coarse) {
     .link-popover-close {
-      width: var(--cinder-touch-target-min);
-      height: var(--cinder-touch-target-min);
+      width: 2rem;
+      height: 2rem;
+    }
+  }
+
+  /* The header's padding holds the overhang, so the popover's clip does not cut it. */
+  @media (any-pointer: coarse) {
+    .link-popover-close {
+      position: relative;
+    }
+
+    .link-popover-close::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 

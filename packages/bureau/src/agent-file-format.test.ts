@@ -98,6 +98,43 @@ describe('parseAgentFile', () => {
     expect(result.problem.issues?.map((issue) => issue.path)).toEqual(['skills']);
   });
 
+  it('writes `from` as a nested key that parses back, and an update that omits it keeps it (COR-2234)', () => {
+    const from = { agent: 'linear:triager', version: 'a'.repeat(64) };
+    const written = decoder.decode(
+      serializeNewAgentFile({ model: 'a/b', instructions: 'Body.\n', from }),
+    );
+    expect(written).toContain('from:\n  agent: linear:triager\n  version: ');
+    const file = parsed('triager', written);
+    expect(file.definition.from).toEqual(from);
+    expect(parsed('plain', '---\nmodel: a/b\n---\n').definition).not.toHaveProperty('from');
+
+    // An editor's input carries no `from`; saving a change to the copy must not strip it.
+    const next = decoder.decode(
+      serializeUpdatedAgentFile('triager', file, {
+        model: 'a/c',
+        instructions: 'Body.\n',
+      }) ?? new Uint8Array(),
+    );
+    expect(parsed('triager', next).definition).toMatchObject({ model: 'a/c', from });
+  });
+
+  it('refuses a `from` of any other shape at `from` (COR-2234)', () => {
+    const issuePaths = (value: string): readonly string[] | undefined => {
+      const result = parseAgentFile('copy', `---\nmodel: a/b\nfrom: ${value}\n---\nBody.\n`);
+      expect(result.ok).toBe(false);
+      if (result.ok) return undefined;
+      expect(result.problem.code).toBe('invalid-frontmatter');
+      return result.problem.issues?.map((issue) => issue.path);
+    };
+    // A scalar, a list, and a mapping with a key the format does not know are refused at `from`.
+    expect(issuePaths('linear:triager')).toEqual(['from']);
+    expect(issuePaths('[a]')).toEqual(['from']);
+    expect(issuePaths('{ agent: x, version: y, extra: 1 }')).toEqual(['from']);
+    // A mapping that lacks a key, or holds one of the wrong type, is refused at that key.
+    expect(issuePaths('{ agent: x }')).toEqual(['from.version']);
+    expect(issuePaths('{ agent: 1, version: y }')).toEqual(['from.agent']);
+  });
+
   it('keeps a body that holds fences, and Windows line endings', () => {
     const file = parsed('crlf', '---\r\nmodel: a/b\r\n---\r\nline one\r\n---\r\nline two');
     expect(file.definition.instructions).toBe('line one\r\n---\r\nline two');

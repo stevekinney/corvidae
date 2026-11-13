@@ -166,6 +166,12 @@ const definitionSchema = z.object({
    * map leaves out is `on-changes`. Every key is one of `tools`.
    */
   approvals: z.record(z.string(), z.enum(TOOL_APPROVALS)).nullable().default(null),
+  /**
+   * Where a copy came from (COR-2234): the agent Duplicate copied and its version then (a code
+   * agent's version, or a file agent's `hash`); `null` for a file that is not a copy. The editor
+   * never sends it: the Bureau keeps the file's.
+   */
+  from: z.object({ agent: z.string(), version: z.string() }).nullable().default(null),
   instructions: z.string(),
 });
 
@@ -239,6 +245,18 @@ const detailSchema = z.object({
     .nullable()
     // The Bureau always sends it. A stub that predates the key reads as a file agent.
     .default(null),
+  /**
+   * What a copy of the agent would lose, stated before any write (COR-2232): the wire names the
+   * Bureau's `dropped` list uses, as strings so a name added later still reaches the page. Empty for
+   * a file agent, a built-in agent, and a Bureau that predates the key.
+   */
+  dropped: z.array(z.string()).default([]),
+  /**
+   * For a copy, the version of the agent it was copied from as that agent is now (COR-2234), which
+   * `definition.from.version` is compared with; `null` for a file that is not a copy and for a
+   * source that is not loaded.
+   */
+  fromNow: z.string().nullable().default(null),
   /**
    * The size in bytes of each reference document a ready file agent read, in the order its
    * `references` lists them (COR-2020), for lines such as "Refund policy.md 4 KB"; `null` for a

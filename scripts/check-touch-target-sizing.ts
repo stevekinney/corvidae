@@ -59,8 +59,8 @@ export const ALLOWED_DECLARATIONS: Readonly<Record<string, number>> = {
   // Overridden to 1.5rem inside a message line; the base rule serves the standalone action.
   'components/chat/src/lib/components/chat/message/chat-message.svelte': 2,
   'components/chat/src/lib/components/chat/message/parts/suggestion-part.svelte': 2,
-  // Not yet converted: the link popover's close button is painted 44px on a coarse pointer.
-  'components/editor/src/lib/components/markdown-editor/editor-toolbar/link-popover.svelte': 4,
+  // The fine-pointer size, shared with the small Button; a coarse pointer overrides it to 2rem.
+  'components/editor/src/lib/components/markdown-editor/editor-toolbar/link-popover.svelte': 2,
 };
 
 export type TouchTargetSizing = { line: number; text: string };
