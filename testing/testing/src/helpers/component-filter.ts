@@ -14,7 +14,11 @@
  *     suite fails loudly rather than silently skipping coverage.
  */
 
-export type ComponentEntryLike = { readonly slug: string };
+/** Minimal component shape accepted by the component filter. */
+export type ComponentEntryLike = {
+  /** Component slug used for matching. */
+  readonly slug: string;
+};
 
 /**
  * Parses the comma-separated component-scope grammar shared by browser tests,

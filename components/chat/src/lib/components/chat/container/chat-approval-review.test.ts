@@ -12,11 +12,19 @@ import {
 import type { Message } from '../conversation-model.ts';
 import { getMessages } from '../utilities/index.ts';
 import {
+  APPROVAL_BOTTOM_CLEARANCE,
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
+  approvalActionRowShift,
+  approvalCardFitsViewport,
+  approvalReviewBox,
+  approvalRowVisible,
+  approvalVisibleBox,
   findPendingApprovalMessageId,
   focusPendingApproval,
   nextPendingApprovalDeadline,
+  pendingApprovalCard,
+  pendingApprovalMessageIds,
 } from './chat-approval-review.ts';
 
 setupHappyDom();
@@ -64,11 +72,40 @@ function withDeadline(messages: readonly Message[], expiresAt: string): readonly
 
 describe('approval drawer words', () => {
   test('say exactly what is waiting and what the action does', () => {
-    expect(APPROVAL_DRAWER_TEXT).toBe(
-      'Waiting for your approval. Anything you send now queues until you decide.',
-    );
+    expect(APPROVAL_DRAWER_TEXT).toBe('Waiting for your approval.');
     expect(APPROVAL_DRAWER_ACTION).toBe('Review approval');
     expect(APPROVAL_DRAWER_TEXT).not.toContain(String.fromCodePoint(0xb7));
+  });
+});
+
+describe('approval card viewport criterion', () => {
+  test('keeps the drawer for a top-clipped tall card even when its actions fit', () => {
+    expect(
+      approvalCardFitsViewport(
+        { top: -24, bottom: 180, left: 12, right: 308 },
+        { top: 0, bottom: 200, left: 0, right: 320 },
+        80,
+      ),
+    ).toBe(false);
+  });
+
+  test('reclaims the drawer height without weakening the full-card criterion', () => {
+    expect(
+      approvalCardFitsViewport(
+        { top: 20, bottom: 280, left: 12, right: 308 },
+        { top: 0, bottom: 220, left: 0, right: 320 },
+        64,
+      ),
+    ).toBe(true);
+  });
+
+  test('keeps the drawer for a horizontally clipped card', () => {
+    expect(
+      approvalCardFitsViewport(
+        { top: 20, bottom: 180, left: -8, right: 308 },
+        { top: 0, bottom: 220, left: 0, right: 320 },
+      ),
+    ).toBe(false);
   });
 });
 
@@ -109,6 +146,17 @@ describe('findPendingApprovalMessageId', () => {
         ]),
       ),
     ).toBeUndefined();
+  });
+
+  test('lists both pending card rows and drops either row once decided', () => {
+    const messages = conversationWith(['a', 'b'], true);
+    const calls = messages.filter((message) => message.role === 'tool-call');
+    expect(pendingApprovalMessageIds(messages, undefined, 0)).toEqual(
+      calls.map((message) => message.id),
+    );
+    expect(
+      pendingApprovalMessageIds(messages, new Map<string, ApprovalState>([['b', 'denied']]), 0),
+    ).toEqual(calls.slice(0, 1).map((message) => message.id));
   });
 
   test('keeps finding an approval whose state reads pending while its answer is on the way', () => {
@@ -176,5 +224,124 @@ describe('focusPendingApproval', () => {
 
     expect(focusPendingApproval(root)).toBe(false);
     expect(focusPendingApproval(null)).toBe(false);
+  });
+});
+
+describe('pendingApprovalCard', () => {
+  test('selects the waiting card from its message and ignores other pending cards', () => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <article data-message-id="older">
+        <div class="cinder-approval-card" data-cinder-state="pending" id="older-card"></div>
+      </article>
+      <article data-message-id="waiting">
+        <div class="cinder-approval-card" data-cinder-state="approved" id="decided"></div>
+        <div class="cinder-approval-card" data-cinder-state="pending" id="waiting-card"></div>
+      </article>
+    `;
+
+    expect(pendingApprovalCard(root, 'waiting')?.id).toBe('waiting-card');
+    expect(pendingApprovalCard(root, 'older')?.id).toBe('older-card');
+    expect(pendingApprovalCard(root, 'missing')).toBeNull();
+  });
+});
+
+describe('approval action row shift', () => {
+  const viewport = { top: 0, bottom: 400 };
+
+  test('scrolls down just far enough for a row below the transcript to clear its inset', () => {
+    expect(approvalActionRowShift({ top: 380, bottom: 430 }, viewport, 8)).toBe(38);
+  });
+
+  test('leaves a row that already fits where it is', () => {
+    expect(approvalActionRowShift({ top: 300, bottom: 340 }, viewport, 8)).toBe(0);
+  });
+
+  test('scrolls up for a row above the top', () => {
+    expect(approvalActionRowShift({ top: -30, bottom: 10 }, viewport, 8)).toBe(-30);
+  });
+
+  test('does nothing when the row cannot fit the viewport with its inset', () => {
+    expect(approvalActionRowShift({ top: 100, bottom: 500 }, viewport, 8)).toBe(0);
+  });
+});
+
+describe('approval review box', () => {
+  const row = { top: 330, bottom: 370, left: 10, right: 290 };
+  const viewport = { top: 0, bottom: 400, left: 0, right: 300 };
+
+  test('reaches the card bottom plus the clearance when the card fits', () => {
+    const box = approvalReviewBox(row, { top: 100, bottom: 380 }, 400);
+    expect(box).toEqual({ ...row, bottom: 380 + APPROVAL_BOTTOM_CLEARANCE });
+  });
+
+  test('a row flush against the transcript bottom is not visible, so the reminder shows', () => {
+    const flush = { top: 340, bottom: 380, left: 10, right: 290 };
+    const box = approvalReviewBox(flush, { top: 100, bottom: 392 }, 400);
+    expect(approvalRowVisible(box, viewport, false, 0)).toBe(false);
+  });
+
+  test('scrolls until the clearance sits below the card', () => {
+    const flush = { top: 360, bottom: 400, left: 10, right: 290 };
+    const box = approvalReviewBox(flush, { top: 100, bottom: 412 }, 400);
+    expect(approvalActionRowShift(box, viewport, 0)).toBe(24);
+  });
+
+  test('falls back to the row when the card with its clearance is taller than the box', () => {
+    expect(approvalReviewBox(row, { top: 0, bottom: 395 }, 70)).toBe(row);
+  });
+});
+
+describe('approval row visibility with and without the reminder', () => {
+  const reminder = 48;
+  // The transcript's box with the reminder off screen, and the box it has while the reminder
+  // takes its room from the bottom.
+  const without = { top: 0, bottom: 400, left: 0, right: 300 };
+  const withReminder = { top: 0, bottom: 400 - reminder, left: 0, right: 300 };
+  const row = (top: number, bottom: number) => ({ top, bottom, left: 10, right: 290 });
+
+  /** The answer must not depend on whether the box it reads already excludes the reminder. */
+  function answers(rowBox: ReturnType<typeof row>): [boolean, boolean] {
+    return [
+      approvalRowVisible(rowBox, without, false, reminder),
+      approvalRowVisible(rowBox, withReminder, true, reminder),
+    ];
+  }
+
+  test('a row wholly in view is visible either way', () => {
+    expect(answers(row(200, 244))).toEqual([true, true]);
+  });
+
+  test('a row partly under the composer is not visible either way', () => {
+    expect(answers(row(380, 424))).toEqual([false, false]);
+  });
+
+  test('a row above the fold is not visible either way', () => {
+    expect(answers(row(-20, 24))).toEqual([false, false]);
+  });
+
+  test('a row ending at or above the tall box bottom is visible in both reminder states', () => {
+    expect(answers(row(330, 374))).toEqual([true, true]);
+    expect(answers(row(356, 400))).toEqual([true, true]);
+    expect(answers(row(358, 402))).toEqual([false, false]);
+  });
+
+  test('a row clipped on the side is not visible', () => {
+    expect(
+      approvalRowVisible({ top: 100, bottom: 140, left: -5, right: 290 }, without, false, 0),
+    ).toBe(false);
+  });
+
+  test('the visible box is the reminder-absent box in both states', () => {
+    expect(approvalVisibleBox(without, false, reminder).bottom).toBe(400);
+    expect(approvalVisibleBox(withReminder, true, reminder).bottom).toBe(400);
+  });
+
+  test('the arrival scroll targets the same box, so a row it clears is a row the reminder accepts', () => {
+    const rowBox = row(380, 424);
+    const box = approvalVisibleBox(withReminder, true, reminder);
+    const shift = approvalActionRowShift(rowBox, box, 8);
+    const moved = row(rowBox.top - shift, rowBox.bottom - shift);
+    expect(answers(moved)).toEqual([true, true]);
   });
 });

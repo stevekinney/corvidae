@@ -216,9 +216,9 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     // The reply is stamped with when it was written and, after Copy and Quote (COR-2281), the
     // model that wrote it.
     await expect(
-      conversation
-        .getByRole('group', { name: 'Message details' })
-        .filter({ hasText: /^\s*10:42 AM\s*Copy\s*Quote\s*Claude Sonnet 5\.5/ }),
+      conversation.getByRole('group', { name: 'Message details' }).filter({
+        hasText: /^\s*10:42 AM\s*Copy\s*Quote message\s*Regenerate\s*Claude Sonnet 5\.5/,
+      }),
     ).toBeVisible();
     // The composer is the one blocked row, not a banner.
     await expect(blockedRow(page)).toContainText('Connect a model provider to chat');

@@ -83,14 +83,8 @@
     white-space: nowrap;
   }
 
-  /* A touch-sized target under a coarse pointer. The extra classes outrank Button's own icon-only
-     size rules, which the cascade reads after this file. */
-  @media (pointer: coarse) {
-    .cinder-app-bar .cinder-app-bar__action.cinder-button[data-cinder-icon-only] {
-      min-inline-size: var(--cinder-touch-target-min);
-      min-block-size: var(--cinder-touch-target-min);
-    }
-  }
+  /* A coarse pointer's 44px target is the Button's own pseudo-element hit area (button.css), so an
+     icon action keeps its painted size and takes no extra layout space. */
 
   @media (forced-colors: active) {
     .cinder-app-bar {

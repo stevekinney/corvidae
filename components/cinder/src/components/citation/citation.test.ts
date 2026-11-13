@@ -109,6 +109,23 @@ describe('Citation', () => {
     );
   });
 
+  test('closes an open panel when a host withdraws a displayed source', async () => {
+    const { container, rerender } = render(Citation, {
+      closeOnSourceRemoval: true,
+      sources: [{ label: 'First' }, { label: 'Second' }],
+    });
+    await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+
+    await rerender({
+      closeOnSourceRemoval: true,
+      sources: [{ label: 'Second' }],
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-citation__panel')?.outerHTML ?? null).toBeNull(),
+    );
+  });
+
   test('lists up to five sources together in the supplied order, with no pager', async () => {
     const sources = [
       { label: 'Second report', url: 'https://example.com/two', detail: 'Revenue rose.' },
@@ -204,8 +221,15 @@ describe('Citation', () => {
     await waitFor(() =>
       expect(document.querySelector('[aria-label="Nächste Quelle"]')).not.toBeNull(),
     );
-    expect(document.querySelector('[aria-label="Nächste Quelle"]')?.textContent).toBe('Weiter');
-    expect(document.querySelector('[aria-label="Vorherige Quelle"]')?.textContent).toBe('Zurück');
+    expect(document.querySelector('[aria-label="Nächste Quelle"]')?.getAttribute('title')).toBe(
+      'Weiter',
+    );
+    expect(document.querySelector('[aria-label="Vorherige Quelle"]')?.getAttribute('title')).toBe(
+      'Zurück',
+    );
+    expect(
+      document.querySelector('[aria-label="Nächste Quelle"] svg')?.getAttribute('aria-hidden'),
+    ).toBe('true');
     expect(document.querySelector('.cinder-citation__pagination [aria-live]')?.textContent).toBe(
       '1 von 6',
     );
@@ -315,6 +339,66 @@ describe('Citation', () => {
     expect(panel).toContain('gap: var(--cinder-space-2);');
     expect(panel).toContain('overflow-wrap: anywhere;');
     expect(panel).toContain('text-align: start;');
+  });
+
+  test('keeps the reference marker visually quiet while reserving a coarse pointer target', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const marker = /\.cinder-citation__marker \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+
+    expect(marker).toContain('background: none;');
+    expect(marker).toContain('border: 0;');
+    expect(marker).toContain('border-radius: 0;');
+    expect(marker).toContain('padding: 0;');
+    expect(marker).toContain('vertical-align: baseline;');
+    expect(stylesheet).toMatch(
+      /@media \(any-pointer: coarse\) \{\s*\.cinder-citation__marker::before \{[^}]*var\(--cinder-touch-target-min\)/s,
+    );
+    expect(stylesheet).not.toMatch(/\.cinder-citation__marker \{[^}]*min-block-size/s);
+    const hit = /\.cinder-citation__marker::before \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+    expect(hit).toContain('position: absolute;');
+    expect(hit).toContain('calc((100% - 24px) / 2)');
+  });
+
+  test('a standalone source link is at least 24px tall and gets its coarse hit area from a pseudo-element', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const link = /\n {2}\.cinder-citation__link \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+    expect(link).toContain('min-block-size: 1.5rem;');
+    expect(link).toContain('align-items: center;');
+    expect(stylesheet).toMatch(
+      /@media \(any-pointer: coarse\) \{[^@]*\.cinder-citation__link::before \{[^}]*var\(--cinder-touch-target-min\)/s,
+    );
+    expect(stylesheet).not.toMatch(/\.cinder-citation__link \{[^}]*touch-target-min/s);
+  });
+
+  test('the pager buttons get their 44px coarse hit area from a pseudo-element', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    expect(stylesheet).toMatch(
+      /@media \(any-pointer: coarse\) \{[^@]*\.cinder-citation__pagination button::before \{[^}]*position: absolute;[^}]*var\(--cinder-touch-target-min\)/s,
+    );
+  });
+
+  test('the focus ring wraps the marker with 2px of padding and the compact-control radius', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const focus = /\.cinder-citation__marker:focus-visible \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+    expect(focus).toContain('border-radius: var(--cinder-radius-sm);');
+    expect(focus).toContain('0 0 0 2px var(--cinder-ring-offset-color)');
+    expect(focus).not.toContain('inset');
+  });
+
+  test('uses one compact body inset for anchored and sheet presentation', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const panel = /\.cinder-citation__panel \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+
+    expect(panel).toContain('padding: 0;');
+    expect(stylesheet).toContain(
+      '.cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__header',
+    );
+    expect(stylesheet).toContain('background: transparent;');
+    expect(stylesheet).toContain(
+      '.cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__body',
+    );
+    expect(stylesheet).not.toContain('.cinder-popover__sheet .cinder-drawer__header');
+    expect(stylesheet).toContain('padding: var(--cinder-space-2) var(--cinder-space-3);');
   });
 
   test('composes Popover styles through the citation entry point', () => {

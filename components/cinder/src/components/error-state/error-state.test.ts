@@ -220,31 +220,32 @@ describe('ErrorState actions', () => {
     expect(button.querySelector('svg')).not.toBeNull();
   });
 
-  test('a secondaryAction snippet renders after the retry button in the same row', async () => {
+  test('keeps the secondary action on the left and the primary action on the right in DOM order', async () => {
     const { default: SecondaryActionFixture } =
       await import('../../test/fixtures/error-state-secondary-action-fixture.svelte');
     const { container, getAllByRole } = render(SecondaryActionFixture);
     const buttons = getAllByRole('button');
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      'Retry now',
       'Open Health',
+      'Retry now',
     ]);
     const row = container.querySelector('.cinder-error-state-action');
     expect(buttons.every((button) => row?.contains(button))).toBe(true);
-    expect(buttons[1]?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(buttons[1]?.getAttribute('data-cinder-variant')).toBe('primary');
   });
 
   test('retryIcon replaces the refresh glyph on the primary button', async () => {
     const { default: RetryIconFixture } =
       await import('../../test/fixtures/error-state-retry-icon-fixture.svelte');
     const { getAllByRole, getByTestId } = render(RetryIconFixture);
-    const [primary, secondary] = getAllByRole('button');
+    const [secondary, primary] = getAllByRole('button');
+    expect(secondary?.textContent?.trim()).toBe('Back to chats');
+    expect(secondary?.getAttribute('data-cinder-variant')).toBe('secondary');
     expect(primary?.textContent?.trim()).toBe('New chat');
     expect(primary?.getAttribute('data-cinder-variant')).toBe('primary');
     expect(primary?.contains(getByTestId('pencil'))).toBe(true);
     expect(primary?.querySelectorAll('svg').length).toBe(1);
-    expect(secondary?.textContent?.trim()).toBe('Back to chats');
-    expect(secondary?.getAttribute('data-cinder-variant')).toBe('secondary');
   });
 
   test('a secondaryAction renders without a retry button', async () => {
@@ -281,6 +282,18 @@ describe('ErrorState retry status', () => {
 });
 
 describe('ErrorState details disclosure', () => {
+  test('keeps the disclosure summary at a visible desktop face and a touch target on coarse pointers', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const summary = declarationsFor(css, '.cinder-error-state-details-summary');
+    expect(summary.get('min-block-size')).toBe('var(--cinder-space-6)');
+    expect(css).toMatch(/\.cinder-error-state-details-summary:focus-visible\s*\{/);
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    expect(coarse).toMatch(
+      /\.cinder-error-state-details-summary::after\s*\{[^}]*position: absolute;[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/,
+    );
+    expect(coarse).not.toMatch(/min-(block|inline)-size:\s*var\(--cinder-touch-target-min\)/);
+  });
+
   test('detailsLabel overrides the disclosure text and the disclosure opens by activation', async () => {
     const { container, getByText } = render(ErrorState, {
       props: { title: 'Failed', description: 'Nope.', detail: 'HTTP 500', detailsLabel: 'Details' },

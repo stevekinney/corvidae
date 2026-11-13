@@ -13,13 +13,14 @@
     type ChatAttachmentUpload,
     type ChatAvailability,
     type ChatComposerStatus,
+    type ChatRowContext,
     type ChatTurnEvent,
     type ChatTurnState,
     type ConversationHistory,
     type Message,
     type ReasoningInfo,
   } from '@lostgradient/chat';
-  import type { ApprovalResolution, CitationSource } from '@lostgradient/cinder';
+  import { ApprovalCard, type ApprovalResolution, type CitationSource } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
   import casesData from './chat-stress.json';
@@ -59,7 +60,6 @@
   const { setup, failure } = resolveSetup();
 
   const ACCEPTED_TYPES = ['image/*', 'application/pdf', 'text/plain'];
-
   let chat = $state<ReturnType<typeof Chat> | undefined>();
   let conversation = $state.raw<ConversationHistory>(setup.conversation);
   let secondConversation = $state.raw<ConversationHistory>(
@@ -71,13 +71,11 @@
   let streaming = $state(setup.streaming);
   let turnStates = $state<Record<number, ChatTurnState>>({ ...setup.turnStates });
   let online = $state(true);
-  let availabilityKind = $state<'loading' | 'canceled' | 'error' | 'deleted' | undefined>(
-    setup.availability?.kind,
-  );
+  let availabilityKind = $state<ChatAvailability['kind'] | undefined>(setup.availability?.kind);
   let statusCleared = $state(false);
   let sources = $state.raw<Record<number, CitationSource[]>>({ ...setup.sources });
-  let streamMessageId: string | undefined;
-  let streamContent = '';
+  let streamMessageId = $state<string | undefined>();
+  let streamContent = $state('');
 
   let runInputLog = $state.raw<string[]>([]);
   let submissions = $state.raw<string[]>([]);
@@ -88,6 +86,32 @@
 
   function textOf(content: unknown): string {
     return typeof content === 'string' ? content : JSON.stringify(content);
+  }
+
+  function completeApproval(history: ConversationHistory, toolCallId: string): ConversationHistory {
+    const resultId = history.ids.find(
+      (id) => history.messages[id]?.toolResult?.callId === toolCallId,
+    );
+    if (resultId === undefined) return history;
+    const message = history.messages[resultId];
+    if (message === undefined) return history;
+    const result = message?.toolResult;
+    if (result?.outcome !== 'action_required') return history;
+    return {
+      ...history,
+      messages: {
+        ...history.messages,
+        [resultId]: {
+          ...message,
+          id: message.id,
+          toolResult: {
+            callId: toolCallId,
+            outcome: 'success',
+            content: 'Refund completed successfully.',
+          },
+        },
+      },
+    };
   }
 
   function assistantOrdinal(history: ConversationHistory, messageId: string): number {
@@ -140,10 +164,15 @@
       applyTurnEvent({ type: 'stop' });
       streaming = false;
     },
-    describeApproval: (toolCall) => setup.approvalDetails[toolCall.name],
+    describeApproval: (toolCall) =>
+      Object.hasOwn(setup.approvalDetails, toolCall.id)
+        ? setup.approvalDetails[toolCall.id]
+        : setup.approvalDetails[toolCall.name],
     describeToolCall: (toolCall, result) => describeStressCall(toolCall.name, result?.outcome),
     resolveToolApproval: async (toolCallId, resolution: ApprovalResolution) => {
       approvals = [...approvals, { toolCallId, decision: resolution.decision }];
+      if (resolution.decision === 'approve')
+        conversation = completeApproval(conversation, toolCallId);
       return 'resolved';
     },
   };
@@ -227,6 +256,9 @@
         allConversations,
       };
     }
+    if (availabilityKind === 'unconfigured') {
+      return { kind: 'unconfigured', onConnect: () => {} };
+    }
     return { kind: 'deleted', allConversations };
   });
 
@@ -250,6 +282,13 @@
 
   // What only a host does. A case calls these through a `hook` step.
   const hooks = {
+    setSafeAreaInset(value: number): void {
+      if (!Number.isFinite(value) || value < 0)
+        throw new Error('Safe-area inset must be non-negative.');
+      document
+        .querySelector<HTMLElement>('.chat-container')
+        ?.style.setProperty('--_cinder-chat-safe-area-inset-bottom', `${value}px`);
+    },
     startStream(): void {
       const started = appendStreamingMessage(conversation, 'assistant');
       conversation = started.conversation;
@@ -314,6 +353,24 @@
   });
 </script>
 
+{#snippet externalApprovalStatus(context: ChatRowContext)}
+  {#if context.message.role === 'assistant' && setup.externalApproval}
+    <ApprovalCard
+      layout="decision"
+      tool={{ name: 'issue_refund', risk: 'high' }}
+      operation={{ kind: 'command', command: setup.externalApproval.command }}
+      state="approved"
+      question={setup.externalApproval.action}
+      policyVersion="stress-policy-v1"
+      idempotencyKey="stress-refund-4471-external"
+      decidedBy={setup.externalApproval.actor}
+      decidedIn="Reviews"
+      decidedInHref="/reviews"
+      decidedAt={setup.externalApproval.decidedAt}
+    />
+  {/if}
+{/snippet}
+
 {#if failure !== undefined}
   <p data-chat-stress-error role="alert">{failure}</p>
 {:else}
@@ -323,6 +380,8 @@
     data-chat-stress-case={stressCase?.id}
     data-chat-stress-ready={ready ? 'true' : 'false'}
     data-chat-stress-direction={setup.direction ?? 'ltr'}
+    data-chat-stress-streaming={streaming ? 'true' : 'false'}
+    data-chat-stress-stream-content={streamContent}
     data-two-chats={setup.secondChat ? 'true' : 'false'}
   >
     <div
@@ -340,7 +399,8 @@
         {composerStatus}
         {availability}
         messageTurnState={turnStateFor}
-        messageReasoning={reasoningFor}
+        turnLabels={setup.turnLabels}
+        {...Object.keys(setup.reasoning).length > 0 ? { messageReasoning: reasoningFor } : {}}
         questionPlacement={setup.questionPlacement}
         onInputSubmit={handleInputSubmit}
         emptyPrompts={setup.emptyPrompts}
@@ -365,8 +425,10 @@
           streaming = true;
         }}
         onRetryStep={(toolCallId) => recordTurnAction('retry-step', toolCallId)}
+        onApprovalRequestAgain={(toolCallId) => recordTurnAction('ask-again', toolCallId)}
         {uploadAttachment}
         acceptedTypes={setup.uploads === 'none' ? undefined : ACCEPTED_TYPES}
+        {...setup.externalApproval === undefined ? {} : { messageStatus: externalApprovalStatus }}
       />
     </div>
     {#if setup.secondChat}
@@ -400,6 +462,10 @@
 {/if}
 
 <style>
+  :global(body:has(.stress-page)) {
+    padding: 0;
+  }
+
   .stress-page {
     display: grid;
     grid-auto-rows: minmax(0, 1fr);

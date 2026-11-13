@@ -48,7 +48,7 @@ describe('Spinner', () => {
     expect(spinner?.querySelector('.cinder-spinner__arc-indicator')).not.toBeNull();
     expect(css).toContain('@keyframes cinder-spinner-arc');
     expect(css).toContain('stroke-dashoffset: 32');
-    expect(css).toContain('stroke-dashoffset: 50');
+    expect(css).toContain('stroke-dashoffset: 42');
     expect(css).toContain('stroke-dashoffset: 14');
     expect(
       css.match(
@@ -114,5 +114,25 @@ describe('Spinner', () => {
     });
     const spinner = container.querySelector('.cinder-spinner');
     expect(spinner?.getAttribute('aria-label')).toBe('Loading data');
+  });
+
+  test('reduced motion still dims the indicator to the track colour, without fading the element', async () => {
+    const source = await Bun.file(new URL('./spinner.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    const dimmed =
+      /\.cinder-spinner \{ animation: none; --cinder-spinner-indicator: var\(--cinder-spinner-track, var\(--cinder-border-contrast\)\); \}/g;
+    // Once for the media query, once for the explicit data attribute.
+    expect(css.match(dimmed)?.length).toBe(2);
+  });
+
+  test('the track is the contrast-tier border (3:1 against the page) and the arc never shrinks below a quarter turn', async () => {
+    const css = await Bun.file(new URL('./spinner.css', import.meta.url)).text();
+    expect(css).not.toContain('currentColor 25%');
+    expect(css).toContain('var(--cinder-spinner-track, var(--cinder-border-contrast))');
+    const circumference = 56.55;
+    const from = Number(
+      /@keyframes cinder-spinner-arc \{[^}]*from \{\s*stroke-dashoffset: (\d+)/su.exec(css)?.[1],
+    );
+    expect((circumference - from) / circumference).toBeGreaterThanOrEqual(0.25);
   });
 });

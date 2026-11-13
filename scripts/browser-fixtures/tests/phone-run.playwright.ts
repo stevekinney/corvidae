@@ -62,7 +62,7 @@ test.describe('Phone run approval', () => {
 });
 
 test.describe('Phone run composer', () => {
-  test('draws Attach and Send as 44px targets and pads the area for the safe area', async ({
+  test('reaches Attach and Send by 44px hit areas around compact faces and pads the area for the safe area', async ({
     componentPage,
   }) => {
     const page = await componentPage.open({
@@ -70,7 +70,9 @@ test.describe('Phone run composer', () => {
       theme: 'dark',
       viewport: phone,
       fixtureName: 'assertion',
+      hasTouch: true,
     });
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
     // No default chat fixture enables attachments, so reload the same fixture with the gated
     // instance. The route keeps its fixture name and hash: without them the page serves the chat
     // harness, which has no attachments instance.
@@ -82,15 +84,44 @@ test.describe('Phone run composer', () => {
       attachmentsChat.getByRole('button', { name: 'Attach file', exact: true }),
     ).toBeVisible();
 
-    const attach = await attachmentsChat
-      .getByRole('button', { name: 'Attach file', exact: true })
-      .boundingBox();
-    const send = await attachmentsChat.getByRole('button', { name: /^Send/ }).first().boundingBox();
+    const attachButton = attachmentsChat.getByRole('button', { name: 'Attach file', exact: true });
+    const sendButton = attachmentsChat.getByRole('button', { name: /^Send/ }).first();
+    // A point is only hit-testable inside the viewport.
+    await attachButton.scrollIntoViewIfNeeded();
+    await sendButton.scrollIntoViewIfNeeded();
+    const attach = await attachButton.boundingBox();
+    const send = await sendButton.boundingBox();
     expect(attach).not.toBeNull();
     expect(send).not.toBeNull();
-    for (const box of [attach!, send!]) {
-      expect(box.width).toBeGreaterThanOrEqual(43.5);
-      expect(box.height).toBeGreaterThanOrEqual(43.5);
+    // The painted face is compact; the 44px target is a pseudo-element hit area that takes no
+    // layout. A point 21px out from the centre on each axis (inside 22px) resolves to the control.
+    for (const [name, box] of [
+      ['Attach file', attach!],
+      ['Send', send!],
+    ] as const) {
+      expect(box.height, `${name} paints compact`).toBeLessThan(40);
+      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      for (const [dx, dy] of [
+        [-21, 0],
+        [21, 0],
+        [0, -21],
+        [0, 21],
+      ] as const) {
+        const owner = await page.evaluate(
+          ([x, y]) => {
+            const hit = document.elementFromPoint(x, y);
+            const control = hit?.closest('button');
+            if (control === null || control === undefined) {
+              return `no button; hit ${hit?.tagName.toLowerCase()}.${hit?.className}`;
+            }
+            return control.getAttribute('aria-label') ?? control.textContent?.trim() ?? '';
+          },
+          [centre.x + dx, centre.y + dy] as const,
+        );
+        expect(owner, `${name}: point (${dx}, ${dy}) from its centre`).toMatch(
+          name === 'Send' ? /^Send/ : /^Attach file$/,
+        );
+      }
     }
 
     // Chromium reports no safe-area inset, so the area's bottom padding equals its top padding;

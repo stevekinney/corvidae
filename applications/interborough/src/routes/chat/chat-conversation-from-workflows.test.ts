@@ -186,6 +186,9 @@ const blocked = (container: HTMLElement) =>
 const send = (container: HTMLElement) =>
   container.querySelector<HTMLButtonElement>('button[data-chat-send]');
 
+/** Send is icon-only, so the starting word is its accessible name. */
+const sendName = (container: HTMLElement) => send(container)?.getAttribute('aria-label') ?? '';
+
 /** Waits for the composer's box to be drawn. */
 async function box(container: HTMLElement): Promise<HTMLTextAreaElement> {
   return waitFor(() => {
@@ -356,7 +359,7 @@ describe('the first message of a new chat', () => {
 
     await fireEvent.submit(container.querySelector('form.chat-input')!);
 
-    await waitFor(() => expect(send(container)?.textContent).toContain('Starting chat…'));
+    await waitFor(() => expect(sendName(container)).toBe('Starting chat…'));
     expect(send(container)?.disabled).toBe(true);
     expect(container.querySelector('.chat-input-spinner')).not.toBeNull();
     expect(editor(container)?.value).toBe('Please refund order 4471, it arrived damaged.');
@@ -377,7 +380,7 @@ describe('the first message of a new chat', () => {
     // Once the run has begun the chat is open, and the box is empty.
     await waitFor(() => expect(container.textContent).toContain('Hi.'));
     expect(editor(container)?.value).toBe('');
-    expect(send(container)?.textContent).not.toContain('Starting chat…');
+    expect(sendName(container)).not.toBe('Starting chat…');
     expect(window.location.pathname).toBe('/chats/thread-1');
   });
 
@@ -388,7 +391,7 @@ describe('the first message of a new chat', () => {
     const field = await box(container);
     await fireEvent.input(field, { target: { value: 'Please refund order 4471.' } });
     await fireEvent.submit(container.querySelector('form.chat-input')!);
-    await waitFor(() => expect(send(container)?.textContent).toContain('Starting chat…'));
+    await waitFor(() => expect(sendName(container)).toBe('Starting chat…'));
 
     // The box stays editable while the chat starts, and the person goes on typing their next message.
     await fireEvent.input(editor(container)!, {
@@ -397,7 +400,7 @@ describe('the first message of a new chat', () => {
     served.start();
 
     await waitFor(() => expect(container.textContent).toContain('Hi.'));
-    expect(send(container)?.textContent).not.toContain('Starting chat…');
+    expect(sendName(container)).not.toBe('Starting chat…');
     expect(editor(container)?.value).toBe('Please refund order 4471. Also email the customer.');
   });
 
@@ -408,7 +411,7 @@ describe('the first message of a new chat', () => {
     const field = await box(container);
     await fireEvent.input(field, { target: { value: 'Say hello' } });
     await fireEvent.submit(container.querySelector('form.chat-input')!);
-    await waitFor(() => expect(send(container)?.textContent).toContain('Starting chat…'));
+    await waitFor(() => expect(sendName(container)).toBe('Starting chat…'));
     // Typing the same text again changes nothing about what the box holds.
     await fireEvent.input(editor(container)!, { target: { value: 'Say hello' } });
 
@@ -428,7 +431,7 @@ describe('the first message of a new chat', () => {
 
     await fireEvent.submit(container.querySelector('form.chat-input')!);
 
-    await waitFor(() => expect(send(container)?.textContent).not.toContain('Starting chat…'));
+    await waitFor(() => expect(sendName(container)).not.toBe('Starting chat…'));
     await waitFor(() => expect(served.runs()).toBe(1));
     // The text is kept, no chat page opened, and nothing of the message is left in the conversation.
     expect(editor(container)?.value).toBe('Say hello');

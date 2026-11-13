@@ -7,6 +7,7 @@
  */
 import { createHash } from 'node:crypto';
 
+import type { GeometryFacts } from '@lostgradient/testing/design-review-geometry';
 import { caseLabel, type StressCase } from '../src/fixtures/chat-stress/stress-cases.ts';
 
 /** One viewport, theme and input mode a case is drawn at. */
@@ -86,6 +87,8 @@ export interface CaptureRecord {
   readonly focus?: FocusStop;
   /** What went wrong with the page at this image; empty for a clean one. */
   readonly problems: readonly string[];
+  /** Geometry and paint evidence captured immediately before this frame. */
+  readonly measurement?: PageMeasurement;
   /** Why the case cannot prove its row here, when it is deferred. */
   readonly deferred?: string;
 }
@@ -109,8 +112,19 @@ export function expectedCounts(
   focusStopsByProfile: Readonly<Record<string, number>>,
 ): ExpectedCounts {
   const primary = cases.length * profiles.length;
-  const fixedVariants =
-    cases.reduce((sum, stressCase) => sum + stressCase.variants.length, 0) * profiles.length;
+  const fixedVariants = profiles.reduce(
+    (sum, profile) =>
+      sum +
+      cases.reduce(
+        (caseSum, stressCase) =>
+          caseSum +
+          stressCase.variants.filter(
+            (variant) => variant.profiles === undefined || variant.profiles.includes(profile.name),
+          ).length,
+        0,
+      ),
+    0,
+  );
   const focus = profiles.reduce(
     (sum, profile) =>
       sum +
@@ -124,16 +138,77 @@ export function expectedCounts(
 
 /** What a page reports about itself once a case has run, collected in the page by the tool. */
 export interface PageMeasurement {
+  /** Full Craft geometry facts from the shared design-review probe for this exact frame. */
+  readonly geometry?: GeometryFacts;
   /** Console errors and uncaught page errors since the page loaded. */
   readonly pageErrors: readonly string[];
   /** The document's scroll width and the window's width. */
   readonly documentWidth: { readonly scroll: number; readonly client: number };
-  /** Visible, enabled controls under 44 px in either dimension, named; measured only at a coarse profile. */
+  /** Visible, enabled controls whose hit area, probed 22 px from the centre, is short; measured only at a coarse profile. */
   readonly smallTargets: readonly {
     readonly name: string;
     readonly width: number;
     readonly height: number;
+    /** The sides, measured 22 px from the centre, where a tap no longer reaches the control. */
+    readonly shortSides?: readonly string[];
   }[];
+  /** Coarse-pointer controls report their painted content separately from the hit region. */
+  readonly controlGeometry?: readonly {
+    readonly controlId: string;
+    readonly name: string;
+    readonly hitWidth: number;
+    readonly hitHeight: number;
+    readonly paintedWidth: number;
+    readonly paintedHeight: number;
+    readonly reachableWidth: number;
+    readonly reachableHeight: number;
+    readonly samples: readonly {
+      readonly x: number;
+      readonly y: number;
+      readonly top: string;
+      readonly hitsTarget: boolean;
+    }[];
+  }[];
+  /** Before/after proof for controls initially clipped by a scrollable ancestor. */
+  readonly scrollableRevealProof?: readonly {
+    readonly controlId: string;
+    readonly name: string;
+    readonly initiallyClipped: boolean;
+    readonly originalBox: {
+      readonly left: number;
+      readonly top: number;
+      readonly right: number;
+      readonly bottom: number;
+    };
+    readonly revealedBox: {
+      readonly left: number;
+      readonly top: number;
+      readonly right: number;
+      readonly bottom: number;
+    };
+    readonly revealed: boolean;
+    readonly samplesHitTarget: boolean;
+  }[];
+  /** Positioned masks, fades, and overlays sampled over important controls or code. */
+  readonly occlusions?: readonly {
+    readonly target: string;
+    readonly overlay: string;
+    readonly overlapWidth: number;
+    readonly overlapHeight: number;
+  }[];
+  /** Bottom chrome is recorded as evidence; its share is intentionally not a universal pass/fail. */
+  readonly bottomChrome?: {
+    readonly height: number;
+    readonly viewportHeight: number;
+    readonly share: number;
+    readonly parts: readonly {
+      readonly name: string;
+      readonly top: number;
+      readonly bottom: number;
+    }[];
+  };
+  /** Number of code blocks still waiting for the highlighter at capture time. */
+  readonly pendingHighlights?: number;
   /** Status text whose box clips it. */
   readonly clippedStatuses: readonly string[];
   /** The resolved direction and alignment of the text blocks a right-to-left case shows. */
@@ -144,8 +219,50 @@ export interface PageMeasurement {
   }[];
   /** The composer's bottom edge in CSS pixels, or `null` when no composer is drawn. */
   readonly composerEdge: number | null;
+  /** The composer's top edge in CSS pixels, or `null` when no composer is drawn. */
+  readonly composerTop: number | null;
+  /** The composer's measured bottom padding and resolved safe-area contribution. */
+  readonly safeArea?: { readonly inset: number; readonly paddingBottom: number };
+  /** Same-page endpoint measurements for a semantic turn transition. */
+  readonly composerTransition?: {
+    readonly from: string;
+    readonly to: string;
+    readonly before: number | null;
+    readonly after: number | null;
+  };
+  /**
+   * A jump control floats over the transcript's trailing corner by design. It is misplaced when it
+   * leaves the transcript's box or covers the composer, a drawer or a control outside the transcript.
+   */
+  readonly jumpMisplaced?: boolean;
+  /** The composer or step summary still asks for approval after its decision. */
+  readonly approvalStillWaiting?: boolean;
   /** For a withdrawal case: how many announcements followed and whether the focused control shows a ring. */
   readonly withdrawal?: { readonly announcements: number; readonly focusVisible: boolean };
+  /** The host-supplied approval receipt uses the available width in the message status slot. */
+  readonly approvalReceiptFits?: boolean;
+  /** Wide markdown nodes retain their leading edge through every outer clipping ancestor. */
+  readonly wideLayout?: readonly {
+    readonly node: string;
+    readonly ancestors: readonly { readonly name: string; readonly width: number }[];
+    readonly frame: { readonly left: number; readonly right: number; readonly width: number };
+    /** For tool payloads, the code frame should fill the details content measure. */
+    readonly contentWidthGap?: number;
+    readonly scroller?: {
+      readonly left: number;
+      readonly right: number;
+      readonly scrollLeft: number;
+    };
+    readonly clippingAncestors: readonly string[];
+    readonly leadingColumnClipped: boolean;
+  }[];
+  /** The transcript content and composer share the same inline reading edges. */
+  readonly readingEdges?: {
+    readonly transcriptLeft: number;
+    readonly transcriptRight: number;
+    readonly composerLeft: number;
+    readonly composerRight: number;
+  };
 }
 
 /** Everything wrong with one page's measurement; an empty list means it passed. */
@@ -156,6 +273,11 @@ export function measurementProblems(
 ): string[] {
   const problems: string[] = [];
   for (const error of measurement.pageErrors) problems.push(`page error: ${error}`);
+  if ((measurement.pendingHighlights ?? 0) > 0) {
+    problems.push(
+      `code highlighting is still pending for ${measurement.pendingHighlights} block(s)`,
+    );
+  }
   if (measurement.documentWidth.scroll > measurement.documentWidth.client) {
     problems.push(
       `document overflow: ${measurement.documentWidth.scroll} px of content in ${measurement.documentWidth.client} px`,
@@ -164,11 +286,52 @@ export function measurementProblems(
   if (profile.coarse) {
     for (const target of measurement.smallTargets) {
       problems.push(
-        `short touch target: ${target.name} is ${target.width} by ${target.height} px, under ${MINIMUM_TOUCH_TARGET}`,
+        `short touch target: ${target.name} is ${target.width} by ${target.height} px and a tap 22 px from its centre misses it ${(target.shortSides ?? ['on every side']).join(', ')}, under ${MINIMUM_TOUCH_TARGET}`,
       );
     }
   }
   for (const status of measurement.clippedStatuses) problems.push(`clipped status: ${status}`);
+  for (const occlusion of measurement.occlusions ?? []) {
+    problems.push(
+      `visual overlay occludes ${occlusion.target} by ${occlusion.overlapWidth} by ${occlusion.overlapHeight} px (${occlusion.overlay})`,
+    );
+  }
+  for (const control of measurement.controlGeometry ?? []) {
+    if (control.samples.some((sample) => !sample.hitsTarget)) {
+      problems.push(`hit region sample missed ${control.controlId}: ${control.name}`);
+    }
+  }
+  if (measurement.jumpMisplaced)
+    problems.push(
+      'jump control leaves the transcript or covers the composer, a drawer or a control',
+    );
+  if (measurement.approvalStillWaiting)
+    problems.push('approval still waits after its receipt appears');
+  for (const wide of measurement.wideLayout ?? []) {
+    if (wide.clippingAncestors.length > 0) {
+      problems.push(
+        `${wide.node} extends beyond clipping ancestor(s): ${wide.clippingAncestors.join(', ')}`,
+      );
+    }
+    if (wide.leadingColumnClipped) {
+      problems.push(`${wide.node} leading column is clipped at the initial scroll position`);
+    }
+    if (wide.contentWidthGap !== undefined && wide.contentWidthGap > 1) {
+      problems.push(`${wide.node} is ${wide.contentWidthGap}px narrower than its details measure`);
+    }
+  }
+  if (measurement.readingEdges !== undefined) {
+    const { transcriptLeft, transcriptRight, composerLeft, composerRight } =
+      measurement.readingEdges;
+    if (
+      Math.abs(transcriptLeft - composerLeft) > 1 ||
+      Math.abs(transcriptRight - composerRight) > 1
+    ) {
+      problems.push(
+        `composer edges ${composerLeft}/${composerRight} do not match transcript ${transcriptLeft}/${transcriptRight}`,
+      );
+    }
+  }
   if (stressCase.direction === 'rtl') {
     if (measurement.directions.length === 0) problems.push('no right-to-left text was measured');
     for (const block of measurement.directions) {
@@ -189,6 +352,19 @@ export function measurementProblems(
         );
       }
       if (!measurement.withdrawal.focusVisible) problems.push('withdrawal left no visible focus');
+    }
+  }
+  if (stressCase.id === 55 && measurement.approvalReceiptFits !== true) {
+    problems.push('the external approval receipt did not fill its message status slot');
+  }
+  const transition = measurement.composerTransition;
+  if (transition !== undefined) {
+    if (transition.before === null || transition.after === null) {
+      problems.push(`composer top missing for ${transition.from}->${transition.to}`);
+    } else if (Math.abs(transition.before - transition.after) > COMPOSER_EDGE_TOLERANCE) {
+      problems.push(
+        `composer top moved from ${transition.before} to ${transition.after} across ${transition.from}->${transition.to}`,
+      );
     }
   }
   return problems;
@@ -214,6 +390,32 @@ export function composerEdgeProblems(
     } else if (Math.abs(first - second) > COMPOSER_EDGE_TOLERANCE) {
       problems.push(
         `${profile.name}: composer edge moved from ${first} to ${second} between cases ${caseLabel(stressCase.id)} and ${caseLabel(partner)}`,
+      );
+    }
+  }
+  return problems;
+}
+
+/** The paired cases must also keep the composer's top edge stable, not only its bottom edge. */
+export function composerTopProblems(
+  cases: readonly StressCase[],
+  profile: StressProfile,
+  edges: ReadonlyMap<number, number | null>,
+): string[] {
+  const problems: string[] = [];
+  for (const stressCase of cases) {
+    const partner = stressCase.composerEdgeWith;
+    if (partner === undefined || partner < stressCase.id) continue;
+    const first = edges.get(stressCase.id);
+    const second = edges.get(partner);
+    if (first === undefined || second === undefined) continue;
+    if (first === null || second === null) {
+      problems.push(
+        `${profile.name}: composer top missing in case ${caseLabel(first === null ? stressCase.id : partner)}`,
+      );
+    } else if (Math.abs(first - second) > COMPOSER_EDGE_TOLERANCE) {
+      problems.push(
+        `${profile.name}: composer top moved from ${first} to ${second} between cases ${caseLabel(stressCase.id)} and ${caseLabel(partner)}`,
       );
     }
   }

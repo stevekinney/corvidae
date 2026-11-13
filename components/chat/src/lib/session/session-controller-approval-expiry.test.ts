@@ -285,6 +285,22 @@ describe('reconcileApprovalExpiry (COR-2280)', () => {
     expect(session.conversation()).toBe(before);
   });
 
+  test('refuses a stale deadline for a renewed approval', () => {
+    const renewed = approvalAction({ expiresAt: '2099-06-01T11:30:00.000Z' });
+    const session = harness(twoApprovals(renewed, approvalAction()), { now: HOST_NOW });
+    const before = session.conversation();
+
+    expect(
+      session.controller.reconcileApprovalExpiry({
+        toolCallId: 'old',
+        expiresAt: '2099-06-01T11:00:00.000Z',
+        expectedAction: approvalAction({ expiresAt: '2099-06-01T11:00:00.000Z' }),
+      }),
+    ).toBe(false);
+    expect(session.writes()).toBe(0);
+    expect(session.conversation()).toBe(before);
+  });
+
   test('refuses a call that is already decided', async () => {
     const session = harness(twoApprovals(oldAction, approvalAction()), { now: HOST_NOW });
     await session.controller.adapter.resolveToolApproval?.('fresh', {

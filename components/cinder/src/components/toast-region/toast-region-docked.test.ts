@@ -172,10 +172,10 @@ describe('Region placement (rows 04w, 06x, 15g)', () => {
       /\.cinder-toast-region\[data-cinder-phone\]\[data-cinder-position\]\s*\{[^}]*inset-inline:/,
     );
     expect(cssText).toMatch(
-      /\.cinder-toast-region\[data-cinder-phone\] \.cinder-toast__action\s*\{[^}]*min-block-size: var\(--cinder-touch-target-min\)/,
+      /\.cinder-toast-region\[data-cinder-phone\] \.cinder-toast__action::before\s*\{[^}]*block-size: var\(--cinder-touch-target-min\)/,
     );
     expect(cssText).toMatch(
-      /@media \(pointer: coarse\)\s*\{\s*\.cinder-toast__action\s*\{[^}]*min-block-size: var\(--cinder-touch-target-min\)/,
+      /@media \(any-pointer: coarse\)\s*\{[\s\S]*?\.cinder-toast__action::before\s*\{[^}]*block-size: var\(--cinder-touch-target-min\)/,
     );
   });
 

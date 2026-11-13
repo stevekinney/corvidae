@@ -54,6 +54,58 @@ export const markNumericTokens: Attachment<HTMLElement> = (container) => {
   };
 };
 
+/** A command-line flag: one or two hyphens that start a word, then the flag's name. */
+const flagPattern = /(?<![\w-])-{1,2}[A-Za-z][\w-]*/g;
+
+/** The class a flag takes so a wrapping block keeps it on one line. */
+export const flagClass = 'cinder-code-block__flag';
+
+/**
+ * Cuts `text` into runs of plain text and flags. A browser may break a line after a hyphen, so
+ * `--notify` can end one line in `--` and begin the next with `notify`; the caller draws each flag
+ * in an element that never breaks. The runs joined are exactly `text`.
+ */
+export function splitFlags(text: string): { text: string; flag: boolean }[] {
+  const runs: { text: string; flag: boolean }[] = [];
+  let last = 0;
+  for (const match of text.matchAll(flagPattern)) {
+    if (match.index > last) runs.push({ text: text.slice(last, match.index), flag: false });
+    runs.push({ text: match[0], flag: true });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) runs.push({ text: text.slice(last), flag: false });
+  return runs;
+}
+
+/**
+ * Highlighted code is fresh DOM, so its text nodes can be cut: each flag is wrapped in its own
+ * element, and the copied text is unchanged. A token the highlighter splits across two elements is
+ * left alone.
+ */
+export const keepFlagsWhole: Attachment<HTMLElement> = (container) => {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    if (node instanceof Text) nodes.push(node);
+  }
+  for (const node of nodes) {
+    const runs = splitFlags(node.data);
+    if (!runs.some((run) => run.flag)) continue;
+    const fragment = document.createDocumentFragment();
+    for (const run of runs) {
+      if (!run.flag) {
+        fragment.append(run.text);
+        continue;
+      }
+      const flag = document.createElement('span');
+      flag.className = flagClass;
+      flag.textContent = run.text;
+      fragment.append(flag);
+    }
+    node.replaceWith(fragment);
+  }
+};
+
 /** The class a line takes when a note of this tone belongs to it. */
 export function lineToneClass(tone: CodeBlockAnnotationTone): string {
   return `cinder-code-block__line--${tone}`;

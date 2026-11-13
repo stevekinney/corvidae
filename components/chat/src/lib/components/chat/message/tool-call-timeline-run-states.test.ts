@@ -114,14 +114,18 @@ describe('R1: the step under way', () => {
     expect(heading(container).querySelector('[data-elapsed]')?.textContent).toBe('1m 5s');
   });
 
-  test('a single step shows no position, and a step with no known start shows no time', async () => {
+  test('a single running step shows its position, and a step with no known start shows no time', async () => {
     const { container } = render(ToolCallTimeline, {
       props: { pairs: [running('only')], describeToolCall },
     });
     await tick();
-    expect(heading(container).querySelector('[data-step-position]')).toBeNull();
+    expect(heading(container).querySelector('[data-step-position]')?.textContent).toBe(
+      'Step 1 of 1',
+    );
     expect(heading(container).querySelector('[data-elapsed]')).toBeNull();
-    expect(heading(container).textContent?.replace(/\s+/g, ' ').trim()).toBe('Searching sources…');
+    expect(heading(container).textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Searching sources… Step 1 of 1',
+    );
   });
 
   test('a call a finished run left unanswered does not turn, count or tick', async () => {
@@ -185,6 +189,27 @@ describe('R1: the step under way', () => {
       timers.release();
     }
   });
+
+  test('uses a supplied count-bearing summary without repeating row prose', async () => {
+    const { container } = render(ToolCallTimeline, {
+      props: {
+        pairs: [done('s1'), done('s2')],
+        describeToolCall,
+        labels: {
+          steps: (count: number) => `Compared ${count} recent orders…`,
+        },
+      },
+    });
+    await tick();
+    const text = heading(container).textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    expect(text).toContain('Compared 2 recent orders…');
+    expect(text).not.toContain('Searched sources');
+    // No system name in a collapsed summary unless it is the repeated rollup.
+    expect(heading(container).querySelector('.chat-tool-call-summary-tools')).toBeNull();
+    expect(container.querySelector('.chat-tool-call-name')?.textContent?.trim()).toBe(
+      'search_sources',
+    );
+  });
 });
 
 describe('R7: a failed step', () => {
@@ -194,8 +219,11 @@ describe('R7: a failed step', () => {
     });
     await tick();
     const count = heading(container).querySelector('.chat-tool-call-summary-count');
-    expect(count?.textContent).toBe('2 of 3 steps,');
+    expect(count?.textContent).toBe('2 of 3 steps');
+    expect(count?.nextElementSibling?.matches('[data-problem]')).toBe(true);
     expect(count?.nextElementSibling?.textContent).toBe('1 failed');
+    expect(count?.nextElementSibling?.nextElementSibling?.textContent).toBe('Searched sources');
+    expect(heading(container).querySelector('.chat-tool-call-summary-tools')).toBeNull();
     expect(heading(container).textContent).not.toContain(String.fromCodePoint(0xb7));
   });
 
@@ -211,11 +239,58 @@ describe('R7: a failed step', () => {
     });
     await tick();
     const count = heading(container).querySelector('.chat-tool-call-summary-count');
-    expect(count?.textContent).toBe('Checked 2 of 3 sources,');
+    expect(count?.textContent).toBe('Checked 2 of 3 sources');
+    expect(count?.nextElementSibling?.matches('[data-problem]')).toBe(true);
     expect(count?.nextElementSibling?.textContent).toBe('1 failed');
+    expect(count?.nextElementSibling?.nextElementSibling?.textContent).toBe('Searched sources');
   });
 
-  test('the failed row opens with Failed in view, a danger summary and a wrapping diagnostic', async () => {
+  test('does not expose raw tool names in a collapsed human-action header', async () => {
+    const approval: ToolCallPair = {
+      call: { id: 'approval', name: 'issue_refund', arguments: { orderId: '4471' } },
+      result: {
+        callId: 'approval',
+        outcome: 'action_required',
+        action: { type: 'approval', operation: { kind: 'other' } },
+      },
+    } as unknown as ToolCallPair;
+    const { container } = render(ToolCallTimeline, {
+      props: {
+        pairs: [done('s1'), approval],
+        describeToolCall,
+        expanded: false,
+      },
+    });
+    await tick();
+    expect(heading(container).querySelector('.chat-tool-call-summary-tools')).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('.chat-tool-call-name'), (element) =>
+        element.textContent?.trim(),
+      ),
+    ).toContain('issue_refund');
+  });
+
+  test('a call a card in the turn speaks for says no waiting word in the summary', async () => {
+    const approval = {
+      call: { id: 'approval', name: 'issue_refund', arguments: {} },
+      result: {
+        callId: 'approval',
+        outcome: 'action_required',
+        action: { type: 'approval', operation: { kind: 'other' } },
+      },
+    } as unknown as ToolCallPair;
+    const alone = render(ToolCallTimeline, { props: { pairs: [approval], describeToolCall } });
+    await tick();
+    expect(heading(alone.container).querySelector('[data-problem]')).not.toBeNull();
+    alone.unmount();
+    const owned = render(ToolCallTimeline, {
+      props: { pairs: [approval], describeToolCall, cardOwnedCallIds: new Set(['approval']) },
+    });
+    await tick();
+    expect(heading(owned.container).querySelector('[data-problem]')).toBeNull();
+  });
+
+  test('the failed row opens with its failure in view, a danger summary and a wrapping diagnostic', async () => {
     const { container } = render(ToolCallTimeline, {
       props: { pairs: [done('s1'), done('s2'), failed('s3')], describeToolCall },
     });
@@ -223,7 +298,7 @@ describe('R7: a failed step', () => {
     const item = container.querySelector('[data-cinder-tool-call-status="failed"]');
     const row = item?.querySelector('.chat-tool-call-row');
     expect(row?.getAttribute('aria-expanded')).toBe('true');
-    expect(row?.querySelector('.chat-tool-call-status')?.textContent).toBe('Failed');
+    expect(row?.querySelector('.chat-tool-call-status')).toBeNull();
     const failure = item?.querySelector('.chat-tool-call-failure');
     expect(failure?.querySelector('.chat-tool-call-failure-summary')?.textContent?.trim()).toBe(
       'parcelly.example did not answer within 10 s.',
@@ -233,7 +308,7 @@ describe('R7: a failed step', () => {
     expect(diagnostic?.getAttribute('dir')).toBe('auto');
   });
 
-  test('Copy error then Retry this step, and Retry hands the host the call id', async () => {
+  test('icon-only Copy error tooltip pairs with Retry this step and preserves the call id', async () => {
     const retryStep = mock((_toolCallId: string) => undefined);
     const { container, getByRole } = render(ToolCallTimeline, {
       props: {
@@ -244,10 +319,14 @@ describe('R7: a failed step', () => {
     });
     await tick();
     const actions = container.querySelector('.chat-tool-call-failure-actions');
-    expect(
-      Array.from(actions?.querySelectorAll('button') ?? [], (button) => button.textContent?.trim()),
-    ).toEqual(['Copy error', 'Retry this step']);
-    await fireEvent.click(getByRole('button', { name: 'Retry this step' }));
+    expect(actions?.querySelectorAll('button')).toHaveLength(2);
+    expect(getByRole('button', { name: 'Copy error' }).hasAttribute('data-cinder-icon-only')).toBe(
+      true,
+    );
+    const tooltip = actions?.querySelector('[role="tooltip"]');
+    expect(tooltip?.textContent).toBe('Copy error');
+    expect(tooltip?.hasAttribute('data-cinder-visible')).toBe(false);
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryStep).toHaveBeenCalledWith('s3');
   });
 
@@ -275,7 +354,7 @@ describe('R7: a failed step', () => {
     });
     await tick();
     expect(container.querySelector('.chat-tool-call-failure')).toBeNull();
-    expect(queryByRole('button', { name: 'Retry this step' })).toBeNull();
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(container.textContent).toContain('The user denied this call');
   });
 
@@ -284,7 +363,7 @@ describe('R7: a failed step', () => {
       props: { pairs: [failed('s1')], describeToolCall },
     });
     await tick();
-    expect(queryByRole('button', { name: 'Retry this step' })).toBeNull();
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(getByRole('button', { name: 'Copy error' })).not.toBeNull();
   });
 
@@ -297,5 +376,27 @@ describe('R7: a failed step', () => {
       /\.chat-tool-call-status,\s*\.chat-tool-call-duration\s*\{\s*flex:\s*none;/u,
     );
     expect(source).toMatch(/\.chat-tool-call-diagnostic\s*\{[^}]*white-space:\s*pre-wrap;/su);
+  });
+
+  test('coarse failed rows place status and duration in separate grid slots', async () => {
+    const source = await Bun.file(new URL('./tool-call-timeline.svelte', import.meta.url)).text();
+    expect(source).toMatch(
+      /\.chat-tool-call-result\s*\{\s*grid-column:\s*2 \/ -1;\s*grid-row:\s*3;/su,
+    );
+    expect(source).toMatch(
+      /\.chat-tool-call-status\s*\{\s*grid-column:\s*3;\s*\}\s*\.chat-tool-call-duration\s*\{\s*grid-column:\s*3;\s*grid-row:\s*2;/su,
+    );
+  });
+
+  test('the count is never shrunk; the description and tool name yield space', async () => {
+    const source = await Bun.file(new URL('./tool-call-timeline.svelte', import.meta.url)).text();
+    expect(source).toMatch(/\.chat-tool-call-summary-count\s*\{\s*flex:\s*0 0 auto;/su);
+    expect(source).toMatch(
+      /data-has-repeated-summary='true'\]\s+\.chat-tool-call-summary\s*\{\s*display:\s*grid;/su,
+    );
+    expect(source).toMatch(
+      /data-has-repeated-summary='true'\]\s+\.chat-tool-call-summary-tools\s*\{[\s\S]*?grid-column:\s*1;[\s\S]*?grid-row:\s*2;[\s\S]*?flex:\s*none;/su,
+    );
+    expect(source).toMatch(/\.chat-tool-call-summary-duration\s*\{\s*flex:\s*0 0 auto;/su);
   });
 });

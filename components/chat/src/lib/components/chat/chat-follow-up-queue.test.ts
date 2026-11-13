@@ -24,6 +24,7 @@ import {
   createConversationHistory,
 } from './builders.ts';
 import type { ConversationHistory } from './conversation-model.ts';
+import type { ChatTurnState } from './message/turn-state.ts';
 
 setupHappyDom();
 
@@ -118,6 +119,122 @@ function recordingAdapter() {
 }
 
 describe('Chat queued follow-ups (COR-2284, row C3)', () => {
+  test('keeps queued follow-ups until an offline transport reconnects', async () => {
+    const { adapter, sent, runInput, releases } = recordingAdapter();
+    const rendered = render(Chat, {
+      id: 'queue-offline',
+      conversation: workingConversation('queue-offline'),
+      streaming: true,
+      adapter,
+    });
+    await submit(rendered.container, 'wait for reconnect');
+    await submit(rendered.container, 'then continue in order');
+    const staleSendNow = buttonNamed(rendered.container, 'Send now instead');
+    expect(staleSendNow).toBeDefined();
+    await rendered.rerender({ composerStatus: { kind: 'offline' } });
+    await settle();
+    expect(sent).toEqual([]);
+    expect(runInput).toEqual([]);
+    expect(ghostTexts(rendered.container)).toEqual([
+      'wait for reconnect',
+      'then continue in order',
+    ]);
+    expect(buttonNamed(rendered.container, 'Send now instead')).toBeUndefined();
+    await fireEvent.click(staleSendNow!);
+    await settle();
+    expect(sent).toEqual([]);
+    expect(runInput).toEqual([]);
+    expect(ghostTexts(rendered.container)).toEqual([
+      'wait for reconnect',
+      'then continue in order',
+    ]);
+    await rendered.rerender({ streaming: false });
+    await rendered.rerender({ composerStatus: { kind: 'reconnecting', attempt: 1 } });
+    await settle();
+    expect(sent).toEqual([]);
+    expect(ghostTexts(rendered.container)).toEqual([
+      'wait for reconnect',
+      'then continue in order',
+    ]);
+    await rendered.rerender({ composerStatus: { kind: 'note', text: 'Back online' } });
+    await settle();
+    expect(sent).toEqual(['wait for reconnect']);
+    releases[0]!();
+    await settle();
+    expect(sent).toEqual(['wait for reconnect', 'then continue in order']);
+    releases[1]!();
+  });
+
+  test('a run that ends while offline sends its follow-up once when the status goes straight online', async () => {
+    const { adapter, sent, releases } = recordingAdapter();
+    const rendered = render(Chat, {
+      id: 'queue-offline-direct',
+      conversation: workingConversation('queue-offline-direct'),
+      streaming: true,
+      adapter,
+    });
+    await submit(rendered.container, 'send me once');
+    await rendered.rerender({ composerStatus: { kind: 'offline' } });
+    await rendered.rerender({ streaming: false });
+    await settle();
+    expect(sent).toEqual([]);
+    expect(ghostTexts(rendered.container)).toEqual(['send me once']);
+
+    await rendered.rerender({ composerStatus: { kind: 'note', text: 'Back online' } });
+    await settle();
+    expect(sent).toEqual(['send me once']);
+
+    await rendered.rerender({ composerStatus: { kind: 'offline' } });
+    await rendered.rerender({ composerStatus: undefined });
+    await settle();
+    expect(sent).toEqual(['send me once']);
+    releases[0]!();
+    await settle();
+    expect(sent).toEqual(['send me once']);
+  });
+
+  test('offline failure discards the queue for Restore instead of waiting to dispatch', async () => {
+    const { adapter, sent } = recordingAdapter();
+    let turnState: ChatTurnState = { kind: 'streaming' };
+    const rendered = render(Chat, {
+      id: 'queue-offline-failed',
+      conversation: workingConversation('queue-offline-failed'),
+      streaming: true,
+      adapter,
+      messageTurnState: () => turnState,
+    });
+
+    await submit(rendered.container, 'keep offline');
+    turnState = { kind: 'failed', cause: 'The run failed while offline.' };
+    await rendered.rerender({ composerStatus: { kind: 'offline' }, streaming: false });
+    await settle();
+
+    expect(sent).toEqual([]);
+    expect(
+      rendered.container.querySelector('[data-chat-follow-up-discard="failed"]'),
+    ).not.toBeNull();
+    expect(ghostTexts(rendered.container)).toEqual([]);
+    await fireEvent.click(buttonNamed(rendered.container, 'Restore')!);
+    await tick();
+    expect(composerOf(rendered.container).value).toBe('keep offline');
+  });
+
+  test('keeps the phone queue rows compact without shrinking action hit regions', async () => {
+    const source = await Bun.file(
+      new URL('./container/chat-follow-up-drawer.svelte', import.meta.url),
+    ).text();
+
+    expect(source).toMatch(/\.chat-follow-up-ghost\s*\{[^}]*min-block-size:\s*2\.75rem;/s);
+    expect(source).toMatch(/\.chat-follow-up-ghost-actions\s*\{[^}]*display:\s*flex;/s);
+    // Edit and Remove stand a 40px pitch apart, and the header has block padding at any pointer.
+    expect(source).toMatch(
+      /\.chat-follow-up-ghost-actions\s*\{[^}]*gap:\s*var\(--cinder-space-3\);/s,
+    );
+    expect(source).toMatch(
+      /\.chat-follow-up-drawer-header\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);/s,
+    );
+  });
+
   test('a follow-up typed during a run waits under Up next, sent to neither the run nor a new turn', async () => {
     const { adapter, sent, runInput } = recordingAdapter();
     const { container } = render(Chat, {
@@ -131,6 +248,8 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     await tick();
     const send = container.querySelector<HTMLButtonElement>('[data-chat-send]')!;
     expect(send.getAttribute('aria-label')).toBe('Queue message');
+    expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(send.textContent?.trim()).toBe('');
 
     await fireEvent.keyDown(composerOf(container), { key: 'Enter' });
     await tick();
@@ -140,15 +259,19 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     const drawer = drawerOf(container)!;
     expect(drawer).not.toBeNull();
     expect(drawer.querySelector('.chat-follow-up-drawer-title')?.textContent).toBe('Up next');
-    expect(drawer.querySelector('.chat-follow-up-drawer-summary')?.textContent).toBe(
-      '1 queued, sends when this run finishes',
+    expect(drawer.querySelector('.chat-follow-up-drawer-summary-short')?.textContent).toBe(
+      '1 queued',
+    );
+    expect(drawer.querySelector('.chat-follow-up-drawer-summary-long')?.textContent).toBe(
+      '1 queued, sends after this run',
     );
     expect(drawer.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(ghostTexts(container)).toEqual(['then check the logs']);
     expect(drawer.querySelector('.chat-follow-up-ghost-index')?.textContent).toBe('1');
     expect(buttonNamed(container, 'Edit queued follow-up 1')).toBeDefined();
     expect(buttonNamed(container, 'Remove queued follow-up 1')).toBeDefined();
-    expect(buttonNamed(container, 'Send now instead')).toBeDefined();
+    const sendNow = buttonNamed(container, 'Send now instead');
+    expect(sendNow?.closest('.chat-follow-up-drawer-header')).not.toBeNull();
     expect(composerOf(container).value).toBe('');
   });
 
@@ -164,9 +287,9 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     await submit(rendered.container, 'first');
     await submit(rendered.container, 'second');
     expect(ghostTexts(rendered.container)).toEqual(['first', 'second']);
-    expect(rendered.container.querySelector('.chat-follow-up-drawer-summary')?.textContent).toBe(
-      '2 queued, sends when this run finishes',
-    );
+    expect(
+      rendered.container.querySelector('.chat-follow-up-drawer-summary-short')?.textContent,
+    ).toBe('2 queued');
 
     await rendered.rerender({ streaming: false });
     await settle();
@@ -181,6 +304,38 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     expect(sent).toEqual(['first', 'second']);
     expect(drawerOf(rendered.container)).toBeNull();
     releases[1]!();
+  });
+
+  test('a failed turn discards queued follow-ups instead of dispatching them', async () => {
+    const { adapter, sent } = recordingAdapter();
+    let turnState: ChatTurnState = { kind: 'streaming' };
+    const rendered = render(Chat, {
+      id: 'queue-failed-turn',
+      conversation: workingConversation('queue-failed-turn'),
+      streaming: true,
+      adapter,
+      messageTurnState: () => turnState,
+    });
+
+    await submit(rendered.container, 'keep this');
+    await submit(rendered.container, 'and this');
+    expect(ghostTexts(rendered.container)).toEqual(['keep this', 'and this']);
+
+    turnState = { kind: 'failed', cause: 'The run failed.' };
+    await rendered.rerender({ streaming: false, messageTurnState: () => turnState });
+    await settle();
+
+    expect(sent).toEqual([]);
+    expect(drawerOf(rendered.container)).toBeNull();
+    const discard = rendered.container.querySelector<HTMLElement>(
+      '[data-chat-follow-up-discard="failed"]',
+    );
+    expect(discard?.textContent).toContain('The run failed');
+    expect(discard?.textContent).toContain('2 queued follow-ups');
+
+    await fireEvent.click(buttonNamed(rendered.container, 'Restore')!);
+    await tick();
+    expect(composerOf(rendered.container).value).toBe('keep this\n\nand this');
   });
 
   test('Send now instead hands the follow-ups to the running run, in order', async () => {
@@ -249,11 +404,16 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     expect(discard.querySelector('.chat-follow-up-discard-text')?.textContent?.trim()).toBe(
       'The run was stopped, so your 2 queued follow-ups were not sent.',
     );
-    // The secondary action sits left of the primary one.
-    const actions = [...discard.querySelectorAll('button')].map((button) =>
-      button.textContent?.trim(),
+    // Restore sits inline with the sentence; the dismiss is Callout's own, at the trailing end.
+    const actions = [...discard.querySelectorAll('button')].map(
+      (button) => button.getAttribute('aria-label') ?? button.textContent?.trim(),
     );
-    expect(actions).toEqual(['Dismiss', 'Restore']);
+    expect(actions).toEqual(['Restore', 'Dismiss']);
+    expect(
+      discard
+        .querySelector('button[aria-label="Dismiss"]')
+        ?.classList.contains('cinder-callout__dismiss'),
+    ).toBe(true);
 
     await rendered.rerender({ streaming: false });
     await settle();

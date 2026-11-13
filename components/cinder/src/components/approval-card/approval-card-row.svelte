@@ -22,6 +22,10 @@
     approvalState: ApprovalState;
     /** The question the approval asks. */
     question: string;
+    /** The command or operation evidence, shown while the request is pending. */
+    command: string | undefined;
+    /** The primary action's label. */
+    approveLabel: string | undefined;
     /** Who asked, already written with its prefix: "Approval from Tool runner". */
     sourceText: string | undefined;
     /** When it was asked, already written as relative time. */
@@ -73,6 +77,10 @@
     inputBody: Snippet | undefined;
     /** Resolution sink; undefined when the host is not wired to answer, or the approval is not actionable. */
     resolve: ((resolution: ApprovalResolution) => void) | undefined;
+    /** Requests a fresh approval after this one expired. */
+    onAskAgain: (() => void) | undefined;
+    /** When the approval expired, formatted for the receipt. */
+    expiresAt: string | undefined;
   };
 </script>
 
@@ -80,12 +88,15 @@
   import Ban from '@lucide/svelte/icons/ban';
   import Check from '@lucide/svelte/icons/check';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
-  import ShieldAlert from '@lucide/svelte/icons/shield-alert';
   import { untrack } from 'svelte';
 
   import Button from '../button/button.svelte';
+  import Badge from '../badge/badge.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
+  import CodeBlock from '../code-block/code-block.svelte';
+  import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import ApprovalCardOutcome from './approval-card-outcome.svelte';
   import { RISK_LABELS, RISK_WORDS, STATE_LABELS } from './approval-card-state.ts';
@@ -98,6 +109,8 @@
     tool,
     approvalState,
     question,
+    command,
+    approveLabel,
     sourceText,
     requestedText,
     requestedIso,
@@ -122,17 +135,20 @@
     inputPairs,
     inputBody,
     resolve,
+    onAskAgain,
+    expiresAt,
   }: ApprovalCardRowProps = $props();
 
   const inputId = $derived(`${rootId}-input`);
   const noteId = $derived(`${rootId}-note`);
+  const hintId = $derived(`${rootId}-arm-hint`);
   const disabledReasonId = $derived(`${rootId}-disabled-reason`);
 
   let inputOpen = $state(false);
   let noteOpen = $state(false);
   let note = $state('');
   let remember = $state(false);
-
+  let armed = $state(false);
   // The note and the checkbox belong to one request. A different request must never inherit
   // what the approver typed for the last one, so the reset compares the previous key by hand:
   // a `$derived` would also re-run on unrelated host updates and wipe in-progress text.
@@ -170,6 +186,14 @@
     if (trimmedNote) resolution.reason = trimmedNote;
     resolve?.(resolution);
   }
+
+  function pressDeny(): void {
+    armed = false;
+    decide('deny');
+  }
+
+  const irreversible = $derived(tool.irreversible === true);
+  const primaryLabel = $derived(approveLabel ?? 'Approve');
 </script>
 
 {#if context !== undefined}
@@ -177,84 +201,108 @@
 {/if}
 
 <div class="cinder-approval-card__row" data-cinder-collapsed={collapsed || undefined}>
-  {#if collapsed}
-    <span class="cinder-approval-card__decided-glyph" data-cinder-tone={outcomeTone}>
-      {#if outcomeTone === 'success'}
-        <Check size={16} strokeWidth={2} aria-hidden="true" />
-      {:else}
-        <Ban size={16} strokeWidth={2} aria-hidden="true" />
-      {/if}
-    </span>
-  {:else}
-    <span
-      class="cinder-approval-card__risk-icon"
-      role="img"
-      aria-label={riskLabel}
-      data-cinder-risk={tool.risk}
-    >
-      <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
-    </span>
-  {/if}
-  <div class="cinder-approval-card__row-main">
-    <svelte:element
-      this={titleTag}
-      id={titleId}
-      class="cinder-approval-card__row-question"
-      dir="auto"
-    >
-      {question}
-    </svelte:element>
-    {#if !collapsed}
-      <p class="cinder-approval-card__line">
-        <span class="cinder-approval-card__line-tool">
-          {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
-              >{tool.label}</span
-            >{' '}{/if}<span class="cinder-approval-card__line-facts"
-            ><span class="cinder-approval-card__keep"
-              ><code class="cinder-approval-card__tool-identifier">{tool.name}</code><span
-                class="cinder-approval-card__separator"
-                aria-hidden="true">,</span
-              ></span
-            >{' '}<span class="cinder-approval-card__keep"
-              ><span class="cinder-approval-card__risk-word">{riskWord}</span
-              >{#if tool.irreversible}<span
-                  class="cinder-approval-card__separator"
-                  aria-hidden="true">,</span
-                >{/if}</span
-            >{#if tool.irreversible}{' '}<span class="cinder-approval-card__undone"
-                >Can't be undone</span
-              >{/if}</span
-          >{#if hasSourceLine}<span
-              class="cinder-approval-card__separator cinder-approval-card__source-separator"
-              aria-hidden="true">,</span
+  {#if approvalState === 'expired'}
+    <div class="cinder-approval-card__expired-row">
+      <svelte:element
+        this={titleTag}
+        id={titleId}
+        class="cinder-approval-card__row-question cinder-approval-card__decision-title"
+        dir="auto"
+      >
+        <span class="cinder-approval-card__expired-label">Expired before a decision:</span>{' '}
+        <span class="cinder-approval-card__expired-subject">{question}</span>
+      </svelte:element>
+      {#if expiresAt !== undefined || onAskAgain !== undefined}
+        <div class="cinder-approval-card__expiry-actions">
+          {#if expiresAt !== undefined}<span class="cinder-approval-card__countdown"
+              >{expiresAt}</span
             >{/if}
-        </span>
-        {#if hasSourceLine}
-          <span class="cinder-approval-card__line-source">
-            {#if sourceText !== undefined}<span>{sourceText}</span
-              >{#if requestedText !== undefined}<span
-                  class="cinder-approval-card__separator cinder-approval-card__time-separator"
-                  aria-hidden="true">,</span
-                >{/if}{/if}
-            {#if requestedText !== undefined}
-              <time datetime={requestedIso}>{requestedText}</time>
-            {/if}
-          </span>
+          {#if onAskAgain !== undefined}
+            <Button type="button" variant="secondary" size="sm" onclick={onAskAgain}
+              >Ask again</Button
+            >
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {:else}
+    {#if collapsed}
+      <span class="cinder-approval-card__decided-glyph" data-cinder-tone={outcomeTone}>
+        {#if outcomeTone === 'success'}
+          <Check size={16} strokeWidth={2} aria-hidden="true" />
+        {:else}
+          <Ban size={16} strokeWidth={2} aria-hidden="true" />
         {/if}
-      </p>
+      </span>
+    {:else}
+      <span class="cinder-sr-only cinder-approval-card__row-risk">{riskLabel}</span>
     {/if}
-    {#if consequence !== undefined && !isDecided}
-      <p class="cinder-approval-card__consequence" dir="auto">{consequence}</p>
+    <div class="cinder-approval-card__row-main">
+      <div class="cinder-approval-card__row-title-line">
+        <svelte:element
+          this={titleTag}
+          id={titleId}
+          class="cinder-approval-card__row-question"
+          dir="auto"
+        >
+          {question}
+        </svelte:element>
+        {#if irreversible && !collapsed}
+          <Badge variant="danger" size="sm" class="cinder-approval-card__irreversible"
+            >Can't be undone</Badge
+          >
+        {/if}
+      </div>
+      {#if !collapsed && (tool.label !== undefined || !tool.irreversible || hasSourceLine)}
+        <p class="cinder-approval-card__line">
+          <span class="cinder-approval-card__line-tool">
+            <span class="cinder-approval-card__line-facts"
+              >{#if tool.label !== undefined}<span class="cinder-approval-card__keep"
+                  ><span class="cinder-approval-card__tool-label">{tool.label}</span
+                  >{#if !tool.irreversible}<span
+                      class="cinder-approval-card__separator"
+                      aria-hidden="true">,</span
+                    >{/if}</span
+                >{#if !tool.irreversible}{' '}{/if}{/if}{#if !tool.irreversible}<span
+                  class="cinder-approval-card__keep"
+                  ><span class="cinder-approval-card__risk-word">{riskWord}</span></span
+                >{/if}</span
+            >{#if hasSourceLine && (tool.label !== undefined || !tool.irreversible)}<span
+                class="cinder-approval-card__separator cinder-approval-card__source-separator"
+                aria-hidden="true">,</span
+              >{/if}
+          </span>
+          {#if hasSourceLine}
+            <span class="cinder-approval-card__line-source">
+              {#if sourceText !== undefined}<span>{sourceText}</span
+                >{#if requestedText !== undefined}<span
+                    class="cinder-approval-card__separator cinder-approval-card__time-separator"
+                    aria-hidden="true">,</span
+                  >{/if}{/if}
+              {#if requestedText !== undefined}
+                <time datetime={requestedIso}>{requestedText}</time>
+              {/if}
+            </span>
+          {/if}
+        </p>
+      {/if}
+      {#if consequence !== undefined && !isDecided}
+        <p class="cinder-approval-card__consequence" dir="auto">{consequence}</p>
+      {/if}
+    </div>
+    {#if isUnavailable || (isPending && !canAnswer)}
+      <span class="cinder-approval-card__state-word" data-cinder-state-word>
+        {STATE_LABELS[approvalState]}
+      </span>
     {/if}
-  </div>
-  {#if isUnavailable || (isPending && !canAnswer)}
-    <span class="cinder-approval-card__state-word" data-cinder-state-word>
-      {STATE_LABELS[approvalState]}
-    </span>
   {/if}
 </div>
 
-{#if isDecided}
+{#if approvalState === 'expired' && notice !== undefined}
+  <p class="cinder-approval-card__readonly-summary" data-cinder-state={approvalState} dir="auto">
+    {notice}
+  </p>
+{:else if isDecided}
   {#if inputPairs.length > 0 && !collapsed}
     <p class="cinder-approval-card__input-summary cinder-approval-card__decided-input">
       <span class="cinder-approval-card__input-word">{inputLabel}</span>
@@ -316,6 +364,18 @@
         </p>
       {/if}
     {:else}
+      {#if command !== undefined}
+        <div class="cinder-approval-card__command" dir="ltr">
+          <CodeBlock
+            code={command}
+            language="shell"
+            languageLabelVisible={false}
+            copyable={false}
+            wrap
+          />
+        </div>
+      {/if}
+
       {#if hasInput}
         <div class="cinder-approval-card__input">
           <button
@@ -385,15 +445,7 @@
       {#if canAnswer}
         <div class="cinder-approval-card__row-actions" role="group" aria-label="Approval actions">
           {#if !noteOpen}
-            <button
-              type="button"
-              class="cinder-approval-card__note-toggle"
-              aria-expanded={noteOpen}
-              disabled={isBusy}
-              onclick={() => (noteOpen = true)}
-            >
-              Add a note
-            </button>
+            <ApprovalCardNoteToggle disabled={isBusy} onOpen={() => (noteOpen = true)} />
           {/if}
           <span class="cinder-approval-card__row-spacer"></span>
           <Button
@@ -406,24 +458,30 @@
             loading={resolving === 'deny'}
             loadingStatus="Denying…"
             aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-            onclick={() => decide('deny')}
+            onclick={pressDeny}
           >
             {resolving === 'deny' ? 'Denying…' : 'Deny'}
           </Button>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
+          <InlineConfirm
+            presentation="two-press"
+            bind:armed
+            confirmLabel={primaryLabel}
+            armedLabel={`Press again to ${primaryLabel.charAt(0).toLowerCase()}${primaryLabel.slice(1)}`}
+            armedHint="Reverts in 3 seconds."
+            armedEscapeHint="Escape cancels."
+            {requestKey}
+            requiresSecondPress={irreversible}
             mutating
-            disabled={isBusy && resolving !== 'approve'}
-            aria-disabled={disabledReason === undefined ? undefined : 'true'}
+            disabled={isBusy}
+            blocked={disabledReason !== undefined}
+            ariaDisabled={disabledReason !== undefined}
             loading={resolving === 'approve'}
-            loadingStatus="Approving…"
-            aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-            onclick={() => decide('approve')}
-          >
-            {resolving === 'approve' ? 'Approving…' : 'Approve'}
-          </Button>
+            loadingLabel="Approving…"
+            ariaDescribedBy={disabledReason === undefined ? hintId : disabledReasonId}
+            hintClass="cinder-approval-card__arm-hint"
+            {hintId}
+            onConfirm={() => decide('approve')}
+          />
         </div>
         {#if footnote !== undefined}
           <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>

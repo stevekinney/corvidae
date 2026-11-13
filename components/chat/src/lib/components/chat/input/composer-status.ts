@@ -23,7 +23,8 @@ export interface ChatComposerBlockedAction {
  *   sent now goes to the run as input instead of starting a new turn.
  * - `steering`: the chat is working, so a message sent now steers the run.
  * - `note`: a sentence of the host's own, such as when a changed setting applies.
- * - `reconnecting`: the transport lost the run's stream and is trying again.
+ * - `reconnecting`: the transport lost the run's stream and is trying again. A notice above the
+ *   composer with a spinner for its icon.
  * - `queued`: follow-ups the user sent are waiting for the run to take them.
  * - `offline`: the browser has no connection. A warning drawer above the composer says the draft is
  *   kept, and Send is off (and names the drawer through `aria-describedby`) until it clears.
@@ -47,6 +48,17 @@ export type ChatComposerStatus =
   | { kind: 'reconnecting'; attempt: number }
   | { kind: 'queued'; count?: number }
   | { kind: 'offline' }
+  | {
+      kind: 'drawer-notice';
+      /** Message shown above the composer. */
+      text: string;
+      /** Visual tone for the notice. */
+      tone?: 'neutral' | 'info' | 'warning' | 'danger';
+      /** Optional action rendered beside the notice. */
+      action?: ChatComposerBlockedAction | undefined;
+      /** When set, Send is disabled and this reason is associated with it for assistive technology. */
+      sendDisabledReason?: string | undefined;
+    }
   | {
       kind: 'draft-restored';
       /** When the draft was written, in words, such as `yesterday at 4:12 PM`. */
@@ -75,7 +87,7 @@ export type ChatComposerStatus =
   | {
       kind: 'read-only';
       /**
-       * What the `Read only` tooltip says, such as `Dana Reyes removed your write access on Nov 3`.
+       * What the `Read only` tooltip says, such as `Support Ops can grant you write access`.
        * Without it the words carry no tooltip.
        */
       tooltip?: string | undefined;
@@ -103,8 +115,16 @@ export function isComposerNoticeStatus(
 /** Whether a status is drawn as a drawer above the composer rather than the line under it. */
 export function isComposerDrawerStatus(
   status: ChatComposerStatus | undefined,
-): status is Extract<ChatComposerStatus, { kind: 'offline' | 'draft-restored' }> {
-  return status?.kind === 'offline' || status?.kind === 'draft-restored';
+): status is Extract<
+  ChatComposerStatus,
+  { kind: 'offline' | 'draft-restored' | 'drawer-notice' | 'reconnecting' }
+> {
+  return (
+    status?.kind === 'offline' ||
+    status?.kind === 'draft-restored' ||
+    status?.kind === 'drawer-notice' ||
+    status?.kind === 'reconnecting'
+  );
 }
 
 /** The words a status shows: on the line under the composer, or in its drawer. */
@@ -113,6 +133,7 @@ export function composerStatusText(status: ChatComposerStatus): string {
   if (status.kind === 'archived') return `Archived ${status.when}`;
   if (status.kind === 'read-only') return COMPOSER_READ_ONLY_LABEL;
   if (status.kind === 'offline') return COMPOSER_OFFLINE_TEXT;
+  if (status.kind === 'drawer-notice') return status.text;
   if (status.kind === 'draft-restored') return `Restored your unsent draft from ${status.when}.`;
   if (status.kind === 'steering') return 'A message now steers the run.';
   if (status.kind === 'note') return status.text;

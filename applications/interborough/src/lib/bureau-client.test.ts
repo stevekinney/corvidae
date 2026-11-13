@@ -17,6 +17,7 @@ import {
   getThreadMessages,
   listAgents,
   listContexts,
+  regenerateContext,
   renameContext,
   retractContextInput,
   sendContextInput,
@@ -187,6 +188,26 @@ describe('the Bureau’s context operations', () => {
       id: 'bureau.contexts.input',
       method: 'bureau.contexts.input',
       params: { contextId: 'c1', input: { id: 'row-1', payload: 'More' } },
+    });
+  });
+
+  test('regenerateContext uses the durable context operation and validates its receipt', async () => {
+    const stub = answering(result({ contextId: 'c1', messageId: 'answer-2', revision: 9 }));
+
+    const receipt = await withStub(stub.fetch, () =>
+      regenerateContext({
+        contextId: 'c1',
+        commandId: 'regenerate:1',
+        messageId: 'answer-1',
+      }),
+    );
+
+    expect(receipt).toEqual({ contextId: 'c1', messageId: 'answer-2', revision: 9 });
+    expect(stub.calls[0]?.body).toEqual({
+      jsonrpc: '2.0',
+      id: 'bureau.contexts.regenerate',
+      method: 'bureau.contexts.regenerate',
+      params: { contextId: 'c1', commandId: 'regenerate:1', messageId: 'answer-1' },
     });
   });
 });

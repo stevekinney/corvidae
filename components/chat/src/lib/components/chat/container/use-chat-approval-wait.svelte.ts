@@ -1,9 +1,6 @@
 import type { ApprovalState } from '@lostgradient/cinder';
 import type { Message } from '../conversation-model.ts';
-import {
-  findPendingApprovalMessageId,
-  nextPendingApprovalDeadline,
-} from './chat-approval-review.ts';
+import { nextPendingApprovalDeadline, pendingApprovalMessageIds } from './chat-approval-review.ts';
 
 /** The longest delay a timer takes; a later deadline wakes early and arms the next wait. */
 const MAXIMUM_TIMER_DELAY = 2_147_483_647;
@@ -38,18 +35,22 @@ export function useChatApprovalWait(options: ApprovalWaitOptions) {
     return () => clearTimeout(timer);
   });
 
-  const messageId = $derived(
-    findPendingApprovalMessageId(options.getMessages(), options.getApprovalStates(), currentTime),
+  const messageIds = $derived(
+    pendingApprovalMessageIds(options.getMessages(), options.getApprovalStates(), currentTime),
   );
 
   return {
     /** Whether an approval still waits on the person. */
     get waiting(): boolean {
-      return messageId !== undefined;
+      return messageIds.length > 0;
+    },
+    /** The ids of messages that show approvals still waiting for a decision. */
+    get messageIds(): readonly string[] {
+      return messageIds;
     },
     /** The id of the message that shows the first approval that waits. */
     get messageId(): string | undefined {
-      return messageId;
+      return messageIds[0];
     },
   };
 }

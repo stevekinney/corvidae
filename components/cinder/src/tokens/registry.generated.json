@@ -2635,7 +2635,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "Pagination dot hit-target size."
+      "description": "Pagination dot painted size; its 44px hit area is a pseudo-element."
     },
     {
       "path": "code-block.background",

@@ -1,4 +1,4 @@
-import type { ApprovalState } from '@lostgradient/cinder';
+import { formatDuration, type ApprovalState } from '@lostgradient/cinder';
 import { stringify } from '../../../utilities/stringify.ts';
 import { toolResultText } from '../../../utilities/tool-result-text.ts';
 import type { ToolCallPair } from '../conversation-model.ts';
@@ -186,11 +186,10 @@ export function toolCallFailure(pair: ToolCallPair, fallback: string): ToolCallF
   };
 }
 
-/** Formats the time a step has been running, in whole seconds: `0s`, `12s`, or `1m 5s`. */
+/** Formats the time a step has been running in whole seconds: `0s`, `12s`, `1m 5s`, `1h 45m`. */
 export function formatToolCallElapsed(milliseconds: number): string {
-  const seconds = Math.floor(Math.max(0, milliseconds) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const wholeSeconds = Math.floor(Math.max(0, milliseconds) / 1000);
+  return wholeSeconds === 0 ? '0s' : formatDuration(wholeSeconds * 1000);
 }
 
 /** A running step's title ends in an ellipsis, as a sentence still under way does. */
@@ -199,18 +198,21 @@ export function runningStepTitle(title: string): string {
   return trimmed.endsWith('…') ? trimmed : `${trimmed.replace(/\.+$/u, '')}…`;
 }
 
-/** Formats a duration in milliseconds as `0.4s`, `12s`, or `1m 5s`. */
-export function formatToolCallDuration(milliseconds: number): string {
-  if (milliseconds < 10_000) return `${(Math.max(0, milliseconds) / 1000).toFixed(1)}s`;
-  const seconds = Math.round(milliseconds / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+/** The tool names in first-use order, with a count when a tool ran more than once. */
+function toolDisplayName(pair: ToolCallPair): string {
+  // Input actions are semantic, regardless of the adapter's internal operation name. The
+  // expanded row still exposes the exact technical name; the collapsed summary describes work.
+  return pair.result?.outcome === 'action_required' && pair.result.action?.type !== 'approval'
+    ? 'Requested input'
+    : pair.call.name;
 }
 
-/** The tool names in first-use order, with a count when a tool ran more than once. */
 function toolNamesSegment(pairs: readonly ToolCallPair[]): string {
   const counts = new Map<string, number>();
-  for (const pair of pairs) counts.set(pair.call.name, (counts.get(pair.call.name) ?? 0) + 1);
+  for (const pair of pairs) {
+    const name = toolDisplayName(pair);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
   return Array.from(counts, ([name, count]) => (count > 1 ? `${name} ×${count}` : name)).join(', ');
 }
 
@@ -229,10 +231,13 @@ export function totalToolCallDuration(
 
 /** What the group's header says after its step count, one phrase to a field. */
 export type ToolCallSummaryParts = {
+  /** The first host-provided semantic sentence for completed work, when one exists. */
+  description: string | undefined;
   /**
    * The tools in first-use order, with a count when one ran more than once ("lookup-order ×2").
-   * A call that asks the person a question is left out: the question says what it is, and its
-   * tool is the run's own machinery (`requestHumanInput`), not work the agent did.
+   * A call that is waiting for the person is left out: the status says what it needs, and its
+   * tool identifier is run machinery rather than useful work summary text. Expanded rows retain
+   * the exact tool name.
    */
   tools: string;
   /**
@@ -241,7 +246,9 @@ export type ToolCallSummaryParts = {
    * question the person settled counts as approved or answered, never as waiting.
    */
   problems: string[];
-  /** The total time, when every call has one ("0.7s"). */
+  /** The status each entry of `problems` counts, in the same order, so the header can tone it. */
+  problemStatuses: ToolCallRowStatus[];
+  /** The total time, when every call has one ("700ms"). */
   duration: string | undefined;
 };
 
@@ -250,31 +257,66 @@ export function toolCallSummaryParts(
   pairs: readonly ToolCallPair[],
   statuses: readonly ToolCallRowStatus[],
   durations: readonly (number | undefined)[],
+  problemText: (count: number, status: ToolCallRowStatus) => string = defaultProblemText,
+  descriptions: readonly (string | undefined)[] = [],
+  cardOwned: readonly boolean[] = [],
 ): ToolCallSummaryParts {
-  const count = (status: ToolCallRowStatus) => statuses.filter((value) => value === status).length;
+  // A card in the same turn (an approval or a question) says that a call waits or expired; the
+  // summary leaves those words to it.
+  const cardSays = (status: ToolCallRowStatus) =>
+    status === 'waiting' || status === 'waiting-input' || status === 'expired';
+  const count = (status: ToolCallRowStatus) =>
+    statuses.filter(
+      (value, index) => value === status && !(cardOwned[index] === true && cardSays(value)),
+    ).length;
   const problems: string[] = [];
+  const problemStatuses: ToolCallRowStatus[] = [];
+  const add = (amount: number, status: ToolCallRowStatus): void => {
+    if (amount <= 0) return;
+    problems.push(problemText(amount, status));
+    problemStatuses.push(status);
+  };
   const failed = count('failed');
   const denied = count('denied');
   const expired = count('expired');
   const waiting = count('waiting');
   const waitingInput = count('waiting-input');
-  if (failed > 0) problems.push(`${failed} failed`);
-  if (denied > 0) problems.push(`${denied} denied`);
-  if (expired > 0) problems.push(`${expired} expired`);
-  if (waiting > 0) problems.push(`${waiting} waiting for approval`);
-  if (waitingInput > 0) problems.push(`${waitingInput} waiting for input`);
+  add(failed, 'failed');
+  add(denied, 'denied');
+  add(expired, 'expired');
+  add(waiting, 'waiting');
+  add(waitingInput, 'waiting-input');
   const approved = count('approved');
   const answered = count('answered');
-  if (approved > 0) problems.push(`${approved} approved, resuming`);
-  if (answered > 0) problems.push(`${answered} answered`);
+  add(approved, 'approved');
+  add(answered, 'answered');
   const total = totalToolCallDuration(durations);
   const asking = (status: ToolCallRowStatus | undefined) =>
-    status === 'waiting-input' || status === 'answered';
+    status === 'waiting' || status === 'waiting-input' || status === 'answered';
   return {
+    description: descriptions.find(
+      (description, index) => description !== undefined && !asking(statuses[index]),
+    ),
     tools: toolNamesSegment(pairs.filter((_pair, index) => !asking(statuses[index]))),
     problems,
-    duration: total === undefined ? undefined : formatToolCallDuration(total),
+    problemStatuses,
+    duration: total === undefined ? undefined : formatDuration(total),
   };
+}
+
+function defaultProblemText(count: number, status: ToolCallRowStatus): string {
+  const phrase: Record<ToolCallRowStatus, string> = {
+    pending: 'pending',
+    succeeded: 'complete',
+    failed: 'failed',
+    denied: 'denied',
+    expired: 'expired',
+    waiting: 'waiting for approval',
+    'waiting-input': 'waiting for input',
+    approved: 'approved, resuming',
+    answered: 'answered',
+  };
+  return `${count} ${phrase[status]}`;
 }
 
 /** A call shown on its own row, or a run of identical calls shown as one row. */

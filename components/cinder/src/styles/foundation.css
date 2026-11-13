@@ -121,6 +121,13 @@
      pointer and is deliberately not raised by the `(pointer: coarse)` rule below, so the 44px
      touch target of a compact button is its hit-area extension, never its drawn height. */
   --_cinder-compact-control-height: 1.5rem;
+  /* The painted height of each Button size. A coarse pointer raises `--cinder-control-height-*` to
+     44px; a Button keeps these instead and reaches 44px through a hit-area pseudo-element that
+     takes no layout space. */
+  --_cinder-painted-height-xs: 1.5rem;
+  --_cinder-painted-height-sm: 1.75rem;
+  --_cinder-painted-height-md: 2rem;
+  --_cinder-painted-height-lg: 2.5rem;
   --_cinder-focus-ring-shadow:
     0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
     0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
@@ -186,6 +193,9 @@
   --cinder-control-height-sm: 2rem;
   --cinder-control-height-md: 2.5rem;
   --cinder-control-height-lg: 3rem;
+  --_cinder-painted-height-sm: 2rem;
+  --_cinder-painted-height-md: 2.5rem;
+  --_cinder-painted-height-lg: 3rem;
   --cinder-button-height-sm: var(--cinder-control-height-sm);
   --cinder-button-height-md: var(--cinder-control-height-md);
   --cinder-button-height-lg: var(--cinder-control-height-lg);

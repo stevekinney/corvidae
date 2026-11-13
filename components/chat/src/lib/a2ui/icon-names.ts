@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
-  type IconComponent,
   List,
   MoreHorizontal,
   Paperclip,
@@ -21,6 +20,8 @@ import {
   Trash2,
   X,
 } from '@lostgradient/cinder';
+
+import type { IconComponent } from '@lostgradient/cinder';
 
 /** Every A2UI v0.9.1 icon name, with its Cinder icon. */
 export const A2UI_ICONS: Readonly<Record<string, IconComponent | null>> = {

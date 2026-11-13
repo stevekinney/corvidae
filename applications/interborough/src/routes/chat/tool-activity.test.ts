@@ -63,6 +63,113 @@ describe('toolGroups', () => {
     expect(entries[0]?.summary).toBe('status delivered');
   });
 
+  test('marks an approval expired at its observed deadline without changing its identity', () => {
+    const history = conversation(
+      call('run-1:step:0:call:c-expired', 'c-expired', 'issue-refund', { orderId: 'o1' }),
+      row({
+        id: 'run-1:step:0:result:c-expired',
+        role: 'tool-result',
+        toolResult: {
+          callId: 'c-expired',
+          outcome: 'action_required',
+          action: {
+            type: 'approval',
+            message: 'Refund order o1?',
+            expiresAt: '2026-10-23T00:00:10.000Z',
+            operation: { kind: 'refund' },
+          },
+        },
+      }),
+    );
+
+    const entry = toolGroups(history, {
+      timing: { now: Date.parse('2026-10-23T00:00:11.000Z') },
+    }).groups.get('run-1:step:0:call:c-expired')?.entries[0];
+    expect(entry?.state).toBe('expired');
+    expect(entry?.approvalKey).toBe(
+      'approval:run-1:c-expired:run-1:step:0:result:c-expired:round:unknown',
+    );
+    expect(entry?.railId).toBe('approval:run-1:c-expired:call:c-expired');
+  });
+
+  test('projects a durable expired review over a stale pending action without expiring a fresh round', () => {
+    const oldKey = 'approval:run-1:old-call:run-1:step:0:result:old-call:round:unknown';
+    const freshKey = 'approval:run-2:fresh-call:run-2:step:0:result:fresh-call:round:unknown';
+    const history = conversation(
+      call('run-1:step:0:call:old-call', 'old-call', 'issue-refund'),
+      row({
+        id: 'run-1:step:0:result:old-call',
+        role: 'tool-result',
+        toolResult: {
+          callId: 'old-call',
+          outcome: 'action_required',
+          action: { type: 'approval', message: 'Old round', operation: { kind: 'refund' } },
+        },
+      }),
+      call('run-2:step:0:call:fresh-call', 'fresh-call', 'issue-refund'),
+      row({
+        id: 'run-2:step:0:result:fresh-call',
+        role: 'tool-result',
+        toolResult: {
+          callId: 'fresh-call',
+          outcome: 'action_required',
+          action: {
+            type: 'approval',
+            message: 'Fresh round',
+            expiresAt: '2999-01-01T00:00:00.000Z',
+            operation: { kind: 'refund' },
+          },
+        },
+      }),
+    );
+    const entries = [
+      ...toolGroups(history, {
+        timing: { now: Date.parse('2026-10-23T00:00:11.000Z') },
+        expiredApprovalAt: new Map([[oldKey, Date.parse('2026-10-23T00:00:10.000Z')]]),
+      }).groups.values(),
+    ].flatMap((group) => group.entries);
+    expect(entries.map((entry) => [entry.callId, entry.state])).toEqual([
+      ['old-call', 'expired'],
+      ['fresh-call', 'needs-you'],
+    ]);
+    expect(railCall(entries[0]!, false).status).toBe('expired');
+    expect(railCall(entries[1]!, false).status).toBe('waiting');
+    expect(entries[1]?.approvalKey).toBe(freshKey);
+  });
+
+  test('does not let a raw call identifier expire a newer canonical approval key', () => {
+    const approvalKey =
+      'approval:run-new:shared-call:run-new:step:0:result:shared-call:round:unknown';
+    const history = conversation(
+      call('run-new:step:0:call:shared-call', 'shared-call', 'issue-refund'),
+      row({
+        id: 'run-new:step:0:result:shared-call',
+        role: 'tool-result',
+        toolResult: {
+          callId: 'shared-call',
+          outcome: 'action_required',
+          action: {
+            type: 'approval',
+            message: 'Fresh round',
+            expiresAt: '2999-01-01T00:00:00.000Z',
+            operation: { kind: 'refund' },
+          },
+        },
+      }),
+    );
+    const entry = toolGroups(history, {
+      timing: { now: Date.parse('2026-10-23T00:00:11.000Z') },
+      expiredApprovalAt: new Map([
+        ['shared-call', Date.parse('2026-10-23T00:00:10.000Z')],
+        [approvalKey, Date.parse('2999-01-01T00:00:00.000Z')],
+      ]),
+    })
+      .groups.values()
+      .next().value?.entries[0];
+    expect(entry?.approvalKey).toBe(approvalKey);
+    expect(entry?.state).toBe('needs-you');
+  });
+
   test('a failed call says what failed: the error it carries, or else what its result holds', () => {
     const failedWith = row({
       id: 's1:r',
@@ -231,6 +338,18 @@ describe('a call the run ended on', () => {
       identifier: 'issue-refund',
       input: '4471',
       result: 'Interrupted, may have run',
+    });
+  });
+
+  test('renders an expired approval as terminal neutral status, never as failed or waiting', () => {
+    const entry = {
+      ...toolGroups(ended, { runActive: false, tools }).groups.get('s0')!.entries[0]!,
+      state: 'expired' as const,
+    };
+    expect(railCall(entry, false)).toMatchObject({
+      status: 'expired',
+      result: 'Expired before a decision was made.',
+      pinned: true,
     });
   });
 

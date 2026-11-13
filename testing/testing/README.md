@@ -86,6 +86,8 @@ if (decision.status === 'fail') throw new Error(decision.message);
 
 `loadManifest()` and `manifestDigest()` read the generated browser fixture manifest. The path must be explicit or supplied through `BROWSER_FIXTURE_MANIFEST`; a missing or malformed manifest is an error rather than an empty test set. The manifest's standard matrix is light and dark themes across mobile, tablet, and desktop viewports, but the consuming suite decides which entries it runs.
 
+The `@lostgradient/testing/design-review-geometry` export provides the shared geometry audit used by Interborough's design-review captures. `auditGeometry()` reads the capture manifest and measured facts, writes `geometry-findings.json` and `geometry-report.md`, and returns the finding and coverage counts. `auditCapture()`, `consolidateFindings()`, and `renderGeometryReport()` support callers that already have the measured facts; `GEOMETRY_THRESHOLDS` and `GEOMETRY_RULES` expose the rubric's machine-readable limits and explanations. The `@lostgradient/testing/design-review-geometry-probe` export provides `measureGeometry(page)` for Playwright and `collectGeometryFacts()` for the browser-side probe.
+
 ## Failure diagnosis
 
 When a test reports a leaked timer, inspect the code that owns the timer and await its cleanup before asserting. When a browser test cannot load its manifest, run the owning application's manifest preparation command and check `BROWSER_FIXTURE_MANIFEST`. When a screenshot differs, compare the browser, operating system, fonts, viewport, and theme before updating a baseline. A passing interaction test and a matching screenshot answer different questions.

@@ -104,11 +104,25 @@ describe('useChatTranscript live inputs', () => {
     await tick();
 
     expect(transcript.messages).toHaveLength(2);
-    expect(transcript.showTypingIndicator).toBe(false);
+    // Partial text has streamed and nothing else reports progress: the dots follow it (H6).
+    expect(transcript.showTypingIndicator).toBe(true);
   });
 
   test('keeps the separate typing row when streaming starts before an assistant row exists', async () => {
     const fixture = createTranscriptFixture(conversation([message('user-first', 'user')]));
+    const { transcript } = fixture;
+
+    fixture.setStreaming(true);
+    await tick();
+
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
+  });
+
+  test('appends typing below an assistant reply while a run is active and nothing else reports progress', async () => {
+    const fixture = createTranscriptFixture(
+      conversation([message('user-first', 'user'), message('assistant-reply')]),
+    );
     const { transcript } = fixture;
 
     fixture.setStreaming(true);
@@ -134,8 +148,9 @@ describe('useChatTranscript live inputs', () => {
     fixture.setStreamingContent('first token');
     await tick();
 
-    expect(transcript.showTypingIndicator).toBe(false);
-    expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
+    // Partial text has streamed and nothing else reports progress: the dots follow it.
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
   });
 
   test('recognizes the canonical Conversationalist streaming marker for content-driven streams', async () => {
@@ -159,7 +174,8 @@ describe('useChatTranscript live inputs', () => {
     );
     await tick();
 
-    expect(transcript.showTypingIndicator).toBe(false);
-    expect(transcript.renderRows.map((item) => item.type)).not.toContain('typing');
+    // Partial text has streamed and nothing else reports progress: the dots follow it.
+    expect(transcript.showTypingIndicator).toBe(true);
+    expect(transcript.renderRows.map((item) => item.type)).toContain('typing');
   });
 });

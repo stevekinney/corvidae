@@ -16,16 +16,19 @@
   import EntryFrame from './entry-frame.svelte';
   import TranscriptEntryPart from './parts/transcript-entry-part.svelte';
   import NotePart from './parts/note-part.svelte';
+  import { resolveTurnLabels } from './turn-labels.ts';
 
   let {
     parts,
     messageId,
     messagePart,
+    approvalLayout = 'decision',
     markdownNode,
     quoteSource,
     expanded = false,
     onToggle,
     onApprovalResolve,
+    onApprovalRequestAgain,
     onInputSubmit,
     reasoningExpanded = false,
     onreasoning,
@@ -38,9 +41,22 @@
     toolCallDurations,
     toolCallStartTimes,
     turnLabels,
+    labels,
   }: ChatMessagePartsRendererProps = $props();
 
   const units = $derived(toRenderUnits(parts));
+  // The calls an approval card or an open question in this turn speaks for: their steps say no
+  // waiting or expired word of their own.
+  const cardOwnedCallIds = $derived(
+    new Set(
+      parts.flatMap((part) =>
+        part.type === 'tool-approval' || (part.type === 'tool-input' && part.resolved !== true)
+          ? [part.toolCallId]
+          : [],
+      ),
+    ),
+  );
+  const turnWords = $derived(resolveTurnLabels(turnLabels));
 
   // APG toolbar roving-tabindex for suggestion chips. `activeIndex` tracks the
   // chip that holds tabindex=0. ArrowRight/ArrowLeft move focus (wrapping);
@@ -102,13 +118,14 @@
       durationMilliseconds={toolCallDurations?.get(part.pair.call.id)}
       startedAt={toolCallStartTimes?.get(part.pair.call.id)}
       labels={turnLabels}
+      {cardOwnedCallIds}
     />
   {:else if part.type === 'tool-result'}
     <ToolResultPart {part} />
   {:else if part.type === 'tool-approval'}
-    <ToolApprovalPart {part} {onApprovalResolve} />
+    <ToolApprovalPart {part} {onApprovalResolve} {onApprovalRequestAgain} layout={approvalLayout} />
   {:else if part.type === 'tool-input'}
-    <ToolInputPart {part} {onInputSubmit} />
+    <ToolInputPart {part} {onInputSubmit} {labels} />
   {:else if part.type === 'reasoning'}
     <ReasoningPart {part} expanded={reasoningExpanded} onToggle={onreasoning} />
   {:else if part.type === 'transcript-entry'}
@@ -139,12 +156,16 @@
     <!-- Step parts are grouped and wrapped in a single <ol> stepper. -->
     <EntryFrame
       id={`steps-${unit.key.replace(/[^a-z0-9-]/gi, '-')}`}
-      label="Steps"
-      status={`${unit.steps.filter((step) => step.status === 'done').length}/${unit.steps.length} complete`}
+      label={turnWords.steps(unit.steps.length)}
+      status={turnWords.stepsDone(
+        unit.steps.filter((step) => step.status === 'done').length,
+        unit.steps.length,
+      )}
       open={stepsExpanded}
       onToggle={() => onsteps?.()}
+      {labels}
     >
-      <ol class="chat-step-list" aria-label="Steps">
+      <ol class="chat-step-list" aria-label={turnWords.steps(unit.steps.length)}>
         {#each unit.steps as step (step.key)}
           <StepPart part={step} />
         {/each}

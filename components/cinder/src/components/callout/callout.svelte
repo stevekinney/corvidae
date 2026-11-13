@@ -29,6 +29,10 @@
     title,
     icon,
     action,
+    actionLayout = 'inline',
+    progress,
+    onDismiss,
+    dismissLabel = 'Dismiss',
     class: className,
     children,
     ...rest
@@ -59,67 +63,76 @@
   const ariaLabel = $derived(rest['aria-labelledby'] ? undefined : (rest['aria-label'] ?? title));
 </script>
 
-{#if semantic === 'note'}
-  <div
-    {...restWithoutForbidden}
-    class={classNames(
-      'cinder-callout',
-      variant !== 'neutral' && 'cinder-_status-surface',
-      variant !== 'neutral' && 'cinder-_status-surface-border',
-      className,
-    )}
-    data-cinder-variant={variant}
-    role="note"
-    aria-label={ariaLabel}
-  >
-    {#if icon}
-      <div class="cinder-callout__icon" aria-hidden="true">
-        {@render icon()}
-      </div>
-    {/if}
-
-    <div class="cinder-callout__content">
-      {#if title}
-        <p class="cinder-callout__title">{title}</p>
-      {/if}
-      {@render children()}
+<svelte:element
+  this={semantic === 'note' ? 'div' : 'aside'}
+  {...restWithoutForbidden}
+  class={classNames(
+    'cinder-callout',
+    actionLayout === 'inline' && 'cinder-callout--inline-action',
+    icon && 'cinder-callout--with-icon',
+    onDismiss && 'cinder-callout--dismissible',
+    variant !== 'neutral' && 'cinder-_status-surface',
+    variant !== 'neutral' && 'cinder-_status-surface-border',
+    className,
+  )}
+  data-cinder-variant={variant}
+  role={semantic === 'note' ? 'note' : undefined}
+  aria-label={ariaLabel}
+>
+  {#if icon}
+    <div class="cinder-callout__icon" aria-hidden="true">
+      {@render icon()}
     </div>
+  {/if}
 
+  {#if actionLayout === 'inline' && action}
+    <div class="cinder-callout__body">
+      {@render contentBlock()}
+      <div class="cinder-callout__action">
+        {@render action()}
+      </div>
+    </div>
+  {:else}
+    {@render contentBlock()}
     {#if action}
       <div class="cinder-callout__action">
         {@render action()}
+      </div>
+    {/if}
+  {/if}
+
+  {#if onDismiss}
+    <button
+      type="button"
+      class="cinder-_dismiss-button cinder-callout__dismiss"
+      aria-label={dismissLabel}
+      onclick={onDismiss}
+    >
+      <svg
+        class="cinder-callout__dismiss-icon"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path
+          d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
+        />
+      </svg>
+    </button>
+  {/if}
+</svelte:element>
+
+{#snippet contentBlock()}
+  <div class="cinder-callout__content">
+    {#if title}
+      <p class="cinder-callout__title">{title}</p>
+    {/if}
+    {@render children()}
+    {#if progress}
+      <div class="cinder-callout__progress">
+        {@render progress()}
       </div>
     {/if}
   </div>
-{:else}
-  <aside
-    {...restWithoutForbidden}
-    class={classNames(
-      'cinder-callout',
-      variant !== 'neutral' && 'cinder-_status-surface',
-      variant !== 'neutral' && 'cinder-_status-surface-border',
-      className,
-    )}
-    data-cinder-variant={variant}
-    aria-label={ariaLabel}
-  >
-    {#if icon}
-      <div class="cinder-callout__icon" aria-hidden="true">
-        {@render icon()}
-      </div>
-    {/if}
-
-    <div class="cinder-callout__content">
-      {#if title}
-        <p class="cinder-callout__title">{title}</p>
-      {/if}
-      {@render children()}
-    </div>
-
-    {#if action}
-      <div class="cinder-callout__action">
-        {@render action()}
-      </div>
-    {/if}
-  </aside>
-{/if}
+{/snippet}

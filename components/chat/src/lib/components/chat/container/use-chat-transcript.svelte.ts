@@ -1,8 +1,9 @@
 import { isStreamingMessage } from '../builders.ts';
 import type { ConversationHistory, Message, ToolResult } from '../conversation-model.ts';
+import type { ChatTurnState } from '../message/turn-state.ts';
+import { resolveMessageTurnState } from '../message/turn-state.ts';
 import {
   getMessages,
-  getMessageText,
   pairToolCallsWithResults,
   resolveMessageReasoning,
 } from '../utilities/index.ts';
@@ -24,6 +25,11 @@ export interface UseChatTranscriptOptions {
     (() => ((message: Message) => string | ReasoningInfo | undefined) | undefined) | undefined;
   getFirstUnreadId: () => string | null;
   getUngroupAllToolCalls: () => boolean;
+  /** Whether the host's run-state surface already communicates progress in place of typing. */
+  getSuppressTypingIndicator?: () => boolean;
+  /** Host-owned state for the active assistant turn, including transport reconnects. */
+  getMessageTurnState?:
+    (() => ((message: Message) => ChatTurnState | undefined) | undefined) | undefined;
   /** Tool calls whose question was answered here, which keep their own row. */
   getAnsweredToolCallIds?: (() => Iterable<string>) | undefined;
 }
@@ -44,10 +50,6 @@ export interface UseChatTranscriptReturn {
   readonly renderRows: ChatRenderRow[];
 }
 
-function isStreamingAssistantMessage(message: Message | undefined): message is Message {
-  return message?.role === 'assistant' && isStreamingMessage(message);
-}
-
 export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTranscriptReturn {
   const messages = $derived(getMessages(options.getConversation()));
   const lastMessageId = $derived(messages.at(-1)?.id);
@@ -60,6 +62,15 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
   const messageIndexById = $derived(
     new Map(messages.map((message, index) => [message.id, index] as const)),
   );
+  const turnReconnects = $derived.by(() => {
+    const activeMessageId = options.getStreamingMessageId() ?? messages.at(-1)?.id;
+    const activeMessage = messages.find((message) => message.id === activeMessageId);
+    return (
+      activeMessage !== undefined &&
+      resolveMessageTurnState(activeMessage, options.getMessageTurnState?.())?.kind ===
+        'reconnecting'
+    );
+  });
 
   const messageGroups = useChatMessageGroups({
     getMessages: () => messages,
@@ -73,7 +84,8 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
         ungroupedToolCallIds?: ReadonlySet<string>;
       } = {
         firstUnreadId: options.getFirstUnreadId(),
-        showTypingIndicator,
+        showTypingIndicator:
+          showTypingIndicator && !options.getSuppressTypingIndicator?.() && !turnReconnects,
       };
       if (options.getUngroupAllToolCalls()) {
         renderOptions.ungroupedToolCallIds = new Set(
@@ -116,20 +128,6 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       messages.filter((message) => activeTurnMessageIds.has(message.id)),
     ).some((pair) => !pair.result);
   });
-  const activeStreamingMessage = $derived.by(() => {
-    if (!options.getStreaming()) return undefined;
-    const streamingMessageId = options.getStreamingMessageId();
-    if (streamingMessageId) return messages.find((message) => message.id === streamingMessageId);
-    const latestMessage = messages.at(-1);
-    return isStreamingAssistantMessage(latestMessage) ? latestMessage : undefined;
-  });
-  const activeStreamingText = $derived.by(() => {
-    if (!options.getStreaming()) return '';
-    const streamingMessageId = options.getStreamingMessageId();
-    if (streamingMessageId) return options.getStreamingContent();
-    return activeStreamingMessage ? getMessageText(activeStreamingMessage) : '';
-  });
-  const hasActiveStreamingText = $derived(activeStreamingText.trim().length > 0);
   const progressState = $derived(
     selectChatProgressState({
       streaming: options.getStreaming(),
@@ -137,7 +135,9 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       toolActivity,
     }),
   );
-  const showTypingIndicator = $derived(progressState === 'streaming' && !hasActiveStreamingText);
+  // The three quiet dots follow the last assistant line whenever a run is active and neither
+  // reasoning nor a tool reports progress, including after partial text has streamed (a pause).
+  const showTypingIndicator = $derived(progressState === 'streaming');
 
   return {
     get messages() {

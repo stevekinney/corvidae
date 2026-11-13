@@ -167,14 +167,14 @@
     border-top-right-radius: var(--cinder-radius-lg);
   }
 
-  /* The grabber: a 36 by 4 pill in a 20px band (design row 05d). Decorative until swipe-to-close
+  /* The grabber: a 36 by 4 pill in a 12px band (design row 05d). Decorative until swipe-to-close
    ships, so no grab cursor. */
   .cinder-drawer__drag-handle {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    min-height: var(--cinder-space-5);
+    min-height: var(--cinder-space-3);
     flex-shrink: 0;
     cursor: default;
     user-select: none;
@@ -220,6 +220,10 @@
     border-block-end: 1px solid var(--cinder-border-muted);
     flex-shrink: 0;
     background: var(--cinder-surface);
+    /* The close button's 44px hit area reaches below the header's padding: the header paints above
+     * the content that follows so that part of the area still takes the tap. */
+    position: relative;
+    z-index: 1;
   }
 
   .cinder-drawer__title {
@@ -237,9 +241,11 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    /* 44px minimum touch target. */
-    width: 2.75rem;
-    height: 2.75rem;
+    /* Painted at 28px; the 44px touch target is the ::after hit area, which takes no layout
+     * space, so the header's height follows the painted button. */
+    position: relative;
+    width: 1.75rem;
+    height: 1.75rem;
     padding: var(--cinder-space-1);
     border-radius: var(--cinder-radius-md);
     border: none;
@@ -249,6 +255,20 @@
     transition:
       background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-drawer__close::after {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    inline-size: 44px;
+    block-size: 44px;
+    transform: translate(-50%, -50%);
+  }
+
+  /* A sheet's grabber strip and title row are about 52px before the content. */
+  .cinder-drawer__panel[data-cinder-placement='bottom'] .cinder-drawer__header {
+    padding-block: var(--cinder-space-1-5);
   }
 
   /* Sticky-hover suppression on touch. */
@@ -397,10 +417,10 @@
     transition: none;
   }
 
-  /* The 20px grabber band, the 56px bar, and the bottom safe area under it. */
+  /* The 12px grabber band, the 56px bar, and the bottom safe area under it. */
   .cinder-drawer__panel[data-cinder-detent='peek'] {
     --_cinder-drawer-peek-height: calc(
-      var(--cinder-space-5) + 3.5rem + env(safe-area-inset-bottom)
+      var(--cinder-space-3) + 3.5rem + env(safe-area-inset-bottom)
     );
 
     height: var(--_cinder-drawer-peek-height);

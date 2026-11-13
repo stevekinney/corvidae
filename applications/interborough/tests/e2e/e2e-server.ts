@@ -63,6 +63,7 @@ import { createJourneyProviderResolver, createRecallAgents } from './journey-age
 import { seedCancellationRequest, seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { createModelAgents } from './model-agents.ts';
 import { createQuestionAgents } from './question-agents.ts';
+import { createRegenerationProofAgent } from './regeneration-proof-agent.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
 import { createShowcaseEditableAgent } from './showcase-editable-agent.ts';
 import { seedSkills } from './skills-seed.ts';
@@ -377,6 +378,7 @@ const host = await startHost({
       ...createTextEchoAgents(),
       ...createQuestionAgents(),
       ...createModelAgents(),
+      ...createRegenerationProofAgent(),
     },
     withBureauTools: { 'workflow-revision': workflowRevisionAgent },
   },
@@ -642,6 +644,7 @@ process.off('SIGTERM', handleStartupSignal);
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
 // host holds its runs on a barrier of its own, under `/journey`.
 let cancellationRequests = 0;
+let maintenanceStatus: { readonly done: boolean; readonly error?: string } = { done: true };
 const barrierControl = Bun.serve({
   hostname: '127.0.0.1',
   port: E2E_BARRIER_PORT,
@@ -669,6 +672,25 @@ const barrierControl = Bun.serve({
           released: childRunId !== '' && chatProofBarrier.release(childRunId),
         });
       },
+    },
+    '/maintain': {
+      POST: async () => {
+        maintenanceStatus = { done: false };
+        try {
+          await host.bureau.maintain();
+          maintenanceStatus = { done: true };
+          return Response.json({ accepted: true });
+        } catch (error) {
+          maintenanceStatus = {
+            done: true,
+            error: error instanceof Error ? error.message : String(error),
+          };
+          return Response.json(maintenanceStatus, { status: 500 });
+        }
+      },
+    },
+    '/maintain/status': {
+      GET: () => Response.json(maintenanceStatus),
     },
     // The addresses of the servers the connect host's specification connects to: loopback origins, no secret.
     '/connect/origins': { GET: () => Response.json(connectHost.origins) },

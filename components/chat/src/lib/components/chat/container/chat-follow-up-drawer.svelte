@@ -18,37 +18,56 @@
 </script>
 
 <script lang="ts">
-  import { Button, X } from '@lostgradient/cinder';
-  import {
-    FOLLOW_UP_DRAWER_TITLE,
-    FOLLOW_UP_SEND_NOW_LABEL,
-    followUpPreview,
-    followUpQueueSummary,
-  } from './chat-follow-up-queue.ts';
+  import { Button, Pencil, SendHorizontal, Tooltip, X } from '@lostgradient/cinder';
+  import { resolveChatLabels, type ChatLabels } from '../chat-labels.ts';
+  import { followUpPreview } from './chat-follow-up-queue.ts';
 
-  let { id, items, canSendNow, onsendnow, onedit, onremove }: ChatFollowUpDrawerProps = $props();
+  let {
+    id,
+    items,
+    canSendNow,
+    onsendnow,
+    onedit,
+    onremove,
+    labels,
+  }: ChatFollowUpDrawerProps & { labels?: Partial<ChatLabels> } = $props();
+  const words = $derived(resolveChatLabels(labels));
 
   const titleId = $derived(`${id}-follow-ups-title`);
 </script>
 
 <!-- The Up next drawer above the composer while follow-ups wait for the run. It pushes the
-     transcript up and leaves the composer's bottom edge where it was. Each follow-up is a dashed
-     ghost of the user message it will become, numbered in the order it will go. -->
+     transcript up and leaves the composer's bottom edge where it was. Each follow-up is a bordered,
+     numbered row holding the words of the message it will become, in the order it will go. The
+     header's count carries its explanation ("sends after this run") where the drawer is wide
+     enough, and falls back to the short count beside it; the Send now tooltip stays. -->
 <section class="chat-follow-up-drawer" aria-labelledby={titleId} data-chat-follow-up-drawer="">
   <div class="chat-follow-up-drawer-header">
-    <p class="chat-follow-up-drawer-heading" id={titleId}>
-      <span class="chat-follow-up-drawer-title">{FOLLOW_UP_DRAWER_TITLE}</span>
-      <span class="chat-follow-up-drawer-summary">{followUpQueueSummary(items.length)}</span>
-    </p>
+    <h3 class="chat-follow-up-drawer-heading" id={titleId}>
+      <span class="chat-follow-up-drawer-title">{words.followUpTitle}</span>
+      <span class="chat-follow-up-drawer-summary">
+        <span class="chat-follow-up-drawer-summary-short"
+          >{words.followUpSummary(items.length)}</span
+        ><span class="chat-follow-up-drawer-summary-long"
+          >{words.followUpSummaryExplained(items.length)}</span
+        >
+      </span>
+    </h3>
     {#if canSendNow}
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        class="chat-follow-up-drawer-action"
-        label={FOLLOW_UP_SEND_NOW_LABEL}
-        onclick={onsendnow}
-      />
+      <Tooltip text={words.followUpSendNowDescription} placement="top">
+        <Button
+          type="button"
+          variant="ghost-accent"
+          size="sm"
+          class="chat-follow-up-drawer-action"
+          label={words.followUpSendNow}
+          iconOnly
+          aria-label={words.followUpSendNow}
+          onclick={onsendnow}
+        >
+          <SendHorizontal class="cinder-icon-sm" aria-hidden="true" />
+        </Button>
+      </Tooltip>
     {/if}
   </div>
   <ol class="chat-follow-up-drawer-list">
@@ -57,25 +76,36 @@
         <span class="chat-follow-up-ghost-index" aria-hidden="true">{index + 1}</span>
         <p class="chat-follow-up-ghost-text" dir="auto">{followUpPreview(item)}</p>
         <div class="chat-follow-up-ghost-actions">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            class="chat-follow-up-ghost-action"
-            label="Edit"
-            aria-label={`Edit queued follow-up ${index + 1}`}
-            onclick={() => onedit(item.id)}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            class="chat-follow-up-ghost-action"
-            aria-label={`Remove queued follow-up ${index + 1}`}
-            onclick={() => onremove(item.id)}
-          >
-            <X class="cinder-icon-xs" aria-hidden="true" />
-          </Button>
+          <Tooltip text={words.followUpEdit(index + 1)} placement="top">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              quiet
+              class="chat-follow-up-ghost-action"
+              label={words.followUpEdit(index + 1)}
+              iconOnly
+              aria-label={words.followUpEdit(index + 1)}
+              onclick={() => onedit(item.id)}
+            >
+              <Pencil class="cinder-icon-sm" aria-hidden="true" />
+            </Button>
+          </Tooltip>
+          <Tooltip text={words.followUpRemove(index + 1)} placement="top">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              quiet
+              class="chat-follow-up-ghost-action"
+              label={words.followUpRemove(index + 1)}
+              iconOnly
+              aria-label={words.followUpRemove(index + 1)}
+              onclick={() => onremove(item.id)}
+            >
+              <X class="cinder-icon-xs" aria-hidden="true" />
+            </Button>
+          </Tooltip>
         </div>
       </li>
     {/each}
@@ -86,32 +116,53 @@
   .chat-follow-up-drawer {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
     margin-block-end: var(--cinder-space-2);
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised);
+    overflow: hidden;
     font-size: var(--cinder-text-sm);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+    container-type: inline-size;
+  }
+
+  /* The count says why it waits where the drawer is 19rem or wider (a 320 phone's drawer is about
+   * 19.5rem inside the page padding), and falls back to the bare count below that. */
+  .chat-follow-up-drawer-summary-long {
+    display: none;
+  }
+
+  @container (min-inline-size: 19rem) {
+    .chat-follow-up-drawer-summary-short {
+      display: none;
+    }
+
+    .chat-follow-up-drawer-summary-long {
+      display: inline;
+    }
   }
 
   .chat-follow-up-drawer-header {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
+    gap: var(--cinder-space-2);
+    /* "Up next" never stands pinched against its borders, at any pointer. */
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3) var(--cinder-space-1);
+    border-block-end: 1px solid var(--cinder-border-muted);
   }
 
   /* The title and the summary are their own elements, never joined by a separator glyph. */
   .chat-follow-up-drawer-heading {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--cinder-space-1) var(--cinder-space-2);
+    line-height: var(--cinder-leading-normal);
     min-inline-size: 0;
     margin: 0;
+    overflow: hidden;
     text-align: start;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: inherit;
+    font-weight: inherit;
   }
 
   .chat-follow-up-drawer-title {
@@ -120,14 +171,20 @@
   }
 
   .chat-follow-up-drawer-summary {
+    margin-inline-start: var(--cinder-space-1);
     color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .chat-follow-up-drawer :global(.chat-follow-up-drawer-action) {
+    flex: none;
   }
 
   /* Many follow-ups scroll inside the drawer, so the composer is never pushed off the pane. */
   .chat-follow-up-drawer-list {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1-5);
+    gap: 0;
     max-block-size: 12rem;
     margin: 0;
     padding: 0;
@@ -136,19 +193,25 @@
   }
 
   .chat-follow-up-ghost {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
-    padding: var(--cinder-space-1) var(--cinder-space-2);
-    border: 1px dashed var(--cinder-border-control);
-    border-radius: var(--cinder-radius-md);
+    min-block-size: 2.75rem;
+    padding-block: 0;
+    padding-inline: var(--cinder-space-3) var(--cinder-space-1);
+    border-block-end: 1px solid var(--cinder-border-muted);
     color: var(--cinder-text-muted);
+  }
+
+  .chat-follow-up-ghost:last-child {
+    border-block-end: 0;
   }
 
   .chat-follow-up-ghost-index {
     flex: none;
-    min-inline-size: 1.25rem;
+    inline-size: var(--cinder-space-3);
     color: var(--cinder-text-subtle);
     font-variant-numeric: tabular-nums;
     text-align: center;
@@ -168,15 +231,25 @@
     display: flex;
     flex: none;
     align-items: center;
-    gap: var(--cinder-space-1);
   }
 
-  /* Coarse pointers get targets of at least 44 px. */
-  @media (pointer: coarse) {
-    .chat-follow-up-drawer :global(.chat-follow-up-drawer-action),
-    .chat-follow-up-drawer :global(.chat-follow-up-ghost-action) {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
+  /* The drawer clips its corners and its list scrolls, so a control's 44px hit area (which takes no
+   * layout) must fit inside the box: the header and each row give the last control the room its
+   * overhang needs, and Edit and Remove are a hit area apart so neither covers the other. */
+  @media (any-pointer: coarse) {
+    .chat-follow-up-drawer-header {
+      min-block-size: 2.75rem;
+      padding-inline-end: var(--cinder-space-2);
+    }
+
+    .chat-follow-up-ghost {
+      padding-inline-end: var(--cinder-space-2);
+    }
+
+    .chat-follow-up-ghost-actions {
+      /* A 28px face and 12px: a 40px pitch, the later control winning the hit-area overlap. */
+      gap: var(--cinder-space-3);
     }
   }
+  /* The Cinder icon Buttons paint compact and take their 44 px hit area from a pseudo-element. */
 </style>

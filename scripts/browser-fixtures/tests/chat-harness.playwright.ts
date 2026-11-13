@@ -1162,7 +1162,9 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
         // observe an intermediate partial that is non-empty but not yet final.
         const assistant = harness.locator('[data-role="assistant"]').last();
         await expect.poll(() => messageBodyText(assistant)).not.toBe('');
-        await expect(harness.locator('.chat-typing-indicator')).toHaveCount(0);
+        // The run is active and nothing else reports progress, so the typing indicator follows the
+        // partial text (H6) and goes with the run.
+        await expect(harness.locator('.chat-typing-indicator')).toBeVisible();
         await expect(assistant.locator('.chat-message')).toHaveAttribute('aria-busy', 'true');
         await expect(assistant.locator('.chat-message-streaming-progress')).toBeVisible();
         const partialText = await messageBodyText(assistant);
@@ -1186,7 +1188,7 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
 }
 
 test.describe('chat harness — streaming presentation', () => {
-  test('beginStreaming keeps the separate typing indicator until the first non-empty token', async ({
+  test('beginStreaming shows the separate typing indicator before the first token and keeps it after', async ({
     browser,
   }, testInfo) => {
     const { page, harness, dispose } = await openHarness(browser, {
@@ -1213,7 +1215,8 @@ test.describe('chat harness — streaming presentation', () => {
       await captureHarnessScreenshot(page, testInfo, 'held-first-token-before');
 
       await expect.poll(() => trimmedLength(assistant)).toBeGreaterThan(0);
-      await expect(externalTyping).toHaveCount(0);
+      // The indicator follows the partial text while the run is active (H6).
+      await expect(externalTyping).toBeVisible();
       await expect(message).toHaveAttribute('aria-busy', 'true');
       await expect(progress).toBeVisible();
       await captureHarnessScreenshot(page, testInfo, 'held-first-token-after');
@@ -1244,7 +1247,7 @@ test.describe('chat harness — streaming presentation', () => {
         const assistant = harness.locator('[data-role="assistant"]').last();
         const message = assistant.locator('.chat-message');
         await expect.poll(() => trimmedLength(assistant)).toBeGreaterThan(0);
-        await expect(harness.locator('.chat-typing-indicator')).toHaveCount(0);
+        await expect(harness.locator('.chat-typing-indicator')).toBeVisible();
         await expect(message).toHaveAttribute('aria-busy', 'true');
         const progress = assistant.locator('.chat-message-streaming-progress');
         await expect(progress).toBeVisible();
@@ -2016,7 +2019,8 @@ test.describe('chat harness — tool calls', () => {
       expect(metrics.minInlineSize).toBe('0px');
     } else {
       expect(metrics.containerWidth ?? 0).toBeGreaterThanOrEqual(352);
-      expect(metrics.minInlineSize).toBe('320px');
+      // The group keeps 20rem of room when the container has it and never more than the container.
+      expect(metrics.minInlineSize).toBe('min(320px, 100%)');
     }
   }
 
@@ -2269,8 +2273,10 @@ test.describe('chat harness — tool calls', () => {
 
         const toggle = activity.locator('.chat-tool-call-toggle');
         await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-        await expect(toggle).toContainText('1 step');
-        await expect(toggle).toContainText('1 waiting for approval');
+        // The approval card owns the waiting state, so the summary counts both steps and leaves the
+        // status word to the card.
+        await expect(toggle).toContainText('2 steps');
+        await expect(toggle).not.toContainText('waiting for approval');
         await expect(toggle).not.toContainText(String.fromCodePoint(0xb7));
 
         const fields = await activity
@@ -2289,8 +2295,8 @@ test.describe('chat harness — tool calls', () => {
         for (const field of fields.filter((entry) => entry.shown)) {
           expect(field.height, field.text).toBeLessThanOrEqual(field.lineHeight * 1.5);
         }
-        const tools = fields.find((field) => field.text.includes('issue_refund'));
-        expect(tools?.shown).toBe(width !== 320);
+        // No tool name stands in the collapsed summary unless it is the repeated rollup.
+        expect(fields.some((field) => field.text.includes('issue_refund'))).toBe(false);
 
         // The chevron sits beside the first line of the header, not centered on a wrapped one.
         const alignment = await toggle.evaluate((button) => {
@@ -2309,7 +2315,10 @@ test.describe('chat harness — tool calls', () => {
         await toggle.focus();
         await page.keyboard.press('Enter');
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-        await expect(activity.locator('.chat-tool-call-name')).toHaveText(['issue_refund']);
+        await expect(activity.locator('.chat-tool-call-name')).toHaveText([
+          'lookup_order',
+          'issue_refund',
+        ]);
         // The name is shown whole, not cut with an ellipsis, at every width.
         const clipped = await activity
           .locator('.chat-tool-call-name')
@@ -3509,8 +3518,9 @@ test.describe('chat harness — attachments', () => {
       await expect(remove).toBeVisible();
       expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
       const box = await renderedBox(remove, 'coarse attachment remove control');
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
+      // Painted compact; the 44px target is a pseudo-element that takes no layout.
+      expect(box.width).toBeLessThanOrEqual(32);
+      expect(box.height).toBeLessThanOrEqual(32);
       const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
       for (const [dx, dy] of [
         [-21, 0],
@@ -3848,8 +3858,12 @@ test.describe('chat harness — composer acceptance matrix', () => {
       ]);
       expect(buttonBox).not.toBeNull();
       expect(overlayBox).not.toBeNull();
-      expect(overlayBox?.width).toBeGreaterThanOrEqual(44);
-      expect(overlayBox?.height).toBeGreaterThanOrEqual(44);
+      // The overlay is a decorative, painted-compact glyph; the whole attachment button is the
+      // target and is far larger than 44px on both axes.
+      expect(overlayBox?.width).toBeLessThanOrEqual(32);
+      expect(overlayBox?.height).toBeLessThanOrEqual(32);
+      expect(buttonBox?.width).toBeGreaterThanOrEqual(44);
+      expect(buttonBox?.height).toBeGreaterThanOrEqual(44);
       expect(overlayBox?.x ?? 0).toBeGreaterThanOrEqual(buttonBox?.x ?? 0);
       expect(overlayBox?.y ?? 0).toBeGreaterThanOrEqual(buttonBox?.y ?? 0);
       expect((overlayBox?.x ?? 0) + (overlayBox?.width ?? 0)).toBeLessThanOrEqual(
@@ -4552,8 +4566,9 @@ test.describe('chat harness — composer send button hit area (COR-1552)', () =>
   async function probeSendButton(page: Page, button: Locator): Promise<void> {
     expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
     const box = await button.boundingBox();
-    expect(box?.width).toBeGreaterThanOrEqual(44);
-    expect(box?.height).toBeGreaterThanOrEqual(44);
+    // Painted compact; the 44px target is a pseudo-element that takes no layout.
+    expect(box?.width).toBeLessThanOrEqual(32);
+    expect(box?.height).toBeLessThanOrEqual(32);
     const centre = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
     for (const [dx, dy] of [
       [-PROBE_DISTANCE, 0],

@@ -132,6 +132,44 @@ describe('toRenderUnits', () => {
 });
 
 describe('renderer — per-part rendering', () => {
+  test('routes grouped step heading and list labels through turnLabels', () => {
+    const parts: ChatMessagePart[] = [
+      {
+        type: 'step',
+        key: 'm:step:0',
+        index: 0,
+        title: 'Fetch records',
+        content: '',
+        status: 'done',
+      },
+      {
+        type: 'step',
+        key: 'm:step:1',
+        index: 1,
+        title: 'Summarize records',
+        content: '',
+        status: 'pending',
+      },
+    ];
+    const { container } = render(ChatMessagePartsRenderer, {
+      props: {
+        parts,
+        turnLabels: {
+          steps: (count) => `ARBEITSSCHRITTE ${count}`,
+          stepsDone: (done, total) => `FERTIG ${done}/${total}`,
+        },
+      },
+    });
+
+    expect(container.querySelector('.chat-entry-frame__trigger')?.textContent).toContain(
+      'ARBEITSSCHRITTE 2',
+    );
+    expect(container.querySelector('.chat-entry-frame__status')?.textContent).toBe('FERTIG 1/2');
+    expect(container.querySelector('.chat-step-list')?.getAttribute('aria-label')).toBe(
+      'ARBEITSSCHRITTE 2',
+    );
+  });
+
   test('renders a markdown part through the message-content view', () => {
     const { container } = render(ChatMessagePartsRenderer, {
       props: {
@@ -320,13 +358,55 @@ describe('renderer — per-part rendering', () => {
     const dialog = container.querySelector('[data-cinder-tool-approval]');
     expect(dialog).not.toBeNull();
     expect(dialog?.classList.contains('cinder-approval-card')).toBe(true);
-    expect(container.textContent).toContain('deploy_to_production');
+    expect(container.textContent).not.toContain('deploy_to_production');
     expect(container.textContent).toContain('echo approval');
     // Approve and Deny buttons appear for pending state
     const buttons = container.querySelectorAll('button');
     const labels = Array.from(buttons).map((button) => button.textContent?.trim());
     expect(labels).toContain('Approve');
     expect(labels).toContain('Deny');
+  });
+
+  test('a step whose approval card is in the turn says no waiting word of its own', () => {
+    const approvalAction = {
+      type: 'approval',
+      message: 'Deploy?',
+      risk: 'high',
+      operation: { kind: 'command', command: 'echo approval', argsPreview: { ok: true } },
+      policyVersion: 'test-policy',
+      idempotencyKey: 'test-approval',
+    } as const;
+    const { container } = render(ChatMessagePartsRenderer, {
+      props: {
+        parts: [
+          {
+            type: 'tool-call',
+            key: 'm:tool-call:c1',
+            pair: {
+              call: { id: 'c1', name: 'deploy', arguments: {} },
+              result: {
+                callId: 'c1',
+                outcome: 'action_required',
+                content: null,
+                action: approvalAction,
+              },
+            },
+          },
+          {
+            type: 'tool-approval',
+            key: 'm:tool-approval:c1',
+            toolCallId: 'c1',
+            toolName: 'deploy',
+            action: approvalAction,
+            state: 'pending',
+            resolutionInFlight: false,
+          },
+        ],
+        onApprovalResolve: () => {},
+      },
+    });
+    expect(container.querySelector('.chat-tool-call-timeline')).not.toBeNull();
+    expect(container.querySelector('.chat-tool-call-timeline [data-problem]')).toBeNull();
   });
 
   test('renders an image group through the attachments grid with the right count', () => {

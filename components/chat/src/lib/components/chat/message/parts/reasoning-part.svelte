@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+  import { formatCountdown } from '../../../../utilities/format-countdown.ts';
   import EntryFrame from '../entry-frame.svelte';
 
   let { part, expanded = false, onToggle }: ReasoningPartProps = $props();
@@ -46,7 +47,7 @@
       ? 'Thinking…'
       : thoughtMilliseconds === undefined
         ? 'Thought process'
-        : `Thought for ${Math.max(1, Math.round(thoughtMilliseconds / 1000))} s`,
+        : `Thought for ${formatCountdown(Math.max(1, Math.round(thoughtMilliseconds / 1000)))}`,
   );
 
   // The polite "Reasoning complete." announcement fires ONLY on a streaming
@@ -93,11 +94,13 @@
     id={labelId}
     {label}
     labelClass="chat-reasoning-label"
-    status={part.streaming ? `${elapsedSeconds} s` : undefined}
+    status={part.streaming ? formatCountdown(elapsedSeconds) : undefined}
     triggerClass="chat-reasoning-toggle"
     busy={part.streaming}
-    open={expanded}
+    busyIndicator={false}
+    open={part.streaming || expanded}
     disabled={part.streaming}
+    variant="flat"
     onToggle={() => handleToggle()}
   >
     <div
@@ -113,7 +116,7 @@
           {/each}
         </ul>
       {/if}
-      {part.content}
+      <span class="chat-reasoning-text">{part.content.trimStart()}</span>
     </div>
   </EntryFrame>
 
@@ -133,6 +136,26 @@
     display: block;
   }
 
+  /* Reasoning is a quiet disclosure inside the transcript, not a second card or select-like
+   * control. EntryFrame still supplies the shared disclosure semantics and focus treatment. */
+  .chat-reasoning :global(.chat-entry-frame) {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  /* Header and body start on the answer's text edge: no inline padding on either. */
+  .chat-reasoning :global(.chat-entry-frame-shell .chat-entry-frame__trigger) {
+    min-block-size: 1.5rem;
+    padding-block: 0;
+    padding-inline: 0;
+  }
+
+  .chat-reasoning :global(.chat-entry-frame__panel-inner) {
+    padding-inline: 0;
+    border-block-start: 0;
+  }
+
   .chat-reasoning-content {
     /* Hidden + non-focusable while collapsed. A scrollable region with
        overflow-y:auto is keyboard-focusable in some browsers even at zero
@@ -142,8 +165,19 @@
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     color: var(--cinder-chat-reasoning-text);
     line-height: var(--cinder-leading-relaxed, 1.625);
-    white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  /* The text keeps the model's line breaks; the markup around it adds no leading space. */
+  .chat-reasoning-text {
+    white-space: pre-wrap;
+  }
+
+  @media (any-pointer: coarse) {
+    .chat-reasoning :global(.chat-entry-frame-shell .chat-entry-frame__trigger) {
+      min-block-size: var(--cinder-touch-target-min);
+      padding-block: var(--cinder-space-2);
+    }
   }
 
   .chat-reasoning-summary {

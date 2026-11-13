@@ -123,21 +123,6 @@
     width: 100%;
   }
 
-  /* A button in a header's actions draws at xs but keeps a touch-sized hit area on coarse
-     pointers: an invisible block-axis extension, never visual height. */
-  @media (pointer: coarse) {
-    .cinder-button[data-cinder-compact] {
-      position: relative;
-    }
-
-    .cinder-button[data-cinder-compact]::before {
-      content: '';
-      position: absolute;
-      inset-inline: 0;
-      inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
-    }
-  }
-
   /* ----------------------------------------
  * Size variants
  * ---------------------------------------- */
@@ -197,9 +182,8 @@
     min-width: var(--cinder-button-height-lg);
   }
 
-  /* A compact button (in a header's actions) keeps its fine-pointer visual height on a coarse
-     pointer, where the `xs` step is raised to the touch target; the hit-area extension above
-     supplies the 44px target. Declared after the size rules so it wins at equal specificity. */
+  /* A compact button (in a header's actions) keeps its fine-pointer visual height. The coarse
+     pointer rule above owns its real 44px hit box, so this value remains the painted surface size. */
   .cinder-button[data-cinder-compact] {
     min-height: var(--_cinder-compact-control-height);
   }
@@ -687,6 +671,65 @@
       background: ButtonFace;
       border-color: ButtonBorder;
       color: ButtonText;
+    }
+  }
+
+  /* On coarse pointers a button's layout box stays its painted face (24, 28, 32 or 40px by size);
+     the 44px hit region is a positioned pseudo-element that takes no space. The raised
+     `--cinder-control-height-*` steps therefore do not reach a Button: it reads the painted
+     heights, so a button in a text row never makes the row taller than its line, and neighbours
+     can pitch closer than 44px with their hit areas overlapping invisibly. `min()` keeps a
+     control already at or above 44px from shrinking its own region. */
+  @media (any-pointer: coarse) {
+    .cinder-button[data-cinder-hit-target='44'] {
+      position: relative;
+    }
+
+    .cinder-button[data-cinder-hit-target='44']::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-size='xs'] {
+      min-height: var(--_cinder-painted-height-xs);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-size='sm'] {
+      min-height: var(--_cinder-painted-height-sm);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-size='md'] {
+      min-height: var(--_cinder-painted-height-md);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-size='lg'] {
+      min-height: var(--_cinder-painted-height-lg);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-icon-only][data-cinder-size='xs'] {
+      min-width: var(--_cinder-painted-height-xs);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-icon-only][data-cinder-size='sm'] {
+      min-width: var(--_cinder-painted-height-sm);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-icon-only][data-cinder-size='md'] {
+      min-width: var(--_cinder-painted-height-md);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-icon-only][data-cinder-size='lg'] {
+      min-width: var(--_cinder-painted-height-lg);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-compact] {
+      min-height: var(--_cinder-compact-control-height);
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-compact][data-cinder-icon-only] {
+      min-width: var(--_cinder-compact-control-height);
     }
   }
 }

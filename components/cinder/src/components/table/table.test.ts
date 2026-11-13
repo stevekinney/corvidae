@@ -1175,7 +1175,7 @@ describe('Table data display', () => {
 
   test('the table is framed with a quiet header and a caption kept for screen readers', () => {
     const frame = ruleBody('.cinder-table');
-    expect(frame).toMatch(/border:\s*1px solid var\(--cinder-border\)/);
+    expect(frame).toMatch(/border:\s*1px solid var\(--cinder-border-muted\)/);
     expect(frame).toMatch(/border-radius:\s*var\(--cinder-radius-lg\)/);
     expect(frame).toMatch(/border-collapse:\s*separate/);
     // The header sits on the table surface instead of a filled bar.

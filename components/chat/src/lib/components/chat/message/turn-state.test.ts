@@ -151,8 +151,9 @@ describe('presentTurnState', () => {
     }
   });
 
-  test('R6: an empty turn has no line, so no time stands alone under it', () => {
-    expect(presentTurnState(empty).line).toBe(false);
+  test('R6: an empty turn has its line, which carries its time, and no Regenerate', () => {
+    expect(presentTurnState(empty).line).toBe(true);
+    expect(presentTurnState(empty).regenerate).toBe(false);
   });
 
   test('a complete turn has its line and offers Regenerate', () => {
@@ -256,21 +257,34 @@ describe('reconnectWaitFraction', () => {
 describe('turn labels', () => {
   test('R3: the reconnecting warning reads exactly as the board writes it', () => {
     expect(DEFAULT_TURN_LABELS.reconnecting(2, 5, 8)).toBe(
-      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s.',
+      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8s.',
     );
   });
 
   test('R4 to R7: the default words, with no middle dot as a separator', () => {
-    expect(DEFAULT_TURN_LABELS.stopped).toBe('Stopped by you, partial answer');
+    expect(DEFAULT_TURN_LABELS.stopped).toBe('Stopped. The answer above is partial.');
     expect(DEFAULT_TURN_LABELS.incomplete).toBe('This answer is incomplete.');
     expect(DEFAULT_TURN_LABELS.empty).toBe('The agent finished without writing an answer.');
-    expect(DEFAULT_TURN_LABELS.tryAgain).toBe('Try again');
+    expect(DEFAULT_TURN_LABELS.tryAgain).toBe('Retry');
     expect(DEFAULT_TURN_LABELS.stepPosition(2, 3)).toBe('Step 2 of 3');
     expect(DEFAULT_TURN_LABELS.stepsDone(2, 3)).toBe('2 of 3 steps');
-    expect(DEFAULT_TURN_LABELS.retryStep).toBe('Retry this step');
+    expect(DEFAULT_TURN_LABELS.retryStep).toBe('Retry');
     expect(DEFAULT_TURN_LABELS.copyError).toBe('Copy error');
-    for (const value of Object.values(DEFAULT_TURN_LABELS)) {
-      const text = typeof value === 'function' ? value(1, 2, 3) : value;
+    const texts = [
+      ...Object.values(DEFAULT_TURN_LABELS).filter(
+        (value): value is string => typeof value === 'string',
+      ),
+      DEFAULT_TURN_LABELS.approvalWaiting(1),
+      DEFAULT_TURN_LABELS.reconnecting(1, 2, 3),
+      DEFAULT_TURN_LABELS.stepPosition(1, 2),
+      DEFAULT_TURN_LABELS.stepsDone(1, 2),
+      DEFAULT_TURN_LABELS.steps(1),
+      DEFAULT_TURN_LABELS.calls(1),
+      DEFAULT_TURN_LABELS.toolStatus('succeeded'),
+      DEFAULT_TURN_LABELS.toolProblem(1, 'succeeded'),
+      DEFAULT_TURN_LABELS.toolAnnouncement('Step', 'succeeded'),
+    ];
+    for (const text of texts) {
       expect(text).not.toContain(String.fromCodePoint(0xb7));
     }
   });
@@ -280,7 +294,7 @@ describe('turn labels', () => {
       stepsDone: (done, total) => `Checked ${done} of ${total} sources`,
     });
     expect(labels.stepsDone(2, 3)).toBe('Checked 2 of 3 sources');
-    expect(labels.retryStep).toBe('Retry this step');
+    expect(labels.retryStep).toBe('Retry');
     expect(resolveTurnLabels(undefined)).toBe(DEFAULT_TURN_LABELS);
   });
 });

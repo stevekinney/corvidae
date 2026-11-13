@@ -1,11 +1,17 @@
 import { z } from 'zod';
 
+/** Pattern required for fixture names. */
 export const FIXTURE_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+/** Maximum length of a fixture name. */
 export const FIXTURE_NAME_MAX_LENGTH = 40;
+/** Names reserved by the fixture system. */
 export const RESERVED_FIXTURE_NAMES = ['default'] as const;
+/** Default maximum number of fixtures in one component. */
 export const DEFAULT_FIXTURE_BUDGET = 5;
+/** Maximum masked area as a percentage of a screenshot. */
 export const DEFAULT_MASK_MAX_AREA_PERCENT = 10;
 
+/** Reasons a screenshot region may be masked. */
 export const MASK_REASONS = [
   'timestamp',
   'generated-id',
@@ -13,8 +19,10 @@ export const MASK_REASONS = [
   'rng-content',
 ] as const;
 
+/** Supported fixture interaction actions. */
 export const INTERACTION_ACTIONS = ['focus', 'click', 'hover', 'press'] as const;
 
+/** Categories used to classify visual fixtures. */
 export const FIXTURE_CATEGORIES = [
   'visual-contract',
   'primitive-composition',
@@ -22,6 +30,7 @@ export const FIXTURE_CATEGORIES = [
   'documentation',
 ] as const;
 
+/** A visual fixture category. */
 export type FixtureCategory = (typeof FIXTURE_CATEGORIES)[number];
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -58,12 +67,14 @@ const TestIdTargetSchema = z
   })
   .strict();
 
+/** Schema for a role, label, or test-id interaction target. */
 export const InteractionTargetSchema = z.union([
   RoleTargetSchema,
   LabelTargetSchema,
   TestIdTargetSchema,
 ]);
 
+/** Schema for one fixture interaction step. */
 export const InteractionStepSchema = z
   .object({
     action: z.enum(INTERACTION_ACTIONS),
@@ -76,6 +87,7 @@ export const InteractionStepSchema = z
     path: ['key'],
   });
 
+/** Schema for one screenshot mask rule. */
 export const MaskRuleSchema = z
   .object({
     testId: z.string().min(1),
@@ -111,6 +123,7 @@ const HostFixtureSchema = SharedFixtureSchema.extend({
   props: JsonValueSchema.optional(),
 }).strict();
 
+/** Schema for a direct or host-backed visual fixture. */
 export const VisualFixtureSchema = z
   .union([DirectFixtureSchema, HostFixtureSchema])
   .transform((fixture) => ({
@@ -122,6 +135,7 @@ export const VisualFixtureSchema = z
         : ('visual-contract' as const)),
   }));
 
+/** Schema for optional fixture metadata. */
 export const VisualFixtureMetadataSchema = z
   .object({
     fixtureBudgetOverride: z
@@ -134,14 +148,22 @@ export const VisualFixtureMetadataSchema = z
   })
   .strict();
 
+/** A validated visual fixture. */
 export type VisualFixture = z.infer<typeof VisualFixtureSchema>;
+/** A fixture rendered directly by the browser fixture host. */
 export type DirectVisualFixture = Extract<VisualFixture, { props: JsonValue; host?: never }>;
+/** A fixture rendered by a named host component. */
 export type HostVisualFixture = Extract<VisualFixture, { host: string }>;
+/** Validated metadata associated with a fixture file. */
 export type VisualFixtureMetadata = z.infer<typeof VisualFixtureMetadataSchema>;
+/** A validated interaction step. */
 export type InteractionStep = z.infer<typeof InteractionStepSchema>;
+/** A validated interaction target. */
 export type InteractionTarget = z.infer<typeof InteractionTargetSchema>;
+/** A validated screenshot mask rule. */
 export type MaskRule = z.infer<typeof MaskRuleSchema>;
 
+/** Returns whether a fixture is rendered directly or through a host component. */
 export function fixtureRenderMode(fixture: VisualFixture): 'direct' | 'host' {
   return 'host' in fixture && typeof fixture.host === 'string' ? 'host' : 'direct';
 }
@@ -210,6 +232,7 @@ function budgetViolation(
   );
 }
 
+/** Validates fixture and metadata values supplied by a fixture module. */
 export function parseFixtureFile(input: {
   fixtures: unknown;
   metadata?: unknown;

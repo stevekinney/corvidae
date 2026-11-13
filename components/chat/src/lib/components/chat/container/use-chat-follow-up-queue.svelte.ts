@@ -12,6 +12,10 @@ type FollowUpQueueOptions = {
   isEnabled: () => boolean;
   /** Whether a run is working, reconnecting or waiting on an approval, so a message would wait. */
   isRunActive: () => boolean;
+  /** Whether the transport can accept live input now. */
+  isSendNowAvailable?: () => boolean;
+  /** The settled outcome of the run that held the queue, when it stopped or failed. */
+  getRunOutcome: () => Extract<FollowUpDiscardReason, 'stopped' | 'failed'> | undefined;
   /** The conversation the queue belongs to; a different one empties it. */
   getConversationIdentity: () => string;
   /**
@@ -67,9 +71,19 @@ export function useChatFollowUpQueue(options: FollowUpQueueOptions) {
   // it wait for that turn in their turn.
   $effect(() => {
     if (options.isRunActive() || flight !== undefined || items.length === 0) return;
+    // Read here, tracked, so an idle transport coming back (offline straight to online, with no run
+    // in between) runs the drain again. A hand-off in flight or a run that has begun stops that
+    // second run above, so a follow-up is never sent twice.
+    const transportAvailable = options.isSendNowAvailable?.() ?? true;
     untrack(() => {
       const [head, ...rest] = items;
       if (head === undefined) return;
+      const outcome = options.getRunOutcome();
+      if (outcome !== undefined) {
+        discard(outcome);
+        return;
+      }
+      if (!transportAvailable) return;
       items = rest;
       dispatch(head);
     });
@@ -96,7 +110,12 @@ export function useChatFollowUpQueue(options: FollowUpQueueOptions) {
     },
     /** Whether Send now instead can hand the waiting follow-ups to the running run. */
     get canSendNow(): boolean {
-      return options.isEnabled() && options.isRunActive() && items.length > 0;
+      return (
+        options.isEnabled() &&
+        options.isRunActive() &&
+        (options.isSendNowAvailable?.() ?? true) &&
+        items.length > 0
+      );
     },
     /** Adds a follow-up at the end of the queue. */
     enqueue(
@@ -115,6 +134,12 @@ export function useChatFollowUpQueue(options: FollowUpQueueOptions) {
     },
     /** Hands every waiting follow-up to the running run as live input, in order. */
     sendNow(): void {
+      if (
+        !options.isEnabled() ||
+        !options.isRunActive() ||
+        (options.isSendNowAvailable !== undefined && !options.isSendNowAvailable())
+      )
+        return;
       const waiting = items;
       items = [];
       for (const followUp of waiting) {

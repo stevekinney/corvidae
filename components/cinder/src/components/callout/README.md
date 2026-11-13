@@ -16,7 +16,7 @@ Inline note for tips, warnings, or contextual notes within content flow. It is q
 
 ## Neutral note with an action
 
-`variant="neutral"`, the default, is a plain note that is not a status: an icon and muted text, with no tint, edge or inset, and its row is vertically centred, so the `icon` lines up with the text however many lines it wraps to. The message is capped at 68 characters wide, and the `action` stacks under it in a row that wraps, so several actions break onto lines of their own and a button label never wraps (a Banner's actions stack the same way). Use it to explain a state, with one link or button under the message:
+`variant="neutral"`, the default, is a note that is not a status. It is the same card as every tone (a fill, a hairline edge, the radius and the inset); the tone changes only the tint and the icon, and neutral's fill is the quiet sunken surface. The message is capped at 68 characters wide, and the `action` sits at the trailing end of the text while it fits and wraps under it, at the start edge, when it cannot (`actionLayout="stacked"` always puts it under). Under about 30rem of callout width the icon sits beside the first line only, so later lines, the progress line and the action row start at the callout's own padding. Use it to explain a state, with one link or button:
 
 ```svelte
 <script lang="ts">
@@ -36,6 +36,32 @@ Inline note for tips, warnings, or contextual notes within content flow. It is q
 </Callout>
 ```
 
+## The one notice
+
+Callout is the single notice in Cinder's chat surfaces: one box, one layout, and only the tone varies.
+
+- `variant`: `info`, `warning` or `danger` tint the box with a 1px edge in the tone's colour; `neutral` is the quiet, untinted note.
+- `icon`: the leading tone icon, a 16px glyph in the first track. Pass the icon for the tone (`Info`, `TriangleAlert`, `OctagonAlert`).
+- `title`: an optional bold first line.
+- children: the text.
+- `progress`: an optional snippet under the text inside the content column, usually a small `Progress` with its own accessible name.
+- `action` (`actionLayout="inline"`, the default): one `sm` secondary `Button` at the trailing end of the text. It wraps under the text, at the text's own edge, only when the row cannot hold both.
+- `onDismiss` and `dismissLabel`: a compact dismiss button at the trailing end, 20px painted with a 44px hit area that takes no layout space. Callout stays static, so the caller removes it.
+
+```svelte
+<script lang="ts">
+  import { Button, Callout, Progress } from '@lostgradient/cinder';
+  import { TriangleAlert } from '@lucide/svelte';
+</script>
+
+<Callout variant="warning" semantic="note" actionLayout="inline" onDismiss={hide}>
+  {#snippet icon()}<TriangleAlert size={16} />{/snippet}
+  Connection lost. Trying again in 8 s.
+  {#snippet progress()}<Progress value={40} max={100} size="sm" ariaLabel="Next try" />{/snippet}
+  {#snippet action()}<Button size="sm" variant="secondary" label="Retry now" />{/snippet}
+</Callout>
+```
+
 ## Keep controls out of a callout
 
 A callout is a note beside the content it qualifies. Do not wrap a form control or an inline choice, such as a [`SegmentedControl`](../segmented-control/README.md), in a tinted callout: the tint makes a choice look like a warning, the control stretches to fill a box it was not drawn for, and its own colours clash with the status colour. Place the control in the page flow with a plain label, and keep the callout for one short note, with one link or button at its end.
@@ -46,13 +72,17 @@ A callout is a note beside the content it qualifies. Do not wrap a form control 
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `actionLayout` | `"stacked"` \| `"inline"` | no | — | Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. |
 | `class` | `string` | no | — | Extra classes appended to the root element. Pass via the explicit `class` prop — it is excluded from rest-prop spread, so writing `class="x"` inside spread attributes will not reach the root. |
+| `dismissLabel` | `string` | no | — | Accessible name of the dismiss button. Default `'Dismiss'`. |
 | `semantic` | `"aside"` \| `"note"` | no | — | Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark. |
 | `title` | `string` | no | — | Optional title rendered as a `<p class="cinder-callout__title">`. Rendered as a paragraph rather than a heading element so the callout does not inject an entry into the document outline. If a callout genuinely participates in the outline (e.g. it titles a standalone section), wrap it in a `<section>` with its own heading rather than promoting this prop to `<h*>`. When supplied and no `aria-label` or `aria-labelledby` is passed on rest props, the title also becomes the `aria-label` of the root element so the landmark or note has an accessible name. |
 | `variant` | `"neutral"` \| `"info"` \| `"success"` \| `"warning"` \| `"danger"` | no | — | Visual + semantic variant. Default `'neutral'`, a quiet note of an icon and muted text with no tint; the status variants are tinted, so keep them for a warning or a blocking condition. |
 | `action` | `(opaque)` | no | — | Optional action rendered under the message, usually one `Link` or `Button`, such as "Open attempt 5". Several actions sit in a row that wraps, and a button label never wraps. It is interactive content, so it is the one part of a callout a person can act on; the callout itself stays static. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | yes | — | Callout body content. Not expressible in JSON Schema; see the component types for the signature. |
 | `icon` | `(opaque)` | no | — | Optional decorative icon rendered inside an `aria-hidden` wrapper. The icon is a second visual channel alongside variant color — it helps satisfy WCAG 1.4.1 (Use of Color) by ensuring the variant is conveyed by more than color alone. The accessible meaning still lives in `title` and/or `children`; the icon must not be the only carrier of information. Not expressible in JSON Schema; see the component types for the signature. |
+| `onDismiss` | `(opaque)` | no | — | When set, a compact dismiss button renders at the trailing end and calls this on activation. The callout stays static: the caller removes it. Not expressible in JSON Schema; see the component types for the signature. |
+| `progress` | `(opaque)` | no | — | Optional progress line rendered under the message inside the content column, usually a small `Progress`. It is decorative to the callout: give the Progress its own accessible name. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

@@ -41,7 +41,22 @@ const asking: ToolResult = {
   action,
 };
 
-const resumed: ToolResult = { callId: 'call-1', outcome: 'success', content: 'Refunded.' };
+const resumed: ToolResult = {
+  callId: 'call-1',
+  outcome: 'success',
+  content: 'Refunded 4471 for $42.00.',
+};
+const failed: ToolResult = {
+  callId: 'call-1',
+  outcome: 'error',
+  content: null,
+  error: {
+    code: 'upstream',
+    category: 'internal',
+    retryable: false,
+    message: 'Refund service rejected the request.',
+  },
+};
 
 const held: ToolApprovalReceiptRecord = {
   toolName: 'issue-refund',
@@ -135,7 +150,7 @@ describe('tool-approval receipt part', () => {
       action,
       state: 'approved',
       resolutionInFlight: false,
-      receipt: held.receipt,
+      receipt: { ...held.receipt, result: 'Refunded 4471 for $42.00.' },
     });
   });
 
@@ -155,5 +170,22 @@ describe('tool-approval receipt part', () => {
     });
 
     expect(parts.find((part) => part.type === 'tool-approval')).toMatchObject({ details });
+  });
+
+  it('carries a completed host result into expanded receipt details', () => {
+    const parts = callRow(resumed);
+    expect(parts.find((part) => part.type === 'tool-approval')).toMatchObject({
+      receipt: { result: 'Refunded 4471 for $42.00.' },
+    });
+  });
+
+  it('carries a completed host failure without dropping its meaningful error', () => {
+    const parts = deriveMessageParts(message({ id: 'tc', role: 'tool-call', toolCall }), {
+      toolCallPair: { call: toolCall, result: failed },
+      approvalReceipts: new Map([['call-1', held]]),
+    });
+    expect(parts.find((part) => part.type === 'tool-approval')).toMatchObject({
+      receipt: { result: 'Refund service rejected the request.' },
+    });
   });
 });

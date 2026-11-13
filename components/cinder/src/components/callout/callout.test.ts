@@ -150,6 +150,7 @@ describe('Callout neutral variant and action', () => {
         props: {
           variant: 'neutral',
           semantic,
+          actionLayout: 'stacked',
           action,
           icon: textSnippet('i'),
           children: textSnippet('Gave up after 5 attempts.'),
@@ -171,13 +172,40 @@ describe('Callout neutral variant and action', () => {
     expect(bare.container.querySelector('.cinder-callout__action')).toBeNull();
   });
 
-  test('the stylesheet draws neutral as an icon and muted text with no tint', async () => {
+  test('the stylesheet draws neutral as the same card as every tone: a fill, a hairline and the inset', async () => {
     const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
     const neutral = declarationsFor(css, ".cinder-callout[data-cinder-variant='neutral']");
-    expect(neutral.get('align-items')).toBe('center');
-    expect(neutral.get('background')).toBe('transparent');
-    expect(neutral.get('border-color')).toBe('transparent');
-    expect(neutral.get('color')).toBe('var(--cinder-text-muted)');
+    expect(neutral.get('align-items')).toBeUndefined();
+    expect(neutral.get('background')).toBe('var(--cinder-surface-inset)');
+    expect(neutral.get('border-color')).toBe('var(--cinder-border-muted)');
+    // Neutral never overrides the shared inset, so no tone is a bare row.
+    expect(neutral.get('padding-inline')).toBeUndefined();
+    expect(declarationsFor(css, '.cinder-callout').get('padding-inline')).toBe(
+      'var(--cinder-space-3)',
+    );
+  });
+
+  test('an action container with nothing in it takes no row, and a lone title leaves no space below', async () => {
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    expect(declarationsFor(css, '.cinder-callout__action:empty').get('display')).toBe('none');
+    expect(declarationsFor(css, '.cinder-callout__title:last-child').get('margin-block-end')).toBe(
+      '0',
+    );
+  });
+
+  test('on phones the icon sits beside the first line only and later lines start at the padding', async () => {
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    expect(css).toContain('@container (inline-size < 30rem)');
+    expect(declarationsFor(css, '.cinder-callout').get('container-type')).toBe('inline-size');
+    const spacer = declarationsFor(
+      css,
+      '.cinder-callout--with-icon .cinder-callout__content::before',
+    );
+    expect(spacer.get('float')).toBe('inline-start');
+    expect(spacer.get('block-size')).toBe('1px');
+    const icon = createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' }));
+    const { container } = render(Callout, { props: { icon, children: textSnippet('Note.') } });
+    expect(container.querySelector('.cinder-callout--with-icon')).not.toBeNull();
   });
 
   test('the stylesheet stacks the action under a message capped at 68ch, in a wrapping row', async () => {
@@ -195,6 +223,92 @@ describe('Callout neutral variant and action', () => {
         'nowrap',
       );
     }
+  });
+
+  test('the action is inline by default and stacked only on request', () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const { container } = render(Callout, {
+      props: { action, children: textSnippet('Connection paused.') },
+    });
+    expect(container.querySelector('.cinder-callout--inline-action')).not.toBeNull();
+    cleanup();
+    const stacked = render(Callout, {
+      props: { actionLayout: 'stacked', action, children: textSnippet('Connection paused.') },
+    });
+    expect(stacked.container.querySelector('.cinder-callout--inline-action')).toBeNull();
+  });
+
+  test('an inline action shares one wrapping row with the message and wraps only when it cannot fit', async () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const icon = createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' }));
+    const { container } = render(Callout, {
+      props: {
+        actionLayout: 'inline',
+        action,
+        icon,
+        children: textSnippet('A long notice that must stay readable at a narrow width.'),
+      },
+    });
+    const root = container.querySelector('.cinder-callout--inline-action')!;
+    expect(root.querySelector('.cinder-callout__icon')).not.toBeNull();
+    const body = root.querySelector('.cinder-callout__body')!;
+    expect(body.querySelector('.cinder-callout__content')).not.toBeNull();
+    expect(body.querySelector('.cinder-callout__action button')?.textContent).toBe('Retry');
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    const bodyRule = declarationsFor(css, '.cinder-callout__body');
+    expect(bodyRule.get('display')).toBe('flex');
+    expect(bodyRule.get('flex-wrap')).toBe('wrap');
+    // The text's free space is a trailing auto margin, so a wrapped action starts at the leading
+    // edge instead of being pushed to the trailing one.
+    const contentRule = declarationsFor(css, '.cinder-callout__body > .cinder-callout__content');
+    expect(contentRule.get('margin-inline-end')).toBe('auto');
+    expect(
+      declarationsFor(css, '.cinder-callout__body > .cinder-callout__action').get(
+        'margin-inline-start',
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe('Callout progress and dismiss', () => {
+  test('renders a progress line inside the content column', () => {
+    const progress = createRawSnippet(() => ({ render: () => '<div role="progressbar"></div>' }));
+    const { container } = render(Callout, {
+      props: { progress, children: textSnippet('Reconnecting') },
+    });
+    expect(
+      container.querySelector(
+        '.cinder-callout__content .cinder-callout__progress [role=progressbar]',
+      ),
+    ).not.toBeNull();
+  });
+
+  test('renders no dismiss button without onDismiss', () => {
+    const { container } = render(Callout, { props: { children: textSnippet('Note') } });
+    expect(container.querySelector('.cinder-callout__dismiss')).toBeNull();
+  });
+
+  test('renders a labelled dismiss button that calls onDismiss', () => {
+    let dismissed = 0;
+    const { getByRole } = render(Callout, {
+      props: {
+        onDismiss: () => (dismissed += 1),
+        dismissLabel: 'Dismiss notice',
+        children: textSnippet('Note'),
+      },
+    });
+    const button = getByRole('button', { name: 'Dismiss notice' });
+    button.click();
+    expect(dismissed).toBe(1);
+  });
+
+  test('the dismiss button keeps its 44px hit area off the layout box', async () => {
+    const dismissCss = await Bun.file(
+      new URL('../../styles/components/_dismiss-button.css', import.meta.url),
+    ).text();
+    const hit = declarationsFor(dismissCss, '.cinder-_dismiss-button::after');
+    expect(hit.get('position')).toBe('absolute');
+    expect(hit.get('width')).toBe('44px');
   });
 });
 

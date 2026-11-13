@@ -89,7 +89,7 @@ describe('MessageAttachments image layout contract', () => {
     expect(source).toContain('opacity: 1;');
   });
 
-  test('a failed image keeps its dashed footprint with its name, Retry and no zoom', async () => {
+  test('a failed image keeps a balanced status footprint with its name, Retry and no zoom', async () => {
     const onimageerror = mock(() => {});
     const { container } = render(MessageAttachments, {
       props: {
@@ -112,8 +112,15 @@ describe('MessageAttachments image layout contract', () => {
     expect(figure?.querySelector('.message-attachment-unavailable-text')?.textContent).toMatch(
       /receipt\.png\s+didn't load/,
     );
-    expect(figure?.querySelector('.message-attachment-retry')?.textContent).toContain('Retry');
-    expect(source).toContain('border: 1px dashed var(--cinder-border-strong)');
+    expect(figure?.querySelector('.message-attachment-unavailable-icon')).not.toBeNull();
+    const retry = figure?.querySelector('.message-attachment-retry');
+    expect(retry?.getAttribute('aria-label')).toBe('Retry loading receipt.png');
+    expect(retry?.textContent?.trim()).toBe('');
+    expect(retry?.querySelector('svg')).not.toBeNull();
+    expect((figure as HTMLElement | null)?.style.aspectRatio).toBe('');
+    expect(source).toContain('ImageOff');
+    expect(source).not.toContain('border: 1px solid var(--cinder-border)');
+    expect(source).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
   });
 
   test('Retry requests the image again in a fresh element', async () => {
@@ -195,5 +202,14 @@ describe('MessageAttachments image layout contract', () => {
     expect(source).toContain('@media (prefers-reduced-motion: reduce)');
     expect(source).toContain('.message-attachment-maximize');
     expect(source).toContain('transition: none');
+  });
+
+  test('adds its top margin only after text, so an image-only bubble has even insets', () => {
+    expect(source).not.toMatch(/\.message-attachments\s*\{[^}]*margin-top/);
+    const message = readFileSync(resolve(import.meta.dir, 'chat-message.svelte'), 'utf8');
+    expect(message).toMatch(
+      /\.chat-message-body:not\(\[data-empty\]\) \+ :global\(\.message-attachments\)\s*\{\s*margin-top: var\(--cinder-space-2\);/,
+    );
+    expect(message).toContain("data-empty={bodyParts.length === 0 && !isEditing ? '' : undefined}");
   });
 });

@@ -94,6 +94,7 @@ describe('ApprovalCard', () => {
     expect(approvalCardSchema.properties).toHaveProperty('operation');
     expect(approvalCardSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
       'context',
+      'onAskAgain',
       'onResolve',
     ]);
   });
@@ -1286,14 +1287,28 @@ describe('ApprovalCard row layout', () => {
     );
   });
 
-  test('renders the shared approval row: glyph, question, line, consequence, Input, note, Deny and Approve', () => {
-    const { container, getByRole } = render(ApprovalCard, { props: refundRow() });
+  test('renders the shared approval row: question, irreversible marker, command, Input, note, Deny and Approve', () => {
+    const { container, getByRole, queryByRole } = render(ApprovalCard, {
+      props: refundRow({
+        operation: {
+          kind: 'command',
+          command: 'refund-order --id 4471',
+          argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },
+        },
+      }),
+    });
 
     const article = getByRole('article', { name: 'Refund order 4471 for $42.00?' });
     expect(article.getAttribute('data-cinder-layout')).toBe('row');
-    expect(getByRole('img', { name: 'High risk' })).not.toBeNull();
+    expect(queryByRole('img', { name: 'High risk' })).toBeNull();
+    expect(squash(container.querySelector('.cinder-approval-card__row-risk')?.textContent)).toBe(
+      'High risk',
+    );
+    expect(
+      squash(container.querySelector('.cinder-approval-card__irreversible')?.textContent),
+    ).toBe("Can't be undone");
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      "Issue refund issue-refund, Dangerous, Can't be undone, Approval from Tool runner, 4 min ago",
+      'Issue refund, Approval from Tool runner, 4 min ago',
     );
     expect(container.querySelector('.cinder-approval-card__consequence')?.textContent).toBe(
       'Sends $42.00 back to the original card',
@@ -1301,18 +1316,83 @@ describe('ApprovalCard row layout', () => {
     expect(
       squash(container.querySelector('.cinder-approval-card__input-toggle')?.textContent),
     ).toBe('Input Order ID 4471, Amount $42.00, Reason Arrived damaged');
+    // The row draws its command as the same CodeBlock the decision layout does.
+    expect(
+      container.querySelector('.cinder-approval-card__command .cinder-code-block--wrap'),
+    ).not.toBeNull();
+    expect(container.querySelector('pre.cinder-approval-card__command')).toBeNull();
     expect(getByRole('button', { name: 'Add a note' })).not.toBeNull();
     expect(container.querySelector('.cinder-approval-card__details')).toBeNull();
   });
 
-  test("writes the identifier small and monospaced and keeps Can't be undone from breaking", () => {
+  test('renders an expired row as one receipt with its time and Ask again action', async () => {
+    const onAskAgain = mock(() => undefined);
+    const { container, getByRole, queryByRole } = render(ApprovalCard, {
+      props: refundRow({
+        state: 'expired',
+        expiresAt: '2026-11-02T10:15:00.000Z',
+        onResolve: undefined,
+        onAskAgain,
+      }),
+    });
+
+    expect(
+      getByRole('heading', {
+        name: 'Expired before a decision: Refund order 4471 for $42.00?',
+      }),
+    ).toBeTruthy();
+    expect(container.querySelectorAll('.cinder-approval-card__row-question')).toHaveLength(1);
+    expect(container.querySelector('.cinder-approval-card__expired-row')).not.toBeNull();
+    expect(container.querySelector('.cinder-approval-card__countdown')?.textContent).toContain(
+      '10:15 AM',
+    );
+    expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__risk-icon')).toBeNull();
+    expect(queryByRole('img', { name: 'High risk' })).toBeNull();
+
+    await fireEvent.click(getByRole('button', { name: 'Ask again' }));
+    expect(onAskAgain).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not repeat a command-only preview in the row Input disclosure', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({
+        operation: {
+          kind: 'command',
+          command: 'refund-order --id 4471',
+          argsPreview: { command: 'refund-order --id 4471' },
+        },
+      }),
+    });
+
+    expect(container.querySelector('.cinder-approval-card__command')).not.toBeNull();
+    expect(container.querySelector('.cinder-approval-card__input-toggle')).toBeNull();
+  });
+
+  test('keeps the row Input disclosure when a command preview has additional values', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({
+        operation: {
+          kind: 'command',
+          command: 'refund-order --id 4471',
+          argsPreview: { command: 'refund-order --id 4471', orderId: 4471 },
+        },
+      }),
+    });
+
+    expect(container.querySelector('.cinder-approval-card__command')).not.toBeNull();
+    expect(container.querySelector('.cinder-approval-card__input-toggle')).not.toBeNull();
+  });
+
+  test('writes the identifier small and keeps the irreversible marker in the title', () => {
     const { container } = render(ApprovalCard, { props: refundRow() });
 
-    const identifier = container.querySelector('code.cinder-approval-card__tool-identifier');
-    expect(identifier?.textContent).toBe('issue-refund');
-    expect(container.querySelector('.cinder-approval-card__undone')?.textContent).toBe(
+    // The row carries no separate tool-id line: the identifier repeats the label.
+    expect(container.querySelector('.cinder-approval-card__tool-identifier')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__irreversible')?.textContent).toBe(
       "Can't be undone",
     );
+    expect(container.querySelector('.cinder-approval-card__undone')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__tool-label')?.textContent).toBe(
       'Issue refund',
     );
@@ -1328,7 +1408,7 @@ describe('ApprovalCard row layout', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      'issue-refund, Dangerous, Approval from the agent, 2 min ago',
+      'Dangerous, Approval from the agent, 2 min ago',
     );
     expect(container.querySelector('.cinder-approval-card__undone')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__tool-label')).toBeNull();
@@ -1340,7 +1420,7 @@ describe('ApprovalCard row layout', () => {
     ['high', 'Dangerous'],
   ] as const)('reads %s risk as the muted word %s', (risk, word) => {
     const { container } = render(ApprovalCard, {
-      props: refundRow({ tool: { name: 'issue-refund', risk } }),
+      props: refundRow({ tool: { name: 'issue-refund', risk, irreversible: false } }),
     });
 
     expect(container.querySelector('.cinder-approval-card__risk-word')?.textContent).toBe(word);
@@ -1369,10 +1449,19 @@ describe('ApprovalCard row layout', () => {
 
   test('approve and deny forward resolutions without a note', async () => {
     const onResolve = mock((_resolution: unknown) => undefined);
-    const { getByRole } = render(ApprovalCard, { props: refundRow({ onResolve }) });
+    const { container, getByRole } = render(ApprovalCard, { props: refundRow({ onResolve }) });
 
     await fireEvent.click(getByRole('button', { name: 'Deny' }));
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
+
+    expect(container.querySelector('.cinder-approval-card__arm-hint')?.textContent).toContain(
+      'Reverts in 3 seconds.',
+    );
+    expect(container.querySelector('.cinder-inline-confirm__armed-escape')?.textContent).toContain(
+      'Escape cancels.',
+    );
+
+    await fireEvent.click(getByRole('button', { name: /Press again to approve/i }));
 
     expect(onResolve.mock.calls).toEqual([
       [{ decision: 'deny', remember: false }],
@@ -1476,6 +1565,7 @@ describe('ApprovalCard row layout', () => {
     await fireEvent.input(field, { target: { value: '  Check the carrier first.  ' } });
     await fireEvent.click(getByRole('button', { name: 'Deny' }));
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
+    await fireEvent.click(getByRole('button', { name: /Press again to approve/i }));
 
     expect(onResolve.mock.calls).toEqual([
       [{ decision: 'deny', reason: 'Check the carrier first.', remember: false }],
@@ -1506,6 +1596,55 @@ describe('ApprovalCard row layout', () => {
     await view.rerender({ ...props, idempotencyKey: 'two' });
     expect(view.queryByLabelText('Note (optional)')).toBeNull();
     expect(requiredInstance(view.getByRole('checkbox'), HTMLInputElement).checked).toBe(false);
+  });
+
+  test('resets an armed irreversible row when the request changes', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const props = refundRow({ onResolve, idempotencyKey: 'one' });
+    const view = render(ApprovalCard, { props });
+    await fireEvent.click(view.getByRole('button', { name: 'Approve' }));
+    expect(view.getByRole('button', { name: /Press again to approve/i })).not.toBeNull();
+
+    await view.rerender({ ...props, idempotencyKey: 'two' });
+    await fireEvent.click(view.getByRole('button', { name: 'Approve' }));
+    expect(onResolve).not.toHaveBeenCalled();
+    await fireEvent.click(view.getByRole('button', { name: /Press again to approve/i }));
+    expect(onResolve).toHaveBeenCalledTimes(1);
+    expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
+  });
+
+  test('keeps irreversible guards independent for two compact rows', async () => {
+    const firstResolve = mock((_resolution: unknown) => undefined);
+    const secondResolve = mock((_resolution: unknown) => undefined);
+    const first = render(ApprovalCard, {
+      props: refundRow({ idempotencyKey: 'first', onResolve: firstResolve }),
+    });
+    const second = render(ApprovalCard, {
+      props: refundRow({ idempotencyKey: 'second', onResolve: secondResolve }),
+    });
+
+    const primary = (view: typeof first, name: RegExp | string): HTMLButtonElement =>
+      requiredInstance(
+        Array.from(view.container.querySelectorAll('button')).find((button) =>
+          name instanceof RegExp
+            ? name.test(button.textContent ?? '')
+            : button.textContent?.trim() === name,
+        ),
+        HTMLButtonElement,
+      );
+
+    await fireEvent.click(primary(first, 'Approve'));
+    await fireEvent.click(primary(second, 'Approve'));
+    expect(primary(first, /Press again to approve/i)).not.toBeNull();
+    expect(primary(second, /Press again to approve/i)).not.toBeNull();
+    expect(firstResolve).not.toHaveBeenCalled();
+    expect(secondResolve).not.toHaveBeenCalled();
+
+    await fireEvent.click(primary(first, /Press again to approve/i));
+    expect(firstResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
+    expect(secondResolve).not.toHaveBeenCalled();
+    await fireEvent.click(primary(second, /Press again to approve/i));
+    expect(secondResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
   });
 
   test('holds Deny and Approve while the reason is given, with aria-disabled, and names it on both', async () => {
@@ -1553,7 +1692,7 @@ describe('ApprovalCard row layout', () => {
       'Unavailable',
     );
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      'Publish notes publish-notes, Changes things, Approval from Release helper, 12 min ago',
+      'Publish notes, Changes things, Approval from Release helper, 12 min ago',
     );
     expect(
       squash(container.querySelector('.cinder-approval-card__input-summary')?.textContent),
@@ -1690,9 +1829,11 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         }),
       });
       const article = container.querySelector('.cinder-approval-card--row');
-      expect(squash(article?.textContent)).toBe(
-        'Refund order 4471 for $42.00? Approved by you in Reviews, 10:46 AM',
-      );
+      expect(
+        squash(
+          `${article?.querySelector('.cinder-approval-card__row-main')?.textContent ?? ''}${article?.querySelector('.cinder-approval-card__outcome')?.textContent ?? ''}`,
+        ),
+      ).toBe('Refund order 4471 for $42.00? Approved by you in Reviews, 10:46 AM');
       expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__decided-input')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__outcome-dot')).toBeNull();
@@ -1711,9 +1852,12 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
           decidedAt: '2026-11-02T10:46:00.000Z',
         }),
       });
-      expect(squash(container.querySelector('.cinder-approval-card--row')?.textContent)).toBe(
-        'Refund order 4471 for $42.00? Denied by you in Reviews, 10:46 AM',
-      );
+      const row = container.querySelector('.cinder-approval-card--row');
+      expect(
+        squash(
+          `${row?.querySelector('.cinder-approval-card__row-main')?.textContent ?? ''}${row?.querySelector('.cinder-approval-card__outcome')?.textContent ?? ''}`,
+        ),
+      ).toBe('Refund order 4471 for $42.00? Denied by you in Reviews, 10:46 AM');
       const glyph = container.querySelector('.cinder-approval-card__decided-glyph');
       expect(glyph?.getAttribute('data-cinder-tone')).toBe('neutral');
       expect(glyph?.querySelector('svg')?.classList.contains('lucide-ban')).toBe(true);
@@ -1806,6 +1950,9 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         expect(getByRole('article').getAttribute('data-cinder-state')).toBe('pending');
 
         await fireEvent.click(getByRole('button', { name: 'Approve' }));
+        if (layout === 'row') {
+          await fireEvent.click(getByRole('button', { name: /Press again to approve/i }));
+        }
         expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
       });
 
@@ -2170,7 +2317,7 @@ describe('ApprovalCard line wrapping', () => {
     // card's edge; each piece stays whole and keeps the comma that follows it.
     expect(css).not.toMatch(/\.cinder-approval-card__line-facts \{[^}]*white-space: nowrap/);
     expect(css).toMatch(/\.cinder-approval-card__keep \{\s*white-space: nowrap;/);
-    expect(css).toMatch(/\.cinder-approval-card__undone \{\s*white-space: nowrap;/);
+    expect(css).toMatch(/\.cinder-approval-card__keep \{\s*white-space: nowrap;/);
     expect(css).toMatch(/\.cinder-approval-card__line time[^{]*\{\s*white-space: nowrap;/);
   });
 
@@ -2186,16 +2333,18 @@ describe('ApprovalCard line wrapping', () => {
   });
 
   test('keeps each piece of the facts line whole with the comma that follows it', () => {
-    const { container } = render(ApprovalCard, { props: refundRow() });
+    const { container } = render(ApprovalCard, {
+      props: refundRow({ tool: { name: 'issue-refund', risk: 'high', irreversible: false } }),
+    });
 
     expect(squash(container.querySelector('.cinder-approval-card__line-facts')?.textContent)).toBe(
-      "issue-refund, Dangerous, Can't be undone",
+      'Dangerous',
     );
     expect(
       [
         ...container.querySelectorAll('.cinder-approval-card__line .cinder-approval-card__keep'),
       ].map((piece) => squash(piece.textContent)),
-    ).toEqual(['issue-refund,', 'Dangerous,']);
+    ).toEqual(['Dangerous']);
     expect(container.querySelector('.cinder-approval-card__line time')?.textContent).toBe(
       '4 min ago',
     );
@@ -2232,7 +2381,7 @@ describe('ApprovalCard source line', () => {
     );
     // The comma that leads into the source ends the tool line, so it never starts a line.
     expect(squash(container.querySelector('.cinder-approval-card__line-tool')?.textContent)).toBe(
-      "Issue refund issue-refund, Dangerous, Can't be undone,",
+      'Issue refund,',
     );
   });
 
@@ -2525,6 +2674,43 @@ describe('ApprovalCard on a phone', () => {
 
     expect(css).toMatch(
       /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \.cinder-button\[data-cinder-size\] \{\s*flex: 1 1 0;\s*min-height: var\(--cinder-touch-target-min\);/,
+    );
+  });
+
+  test('lets row actions wrap intrinsically while preserving the shared touch target minimum', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \{[\s\S]*?flex-wrap: wrap;[\s\S]*?inline-size: 100%;[\s\S]*?min-inline-size: 0;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-button\[data-cinder-size\] \{[\s\S]*?min-inline-size: var\(--cinder-touch-target-min\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-inline-confirm__two-press-hint \{[\s\S]*?flex: 1 0 100%;/,
+    );
+  });
+
+  test('a receipt card keeps room under its last row for the 44px Details area', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /\.cinder-approval-card--decision:has\(> \.cinder-approval-card__receipt\) \{[\s\S]*?padding-block-end: var\(--cinder-space-2-5\);/,
+    );
+  });
+
+  test('keeps grouped row cards compact without weakening action targets', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /\.cinder-approval-card--row \{[\s\S]*?gap: var\(--cinder-space-1\);[\s\S]*?padding: var\(--cinder-space-2\);/,
+    );
+    expect(css).toMatch(/\.cinder-approval-card__row-body,[\s\S]*?gap: var\(--cinder-space-1\);/);
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \{[\s\S]*?gap: var\(--cinder-space-1\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-button\[data-cinder-size\] \{[\s\S]*?min-inline-size: var\(--cinder-touch-target-min\);/,
     );
   });
 });

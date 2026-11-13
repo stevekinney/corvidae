@@ -1,5 +1,6 @@
 <script lang="ts" module>
   import type { HTMLAttributes } from 'svelte/elements';
+  import type { ChatLabels } from '../chat-labels.ts';
 
   export type ChatDateSeparatorProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
     /** The date to display */
@@ -8,13 +9,22 @@
     dateFormatter?: (date: Date) => string;
     /** Additional CSS class */
     class?: string;
+    labels?: Partial<ChatLabels> | undefined;
   };
 </script>
 
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
+  import { resolveChatLabels } from '../chat-labels.ts';
 
-  let { date, dateFormatter, class: className, ...rest }: ChatDateSeparatorProps = $props();
+  let {
+    date,
+    dateFormatter,
+    labels: labelOverrides,
+    class: className,
+    ...rest
+  }: ChatDateSeparatorProps = $props();
+  const labels = $derived(resolveChatLabels(labelOverrides));
 
   // Normalize date to Date object
   const dateObj = $derived(typeof date === 'string' ? new Date(date) : date);
@@ -25,7 +35,7 @@
   // Format the date for display
   const formattedDate = $derived.by(() => {
     if (!isValidDate) {
-      return 'Invalid date';
+      return labels.invalidDate;
     }
 
     if (dateFormatter) {
@@ -39,11 +49,11 @@
     const dateOnly = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
 
     if (dateOnly.getTime() === today.getTime()) {
-      return 'Today';
+      return labels.today;
     }
 
     if (dateOnly.getTime() === yesterday.getTime()) {
-      return 'Yesterday';
+      return labels.yesterday;
     }
 
     // Use Intl for other dates
@@ -61,7 +71,7 @@
 <div
   class={classNames('chat-date-separator', className)}
   role="separator"
-  aria-label={`Messages from ${formattedDate}`}
+  aria-label={labels.messagesFrom(formattedDate)}
   {...rest}
 >
   <span class="chat-date-separator-line" aria-hidden="true"></span>

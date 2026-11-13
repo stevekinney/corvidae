@@ -141,8 +141,8 @@ export type ApprovalResolution = {
  * waited, the tool, the Input block, then a line carrying the risk glyph and what approving does,
  * and the decision below. It has no Details disclosure. `decision` is the explicit decision
  * surface for a transcript: no glyph gutter, the action as the title with a danger badge when it
- * cannot be undone, a sentence about the pause, Tool, Target, Amount and Command facts with the
- * command always visible and monospaced, the countdown, Add a note, then Deny and a named primary
+ * cannot be undone, meaningful host facts and a readable Command with the command always visible
+ * and monospaced, the countdown, Add a note, then Deny and a named primary
  * action. An irreversible primary arms on its first press. Once decided it stays as a receipt:
  * the action, who decided where and when beside a check, the reason a denial gave quoted, and
  * the note, the result and the command one disclosure away.
@@ -183,6 +183,8 @@ export type ApprovalFact = {
 export type ApprovalCardCallbacks = {
   /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
+  /** Requests a fresh approval after this one has expired in the decision layout. */
+  onAskAgain?: () => void;
 };
 
 /** Props for the ApprovalCard component. */
@@ -275,11 +277,11 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     decidedIn?: string;
     /** Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "by Priya Raman in Reviews, 10:46 AM". */
     decidedInHref?: string;
-    /** Extra facts the `decision` layout writes after the tool, such as Target and Amount. Tool, whether it can be undone, and the Command come from the approval itself. */
+    /** Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself. */
     facts?: ApprovalFact[];
     /** The `decision` layout's own words for the primary action, such as `Refund $42.00`. Default `Approve`. An irreversible primary reads "Press again to refund $42.00" once armed. */
     approveLabel?: string;
-    /** One sentence in the `decision` layout about the pause, such as `The agent is paused until you decide.`. */
+    /** Shared approval context accepted by callers; the compact decision layout does not repeat a generic pause sentence. */
     pauseSentence?: string;
     /** Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". */
     why?: string;
@@ -379,11 +381,11 @@ export type ApprovalCardSchemaProps = {
   decidedIn?: string;
   /** Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "by Priya Raman in Reviews, 10:46 AM". */
   decidedInHref?: string;
-  /** Extra facts the `decision` layout writes after the tool, such as Target and Amount. Tool, whether it can be undone, and the Command come from the approval itself. */
+  /** Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself. */
   facts?: ApprovalFact[];
   /** The `decision` layout's own words for the primary action, such as `Refund $42.00`. Default `Approve`. An irreversible primary reads "Press again to refund $42.00" once armed. */
   approveLabel?: string;
-  /** One sentence in the `decision` layout about the pause, such as `The agent is paused until you decide.`. */
+  /** Shared approval context accepted by callers; the compact decision layout does not repeat a generic pause sentence. */
   pauseSentence?: string;
   /** Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". */
   why?: string;
@@ -397,6 +399,8 @@ export type ApprovalCardSchemaProps = {
   view?: PayloadInspectorView;
   /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
+  /** Requests a fresh approval after this one has expired in the decision layout. */
+  onAskAgain?: () => void;
   /** Additional CSS classes applied to the root element. */
   class?: string;
 };

@@ -240,6 +240,12 @@
 .weft-shell-topbar__trail {
   flex: 1 1 0;
   min-width: 0;
+  /* The back link on a phone is painted as tall as its text and reaches 44px through a hit area
+   * that takes no layout, so the clip below must hold that whole area: the trail is a touch target
+   * tall, with the breadcrumbs centered in it (the bar is taller still, so nothing moves). */
+  display: grid;
+  align-content: center;
+  min-block-size: var(--cinder-touch-target-min);
   overflow: hidden;
   font-size: var(--cinder-text-sm);
   white-space: nowrap;

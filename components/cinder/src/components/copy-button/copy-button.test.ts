@@ -152,6 +152,30 @@ describe('CopyButton', () => {
     expect(button?.querySelector('.sr-only')).toBeNull();
   });
 
+  test('keeps its own bordered presentation, not a Button, so consumers that restyle it still win', async () => {
+    const { container } = render(CopyButton, {
+      value: 'hello',
+      iconOnly: true,
+      label: 'Copy value',
+      disabled: true,
+    });
+    const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
+
+    expect(button.classList.contains('cinder-copy-button')).toBe(true);
+    expect(button.classList.contains('cinder-button')).toBe(false);
+    expect(button.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-label')).toBe('Copy value');
+
+    const source = await Bun.file(new URL('./copy-button.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    expect(css).toContain('border: 1px solid var(--cinder-border-control);');
+    // A coarse pointer reaches it through a pseudo-element that takes no layout space.
+    expect(css).toMatch(
+      /@media \(any-pointer: coarse\) \{ \.cinder-copy-button \{ position: relative; \} \.cinder-copy-button::before \{[^}]*--cinder-touch-target-min/,
+    );
+  });
+
   test('iconOnly mode swaps icon and aria-label after click', async () => {
     mockClipboard();
     const { container } = render(CopyButton, { value: 'hello', iconOnly: true });

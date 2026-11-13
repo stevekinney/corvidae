@@ -18,7 +18,16 @@ const schema = {
       description: 'The tool\'s identifier ("send-email"), small and monospaced after the name.',
     },
     status: {
-      enum: ['done', 'approved', 'running', 'waiting', 'denied', 'failed', 'interrupted'],
+      enum: [
+        'done',
+        'approved',
+        'running',
+        'waiting',
+        'expired',
+        'denied',
+        'failed',
+        'interrupted',
+      ],
       description: 'Where the call stands.',
     },
     duration: {

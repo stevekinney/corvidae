@@ -140,9 +140,22 @@
   }
 
   .cinder-carousel__dot {
-    width: var(--cinder-carousel-dot-size, 2.75rem);
-    height: var(--cinder-carousel-dot-size, 2.75rem);
+    width: var(--cinder-carousel-dot-size, 1.5rem);
+    height: var(--cinder-carousel-dot-size, 1.5rem);
     padding: 0;
+    /* Anchors the hit area below. */
+    position: relative;
+  }
+
+  /* The painted dot is its layout box. A coarse pointer's 44 by 44 target is a pseudo-element, which
+     takes no layout space; a dot already past 44px keeps its own box (`min()`). */
+  @media (any-pointer: coarse) {
+    .cinder-carousel__dot::after {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
   }
 
   .cinder-carousel__counter {

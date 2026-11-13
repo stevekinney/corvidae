@@ -84,4 +84,17 @@ describe('ChoiceGrid card variant (row 33e)', () => {
     expect(mcp?.querySelector('.cinder-choice-grid-item__description')).toBeNull();
     expect(mcp?.hasAttribute('aria-describedby')).toBe(false);
   });
+
+  test('a card rests on the muted hairline, centres a label without a description, and the group shares one row height', async () => {
+    const squash = (text: string) => text.replace(/\s+/gu, ' ');
+    const itemCss = squash(
+      await Bun.file(new URL('../choice-grid-item/choice-grid-item.css', import.meta.url)).text(),
+    );
+    expect(itemCss).toContain(':not(:focus-visible) { border-color: var(--cinder-border-muted); }');
+    expect(itemCss).toContain(
+      ':not( :has(.cinder-choice-grid-item__description) ) { align-items: center; }',
+    );
+    const gridCss = squash(await Bun.file(new URL('./choice-grid.css', import.meta.url)).text());
+    expect(gridCss).toContain("[data-cinder-variant='card'] { grid-auto-rows: 1fr; }");
+  });
 });

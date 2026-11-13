@@ -32,20 +32,31 @@
 
 @layer cinder.components {
   .cinder-chat .message-content-preview {
-    max-inline-size: var(--cinder-content-width-prose);
+    inline-size: 100%;
+    max-inline-size: 100%;
+  }
+
+  .cinder-chat .message-content-preview > :not(.message-content-wide) {
+    max-inline-size: min(var(--cinder-content-width-prose), 100%);
   }
 
   .cinder-chat .message-content-wide {
-    inline-size: min(var(--cinder-content-width-wide), calc(100cqi - (2 * var(--cinder-space-4))));
-    min-inline-size: 100%;
-    max-inline-size: min(
-      var(--cinder-content-width-wide),
-      calc(100cqi - (2 * var(--cinder-space-4)))
-    );
-    margin-inline: calc(
-      (100% - min(var(--cinder-content-width-wide), calc(100cqi - (2 * var(--cinder-space-4))))) / 2
-    );
+    /* Wide markdown owns its own horizontal scroller. Keep its frame inside the message's
+     * containing block so an outer transcript clip cannot remove the leading column before the
+     * inner scroller can expose it. The transcript assistant row below supplies the desktop
+     * measure; ordinary prose remains capped by `.message-content-preview`. */
+    inline-size: min(var(--cinder-content-width-wide), 100%);
+    min-inline-size: 0;
+    max-inline-size: min(var(--cinder-content-width-wide), 100%);
+    margin-inline: 0;
     overflow-x: auto;
+  }
+
+  .cinder-chat .chat-message-wrapper[data-presentation='transcript'][data-role='assistant'] {
+    inline-size: 100%;
+    width: 100%;
+    max-inline-size: 100%;
+    max-width: 100%;
   }
 
   @container (max-width: 48rem) {
@@ -65,6 +76,17 @@
     max-inline-size: 100%;
     margin-inline: 0;
     overflow-x: visible;
+  }
+
+  /* Rendered fences are wrappers rather than pre elements in the Markdown flow. */
+  .cinder-chat .message-content-preview [data-cinder-markdown-node='code-block']:not(:last-child) {
+    margin-block-end: var(--cinder-space-3);
+  }
+
+  .cinder-chat
+    .message-content-preview
+    + .message-content-wide[data-cinder-markdown-node='code-block'] {
+    margin-block-start: var(--cinder-space-3);
   }
 
   /* One hairline frames Chat's code; an open fence keeps its dashed bottom edge. */
@@ -114,6 +136,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    scroll-padding-block: var(--cinder-space-2);
   }
 
   /* The timeline is a scrollable region, so an outset ring would be clipped by
@@ -122,14 +145,58 @@
    * while component-scoped styles are still being attached. */
   .cinder-chat .chat-timeline:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: inset 0 0 0 var(--cinder-ring-width)
-      var(--_cinder-chat-timeline-ring, var(--cinder-ring-color));
+    box-shadow: none;
+  }
+
+  .cinder-chat .chat-timeline-focus-label {
+    position: sticky;
+    inset-block-start: var(--cinder-space-2);
+    align-self: flex-start;
+    z-index: 2;
+    inline-size: 0;
+    block-size: 0;
+    min-inline-size: 0;
+    min-block-size: 0;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    font-size: 0;
+    line-height: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-chat .chat-timeline-focus-label::after {
+    content: attr(data-label);
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-block-size: 24px;
+    max-inline-size: min(100%, 7rem);
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    overflow: hidden;
+    color: var(--cinder-accent-text);
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+    border: 1px solid var(--cinder-accent-solid);
+    border-radius: var(--cinder-radius-full);
+    font-size: var(--cinder-text-xs);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .cinder-chat .chat-timeline:focus-visible .chat-timeline-focus-label {
+    opacity: 1;
   }
 
   @media (forced-colors: active) {
-    .cinder-chat .chat-timeline:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: calc(var(--cinder-ring-width) * -1);
+    .cinder-chat .chat-timeline-focus-label::after {
+      color: CanvasText;
+      background: Canvas;
+      border-color: ButtonText;
     }
   }
 }

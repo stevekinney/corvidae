@@ -72,6 +72,22 @@
     }
   }
 
+  /* On a coarse pointer the button keeps its painted box; the 44px hit region is a positioned
+     pseudo-element that takes no layout space, as Button's does. `min()` keeps a button already at
+     or above 44px from shrinking its own region. */
+  @media (any-pointer: coarse) {
+    .cinder-copy-button {
+      position: relative;
+    }
+
+    .cinder-copy-button::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
   .cinder-copy-button[data-cinder-copied] {
     color: var(--cinder-status-success-text);
     border-color: var(--cinder-status-success-border);

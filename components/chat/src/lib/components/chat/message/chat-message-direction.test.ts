@@ -46,9 +46,9 @@ describe('ChatMessage text direction', () => {
 
       const content = container.querySelector('.message-content');
       expect(content?.getAttribute('dir')).toBe('auto');
-      // The article, its header and its actions keep the page's direction.
-      expect(container.querySelector('article')?.hasAttribute('dir')).toBe(false);
-      expect(container.querySelector('.chat-message-wrapper')?.hasAttribute('dir')).toBe(false);
+      expect(container.querySelector('.chat-message-body')?.getAttribute('dir')).toBe('auto');
+      expect(container.querySelector('.chat-message-wrapper')?.getAttribute('dir')).toBe('ltr');
+      expect(container.querySelector('article.chat-message')?.getAttribute('dir')).toBe('ltr');
     },
   );
 
@@ -57,6 +57,20 @@ describe('ChatMessage text direction', () => {
     expect(contentSource).toMatch(
       /\.message-content :global\(:is\(p, li, blockquote[^)]*\)\) \{\s*unicode-bidi: plaintext;\s*text-align: start;/,
     );
+  });
+
+  test('RTL assistant transcript chrome follows the reading edge', () => {
+    const { container } = render(ChatMessage, {
+      props: {
+        message: message('assistant', 'تمت مراجعة طلب الاسترداد وتوضيح السياسة.'),
+        presentation: 'transcript',
+        showDefaultActions: true,
+      },
+    });
+
+    expect(
+      container.querySelector('.chat-message-wrapper')?.getAttribute('data-message-direction'),
+    ).toBe('rtl');
   });
 
   test('code in an Arabic reply keeps its left-to-right layout', () => {
@@ -111,5 +125,17 @@ describe('ChatMessage text direction', () => {
     expect(container.querySelector('.chat-message-sources-detail')?.getAttribute('dir')).toBe(
       'auto',
     );
+  });
+
+  test('RTL body geometry anchors source and transcript chrome without mirroring it', async () => {
+    expect(contentSource).toContain('dir="auto"');
+    const messageSource = await Bun.file(`${import.meta.dir}/chat-message.svelte`).text();
+    expect(messageSource).toContain('class="chat-message-line"\n    dir="ltr"');
+    // The Sources block takes the message's direction, so its control and list start on the
+    // message's inline start; the time inside the line is isolated so it reads "9:01 AM".
+    expect(messageSource).toContain('class="chat-message-sources" dir={messageDirection}');
+    expect(messageSource).not.toContain('class="chat-message-sources" dir="ltr"');
+    expect(messageSource).toContain('<time datetime={createdAtValue}><bdi>');
+    expect(messageSource).toContain('justify-content: flex-end;');
   });
 });

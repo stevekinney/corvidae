@@ -32,9 +32,11 @@ import {
   type MessageInput,
 } from '@lostgradient/chat';
 
+import { parseStepRowIdentifier } from '@lostgradient/operative';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import {
   forgetContextGrants,
+  regenerateContext,
   retractContextInput,
   sendContextInput,
   wireCodeOf,
@@ -113,23 +115,42 @@ function inputPayload(message: MessageInput): string {
   return message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
 }
 
-/**
- * The transcript without the approvals a run is parked on. The controller refuses a turn while an
- * approval is pending, and a hidden turn is not a new one: it reads the run that parked them, whose
- * stream shows the call again and whose interrupts park each approval again (`run-wiring.ts`).
- */
-function withoutParkedApprovals(history: ConversationHistory): ConversationHistory {
-  return getUnresolvedToolApprovals(history).reduce(
-    (current, { message }) => removeMessage(current, message.id),
-    history,
-  );
+/** A stable comparison for the approval action a host read before an asynchronous cleanup. */
+function approvalActionFingerprint(action: unknown): string | undefined {
+  if (typeof action !== 'object' || action === null) return undefined;
+  try {
+    return JSON.stringify(action);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The Bureau round carried by a result row. */
+function approvalRound(
+  row: ConversationHistory['messages'][string] | undefined,
+): number | undefined {
+  const bureau = row?.metadata['@lostgradient/bureau'];
+  if (typeof bureau !== 'object' || bureau === null) return undefined;
+  const round = Reflect.get(bureau, 'round');
+  return typeof round === 'number' ? round : undefined;
 }
 
 /** How many failed attempts in a row end the retries and leave the session disconnected. */
 export const MAX_RECONNECT_ATTEMPTS = 8;
 
+export type ChatRegenerationState = {
+  readonly messageId: string;
+  readonly commandId: string;
+  readonly status: 'running' | 'failed';
+  readonly error?: string;
+};
+
 export class ChatSessionState {
   conversation = $state.raw<ConversationHistory>(createConversationHistory({ id: '' }));
+  /** Parsed approval rail identities retained across hidden attach/resume reconciliation. */
+  parkedApprovalRailIds = $state.raw<ReadonlyMap<string, string>>(new Map());
+  /** Approval keys retained with parked identities across hidden attach/resume reconciliation. */
+  parkedApprovalKeys = $state.raw<ReadonlyMap<string, string>>(new Map());
   streaming = $state(false);
   /**
    * What the last failed turn said, for a person who needs to know why a row is marked failed. It
@@ -145,6 +166,8 @@ export class ChatSessionState {
    * its own, which the page keeps saying.
    */
   failureWasTransport = $state(false);
+  /** The host-owned answer replacement currently in flight, or its retryable failure receipt. */
+  regeneration = $state<ChatRegenerationState | undefined>(undefined);
   /** The questions the run is waiting on the person to answer; the next message answers one. */
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
@@ -225,6 +248,7 @@ export class ChatSessionState {
    * (COR-2280), kept so a snapshot that restores the stored action without one gets it again.
    */
   #approvalDeadlines: readonly ApprovalDeadline[] = [];
+  #regenerationPromise: Promise<void> | undefined;
   #readerAbort: AbortController | undefined;
   #activeTurn: Promise<unknown> = Promise.resolve();
   /**
@@ -440,6 +464,10 @@ export class ChatSessionState {
     // A refusal is answered by reading the thread again, which decides what is still owed.
     await this.#attachment;
     if (this.#wiring.owesResume()) throw new Error(CHAT_COPY.answersNotApplied);
+    // The resume may have succeeded without a terminal snapshot. Re-read the authoritative
+    // transcript before admitting the new turn so an old action-required row cannot keep the
+    // controller's ordinary pending-approval gate closed.
+    if (!(await this.refresh())) throw new Error(CHAT_COPY.answersNotApplied);
   }
 
   /**
@@ -577,6 +605,40 @@ export class ChatSessionState {
     return !this.#attachFailed;
   }
 
+  /** Replaces the latest ended answer through Bureau without starting an AG-UI/tool turn. */
+  async regenerateAnswer(messageId: string): Promise<void> {
+    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive)
+      return;
+    if (this.#regenerationPromise !== undefined) return this.#regenerationPromise;
+    const previous = this.regeneration;
+    const commandId =
+      previous?.messageId === messageId ? previous.commandId : `regenerate:${crypto.randomUUID()}`;
+    this.regeneration = { messageId, commandId, status: 'running' };
+    const attempt = (async () => {
+      try {
+        await regenerateContext(
+          { contextId: this.sessionId, commandId, messageId },
+          { signal: this.#abort.signal },
+        );
+        if (!(await this.refresh())) throw new Error(CHAT_COPY.regeneration.readbackFailed);
+        this.regeneration = undefined;
+      } catch (error) {
+        if (this.#abort.signal.aborted || this.#closed?.() === true) return;
+        this.regeneration = {
+          messageId,
+          commandId,
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    })();
+    const settled = attempt.finally(() => {
+      if (this.#regenerationPromise === settled) this.#regenerationPromise = undefined;
+    });
+    this.#regenerationPromise = settled;
+    return settled;
+  }
+
   /**
    * Sends `content` as the person's next message, as if it had been typed in the composer. It waits
    * for the attach in progress, so it goes to the run the attach joins, or starts one when there is
@@ -623,6 +685,137 @@ export class ChatSessionState {
     }
     this.failure = undefined;
     return this.send(text);
+  }
+
+  /** Retries only an expired approval that belongs to the current final turn. */
+  async retryExpiredApproval(
+    toolCallId: string,
+    options: {
+      readonly tools?: ReadonlyMap<string, ToolInfo>;
+      /** Durable review expiry can supersede a stale action deadline in the transcript. */
+      readonly expiredAt?: number;
+      /** The approval identity currently rendered by the chat, including its round. */
+      readonly approvalKey?: string;
+    } = {},
+  ): Promise<void> {
+    if (this.streaming || this.attaching || this.transportActive || this.#abort.signal.aborted) {
+      return;
+    }
+    const rows = this.conversation.ids
+      .slice(lastTurnStart(this.conversation))
+      .flatMap((rowId) => this.conversation.messages[rowId] ?? []);
+    const pair = pairToolCallsWithResults(rows).findLast(({ call }) => call.id === toolCallId);
+    const actionExpiresAt =
+      pair?.result?.action?.type === 'approval' ? pair.result.action.expiresAt : undefined;
+    if (pair === undefined || pair.result?.outcome !== 'action_required') {
+      return;
+    }
+    const deadline =
+      options.expiredAt ??
+      (actionExpiresAt === undefined ? Number.NaN : Date.parse(actionExpiresAt));
+    const now = this.clock.now();
+    if (!Number.isFinite(deadline) || deadline > now) {
+      return;
+    }
+    const changes = mayChange(options.tools?.get(pair.call.name)?.tier);
+    const finalUserRowId = this.#lastUserRowId();
+    const finalUserRow =
+      finalUserRowId === undefined ? undefined : this.conversation.messages[finalUserRowId];
+    const text = finalUserRow === undefined ? undefined : retryText(finalUserRow);
+    const expectedAction = pair.result.action;
+    if (expectedAction?.type !== 'approval') {
+      return;
+    }
+    const expectedActionFingerprint = approvalActionFingerprint(expectedAction);
+    const expectedCallFingerprint = approvalActionFingerprint(pair.call);
+    const expectedResultRow = rows.find((row) => row.toolResult === pair.result);
+    const expectedResultRowId = expectedResultRow?.id;
+    const expectedRunId =
+      expectedResultRowId === undefined
+        ? undefined
+        : parseStepRowIdentifier(expectedResultRowId)?.runId;
+    const expectedRound = approvalRound(expectedResultRow);
+    const expectedApprovalKey =
+      expectedResultRowId === undefined || expectedRunId === undefined
+        ? undefined
+        : `approval:${expectedRunId}:${
+            parseStepRowIdentifier(expectedResultRowId)?.callId ?? pair.result.callId
+          }:${expectedResultRowId}:round:${expectedRound ?? 'unknown'}`;
+    const expectedReviewId = this.approvals.find(({ result }) => result === pair.result)?.message
+      .id;
+    if (
+      expectedActionFingerprint === undefined ||
+      expectedCallFingerprint === undefined ||
+      expectedResultRowId === undefined ||
+      (options.approvalKey !== undefined && options.approvalKey !== expectedApprovalKey)
+    )
+      return;
+    if (text === undefined) {
+      return;
+    }
+    if (changes) {
+      try {
+        await forgetContextGrants(
+          { contextId: this.sessionId, tools: [pair.call.name] },
+          { signal: this.#abort.signal },
+        );
+      } catch (error) {
+        if (this.#abort.signal.aborted) {
+          return;
+        }
+        if (isNotFound(error)) this.#onNotFound?.();
+        this.failure = CHAT_COPY.stopLine.retryFailed;
+        return;
+      }
+    }
+    // Replay the exact final user input only if the approval is still the one this operation read.
+    // The result can be renewed in place while grant cleanup is awaiting the Bureau; its action
+    // payload may be identical, so the row's Bureau round is part of this host-side fence.
+    const latestRows = this.conversation.ids
+      .slice(lastTurnStart(this.conversation))
+      .flatMap((rowId) => this.conversation.messages[rowId] ?? []);
+    const latestPair = pairToolCallsWithResults(latestRows).findLast(
+      ({ call }) => call.id === toolCallId,
+    );
+    const latestResultRow = latestRows.find((row) => row.toolResult === latestPair?.result);
+    const latestResultRowId = latestResultRow?.id;
+    const latestRunId =
+      latestResultRowId === undefined
+        ? undefined
+        : parseStepRowIdentifier(latestResultRowId)?.runId;
+    const latestApprovalKey =
+      latestResultRowId === undefined || latestRunId === undefined
+        ? undefined
+        : `approval:${latestRunId}:${
+            parseStepRowIdentifier(latestResultRowId)?.callId ?? latestPair?.result?.callId
+          }:${latestResultRowId}:round:${approvalRound(latestResultRow) ?? 'unknown'}`;
+    const latestReviewId = this.approvals.find(({ result }) => result === latestPair?.result)
+      ?.message.id;
+    if (
+      this.#lastUserRowId() !== finalUserRowId ||
+      latestPair === undefined ||
+      latestPair.result?.outcome !== 'action_required' ||
+      latestPair.result.action?.type !== 'approval' ||
+      latestResultRowId !== expectedResultRowId ||
+      (expectedRunId !== undefined && latestRunId !== expectedRunId) ||
+      (expectedReviewId !== undefined && latestReviewId !== expectedReviewId) ||
+      (expectedApprovalKey !== undefined && latestApprovalKey !== expectedApprovalKey) ||
+      approvalActionFingerprint(latestPair.call) !== expectedCallFingerprint ||
+      approvalActionFingerprint(latestPair.result.action) !== expectedActionFingerprint ||
+      approvalRound(latestResultRow) !== expectedRound
+    ) {
+      return;
+    }
+    const reconciled = this.controller.reconcileApprovalExpiry({
+      toolCallId,
+      expiresAt: new Date(deadline).toISOString(),
+      expectedAction,
+    });
+    if (!reconciled) {
+      return;
+    }
+    this.failure = undefined;
+    await this.send(text);
   }
 
   /**
@@ -741,12 +934,26 @@ export class ChatSessionState {
 
   /**
    * Starts a turn under a row the person never sees, which reads the run (an attach) or sends what
-   * a refused resume still owes. The approvals the run is parked on leave the transcript first, so
-   * the controller does not refuse the turn as a new one while they are pending (COR-1957).
+   * a refused resume still owes. The controller's hidden-turn entry point bypasses only the
+   * ordinary new-turn approval gate; parked approval rows remain in the authoritative transcript
+   * so attach and resume transport can preserve their identity (COR-1957).
    */
   #sendHiddenTurn(): Promise<void> {
-    this.conversation = withoutParkedApprovals(this.conversation);
-    return this.controller.adapter.sendMessage({ role: 'user', content: '', hidden: true }, []);
+    const carried = new Map(this.parkedApprovalRailIds);
+    const carriedKeys = new Map(this.parkedApprovalKeys);
+    for (const { message, result } of getUnresolvedToolApprovals(this.conversation)) {
+      const parsed = parseStepRowIdentifier(message.id);
+      if (parsed?.kind !== 'result') continue;
+      const rawCallId = parsed.callId ?? result.callId;
+      carried.set(result.callId, `approval:${parsed.runId}:${rawCallId}:call:${rawCallId}`);
+      carriedKeys.set(
+        result.callId,
+        `approval:${parsed.runId}:${rawCallId}:${message.id}:round:${approvalRound(message) ?? 'unknown'}`,
+      );
+    }
+    this.parkedApprovalRailIds = carried;
+    this.parkedApprovalKeys = carriedKeys;
+    return this.controller.sendHiddenMessage();
   }
 
   /** Replaces the transcript with the authoritative snapshot from the Bureau. */

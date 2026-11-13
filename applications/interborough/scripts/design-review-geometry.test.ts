@@ -15,12 +15,11 @@ import {
   GEOMETRY_RULES,
   GEOMETRY_THRESHOLDS,
   auditCapture,
-  auditGeometry,
   consolidateFindings,
   inventoryPatterns,
   renderGeometryReport,
-  runGeometryAudit,
-} from './design-review-geometry.ts';
+} from '@lostgradient/testing/design-review-geometry';
+import { auditGeometry, runGeometryAudit } from './design-review-geometry.ts';
 
 const SCALE = [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64];
 
@@ -70,6 +69,7 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     rect: { x: 100, y: 100, width: labelWidth + inline * 2, height },
     content: { x: 100 + inline, y: 100 + block, width: labelWidth, height: height - block * 2 },
     fontSize: 13,
+    extendedHitArea: false,
     fullWidth: false,
     boxed: true,
     labelRuns: 1,

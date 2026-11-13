@@ -2,8 +2,11 @@ import type { Locator, Page } from '@playwright/test';
 
 import type { InteractionStep } from '../visual-fixtures.ts';
 
+/** Context included in interaction errors. */
 export type InteractionContext = {
+  /** Component name in the failing fixture. */
   component?: string;
+  /** Fixture name in the failing component. */
   fixture?: string;
 };
 
@@ -18,13 +21,18 @@ function contextPrefix(context: InteractionContext | undefined): string {
 
 type TargetKind = 'testId' | 'label' | 'role';
 type Role = Parameters<Page['getByRole']>[0];
+/** The locator operations required by the interaction runner. */
 export type InteractionLocator = Pick<
   Locator,
   'click' | 'count' | 'focus' | 'hover' | 'isEnabled' | 'isVisible' | 'press'
 >;
+/** The page locator operations required by the interaction runner. */
 export type InteractionPage = {
+  /** Finds a control by its accessible label. */
   getByLabel(label: string, options?: Parameters<Page['getByLabel']>[1]): InteractionLocator;
+  /** Finds a control by its accessible role. */
   getByRole(role: Role, options?: Parameters<Page['getByRole']>[1]): InteractionLocator;
+  /** Finds a fixture-owned control by test id. */
   getByTestId(testId: string): InteractionLocator;
 };
 const roles = new Set<string>(
@@ -71,7 +79,9 @@ function targetDescription(step: InteractionStep): string {
   return `role "${target.role}"${name}`;
 }
 
+/** Thrown when an interaction target does not identify exactly one locator kind. */
 export class InvalidInteractionTargetError extends Error {
+  /** Zero-based index of the invalid step. */
   readonly step: number;
 
   constructor(step: number, context?: InteractionContext) {
@@ -124,7 +134,9 @@ export class AmbiguousTestIdError extends Error {
   }
 }
 
+/** Thrown when a role or label target resolves to no element. */
 export class MissingInteractionTargetError extends Error {
+  /** Zero-based index of the missing step. */
   readonly step: number;
 
   constructor(description: string, step: number, context?: InteractionContext) {
@@ -134,8 +146,11 @@ export class MissingInteractionTargetError extends Error {
   }
 }
 
+/** Thrown when a role or label target resolves to multiple elements. */
 export class AmbiguousInteractionTargetError extends Error {
+  /** Zero-based index of the ambiguous step. */
   readonly step: number;
+  /** Number of matching elements. */
   readonly count: number;
 
   constructor(description: string, count: number, step: number, context?: InteractionContext) {
@@ -148,7 +163,9 @@ export class AmbiguousInteractionTargetError extends Error {
   }
 }
 
+/** Thrown when an interaction target is present but hidden. */
 export class HiddenInteractionTargetError extends Error {
+  /** Zero-based index of the hidden step. */
   readonly step: number;
 
   constructor(description: string, step: number, context?: InteractionContext) {
@@ -158,7 +175,9 @@ export class HiddenInteractionTargetError extends Error {
   }
 }
 
+/** Thrown when an actionable interaction target is disabled. */
 export class DisabledInteractionTargetError extends Error {
+  /** Zero-based index of the disabled step. */
   readonly step: number;
 
   constructor(description: string, step: number, context?: InteractionContext) {

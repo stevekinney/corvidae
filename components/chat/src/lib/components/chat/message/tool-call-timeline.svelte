@@ -11,10 +11,11 @@
     Search,
     Terminal,
     X,
-    Button,
     Copy,
     CopyButton,
+    formatDuration,
     Spinner,
+    Tooltip,
     type ApprovalState,
   } from '@lostgradient/cinder';
   import { stringify } from '../../../utilities/stringify.ts';
@@ -22,12 +23,12 @@
   import type { ToolCallPair } from '../conversation-model.ts';
   import type { ToolCallPresentation } from '../utilities/types.ts';
   import { formatToolCallProse } from '../utilities/utilities.ts';
+  import RetryButton from './retry-button.svelte';
   import ToolPayloadCode from './tool-payload-code.svelte';
   import { resolveTurnLabels, type ChatTurnLabels } from './turn-labels.ts';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import {
     foldRepeatedSteps,
-    formatToolCallDuration,
     formatToolCallElapsed,
     isProblemStatus,
     nextToolCallApprovalDeadline,
@@ -36,7 +37,6 @@
     toolCallKeyArgument,
     toolCallResultLine,
     toolCallRowStatus,
-    toolCallStatusText,
     toolCallSummaryParts,
     totalToolCallDuration,
     type ToolCallRowStatus,
@@ -53,6 +53,7 @@
     durations,
     startTimes,
     onRetryStep,
+    cardOwnedCallIds,
     labels,
   }: {
     pairs: ToolCallPair[];
@@ -72,6 +73,11 @@
     /** Called with a failed call's id when the person chooses Retry this step. The button shows only when this is set. */
     onRetryStep?: ((toolCallId: string) => void) | undefined;
     /** The words of the step position, the failed count and a failed step's controls. */
+    /**
+     * The calls whose waiting or expired state a card in the same turn (an approval or a question)
+     * already says. The summary leaves those words to the card.
+     */
+    cardOwnedCallIds?: ReadonlySet<string> | undefined;
     labels?: Partial<ChatTurnLabels> | undefined;
   } = $props();
 
@@ -124,6 +130,7 @@
         presentation,
         prose: presentation ? formatToolCallProse(presentation) : undefined,
         status,
+        deniedApproval: status === 'denied' && pair.result?.action?.type === 'approval',
         active,
         keyArgument: toolCallKeyArgument(pair.call.arguments),
         resultLine: toolCallResultLine(pair),
@@ -141,6 +148,7 @@
     return row.status === 'succeeded' ? `${row.pair.call.name}\u0000${row.prose ?? ''}` : undefined;
   }
   const steps = $derived(foldRepeatedSteps(rows, repeatKey));
+  const hasRepeatedSummary = $derived(steps.some((step) => step.kind === 'repeated'));
   function stepKey(step: (typeof steps)[number]): string {
     return step.kind === 'single' ? step.row.key : `repeated:${step.rows[0].key}`;
   }
@@ -179,12 +187,30 @@
   const runningElapsed = $derived(
     runningStart === undefined ? undefined : Math.max(0, elapsedClock - runningStart),
   );
-  const hasProblem = $derived(rows.some((row) => isProblemStatus(row.status)));
+  const hasProblem = $derived(
+    rows.some((row) => !row.deniedApproval && isProblemStatus(row.status)),
+  );
+  // Waiting and input-request rows have a human-facing action title/status. Their raw connector
+  // names are implementation details in a collapsed header; expanded rows still show the exact
+  // identifier for inspection and accessibility.
+  const hasHumanAction = $derived(
+    rows.some(
+      (row) =>
+        row.status === 'waiting' ||
+        row.status === 'waiting-input' ||
+        row.status === 'approved' ||
+        row.status === 'answered',
+    ),
+  );
+  const pendingStatuses = new Set<string>(['waiting', 'waiting-input', 'expired']);
   const summary = $derived(
     toolCallSummaryParts(
       pairs,
       rows.map((row) => row.status),
       rows.map((row) => row.duration),
+      words.toolProblem,
+      rows.map((row) => row.prose),
+      rows.map((row) => cardOwnedCallIds?.has(row.pair.call.id) ?? false),
     ),
   );
   // Once a step failed, the header counts the steps that worked out of all of them (R7).
@@ -192,9 +218,14 @@
   const countText = $derived(
     failedCount > 0
       ? words.stepsDone(rows.filter((row) => row.status === 'succeeded').length, pairs.length)
-      : pairs.length === 1
-        ? '1 step'
-        : `${pairs.length} steps`,
+      : words.steps(pairs.length),
+  );
+  // A host may supply a count-bearing semantic sentence (for example, "Compared 20 recent
+  // orders…"). In that case the first row prose is the same meaning without the count; avoid
+  // rendering both sentences in the collapsed header. Failure summaries keep their description
+  // after the adjacent count/problem fields for R7.
+  const showDescription = $derived(
+    failedCount > 0 || countText === `${pairs.length} ${pairs.length === 1 ? 'step' : 'steps'}`,
   );
 
   // Failures and denials start open; the reader's own toggle wins after that.
@@ -221,11 +252,9 @@
     return value === null || typeof value === 'object';
   }
 
-  const callsLabel = $derived(
-    `${pairs.length} consecutive tool ${pairs.length === 1 ? 'call' : 'calls'}`,
-  );
+  const callsLabel = $derived(words.calls(pairs.length));
   const announcerText = $derived(
-    rows.map((row) => `${row.pair.call.name}: ${toolCallStatusText(row.status)}`).join('. '),
+    rows.map((row) => words.toolAnnouncement(row.pair.call.name, row.status)).join('. '),
   );
 
   function toolActivityIcon(kind: ToolCallPresentation['kind'], active: boolean): Snippet {
@@ -348,7 +377,7 @@
 {/snippet}
 
 <!-- A failed step (R7): what went wrong in one danger line, the rest of the error wrapping under
-     it, and Copy error then Retry this step. -->
+     it, and Retry, then Copy error. -->
 {#snippet failure(pair: ToolCallPair)}
   {@const failed = toolCallFailure(pair, words.stepFailed)}
   {#if failed}
@@ -361,27 +390,25 @@
         <pre class="chat-tool-call-diagnostic" dir="auto">{failed.diagnostic}</pre>
       {/if}
       <div class="chat-tool-call-failure-actions">
-        <CopyButton
-          value={failed.copy}
-          label={words.copyError}
-          copiedLabel={words.errorCopied}
-          confirmDuration={2000}
-          class="chat-tool-call-failure-action"
-        >
-          <Copy class="cinder-icon-xs" aria-hidden="true" />
-          {words.copyError}
-        </CopyButton>
         {#if onRetryStep}
-          <Button
-            type="button"
+          <RetryButton
             class="chat-tool-call-failure-action"
-            size="xs"
-            variant="secondary"
+            label={words.retryStep}
             onclick={() => onRetryStep(pair.call.id)}
-          >
-            {words.retryStep}
-          </Button>
+          />
         {/if}
+        <Tooltip text={words.copyError} placement="top" describe={false}>
+          <CopyButton
+            value={failed.copy}
+            label={words.copyError}
+            copiedLabel={words.errorCopied}
+            confirmDuration={2000}
+            iconOnly
+            class="chat-tool-call-failure-action"
+          >
+            <Copy class="cinder-icon-xs" aria-hidden="true" />
+          </CopyButton>
+        </Tooltip>
       </div>
     </div>
   {/if}
@@ -393,13 +420,13 @@
   {:else if pair.result?.outcome === 'error'}
     <!-- A denial the run reports as an error result reads Denied, not failed: it keeps the plain
          error payload and offers no retry. -->
-    {@render payload('Error', pair.result.error?.message ?? pair.result.content)}
+    {@render payload(words.error, pair.result.error?.message ?? pair.result.content)}
   {:else if pair.result?.parts !== undefined && pair.result}
-    {@render payload('Output', toolResultText(pair.result))}
+    {@render payload(words.output, toolResultText(pair.result))}
   {:else if pair.result && pair.result.content !== null && pair.result.content !== undefined}
     <!-- A result with nothing in it (an approval still pending, a decision the run has not
          answered yet) has no Output to show: "null" says nothing to the person. -->
-    {@render payload('Output', pair.result.content)}
+    {@render payload(words.output, pair.result.content)}
   {/if}
 {/snippet}
 
@@ -407,6 +434,10 @@
   id={`message-${navigationMessageId}`}
   class="chat-tool-call-timeline chat-navigation-row"
   data-cinder-tool-call-count={pairs.length}
+  data-has-summary-tools={summary.tools && !hasProblem && !hasHumanAction ? 'true' : 'false'}
+  data-has-repeated-summary={hasRepeatedSummary && summary.tools && !hasProblem && !hasHumanAction
+    ? 'true'
+    : 'false'}
   aria-labelledby={headingId}
   tabindex="-1"
 >
@@ -434,7 +465,7 @@
           <span class="chat-tool-call-running" dir="auto"
             >{runningLive ? runningStepTitle(runningRow.prose ?? '') : runningRow.prose}</span
           >
-          {#if runningLive && pairs.length > 1}
+          {#if runningLive}
             <span class="chat-tool-call-summary-segment" data-step-position
               >{words.stepPosition(runningPosition, pairs.length)}</span
             >
@@ -445,17 +476,26 @@
             >
           {/if}
         {:else}
-          <!-- A failed count follows the step count directly, so the two read as one phrase:
-               "2 of 3 steps, 1 failed" (R7). -->
-          <span class="chat-tool-call-summary-count"
-            >{countText}{#if summary.problems.length > 0},{/if}</span
-          >
-          {#each summary.problems as problem, index (index)}
-            <span class="chat-tool-call-summary-segment" data-problem
-              >{problem}{#if index < summary.problems.length - 1},{/if}</span
+          <!-- Counts, status and duration are separate facts. The flex gap supplies their reading
+               space without punctuation that makes the status look like part of the count. -->
+          <span class="chat-tool-call-summary-count">{countText}</span>
+          {#each summary.problems as problem, problemIndex (problem)}
+            <span
+              class="chat-tool-call-summary-segment"
+              data-problem
+              data-tone={pendingStatuses.has(summary.problemStatuses[problemIndex]!)
+                ? 'warning'
+                : summary.problemStatuses[problemIndex] === 'failed'
+                  ? undefined
+                  : 'muted'}>{problem}</span
             >
           {/each}
-          {#if summary.tools}
+          {#if summary.description && showDescription}
+            <span class="chat-tool-call-summary-description" dir="auto">{summary.description}</span>
+          {/if}
+          <!-- The tool name is run machinery: the collapsed summary shows it only as the repeated
+               rollup's identity ("lookup_order ×20"); the expanded row keeps the name. -->
+          {#if summary.tools && !hasProblem && !hasHumanAction && hasRepeatedSummary}
             <span class="chat-tool-call-summary-tools">{summary.tools}</span>
           {/if}
           {#if summary.duration}
@@ -471,37 +511,45 @@
         {@const row = step.row}
         {@const open = isStepOpen(row.key, isProblemStatus(row.status))}
         <li class="chat-tool-call-item" data-cinder-tool-call-status={row.status}>
-          <button
-            type="button"
-            class="chat-tool-call-row"
-            aria-expanded={open}
-            aria-controls={row.detailsId}
-            onclick={() => toggleStep(row.key, isProblemStatus(row.status))}
-          >
-            {@render statusIcon(row.status, row.active)}
-            {#if row.presentation}
-              <span class="chat-tool-call-label">{row.prose}</span>
+          {#if row.deniedApproval}
+            <div class="chat-tool-call-row chat-tool-call-row-summary">
+              {@render statusIcon(row.status, false)}
               <code class="chat-tool-call-name">{row.pair.call.name}</code>
-            {:else}
-              <code class="chat-tool-call-name">{row.pair.call.name}</code>
-              {#if row.keyArgument}<span>{row.keyArgument}</span>{/if}
-            {/if}
-            <span class="chat-tool-call-result">
-              {#if row.resultLine}→ {row.resultLine}{/if}
-            </span>
-            {#if row.status !== 'succeeded'}
-              <span class="chat-tool-call-status">{toolCallStatusText(row.status)}</span>
-            {/if}
-            {#if row.duration !== undefined}
-              <span class="chat-tool-call-duration">{formatToolCallDuration(row.duration)}</span>
-            {/if}
-          </button>
-          <div id={row.detailsId} class="chat-tool-call-details" hidden={!open}>
-            {#if open}
-              {@render payload('Input', row.pair.call.arguments)}
-              {@render output(row.pair, row.status)}
-            {/if}
-          </div>
+              <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
+            </div>
+          {:else}
+            <button
+              type="button"
+              class="chat-tool-call-row"
+              aria-expanded={open}
+              aria-controls={row.detailsId}
+              onclick={() => toggleStep(row.key, isProblemStatus(row.status))}
+            >
+              {@render statusIcon(row.status, row.active)}
+              {#if row.presentation}
+                <span class="chat-tool-call-label">{row.prose}</span>
+                <code class="chat-tool-call-name">{row.pair.call.name}</code>
+              {:else}
+                <code class="chat-tool-call-name">{row.pair.call.name}</code>
+                {#if row.keyArgument}<span>{row.keyArgument}</span>{/if}
+              {/if}
+              <span class="chat-tool-call-result">
+                {#if row.status !== 'failed' && row.resultLine}→ {row.resultLine}{/if}
+              </span>
+              {#if row.status !== 'succeeded' && row.status !== 'failed'}
+                <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
+              {/if}
+              {#if row.duration !== undefined}
+                <span class="chat-tool-call-duration">{formatDuration(row.duration)}</span>
+              {/if}
+            </button>
+            <div id={row.detailsId} class="chat-tool-call-details" hidden={!open}>
+              {#if open}
+                {@render payload(words.input, row.pair.call.arguments)}
+                {@render output(row.pair, row.status)}
+              {/if}
+            </div>
+          {/if}
         </li>
       {:else}
         {@const first = step.rows[0]}
@@ -525,7 +573,7 @@
             <code class="chat-tool-call-name">{first.pair.call.name} ×{step.rows.length}</code>
             <span class="chat-tool-call-result"></span>
             {#if total !== undefined}
-              <span class="chat-tool-call-duration">{formatToolCallDuration(total)}</span>
+              <span class="chat-tool-call-duration">{formatDuration(total)}</span>
             {/if}
           </button>
           <div id={`${first.detailsId}-repeated`} class="chat-tool-call-details" hidden={!open}>
@@ -536,7 +584,7 @@
                     {memberIndex + 1} of {step.rows.length}{#if member.keyArgument}
                       {' '}{member.keyArgument}{/if}
                   </span>
-                  {@render payload('Input', member.pair.call.arguments)}
+                  {@render payload(words.input, member.pair.call.arguments)}
                   {@render output(member.pair, member.status)}
                 </div>
               {/each}
@@ -552,9 +600,10 @@
   /* Contiguous steps share one bordered group on the page, with no fill: a header line with the
    * step count and the time, then one row to a step. Text is muted 12.5px. */
   .chat-tool-call-timeline {
-    inline-size: min(42rem, 100%);
+    inline-size: 100%;
+    max-inline-size: var(--cinder-chat-message-max-width, 48rem);
+    box-sizing: border-box;
     min-inline-size: 0;
-    max-inline-size: 100%;
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
     font-size: 12.5px;
@@ -564,7 +613,7 @@
 
   @container (min-width: 22rem) {
     .chat-tool-call-timeline {
-      min-inline-size: 20rem;
+      min-inline-size: min(20rem, 100%);
     }
   }
 
@@ -593,11 +642,15 @@
     gap: var(--cinder-space-2);
     inline-size: 100%;
     min-inline-size: 0;
-    padding: var(--cinder-space-2) var(--cinder-space-3);
+    min-block-size: 1.5rem;
+    padding-block: 0;
+    padding-inline: var(--cinder-space-3);
     border: 0;
     background: transparent;
-    color: inherit;
+    color: var(--cinder-text-default);
     font: inherit;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-weight: var(--cinder-font-medium);
     text-align: start;
     cursor: pointer;
   }
@@ -609,15 +662,35 @@
   }
 
   .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
-    inline-size: 12px;
-    block-size: 12px;
+    inline-size: 1rem;
+    block-size: 1rem;
     flex: none;
-    margin-block: calc((1lh - 12px) / 2);
-    transition: transform 120ms ease;
+    margin-block: calc((1lh - 1rem) / 2);
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
   .chat-tool-call-toggle[aria-expanded='true'] :global(.chat-tool-call-chevron) {
     transform: rotate(90deg);
+  }
+
+  /* The step row takes the message's direction: the chevron leads at the inline start and points
+     toward the text, as the open one points down in either. */
+  :global(.chat-message-wrapper[data-message-direction='rtl']) .chat-tool-call-timeline {
+    direction: rtl;
+  }
+
+  :global(.chat-message-wrapper[data-message-direction='rtl'])
+    .chat-tool-call-toggle[aria-expanded='false']
+    :global(.chat-tool-call-chevron) {
+    transform: scaleX(-1);
+  }
+
+  @media (any-pointer: coarse) {
+    .chat-tool-call-toggle,
+    .chat-tool-call-row {
+      min-block-size: var(--cinder-touch-target-min);
+      padding-block: var(--cinder-space-2);
+    }
   }
 
   /* The header's phrases are fields: the step count, the tools, any failed or waiting counts and
@@ -630,13 +703,14 @@
     align-items: baseline;
     /* The count and its phrases read as one sentence, "2 of 3 steps, 1 failed, 1 denied": each
      * phrase carries its comma and the next starts one space on. */
-    column-gap: 0.3em;
+    column-gap: var(--cinder-space-2);
     min-inline-size: 0;
   }
 
   /* The running call's sentence is the host's own words and wraps like any sentence; only these
    * phrases are held to one line. */
   .chat-tool-call-summary-count,
+  .chat-tool-call-summary-description,
   .chat-tool-call-summary-segment,
   .chat-tool-call-summary-duration {
     white-space: nowrap;
@@ -651,18 +725,43 @@
     color: var(--cinder-text-default);
   }
 
+  /* The count is never shrunk or cut: the description and the tool name yield first. */
+  .chat-tool-call-summary-count {
+    flex: 0 0 auto;
+  }
+
+  .chat-tool-call-summary-description {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .chat-tool-call-summary-segment,
   .chat-tool-call-summary-duration {
     font-variant-numeric: tabular-nums;
   }
 
+  .chat-tool-call-summary-segment[data-problem] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  /* Waiting and expired are pending states, not failures: the warning tone, never danger. */
+  .chat-tool-call-summary-segment[data-problem][data-tone='warning'] {
+    color: var(--cinder-status-warning-text);
+  }
+
+  /* Danger is for failed counts only: answered, approved and denied read as quiet text. */
+  .chat-tool-call-summary-segment[data-problem][data-tone='muted'] {
+    color: var(--cinder-text-muted);
+  }
+
   .chat-tool-call-summary-duration {
+    flex: 0 0 auto;
     margin-inline-start: auto;
   }
 
-  /* The tools take the room the other phrases leave, and a name wider than that is cut with an
-   * ellipsis rather than wrapped to a second line; its whole text stays in the page. A basis of
-   * zero keeps it on the line it starts. */
+  /* Short repeated-work metadata stays intrinsic, while an unusually long connector identifier
+   * can yield and ellipsize instead of forcing the summary beyond its container. */
   .chat-tool-call-summary-tools {
     flex: 1 1 0;
     margin-inline-start: var(--cinder-space-1);
@@ -670,25 +769,72 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--cinder-font-mono);
-    font-size: 12px;
+    font-family: inherit;
+    font-size: inherit;
   }
 
-  /* In a narrow chat the collapsed header leaves the raw tool names out; opening the group shows
-   * each call with its full name. */
-  @container (max-width: 21.99rem) {
-    .chat-tool-call-summary-tools {
-      display: none;
-    }
+  .chat-tool-call-timeline[data-has-repeated-summary='true'] .chat-tool-call-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: var(--cinder-space-1);
+  }
 
-    /* A row wraps between its parts, so the tool's full name always has the line it needs. */
+  .chat-tool-call-timeline[data-has-repeated-summary='true'] .chat-tool-call-summary-count {
+    grid-column: 1 / -1;
+  }
+
+  .chat-tool-call-timeline[data-has-repeated-summary='true'] .chat-tool-call-summary-tools {
+    grid-column: 1;
+    grid-row: 2;
+    flex: none;
+    max-inline-size: 100%;
+  }
+
+  .chat-tool-call-timeline[data-has-repeated-summary='true'] .chat-tool-call-summary-duration {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  /* In a narrow chat pending human-action headers leave raw tool names out; repeated completed
+   * work keeps its tool/count identity in the collapsed header. The semantic title yields space
+   * first, so the work identity and duration remain readable on a phone. */
+  @container (max-width: 21.99rem) {
+    /* Give the marker only the title line. Supporting text can use the whole row. */
     .chat-tool-call-row {
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: start;
       row-gap: var(--cinder-space-1);
     }
 
+    .chat-tool-call-label {
+      grid-column: 2;
+      grid-row: 1;
+      font-weight: var(--cinder-font-semibold);
+    }
+
     .chat-tool-call-name {
-      max-inline-size: 100%;
+      grid-column: 2;
+      grid-row: 2;
+    }
+
+    .chat-tool-call-result {
+      grid-column: 2 / -1;
+      grid-row: 3;
+    }
+
+    .chat-tool-call-status,
+    .chat-tool-call-duration {
+      grid-row: 1;
+    }
+
+    .chat-tool-call-status {
+      grid-column: 3;
+    }
+
+    .chat-tool-call-duration {
+      grid-column: 3;
+      grid-row: 2;
     }
   }
 
@@ -900,12 +1046,12 @@
     padding-inline: var(--cinder-space-2);
   }
 
-  /* On a touch screen the group's summary line, each step's row and a failed step's controls are
-   * full touch targets (C#3). */
+  /* On a touch screen the group's summary line and each step's row are full touch targets (C#3). A
+   * failed step's controls are Cinder Buttons: they keep their painted size and reach 44px by the
+   * button's own hit area, so no minimum is set on them here. */
   @media (any-pointer: coarse) {
     .chat-tool-call-toggle,
-    .chat-tool-call-row,
-    .chat-tool-call-failure-actions :global(.chat-tool-call-failure-action) {
+    .chat-tool-call-row {
       min-block-size: var(--cinder-touch-target-min);
     }
   }

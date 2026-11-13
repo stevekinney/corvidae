@@ -99,7 +99,7 @@ const schema = {
         name: 'secondaryAction',
         reason: 'function-or-snippet',
         description:
-          'A second action rendered after the retry button, such as an "Open Health" link or a\n"Back to chats" button. Give it the secondary or ghost button variant so the retry button\nstays the only primary on the page.',
+          'A second action rendered alongside the retry button, such as an "Open Health" link or a\n"Back to chats" button. Give it the secondary or ghost button variant so the retry button\nstays the only primary on the page. When both actions are present, the secondary action is\nfirst in DOM and keyboard order, visually left of the primary.',
       },
     ],
   },

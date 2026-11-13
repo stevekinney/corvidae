@@ -13,6 +13,7 @@
   } from '../utilities/types.ts';
   import type { ChatTurnLabels } from './turn-labels.ts';
   import type { ChatTurnState } from './turn-state.ts';
+  import type { ChatLabels } from '../chat-labels.ts';
 
   export type ChatMessageProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
     /** The message to render */
@@ -29,7 +30,7 @@
     /**
      * How the message is drawn. `'transcript'` is the Interborough transcript: a reply is plain
      * text with no card or role label, and one muted line under each message carries its time, Copy,
-     * Quote and Regenerate (when `onRegenerate` is set) as an icon and a word each, then the host's
+     * Quote and Regenerate (when `onRegenerate` is set) as icon-only controls, then the host's
      * `actions`. A message that was not sent keeps its
      * bubble under a red icon, its time and "Not sent", and a follow-up the run has not taken yet is
      * a dashed bubble marked "Queued". A run's notes sit outside the bubble. Default `'default'`.
@@ -53,6 +54,8 @@
     status?: Snippet;
     /** Visual metadata rendered below the message bubble, such as read receipts. */
     metadata?: Snippet;
+    /** Layout for approval parts rendered in an aggregate approval row. */
+    approvalLayout?: 'decision' | 'row' | undefined;
     /**
      * Per-part render override. Forwarded to the parts renderer; lets a consumer
      * replace the rendering of an individual body part while delegating the rest
@@ -108,6 +111,8 @@
     approvalReceipts?: ReadonlyMap<string, ToolApprovalReceiptRecord> | undefined;
     /** Describes a tool approval beyond its action; `undefined` adds nothing to what the action carries. */
     describeApproval?: MessagePartDerivationContext['describeApproval'];
+    /** Requests a fresh approval after this tool call expires. */
+    onApprovalRequestAgain?: ((toolCallId: string) => void) | undefined;
     /** Called when the user resolves an action-required approval. */
     onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
@@ -179,15 +184,17 @@
     onsourcestoggle?: (() => void) | undefined;
     /**
      * Where this assistant turn stands (COR-2283), as the host knows it. A `reconnecting` turn reads
-     * muted with no caret, under a warning with Retry now and a bar that drains until the next try;
-     * a `stopped` one carries a neutral pill with Discard and Continue; a `failed` one a danger alert
-     * that says the answer is incomplete, why, and what Retry keeps; an `empty` one a dashed row in
-     * place of its line, with its time and Try again. Left out, the turn streams while text arrives
+     * muted with no caret, under a warning Callout with Retry and a bar that drains until the next try;
+     * a `stopped` one carries one neutral Callout with Continue and Discard; a `failed` one a danger
+     * Callout that says the answer is incomplete, why, and what Retry keeps; an `empty` one a neutral
+     * Callout in place of its line, with its time and Retry. Left out, the turn streams while text arrives
      * and is complete after. Ignored on a message that is not the assistant's.
      */
     turnState?: ChatTurnState | undefined;
     /** The words of the turn's outcome, any of which the host can replace. */
     turnLabels?: Partial<ChatTurnLabels> | undefined;
+    /** Host-overridable message action labels. */
+    labels?: Partial<ChatLabels> | undefined;
     /** Called with this message's id when the person chooses Retry now on a reconnecting turn. Retry now shows only when this is set. */
     onRetryConnection?: ((messageId: string) => void) | undefined;
     /** Called with this message's id when the person chooses Continue on a stopped turn. Continue shows only when this is set. */
@@ -213,6 +220,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
+  import { formatCountdown } from '../../../utilities/format-countdown.ts';
   import { isStreamingMessage, mediaDisplayUrl } from '../builders.ts';
   import {
     deriveMessageParts,
@@ -220,13 +228,11 @@
     getMessageText,
   } from '../utilities/utilities.ts';
   import {
-    Alert,
-    Badge,
     Button,
     Callout,
     CircleAlert,
-    Copy,
     CopyButton,
+    Info,
     Pencil,
     Popover,
     Progress,
@@ -234,11 +240,15 @@
     ChevronRight,
     RefreshCw,
     RotateCcw,
+    Tooltip,
     WifiOff,
   } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
+  import RetryButton from './retry-button.svelte';
   import MessageSources from './message-sources.svelte';
+  import { sourceChipKeys } from './source-chip-label.ts';
   import { resolveTurnLabels } from './turn-labels.ts';
+  import { resolveChatLabels } from '../chat-labels.ts';
   import { effectiveTurnState, presentTurnState, reconnectWaitFraction } from './turn-state.ts';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
@@ -254,6 +264,7 @@
     status,
     metadata,
     messagePart,
+    approvalLayout = 'decision',
     markdownNode,
     showDefaultActions = true,
     streaming = false,
@@ -279,6 +290,7 @@
     approvalReceipts,
     describeApproval,
     onApprovalResolve,
+    onApprovalRequestAgain,
     onInputSubmit,
     toolCallPresentation,
     reasoning,
@@ -299,6 +311,7 @@
     onsourcestoggle,
     turnState,
     turnLabels,
+    labels,
     onRetryConnection,
     onContinueTurn,
     onDiscardTurn,
@@ -322,6 +335,7 @@
   );
   const turnPresentation = $derived(presentTurnState(turn));
   const turnWords = $derived(resolveTurnLabels(turnLabels));
+  const messageLabels = $derived(resolveChatLabels(labels));
   // Text arrives with a caret only in a state that draws one: a reconnecting turn's partial text
   // stops where it is, muted, until the stream comes back.
   const contentStreaming = $derived(streaming && turnPresentation.caret);
@@ -397,47 +411,108 @@
   );
   let sourcesElement = $state<HTMLElement | null>(null);
   let sourcesWereShown = false;
+  let previousChipKeys: string[] = [];
+  let sourceAnnouncement = $state('');
+  let pendingSourceFocus = $state<{ article: HTMLElement; preferAction: boolean }>();
 
-  /**
-   * Whether focus is on the Sources control, inside it, or inside the panel or sheet it opened. The
-   * Citation panel is portaled out of this message, so it is found through the trigger's
-   * `aria-controls`; a narrow screen's sheet is the `<dialog>` around that panel.
-   */
-  function focusIsInSources(active: Element | null): boolean {
-    if (active === null || sourcesElement === null) return false;
-    if (sourcesElement.contains(active)) return true;
-    // Inline chips are one control each, and any of them can be the one whose panel is open.
-    for (const control of sourcesElement.querySelectorAll('[aria-controls]')) {
+  /** A trigger owns both its local focus and focus inside its portaled panel or sheet. */
+  function sourceOwnsFocus(container: Element, active: Element | null): boolean {
+    if (active === null) return false;
+    if (container.contains(active)) return true;
+    for (const control of container.querySelectorAll('[aria-controls]')) {
       const panelId = control.getAttribute('aria-controls');
       if (!panelId) continue;
       const panel = document.getElementById(panelId);
-      const surface = panel?.closest('dialog') ?? panel;
-      if (surface?.contains(active) === true) return true;
+      if ((panel?.closest('dialog') ?? panel)?.contains(active) === true) return true;
     }
     return false;
   }
 
-  // When the host takes the sources away, the control (and any panel it opened) unmounts with
-  // focus inside it, which would leave focus on the page body. This pre-effect runs before that
-  // removal, while focus can still be read, and hands focus to this message at once, so focus never
-  // falls to the body: a container that reclaims focus orphaned by a removal (Chat moves it to its
-  // timeline) would otherwise take it first. That first call does nothing while a narrow screen's
-  // sources sheet is open, because a modal `<dialog>` makes this message inert, and the container's
-  // backstop then takes focus when the sheet unmounts. So once the update has removed the sources,
-  // the message takes focus from wherever it went, unless it already holds it.
+  function returnSourceFocus(article: HTMLElement, preferAction: boolean): void {
+    const target =
+      (preferAction &&
+        article.parentElement?.querySelector<HTMLElement>(
+          '.chat-message-action-button:not(:disabled)',
+        )) ||
+      article;
+    target.focus({ preventScroll: true });
+    if (document.activeElement === target && preferAction) {
+      target.setAttribute('data-citation-focus', '');
+      target.addEventListener('blur', () => target.removeAttribute('data-citation-focus'), {
+        once: true,
+      });
+    }
+  }
+
+  function completeSourceWithdrawal(): void {
+    const pending = pendingSourceFocus;
+    if (pending === undefined) {
+      return;
+    }
+    pendingSourceFocus = undefined;
+    if (pending.article.isConnected) returnSourceFocus(pending.article, pending.preferAction);
+  }
+
+  // Read the old triggers before Svelte removes them. Retry after the update because an open
+  // mobile sheet makes the underlying message inert until the dialog is removed.
   $effect.pre(() => {
     const shown = shownSources !== undefined;
-    if (sourcesWereShown && !shown && focusIsInSources(document.activeElement)) {
-      const article = articleElement;
-      article?.focus({ preventScroll: true });
-      void (async () => {
-        await tick();
-        if (!article?.isConnected) return;
-        if (article.contains(document.activeElement)) return;
-        article.focus({ preventScroll: true });
-      })();
+    const inline = sourcePresentation === 'inline';
+    const currentKeys = shownSources !== undefined ? sourceChipKeys(shownSources) : [];
+    const active = document.activeElement;
+    const article = articleElement;
+    if (article !== null && sourcesElement !== null && sourcesWereShown) {
+      const sourceChips = sourcesElement.querySelectorAll('[data-chat-source-index]');
+      const withdrawnOpenChip =
+        inline &&
+        Array.from(sourceChips).some((chip, index) => {
+          const key = previousChipKeys[index];
+          return (
+            key !== undefined &&
+            !currentKeys.includes(key) &&
+            chip.querySelector('[aria-expanded="true"]') !== null &&
+            sourceOwnsFocus(chip, active)
+          );
+        });
+      const withdrawnSource =
+        shown &&
+        previousChipKeys.some((key) => !currentKeys.includes(key)) &&
+        sourceOwnsFocus(sourcesElement, active);
+      const compactPanelOpen =
+        (active !== null && active.closest('dialog') !== null) ||
+        sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null;
+      // While another chip remains in this message (not the one compact marker), the sources control moves focus to the next
+      // chip and says so itself; the message action takes focus only when no chip is left.
+      const chipRemains =
+        inline &&
+        shown &&
+        currentKeys.length > 0 &&
+        sourcesElement.querySelector('.chat-message-sources-citation') === null;
+      if (
+        !chipRemains &&
+        (withdrawnOpenChip ||
+          withdrawnSource ||
+          (!shown && sourceOwnsFocus(sourcesElement, active)))
+      ) {
+        sourceAnnouncement = 'Sources were removed';
+        const preferAction = withdrawnOpenChip || withdrawnSource;
+        if (withdrawnSource && !withdrawnOpenChip && compactPanelOpen) {
+          pendingSourceFocus = { article, preferAction };
+        } else {
+          returnSourceFocus(article, preferAction);
+          void (async () => {
+            await tick();
+            if (article.isConnected && !article.parentElement?.contains(document.activeElement)) {
+              returnSourceFocus(article, preferAction);
+            }
+          })();
+        }
+      } else if (shown && currentKeys.some((key) => !previousChipKeys.includes(key))) {
+        sourceAnnouncement = '';
+      }
     }
     sourcesWereShown = shown;
+    previousChipKeys = currentKeys;
   });
 
   // Edit state
@@ -552,12 +627,17 @@
   // (copy, edit, the Show more/less control) — the rendered body itself flows
   // through deriveMessageParts + the parts renderer below.
   const textContent = $derived(getMessageText(message));
+  const messageDirection = $derived(/[\u0590-\u08ff]/u.test(textContent) ? 'rtl' : 'ltr');
   const roleLabel = $derived(getMessageRoleLabel(message));
   const formattedCreatedAt = $derived(formatMessageTimestamp(message.createdAt));
   const createdAtValue = $derived(
     typeof message.createdAt === 'string' && formattedCreatedAt ? message.createdAt : undefined,
   );
-  const hasMetadata = $derived(Boolean(formattedCreatedAt || metadata));
+  // An empty turn's time sits inside its notice, so the message draws no metadata line for it.
+  const timeInNotice = $derived(
+    turn.kind === 'empty' && createdAtValue !== undefined && Boolean(formattedCreatedAt),
+  );
+  const hasMetadata = $derived(Boolean((formattedCreatedAt && !timeInNotice) || metadata));
 
   // Role detection — kept for wrapper-level layout + a11y (data-tool-pair,
   // aria-label). The body branches that used to live here are now derived parts.
@@ -604,12 +684,46 @@
   // Whether this message has a markdown body part — gates the Show more/less
   // control (a tool-call/tool-result message has no markdown body to truncate).
   const hasMarkdownBody = $derived(messageParts.some((part) => part.type === 'markdown'));
+  const approvalOnlyTurn = $derived(
+    messageParts.some(
+      (part) =>
+        part.type === 'tool-approval' || (part.type === 'tool-input' && part.resolved !== true),
+    ),
+  );
 
   // Split the parts so the rendered DOM matches the historical structure: body
   // parts (text/markdown/tool) live inside `.chat-message-body`, image parts
   // render as a sibling AFTER it — exactly where MessageAttachments used to sit,
   // so the flex layout and spacing are unchanged.
   const transcript = $derived(presentation === 'transcript');
+
+  // A settled assistant turn in the transcript shows the same actions every time: an action the
+  // host offers that this turn cannot take is drawn disabled rather than left out, so the row never
+  // changes shape from one turn to the next. A host that offers no handler gets no action.
+  const settledAssistantTurn = $derived(
+    transcript &&
+      message.role === 'assistant' &&
+      !isPending &&
+      !streaming &&
+      !isStreamingMessage(message),
+  );
+  const quoteAvailable = $derived(canQuote && !(transcript && isFailed));
+  const regenerateAvailable = $derived(canRegenerate && !(transcript && isFailed));
+  // A turn whose outcome notice carries its own recovery (Retry, or Discard and Continue) draws no
+  // Quote or Regenerate beside it: a dim, disabled twin would read as a second recovery control.
+  const outcomeOwnsRecovery = $derived(
+    transcript &&
+      ((turn.kind === 'stopped' && Boolean(onDiscardTurn || onContinueTurn)) ||
+        ((turn.kind === 'failed' || turn.kind === 'empty') && Boolean(onRetryTurn))),
+  );
+  const showQuoteAction = $derived(
+    !outcomeOwnsRecovery && (quoteAvailable || (settledAssistantTurn && onQuote !== undefined)),
+  );
+  const showRegenerateAction = $derived(
+    !outcomeOwnsRecovery &&
+      (regenerateAvailable || (settledAssistantTurn && onRegenerate !== undefined)),
+  );
+
   // The agent's instructions open the transcript as muted text, folded to one line by default.
   const systemRow = $derived(transcript && message.role === 'system');
   let systemOpen = $state(false);
@@ -679,6 +793,8 @@
 {#snippet transcriptLine()}
   <div
     class="chat-message-line"
+    dir="ltr"
+    data-message-direction={messageDirection}
     data-state={isFailed ? 'not-sent' : isPending ? 'queued' : 'sent'}
     role="group"
     aria-label="Message details"
@@ -728,8 +844,8 @@
           {/if}
         </div>
       </Popover>
-      {#if createdAtValue && formattedCreatedAt}
-        <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+      {#if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice}
+        <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
       {/if}
       <span class="chat-message-not-sent-label" role="status">Not sent</span>
     {:else if isPending}
@@ -745,50 +861,12 @@
           Remove
         </Button>
       {/if}
-    {:else if createdAtValue && formattedCreatedAt}
-      <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice}
+      <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
     {/if}
     {#if !isPending && !streaming}
-      <!-- The line reads in one order: the time, then Copy, Quote and Regenerate as an icon and a
-           word each, then whatever the host adds. -->
       <span class="chat-message-line-actions">
-        {#if showDefaultActions && copyValue}
-          <CopyButton
-            value={copyValue}
-            html={copyHtml}
-            {...copyImage ? { image: copyImage } : {}}
-            label="Copy"
-            copiedLabel="Copied"
-            confirmDuration={2000}
-            class="chat-message-action-button chat-message-copy"
-          >
-            <Copy class="cinder-icon-xs" aria-hidden="true" />
-            Copy
-          </CopyButton>
-        {/if}
-        {#if canQuote && !isFailed}
-          <button
-            type="button"
-            class="chat-message-action-button chat-message-quote-button"
-            onclick={quoteMessage}
-            disabled={quoteDisabled}
-            aria-label="Quote message"
-            aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
-          >
-            <Quote class="cinder-icon-xs" aria-hidden="true" />
-            Quote
-          </button>
-        {/if}
-        {#if canRegenerate && !isFailed}
-          <button
-            type="button"
-            class="chat-message-action-button chat-message-regenerate-button"
-            onclick={regenerateMessage}
-          >
-            <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
-            Regenerate
-          </button>
-        {/if}
+        {@render messageIconActions()}
         {#if actions}
           {@render actions()}
         {/if}
@@ -800,36 +878,94 @@
   </div>
 {/snippet}
 
+{#snippet messageIconActions()}
+  {#if showDefaultActions && copyValue}
+    <Tooltip text={messageLabels.copy} placement="bottom" describe={false}>
+      <CopyButton
+        value={copyValue}
+        html={copyHtml}
+        {...copyImage ? { image: copyImage } : {}}
+        label={transcript ? messageLabels.copy : messageLabels.copyMessage}
+        iconOnly
+        copiedLabel={messageLabels.copied}
+        confirmDuration={2000}
+        class="chat-message-action-button chat-message-copy"
+      />
+    </Tooltip>
+  {/if}
+  {#if showQuoteAction}
+    <Tooltip text={messageLabels.quoteMessage} placement="bottom" describe={false}>
+      <button
+        type="button"
+        class="chat-message-action-button chat-message-quote-button"
+        onclick={quoteMessage}
+        disabled={quoteDisabled || !quoteAvailable}
+        aria-label={messageLabels.quoteMessage}
+        aria-describedby={quoteDisabled && quoteAvailable ? quoteDisabledDescriptionId : undefined}
+      >
+        <Quote class="cinder-icon-xs" aria-hidden="true" />
+      </button>
+    </Tooltip>
+  {/if}
+  {#if showRegenerateAction}
+    <Tooltip text={messageLabels.regenerate} placement="bottom" describe={false}>
+      <button
+        type="button"
+        class="chat-message-action-button chat-message-regenerate-button"
+        onclick={regenerateMessage}
+        disabled={!regenerateAvailable}
+        aria-label={transcript ? messageLabels.regenerate : messageLabels.regenerateResponse}
+      >
+        <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
+      </button>
+    </Tooltip>
+  {/if}
+{/snippet}
+
 {#snippet retryConnectionAction()}
-  <Button
-    type="button"
+  <RetryButton
     class="chat-turn-action"
-    size="xs"
-    variant="secondary"
+    label={turnWords.retryNow}
     onclick={() => onRetryConnection?.(message.id)}
-  >
-    {turnWords.retryNow}
-  </Button>
+  />
 {/snippet}
 
-{#snippet retryTurnAction()}
-  <Button
-    type="button"
-    class="chat-turn-action"
-    size="xs"
-    variant="secondary"
-    onclick={() => onRetryTurn?.(message.id)}
-  >
-    {turnWords.retry}
-  </Button>
-{/snippet}
-
-{#snippet reconnectingIcon()}
-  <WifiOff aria-hidden="true" />
+<!-- Continue first, as the primary choice, and Discard beside it; each says in its accessible
+     description what it does to the partial answer above. -->
+{#snippet stoppedTurnActions()}
+  <span class="chat-turn-actions">
+    {#if onContinueTurn}
+      <Button
+        type="button"
+        class="chat-turn-action"
+        size="sm"
+        variant="primary"
+        aria-describedby={`${messageId}-continue-description`}
+        onclick={() => onContinueTurn(message.id)}>{turnWords.continue}</Button
+      >
+      <span id={`${messageId}-continue-description`} class="cinder-sr-only"
+        >{turnWords.continueDescription}</span
+      >
+    {/if}
+    {#if onDiscardTurn}
+      <Button
+        type="button"
+        class="chat-turn-action"
+        size="sm"
+        variant="secondary"
+        aria-describedby={`${messageId}-discard-description`}
+        onclick={() => onDiscardTurn(message.id)}>{turnWords.discard}</Button
+      >
+      <span id={`${messageId}-discard-description`} class="cinder-sr-only"
+        >{turnWords.discardDescription}</span
+      >
+    {/if}
+  </span>
 {/snippet}
 
 <!-- What a turn that has not simply finished says on itself (COR-2283), with the controls that
-     recover it. A streaming or complete turn draws nothing here. -->
+     recover it. Every notice is the one Cinder Callout: the tone icon, the text, and the action
+     inline at the end. A streaming or complete turn draws nothing here. -->
 {#snippet turnOutcome()}
   {#if turn.kind === 'reconnecting'}
     <div class="chat-turn-outcome" data-kind="reconnecting">
@@ -837,96 +973,88 @@
         variant="warning"
         semantic="note"
         class="chat-turn-callout"
-        icon={reconnectingIcon}
         {...onRetryConnection ? { action: retryConnectionAction } : {}}
       >
-        <span class="chat-turn-text" dir="auto">
+        {#snippet icon()}<WifiOff aria-hidden="true" />{/snippet}
+        <p class="chat-turn-text" dir="auto">
           {turnWords.reconnecting(turn.attempt, turn.attempts, turn.nextTryIn)}
-        </span>
-        <Progress
-          class="chat-turn-wait"
-          value={Math.round(reconnectWaitFraction(turn) * 100)}
-          max={100}
-          size="sm"
-          ariaLabel={turnWords.nextTry}
-          label={`${turn.nextTryIn} s`}
-        />
+        </p>
+        {#snippet progress()}
+          <Progress
+            class="chat-turn-wait"
+            value={Math.round(reconnectWaitFraction(turn) * 100)}
+            max={100}
+            size="sm"
+            ariaLabel={turnWords.nextTry}
+            label={formatCountdown(turn.nextTryIn)}
+          />
+        {/snippet}
       </Callout>
     </div>
   {:else if turn.kind === 'stopped'}
-    <div class="chat-turn-outcome chat-turn-row" data-kind="stopped">
-      <Badge variant="neutral" size="sm" class="chat-turn-pill">{turnWords.stopped}</Badge>
-      {#if onDiscardTurn || onContinueTurn}
-        <!-- Secondary on the left, primary on the right. -->
-        <span class="chat-turn-actions">
-          {#if onDiscardTurn}
-            <Button
-              type="button"
-              class="chat-turn-action"
-              size="xs"
-              variant="secondary"
-              onclick={() => onDiscardTurn(message.id)}
-            >
-              {turnWords.discard}
-            </Button>
-          {/if}
-          {#if onContinueTurn}
-            <Button
-              type="button"
-              class="chat-turn-action"
-              size="xs"
-              variant="primary"
-              onclick={() => onContinueTurn(message.id)}
-            >
-              {turnWords.continue}
-            </Button>
-          {/if}
-        </span>
-      {/if}
+    <div class="chat-turn-outcome" data-kind="stopped">
+      <Callout
+        variant="neutral"
+        semantic="note"
+        class="chat-turn-callout chat-turn-stopped-card"
+        {...onDiscardTurn || onContinueTurn ? { action: stoppedTurnActions } : {}}
+      >
+        {#snippet icon()}<Info aria-hidden="true" />{/snippet}
+        <p class="chat-turn-text" dir="auto">{turnWords.stopped}</p>
+      </Callout>
     </div>
   {:else if turn.kind === 'failed'}
     <div class="chat-turn-outcome" data-kind="failed">
-      <Alert
+      <Callout
         variant="danger"
-        heading={turnWords.incomplete}
-        class="chat-turn-alert"
-        {...onRetryTurn ? { actions: retryTurnAction } : {}}
+        semantic="note"
+        class="chat-turn-callout chat-turn-alert"
+        title={turnWords.incomplete}
+        {...onRetryTurn ? { action: retryTurnAction } : {}}
       >
-        <span class="chat-turn-text chat-turn-cause" dir="auto">{turn.cause}</span>
-        <span class="chat-turn-text chat-turn-keeps" dir="auto">
+        {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
+        <p class="chat-turn-text chat-turn-failure-body" dir="auto">
+          {turn.cause}
           {turn.keeps ?? turnWords.retryKeeps}
-        </span>
-      </Alert>
+        </p>
+      </Callout>
     </div>
   {:else if turn.kind === 'empty'}
-    <div class="chat-turn-outcome chat-turn-row chat-turn-empty" data-kind="empty">
-      <span class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</span>
-      {#if createdAtValue && formattedCreatedAt}
-        <time class="chat-turn-time" datetime={createdAtValue}>{formattedCreatedAt}</time>
-      {/if}
-      {#if onRetryTurn}
-        <span class="chat-turn-actions">
-          <Button
-            type="button"
-            class="chat-turn-action"
-            size="xs"
-            variant="secondary"
-            onclick={() => onRetryTurn(message.id)}
+    <div class="chat-turn-outcome chat-turn-empty" data-kind="empty">
+      <Callout
+        variant="neutral"
+        semantic="note"
+        class="chat-turn-callout chat-turn-empty-card"
+        {...onRetryTurn ? { action: retryTurnAction } : {}}
+      >
+        {#snippet icon()}<Info aria-hidden="true" />{/snippet}
+        <p class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</p>
+        {#if timeInNotice}
+          <time class="chat-turn-time" datetime={createdAtValue}
+            ><bdi>{formattedCreatedAt}</bdi></time
           >
-            {turnWords.tryAgain}
-          </Button>
-        </span>
-      {/if}
+        {/if}
+      </Callout>
     </div>
   {/if}
 {/snippet}
 
+{#snippet retryTurnAction()}
+  <RetryButton
+    class="chat-turn-action"
+    label={turn.kind === 'empty' ? turnWords.tryAgain : turnWords.retry}
+    onclick={() => onRetryTurn?.(message.id)}
+  />
+{/snippet}
+
 <div
   class={classNames('chat-message-wrapper', className)}
+  dir="ltr"
   data-presentation={transcript ? 'transcript' : undefined}
   data-streaming={streaming || undefined}
   data-turn-state={turn.kind === 'complete' ? undefined : turn.kind}
   data-role={message.role}
+  data-message-direction={messageDirection}
   data-hidden={message.hidden || undefined}
   data-failed={isFailed || undefined}
   data-pending={isPending || undefined}
@@ -935,11 +1063,15 @@
   data-cinder-rollback-discarded={rollbackDiscarded || undefined}
   {...rest}
 >
+  {#if message.role === 'assistant'}
+    <span class="cinder-sr-only" role="status">{sourceAnnouncement}</span>
+  {/if}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <article
     bind:this={articleElement}
     id={messageId}
     class="chat-message chat-navigation-row"
+    dir="ltr"
     data-message-id={message.id}
     data-message-role={message.role}
     aria-labelledby={isToolCall && toolPair ? undefined : roleId}
@@ -966,6 +1098,8 @@
 
     <div
       class="chat-message-body"
+      data-empty={bodyParts.length === 0 && !isEditing ? '' : undefined}
+      dir="auto"
       id={systemRow ? `${messageId}-body` : undefined}
       hidden={systemRow && !systemOpen}
     >
@@ -1015,11 +1149,13 @@
           parts={bodyParts}
           {messageId}
           {messagePart}
+          {approvalLayout}
           {markdownNode}
           quoteSource={canQuote ? message.id : undefined}
           expanded={toolCallExpanded}
           onToggle={toggleToolCallExpanded}
           {onApprovalResolve}
+          {onApprovalRequestAgain}
           {onInputSubmit}
           {reasoningExpanded}
           {onreasoning}
@@ -1031,11 +1167,12 @@
           {toolCallDurations}
           {toolCallStartTimes}
           {turnLabels}
+          labels={messageLabels}
         />
 
         {#if hasMarkdownBody && textContent.length > TRUNCATE_THRESHOLD}
           <button type="button" class="chat-message-expand" onclick={toggleExpanded}>
-            {expanded ? 'Show less' : 'Show more'}
+            {expanded ? messageLabels.showLess : messageLabels.showMore}
           </button>
         {/if}
       {/if}
@@ -1047,8 +1184,8 @@
       <ChatMessagePartsRenderer parts={imageParts} {messageId} />
     {/if}
 
-    {#if shownSources}
-      <div class="chat-message-sources" bind:this={sourcesElement}>
+    {#if shownSources && !transcript}
+      <div class="chat-message-sources" dir={messageDirection} bind:this={sourcesElement}>
         <MessageSources
           sources={shownSources}
           presentation={sourcePresentation}
@@ -1056,13 +1193,15 @@
           ontoggle={toggleSourcesExpanded}
           listId={`${messageId}-sources`}
           announce={onAnnounce}
+          onCitationCloseComplete={completeSourceWithdrawal}
+          labels={messageLabels}
         />
       </div>
     {/if}
 
     {#if isPending && !transcript}
       <div class="chat-message-pending-actions">
-        <span class="chat-message-pending-label">Sending…</span>
+        <span class="chat-message-pending-label">{messageLabels.sending}</span>
       </div>
     {/if}
 
@@ -1097,8 +1236,23 @@
   {#if transcript}
     <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
-         line again, and an empty one has none, because its row carries its time. -->
+         line again, and so does an empty one, which carries its time there. -->
     {#if !isEditing && !systemRow && turnPresentation.line}
+      <!-- The sources sit under the prose, on their own block; the line below keeps only the time
+           and the actions, on one row. -->
+      {#if shownSources}
+        <div class="chat-message-sources" dir={messageDirection} bind:this={sourcesElement}>
+          <MessageSources
+            sources={shownSources}
+            presentation={sourcePresentation}
+            expanded={sourcesExpanded}
+            ontoggle={toggleSourcesExpanded}
+            listId={`${messageId}-sources`}
+            onCitationCloseComplete={completeSourceWithdrawal}
+            labels={messageLabels}
+          />
+        </div>
+      {/if}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
@@ -1108,10 +1262,10 @@
     {/if}
   {/if}
 
-  {#if hasMetadata && !transcript && turn.kind !== 'empty'}
+  {#if hasMetadata && !transcript}
     <div class="chat-message-metadata">
-      {#if createdAtValue && formattedCreatedAt}
-        <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+      {#if createdAtValue && formattedCreatedAt && !timeInNotice}
+        <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
       {/if}
       {#if metadata}
         {@render metadata()}
@@ -1125,40 +1279,7 @@
         {#if actions}
           {@render actions()}
         {/if}
-        {#if showDefaultActions && copyValue}
-          <CopyButton
-            value={copyValue}
-            html={copyHtml}
-            {...copyImage ? { image: copyImage } : {}}
-            label="Copy message"
-            copiedLabel="Copied!"
-            iconOnly
-            confirmDuration={2000}
-            class="chat-message-action-button chat-message-copy"
-          />
-        {/if}
-        {#if canQuote}
-          <button
-            type="button"
-            class="chat-message-action-button chat-message-quote-button"
-            onclick={quoteMessage}
-            disabled={quoteDisabled}
-            aria-label="Quote message"
-            aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
-          >
-            <Quote class="cinder-icon-xs" />
-          </button>
-        {/if}
-        {#if canRegenerate}
-          <button
-            type="button"
-            class="chat-message-action-button chat-message-regenerate-button"
-            onclick={regenerateMessage}
-            aria-label="Regenerate response"
-          >
-            <RefreshCw class="cinder-icon-xs" />
-          </button>
-        {/if}
+        {@render messageIconActions()}
         {#if canEdit}
           <button
             type="button"
@@ -1216,7 +1337,7 @@
   .chat-message {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1);
+    gap: 0;
     padding: var(--cinder-space-2) var(--cinder-space-3);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
@@ -1236,6 +1357,22 @@
   /* Virtual rows already bind mounted content to the visible window, so they
    * must measure their real message height instead of an intrinsic fallback. */
   :global(.chat-virtual-row) .chat-message {
+    content-visibility: visible;
+  }
+
+  /* A card that waits on a decision is always laid out and hit-testable: the transcript scrolls
+   * its buttons into view, and a row still skipped for the frame that scroll lands in would take
+   * the tap itself. */
+  .chat-message:has(:global(.cinder-approval-card[data-cinder-state='pending'])) {
+    content-visibility: visible;
+  }
+
+  /* An answered question ends its message on the receipt's "Change" action, whose 44px hit area
+   * overhangs the 28px control. `content-visibility: auto` contains paint at the message's own
+   * edge, so the overhang below the last line would not be hit-testable; the row is laid out in
+   * full instead (one receipt is a few lines, so nothing is saved by skipping it). */
+  .chat-message:has(:global(.chat-question-receipt)),
+  .chat-message:has(:global(.chat-question-choices)) {
     content-visibility: visible;
   }
 
@@ -1297,6 +1434,7 @@
     border-radius: var(--cinder-radius-lg) var(--cinder-radius-lg) var(--cinder-radius-lg)
       var(--cinder-radius-sm);
     box-shadow: var(--cinder-shadow-sm);
+    padding-block: 0;
   }
 
   .chat-message-wrapper[data-role='system'] {
@@ -1340,7 +1478,15 @@
    * their content, but a tool-call card is structural data that benefits
    * from horizontal room without stretching across the entire timeline. */
   .chat-message-wrapper[data-tool-pair] {
-    width: min(80%, var(--cinder-chat-message-max-width, 48rem));
+    inline-size: 100%;
+    max-inline-size: var(--cinder-chat-message-max-width, 48rem);
+    min-inline-size: 0;
+  }
+
+  @container (max-width: 480px) {
+    .chat-message-wrapper[data-tool-pair] {
+      width: 100%;
+    }
   }
 
   .chat-message-wrapper[data-tool-pair] .chat-message {
@@ -1496,6 +1642,12 @@
     line-height: 1.6;
   }
 
+  /* Tiles follow the text with a gap; with no text before them (an image-only message) they add no
+     margin, so the bubble's padding is the inset above and below. */
+  .chat-message-body:not([data-empty]) + :global(.message-attachments) {
+    margin-top: var(--cinder-space-2);
+  }
+
   /* Tool-result body styling moved to tool-result-part.svelte alongside its
      markup (the parts spine now owns that body shape). */
 
@@ -1507,8 +1659,8 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-0-5);
+    position: relative;
     padding: var(--cinder-space-0-5) var(--cinder-space-1);
-    min-height: var(--cinder-touch-target-min);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-accent-text);
@@ -1521,6 +1673,14 @@
     text-decoration: underline;
   }
 
+  /* The painted label stays compact; its 44px hit area is a pseudo-element that takes no layout. */
+  .chat-message-expand::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
+  }
+
   /* The Sources control sits under the body, on its own line, and never widens the message. */
   .chat-message-sources {
     display: flex;
@@ -1529,6 +1689,9 @@
     min-width: 0;
     margin-block-start: var(--cinder-space-1);
   }
+
+  /* The Sources block takes the message's direction (`dir` on the block), so its control and list
+     start at the message's inline start in either; no physical alignment is needed. */
 
   .chat-message-expand:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
@@ -1641,6 +1804,36 @@
     padding-left: var(--cinder-space-1);
   }
 
+  /* Keep the action tray on the center-facing side when message prose sets the
+   * inherited direction to RTL. The tray order remains LTR so Copy/Quote and
+   * the other controls keep their documented sequence. */
+  .chat-message-wrapper:dir(rtl)[data-role='user'] .chat-message-footer {
+    left: 100%;
+    right: auto;
+    padding-left: var(--cinder-space-1);
+    padding-right: 0;
+  }
+
+  .chat-message-wrapper:dir(rtl)[data-role='assistant'] .chat-message-footer {
+    left: auto;
+    right: 100%;
+    padding-left: 0;
+    padding-right: var(--cinder-space-1);
+  }
+
+  .chat-message-wrapper:has(:global(.message-content):dir(rtl))[data-role='assistant']
+    .chat-message-footer {
+    left: auto;
+    right: 0;
+    padding-inline: 0;
+  }
+
+  .chat-message-wrapper[data-message-direction='rtl'][data-role='assistant'] .chat-message-footer {
+    left: auto;
+    right: 0;
+    padding-inline: 0;
+  }
+
   .chat-message-wrapper:hover .chat-message-footer,
   .chat-message-wrapper:focus-within .chat-message-footer {
     opacity: 1;
@@ -1649,7 +1842,8 @@
 
   .chat-message-actions {
     display: flex;
-    gap: var(--cinder-space-1);
+    gap: 0;
+    direction: ltr;
   }
 
   /* Narrow viewports: every role falls back to below-bubble where horizontal
@@ -1759,7 +1953,9 @@
     }
   }
 
-  :global(.chat-message-action-button:focus-visible) {
+  :global(.chat-message-action-button:focus-visible),
+  :global(.chat-message-action-button[data-citation-focus]:focus),
+  .chat-message[data-citation-focus]:focus {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
@@ -1807,7 +2003,7 @@
   .chat-message-edit {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: 0;
   }
 
   .chat-message-edit-textarea {
@@ -1876,7 +2072,7 @@
    *
    * A reply is plain text on the page, with no card and no role label; a person's message keeps its
    * tinted bubble. One muted line under each message carries its time, the host's actions, Copy and
-   * Quote, always visible, as words. A message that was not sent keeps its bubble under a red icon;
+   * Quote, always visible. A message that was not sent keeps its bubble under a red icon;
    * a queued follow-up is a dashed, pale bubble. A run's notes sit outside the bubble, full width.
    * ---------------------------------------- */
   .chat-message-wrapper[data-presentation='transcript'] {
@@ -1909,6 +2105,25 @@
     border-radius: 0;
   }
 
+  /* Sources sit under the answer, on their own block above the time and actions line. The
+   * article's normal bottom padding is useful for boxed messages, but it creates a second full
+   * rhythm unit in the borderless transcript when sources are present. */
+  .chat-message-wrapper[data-presentation='transcript']:has(> .chat-message-sources)
+    > .chat-message {
+    padding-block-end: 0;
+  }
+
+  /* Markdown owns paragraph spacing in normal messages. In a transcript with a Sources control,
+     that last paragraph margin is a redundant third rhythm unit before the separate 44px target;
+     remove only the trailing margin while keeping the target rows disjoint. */
+  .chat-message-wrapper[data-presentation='transcript']:has(> .chat-message-sources)
+    > .chat-message
+    :global(
+      .message-content-preview :is(p, li, blockquote, h1, h2, h3, h4, h5, h6, dt, dd):last-child
+    ) {
+    margin-block-end: 0;
+  }
+
   .chat-message-wrapper[data-presentation='transcript'][data-pending][data-role='user']
     .chat-message {
     background: color-mix(in oklch, var(--cinder-accent-solid), transparent 94%);
@@ -1923,36 +2138,93 @@
     );
   }
 
+  /* The line's actions reach 44px by a hit area that overhangs the line by about 10px. The next
+   * message's bubble (`content-visibility: auto` makes it a stacking context painted in tree order)
+   * would otherwise paint over that overhang, so a tap just under Copy would land on the next
+   * message's text. A stacking position of its own puts the line's overhang above it. */
   .chat-message-line {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
+    gap: var(--cinder-space-1);
     min-block-size: 1.5rem;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     line-height: 1.2;
   }
 
+  /* Keep the glyph readable while the action retains its full coarse-pointer hit cell. */
+  .chat-message-line :global(.chat-message-action-button svg) {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
   .chat-message-wrapper[data-role='user'] .chat-message-line {
     justify-content: flex-end;
+  }
+
+  /* The trailing Copy glyph meets the bubble's edge: its 24px box overhangs by its own inset
+   * (the 16px glyph sits 4px inside it), and its hit area extends outward with it. */
+  .chat-message-wrapper[data-role='user'] .chat-message-line-actions {
+    margin-inline-end: calc((1rem - 1.5rem) / 2);
+  }
+
+  /* The time sits the same distance under an assistant's last text line as under a user's bubble
+   * (about 9 to 12px of ink): the line box's leading below the last text line is pulled back. */
+  .chat-message-wrapper[data-presentation='transcript'][data-role='assistant']
+    > .chat-message
+    + .chat-message-line {
+    margin-block-start: calc(var(--cinder-space-1) * -1.5);
+  }
+
+  /* Prose to Sources is one small step, not a blank line: the block's own margin cancels the
+   * wrapper's gap, and the text's trailing leading plus the control's own slack read as the step. */
+  .chat-message-wrapper[data-presentation='transcript'] > .chat-message-sources {
+    margin-block-start: calc(var(--cinder-space-1) * -1);
+  }
+
+  /* A bubble that ends in an attachment tile has the same inset below the tile as beside it. */
+  .chat-message-wrapper[data-role='user']
+    .chat-message:has(:global(.message-attachments:last-child)) {
+    padding-block-end: var(--cinder-space-3);
+  }
+
+  /* A bubble that holds only a tile has 12px on all four sides. */
+  .chat-message-wrapper[data-role='user']
+    .chat-message:has(:global(.message-attachments:only-child)) {
+    padding-block: var(--cinder-space-3);
+  }
+
+  /* An RTL reply's line takes the message's direction: the time at inline start, the actions
+   * following it. */
+  .chat-message-wrapper[data-message-direction='rtl'][data-role='assistant'] .chat-message-line {
+    direction: rtl;
+    justify-content: flex-start;
+  }
+
+  .chat-message-wrapper[data-message-direction='rtl'][data-role='assistant']
+    .chat-message-line-actions {
+    direction: rtl;
   }
 
   .chat-message-line-actions {
     display: inline-flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
+    direction: ltr;
+    gap: var(--cinder-space-1);
   }
 
-  /* Actions are an icon and a word in this line, not icon buttons in a hover footer. The time and
-   * each action are the same distance apart, and with no inline padding the first one starts on the
-   * same edge as the message's own text. */
+  /* Message actions stay visible beside the timestamp. */
   .chat-message-line :global(.chat-message-action-button) {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-1);
+    justify-content: center;
     min-block-size: 1.5rem;
+    min-inline-size: 1.5rem;
     padding: 0;
     border: none;
     border-radius: var(--cinder-radius-sm);
@@ -1960,6 +2232,17 @@
     color: var(--cinder-text-muted);
     font: inherit;
     cursor: pointer;
+  }
+
+  /* On a touch screen an action keeps its painted 1.5rem box and takes the 44px hit region from a
+   * pseudo-element that adds no layout, so the glyphs pitch at the painted size plus the gap and
+   * their hit regions overlap invisibly. Copy is a Cinder Button, which draws its own region. */
+  @media (any-pointer: coarse) {
+    .chat-message-line :global(.chat-message-action-button:not(.cinder-button))::after {
+      content: '';
+      position: absolute;
+      inset: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
+    }
   }
 
   .chat-message-line :global(.chat-message-action-button:hover) {
@@ -1973,19 +2256,15 @@
     text-decoration: none;
   }
 
-  /* On a touch screen each action is a full touch target, grown into the line's own space with a
-   * negative block margin, so the line keeps its height and its rhythm (C#3). */
-  @media (any-pointer: coarse) {
-    .chat-message-line :global(.chat-message-action-button) {
-      min-block-size: var(--cinder-touch-target-min);
-      margin-block: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
-    }
-  }
-
-  .chat-message-line :global(.chat-message-action-button:focus-visible),
-  .chat-message-not-sent-icon:focus-visible {
+  /* The ring wraps the painted face, which is the whole box now. */
+  .chat-message-line :global(.chat-message-action-button:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .chat-message-not-sent-icon:focus-visible {
+    outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
+    outline-offset: var(--cinder-ring-offset);
   }
 
   .chat-message-queued-label {
@@ -2170,8 +2449,9 @@
    * Run outcomes on the turn (COR-2283)
    *
    * A turn that has not simply finished says so on itself, under its text, with the controls that
-   * recover it: a warning while the stream reconnects, a neutral pill on a stopped turn, a danger
-   * alert on one that failed partway, and a dashed row on one that finished with no answer.
+   * recover it: a warning while the stream reconnects, a neutral note on a stopped turn, a danger
+   * note on one that failed partway, and a neutral note on one that finished with no answer. Each is
+   * the Cinder Callout.
    * ---------------------------------------- */
 
   /* A reconnecting turn's partial text reads muted: it may not be the final answer yet. */
@@ -2191,6 +2471,8 @@
     text-align: start;
   }
 
+  /* Keep the stopped notice's text and controls off the card border while preserving the compact
+   * neutral surface; the Callout itself remains responsible for its semantic tone. */
   .chat-turn-row {
     display: flex;
     flex-wrap: wrap;
@@ -2214,7 +2496,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-2);
-    margin-inline-start: auto;
+    margin-inline-start: 0;
   }
 
   .chat-turn-outcome :global(.chat-turn-wait) {
@@ -2228,27 +2510,36 @@
     padding-inline: var(--cinder-space-3);
   }
 
-  /* An empty answer is a dashed, neutral row in the transcript: the words, the turn's time and
-   * Try again. */
-  .chat-turn-empty {
-    box-sizing: border-box;
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border: 1px dashed var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-    color: var(--cinder-text-muted);
+  .chat-turn-text {
+    margin: 0;
   }
 
   .chat-turn-time {
+    display: block;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
   }
 
-  /* Coarse pointers get full-size targets for the recovery controls. */
-  @media (pointer: coarse) {
-    .chat-turn-outcome :global(.chat-turn-action) {
-      min-block-size: var(--cinder-touch-target-min);
-    }
+  .chat-turn-failure-body {
+    color: var(--cinder-text-default);
+  }
+
+  .chat-turn-outcome :global(.chat-turn-inline-icon) {
+    display: inline-block;
+    inline-size: 1em;
+    block-size: 1em;
+    margin-inline-end: var(--cinder-space-1);
+    vertical-align: -0.125em;
+  }
+
+  /* RTL message chrome follows the prose edge even when the narrow-screen footer rule moves
+   * every role below its bubble. Keep the action order LTR, but anchor the tray to the reading
+   * edge selected by the actual message direction. */
+  .chat-message-wrapper[data-message-direction='rtl'][data-role='assistant'] .chat-message-footer {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+    left: auto;
+    right: 0;
+    padding-inline: 0;
   }
 </style>

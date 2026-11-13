@@ -11,6 +11,10 @@ export type CitationProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   label?: string;
   /** The words Citation draws itself, for a host that translates them. Each one left out keeps its English default. */
   labels?: CitationLabels | undefined;
+  /** Closes an open panel when a previously displayed source is withdrawn by the host. */
+  closeOnSourceRemoval?: boolean;
+  /** Called after an open source panel or sheet has fully closed. */
+  onCloseComplete?: (() => void) | undefined;
   children?: Snippet;
 };
 

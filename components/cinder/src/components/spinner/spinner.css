@@ -8,7 +8,7 @@
     display: inline-block;
     width: var(--cinder-spinner-size, 1.5rem);
     height: var(--cinder-spinner-size, 1.5rem);
-    border: 2px solid var(--cinder-spinner-track, color-mix(in srgb, currentColor 25%, transparent));
+    border: 2px solid var(--cinder-spinner-track, var(--cinder-border-contrast));
     border-top-color: var(--cinder-spinner-indicator, currentColor);
     border-radius: 50%;
     vertical-align: -0.125em;
@@ -36,7 +36,7 @@
   }
 
   .cinder-spinner__arc-track {
-    stroke: var(--cinder-spinner-track, color-mix(in srgb, currentColor 25%, transparent));
+    stroke: var(--cinder-spinner-track, var(--cinder-border-contrast));
   }
 
   .cinder-spinner__arc-indicator {
@@ -69,24 +69,23 @@
   }
 
   @keyframes cinder-spinner-arc {
+    /* 56.55 is the circumference, so an offset of 42 still draws a quarter turn (14.1). */
     from {
-      stroke-dashoffset: 50;
+      stroke-dashoffset: 42;
     }
     to {
       stroke-dashoffset: 14;
     }
   }
 
-  /* Respect the user's reduced-motion preference */
+  /* Respect the user's reduced-motion preference. A still spinner dims its indicator to the track,
+     so the ring reads as a quiet, unmoving one. It takes no element `opacity` on top: the track is
+     a contrast tier (3:1 against the page), and a fade would compound with it and halve that. */
   @media (prefers-reduced-motion: reduce) {
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-spinner {
       animation: none;
-      --cinder-spinner-indicator: var(
-        --cinder-spinner-track,
-        color-mix(in srgb, currentColor 25%, transparent)
-      );
-      opacity: 0.5;
+      --cinder-spinner-indicator: var(--cinder-spinner-track, var(--cinder-border-contrast));
     }
 
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
@@ -104,11 +103,7 @@
 
   :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on']) .cinder-spinner {
     animation: none;
-    --cinder-spinner-indicator: var(
-      --cinder-spinner-track,
-      color-mix(in srgb, currentColor 25%, transparent)
-    );
-    opacity: 0.5;
+    --cinder-spinner-indicator: var(--cinder-spinner-track, var(--cinder-border-contrast));
   }
 
   :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on'])

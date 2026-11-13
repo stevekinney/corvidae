@@ -3,29 +3,61 @@
  * approval's buttons, and it showed while the transcript sat where a waiting item's lift put it,
  * with nothing below to jump to. The page geometry is the browser's, so these read the rules.
  */
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { flushSync, mount, unmount } from 'svelte';
+
+import { setupHappyDom } from '@lostgradient/testing';
+
+setupHappyDom();
 
 const controls = await Bun.file(new URL('./chat-jump-controls.svelte', import.meta.url)).text();
 const chat = await Bun.file(new URL('./chat.svelte', import.meta.url)).text();
+const { default: ChatJumpControls } = await import('./chat-jump-controls.svelte');
 
-function containerBlock(source: string, query: string): string {
-  const start = source.indexOf(query);
-  if (start === -1) throw new Error(`container query not found: ${query}`);
-  let depth = 0;
-  for (let index = source.indexOf('{', start); index < source.length; index++) {
-    if (source[index] === '{') depth++;
-    else if (source[index] === '}' && --depth === 0) return source.slice(start, index + 1);
-  }
-  throw new Error(`container query not closed: ${query}`);
-}
+afterEach(() => document.body.replaceChildren());
 
 describe('Jump to latest on a phone', () => {
-  test('takes its own line at the composer edge instead of floating over the transcript', () => {
-    const narrow = containerBlock(controls, '@container (max-width: 30rem) {');
-    expect(narrow).toMatch(/\.chat-jump-button\s*\{[^}]*position: relative;[^}]*bottom: auto;/);
-    expect(narrow).toMatch(
-      /\.chat-new-indicator\s*\{[^}]*position: relative;[^}]*transform: none;/,
+  test('forwards host labels to the mounted unread-message control', () => {
+    const target = document.createElement('div');
+    document.body.append(target);
+    const instance = mount(ChatJumpControls, {
+      target,
+      props: {
+        showJumpButton: false,
+        hasNewMessageIndicator: true,
+        unreadCount: 2,
+        displayUnreadCount: '2',
+        hasLargeCount: false,
+        labels: {
+          jumpToLatest: 'Go to newest',
+          jumpToNewMessages: (count: number) => `Open ${count} pending replies`,
+          newMessages: (count: number) => `${count} pending replies`,
+        },
+      },
+    });
+    flushSync();
+
+    const indicator = target.querySelector<HTMLButtonElement>('.chat-new-indicator');
+    expect(indicator?.getAttribute('aria-label')).toBe('2 pending replies');
+    expect(indicator?.textContent?.trim()).toBe('2 pending replies');
+    unmount(instance);
+  });
+
+  test('floats over the transcript without a band, painted 32 px with a 44 px hit area', () => {
+    expect(controls).toMatch(
+      /\.chat-jump-dock\s*\{[^}]*position: absolute;[^}]*inset-block-end: calc\(100%/,
     );
+    expect(controls).toMatch(/\.chat-jump-button\s*\{[^}]*width: 2rem;[^}]*height: 2rem;/);
+    expect(controls).toMatch(
+      /\.chat-jump-button::before\s*\{[^}]*position: absolute;[^}]*inset: calc\([^;]*- 1px\);/,
+    );
+    // The trailing inset holds the hit area's overhang past the painted button, so a chat that
+    // clips or ends at its edge never cuts the 44 px area.
+    expect(controls).toMatch(
+      /\.chat-jump-dock\[data-jump-latest\]\s*\{[^}]*padding-inline-end: calc\(\(var\(--cinder-touch-target-min\) - 2rem\) \/ 2 \+ var\(--cinder-space-1\)\);/,
+    );
+    // Nothing moves it back into the flow on a phone, where it would reserve a strip.
+    expect(controls).not.toContain('@container (max-width: 30rem)');
   });
 
   test('stays hidden while the transcript sits where a waiting item lifted it', () => {

@@ -78,7 +78,7 @@ function pressEscape(): KeyboardEvent {
 }
 
 describe('ApprovalCard decision layout', () => {
-  test('writes the action, the danger badge, the pause, the facts and the open command with no icon gutter', () => {
+  test('writes the action, danger badge, host facts and open command with no icon gutter', () => {
     const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
     const card = container.querySelector('.cinder-approval-card');
 
@@ -90,36 +90,48 @@ describe('ApprovalCard decision layout', () => {
     );
     expect(
       squash(container.querySelector('.cinder-approval-card__irreversible')?.textContent),
-    ).toBe('Irreversible');
-    expect(squash(container.querySelector('.cinder-approval-card__pause')?.textContent)).toBe(
-      'The agent is paused until you decide.',
-    );
+    ).toBe("Can't be undone");
+    expect(container.querySelector('.cinder-approval-card__pause')).toBeNull();
     const facts = Array.from(container.querySelectorAll('.cinder-approval-card__fact'), (fact) => [
       squash(fact.querySelector('dt')?.textContent),
       squash(fact.querySelector('dd')?.textContent),
     ]);
-    expect(facts.slice(0, 3)).toEqual([
-      ['Tool', 'Issue refund'],
+    expect(facts.slice(0, 2)).toEqual([
       ['Target', 'order 4471'],
       ['Amount', '$42.00'],
     ]);
-    expect(facts[3]?.[0]).toBe('Command');
-    expect(facts[3]?.[1]).toContain('refund --order 4471 --amount 42.00');
+    expect(facts[2]?.[0]).toBe('Command');
+    expect(facts[2]?.[1]).toContain('refund --order 4471 --amount 42.00');
+    expect(container.querySelector('.cinder-approval-card__fact dt')?.className).toBe('');
+    expect(container.querySelector('.cinder-approval-card__fact--command dt')?.className).toBe(
+      'cinder-sr-only',
+    );
+    expect(container.textContent).not.toContain('The agent is paused until you decide.');
     const command = container.querySelector('.cinder-approval-card__command');
     expect(command?.closest('[hidden]')).toBeNull();
     expect(command?.querySelector('.cinder-code-block--wrap')).not.toBeNull();
   });
 
-  test('names the tool in monospace when it has no label, and says nothing of reversibility it does not know', () => {
+  test('does not add a redundant tool fact when the tool has no label', () => {
     const { container } = render(ApprovalCard, {
       props: decisionCard({ tool: { name: 'issue-refund', risk: 'high' } }),
     });
-    const tool = container.querySelector('.cinder-approval-card__fact dd');
-
-    expect(squash(tool?.textContent)).toBe('issue-refund');
-    expect(tool?.hasAttribute('data-cinder-monospace')).toBe(true);
+    expect(container.querySelector('.cinder-approval-card__fact--tool')).toBeNull();
     expect(container.textContent).not.toContain('Reversible');
     expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
+  });
+
+  test('does not repeat Tool or Command as visible metadata labels', () => {
+    const { container } = render(ApprovalCard, { props: decisionCard() });
+
+    expect(
+      [...container.querySelectorAll('.cinder-approval-card__fact dt')].map((term) =>
+        squash(term.textContent),
+      ),
+    ).toEqual(['Target', 'Amount', 'Command']);
+    expect(container.querySelector('.cinder-approval-card__fact--command dt')?.className).toBe(
+      'cinder-sr-only',
+    );
   });
 
   test('states a reversible action as a fact', () => {
@@ -144,6 +156,8 @@ describe('ApprovalCard decision layout', () => {
 
   test('offers Add a note, then Deny as secondary on the left and the named primary on the right', () => {
     const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
+    // "Add a note" is a quiet control in the action row, not a second caption row.
+    expect(container.querySelector('.cinder-approval-card__decision-tools button')).toBeNull();
     const labels = Array.from(
       container.querySelectorAll('.cinder-approval-card__row-actions button'),
       (button) => squash(button.textContent),
@@ -235,7 +249,9 @@ describe('ApprovalCard decision layout', () => {
 describe('ApprovalCard decision layout: arming an irreversible action', () => {
   test('the first press arms a danger button and writes the hint, and the second press commits', async () => {
     const onResolve = mock((_resolution: unknown) => undefined);
-    const { getByRole, getByText } = render(ApprovalCard, { props: decisionCard({ onResolve }) });
+    const { container, getByRole, getByText } = render(ApprovalCard, {
+      props: decisionCard({ onResolve }),
+    });
 
     await fireEvent.click(getByRole('button', { name: 'Refund $42.00' }));
 
@@ -244,14 +260,50 @@ describe('ApprovalCard decision layout: arming an irreversible action', () => {
     expect(armed.getAttribute('data-cinder-variant')).toBe('danger');
     // Each Button keeps its own empty loading live region, so the hint is found by its text and
     // its status role is asserted on it.
-    const hint = getByText(ARM_HINT);
+    const hint = getByText(
+      (_, element) => element?.classList.contains('cinder-approval-card__arm-hint') ?? false,
+    );
     expect(hint.getAttribute('role')).toBe('status');
     expect(squash(hint.textContent)).toBe(ARM_HINT);
+    const escapeHint = container.querySelector<HTMLElement>('.cinder-inline-confirm__armed-escape');
+    expect(squash(escapeHint?.textContent)).toBe('Escape cancels.');
     expect(armed.getAttribute('aria-describedby')).toBe(hint.id);
 
     await fireEvent.click(armed);
 
     expect(onResolve).toHaveBeenCalledTimes(1);
+    expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
+  });
+
+  test('keeps a long armed label in its own button while preserving the Deny target', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const { container, getByRole } = render(ApprovalCard, {
+      props: decisionCard({
+        approveLabel: 'Refund this order for $42.00 immediately',
+        onResolve,
+      }),
+    });
+
+    await fireEvent.click(
+      getByRole('button', { name: 'Refund this order for $42.00 immediately' }),
+    );
+
+    const armed = getByRole('button', {
+      name: 'Press again to refund this order for $42.00 immediately',
+    });
+    const deny = getByRole('button', { name: 'Deny' });
+    expect(armed.querySelector('.cinder-button__label')?.textContent).toBe(
+      'Press again to refund this order for $42.00 immediately',
+    );
+    // Compare labels, not elements: a failed element comparison prints the whole DOM tree.
+    expect(
+      Array.from(
+        container.querySelectorAll('.cinder-approval-card__row-actions .cinder-button'),
+        (button) => button === deny || button === armed,
+      ),
+    ).toEqual([false, true, true]);
+
+    await fireEvent.click(armed);
     expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
   });
 
@@ -393,7 +445,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(squash(title?.textContent)).toBe('Approved: Refund $42.00, order 4471');
     expect(title?.querySelector('.cinder-sr-only')?.textContent).toBe('Approved: ');
     expect(getByRole('article', { name: 'Approved: Refund $42.00, order 4471' })).toBeTruthy();
-    expect(container.textContent).not.toContain('Refund order 4471 for $42.00?');
+    expect(squash(title?.textContent)).not.toContain('Refund order 4471 for $42.00?');
     expect(squash(container.querySelector('.cinder-approval-card__receipt-by')?.textContent)).toBe(
       'by you, 10:46 AM',
     );
@@ -494,19 +546,26 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(queryByRole('button', { name: 'Details' })).toBeNull();
   });
 
-  test('an expired approval says it expired before a decision on what, with the notice and no actions', () => {
-    const { container, queryByRole } = render(ApprovalCard, {
-      props: decisionCard({ state: 'expired', notice: 'This approval expired.' }),
+  test('an expired approval says it expired before a decision and can request it again', async () => {
+    const onAskAgain = mock(() => undefined);
+    const { container, getByRole, queryByRole } = render(ApprovalCard, {
+      props: decisionCard({
+        state: 'expired',
+        expiresAt: '2026-11-02T10:15:00.000Z',
+        onAskAgain,
+      }),
     });
 
     expect(
       squash(container.querySelector('.cinder-approval-card__decision-title')?.textContent),
-    ).toBe('Expired before a decision: Refund $42.00, order 4471');
+    ).toBe('Expired before a decision: Refund order 4471 for $42.00?');
     // The title carries the state, so no second "Expired" word or Irreversible badge follows it.
     expect(container.querySelector('[data-cinder-state-word]')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
-    expect(container.textContent).toContain('This approval expired.');
+    expect(container.textContent).toContain('10:15 AM');
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+    await fireEvent.click(getByRole('button', { name: 'Ask again' }));
+    expect(onAskAgain).toHaveBeenCalledTimes(1);
   });
 
   test('a denial with a target but no named action titles itself with the tool and the target', () => {
@@ -595,32 +654,192 @@ describe('ApprovalCard decision layout stylesheet', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
     expect(css).toMatch(/\.cinder-approval-card__fact \{\s*display: grid;/);
+    expect(css).toMatch(/\.cinder-approval-card__fact--command \{\s*display: block;/);
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*background:/);
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*border:/);
+    expect(css).toMatch(
+      /\.cinder-approval-card--decision\[data-cinder-state='expired'\] \{[^}]*border-color:\s*var\(--cinder-status-warning-border\)/s,
+    );
+    expect(css).toMatch(/@media \(any-pointer: coarse\) \{[^}]*__arm-escape \{\s*display: none;/s);
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-button__label \{[^}]*display:\s*block;[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-button \{[^}]*block-size:\s*auto;[^}]*align-self:\s*stretch;/s,
+    );
+    expect(css).toMatch(/\.cinder-approval-card__row-actions \{[^}]*align-items:\s*flex-start;/s);
+    expect(css).not.toMatch(
+      /\.cinder-approval-card--decision \.cinder-approval-card__row-actions \.cinder-button \{[^}]*background:\s*transparent;[^}]*border-color:\s*transparent;/s,
+    );
+    expect(css).not.toMatch(/\.cinder-approval-card--decision \.cinder-button::before/);
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-inline-confirm__two-press \{[^}]*display:\s*contents;/s,
+    );
+    expect(css).toMatch(/\.cinder-inline-confirm__two-press-hint \{[^}]*flex:\s*1 0 100%;/s);
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^}]*\.cinder-approval-card__input-toggle \{\s*align-items:\s*center;/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__input-toggle,\s*\.cinder-approval-card__said-toggle\s*\{[\s\S]*?padding-block:\s*var\(--cinder-space-0-5\);/,
+    );
+    // No negative margin pulls the status row up: the toggles are painted at text height.
+    expect(css).not.toMatch(/__why ~ \.cinder-approval-card__decision-tools/);
+  });
+
+  test('the action row sits one --cinder-space-3 under the metadata row in both layouts', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toContain(
+      '.cinder-approval-card--decision .cinder-approval-card__row-actions { margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-2)); }',
+    );
+    expect(css).toContain(
+      '.cinder-approval-card--row .cinder-approval-card__row-actions { margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-1)); }',
+    );
+  });
+
+  test('the irreversible badge is at least 12px and is never moved above the title', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // Outranks the badge's own 10px `sm` size, which has an attribute selector.
+    expect(css).toContain(
+      '.cinder-approval-card .cinder-badge.cinder-approval-card__irreversible { font-size: var(--cinder-text-sm); }',
+    );
+    expect(css).not.toMatch(/__decision-head \.cinder-approval-card__irreversible \{ order:/);
+    expect(css).not.toMatch(/__decision-head:has\(\.cinder-approval-card__irreversible\)/);
+  });
+
+  test('Add a note is a ghost small Cinder Button with an icon and a tooltip', () => {
+    const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
+    const toggle = getByRole('button', { name: 'Add a note' });
+    expect(toggle.classList.contains('cinder-button')).toBe(true);
+    expect(toggle.classList.contains('cinder-approval-card__note-toggle')).toBe(true);
+    expect(toggle.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(toggle.getAttribute('data-cinder-size')).toBe('sm');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.querySelector('.cinder-button__icon svg')).not.toBeNull();
+    expect(toggle.closest('.cinder-approval-card__note-toggle-tip')).not.toBeNull();
+    expect(container.querySelector('[role="tooltip"]')?.textContent ?? 'Add a note').toContain(
+      'Add a note',
+    );
+  });
+
+  test('Add a note keeps space-3 before Deny and hides only its words under 30rem', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /__note-toggle-tip \{[^}]*flex: none;[^}]*margin-inline-end: var\(--cinder-space-2\);/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{[^@]*__note-toggle \.cinder-button__label \{[^}]*clip-path: inset\(50%\);/,
+    );
+  });
+
+  test('Add a note sits on the text column and is a square icon face under 30rem', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*margin-inline-start: calc\(-1 \* var\(--cinder-button-padding-x-sm\)\);/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{ [^@]*\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*inline-size: var\(--_cinder-painted-height-sm\);[^}]*block-size: var\(--_cinder-painted-height-sm\);[^}]*padding-inline: 0;/,
+    );
+  });
+
+  test('Add a note never squeezes or wraps its words on a card 30rem or wider', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // The control: no shrinking, no wrapping, at least its content, at the sm height.
+    expect(css).toMatch(
+      /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*flex: none;[^}]*min-inline-size: max-content;[^}]*block-size: var\(--_cinder-painted-height-sm\);[^}]*white-space: nowrap;/,
+    );
+    // The label: the batch row's `white-space: normal` label rule must not reach it.
+    expect(css).toMatch(
+      /__note-toggle \.cinder-button__label \{[^}]*flex: none;[^}]*min-inline-size: max-content;[^}]*overflow: visible;[^}]*white-space: nowrap;/,
+    );
+  });
+
+  test('the note toggle is sized by the painted height, so it never stretches the action row', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // A coarse pointer raises --cinder-button-height-sm to 44px; a toggle that read it would be the
+    // tallest item in the row and the stretching Deny and primary would follow it.
+    const toggleRules = [...css.matchAll(/[^{}]*__note-toggle \{[^}]*\}/g)].map(
+      (match) => match[0],
+    );
+    expect(toggleRules.length).toBeGreaterThan(0);
+    for (const rule of toggleRules) expect(rule).not.toContain('--cinder-button-height');
+    // The row aligns its items at the start and only the stretching Button rule reaches the
+    // buttons; the toggle opts out with its own centre alignment.
+    expect(css).toMatch(/\.cinder-approval-card__row-actions \{[^}]*align-items:\s*flex-start;/);
+    expect(css).toMatch(
+      /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*align-self:\s*center;/,
+    );
+    expect(css).not.toMatch(/\.cinder-approval-card__row-actions \{[^}]*align-items:\s*stretch/);
+    // A wrapped line clears the toggle's 10px hit-area overhang.
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \{[^}]*flex-wrap:\s*wrap;[^}]*row-gap:\s*var\(--cinder-space-3\);/,
+    );
+  });
+
+  test('a batch row title takes its natural width so the badge is what wraps', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // The title keeps its natural width (no growing), so the badge follows it, never the far edge.
+    expect(css).toMatch(/__row-question \{[^}]*flex: 0 1 auto;/);
+    expect(css).toMatch(
+      /__decision-head \.cinder-approval-card__decision-title \{ flex: 0 1 auto;/,
+    );
+    expect(css).not.toMatch(/__irreversible \{[^}]*margin-inline-start: auto/);
+    expect(css).not.toMatch(/__row-question \{[^}]*flex: 1 1 12rem;/);
+  });
+
+  test('the armed hint sits at the start edge', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /__two-press-hint \{[^}]*flex: 1 0 100%;[^}]*order: 3;[^}]*text-align: start;/,
+    );
   });
 
   // C#14 (chat stress sweep): at 320 the label column left a long tool identifier a few
   // characters a line.
-  test('below 20rem each fact stacks its label above its value', () => {
+  test('keeps short facts in the definition grid below 20rem', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
-    const narrow = css.slice(css.indexOf('@container (inline-size < 20rem)'));
-    expect(narrow).toMatch(
-      /^@container \(inline-size < 20rem\) \{ \.cinder-approval-card__fact \{ grid-template-columns: minmax\(0, 1fr\); \}/,
-    );
+    expect(css).toMatch(/\.cinder-approval-card__fact \{ display: grid;/);
+    expect(css).not.toMatch(/inline-size < 20rem\).*grid-template-columns: minmax\(0, 1fr\)/);
   });
 
-  // C#3 (chat stress sweep): the disclosures and "Add a note" were text-sized on a phone.
-  test('on a coarse pointer the disclosures and Add a note are 44px targets', () => {
+  // C#3 (chat stress sweep): the disclosures were text-sized on a phone. "Add a note" is a Button
+  // and owns its own hit area.
+  test('on a coarse pointer the disclosures are 44px targets', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
-    const coarse = css.slice(css.indexOf('@media (pointer: coarse)'));
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    // Painted at text height: the 44px hit area is a pseudo-element that takes no layout space.
     expect(coarse).toContain(
-      '.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle, .cinder-approval-card__note-toggle { min-block-size: var(--cinder-touch-target-min); }',
+      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
     );
+    expect(coarse).not.toMatch(/__(?:input|said|note)-toggle\s*\{\s*min-block-size/);
   });
 });

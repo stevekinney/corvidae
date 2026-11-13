@@ -2,7 +2,7 @@
  * A conversation that is not available stands in the transcript's place (COR-2285, rows V2 and V3):
  * skeleton turns with `Loading conversation…` and the seconds so far, the editor kept and Send
  * waiting for the history, a slow read with its indicator, elapsed time and Cancel, Retry after
- * Cancel, Cinder's `ErrorState` with Try again and All conversations for a history that failed, and
+ * Cancel, Cinder's `ErrorState` with Retry and All conversations for a history that failed, and
  * a deleted conversation with All conversations as the primary action and no composer.
  */
 
@@ -79,6 +79,23 @@ function composerWrapperOf(container: HTMLElement): HTMLElement {
   return container.querySelector<HTMLElement>('.chat-input-wrapper')!;
 }
 
+test('an unconfigured chat centers a provider action in place of the conversation', async () => {
+  let connected = 0;
+  const { container } = mountWith('availability-unconfigured', {
+    kind: 'unconfigured',
+    onConnect: () => (connected += 1),
+  });
+  expect(container.querySelector('.cinder-empty-state')?.textContent).toContain(
+    'Connect a model provider',
+  );
+  expect(timelineOf(container).style.display).toBe('none');
+  expect(composerWrapperOf(container).style.display).toBe('none');
+  const connect = buttonNamed(container, 'Connect provider')!;
+  expect(connect.getAttribute('data-cinder-variant')).toBe('primary');
+  await fireEvent.click(connect);
+  expect(connected).toBe(1);
+});
+
 describe('a conversation that is loading', () => {
   test('draws skeleton turns and a status line with the seconds so far, in the transcript place', () => {
     const { container } = mountWith('availability-loading', { kind: 'loading' });
@@ -89,9 +106,7 @@ describe('a conversation that is loading', () => {
     expect(region.querySelector('.chat-availability-reading')?.textContent?.trim()).toBe(
       'Loading conversation…',
     );
-    expect(region.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toBe(
-      '0 s',
-    );
+    expect(region.querySelector('[data-chat-availability-elapsed]')).toBeNull();
     // The transcript that was there is out of sight, not discarded.
     expect(timelineOf(container).style.display).toBe('none');
     // One status for a screen reader, with no ticking number in it.
@@ -127,7 +142,7 @@ describe('a conversation that is loading', () => {
       'Still loading. This is taking longer than usual.',
     );
     expect(region.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toMatch(
-      /^\d+ s$/u,
+      /^\d+s$/u,
     );
 
     const cancel = buttonNamed(container, 'Cancel')!;
@@ -148,15 +163,13 @@ describe('a conversation that is loading', () => {
   test('says the host words instead of the defaults', () => {
     const { container } = mountWith('availability-labels', {
       kind: 'loading',
-      labels: { loading: 'جارٍ تحميل المحادثة…', secondsUnit: 'ث', sendWaits: 'انتظر' },
+      labels: { loading: 'جارٍ تحميل المحادثة…', sendWaits: 'انتظر' },
     });
 
     expect(container.querySelector('.chat-availability-reading')?.textContent?.trim()).toBe(
       'جارٍ تحميل المحادثة…',
     );
-    expect(container.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toBe(
-      '0 ث',
-    );
+    expect(container.querySelector('[data-chat-availability-elapsed]')).toBeNull();
     expect(buttonNamed(container, 'انتظر')).not.toBeUndefined();
   });
 
@@ -184,21 +197,52 @@ describe('a canceled read', () => {
     expect(state.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
       'Loading was canceled',
     );
+    expect(state.querySelector('.chat-availability-canceled-icon')).not.toBeNull();
+    expect(state.querySelector('.lucide-search')).toBeNull();
     const retry = buttonNamed(container, 'Retry')!;
     const list = buttonNamed(container, 'All conversations')!;
     expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
     expect(list.getAttribute('data-cinder-variant')).toBe('secondary');
-    // The editor still waits for the history.
-    expect(buttonNamed(container, 'Loading…')!.disabled).toBe(true);
+    // The editor remains mounted and editable, but canceled is not presented as ongoing loading.
+    const editor = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+    expect(editor.readOnly).toBe(false);
+    const send = buttonNamed(container, 'Send message')!;
+    expect(send.disabled).toBe(true);
+    const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
+    expect(drawer.textContent).toContain('Conversation loading stopped.');
+    expect(drawer.textContent).toContain('Load the conversation to send messages.');
+    expect(drawer.textContent?.match(/Conversation loading stopped\./gu)).toHaveLength(1);
+    expect(drawer.textContent?.match(/Load the conversation to send messages\./gu)).toHaveLength(1);
+    const reason = drawer.querySelector('.chat-input-drawer-reason');
+    expect(reason?.textContent?.trim()).toBe('Load the conversation to send messages.');
+    expect(send.getAttribute('aria-describedby')).toContain(reason?.id ?? 'missing-reason');
 
     await fireEvent.click(retry);
     await fireEvent.click(list);
     expect(calls).toEqual(['retry', 'list']);
   });
+
+  test('lets the host replace the visible canceled composer state and disabled-send reason separately', () => {
+    const { container } = mountWith('availability-canceled-labels', {
+      kind: 'canceled',
+      onRetry: () => undefined,
+      labels: {
+        canceledComposer: 'History is paused.',
+        sendBlocked: 'Load history before sending.',
+      },
+    });
+
+    const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
+    expect(drawer.textContent).toContain('History is paused.');
+    expect(drawer.textContent).toContain('Load history before sending.');
+    expect(drawer.querySelector('.chat-input-drawer-reason')?.textContent?.trim()).toBe(
+      'Load history before sending.',
+    );
+  });
 });
 
 describe('a history that could not be loaded', () => {
-  test('is an ErrorState with the cause, a primary Try again and a secondary All conversations, and no composer', async () => {
+  test('is an ErrorState with the cause, a primary Retry and a secondary All conversations, and no composer', async () => {
     const calls: string[] = [];
     const { container } = mountWith('availability-error', {
       kind: 'error',
@@ -217,7 +261,7 @@ describe('a history that could not be loaded', () => {
       'Interborough didn’t send it back. Nothing was lost.',
     );
     expect(state.textContent).toContain('HTTP 500');
-    const retry = buttonNamed(container, 'Try again')!;
+    const retry = buttonNamed(container, 'Retry')!;
     const list = buttonNamed(container, 'All conversations')!;
     expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
     expect(list.getAttribute('data-cinder-variant')).toBe('secondary');
@@ -236,7 +280,7 @@ describe('a history that could not be loaded', () => {
       onRetry: () => undefined,
     });
 
-    expect(buttonNamed(container, 'Try again')).not.toBeUndefined();
+    expect(buttonNamed(container, 'Retry')).not.toBeUndefined();
     expect(buttonNamed(container, 'All conversations')).toBeUndefined();
   });
 });
@@ -254,6 +298,8 @@ describe('a deleted conversation', () => {
     expect(state.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
       'This conversation was deleted',
     );
+    expect(state.querySelector('.chat-availability-deleted-icon')).not.toBeNull();
+    expect(state.querySelector('.lucide-search')).toBeNull();
     const list = buttonNamed(container, 'All conversations')!;
     expect(list.getAttribute('data-cinder-variant')).toBe('primary');
     expect(composerWrapperOf(container).style.display).toBe('none');

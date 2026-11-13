@@ -12,6 +12,7 @@
   import type { ChatComposerControlsContext } from './composer-controls.ts';
   import type { ChatComposerFormat, ChatComposerToolbarContext } from './composer-markdown.ts';
   import type { ChatComposerBlockedAction, ChatComposerStatus } from './composer-status.ts';
+  import type { ChatLabels } from '../chat-labels.ts';
 
   export type { ChatAttachment } from './chat-attachment.ts';
 
@@ -69,6 +70,11 @@
      * finish. While a draft is present, Send reads Queue with the queue icon. Default `false`.
      */
     queueing?: boolean;
+    /**
+     * Why a send waits, while a tool approval holds the run: the Queue button's tooltip ends with
+     * it and its `aria-describedby` points at it.
+     */
+    queueNote?: string | undefined;
     /** Error message to display */
     error?: string;
     /** Additional CSS class */
@@ -101,6 +107,8 @@
     acceptedTypes?: string[] | undefined;
     /** Plain-text paste length promoted to a reversible attachment. Default `8000`. */
     largePasteThreshold?: number;
+    /** Host-overridable attachment and approval-drawer words. */
+    labels?: Partial<ChatLabels> | undefined;
     /**
      * Uploads each attached file as soon as it is added. The attachment is `uploading` until the
      * hook settles, then `ready` carrying the hook's reference, or `error`; Send waits for every
@@ -212,6 +220,7 @@
 
   import { flushSync, tick, untrack } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
+  import { resolveChatLabels } from '../chat-labels.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { createIdFactory, useStableId } from '../../../utilities/id-factory.ts';
   import {
@@ -224,11 +233,13 @@
     List,
     Paperclip,
     ListOrdered,
+    RotateCcw,
     SendHorizontal,
     Square,
+    Callout,
+    Spinner,
     Tooltip,
     TriangleAlert,
-    WifiOff,
     X,
   } from '@lostgradient/cinder';
   import {
@@ -251,13 +262,83 @@
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import {
     ATTACHMENT_LIST_CAP,
-    attachmentBlockingReason,
+    attachmentViewportCap,
     typeNotAcceptedText,
     attachmentCountText,
     canRetry,
     needsAttention,
   } from './attachment-tile.ts';
+  import { hiddenRowCounts, wholeRowsBlockSize, type RowEdges } from '../whole-rows.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
+
+  /** The files still out of sight below an opened list, for the "N more" line under it. */
+  let hiddenListedAttachments = $state(0);
+
+  /**
+   * Sizes an opened attachment list to whole rows plus their gaps, so it ends on a row and no part
+   * of the next one shows; the "N more" line under it says how many remain. The list's block
+   * padding is the room for its end rows' hit-area overhang; the matching negative margin keeps it
+   * out of the layout, so the header-to-first-row and last-row-to-hint distances equal the
+   * collapsed shelf's.
+   */
+  function wholeAttachmentRows(node: HTMLElement): () => void {
+    const edgesOf = (): RowEdges[] => {
+      const nodeTop = node.getBoundingClientRect().top;
+      return [...node.querySelectorAll<HTMLElement>(':scope > li')].map((row) => {
+        const box = row.getBoundingClientRect();
+        const top = box.top - nodeTop + node.scrollTop;
+        return { top, bottom: top + box.height };
+      });
+    };
+    const count = (): void => {
+      hiddenListedAttachments = node.hasAttribute('data-expanded')
+        ? hiddenRowCounts(edgesOf(), node.scrollTop, node.clientHeight).below
+        : 0;
+    };
+    const fit = (): void => {
+      // Growing the list to measure it and shrinking it again clamps its scroll offset twice, which
+      // would move a list the person (or a focus move) has scrolled; the offset is put back.
+      const scrollTop = node.scrollTop;
+      measure();
+      node.scrollTop = scrollTop;
+      count();
+    };
+    const measure = (): void => {
+      node.style.removeProperty('max-block-size');
+      if (!node.hasAttribute('data-expanded')) return;
+      const paddingEnd = Number.parseFloat(getComputedStyle(node).paddingBlockEnd) || 0;
+      const blockSize = wholeRowsBlockSize(edgesOf(), node.clientHeight, paddingEnd);
+      if (blockSize !== undefined) node.style.setProperty('max-block-size', `${blockSize}px`);
+    };
+
+    let frame = 0;
+    const schedule = (): void => {
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        fit();
+      });
+    };
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
+    resize?.observe(node);
+    const mutations =
+      typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(schedule);
+    // Only the open state is watched as an attribute: this function writes `style` itself.
+    mutations?.observe(node, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-expanded'],
+    });
+    node.addEventListener('scroll', count, { passive: true });
+    fit();
+    return () => {
+      cancelAnimationFrame(frame);
+      resize?.disconnect();
+      mutations?.disconnect();
+      node.removeEventListener('scroll', count);
+    };
+  }
 
   // Per-instance fallback factory for attachments whose file metadata is unavailable
   // AND as a collision-disambiguation counter when two files share identical metadata.
@@ -309,7 +390,7 @@
   let {
     id,
     value = $bindable(''),
-    placeholder = 'Type a message...',
+    placeholder = 'Type a message…',
     followUpPlaceholder = COMPOSER_FOLLOW_UP_PLACEHOLDER,
     composerLabel = 'Message',
     composerRole,
@@ -324,6 +405,7 @@
     sending = false,
     allowFollowUp = false,
     queueing = false,
+    queueNote,
     error,
     class: className,
     action,
@@ -349,6 +431,7 @@
       'application/toml',
     ],
     largePasteThreshold = 8_000,
+    labels: labelOverrides,
     uploadAttachment,
     formatAttachmentError,
     onsubmit,
@@ -372,6 +455,8 @@
     ...rest
   }: ChatInputProps = $props();
 
+  const labels = $derived(resolveChatLabels(labelOverrides));
+
   const resolvedComposerLabel = $derived(composerLabel.trim() || 'Message');
 
   const markdownSegments = $derived(markdownStyling ? highlightComposerMarkdown(value) : []);
@@ -380,6 +465,14 @@
   const drawerStatus = $derived(isComposerDrawerStatus(status) ? status : undefined);
   /** The browser has no connection: the draft stays, and Send waits for it to come back. */
   const offline = $derived(status?.kind === 'offline');
+  /** The tone one composer notice paints: offline is a warning, the rest say their own. */
+  const drawerTone = $derived<'neutral' | 'info' | 'warning' | 'danger'>(
+    drawerStatus?.kind === 'offline' || drawerStatus?.kind === 'reconnecting'
+      ? 'warning'
+      : drawerStatus?.kind === 'drawer-notice'
+        ? (drawerStatus.tone ?? 'neutral')
+        : 'neutral',
+  );
   const toolbarContext: ChatComposerToolbarContext = { format: applyFormat };
   let markdownBackdrop = $state<HTMLDivElement | null>(null);
 
@@ -421,7 +514,11 @@
   const runElapsed = $derived(
     runStartedAt === undefined ? undefined : formatRunElapsed(runNow - runStartedAt),
   );
-  const sendBlocked = $derived((sending && !allowFollowUp) || starting !== undefined);
+  const sendBlocked = $derived(
+    (sending && !allowFollowUp) ||
+      starting !== undefined ||
+      (drawerStatus?.kind === 'drawer-notice' && drawerStatus.sendDisabledReason !== undefined),
+  );
   // Names the key the composer's `submitOn` actually listens for, so a
   // modifier-enter composer never announces a bare Enter.
   const followUpInstruction = $derived.by(() => {
@@ -563,8 +660,10 @@
   // Derived state
   const errorId = $derived(`${id}-error`);
   const shortcutDescriptionId = $derived(`${id}-shortcut-description`);
+  const queueNoteId = $derived(`${id}-queue-note`);
   const pausedReasonId = $derived(`${id}-paused-reason`);
   const drawerId = $derived(`${id}-drawer`);
+  const drawerReasonId = $derived(`${drawerId}-reason`);
   const attachmentReasonId = $derived(`${id}-attachment-reason`);
   const attachmentListId = $derived(`${id}-attachments`);
   /** The reason Send is off, while the host has paused the composer and said why. */
@@ -578,13 +677,28 @@
   // A long list is capped: the first tiles show, the last of them fades, and a count under the list
   // shows the rest. The list itself scrolls once it is open, so Send stays in the pane.
   let attachmentsExpanded = $state(false);
+  let visibleAttachmentCap = $state(ATTACHMENT_LIST_CAP);
   $effect(() => {
     if (attachments.length <= ATTACHMENT_LIST_CAP) attachmentsExpanded = false;
   });
   const shownAttachments = $derived(
-    attachmentsExpanded ? attachments : attachments.slice(0, ATTACHMENT_LIST_CAP),
+    attachmentsExpanded
+      ? attachments
+      : attachments
+          .toSorted((left, right) => Number(needsAttention(right)) - Number(needsAttention(left)))
+          .slice(0, visibleAttachmentCap),
   );
   const hiddenAttachmentCount = $derived(attachments.length - shownAttachments.length);
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const updateViewportCap = (): void => {
+      if (window.innerWidth <= 0 || window.innerHeight <= 0) return;
+      visibleAttachmentCap = attachmentViewportCap(window.innerWidth, window.innerHeight);
+    };
+    updateViewportCap();
+    window.addEventListener('resize', updateViewportCap);
+    return () => window.removeEventListener('resize', updateViewportCap);
+  });
   const hasReadyPromotedPaste = $derived(
     attachments.some(
       (attachment) =>
@@ -611,19 +725,22 @@
   const queued = $derived(queueing && !answering && canSubmit);
   const sendTooltipText = $derived.by(() => {
     if (starting !== undefined) return starting;
-    if (offline) return 'Send comes back when you reconnect';
-    if (hasPendingAttachments) return 'Wait for attachments';
-    if (attentionCount > 0) return attachmentBlockingReason(attentionCount);
-    if (showStopButton) return 'Stop generating';
+    if (offline) return labels.sendOffline;
+    if (hasPendingAttachments) return labels.waitForAttachments;
+    if (attentionCount > 0) return labels.attachmentBlockingReason(attentionCount);
+    if (showStopButton) return labels.stopGenerating;
     if (isWhitespaceOnly && !hasReadyAttachments && !hasReadyPromotedPaste) {
-      return answering ? 'Type an answer' : 'Add a message or attachment';
+      return answering ? labels.typeAnswer : labels.addMessageOrAttachment;
     }
     if (queued) {
-      return submitOn === 'modifier-enter' ? 'Queue (Command or Control + Enter)' : 'Queue (Enter)';
+      const shortcut = labels.queueShortcut(
+        submitOn === 'modifier-enter' ? 'Command or Control + Enter' : 'Enter',
+      );
+      return queueNote === undefined ? shortcut : `${shortcut}. ${queueNote}`;
     }
-    if (submitOn === 'modifier-enter') return 'Send (Command or Control + Enter)';
-    if (submitOn === 'enter-if-single-line' && value.includes('\n')) return 'Send message';
-    return answering ? 'Answer (Enter)' : 'Send (Enter)';
+    if (submitOn === 'modifier-enter') return labels.sendShortcut('Command or Control + Enter');
+    if (submitOn === 'enter-if-single-line' && value.includes('\n')) return labels.sendMessage;
+    return answering ? labels.answerShortcut : labels.sendShortcut('Enter');
   });
   /** Remembers a button the composer owns, so its tooltip can anchor to it. */
   function holdButton(assign: (element: HTMLElement | null) => void) {
@@ -653,27 +770,30 @@
     }
   });
 
-  const sendLabel = $derived(starting ?? (answering ? 'Answer' : queued ? 'Queue' : 'Send'));
+  const sendLabel = $derived(
+    starting ?? (answering ? labels.answer : queued ? labels.queue : labels.send),
+  );
   const sendAccessibleName = $derived(
     showStopButton
-      ? 'Stop generating'
+      ? labels.stopGenerating
       : starting !== undefined
         ? starting
         : showSendingSpinner
-          ? 'Sending message'
+          ? labels.sendingMessage
           : answering
-            ? 'Answer'
+            ? labels.answer
             : queued
-              ? 'Queue message'
-              : 'Send message',
+              ? labels.queueMessage
+              : labels.sendMessage,
   );
+  const sendButtonIconOnly = $derived(showStopButton || showSendingSpinner || queued || !answering);
   const hintText = $derived.by(() => {
     if (hint === false) return undefined;
     if (hint !== undefined) return hint;
     if (submitOn === 'modifier-enter') {
-      return 'Command or Control and Enter to send. Enter for a new line.';
+      return labels.modifierEnterHint;
     }
-    return 'Enter to send. Shift and Enter for a new line.';
+    return labels.enterHint;
   });
   /** Marks the default hint, which names keys, so a touch-only device leaves it out. */
   const keyboardHint = $derived(hint === undefined ? '' : undefined);
@@ -694,8 +814,12 @@
   /** What Send's `aria-describedby` names besides the shortcut description: each visible reason. */
   const sendReasonIds = $derived([
     ...(offline ? [drawerId] : []),
+    ...(drawerStatus?.kind === 'drawer-notice' && drawerStatus.sendDisabledReason !== undefined
+      ? [drawerReasonId]
+      : []),
     ...(attentionCount > 0 ? [attachmentReasonId] : []),
     ...(shownPausedReason === undefined ? [] : [pausedReasonId]),
+    ...(queued && queueNote !== undefined ? [queueNoteId] : []),
   ]);
 
   function discardRestoredDraft(): void {
@@ -728,11 +852,8 @@
     });
   }
 
-  const KIND_LABELS: Record<AttachmentKind, string> = {
-    image: 'Image',
-    code: 'Code file',
-    document: 'Document',
-  };
+  const kindLabel = (kind: AttachmentKind): string =>
+    kind === 'image' ? labels.image : kind === 'code' ? labels.codeFile : labels.document;
 
   /** Names an attachment's file the way the composer keys its rows and its announcements. */
   function newAttachmentId(file: File): string {
@@ -761,7 +882,7 @@
     if (failure.kind === 'too-large') {
       return `File exceeds ${Math.round(failure.maxFileSize / (1024 * 1024))}MB limit`;
     }
-    return 'Upload failed';
+    return labels.uploadFailed;
   }
 
   /** Why the composer refuses `file` before reading or uploading it, or `undefined` to take it. */
@@ -854,7 +975,7 @@
 
     attachments = [...attachments, attachment];
     onAttachmentAdd?.(attachment);
-    announcer.announce(`${KIND_LABELS[kind]} attached: ${file.name}`);
+    announcer.announce(`${kindLabel(kind)} attached: ${file.name}`);
 
     if (uploads) {
       startUpload(attachment, uploadAttachment);
@@ -979,7 +1100,7 @@
         queueMicrotask(() => editorElement?.setSelectionRange(caretIndex, caretIndex));
       }
       onAttachmentRemove?.(attachment);
-      announcer.announce(`${KIND_LABELS[attachment.kind]} removed`);
+      announcer.announce(`${kindLabel(attachment.kind)} removed`);
     }
   }
 
@@ -1420,7 +1541,7 @@
       class={classNames('chat-input', 'chat-input-blocked', className)}
       data-chat-composer-status="blocked"
       role="group"
-      aria-label="Composer unavailable"
+      aria-label={labels.composerUnavailable}
     >
       <div class="chat-input-blocked-message">
         <TriangleAlert class="chat-input-blocked-glyph cinder-icon-sm" aria-hidden="true" />
@@ -1470,13 +1591,15 @@
       {/if}
     </div>
   {:else if notice !== undefined}
-    <!-- Archived or read only: one neutral bar in place of the composer. The secondary action sits
-         on the left and the primary one on the right, after the words. -->
+    <!-- Archived or read only: one neutral bar in place of the composer. It is not a Callout because
+         it is the composer's own box (same frame, role group and tooltip label), not a notice about
+         the transcript above it. The secondary action sits on the left and the primary one on the
+         right, after the words. -->
     <div
       class={classNames('chat-input', 'chat-input-blocked', 'chat-input-notice', className)}
       data-chat-composer-status={notice.kind}
       role="group"
-      aria-label={notice.kind === 'archived' ? 'Chat archived' : 'Chat read only'}
+      aria-label={notice.kind === 'archived' ? labels.chatArchived : labels.chatReadOnly}
     >
       <div class="chat-input-blocked-message">
         {#if notice.kind === 'archived'}
@@ -1545,37 +1668,60 @@
     {#if drawerStatus !== undefined}
       <!-- A drawer above the box: it pushes the transcript up and leaves the composer's bottom
            edge where it was. -->
-      <div
-        id={drawerId}
-        class="chat-input-drawer"
-        data-chat-composer-drawer={drawerStatus.kind}
-        role="group"
-        aria-label={drawerStatus.kind === 'offline' ? 'Offline' : 'Draft restored'}
-      >
-        {#if drawerStatus.kind === 'offline'}
-          <WifiOff class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
+      {#snippet drawerIcon()}
+        {#if drawerStatus?.kind === 'reconnecting'}
+          <Spinner size="sm" label={statusText ?? ''} class="chat-input-drawer-glyph" />
+        {:else if drawerTone === 'warning' || drawerTone === 'danger'}
+          <TriangleAlert class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
         {:else}
           <Info class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
         {/if}
-        <p class="chat-input-drawer-text" dir="auto">{statusText}</p>
-        {#if drawerStatus.kind === 'draft-restored'}
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            class="chat-input-drawer-action"
-            label={COMPOSER_DISCARD_DRAFT_LABEL}
-            onclick={discardRestoredDraft}
-          />
+      {/snippet}
+      <Callout
+        id={drawerId}
+        class="chat-input-drawer"
+        data-chat-composer-drawer={drawerStatus.kind}
+        variant={drawerTone}
+        semantic="note"
+        icon={drawerIcon}
+        aria-label={drawerStatus.kind === 'offline'
+          ? labels.offline
+          : drawerStatus.kind === 'draft-restored'
+            ? labels.draftRestored
+            : labels.notice}
+      >
+        {statusText}
+        {#if drawerStatus.kind === 'drawer-notice' && drawerStatus.sendDisabledReason !== undefined}
+          <span id={drawerReasonId} class="chat-input-drawer-reason" dir="auto">
+            {drawerStatus.sendDisabledReason}
+          </span>
         {/if}
-      </div>
+        {#snippet action()}
+          {#if drawerStatus.kind === 'draft-restored'}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              class="chat-input-drawer-action"
+              label={COMPOSER_DISCARD_DRAFT_LABEL}
+              onclick={discardRestoredDraft}
+            />
+          {:else if drawerStatus.kind === 'drawer-notice' && drawerStatus.action !== undefined}
+            {@render noticeAction(drawerStatus.action, 'secondary')}
+          {/if}
+        {/snippet}
+      </Callout>
     {/if}
     <form
       bind:this={formElement}
       class={classNames('chat-input', isDragOver && 'chat-input-dragover', className)}
       data-compact={compact || undefined}
       data-controls-folded={folded || undefined}
-      data-ready={(canSubmit && !showStopButton) || undefined}
+      data-ready={(canSubmit && !offline && !showStopButton) || undefined}
+      data-queueing={queueing || undefined}
+      data-single-row={!allowAttachments && controls === undefined && toolbar === undefined
+        ? ''
+        : undefined}
       method="POST"
       {action}
       onsubmit={handleSubmit}
@@ -1589,14 +1735,14 @@
       ondragleave={handleDragLeave}
       oncompositionstart={handleCompositionStart}
       oncompositionend={handleCompositionEnd}
-      aria-label="Chat message composer"
+      aria-label={labels.composer}
       aria-busy={sending || starting !== undefined || undefined}
       {...rest}
     >
       {#if isDragOver}
         <div class="chat-input-drop-overlay" aria-hidden="true">
           <Paperclip class="cinder-icon-md" />
-          <span>Drop files to attach</span>
+          <span>{labels.dropFiles}</span>
         </div>
       {/if}
       <!-- Hidden input for form action mode -->
@@ -1610,7 +1756,7 @@
 
       {#if formattingToolbar}
         <div class="chat-input-format">
-          <div class="chat-input-toolbar" role="toolbar" aria-label="Formatting">
+          <div class="chat-input-toolbar" role="toolbar" aria-label={labels.formatting}>
             {#each FORMATTING_BUTTONS as button (button.format)}
               <Button
                 type="button"
@@ -1629,6 +1775,95 @@
           <p class="chat-input-format-hint" aria-hidden="true">
             {#each FORMATTING_HINTS as shortcut (shortcut)}<span>{shortcut}</span>{/each}
           </p>
+        </div>
+      {/if}
+
+      <!-- Attachments: a count over a tile each. A failed file says why beside its tile, with Retry
+           when its upload can be tried again, and every tile is removed with the same cross. -->
+      {#if attachments.length > 0}
+        <div class="chat-input-attachment-shelf">
+          <p class="chat-input-attachment-summary" data-chat-attachment-summary="">
+            <span class="chat-input-attachment-count"
+              >{attachmentCountText(attachments.length)}</span
+            >
+            {#if hiddenAttachmentCount > 0}
+              <Button
+                type="button"
+                variant="ghost-accent"
+                size="xs"
+                quiet
+                class="chat-input-attachment-more"
+                aria-controls={attachmentListId}
+                aria-expanded="false"
+                onclick={() => (attachmentsExpanded = true)}
+              >
+                {labels.moreAttachments(hiddenAttachmentCount)}
+              </Button>
+            {/if}
+          </p>
+          <ul
+            id={attachmentListId}
+            class="chat-input-attachments"
+            {@attach wholeAttachmentRows}
+            aria-label={labels.attachedFiles}
+            data-expanded={attachmentsExpanded || undefined}
+          >
+            {#each shownAttachments as attachment (attachment.id)}
+              <li
+                class="chat-input-attachment-wrapper"
+                data-attachment-state={attachment.status}
+                data-attachment-id={attachment.id}
+              >
+                <ChatAttachmentPreview
+                  {attachment}
+                  error={attachment.error}
+                  errorId={attachment.id}
+                  {labels}
+                >
+                  {#snippet action()}
+                    {#if canRetry(attachment) && uploadAttachment !== undefined}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        quiet
+                        iconOnly
+                        class="chat-input-attachment-retry"
+                        label={labels.retryAttachment}
+                        aria-label={labels.retryAttachmentAccessible(attachment.file.name)}
+                        onclick={() => retryAttachment(attachment.id)}
+                      >
+                        <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
+                      </Button>
+                    {/if}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      quiet
+                      iconOnly
+                      class="chat-input-attachment-remove"
+                      label={labels.removeAttachment}
+                      aria-label={labels.removeAttachmentAccessible(attachment.file.name)}
+                      onclick={() => removeAttachment(attachment.id)}
+                    >
+                      <X class="cinder-icon-xs" aria-hidden="true" />
+                    </Button>
+                  {/snippet}
+                </ChatAttachmentPreview>
+              </li>
+            {/each}
+          </ul>
+          {#if attachmentsExpanded && hiddenListedAttachments > 0}
+            <p class="chat-input-attachment-scroll-cue" aria-hidden="true">
+              {labels.moreAttachments(hiddenListedAttachments)}
+            </p>
+          {/if}
+          {#if attentionCount > 0}
+            <p id={attachmentReasonId} class="chat-input-attachment-reason">
+              {labels.attachmentBlockingReason(attentionCount)}
+            </p>
+          {/if}
         </div>
       {/if}
 
@@ -1666,69 +1901,6 @@
           rows="1"></textarea>
       </div>
 
-      <!-- Attachments: a count over a tile each. A failed file says why beside its tile, with Retry
-           when its upload can be tried again, and every tile is removed with the same cross. -->
-      {#if attachments.length > 0}
-        <div class="chat-input-attachment-shelf">
-          <p class="chat-input-attachment-summary" data-chat-attachment-summary="">
-            <span class="chat-input-attachment-count"
-              >{attachmentCountText(attachments.length)}</span
-            >
-          </p>
-          <ul
-            id={attachmentListId}
-            class="chat-input-attachments"
-            aria-label="Attached files"
-            data-capped={hiddenAttachmentCount > 0 || undefined}
-          >
-            {#each shownAttachments as attachment (attachment.id)}
-              <li
-                class="chat-input-attachment-wrapper"
-                data-attachment-state={attachment.status}
-                data-attachment-id={attachment.id}
-              >
-                <ChatAttachmentPreview {attachment}>
-                  {#snippet action()}
-                    {#if canRetry(attachment) && uploadAttachment !== undefined}
-                      <button
-                        type="button"
-                        class="chat-input-attachment-retry"
-                        onclick={() => retryAttachment(attachment.id)}
-                        aria-label={`Retry ${attachment.file.name}`}>Retry</button
-                      >
-                    {/if}
-                    <button
-                      type="button"
-                      class="chat-input-attachment-remove"
-                      onclick={() => removeAttachment(attachment.id)}
-                      aria-label={`Remove ${attachment.file.name}`}
-                    >
-                      <X class="cinder-icon-xs" />
-                    </button>
-                  {/snippet}
-                </ChatAttachmentPreview>
-                {#if attachment.status === 'error'}
-                  <span
-                    class="chat-input-attachment-error"
-                    data-attachment-error={attachment.id}
-                    dir="auto">{attachment.error ?? 'Upload failed. Try again, or remove it.'}</span
-                  >
-                {/if}
-              </li>
-            {/each}
-          </ul>
-          {#if hiddenAttachmentCount > 0}
-            <button
-              type="button"
-              class="chat-input-attachment-more"
-              aria-controls={attachmentListId}
-              aria-expanded="false"
-              onclick={() => (attachmentsExpanded = true)}>{hiddenAttachmentCount} more</button
-            >
-          {/if}
-        </div>
-      {/if}
-
       <!-- Footer with actions -->
       <div class="chat-input-footer">
         <div class="chat-input-footer-left" bind:this={footerLeftElement}>
@@ -1741,7 +1913,7 @@
               multiple
               class="cinder-sr-only"
               onchange={handleFileSelect}
-              aria-label="Attach files"
+              aria-label={labels.attachFiles}
               aria-hidden="true"
               tabindex={-1}
             />
@@ -1749,9 +1921,13 @@
               type="button"
               variant="ghost"
               size="sm"
+              quiet
+              iconOnly
+              class="chat-input-attach"
+              label={labels.attachFile}
               onclick={() => fileInputRef?.click()}
               disabled={disabled || paused || sendBlocked}
-              aria-label="Attach file"
+              aria-label={labels.attachFile}
             >
               <Paperclip class="cinder-icon-sm" />
             </Button>
@@ -1767,7 +1943,11 @@
           {#if runElapsed !== undefined}
             <!-- The run toolbar: the word and the clock are their own elements, never joined by a
                  separator glyph. -->
-            <span class="chat-input-running" data-chat-running="">
+            <span
+              class={showStopButton || showSideStopButton ? 'cinder-sr-only' : 'chat-input-running'}
+              data-chat-running=""
+              aria-live="polite"
+            >
               <span class="chat-input-running-label">{COMPOSER_RUNNING_LABEL}</span>
               <span class="chat-input-running-time">{runElapsed}</span>
             </span>
@@ -1803,18 +1983,19 @@
               variant="secondary"
               size="sm"
               class="chat-input-send"
+              iconOnly
               data-chat-side-stop=""
               data-stop=""
               {@attach holdButton((element) => (stopButtonRef = element))}
-              label="Stop"
-              aria-label="Stop generating"
+              label={labels.stop}
+              aria-label={labels.stopGenerating}
               aria-describedby={shortcutDescriptionId}
               onclick={() => onstop?.()}
             >
               {#snippet leadingIcon()}<Square class="cinder-icon-sm" />{/snippet}
             </Button>
             <Tooltip
-              text="Stop generating"
+              text={labels.stopGenerating}
               class="chat-input-tooltip"
               placement="top"
               triggerRef={stopButtonRef}
@@ -1823,6 +2004,9 @@
 
           {#if shownPausedReason !== undefined}
             <span id={pausedReasonId} class="chat-input-paused-reason">{shownPausedReason}</span>
+          {/if}
+          {#if queued && queueNote !== undefined}
+            <span id={queueNoteId} class="cinder-sr-only">{queueNote}</span>
           {/if}
 
           <!-- One Send/Stop/Answer button stays mounted, so focus is never dropped as the run starts and ends. -->
@@ -1835,7 +2019,8 @@
             {@attach holdButton((element) => (sendButtonRef = element))}
             data-stop={showStopButton ? '' : undefined}
             disabled={showStopButton ? false : !canSubmit}
-            label={showStopButton ? 'Stop' : sendLabel}
+            {...sendButtonIconOnly ? { iconOnly: true as const } : { iconOnly: false as const }}
+            label={showStopButton ? labels.stop : sendLabel}
             aria-label={sendAccessibleName}
             aria-describedby={[shortcutDescriptionId, ...sendReasonIds].join(' ')}
             onclick={handleSendButtonClick}
@@ -1890,15 +2075,9 @@
     </form>
   {/if}
   {#if blocked === undefined && notice === undefined}
-    {#if attentionCount > 0}
-      <!-- Why Send is off while files need attention: under the composer, and named by Send. -->
-      <p id={attachmentReasonId} class="chat-input-attachment-reason">
-        {attachmentBlockingReason(attentionCount)}
-      </p>
-    {/if}
     {#if statusText && drawerStatus === undefined}
       <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
-    {:else if hintText !== undefined}
+    {:else if hintText !== undefined && status?.kind !== 'reconnecting'}
       <p class="chat-input-hint" aria-hidden="true" data-chat-keyboard-hint={keyboardHint}>
         {hintText}
       </p>
@@ -1924,8 +2103,8 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: var(--cinder-space-2);
-    padding: var(--cinder-space-2);
+    gap: var(--cinder-space-0-5, 0.125rem);
+    padding: var(--cinder-space-2) var(--cinder-space-2) var(--cinder-space-2) 0;
   }
 
   .chat-input[data-compact] .chat-input-footer,
@@ -1938,21 +2117,54 @@
     display: none;
   }
 
+  /* One layout in every state: with nothing in the toolbar but Send, the editor and Send share one
+   * row. A second row appears only when the toolbar holds more than Send; a wrapped line grows
+   * the editor inside the same row. */
+  .chat-input[data-single-row]:not([data-compact]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding-inline-end: var(--cinder-space-2);
+  }
+
+  .chat-input[data-single-row]:not([data-compact]) .chat-input-editor-container {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .chat-input[data-single-row]:not([data-compact]) .chat-input-footer {
+    display: contents;
+  }
+
+  .chat-input[data-single-row]:not([data-compact]) .chat-input-footer-left {
+    display: none;
+  }
+
+  .chat-input[data-single-row]:not([data-compact]) .chat-input-footer-right {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
   .chat-input {
     position: relative;
     container-type: inline-size;
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-0-5, 0.125rem);
     background: var(--cinder-control-background);
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-space-3);
+    padding: var(--cinder-space-0-5, 0.125rem) 0;
+    padding-block-end: var(--cinder-space-0-5, 0.125rem);
     transition: border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .chat-input:focus-within {
+  .chat-input:has(.chat-input-editor:focus) {
     border-color: var(--cinder-accent-solid);
+  }
+
+  .chat-input:has(.chat-input-editor:focus):not([data-ready]) {
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
 
   /* Ready to send: the accent border with a 3 px ring around it, and Send filled with the accent. */
@@ -1961,43 +2173,16 @@
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--cinder-accent-solid) 25%, transparent);
   }
 
-  /* A drawer above the box (offline, a restored draft): it takes its height from the transcript
-   * above, so the composer's bottom edge stays where it was. */
-  .chat-input-drawer {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised);
-    color: var(--cinder-text-default);
+  /* A notice above the box (offline, a restored draft, a blocking reason) is Cinder's Callout, one
+   * layout for every tone. It starts on the composer's left edge and takes its height from the
+   * transcript above, so the composer's bottom edge stays where it was. */
+  :global(.chat-input-drawer) {
+    padding-inline: var(--cinder-space-3);
     font-size: var(--cinder-text-sm);
   }
 
-  .chat-input-drawer[data-chat-composer-drawer='offline'] {
-    border-color: var(--cinder-status-warning-border);
-    background: var(--cinder-status-warning-background);
-    color: var(--cinder-status-warning-text);
-  }
-
-  .chat-input-drawer :global(.chat-input-drawer-glyph) {
+  :global(.chat-input-drawer .chat-input-drawer-glyph) {
     flex: none;
-  }
-
-  .chat-input-drawer-text {
-    flex: 1 1 14rem;
-    min-inline-size: 0;
-    margin: 0;
-    line-height: var(--cinder-leading-snug);
-    text-align: start;
-  }
-
-  @media (pointer: coarse) {
-    .chat-input-drawer :global(.chat-input-drawer-action) {
-      min-block-size: var(--cinder-touch-target-min);
-    }
   }
 
   /* The run toolbar: Running and the clock, each its own element, in muted text. */
@@ -2042,15 +2227,21 @@
   .chat-input-attachment-shelf {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1-5);
+    gap: var(--cinder-space-1);
     padding-inline: var(--cinder-space-3);
   }
 
   .chat-input-attachment-summary {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0 var(--cinder-space-2);
     margin: 0;
+    /* The header of a bordered box: the same inset and minimum height with or without a trailing
+     * control, so "5 files" and "5 files + more" are one height. */
+    padding-block: var(--cinder-space-2);
+    min-block-size: 1.5rem;
+    box-sizing: content-box;
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
     text-align: start;
@@ -2062,20 +2253,67 @@
   .chat-input-attachments {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: var(--cinder-space-2);
+    align-items: stretch;
+    gap: var(--cinder-space-1);
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
-  .chat-input-attachments:not([data-capped]) {
+  .chat-input-attachments[data-expanded] {
     max-block-size: 12rem;
     overflow-y: auto;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--cinder-scrollbar-thumb) var(--cinder-scrollbar-track);
   }
 
-  /* On a phone each file is a row the width of the composer, and its name wraps rather than being
-   * cut, so the person can tell which file failed and which one they are removing. */
+  /* The count of files still below an opened list, at the start edge like the question dock's. */
+  .chat-input-attachment-scroll-cue {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-tight, 1.25);
+    color: var(--cinder-text-muted);
+    text-align: start;
+  }
+
+  /* A row's Remove or Retry reaches 44px by a hit area that overhangs its row. A later row paints
+   * over an earlier one's overhang, and the scrolling list clips the first and last, so on a
+   * coarse pointer the rows stand a hit-area overhang apart and the list pads its ends. */
+  @media (any-pointer: coarse) {
+    .chat-input-attachments {
+      gap: var(--cinder-space-2);
+    }
+
+    /* The end rows' overhang room is padding the list takes back with a negative margin, so it
+     * costs no layout: the header and the hint stand where the collapsed shelf puts them. */
+    .chat-input-attachments[data-expanded] {
+      box-sizing: border-box;
+      padding-block: var(--cinder-space-2);
+      margin-block: calc(var(--cinder-space-2) * -1);
+      /* A row scrolled to either edge stops one padding short of it, so its Remove or Retry hit
+       * area is not clipped there either. */
+      scroll-padding-block: var(--cinder-space-2);
+    }
+  }
+
+  .chat-input-attachments[data-expanded]::-webkit-scrollbar {
+    inline-size: var(--cinder-scrollbar-size);
+  }
+
+  .chat-input-attachments[data-expanded]::-webkit-scrollbar-track {
+    background: var(--cinder-scrollbar-track);
+  }
+
+  .chat-input-attachments[data-expanded]::-webkit-scrollbar-thumb {
+    background: var(--cinder-scrollbar-thumb);
+    border-radius: var(--cinder-radius-full);
+  }
+
+  /* On a phone each file is a row the width of the composer. Its name stays on one line: the
+   * script has already shortened it in the middle to fit that line, so the extension shows and the
+   * person can tell which file failed. A name allowed to wrap would, on any overshoot (a font that
+   * loads late, a fraction of a pixel), take a second line and move the row's controls. */
   @container (max-inline-size: 30rem) {
     .chat-input-attachments {
       align-items: stretch;
@@ -2087,53 +2325,32 @@
 
     .chat-input-attachment-wrapper :global(.chat-attachment-preview-name) {
       display: block;
-      flex: 1 1 auto;
-      white-space: normal;
-      overflow-wrap: anywhere;
+      flex: 1 1 0;
+      white-space: nowrap;
     }
 
     .chat-input-attachment-wrapper :global(.chat-attachment-preview-stem) {
       overflow: visible;
     }
-  }
 
-  .chat-input-attachment-more {
-    align-self: flex-start;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--cinder-accent-text);
-    font: inherit;
-    font-size: var(--cinder-text-xs);
-    cursor: pointer;
-  }
-
-  /* Retry sits before the cross on a tile whose upload failed. */
-  .chat-input-attachment-retry {
-    flex: none;
-    min-block-size: 1.5rem;
-    padding: 0 var(--cinder-space-1);
-    border: none;
-    border-radius: var(--cinder-radius-sm);
-    background: transparent;
-    color: var(--cinder-accent-text);
-    font: inherit;
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    cursor: pointer;
-  }
-
-  @media (any-pointer: coarse) {
-    .chat-input-attachment-retry,
-    .chat-input-attachment-more {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
+    .chat-input-attachment-wrapper :global(.chat-attachment-preview-error) {
+      order: 3;
     }
+
+    .chat-input-attachment-wrapper :global(.chat-input-attachment-retry),
+    .chat-input-attachment-wrapper :global(.chat-input-attachment-remove) {
+      order: 2;
+    }
+  }
+
+  .chat-input-attachment-summary :global(.chat-input-attachment-more) {
+    align-self: center;
   }
 
   /* Why Send is off while files need attention, under the composer. */
   .chat-input-attachment-reason {
     margin: 0;
-    padding-inline: var(--cinder-space-1);
+    /* The shelf's own inline padding already puts this on the placeholder's edge. */
     font-size: var(--cinder-text-xs);
     color: var(--cinder-status-danger-text);
   }
@@ -2142,87 +2359,41 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
+    gap: 0;
     min-inline-size: 0;
+    inline-size: 100%;
     max-inline-size: 100%;
-  }
-
-  /* The remove control sits at the end of the chip, a touch-sized target around a small cross. */
-  .chat-input-attachment-remove {
-    position: relative;
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    min-inline-size: 1.5rem;
-    min-block-size: 1.5rem;
-    margin-inline-end: calc(var(--cinder-space-1) * -1);
-    padding: 0;
-    border: none;
-    border-radius: var(--cinder-radius-sm);
-    background: transparent;
-    color: var(--cinder-text-muted);
-    cursor: pointer;
-  }
-
-  @media (any-pointer: coarse) {
-    .chat-input-attachment-remove {
-      min-inline-size: var(--cinder-touch-target-min);
-      min-block-size: var(--cinder-touch-target-min);
-    }
-  }
-
-  @media (hover: hover) {
-    .chat-input-attachment-remove:hover {
-      color: var(--cinder-text-default);
-    }
-    .chat-input-attachment-retry:hover,
-    .chat-input-attachment-more:hover {
-      text-decoration: underline;
-    }
-  }
-
-  .chat-input-attachment-remove:focus-visible {
-    outline: none;
-  }
-
-  .chat-input-attachment-remove:focus-visible::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: inset 0 0 0 var(--cinder-ring-width)
-      var(--_cinder-chat-input-attachment-remove-ring, var(--cinder-ring-color));
-    pointer-events: none;
-  }
-
-  @media (forced-colors: active) {
-    .chat-input-attachment-remove:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: var(--cinder-ring-offset);
-    }
-    .chat-input-attachment-remove:focus-visible::before {
-      box-shadow: none;
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: var(--cinder-ring-offset);
-    }
   }
 
   /* Editor container */
   .chat-input-editor-container {
-    min-height: 2.5rem;
+    --_chat-input-row-height: var(--_cinder-painted-height-sm, 1.75rem);
+    min-block-size: var(--_chat-input-row-height);
   }
 
+  /* A textarea cannot carry a hit-area pseudo-element, so on a coarse pointer the editor row itself
+   * is a touch target tall. Block padding keeps one line on the centre line Send and Stop share,
+   * because the markdown overlay and the editor both derive their padding from this height. */
+  @media (any-pointer: coarse) {
+    .chat-input-editor-container {
+      --_chat-input-row-height: var(--cinder-touch-target-min, 44px);
+    }
+  }
+
+  /* The first line shares a centre with Send or Stop: the editor is as tall as that button and its
+   * block padding centres one line in it. */
   .chat-input-editor {
     display: block;
     width: 100%;
-    min-height: 2.5rem;
+    min-block-size: var(--_chat-input-row-height);
     max-height: min(12rem, 35dvh);
-    padding: var(--cinder-space-1) var(--cinder-space-3);
+    padding-block: calc((var(--_chat-input-row-height) - 1lh) / 2);
+    padding-inline: var(--cinder-space-3);
     resize: none;
     field-sizing: content;
     overflow-y: auto;
     font: inherit;
+    font-size: var(--cinder-text-base);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
     background: transparent;
@@ -2273,8 +2444,10 @@
     position: absolute;
     inset: 0;
     overflow: hidden;
-    padding: var(--cinder-space-1) var(--cinder-space-3);
+    padding-block: calc((var(--_chat-input-row-height) - 1lh) / 2);
+    padding-inline: var(--cinder-space-3);
     font: inherit;
+    font-size: var(--cinder-text-base);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
     white-space: pre-wrap;
@@ -2310,7 +2483,7 @@
     display: flex;
     align-items: center;
     min-inline-size: 0;
-    margin-inline-start: calc(var(--cinder-space-2) * -1);
+    margin-inline-start: 0;
   }
 
   /* The formatting row: the toolbar at the left, the words of its shortcuts at the right. It is
@@ -2320,6 +2493,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-2) var(--cinder-space-3);
     padding-block-end: var(--cinder-space-1);
     border-block-end: 1px solid var(--cinder-border-muted);
   }
@@ -2382,10 +2556,15 @@
     text-align: center;
   }
 
+  /* The default keyboard reminder is available through the send button's accessible description;
+   * keep the composer footer focused on the draft and controls. Host-provided hints remain visible. */
+  .chat-input-hint[data-chat-keyboard-hint] {
+    display: none;
+  }
+
   /* A touch-only device has no keys to press: the default keyboard hint and the shortcuts' words are
    * not drawn there. A host's own hint is its own words and stays. */
   @media (hover: none) and (pointer: coarse) {
-    .chat-input-hint[data-chat-keyboard-hint],
     .chat-input-format-hint {
       display: none;
     }
@@ -2409,7 +2588,7 @@
    * only the actions leave for a line of their own. */
   .chat-input-blocked-message {
     display: flex;
-    flex: 1 1 9rem;
+    flex: 1 1 6rem;
     align-items: flex-start;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
@@ -2441,7 +2620,35 @@
     color: var(--cinder-text-default);
   }
 
+  /* Archived/read-only status is a single neutral bar: keep the lock and its words together at
+   * the logical start, and keep the request action at the logical end. The compact faces still
+   * retain their coarse-pointer hit height without forcing a second full-width action row. */
+  .chat-input-notice {
+    flex-wrap: wrap;
+  }
+
+  /* The words break between words only: the reason takes what the actions leave, never narrower
+   * than its longest word, and the actions drop to their own line before it would. */
+  .chat-input-notice .chat-input-blocked-message {
+    flex: 1 1 0;
+    align-items: center;
+  }
+
+  .chat-input-notice .chat-input-blocked-reason {
+    overflow-wrap: normal;
+    word-break: normal;
+    min-inline-size: min-content;
+  }
+
+  .chat-input-notice .chat-input-blocked-actions {
+    flex: none;
+    margin-inline-start: 0;
+  }
+
   .chat-input-notice-label {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 1.5rem;
     margin: 0;
     padding: 0;
     border: 0;
@@ -2451,6 +2658,21 @@
     text-decoration: underline dotted;
     text-underline-offset: 0.2em;
     cursor: help;
+  }
+
+  /* The label paints 24px tall; on a coarse pointer a pseudo-element that takes no layout lifts its
+   * hit area to 44px, so a tap that shows who granted access lands on it and not on the bar. */
+  @media (any-pointer: coarse) {
+    .chat-input-notice-label {
+      position: relative;
+    }
+
+    .chat-input-notice-label::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min, 44px)) / 2));
+      inset-inline: 0;
+    }
   }
 
   .chat-input-blocked-actions {
@@ -2473,13 +2695,14 @@
 
     .chat-input-blocked-actions :global(.cinder-button) {
       flex: 1 1 auto;
-      min-block-size: var(--cinder-touch-target-min);
     }
-  }
 
-  @media (any-pointer: coarse) {
-    .chat-input-blocked-actions :global(.cinder-button) {
-      min-block-size: var(--cinder-touch-target-min);
+    .chat-input-notice .chat-input-blocked-actions {
+      flex: none;
+    }
+
+    .chat-input-notice .chat-input-blocked-actions :global(.cinder-button) {
+      flex: 0 0 auto;
     }
   }
 
@@ -2499,6 +2722,10 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-2);
+    /* The two-row composer's action row stands as far from the bottom border as from the sides:
+     * the composer's own 2px block padding plus this makes the inline inset. */
+    padding-block-end: calc(var(--cinder-space-2) - var(--cinder-space-0-5, 0.125rem));
   }
 
   .chat-input-footer-left,
@@ -2506,6 +2733,22 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
+  }
+
+  /* Attach is a 28px rounded square, like the message actions, sitting inside the footer's inset
+   * (at least 4px from the composer's edge), with the same quiet ring as they have. */
+  .chat-input-footer-left :global(.chat-input-attach) {
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    min-inline-size: 0;
+    min-block-size: 0;
+    padding: 0;
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .chat-input-footer-left :global(.chat-input-attach:focus-visible) {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   /* The row never wraps: the host's selects shrink (a ghost select ellipsizes its value) or fold
@@ -2520,21 +2763,17 @@
     flex: none;
   }
 
-  @media (pointer: coarse) {
-    :global(.chat-input-tooltip.cinder-tooltip) {
-      display: none !important;
-    }
-  }
-
-  /* Send, Answer and Stop are secondary Cinder buttons with an icon and a word. Disabled is
-   * Cinder's own quiet look; Stop keeps a faint danger border so it reads as the one way out. */
-  .chat-input-footer-right :global(.chat-input-send[data-stop]) {
-    border-color: var(--cinder-status-danger-border);
-  }
-
-  /* Stop is outlined, with a filled square beside its word. */
+  /* Send, Queue, Answer and Stop are compact Cinder buttons. Their labels remain available to
+   * assistive technology and the tooltip names the icon-only face. On coarse pointers the tooltip
+   * remains available from keyboard focus; suppressing its panel would leave the focused Stop
+   * control without the visual name the touch review requires. */
+  /* Stop is neutral and outlined, with a filled square icon. */
   .chat-input-footer-right :global(.chat-input-send[data-stop] svg) {
     fill: currentColor;
+  }
+
+  .chat-input-footer-right :global(.chat-input-send[data-stop]) {
+    border-color: var(--cinder-control-border);
   }
 
   /* An empty composer's Send is outlined and muted, with no grey fill. */
@@ -2544,21 +2783,9 @@
     color: var(--cinder-text-muted);
   }
 
-  /* On a phone-width composer, and wherever the primary pointer is a finger, the footer's controls
-   * are touch targets. */
-  @container (max-inline-size: 28rem) {
-    .chat-input-footer :global(.cinder-button) {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-    }
-  }
-
+  /* The footer's controls are painted compact: Cinder's Button reaches 44px by a hit area that
+   * takes no layout, and its focus ring wraps the painted face (Attach, Send, Stop alike). */
   @media (any-pointer: coarse) {
-    .chat-input-footer :global(.cinder-button) {
-      min-block-size: var(--cinder-touch-target-min);
-      min-inline-size: var(--cinder-touch-target-min);
-    }
-
     /* Send and Stop sit side by side once a follow-up is typed, so their hit areas must not touch. */
     .chat-input-footer-right {
       gap: var(--cinder-space-3);
@@ -2580,16 +2807,9 @@
     opacity: 0.75;
   }
 
-  /* Error */
-  .chat-input-attachment-error {
-    min-inline-size: 0;
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    color: var(--cinder-status-danger-text);
-    overflow-wrap: anywhere;
-  }
-
   .chat-input-error {
     margin: 0;
+    padding-inline: var(--cinder-space-3);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     color: var(--cinder-status-danger-text);
   }

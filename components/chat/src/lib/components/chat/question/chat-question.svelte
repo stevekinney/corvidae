@@ -1,6 +1,8 @@
 <script lang="ts" module>
   import type { AnswerSendResult } from './answer-hold.svelte.ts';
   import type { ChatQuestionIssue, QuestionAnswerRecord } from './question-answer.ts';
+  import type { ChatLabels } from '../chat-labels.ts';
+  import { resolveChatLabels } from '../chat-labels.ts';
 
   /**
    * The words of a one-click answer while it is held (see `undoMilliseconds`) and after it is sent.
@@ -73,6 +75,7 @@
     externalSubmit?: boolean | undefined;
     /** Called when the person chooses Change on an answered question. */
     onChange?: (() => void) | undefined;
+    labels?: Partial<ChatLabels> | undefined;
   };
 </script>
 
@@ -82,6 +85,8 @@
     Check,
     Checkbox,
     CheckboxGroup,
+    ChoiceGrid,
+    ChoiceGridItem,
     FileUpload,
     Input,
     NumberInput,
@@ -90,6 +95,7 @@
   } from '@lostgradient/cinder';
   import type { FileUploadEntry } from '@lostgradient/cinder';
 
+  import { formatCountdown } from '../../../utilities/format-countdown.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { AnswerHold } from './answer-hold.svelte.ts';
   import {
@@ -126,10 +132,21 @@
     onHoldChange,
     holdCopy,
     externalSubmit = false,
+    labels: labelOverrides,
   }: ChatQuestionProps = $props();
+
+  const labels = $derived(resolveChatLabels(labelOverrides));
 
   const kind = $derived(classifyQuestion(schema));
   const choices = $derived(choicesOf(schema));
+  const selectableChoices = $derived(
+    kind === 'boolean'
+      ? [
+          { value: true, label: labels.yes },
+          { value: false, label: labels.no },
+        ]
+      : choices,
+  );
   const steps = $derived(ratingStepsOf(schema));
   const bounds = $derived(ratingBounds(schema));
   const errorText = $derived(issues.map((issue) => issue.message).join(' '));
@@ -146,7 +163,7 @@
   const announcer = useAnnouncer();
   const copy = $derived<ChatQuestionHoldCopy>({
     held: (label) => `Answered ${label}`,
-    undo: (seconds) => `Undo (${seconds} s)`,
+    undo: (seconds) => `Undo (${formatCountdown(seconds)})`,
     sent: (label) => `You answered: ${label}`,
     ...holdCopy,
   });
@@ -221,7 +238,7 @@
     hold.undo();
     if (typeof picked !== 'number') return;
     queueMicrotask(() =>
-      root?.querySelectorAll<HTMLElement>('.chat-question-choices button')[picked]?.focus(),
+      root?.querySelectorAll<HTMLElement>('.chat-question-choices [role="radio"]')[picked]?.focus(),
     );
   }
 
@@ -246,7 +263,9 @@
   $effect(() => {
     const nowBusy = busy;
     const refused = failed || issues.length > 0;
-    if (wasBusy && !nowBusy && refused) hold.reopen();
+    if (wasBusy && !nowBusy && refused) {
+      hold.reopen();
+    }
     wasBusy = nowBusy;
   });
 
@@ -258,6 +277,7 @@
   let timeText = $state('');
   let numberDraft = $state<number | null>(null);
   let picked = $state<unknown[]>([]);
+  const choiceSelection = $derived(hold.pick === undefined ? null : String(hold.pick));
   let rating = $state<unknown>(undefined);
   let files = $state<FileUploadEntry[]>([]);
   let uploadError = $state<string | undefined>();
@@ -338,6 +358,16 @@
   const mediaType = $derived(acceptedMediaType(schema));
   const fileSizeLimit = $derived(maxFileSize ?? 10 * 1024 * 1024);
 
+  // ChoiceGrid owns the radio semantics and roving keyboard focus. Use its function binding setter
+  // as the user-selection boundary so hold reopen/phase changes cannot replay an old selection.
+  function selectChoice(selection: string | null): void {
+    if (selection === null || busy || hold.phase !== 'open') return;
+    const index = Number(selection);
+    if (!Number.isInteger(index)) return;
+    const choice = selectableChoices[index];
+    if (choice !== undefined) pickAnswer(choice.value, choice.label, index);
+  }
+
   async function acceptFile(accepted: File[]): Promise<void> {
     const file = accepted[0];
     if (file === undefined || uploadFile === undefined) return;
@@ -374,49 +404,43 @@
   bind:this={root}
 >
   {#if answer !== undefined}
-    <p class="chat-question-answer" role="status">
-      <span class="chat-question-answer-label">You answered</span>
-      <span class="chat-question-answer-value" data-question-answer>{answer.summary}</span>
-    </p>
-    {#if onChange !== undefined}
-      <Button type="button" variant="ghost" size="sm" onclick={onChange}>Change</Button>
-    {/if}
+    <div class="chat-question-receipt">
+      <p class="chat-question-answer" role="status">
+        <span class="chat-question-answer-label">{labels.youAnswered}</span>
+        <span class="chat-question-answer-value" data-question-answer>{answer.summary}</span>
+      </p>
+      {#if onChange !== undefined}
+        <Button type="button" variant="secondary" size="sm" onclick={onChange}
+          >{labels.change}</Button
+        >
+      {/if}
+    </div>
   {:else}
     {#if kind === 'choice' || kind === 'choice-other'}
-      <div class="chat-question-choices" role="group" aria-label={title}>
+      <ChoiceGrid
+        class="chat-question-choices"
+        variant="card"
+        size="sm"
+        columns={1}
+        ariaLabel={title}
+        bind:value={() => choiceSelection, selectChoice}
+      >
         {#each choices as choice, index (String(choice.value))}
-          {@const chosen = holding && hold.pick === index}
-          <Button
-            type="button"
-            variant="secondary"
-            class="chat-question-choice"
-            data-selected={chosen ? '' : undefined}
-            aria-pressed={holding ? chosen : undefined}
-            aria-disabled={holding && !chosen ? 'true' : undefined}
-            disabled={busy && !holding}
-            aria-label={choice.description === undefined ? undefined : choice.label}
-            aria-describedby={choice.description === undefined ||
-            (holding && holdCopy?.selected !== undefined)
-              ? undefined
-              : `${id}-choice-${index}-description`}
-            onclick={() => pickAnswer(choice.value, choice.label, index)}
+          {@const description =
+            holding && holdCopy?.selected !== undefined
+              ? String(index) === choiceSelection
+                ? holdCopy.selected
+                : undefined
+              : choice.description}
+          <ChoiceGridItem
+            value={String(index)}
+            disabled={busy || holding}
+            {...description === undefined ? {} : { description }}
           >
-            <span class="chat-question-choice-text">
-              <span class="chat-question-choice-label">{choice.label}</span>
-              {#if holding && holdCopy?.selected !== undefined}
-                {#if chosen}
-                  <span class="chat-question-choice-description">{holdCopy.selected}</span>
-                {/if}
-              {:else if choice.description !== undefined}
-                <span
-                  class="chat-question-choice-description"
-                  id={`${id}-choice-${index}-description`}>{choice.description}</span
-                >
-              {/if}
-            </span>
-          </Button>
+            <span class="chat-question-choice-label" dir="auto">{choice.label}</span>
+          </ChoiceGridItem>
         {/each}
-      </div>
+      </ChoiceGrid>
       {@render holdStatus()}
       {#if kind === 'choice-other' && !answerInComposer}
         <form
@@ -428,9 +452,9 @@
         >
           <Input
             id={`${id}-other`}
-            label="Your own answer"
+            label={labels.yourOwnAnswer}
             labelVisible={false}
-            placeholder="Choose an answer above, or type your own…"
+            placeholder={labels.chooseAnswerPlaceholder}
             bind:value={text}
             {...maxLengthProp}
             {...errorProp}
@@ -442,7 +466,7 @@
                 type="submit"
                 variant="primary"
                 size="sm"
-                disabled={busy || holding || text === ''}>Answer</Button
+                disabled={busy || holding || text === ''}>{labels.answer}</Button
               >
             {/snippet}
           </Input>
@@ -470,33 +494,32 @@
             />
           {/each}
         </CheckboxGroup>
-        <Button type="submit" variant="primary" disabled={busy || !canSendPicked}>Send</Button>
+        <Button type="submit" variant="primary" disabled={busy || !canSendPicked}
+          >{labels.send}</Button
+        >
       </form>
     {:else if kind === 'boolean'}
-      <div class="chat-question-choices" role="group" aria-label={title}>
-        {#each [{ value: true, label: 'Yes' }, { value: false, label: 'No' }] as option, index (option.label)}
-          {@const chosen = holding && hold.pick === index}
-          <Button
-            type="button"
-            variant="secondary"
-            class="chat-question-choice"
-            data-selected={chosen ? '' : undefined}
-            aria-pressed={holding ? chosen : undefined}
-            aria-disabled={holding && !chosen ? 'true' : undefined}
-            disabled={busy && !holding}
-            onclick={() => pickAnswer(option.value, option.label, index)}
-          >
-            {option.label}
-          </Button>
+      <ChoiceGrid
+        class="chat-question-choices"
+        variant="card"
+        size="sm"
+        columns={1}
+        ariaLabel={title}
+        bind:value={() => choiceSelection, selectChoice}
+      >
+        {#each [{ value: true, label: labels.yes }, { value: false, label: labels.no }] as option, index (option.label)}
+          <ChoiceGridItem value={String(index)} disabled={busy || holding}>
+            <span class="chat-question-choice-label" dir="auto">{option.label}</span>
+          </ChoiceGridItem>
         {/each}
-      </div>
+      </ChoiceGrid>
       {@render holdStatus()}
       {#if errorText !== ''}
         <p class="chat-question-error" id={errorId} role="alert">{errorText}</p>
       {/if}
     {:else if kind === 'text'}
       {#if answerInComposer}
-        <p class="chat-question-hint">Answer below</p>
+        <p class="chat-question-hint">{labels.answerBelow}</p>
         {#if errorText !== ''}
           <p class="chat-question-error" id={errorId} role="alert">{errorText}</p>
         {/if}
@@ -516,7 +539,9 @@
             {...errorProp}
             disabled={busy}
           />
-          <Button type="submit" variant="primary" disabled={busy || text === ''}>Send</Button>
+          <Button type="submit" variant="primary" disabled={busy || text === ''}
+            >{labels.send}</Button
+          >
         </form>
       {/if}
     {:else if kind === 'number'}
@@ -538,7 +563,8 @@
           {...errorProp}
           disabled={busy}
         />
-        <Button type="submit" variant="primary" disabled={busy || numberDraft === null}>Send</Button
+        <Button type="submit" variant="primary" disabled={busy || numberDraft === null}
+          >{labels.send}</Button
         >
       </form>
     {:else if kind === 'date' || kind === 'time' || kind === 'date-time'}
@@ -569,7 +595,8 @@
         <Button
           type="submit"
           variant="primary"
-          disabled={busy || text === '' || (kind === 'date-time' && timeText === '')}>Send</Button
+          disabled={busy || text === '' || (kind === 'date-time' && timeText === '')}
+          >{labels.send}</Button
         >
       </form>
     {:else if kind === 'rating'}
@@ -611,7 +638,8 @@
             <p class="chat-question-error" id={errorId} role="alert">{errorText}</p>
           {/if}
         {/if}
-        <Button type="submit" variant="primary" disabled={busy || rating === undefined}>Send</Button
+        <Button type="submit" variant="primary" disabled={busy || rating === undefined}
+          >{labels.send}</Button
         >
       </form>
     {:else if kind === 'secret'}
@@ -631,7 +659,8 @@
           {...errorProp}
           disabled={busy}
         />
-        <Button type="submit" variant="primary" disabled={busy || text === ''}>Send</Button>
+        <Button type="submit" variant="primary" disabled={busy || text === ''}>{labels.send}</Button
+        >
       </form>
     {:else if kind === 'file'}
       {#if uploadFile === undefined}
@@ -667,7 +696,7 @@
       />
     {/if}
     {#if failed || holdFailed}
-      <p class="chat-question-error" role="alert">The answer could not be sent. Try again.</p>
+      <p class="chat-question-error" role="alert">{labels.answerFailed}</p>
     {/if}
   {/if}
   <div class="cinder-sr-only" aria-live="polite" aria-atomic="true">{announcer.message}</div>
@@ -700,70 +729,41 @@
     inline-size: 100%;
   }
 
-  /* Choices sit side by side and wrap; a host that wants them to share the row sets the grow. */
+  /* One column of cards. Cinder's cards own their rest border, centred label and equal rows. */
   .chat-question-choices {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
     gap: var(--cinder-space-2-5, 0.625rem);
   }
 
-  .chat-question-choices :global(.chat-question-choice) {
-    flex: var(--chat-question-choice-grow, 0) 1 auto;
-    justify-content: flex-start;
-    min-inline-size: min(12.5rem, 100%);
-    block-size: auto;
-    white-space: normal;
-    text-align: start;
+  /* The card rules anchor on this component's own root: `.chat-question-choices` is a class handed to
+     a child component, so Svelte's scoping would drop any rule that began with it. */
+  .chat-question :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
+    padding-block: var(--cinder-space-2);
+    gap: var(--cinder-space-2);
   }
 
-  /* The pick of a held or sent answer: an accent edge and tint; the others stand back. The pick is
-   * aria-pressed, which Cinder's button draws as a filled accent face with its on-fill label, so
-   * the tint has the page's own text colour with it, or the label would be white on a pale tint.
-   * On a dark surface the soft tint is nearly the unpicked choice's raised face, so the pick takes
-   * a stronger tint and the full accent edge: it reads as picked once focus has left it. */
-  .chat-question-choices :global(.chat-question-choice[data-selected]),
-  .chat-question-choices :global(.chat-question-choice[data-selected]:hover) {
-    border-color: light-dark(var(--cinder-accent-border), var(--cinder-accent-solid));
-    background: light-dark(
-      var(--cinder-accent-background),
-      color-mix(in oklch, var(--cinder-accent-solid) 32%, var(--cinder-surface))
-    );
-    color: var(--cinder-text-default);
+  .chat-question
+    :global(
+      .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
+    ) {
+    flex: 1 1 auto;
+    line-height: var(--cinder-leading-tight, 1.25);
   }
 
-  /* The choices of a held or sent answer stand still but keep their contrast: the board draws the
-   * one that was not picked as the ordinary choice it was (surface, border and text of an enabled
-   * secondary button), not in Cinder's faded disabled look. */
-  .chat-question-choices :global(.chat-question-choice[aria-disabled='true']) {
-    cursor: default;
-    opacity: 1;
-  }
-
-  .chat-question-choices :global(.chat-question-choice[aria-disabled='true']:not([data-selected])) {
-    background: var(--cinder-button-background);
-    color: var(--cinder-button-foreground);
-    border-color: var(--cinder-button-border);
-  }
-
-  .chat-question-choice-text {
-    display: grid;
-    gap: var(--cinder-space-1);
-    min-inline-size: 0;
-  }
-
-  .chat-question-choice-label,
-  .chat-question-choice-description {
-    overflow-wrap: anywhere;
+  /* A description follows its title on the title's line when the whole of it fits, else it wraps below. */
+  .chat-question
+    :global(.cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__card) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--cinder-space-2);
+    row-gap: 0;
   }
 
   .chat-question-choice-label {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
     font-weight: var(--cinder-font-semibold);
-  }
-
-  .chat-question-choice-description {
-    color: var(--cinder-text-secondary, inherit);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    font-weight: var(--cinder-font-normal, normal);
   }
 
   /* One inline line inside the question: what was answered, and the Undo that is still open. */
@@ -791,6 +791,17 @@
     display: grid;
     gap: var(--cinder-space-2);
     justify-items: start;
+  }
+
+  .chat-question-receipt {
+    /* Change reaches 44px by a hit area that overhangs the receipt; the message line under the
+     * card stacks at 1, so the receipt stacks above it. */
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--cinder-space-2);
   }
 
   .chat-question-answer {

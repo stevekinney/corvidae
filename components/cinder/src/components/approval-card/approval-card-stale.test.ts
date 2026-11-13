@@ -62,6 +62,32 @@ describe('ApprovalCard under a stale region', () => {
     expect(onResolve).toHaveBeenCalledTimes(1);
   });
 
+  for (const layout of ['row', 'decision'] as const) {
+    for (const irreversible of [false, true]) {
+      const kind = irreversible ? 'irreversible' : 'reversible';
+      test(`the ${layout} layout's ${kind} primary ignores the press while stale and works once fresh`, async () => {
+        const onResolve = mock(() => {});
+        const props = card({
+          layout,
+          onResolve,
+          tool: { name: 'issue-refund', risk: 'medium', irreversible },
+        });
+        const { container, rerender } = render(StaleFixture, { card: props });
+        const primary = button(container, 'Approve');
+        expect(primary.getAttribute('aria-disabled')).toBe('true');
+        await fireEvent.click(primary);
+        await fireEvent.click(primary);
+        expect(onResolve).not.toHaveBeenCalled();
+
+        await rerender({ card: props, stale: false });
+        const fresh = button(container, 'Approve');
+        await fireEvent.click(fresh);
+        if (irreversible) await fireEvent.click(button(container, 'Press again to approve'));
+        expect(onResolve).toHaveBeenCalledTimes(1);
+      });
+    }
+  }
+
   test('the card itself stays readable', () => {
     const { container } = render(StaleFixture, { card: card({ onResolve: () => {} }) });
     expect(container.textContent).toContain('issue-refund');

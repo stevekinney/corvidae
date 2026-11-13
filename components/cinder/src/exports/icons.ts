@@ -29,6 +29,7 @@ export {
   Heading2,
   Heading3,
   House,
+  ImageOff,
   Inbox,
   Info,
   Italic,

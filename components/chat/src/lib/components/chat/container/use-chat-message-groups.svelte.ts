@@ -328,7 +328,7 @@ export function useChatMessageGroups(
     return buildChatRenderRows(messagesWithDates, {
       ...renderOptions,
       ungroupedToolCallIds: new Set([
-        ...(renderOptions?.ungroupedToolCallIds ?? actionRequiredToolCallIds),
+        ...(renderOptions?.ungroupedToolCallIds ?? []),
         ...(options.getAnsweredToolCallIds?.() ?? []),
       ]),
     });

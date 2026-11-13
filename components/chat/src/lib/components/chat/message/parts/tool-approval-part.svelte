@@ -5,9 +5,13 @@
   export type ToolApprovalPartProps = {
     /** The tool-approval render part. */
     part: ToolApprovalMessagePart;
+    /** Requests a fresh approval after this tool call expires. */
+    onApprovalRequestAgain?: ((toolCallId: string) => void) | undefined;
     /** Called when the user resolves the approval. */
     onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
+    /** Uses the compact actionable row when several approvals share one tool group. */
+    layout?: 'decision' | 'row';
   };
 </script>
 
@@ -15,7 +19,12 @@
   import { ApprovalCard } from '@lostgradient/cinder';
   import type { ApprovalCardProps } from '@lostgradient/cinder';
 
-  let { part, onApprovalResolve }: ToolApprovalPartProps = $props();
+  let {
+    part,
+    onApprovalResolve,
+    onApprovalRequestAgain,
+    layout = 'decision',
+  }: ToolApprovalPartProps = $props();
 
   const canResolve = $derived(
     part.state === 'pending' && !part.resolutionInFlight && onApprovalResolve !== undefined,
@@ -37,11 +46,12 @@
       headingLevel: 4,
       // The explicit decision, which stays as a receipt once decided. The adapter adds what the
       // approval action does not carry: whether it can be undone, a named primary, facts.
-      layout: 'decision',
+      layout,
     };
 
     if (part.details?.approveLabel !== undefined) props.approveLabel = part.details.approveLabel;
-    if (part.details?.pauseSentence !== undefined) props.pauseSentence = part.details.pauseSentence;
+    // The approval card owns its standard pause sentence. Chat adapter details must not duplicate
+    // that sentence in the decision surface when the Cinder default is available.
     if (part.details?.facts !== undefined) props.facts = part.details.facts;
     if (part.details?.why !== undefined) props.why = part.details.why;
     // A decision made here: who, when, and the note that went with it.
@@ -49,8 +59,12 @@
       props.decidedBy = 'you';
       props.decidedAt = part.receipt.decidedAt;
       if (part.receipt.reason !== undefined) props.decisionNote = part.receipt.reason;
+      if (part.receipt.result !== undefined) props.result = part.receipt.result;
     }
 
+    if (onApprovalRequestAgain !== undefined) {
+      props.onAskAgain = () => onApprovalRequestAgain?.(part.toolCallId);
+    }
     if (part.action.message !== undefined) props.question = part.action.message;
     if (part.action.sandbox !== undefined) props.sandbox = part.action.sandbox;
     if (part.action.env !== undefined) props.env = part.action.env;

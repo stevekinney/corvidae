@@ -13,6 +13,7 @@ function sha256(contents: string): string {
   return createHash('sha256').update(contents).digest('hex');
 }
 
+/** Resolves a component slug to its fixture source path. */
 export function resolveFixtureFilePath(slug: string, componentsRoot: string): string {
   if (!COMPONENT_NAME_PATTERN.test(slug)) {
     throw new Error(
@@ -22,6 +23,7 @@ export function resolveFixtureFilePath(slug: string, componentsRoot: string): st
   return join(componentsRoot, slug, `${slug}-fixtures.ts`);
 }
 
+/** Resolves and validates a host component path for a fixture. */
 export function resolveFixtureHostPath(entry: FixtureFileEntry, fixture: VisualFixture): string {
   if (fixtureRenderMode(fixture) !== 'host') {
     throw new Error(`[${entry.componentName}] Fixture '${fixture.name}' is not a host fixture`);
@@ -85,6 +87,7 @@ async function fixtureContentHash(
   return sha256(JSON.stringify({ fixtureFile: fixtureFileContents, hosts: hostInputs }));
 }
 
+/** Reads and parses one fixture source file. */
 export async function loadFixtureFile(sourcePath: string): Promise<FileParseResult> {
   const contents = await readFile(sourcePath, 'utf8');
   const result = parseFixtureFileStatic(sourcePath, contents);

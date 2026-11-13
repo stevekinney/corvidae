@@ -119,8 +119,10 @@ function messageArticle(container: HTMLElement, id: string): HTMLElement {
 }
 
 function sourcesControl(container: HTMLElement, id: string): HTMLButtonElement | null {
-  return messageArticle(container, id).querySelector<HTMLButtonElement>(
-    '.chat-message-sources .cinder-citation__marker',
+  return (
+    messageArticle(container, id).parentElement?.querySelector<HTMLButtonElement>(
+      '.chat-message-sources .cinder-citation__marker',
+    ) ?? null
   );
 }
 
@@ -151,9 +153,42 @@ describe('Chat — sourcesByMessageId', () => {
     expect(container.querySelectorAll('.chat-message-sources')).toHaveLength(1);
     const control = sourcesControl(container, 'assistant-a');
     expect(control?.getAttribute('aria-label')).toBe('Sources (4)');
+    expect(control?.closest('[data-chat-sources-trigger]')).not.toBeNull();
     expect(control?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Sources 4');
     expect(sourcesControl(container, 'assistant-b')).toBeNull();
     expect(sourcesControl(container, 'user-1')).toBeNull();
+  });
+
+  test('puts transcript Sources under the prose, never between the time and the actions', async () => {
+    const { container } = render(Chat, {
+      id: 'sources-metadata-row',
+      conversation: sourcedConversation(),
+      variant: 'transcript',
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+    });
+    await tick();
+
+    const article = messageArticle(container, 'assistant-a');
+    const line = article.parentElement?.querySelector<HTMLElement>('.chat-message-line');
+    const sources = article.parentElement?.querySelector<HTMLElement>('.chat-message-sources');
+    const actions = line?.querySelector<HTMLElement>('.chat-message-line-actions');
+    expect(line).not.toBeNull();
+    expect(sources).not.toBeNull();
+    expect(line?.querySelector('.chat-message-sources')).toBeNull();
+    expect(sources?.parentElement).toBe(article.parentElement);
+    // Under the prose (after the article) and before the line, which keeps the time and actions.
+    expect(article.compareDocumentPosition(sources!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect((sources?.compareDocumentPosition(line!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(line?.firstElementChild?.tagName).toBe('TIME');
+    expect(actions).not.toBeNull();
+
+    await fireEvent.click(sourcesControl(container, 'assistant-a')!);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+    expect(sources?.querySelector('.chat-message-sources-list')).toBeNull();
   });
 
   test('the panel keeps the supplied order, labels and duplicates, and links only safe addresses', async () => {
@@ -408,6 +443,68 @@ describe('Chat — sourcePresentation="inline"', () => {
     );
   }
 
+  test('withdrawing an open inline source closes its panel and moves focus to the next chip', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-inline-withdrawal',
+      conversation: sourcedConversation(),
+      sourcePresentation: 'inline',
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(0, 2)]]),
+    });
+    await tick();
+    const article = messageArticle(container, 'assistant-a');
+    const markers = article.querySelectorAll<HTMLButtonElement>('.cinder-citation__marker');
+    const removed = markers[0]!;
+    const remaining = markers[1]!;
+    removed.focus();
+    await fireEvent.click(removed);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+
+    await rerender({
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(1, 2)]]),
+    });
+
+    await waitFor(() => expect(document.activeElement === remaining).toBe(true));
+    expect(removed.isConnected).toBe(false);
+    expect(container.querySelector('[data-citation-focus]')).toBeNull();
+    expect(document.querySelector('.cinder-citation__panel')).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('[aria-live="polite"]')).filter(
+        (region) => region.textContent?.trim() === 'A source was withdrawn.',
+      ),
+    ).toHaveLength(1);
+  });
+
+  test('withdrawing the last inline source closes its panel and focuses a message action', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-inline-withdrawal-last',
+      conversation: sourcedConversation(),
+      sourcePresentation: 'inline',
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(0, 1)]]),
+    });
+    await tick();
+    const article = messageArticle(container, 'assistant-a');
+    const removed = article.querySelector<HTMLButtonElement>('.cinder-citation__marker')!;
+    removed.focus();
+    await fireEvent.click(removed);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+
+    await rerender({ sourcesByMessageId: new Map() });
+
+    await waitFor(() =>
+      expect(document.activeElement === container.querySelector('[data-citation-focus]')).toBe(
+        true,
+      ),
+    );
+    expect(document.activeElement?.classList.contains('chat-message-copy')).toBe(true);
+    expect(removed.isConnected).toBe(false);
+    expect(document.querySelector('.cinder-citation__panel')).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('[role="status"]')).filter(
+        (region) => region.textContent?.trim() === 'Sources were removed',
+      ),
+    ).toHaveLength(1);
+  });
+
   test('only the assistant message with sources shows chips, and no Sources control', async () => {
     const { container } = render(Chat, {
       id: 'sources-inline-only',
@@ -419,11 +516,15 @@ describe('Chat — sourcePresentation="inline"', () => {
       sourcePresentation: 'inline',
     });
     await tick();
+    const article = messageArticle(container, 'assistant-a');
 
     expect(container.querySelectorAll('.chat-message-source-chips')).toHaveLength(1);
     expect(container.querySelector('.chat-message-sources-toggle')).toBeNull();
     expect(container.querySelector('.chat-message-sources-citation')).toBeNull();
     expect(chips(container, 'assistant-a')).toHaveLength(4);
+    expect(
+      article.querySelectorAll('[data-chat-sources-trigger][data-chat-source-index]'),
+    ).toHaveLength(4);
     expect(chips(container, 'assistant-b')).toHaveLength(0);
     expect(chips(container, 'user-1')).toHaveLength(0);
     expect(
@@ -433,19 +534,115 @@ describe('Chat — sourcePresentation="inline"', () => {
     ).toBe('group');
   });
 
-  test('each chip reads its host or its label, in order, with duplicates kept', async () => {
+  test('coarse pointers use one compact Sources marker instead of a touch-target wall', async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === '(any-pointer: coarse)',
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+    try {
+      const { container, rerender } = render(Chat, {
+        id: 'sources-inline-coarse',
+        conversation: sourcedConversation(),
+        sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+        sourcePresentation: 'inline',
+      });
+      await tick();
+
+      const article = messageArticle(container, 'assistant-a');
+      expect(article.querySelector('.chat-message-source-chips')).toBeNull();
+      const compact = article.querySelector<HTMLButtonElement>(
+        '.chat-message-sources-citation .cinder-citation__marker',
+      );
+      expect(compact?.getAttribute('aria-label')).toBe('Sources (4)');
+      compact?.focus();
+      expect(document.activeElement).toBe(compact);
+
+      await rerender({ sourcesByMessageId: new Map() });
+      await waitFor(() => expect(document.activeElement === article).toBe(true));
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
+  test('coarse compact Citation closes and returns focus when a displayed source is withdrawn', async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === '(any-pointer: coarse)',
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+    try {
+      const { container, rerender } = render(Chat, {
+        id: 'sources-inline-coarse-withdrawal',
+        conversation: sourcedConversation(),
+        sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+        sourcePresentation: 'inline',
+      });
+      await tick();
+      const article = messageArticle(container, 'assistant-a');
+      const compact = article.querySelector<HTMLButtonElement>(
+        '.chat-message-sources-citation .cinder-citation__marker',
+      )!;
+      compact.focus();
+      await rerender({
+        sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(1)]]),
+      });
+      await waitFor(() =>
+        expect(document.activeElement?.matches('.chat-message-action-button')).toBe(true),
+      );
+      expect(
+        [...container.querySelectorAll('[role="status"]')].filter(
+          (region) => region.textContent?.trim() === 'Sources were removed',
+        ),
+      ).toHaveLength(1);
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
+  test('each chip disambiguates same-host sources with their supplied labels', async () => {
+    const ambiguousSources: readonly CitationSource[] = [
+      { label: 'Annual report', url: 'https://example.com/annual' },
+      { label: 'Board minutes' },
+      { label: 'Audit appendix', url: 'https://example.com/audit' },
+      { label: 'Unsafe source', url: 'javascript:alert(1)' },
+    ];
     const { container } = render(Chat, {
       id: 'sources-inline-labels',
       conversation: sourcedConversation(),
-      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcesByMessageId: new Map([['assistant-a', ambiguousSources]]),
       sourcePresentation: 'inline',
     });
     await tick();
 
     expect(chips(container, 'assistant-a').map((chip) => chip.textContent?.trim())).toEqual([
-      'example.com',
+      'Annual report',
       'Board minutes',
-      'example.com',
+      'Audit appendix',
       'Unsafe source',
     ]);
     // The text is drawn with its own direction, so a right-to-left label stays readable.

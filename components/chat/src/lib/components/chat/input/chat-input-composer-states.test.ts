@@ -49,6 +49,19 @@ describe('empty and ready (C1, C2)', () => {
     expect(sendOf(container).disabled).toBe(false);
   });
 
+  test('keeps translated Send icon-only while naming it accessibly', async () => {
+    const { container } = render(ChatInput, {
+      id: 'state-translated-send',
+      value: 'A translated draft',
+      labels: { send: 'Senden', sendMessage: 'Nachricht senden' },
+    });
+    const send = sendOf(container);
+
+    expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(send.textContent?.trim()).toBe('');
+    expect(send.getAttribute('aria-label')).toBe('Nachricht senden');
+  });
+
   test('the ready ring and the quiet empty Send are drawn by the composer styles', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(
@@ -57,11 +70,35 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).toMatch(
       /:global\(\.chat-input-send:disabled\)\s*\{[^}]*background: transparent;/,
     );
+    // Offline Send is the same disabled icon button as an empty one: no warning-coloured variant.
+    expect(source).not.toContain('data-offline');
+    expect(source).toMatch(/\.chat-input-editor\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
+    expect(source).toMatch(/\.chat-input-markdown\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
+    // The opened list ends on a whole row with no fade over a part row; a line under it counts
+    // the files still below.
+    expect(source).not.toContain('attachmentScrollFade');
+    expect(source).not.toContain('.chat-input-attachments[data-expanded]::after');
+    expect(source).toContain('align-items: center;');
+    expect(source).toContain('class="chat-input-attachment-scroll-cue"');
+    expect(source).toContain('labels.moreAttachments(hiddenListedAttachments)');
+  });
+
+  test('an opened list shows whole rows and takes its hit-area room back from the layout', async () => {
+    const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
+    expect(source).toContain('{@attach wholeAttachmentRows}');
+    expect(source).toContain('function wholeAttachmentRows(node: HTMLElement)');
+    expect(source).toMatch(
+      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
+    );
+    // A row scrolled into view stops one padding short of either edge, so its hit area is not clipped.
+    expect(source).toMatch(
+      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*scroll-padding-block:\s*var\(--cinder-space-2\);/s,
+    );
   });
 });
 
 describe('the run toolbar (C4)', () => {
-  test('a working run shows Running and its clock, Stop with its word, and the follow-up placeholder', () => {
+  test('a working run keeps visible progress compact and exposes duration accessibly', () => {
     const { container } = render(ChatInput, {
       id: 'state-running',
       placeholder: 'Message the agent',
@@ -71,18 +108,45 @@ describe('the run toolbar (C4)', () => {
     });
 
     const running = container.querySelector('[data-chat-running]')!;
-    expect(running.querySelector('.chat-input-running-label')?.textContent).toBe('Running');
-    expect(running.querySelector('.chat-input-running-time')?.textContent).toBe('0:00');
-    expect(running.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(running.classList.contains('cinder-sr-only')).toBe(true);
+    expect(running.textContent?.replace(/\s+/gu, ' ').trim()).toBe('Running 0:00');
 
     const stop = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Stop generating"]',
     )!;
-    expect(stop.textContent?.trim()).toBe('Stop');
+    expect(stop.textContent?.trim()).toBe('');
     expect(stop.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(stop.getAttribute('data-cinder-variant')).not.toBe('danger');
     expect(stop.querySelector('svg')).not.toBeNull();
 
     expect(editorOf(container).placeholder).toBe('Add another follow-up…');
+  });
+
+  test('a loading send keeps its accessible label while showing only the spinner', () => {
+    const { container } = render(ChatInput, {
+      id: 'state-starting',
+      value: 'Draft',
+      starting: 'Loading…',
+    });
+    const send = sendOf(container);
+    expect(send.getAttribute('aria-label')).toBe('Loading…');
+    expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(send.textContent).not.toContain('Loading…');
+    expect(send.querySelector('.chat-input-spinner')).not.toBeNull();
+  });
+
+  test('keeps a translated Stop icon-only while naming it accessibly', () => {
+    const { container } = render(ChatInput, {
+      id: 'state-translated-stop',
+      sending: true,
+      labels: { stop: 'Anhalten', stopGenerating: 'Generierung anhalten' },
+      onstop: () => undefined,
+    });
+    const stop = sendOf(container);
+
+    expect(stop.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(stop.textContent?.trim()).toBe('');
+    expect(stop.getAttribute('aria-label')).toBe('Generierung anhalten');
   });
 
   test('an idle composer has no run toolbar and keeps its own placeholder', () => {
@@ -107,7 +171,7 @@ describe('the offline drawer (C5)', () => {
     await tick();
 
     const drawer = container.querySelector<HTMLElement>('[data-chat-composer-drawer="offline"]')!;
-    expect(drawer.querySelector('.chat-input-drawer-text')?.textContent).toBe(
+    expect(drawer.textContent).toContain(
       "You're offline. Your draft is saved here, and Send comes back when you reconnect.",
     );
     // The drawer sits above the box, outside the text column.
@@ -120,7 +184,97 @@ describe('the offline drawer (C5)', () => {
     expect(editorOf(container).value).toBe('Draft about order 4471');
     const send = sendOf(container);
     expect(send.disabled).toBe(true);
+    expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
+    // Offline never paints the ready halo, even with a draft in the box.
+    expect(form.hasAttribute('data-ready')).toBe(false);
+    // The notice is the Cinder callout with its tone icon.
+    expect(drawer.getAttribute('data-cinder-variant')).toBe('warning');
+    expect(drawer.querySelector('.cinder-callout__icon')).not.toBeNull();
     expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(drawer.id);
+  });
+});
+
+describe('generic drawer notices', () => {
+  test('renders every semantic tone through Cinder Callout', () => {
+    for (const tone of ['neutral', 'info', 'warning', 'danger'] as const) {
+      const { container } = render(ChatInput, {
+        id: `state-notice-${tone}`,
+        status: { kind: 'drawer-notice', text: `${tone} notice`, tone },
+      });
+      const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
+      expect(drawer.getAttribute('data-cinder-variant')).toBe(tone);
+      expect(drawer.textContent).toContain(`${tone} notice`);
+      cleanup();
+    }
+  });
+
+  test('a blocking reason is visible and described, while a nonblocking notice leaves Send enabled', async () => {
+    const nonblocking = render(ChatInput, {
+      id: 'state-notice-enabled',
+      status: { kind: 'drawer-notice', text: 'History is ready.', tone: 'info' },
+    });
+    await fireEvent.input(editorOf(nonblocking.container), {
+      target: { value: 'Keep this draft.' },
+    });
+    await tick();
+    expect(sendOf(nonblocking.container).disabled).toBe(false);
+
+    const blocking = render(ChatInput, {
+      id: 'state-notice-blocked',
+      status: {
+        kind: 'drawer-notice',
+        text: 'Conversation unavailable.',
+        tone: 'warning',
+        sendDisabledReason: 'Retry before sending.',
+      },
+    });
+    await fireEvent.input(editorOf(blocking.container), { target: { value: 'Keep this draft.' } });
+    await tick();
+    expect(blocking.container.querySelector('.chat-input-drawer-reason')?.textContent).toBe(
+      'Retry before sending.',
+    );
+    expect(sendOf(blocking.container).disabled).toBe(true);
+    expect(sendOf(blocking.container).getAttribute('aria-describedby')).toContain(
+      'state-notice-blocked-drawer',
+    );
+  });
+
+  test('keeps a notice action in Callout’s dedicated action slot', () => {
+    const { container } = render(ChatInput, {
+      id: 'state-notice-action',
+      status: {
+        kind: 'drawer-notice',
+        text: 'Conversation unavailable.',
+        tone: 'warning',
+        action: { label: 'Retry', onclick: () => {} },
+      },
+    });
+    const callout = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
+    // Callout's default: the action is inline at the trailing end, wrapping under the text only
+    // when the row cannot hold both.
+    expect(callout.classList.contains('cinder-callout--inline-action')).toBe(true);
+    expect(callout.querySelector('.cinder-callout__action button')?.textContent).toContain('Retry');
+    expect(callout.querySelector('.cinder-callout__content .cinder-button')).toBeNull();
+  });
+
+  test('clearing a blocking notice enables Send without submitting the draft', async () => {
+    let submitted = 0;
+    const view = render(ChatInput, {
+      id: 'state-notice-clears',
+      status: {
+        kind: 'drawer-notice',
+        text: 'Retry before sending.',
+        sendDisabledReason: 'Retry before sending.',
+      },
+      onsubmit: () => (submitted += 1),
+    });
+    await fireEvent.input(editorOf(view.container), { target: { value: 'Keep this draft.' } });
+    await tick();
+    await view.rerender({ status: undefined });
+    await tick();
+    expect(editorOf(view.container).value).toBe('Keep this draft.');
+    expect(sendOf(view.container).disabled).toBe(false);
+    expect(submitted).toBe(0);
   });
 });
 
@@ -143,9 +297,7 @@ describe('the draft-restored drawer (C7)', () => {
     const drawer = container.querySelector<HTMLElement>(
       '[data-chat-composer-drawer="draft-restored"]',
     )!;
-    expect(drawer.querySelector('.chat-input-drawer-text')?.textContent).toBe(
-      'Restored your unsent draft from yesterday at 4:12 PM.',
-    );
+    expect(drawer.textContent).toContain('Restored your unsent draft from yesterday at 4:12 PM.');
     // A restored draft can still be sent.
     expect(sendOf(container).disabled).toBe(false);
 

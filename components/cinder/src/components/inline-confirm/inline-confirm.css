@@ -51,6 +51,24 @@
     flex-wrap: wrap;
     gap: var(--cinder-space-2);
   }
+
+  /* Confirmation words must remain readable inside a narrow in-flow strip. Button's default
+   * label contract is single-line elsewhere; this local pair may reflow so a long destructive
+   * command never truncates or overlaps its Cancel target. */
+  .cinder-inline-confirm__actions .cinder-button {
+    max-inline-size: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-inline-confirm__actions .cinder-button__label {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
   .cinder-inline-confirm[data-cinder-destructive] {
     background: color-mix(
       in oklab,
@@ -61,5 +79,43 @@
   }
   .cinder-inline-confirm[data-cinder-destructive] .cinder-inline-confirm__prompt {
     color: var(--cinder-status-danger-text);
+  }
+  .cinder-inline-confirm__two-press {
+    display: inline-flex;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--cinder-space-1);
+  }
+  .cinder-inline-confirm__two-press .cinder-button {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+  .cinder-inline-confirm__two-press .cinder-button__label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+  .cinder-inline-confirm__two-press-hint {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-tight);
+    text-align: center;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-inline-confirm__armed-escape {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      clip-path: inset(50%);
+      border: 0;
+      white-space: nowrap;
+    }
   }
 }

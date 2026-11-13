@@ -10,6 +10,7 @@
 import type { ApprovalResolution } from '@lostgradient/cinder';
 import type { Snippet } from 'svelte';
 
+import type { ChatLabels } from '../chat-labels.ts';
 import type {
   ChatMessagePart,
   ImageMessagePart,
@@ -83,6 +84,8 @@ export type ChatMessagePartsRendererProps = {
    * step parts via `messagePart`.
    */
   messagePart?: MessagePartOverride | undefined;
+  /** Layout used by grouped approval prompts. */
+  approvalLayout?: 'decision' | 'row' | undefined;
   /** Optional override for wide or interactive block nodes inside markdown. */
   markdownNode?: MarkdownNodeOverride | undefined;
   /**
@@ -96,6 +99,8 @@ export type ChatMessagePartsRendererProps = {
   onToggle?: (() => void) | undefined;
   /** Drawn at the end of a run's note line, such as a Retry beside a failed run's stop note. Receives the note. */
   noteAction?: Snippet<[note: MessageNoteInfo]> | undefined;
+  /** Requests a fresh approval after this tool call expires. */
+  onApprovalRequestAgain?: ((toolCallId: string) => void) | undefined;
   /** Called when the user resolves an action-required approval. */
   onApprovalResolve?:
     ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
@@ -121,6 +126,8 @@ export type ChatMessagePartsRendererProps = {
   toolCallStartTimes?: ReadonlyMap<string, number> | undefined;
   /** The words of a step's position, its failed count and a failed step's controls. */
   turnLabels?: Partial<ChatTurnLabels> | undefined;
+  /** Host-overridable Chat UI labels forwarded to nested question controls. */
+  labels?: Partial<ChatLabels> | undefined;
 };
 
 /** A renderable unit: a single body part, a contiguous run of image parts, a group of step parts, or a group of suggestion chips. */

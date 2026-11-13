@@ -212,6 +212,18 @@ export function createChatSessionController(
       await executeRun(userMessageId, attachments);
     }
   };
+  const sendHiddenMessage = async (): Promise<void> => {
+    assertActive();
+    startSubmission(lifecycle);
+    const next = appendMessages(
+      options.getConversation(),
+      { role: 'user', content: '', hidden: true },
+      ownRowEnvironment(options),
+    );
+    update(next);
+    const userMessageId = next.ids.at(-1);
+    if (userMessageId !== undefined) await executeRun(userMessageId, []);
+  };
   const assertNoPendingApprovals = (): void => {
     assertActive();
     rebuildApprovalState(
@@ -503,6 +515,7 @@ export function createChatSessionController(
   };
   return {
     adapter,
+    sendHiddenMessage,
     stop: stopActiveRun,
     reconcileApprovalExpiry,
     captureHistoryToken,

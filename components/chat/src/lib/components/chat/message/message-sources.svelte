@@ -1,5 +1,6 @@
 <script lang="ts" module>
   import type { CitationSource } from '@lostgradient/cinder';
+  import type { ChatLabels } from '../chat-labels.ts';
 
   export type MessageSourcesProps = {
     /** The sources behind the assistant message, in the order the host supplied them. Never empty. */
@@ -21,12 +22,16 @@
      * log, so it is said once. Without it the sentence goes to a live region of its own.
      */
     announce?: ((message: string) => void) | undefined;
+    /** Called after a compact Citation panel or sheet has fully closed. */
+    onCitationCloseComplete?: (() => void) | undefined;
+    labels?: Partial<ChatLabels> | undefined;
   };
 </script>
 
 <script lang="ts">
   import { tick } from 'svelte';
   import { ChevronRight, Citation, resolveCitationLink } from '@lostgradient/cinder';
+  import { resolveChatLabels } from '../chat-labels.ts';
   import { sourceChipLabel } from './source-chip-label.ts';
 
   let {
@@ -36,7 +41,10 @@
     ontoggle,
     listId,
     announce,
+    onCitationCloseComplete,
+    labels: labelOverrides,
   }: MessageSourcesProps = $props();
+  const labels = $derived(resolveChatLabels(labelOverrides));
 
   // Each inline chip is keyed by the source it stands for (its address and label, and which copy
   // of a duplicate it is), so a withdrawn source takes its own chip and open panel with it rather
@@ -85,6 +93,19 @@
     else announce(WITHDRAWN);
     void moveFocusAfterWithdrawal(group, before);
   });
+  let coarsePointer = $state(false);
+  $effect(() => {
+    const query =
+      typeof window === 'undefined' ? undefined : window.matchMedia('(any-pointer: coarse)');
+    if (query === undefined) return;
+    const update = (): void => {
+      coarsePointer = query.matches;
+    };
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  });
+  const compactInline = $derived(presentation === 'inline' && coarsePointer);
 </script>
 
 <!--
@@ -99,14 +120,14 @@
     class="chat-message-sources-toggle"
     aria-expanded={expanded}
     aria-controls={listId}
-    aria-label={`Sources (${sources.length})`}
+    aria-label={labels.sourcesCount(sources.length)}
     onclick={() => ontoggle?.()}
   >
     <ChevronRight class="chat-message-sources-chevron" aria-hidden="true" />
-    Sources <span class="chat-message-sources-count">{sources.length}</span>
+    {labels.sources} <span class="chat-message-sources-count">{sources.length}</span>
   </button>
   {#if expanded}
-    <ol id={listId} class="chat-message-sources-list" aria-label="Sources">
+    <ol id={listId} class="chat-message-sources-list" aria-label={labels.sources}>
       {#each sources as source, index (index)}
         {@const link = resolveCitationLink(source.url)}
         <li class="chat-message-sources-item">
@@ -116,29 +137,35 @@
           {/if}
           {#if link.kind === 'link'}
             <a class="chat-message-sources-link" href={link.href}
-              >{link.host === undefined ? 'Open source' : `Open ${link.host}`}{' '}<span
-                aria-hidden="true">↗</span
-              ></a
+              >{labels.openSource(link.host)}{' '}<span aria-hidden="true">↗</span></a
             >
           {:else if link.kind === 'none'}
-            <span class="chat-message-sources-note">Internal document, no public link</span>
+            <span class="chat-message-sources-note">{labels.internalDocument}</span>
           {:else}
-            <span class="chat-message-sources-note" data-link="rejected"
-              >Link hidden: the address isn't a safe web link</span
-            >
+            <span class="chat-message-sources-note" data-link="rejected">{labels.unsafeLink}</span>
           {/if}
         </li>
       {/each}
     </ol>
   {/if}
-{:else if presentation === 'inline'}
+{:else if presentation === 'inline' && !compactInline}
   <!-- One chip per source, in the order given and with duplicates kept, as everywhere else. Each
        chip is Citation's own marker, so its panel, URL policy and focus return are unchanged. -->
-  <span class="chat-message-source-chips" role="group" aria-label="Sources" bind:this={chipGroup}>
-    {#each chipEntries as entry (entry.key)}
+  <span
+    class="chat-message-source-chips"
+    role="group"
+    aria-label={labels.sources}
+    bind:this={chipGroup}
+  >
+    {#each chipEntries as entry, index (entry.key)}
       {@const source = entry.source}
-      {@const chip = sourceChipLabel(source)}
-      <Citation sources={[source]} label={chip} class="chat-message-source-chip"
+      {@const chip = sourceChipLabel(source, sources)}
+      <Citation
+        sources={[source]}
+        label={chip}
+        class="chat-message-source-chip"
+        data-chat-sources-trigger
+        data-chat-source-index={index}
         ><span class="chat-message-source-chip-text" dir="auto">{chip}</span></Citation
       >
     {/each}
@@ -147,8 +174,14 @@
     <span class="cinder-sr-only" aria-live="polite" aria-atomic="true">{withdrawal}</span>
   {/if}
 {:else}
-  <Citation {sources} label="Sources" class="chat-message-sources-citation"
-    >Sources <span class="chat-message-sources-count">{sources.length}</span></Citation
+  <Citation
+    {sources}
+    label={labels.sources}
+    closeOnSourceRemoval
+    onCloseComplete={onCitationCloseComplete}
+    class="chat-message-sources-citation"
+    data-chat-sources-trigger
+    >{labels.sources} <span class="chat-message-sources-count">{sources.length}</span></Citation
   >
 {/if}
 
@@ -158,14 +191,20 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
-    min-height: var(--cinder-touch-target-min);
-    padding: var(--cinder-space-0-5) var(--cinder-space-1);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    min-height: 1.5rem;
+    padding-block: 0;
+    /* The label starts on the prose edge; the hit area extends outward from a pseudo-element. */
+    padding-inline: 0;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     font-weight: var(--cinder-font-medium);
   }
 
   .chat-message-sources-toggle {
-    color: var(--cinder-accent-text);
+    /* The chevron's 16px box sits inside the 24px control, so its ink is 4px in from the box's
+       edge; the box overhangs the prose edge by that inset so the ink meets it. */
+    margin-inline-start: calc((1rem - 1.5rem) / 2);
+    padding-inline: 0 var(--cinder-space-3);
+    color: var(--cinder-text-default);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -182,14 +221,21 @@
   }
 
   .chat-message-sources-toggle :global(.chat-message-sources-chevron) {
-    inline-size: 12px;
-    block-size: 12px;
+    inline-size: 1rem;
+    block-size: 1rem;
     flex: none;
-    transition: transform 120ms ease;
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
   .chat-message-sources-toggle[aria-expanded='true'] :global(.chat-message-sources-chevron) {
     transform: rotate(90deg);
+  }
+
+  /* In a right-to-left message the closed chevron points toward the text, to the left. */
+  :global(.chat-message-wrapper[data-message-direction='rtl'])
+    .chat-message-sources-toggle[aria-expanded='false']
+    :global(.chat-message-sources-chevron) {
+    transform: scaleX(-1);
   }
 
   .chat-message-sources-count {
@@ -246,12 +292,36 @@
   }
 
   .chat-message-sources-link {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 1.5rem;
     align-self: flex-start;
     color: var(--cinder-accent-text);
   }
 
   .chat-message-sources-note {
     color: var(--cinder-text-muted);
+  }
+
+  @media (any-pointer: coarse) {
+    :global(.chat-message-sources-citation .cinder-citation__marker),
+    .chat-message-sources-toggle {
+      position: relative;
+    }
+
+    /* The 44px hit region is invisible and takes no layout, so a message with Sources keeps the
+       same distance from its text to the action row as one without. */
+    :global(.chat-message-sources-citation .cinder-citation__marker)::after,
+    .chat-message-sources-toggle::after {
+      content: '';
+      position: absolute;
+      /* The line below the Sources block has a stacking position of its own (so its actions'
+         overhang clears the next message); this extension sits above it, so a tap under the
+         toggle reaches the toggle and not the time. Only the invisible area rises: no face. */
+      z-index: 2;
+      inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
+      inset-inline: calc(var(--cinder-space-3) * -1);
+    }
   }
 
   /* Inline chips: each source is a small rounded marker that sits in the line like a word. The
@@ -277,9 +347,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 0 var(--cinder-space-2);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-full);
     color: var(--cinder-accent-text);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     font-weight: var(--cinder-font-medium);
@@ -287,7 +354,7 @@
   }
 
   .chat-message-source-chips :global(.chat-message-source-chip .cinder-citation__marker:hover) {
-    border-color: var(--cinder-border-strong);
+    text-decoration: underline;
   }
 
   .chat-message-source-chips
@@ -296,18 +363,22 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .chat-message-source-chips :global(.chat-message-source-chip .cinder-citation__marker) {
+      min-block-size: var(--cinder-touch-target-min);
       padding-block: calc((var(--cinder-touch-target-min) - 1lh) / 2);
     }
   }
 
-  @media (pointer: coarse) {
-    .chat-message-sources-link {
-      display: inline-flex;
-      align-items: center;
-      min-height: var(--cinder-touch-target-min);
-    }
+  .chat-message-sources-link {
+    position: relative;
+  }
+
+  .chat-message-sources-link::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 
   @media (prefers-reduced-motion: reduce) {

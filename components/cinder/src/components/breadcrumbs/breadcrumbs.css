@@ -184,12 +184,22 @@
     flex: 0 1 auto;
     min-inline-size: 0;
     align-items: center;
-    min-block-size: var(--cinder-touch-target-min);
+    position: relative;
     padding-inline: var(--cinder-space-1) var(--cinder-space-2);
     border-radius: var(--cinder-radius-sm);
     color: var(--cinder-accent-text);
     font-size: var(--cinder-text-base);
     text-decoration: none;
+  }
+
+  /* A 44px hit area that takes no layout space. */
+  .cinder-breadcrumbs__back::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block: 50% auto;
+    block-size: var(--cinder-touch-target-min);
+    transform: translateY(-50%);
   }
 
   .cinder-breadcrumbs__back:hover {

@@ -119,7 +119,7 @@ describe('a read-only composer', () => {
       id: 'read-only-tooltip',
       status: {
         kind: 'read-only',
-        tooltip: 'Dana Reyes removed your write access on Nov 3',
+        tooltip: 'Support Ops can grant you write access',
         request: { label: 'Request access', onclick: () => undefined },
       },
     });
@@ -128,7 +128,7 @@ describe('a read-only composer', () => {
     const label = container.querySelector<HTMLButtonElement>('.chat-input-notice-label')!;
     expect(label.textContent?.trim()).toBe('Read only');
     const tooltip = container.querySelector('[role="tooltip"]')!;
-    expect(tooltip.textContent).toContain('Dana Reyes removed your write access on Nov 3');
+    expect(tooltip.textContent).toContain('Support Ops can grant you write access');
     expect(label.getAttribute('aria-describedby')).toBe(tooltip.id);
   });
 

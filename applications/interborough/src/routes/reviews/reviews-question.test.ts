@@ -110,7 +110,7 @@ describe('an open question with choices', () => {
     expect(getByText('Deploys to the staging site')).not.toBeNull();
     expect(getByText('Production')).not.toBeNull();
     expect(getByText('Deploys to the live site')).not.toBeNull();
-    expect(getByPlaceholderText('Choose an answer above, or type your own…')).not.toBeNull();
+    expect(getByPlaceholderText('Type your answer')).not.toBeNull();
     expect(getByRole('button', { name: 'Answer' }).hasAttribute('disabled')).toBe(true);
     const footer = container.querySelector('.ib-review-pane__footer');
     expect(footer?.textContent?.trim()).toBe('The agent continues as soon as you answer.');
@@ -122,7 +122,7 @@ describe('an open question with choices', () => {
     const { getByPlaceholderText, getByRole } = await open(RELEASE);
     respondsApplied(RELEASE);
 
-    await fireEvent.input(getByPlaceholderText('Choose an answer above, or type your own…'), {
+    await fireEvent.input(getByPlaceholderText('Type your answer'), {
       target: { value: 'canary' },
     });
     await fireEvent.click(getByRole('button', { name: 'Answer' }));
@@ -137,9 +137,9 @@ describe('an open question with choices', () => {
     respondsApplied(RELEASE);
     jest.useFakeTimers();
 
-    await fireEvent.click(view.getByRole('button', { name: /Staging/ }));
+    await fireEvent.click(view.getByRole('radio', { name: /Staging/ }));
     const status = view.container.querySelector('.chat-question-status');
-    expect(status?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging Undo (5 s)');
+    expect(status?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging Undo (5s)');
     expect(status?.querySelector('.chat-question-status-text')?.textContent).toBe(
       'Answered Staging',
     );
@@ -160,7 +160,7 @@ describe('an open question with choices', () => {
     respondsApplied(RELEASE);
     jest.useFakeTimers();
 
-    await fireEvent.click(view.getByRole('button', { name: /Production/ }));
+    await fireEvent.click(view.getByRole('radio', { name: /Production/ }));
     await fireEvent.click(view.getByRole('button', { name: /Undo/ }));
     await elapse(20000);
 

@@ -27,7 +27,9 @@
   import {
     annotationToneClass,
     decorateHighlightedLines,
+    keepFlagsWhole,
     markNumericTokens,
+    splitFlags,
     lineToneClass,
   } from './code-block-lines.ts';
   import type { CodeBlockAnnotation, CodeBlockProps } from './code-block.types.ts';
@@ -59,6 +61,10 @@
   const contextHighlighter = getCodeHighlighterContext();
 
   let highlighted = $state<string | null>(null);
+  // Expose the asynchronous rendering phase so capture harnesses can wait for a settled visual
+  // state instead of guessing with a timer. `plain` is a deliberate non-highlighted result;
+  // `fallback` means highlighting was requested but unavailable or rejected.
+  let highlightState = $state<'plain' | 'pending' | 'ready' | 'fallback'>('plain');
 
   // Code that is still arriving cannot be copied yet: the copy action returns with the last token.
   const copyVisible = $derived(copyable && !streaming);
@@ -103,6 +109,7 @@
     // once the last token has arrived.
     if (highlight === false || streaming || !language || resolvedHighlighter === undefined) {
       highlighted = null;
+      highlightState = 'plain';
       return;
     }
 
@@ -117,6 +124,7 @@
     // change can't leave the previous render visible while the new request
     // is in flight.
     highlighted = null;
+    highlightState = 'pending';
     let cancelled = false;
 
     // The highlighter may throw synchronously OR reject — wrap the call in one
@@ -126,10 +134,14 @@
         const html = await resolvedHighlighter(pendingCode, pendingLanguage);
         if (!cancelled) {
           highlighted = html === '' ? null : html;
+          highlightState = html === '' ? 'fallback' : 'ready';
           lined = true;
         }
       } catch (error) {
-        if (!cancelled) highlighted = null;
+        if (!cancelled) {
+          highlighted = null;
+          highlightState = 'fallback';
+        }
         // Surface to the developer without breaking the graceful fallback.
         // Never log the code itself — a code block can contain secrets. Log
         // the language and the error class/message only.
@@ -173,7 +185,9 @@
       ></pre>
   {:else}
     <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
-        >{code}{#if streaming}{@render caret()}{/if}</code
+        >{#if wrap}{#each splitFlags(code) as run, index (index)}{#if run.flag}<span
+                class="cinder-code-block__flag">{run.text}</span
+              >{:else}{run.text}{/if}{/each}{:else}{code}{/if}{#if streaming}{@render caret()}{/if}</code
       ></pre>
   {/if}
 {/snippet}
@@ -191,6 +205,7 @@
     streaming && 'cinder-code-block--streaming',
     className,
   )}
+  data-cinder-highlight-state={highlightState}
   style:--_cinder-code-block-digits={hasLineFeatures ? gutterDigits : undefined}
   aria-busy={streaming ? 'true' : undefined}
 >
@@ -242,6 +257,7 @@
               ? decorateHighlightedLines(annotations, (found) => (lined = found))
               : noopScrollFadeAttachment}
             {@attach markNumericTokens}
+            {@attach wrap ? keepFlagsWhole : noopScrollFadeAttachment}
           >
             {@html highlighted}
           </div>

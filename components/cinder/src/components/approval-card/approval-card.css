@@ -75,6 +75,10 @@
     overflow-wrap: anywhere;
   }
 
+  .cinder-approval-card__title:dir(rtl) {
+    line-height: var(--cinder-leading-snug);
+  }
+
   .cinder-approval-card__title-tool,
   .cinder-approval-card__tool-identifier {
     font-family: var(--cinder-font-mono);
@@ -388,11 +392,12 @@
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
-    overflow: hidden;
   }
 
   .cinder-approval-card__details .cinder-collapsible__trigger {
-    border-radius: 0;
+    /* Not clipped by the disclosure, so the trigger's 44px hit area reaches past its painted box;
+     * it takes the disclosure's rounding itself. */
+    border-radius: calc(var(--cinder-radius-md) - 1px);
     padding: var(--cinder-space-2) var(--cinder-space-3);
     background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-sm);
@@ -400,6 +405,8 @@
   }
 
   .cinder-approval-card__details[data-cinder-expanded] .cinder-collapsible__trigger {
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
@@ -483,11 +490,11 @@
   .cinder-approval-card--row {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
     box-sizing: border-box;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-space-3) 14px;
+    padding: var(--cinder-space-3);
     background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-sm);
   }
@@ -505,14 +512,26 @@
     min-inline-size: 0;
   }
 
+  .cinder-approval-card__row-title-line {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1) var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
   /* The question may wrap: a long title never truncates. */
   .cinder-approval-card__row-question {
+    /* The title takes the line at its natural size, so a trailing badge is what wraps (the
+     * decision head does the same). */
+    flex: 0 1 auto;
+    min-inline-size: 0;
     margin: 0;
     overflow-wrap: anywhere;
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
-    line-height: var(--cinder-leading-tight);
+    line-height: var(--cinder-leading-snug);
   }
 
   /* Decided on another page: a glyph in the decision's tone stands where the risk shield stood,
@@ -567,9 +586,9 @@
   .cinder-approval-card--row > .cinder-approval-card__result {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
     margin: 0;
-    padding-inline-start: calc(16px + var(--cinder-space-2));
+    padding-inline-start: 0;
   }
 
   .cinder-approval-card--row > .cinder-approval-card__outcome {
@@ -643,7 +662,7 @@
   .cinder-approval-card__input {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
   }
 
   .cinder-approval-card__input-toggle {
@@ -651,6 +670,7 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
+    min-block-size: 24px;
     min-inline-size: 0;
     padding: 0;
     border: 0;
@@ -662,6 +682,14 @@
     cursor: pointer;
   }
 
+  /* Input, Why, Details and source-said disclosures share the compact Cinder trigger contract:
+   * a text-sized desktop face, one token of vertical breathing room, and the coarse-pointer
+   * target expansion below. */
+  .cinder-approval-card__input-toggle,
+  .cinder-approval-card__said-toggle {
+    padding-block: var(--cinder-space-0-5);
+  }
+
   .cinder-approval-card__input-toggle:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
@@ -669,11 +697,30 @@
 
   .cinder-approval-card__input-toggle svg {
     flex: none;
+    align-self: center;
+    margin-block-start: 1px;
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
   .cinder-approval-card__input-toggle svg[data-cinder-open] {
     transform: rotate(90deg);
+  }
+
+  /* A collapsed disclosure points toward the inline end, so RTL mirrors it. */
+  .cinder-approval-card__input-toggle:dir(rtl) svg:not([data-cinder-open]),
+  .cinder-approval-card:has(
+      :is(
+        .cinder-approval-card__title,
+        .cinder-approval-card__decision-title,
+        .cinder-approval-card__row-question
+      ):dir(rtl)
+    )
+    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    svg:not([data-cinder-open]),
+  .cinder-approval-card[dir='rtl']
+    :is(.cinder-approval-card__input-toggle, .cinder-approval-card__said-toggle)
+    svg:not([data-cinder-open]) {
+    transform: scaleX(-1);
   }
 
   .cinder-approval-card__input-word {
@@ -707,7 +754,7 @@
   .cinder-approval-card__row-input {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
   }
 
   .cinder-approval-card__row-input[hidden] {
@@ -721,38 +768,139 @@
 
   .cinder-approval-card__row-actions {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
+    /* When the actions wrap, the next line stands clear of the note toggle's hit-area overhang
+     * (a 44px area on a 28px face), so the armed primary never covers its lower edge. */
+    row-gap: var(--cinder-space-3);
+    inline-size: 100%;
+    min-inline-size: 0;
+    direction: ltr;
+  }
+
+  /* InlineConfirm owns the two-press state, but its action and status hint participate directly in
+   * this row so Deny and the primary share one baseline and painted height. */
+  .cinder-approval-card__row-actions .cinder-inline-confirm__two-press {
+    display: contents;
+  }
+
+  .cinder-approval-card__row-actions .cinder-inline-confirm__two-press-hint {
+    flex: 1 0 100%;
+    order: 3;
+    margin: 0;
+    text-align: start;
+  }
+
+  /* Approval words are critical confirmation text. Keep them inside the equal action faces even
+   * when the armed irreversible label is longer than the phone can fit. The shared Button keeps
+   * its single-line label contract elsewhere; this local action composition is deliberately
+   * allowed to reflow rather than truncate or paint over the neighbouring Deny target. */
+  .cinder-approval-card--row .cinder-approval-card__row-actions .cinder-button {
+    flex: 0 1 auto;
+    inline-size: auto;
+    max-inline-size: 100%;
+    min-inline-size: var(--cinder-touch-target-min);
+    block-size: auto;
+    align-self: stretch;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-approval-card--row .cinder-approval-card__row-actions .cinder-button__label {
+    display: block;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
   }
 
   .cinder-approval-card__row-spacer {
     flex: 1 1 0;
   }
 
-  /* "Add a note" is a link in the accent colour, not a button. */
-  .cinder-approval-card__note-toggle {
-    appearance: none;
-    padding: 0;
-    border: 0;
-    border-radius: var(--cinder-radius-sm);
-    background: none;
-    color: var(--cinder-accent-text);
-    font: inherit;
-    cursor: pointer;
+  /* The action row sits one token under the row's metadata: the body gap plus this margin. */
+  .cinder-approval-card--row .cinder-approval-card__row-actions {
+    margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-1));
   }
 
-  @media (hover: hover) {
-    .cinder-approval-card__note-toggle:hover {
-      color: var(--cinder-accent-text-hover);
-      text-decoration: underline;
-      text-underline-offset: 0.15em;
+  /* "Add a note" is a ghost small Cinder Button with a note icon, so it reads as a control and not
+   * as a caption for Deny. The tooltip wrapper is the flex item: it keeps its size, centres against
+   * the buttons and sits --cinder-space-3 from Deny (the row gap is the other --cinder-space-1). */
+  .cinder-approval-card__note-toggle-tip {
+    flex: none;
+    align-self: center;
+    margin-inline-end: var(--cinder-space-2);
+  }
+
+  /* Under 30rem of card width the words give way to the icon; they stay the accessible name and
+   * the tooltip says them. */
+  /* The ghost face is pulled back by its own inline padding so the glyph and label start on the
+   * card's text column, the edge "Expires in" and the title use. Its 44px hit area comes from the
+   * Button's own pseudo-element, which takes no layout. */
+  .cinder-approval-card
+    .cinder-approval-card__row-actions
+    .cinder-button.cinder-approval-card__note-toggle {
+    align-self: center;
+    flex: none;
+    inline-size: auto;
+    max-inline-size: none;
+    min-inline-size: max-content;
+    block-size: var(--_cinder-painted-height-sm);
+    min-block-size: var(--_cinder-painted-height-sm);
+    white-space: nowrap;
+    margin-inline-start: calc(-1 * var(--cinder-button-padding-x-sm));
+  }
+
+  /* On a card 30rem or wider the words never squeeze, clip or wrap: one line at the label's own
+   * width, in the batch row layout as well as the single card. */
+  .cinder-approval-card
+    .cinder-approval-card__row-actions
+    .cinder-approval-card__note-toggle
+    .cinder-button__label {
+    flex: none;
+    max-inline-size: none;
+    min-inline-size: max-content;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+
+  /* Under 30rem of card width the toggle takes Button's icon-only geometry: a square face the
+   * height of a small button with the glyph centred, the pull-back reduced to the glyph's own
+   * inset. The words stay the accessible name and the tooltip says them. */
+  @container (inline-size < 30rem) {
+    .cinder-approval-card
+      .cinder-approval-card__row-actions
+      .cinder-button.cinder-approval-card__note-toggle {
+      inline-size: var(--_cinder-painted-height-sm);
+      min-inline-size: var(--_cinder-painted-height-sm);
+      block-size: var(--_cinder-painted-height-sm);
+      min-block-size: var(--_cinder-painted-height-sm);
+      padding-inline: 0;
+      aspect-ratio: 1;
+      justify-content: center;
+      margin-inline-start: calc((var(--_cinder-painted-height-sm) - 1em) / -2);
     }
-  }
 
-  .cinder-approval-card__note-toggle:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
+    .cinder-approval-card
+      .cinder-approval-card__row-actions
+      .cinder-approval-card__note-toggle
+      .cinder-button__label {
+      position: absolute;
+      inline-size: 1px;
+      min-inline-size: 0;
+      block-size: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
   }
 
   /* ----------------------------------------
@@ -763,18 +911,66 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
+    inline-size: 100%;
+    min-inline-size: 0;
     box-sizing: border-box;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-space-3) 14px;
+    padding: var(--cinder-space-3);
     background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card--decision[data-cinder-state='expired'] {
+    border-color: var(--cinder-status-warning-border);
+    background: var(--cinder-status-warning-background);
+  }
+
+  .cinder-approval-card__expired-label {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-approval-card__expired-subject {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__expired-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .cinder-approval-card__expired-row .cinder-approval-card__decision-title {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__expiry-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+  }
+
+  @container (inline-size < 24rem) {
+    .cinder-approval-card__expired-row .cinder-approval-card__decision-title {
+      flex-basis: 100%;
+    }
+
+    .cinder-approval-card__expiry-actions {
+      inline-size: 100%;
+    }
   }
 
   /* No glyph gutter: the action is the first thing on the row, and a badge beside it says when it
      cannot be undone. The title may wrap, so a long action never truncates. */
   .cinder-approval-card__decision-head,
-  .cinder-approval-card__receipt-head {
+  .cinder-approval-card__receipt-meta {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -789,22 +985,33 @@
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
-    line-height: var(--cinder-leading-tight);
+    line-height: var(--cinder-leading-snug);
     text-align: start;
   }
 
-  .cinder-approval-card__receipt-head .cinder-approval-card__decision-title {
-    flex: 1 1 8rem;
+  /* The title takes the available width at its natural size, so when the badge would force the
+   * title to break, the badge is the item that wraps, onto the line directly under the title. */
+  .cinder-approval-card__decision-head .cinder-approval-card__decision-title {
+    flex: 0 1 auto;
+  }
+
+  .cinder-approval-card__receipt .cinder-approval-card__input-toggle {
+    align-items: center;
+    align-self: flex-start;
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-approval-card__receipt-meta .cinder-approval-card__decision-title {
     font-size: var(--cinder-text-sm);
   }
 
-  .cinder-approval-card__receipt-head .cinder-badge,
+  .cinder-approval-card__receipt-meta .cinder-badge,
   .cinder-approval-card__irreversible {
     flex: none;
     white-space: nowrap;
   }
 
-  .cinder-approval-card__receipt-head .cinder-badge svg {
+  .cinder-approval-card__receipt-meta .cinder-badge svg {
     flex: none;
   }
 
@@ -815,7 +1022,8 @@
     text-align: start;
   }
 
-  /* Tool, Target, Amount and Command read as a definition list: the word, then its value. */
+  /* Host facts read as a compact definition list. Tool identity is already in the surrounding
+   * step/title hierarchy, while the command remains visible without a redundant label row. */
   .cinder-approval-card__facts {
     display: flex;
     flex-direction: column;
@@ -832,6 +1040,15 @@
 
   .cinder-approval-card__fact > dt {
     color: var(--cinder-text-subtle);
+    text-align: start;
+  }
+
+  .cinder-approval-card__fact--command {
+    display: block;
+  }
+
+  .cinder-approval-card__fact--command > dd {
+    grid-column: 1 / -1;
   }
 
   .cinder-approval-card__fact > dd {
@@ -842,29 +1059,180 @@
     text-align: start;
   }
 
+  .cinder-approval-card__command-value {
+    padding-block-start: var(--cinder-space-0-5);
+  }
+
   .cinder-approval-card__fact > dd[data-cinder-monospace] {
     font-family: var(--cinder-font-mono);
   }
 
+  /* The question and facts may contain mixed-direction prose. Keep the command's explicit LTR
+   * reading order, but mirror the definition-list columns with the actual fact direction so RTL
+   * labels, values, and their alignment do not leave the card half-LTR. */
+  .cinder-approval-card__fact:dir(rtl) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 0 var(--cinder-space-3);
+    direction: rtl;
+  }
+
+  .cinder-approval-card__fact:dir(rtl) > dd {
+    flex: 0 1 auto;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .cinder-approval-card:has(.cinder-approval-card__title:dir(rtl))
+    .cinder-approval-card__fact:not(.cinder-approval-card__fact--command) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 0 var(--cinder-space-3);
+    direction: rtl;
+  }
+
+  .cinder-approval-card:has(.cinder-approval-card__title:dir(rtl))
+    .cinder-approval-card__fact:not(.cinder-approval-card__fact--command)
+    > dd {
+    flex: 0 1 auto;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  /* The actions row reads in the card's own direction, so the note toggle starts at the start edge
+   * and the decision buttons end at the end edge in right-to-left content too. */
+  .cinder-approval-card:has(
+      :is(
+        .cinder-approval-card__title,
+        .cinder-approval-card__decision-title,
+        .cinder-approval-card__row-question
+      ):dir(rtl)
+    )
+    .cinder-approval-card__row-actions {
+    direction: rtl;
+  }
+
+  .cinder-approval-card[dir='rtl']
+    .cinder-approval-card__fact:not(.cinder-approval-card__fact--command) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 0 var(--cinder-space-3);
+    direction: rtl;
+  }
+
+  .cinder-approval-card[dir='rtl']
+    .cinder-approval-card__fact:not(.cinder-approval-card__fact--command)
+    > dd {
+    flex: 0 1 auto;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .cinder-approval-card[dir='rtl'] .cinder-approval-card__row-actions {
+    direction: rtl;
+  }
+
+  .cinder-approval-card__fact--command:dir(rtl) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   /* The command is always open, so it is a code block that wraps: none of it hides behind a
      sideways scroll. */
+  /* One code block in every layout. Its panel reaches past the text column by exactly its own
+   * inline padding, so the command's first character sits on the label column instead of one
+   * padding inside it, in the light scheme where the panel and the card share a white surface. */
   .cinder-approval-card__command {
+    --_cinder-approval-card-command-padding: var(--cinder-space-2);
+    /* @runtime-state */
+    --cinder-code-block-padding: var(--_cinder-approval-card-command-padding);
+
     min-inline-size: 0;
     margin: 0;
+    margin-inline: calc(-1 * var(--_cinder-approval-card-command-padding));
     text-align: start;
+  }
+
+  /* The hang (`margin-inline`) is the padding, so the row's command text lands on the title column
+   * and the panel keeps one space-1 from the card's border. */
+  .cinder-approval-card--row .cinder-approval-card__command {
+    --_cinder-approval-card-command-padding: var(--cinder-space-1);
+  }
+
+  .cinder-approval-card__decision-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    margin-block-end: 0;
+  }
+
+  /* The countdown is the card's only caption row; with no countdown the row is not drawn. */
+  .cinder-approval-card__decision-tools:not(:has(*)) {
+    display: none;
+  }
+
+  .cinder-approval-card__decision-tools .cinder-approval-card__countdown {
+    margin: 0;
+  }
+
+  /* The badge is never smaller than 12px, the smallest type on the card. It sits beside the title
+   * at the inline end; where the title's basis leaves it no room, the flex line wraps and it takes
+   * the line directly under the title, never above it. The extra class outranks the badge's own
+   * size rule. */
+  .cinder-approval-card .cinder-badge.cinder-approval-card__irreversible {
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* Disclosures and "Add a note" are painted at text height (their 44px hit area is a
+   * pseudo-element), so the action row sits one token under the metadata row, not inside a second
+   * dead band: the stack's own gap plus this margin is --cinder-space-3. */
+  .cinder-approval-card--decision .cinder-approval-card__row-actions {
+    margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-2));
+  }
+
+  @container (inline-size < 24rem) {
+    .cinder-approval-card--decision .cinder-approval-card__row-actions .cinder-button {
+      line-height: var(--cinder-leading-tight);
+    }
+
+    .cinder-approval-card--decision .cinder-approval-card__facts {
+      gap: var(--cinder-space-0-5);
+    }
+
+    .cinder-approval-card--decision .cinder-approval-card__fact--command {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: var(--cinder-space-0-5);
+    }
+
+    .cinder-approval-card--decision .cinder-approval-card__command {
+      --_cinder-approval-card-command-padding: var(--cinder-space-1-5);
+    }
   }
 
   .cinder-approval-card__countdown,
   .cinder-approval-card__arm-hint {
     margin: 0;
     color: var(--cinder-text-subtle);
-    font-size: var(--cinder-text-xs);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
     text-align: start;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-approval-card__arm-escape {
+      display: none;
+    }
   }
 
   .cinder-approval-card__why-body {
     margin: 0;
-    padding-block-start: var(--cinder-space-1);
+    padding-block-start: 0;
     color: var(--cinder-text-muted);
     line-height: var(--cinder-leading-snug);
     text-align: start;
@@ -885,6 +1253,15 @@
   .cinder-approval-card--decision:has(> .cinder-approval-card__receipt) {
     gap: 0;
     padding-block: var(--cinder-space-2);
+
+    /* The card clips its content (rounded corners), and so does the message that holds it: the
+       24px Details control's 44px area overhangs it by 10px, so the last row keeps that much
+       room beneath it. */
+    padding-block-end: var(--cinder-space-2-5);
+  }
+
+  .cinder-approval-card__receipt-meta {
+    gap: var(--cinder-space-1) var(--cinder-space-2);
   }
 
   .cinder-approval-card__receipt-by,
@@ -893,6 +1270,10 @@
     color: var(--cinder-text-subtle);
     line-height: var(--cinder-leading-snug);
     text-align: start;
+  }
+
+  .cinder-approval-card__receipt-by {
+    font-size: var(--cinder-text-sm);
   }
 
   .cinder-approval-card__receipt-quote-text {
@@ -1147,17 +1528,12 @@
   @container (inline-size < 32rem) {
     /* The input line wraps rather than cutting its values, so a phone still reads all of it. */
     .cinder-approval-card__input-toggle {
-      align-items: flex-start;
+      align-items: center;
     }
 
     .cinder-approval-card__input-pairs {
       overflow: visible;
       white-space: normal;
-    }
-
-    .cinder-approval-card__note-toggle {
-      flex: 1 1 100%;
-      text-align: start;
     }
 
     /* The status badge sits above the question, in the column beside the risk glyph, so the
@@ -1197,10 +1573,20 @@
       display: none;
     }
 
-    .cinder-approval-card__row-actions .cinder-button[data-cinder-size],
     .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
       flex: 1 1 0;
       min-height: var(--cinder-touch-target-min);
+    }
+
+    .cinder-approval-card__row-actions {
+      flex-wrap: wrap;
+    }
+
+    .cinder-approval-card__row-actions .cinder-button[data-cinder-size] {
+      min-inline-size: var(--cinder-touch-target-min);
+      max-inline-size: none;
+      white-space: nowrap;
+      overflow-wrap: normal;
     }
 
     .cinder-approval-card__action-buttons {
@@ -1209,26 +1595,32 @@
     }
   }
 
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
+    .cinder-approval-card--decision
+      .cinder-approval-card__row-actions
+      .cinder-inline-confirm__two-press
+      .cinder-button {
+      block-size: auto;
+    }
+
     .cinder-approval-card__row-actions .cinder-button[data-cinder-size],
     .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
-      min-height: var(--cinder-touch-target-min);
+      min-inline-size: var(--cinder-touch-target-min);
     }
 
-    /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) and
-     * "Add a note" are text-sized on a desktop; on a touch screen each is a 44px target (C#3). */
+    /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) are painted at text height; on a touch screen each reaches a 44px hit area
+     * through a pseudo-element that takes no layout space, so the rows keep their rhythm. */
     .cinder-approval-card__input-toggle,
-    .cinder-approval-card__said-toggle,
-    .cinder-approval-card__note-toggle {
-      min-block-size: var(--cinder-touch-target-min);
+    .cinder-approval-card__said-toggle {
+      position: relative;
     }
-  }
 
-  /* Below about 20rem the label column squeezed the value to a few characters a line (a long tool
-   * identifier broke over five lines), so each fact stacks its label above its value (C#14). */
-  @container (inline-size < 20rem) {
-    .cinder-approval-card__fact {
-      grid-template-columns: minmax(0, 1fr);
+    .cinder-approval-card__input-toggle::before,
+    .cinder-approval-card__said-toggle::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 
@@ -1242,8 +1634,7 @@
     }
 
     .cinder-approval-card__risk-icon:focus-visible,
-    .cinder-approval-card__input-toggle:focus-visible,
-    .cinder-approval-card__note-toggle:focus-visible {
+    .cinder-approval-card__input-toggle:focus-visible {
       outline: 2px solid CanvasText;
       outline-offset: 2px;
       box-shadow: none;

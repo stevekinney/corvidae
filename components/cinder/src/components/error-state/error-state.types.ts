@@ -61,9 +61,10 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    */
   retryVariant?: ErrorStateRetryVariant;
   /**
-   * A second action rendered after the retry button, such as an "Open Health" link or a
+   * A second action rendered alongside the retry button, such as an "Open Health" link or a
    * "Back to chats" button. Give it the secondary or ghost button variant so the retry button
-   * stays the only primary on the page.
+   * stays the only primary on the page. When both actions are present, the secondary action is
+   * first in DOM and keyboard order, visually left of the primary.
    */
   secondaryAction?: Snippet;
   /**

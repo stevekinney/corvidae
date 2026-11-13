@@ -55,7 +55,14 @@
   let openDetails = $state<ReadonlySet<string>>(new Set());
   const inline = $derived(onSelect === undefined);
 
-  const byId = $derived(new Map(entries.map((entry) => [entry.callId, entry] as const)));
+  const byId = $derived(
+    new Map(
+      entries.flatMap((entry) => [
+        [entry.callId, entry] as const,
+        ...(entry.railId === undefined ? [] : [[entry.railId, entry] as const]),
+      ]),
+    ),
+  );
   /** A finished revision proposal keeps its inline panel on the rail, whatever the fold. */
   const showsPanel = (entry: ToolCallEntry): boolean =>
     mcpApp !== undefined &&
@@ -65,6 +72,7 @@
   const showsDecision = (entry: ToolCallEntry): boolean =>
     decision !== undefined &&
     (entry.state === 'needs-you' ||
+      entry.state === 'expired' ||
       (entry.decision !== undefined &&
         (entry.decision.outcome === 'denied' ||
           decided.elsewhere?.has(entry.callId) === true ||

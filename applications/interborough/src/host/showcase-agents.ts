@@ -208,6 +208,13 @@ export interface ShowcasePacing {
    * story says it took (the 4471 lookup takes 0.4 s).
    */
   readonly lookup?: (moment: ShowcaseLookupMoment) => void | Promise<void>;
+  /**
+   * How long Tool runner's signed approval binding lasts, which is the deadline a waiting approval
+   * carries (COR-2280 draws an approval "Expired" once it passes). A host that leaves it out keeps
+   * the toolbox's own default; the sample world's seed sets a long one so the approval the story
+   * leaves waiting does not lapse while a browser suite or a design-review capture is using it.
+   */
+  readonly approvalBindingTtlMilliseconds?: number;
 }
 
 /** How Tool runner asks for each of its tools: Lookup order Never, Issue refund Always, Triage refunds On changes. */
@@ -561,6 +568,9 @@ export function createShowcaseToolRunnerToolbox(pacing: ShowcasePacing = {}) {
   ];
   return createToolbox(tools, {
     approvalSecret: SHOWCASE_APPROVAL_SECRET,
+    ...(pacing.approvalBindingTtlMilliseconds === undefined
+      ? {}
+      : { approvalBindingTtlMs: pacing.approvalBindingTtlMilliseconds }),
     policy: createToolApprovalHooks(SHOWCASE_TOOL_APPROVAL, {
       tools: tools.map((tool) => tool.name),
     }),

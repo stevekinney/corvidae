@@ -10,6 +10,7 @@ import type {
   ChatToolApprovalResolution,
 } from './adapter/chat-adapter.ts';
 import type { ResolvedChatArtifact } from './artifact/artifact-viewer.types.ts';
+import type { ChatLabels } from './chat-labels.ts';
 import type { ChatAvailability } from './container/chat-availability.ts';
 import type {
   ChatScrollStateChangeEvent,
@@ -231,7 +232,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   composerStarting?: string | undefined;
   /** Where the composer sits. `'docked'` (default) keeps it at the bottom of the surface under the transcript. `'centered'` puts the empty state, the composer and `composerFooter` together in the middle of the surface while the conversation has no message, and docks the composer as soon as it has one. */
   composerPlacement?: 'docked' | 'centered' | undefined;
-  /** The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`. */
+  /** The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message…`. */
   composerPlaceholder?: string | undefined;
   /** Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`. */
   composerAnswering?: boolean;
@@ -348,6 +349,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
     toolCallId: string,
     resolution: ApprovalResolution,
   ) => void | ChatToolApprovalResolution | Promise<void | ChatToolApprovalResolution>;
+  /** Asks the host to retry the interrupted turn with a fresh approval for this tool call. */
+  onApprovalRequestAgain?: ((toolCallId: string) => void) | undefined;
   /**
    * Called when the user answers an action-required tool result that requests
    * input. Chat draws the action's JSON Schema as the control that fits it
@@ -369,8 +372,9 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   answerInComposer?: boolean | undefined;
   /**
    * Where a question that has choices (a choice, a choice with Something else, a yes or no) is
-   * answered. `'inline'` (default) draws its controls in its transcript row. `'docked'` draws the
-   * question in place of the composer: a Needs you warning, a fieldset named The agent is asking,
+   * answered. `'inline'` (default) draws its controls in its transcript row. On a coarse pointer,
+   * choice questions dock so phone users always get the explicit Reply and Answer controls.
+   * `'docked'` draws the question in place of the composer: a Needs you warning, a fieldset named Question (its legend is visually hidden),
    * radio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
    * secondary Reply in chat instead and a primary Answer, with `Question 2 of 3` when several were
    * asked together. A choice only selects; Answer sends it. Reply in chat instead gives the
@@ -380,6 +384,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   questionPlacement?: 'inline' | 'docked' | undefined;
   /** The words of the docked question, any of which the host can replace. */
   questionLabels?: Partial<ChatQuestionDockLabels> | undefined;
+  /** The composer's attachment and approval-drawer words, any of which the host can replace. */
+  labels?: Partial<ChatLabels> | undefined;
   /**
    * Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.
    */
@@ -419,25 +425,25 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * message; return a {@link ChatTurnState} to draw the turn's outcome on the turn itself, or
    * `undefined` to leave it streaming while text arrives and complete after. `reconnecting`
    * mutes the partial text and drops its caret under the warning "Connection lost. Reconnecting,
-   * attempt 2 of 5. Next try in 8 s." with Retry now and a bar that drains until the next try;
-   * `stopped` draws a neutral pill with Discard and Continue; `failed` a danger alert that says the
-   * answer is incomplete, why, and what Retry keeps, with Retry; `empty` a dashed row with the
-   * turn's time and Try again in place of its line. `advanceTurnState` moves a state on as the run
+   * attempt 2 of 5. Next try in 8 s." with Retry and a bar that drains until the next try;
+   * `stopped` draws a neutral card with Discard and Continue; `failed` a danger alert that says the
+   * answer is incomplete, why, and what Retry keeps, with Retry; `empty` a neutral row with the
+   * turn's time and Retry in place of its line. `advanceTurnState` moves a state on as the run
    * reports what happened. A callback that throws or returns something else draws the turn as
    * Chat sees it.
    */
   messageTurnState?: ((message: Message) => ChatTurnState | undefined) | undefined;
   /** The words of a turn's outcome and of the steps under it, any of which the host can replace. */
   turnLabels?: Partial<ChatTurnLabels> | undefined;
-  /** Called with a reconnecting turn's id when the person chooses Retry now. Retry now shows only when this is set. */
+  /** Called with a reconnecting turn's id when the person chooses Retry. Retry shows only when this is set. */
   onRetryConnection?: ((messageId: string) => void) | undefined;
   /** Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set. */
   onContinueTurn?: ((messageId: string) => void) | undefined;
   /** Called with a stopped turn's id when the person chooses Discard. Discard shows only when this is set; the host removes the turn from the conversation. */
   onDiscardTurn?: ((messageId: string) => void) | undefined;
-  /** Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Try again. Each shows only when this is set. */
+  /** Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Retry. Each shows only when this is set. */
   onRetryTurn?: ((messageId: string) => void) | undefined;
-  /** Called with a failed tool call's id when the person chooses Retry this step under it. The button shows only when this is set; Copy error always shows. */
+  /** Called with a failed tool call's id when the person chooses Retry under it. The button shows only when this is set; Copy error always shows. */
   onRetryStep?: ((toolCallId: string) => void) | undefined;
   /** Called when the explicit history trigger is activated. The consumer prepends compatible messages into `conversation`. */
   onLoadHistory?: () => void | Promise<void>;

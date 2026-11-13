@@ -107,7 +107,7 @@ describe('a question outside a chat (the reviews inbox)', () => {
     });
     await flush();
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await fireEvent.click(screen.getByRole('radio', { name: /^Yes\b/ }));
     await flush();
     await flush();
 

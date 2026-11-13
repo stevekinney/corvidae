@@ -3,7 +3,7 @@ import type { HTMLAttributes } from 'svelte/elements';
 
 import type { ToolCallRailStatus } from '../tool-call-rail/tool-call-rail.types.ts';
 
-/** Where the call stands, in the rail's words: `done`, `approved`, `running`, `waiting`, `denied`, `failed` or `interrupted`. */
+/** Where the call stands, in the rail's words, including an approval that expired before a decision. */
 export type ToolCallPanelStatus = ToolCallRailStatus;
 
 /** How the panel's Input and Result sections show a payload: labelled fields, or the stored JSON. */

@@ -171,10 +171,49 @@
   }
 
   .cinder-error-state-details-summary {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
     cursor: pointer;
-    color: var(--cinder-text-subtle);
+    color: var(--cinder-text-default);
+    min-block-size: var(--cinder-space-6);
     line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-error-state-details-summary::before {
+    content: '›';
+    display: inline-block;
+    inline-size: 1rem;
+    block-size: 1rem;
+    font-size: var(--cinder-text-lg);
+    line-height: 0.875rem;
+    text-align: center;
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-error-state-details-summary:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .cinder-error-state-details[open] .cinder-error-state-details-summary::before {
+    transform: rotate(90deg);
+  }
+
+  /* On a coarse pointer the summary keeps its painted box; a pseudo-element, which takes no layout
+     space, reaches 44 by 44. */
+  @media (any-pointer: coarse) {
+    .cinder-error-state-details-summary {
+      position: relative;
+    }
+
+    .cinder-error-state-details-summary::after {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
   }
 
   .cinder-error-state-details-summary:hover {

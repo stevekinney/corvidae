@@ -104,7 +104,7 @@ y=19  rgb(141,144,148)   the control border as measured then, 48% ink (now the `
 
 A stacked pair would have produced a single row at their combined weight. The edge is 2px of two different weights, which is what it was before the tiers were composed — both layers simply track the surface now.
 
-Sixteen sites (seventeen declarations: the ColorField hatch has two stops) are a real area rather than a hairline. All of them carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. One is outside `@lostgradient/cinder` (Chat's busy dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet. Every one of them is the only visible shape of an indicator, so since the two-job split every one is on a control tier.
+Seventeen sites (eighteen declarations: the ColorField hatch has two stops) are a real area rather than a hairline. All of them carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. One is outside `@lostgradient/cinder` (Chat's busy dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet. Every one of them is the only visible shape of an indicator, so since the two-job split every one is on a control tier.
 
 | site | tier | how it is painted |
 | --- | --- | --- |
@@ -113,6 +113,7 @@ Sixteen sites (seventeen declarations: the ColorField hatch has two stops) are a
 | `parameter-field` rail | `border.contrast` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 3px wide, full body height |
 | `mega-menu` indicator track | `border.contrast` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 2px tall |
 | `media-controls` progress track | `border.contrast` | 4px tall |
+| `spinner` arc track (the SVG arc variant; the ring variant paints it as a border) | `border.contrast` (was `border.control`, 2.88:1 in the dark theme) | a 2px stroke around the full circle, under the arc |
 | `drawer` drag-handle pill | `border.contrast` | 36 × 4px |
 | `command-palette` sheet grabber | `border.contrast` | 36 × 4px, the same pill the bottom drawer draws |
 | `modal` sheet grabber | `border.contrast` | 36 × 4px, the same pill the bottom drawer draws |
@@ -126,6 +127,8 @@ Sixteen sites (seventeen declarations: the ColorField hatch has two stops) are a
 | `attempts-indicator` filled segment, through `--_cinder-attempts-indicator-fill` | `border.contrast` | a 6px tall segment, one per allowed attempt, over the row or the dialog surface (the empty ones are `surface.inset`) |
 | `connection-indicator` reconnecting dot, through `--_cinder-connection-indicator-dot-color` | `border.contrast` | 8 × 8px, still, beside the word "Reconnecting"; the same neutral dot a `status-dot` draws, over the page surface |
 | `inspector-row` switch off track | `border.contrast` | the full 32 × 18px track; it read the control tier through `--cinder-control-border` until the control edge went quiet (2026-11-11) |
+
+The Spinner track was on `border.control` for a few hours on 2026-11-12 and measured 2.88:1 against the dark page surface (white at 32% over `oklch(18.5% 0.012 265)`), so it moved to `border.contrast`: 4.03:1 in the dark theme (the opaque `oklch(56% 0.05 248)` over the same surface) and 3.18:1 in the light theme (20% ink at 48% over `oklch(97.6% 0.007 272)`), computed from the token values.
 
 Four of those do not reach the tier through `background` at all, which is how two earlier passes of this document missed them: `color-field` uses `background-image`, `resizable-panels` uses `color`, and `rating` and `status-dot` hop through a component token (`--_cinder-rating-empty`, `--cinder-status-dot-color`). `status-dot` borrows a border tier because every other status maps to a `*-solid` and neutral has none.
 

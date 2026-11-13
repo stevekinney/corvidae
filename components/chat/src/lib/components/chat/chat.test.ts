@@ -247,6 +247,22 @@ function liveRegion(
 }
 
 describe('Chat — basic render', () => {
+  test('passes top-level label overrides into the composer', () => {
+    const conversation = createConversation({ id: 'conversation-labels' });
+    const { container } = render(Chat, {
+      props: {
+        id: 'chat-labels',
+        conversation,
+        labels: { composer: 'Nachricht verfassen', sendMessage: 'Nachricht senden' },
+      },
+    });
+
+    expect(container.querySelector('form')?.getAttribute('aria-label')).toBe('Nachricht verfassen');
+    expect(container.querySelector('[data-chat-send]')?.getAttribute('aria-label')).toBe(
+      'Nachricht senden',
+    );
+  });
+
   test('mounts the chat container with its accessible region', () => {
     const conversation = createConversation({ id: 'conversation-basic' });
     const { container } = render(Chat, {
@@ -305,6 +321,20 @@ describe('Chat — basic render', () => {
     const timeline = container.querySelector('.chat-timeline');
     expect(timeline?.id).toBe('chat-timeline-timeline');
     expect(timeline?.getAttribute('role')).toBe('log');
+  });
+
+  test('gives native focus reveal room for the clipped timeline edge', async () => {
+    const implementation = await Bun.file(
+      new URL('./container/chat.svelte', import.meta.url),
+    ).text();
+    const eagerStyles = await Bun.file(new URL('./chat.css', import.meta.url)).text();
+
+    expect(implementation).toMatch(
+      /\.chat-timeline\s*\{[^}]*overflow-y:\s*auto;[^}]*scroll-padding-block:\s*var\(--cinder-space-2\);/s,
+    );
+    expect(eagerStyles).toMatch(
+      /\.cinder-chat \.chat-timeline\s*\{[^}]*overflow-y:\s*auto;[^}]*scroll-padding-block:\s*var\(--cinder-space-2\);/s,
+    );
   });
 
   test('forwards custom class and style onto the outer layout element', () => {
@@ -387,18 +417,60 @@ describe('Chat — scrollFadeVisible', () => {
     expect(source).not.toMatch(/mask-image/);
   });
 
-  test('the shared transcript ground differs from the inset in dark mode (COR-2287)', async () => {
+  test('the shared transcript ground differs from the inset in both themes (COR-2287)', async () => {
     // Code headers, table headers and the Sources count paint --cinder-surface-inset. On an inset
-    // ground they vanished in dark mode, so the dark arm of the shared surface is the canvas while
-    // the light arm keeps the inset well. The timeline and its scroll fade read the same variable.
+    // ground they vanished. The canvas stays distinct from the inset in each theme, and the timeline
+    // and its scroll fade read the same variable.
     const chatSveltePath = new URL('./container/chat.svelte', import.meta.url);
     const source = await Bun.file(chatSveltePath).text();
     expect(source).toMatch(
-      /\.chat-container\[data-surface-mode='default'\]\s*\{\s*--_cinder-chat-shared-surface:\s*light-dark\(\s*var\(--cinder-surface-inset\),\s*var\(--cinder-surface-canvas\)\s*\);/,
+      /\.chat-container\[data-surface-mode='default'\]\s*\{\s*--_cinder-chat-shared-surface:\s*var\(--cinder-surface-canvas\);/,
     );
     expect(source).toMatch(
       /\.chat-container\[data-surface-mode='default'\] \.chat-timeline\s*\{\s*background:\s*var\(--_cinder-chat-shared-surface\);/,
     );
+    expect(source).toMatch(
+      /\.chat-container\[data-surface-mode='default'\] > :global\(\.chat-availability\)\s*\{\s*background:\s*var\(--_cinder-chat-shared-surface\);/,
+    );
+  });
+
+  test('keeps the composer on the same reading edges as the transcript (AUDIT-A4)', async () => {
+    const source = await Bun.file(new URL('./container/chat.svelte', import.meta.url)).text();
+    expect(source).toMatch(
+      /\.chat-input-wrapper\s*\{[^}]*max-inline-size:\s*var\(--cinder-chat-reading-max-width\);/,
+    );
+    expect(source).toMatch(
+      /\.chat-input-area\s*\{[^}]*padding:\s*var\(--cinder-chat-timeline-padding\) 0;/,
+    );
+    expect(source).toMatch(
+      /\.chat-input-area > :global\(\.chat-input-shell\),[\s\S]*?max-inline-size:\s*100%;/,
+    );
+    expect(source).not.toMatch(
+      /\.chat-input-wrapper\s*\{[^}]*max-inline-size:\s*calc\([\s\S]*?reading-max-width/,
+    );
+    // Text inside the composer's border keeps its own inset (round 2): the container shares the
+    // transcript's edge, the editor's text does not sit on the border.
+    expect(source).not.toMatch(
+      /\.chat-input-area :global\(\.chat-input-editor\),\s*\.chat-input-area :global\(\.chat-input-markdown\)\s*\{[^}]*padding-inline:\s*0;/,
+    );
+  });
+
+  test('keeps wide markdown nodes inside their owning message measure (AUDIT-D9)', async () => {
+    const source = await Bun.file(new URL('./chat.css', import.meta.url)).text();
+    expect(source).toMatch(
+      /\.cinder-chat \.message-content-preview\s*\{[\s\S]*?inline-size:\s*100%;[\s\S]*?max-inline-size:\s*100%;/,
+    );
+    expect(source).toMatch(
+      /\.cinder-chat \.message-content-preview > :not\(\.message-content-wide\)\s*\{[\s\S]*?max-inline-size:\s*min\(/,
+    );
+    const wideBlock =
+      source.match(/\.cinder-chat \.message-content-wide\s*\{([\s\S]*?)\n  \}/)?.[1] ?? '';
+    expect(wideBlock).toContain('inline-size: min(var(--cinder-content-width-wide), 100%);');
+    expect(wideBlock).toContain('min-inline-size: 0;');
+    expect(wideBlock).toContain('margin-inline: 0;');
+    expect(wideBlock).not.toContain('calc(100% +');
+    expect(wideBlock).not.toContain('margin-inline: max(');
+    expect(wideBlock).not.toContain('100cqi');
   });
 });
 
@@ -560,6 +632,314 @@ describe('Chat — code highlighting', () => {
 });
 
 describe('Chat — message rendering', () => {
+  test('passes top-level label overrides into assistant source controls', () => {
+    const conversation = appendAssistantMessage(
+      createConversation({ id: 'conversation-source-labels' }),
+      'See the policy.',
+    );
+    const messageId = conversation.ids[0]!;
+    const { container } = render(Chat, {
+      props: {
+        id: 'chat-source-labels',
+        conversation,
+        sourcePresentation: 'list',
+        sourcesByMessageId: new Map([
+          [messageId, [{ label: 'Policy', url: 'https://example.com/policy' }]],
+        ]),
+        labels: {
+          sources: 'Quellen',
+          sourcesCount: (count: number) => `Quellen (${count})`,
+        },
+      },
+    });
+
+    expect(container.querySelector('[aria-label="Quellen (1)"]')).not.toBeNull();
+  });
+
+  test('passes top-level label overrides into inline source controls', () => {
+    const conversation = appendAssistantMessage(
+      createConversation({ id: 'conversation-inline-source-labels' }),
+      'See the policy.',
+    );
+    const messageId = conversation.ids[0]!;
+    const { container } = render(Chat, {
+      props: {
+        id: 'chat-inline-source-labels',
+        conversation,
+        sourcePresentation: 'inline',
+        sourcesByMessageId: new Map([
+          [messageId, [{ label: 'Policy', url: 'https://example.com/policy' }]],
+        ]),
+        labels: { sources: 'Quellen' },
+      },
+    });
+
+    expect(container.querySelector('[aria-label="Quellen"]')).not.toBeNull();
+  });
+
+  test('passes top-level label overrides into date separators', () => {
+    let conversation = appendUserMessage(
+      createConversation({ id: 'conversation-date-labels' }),
+      'Yesterday',
+    );
+    conversation = appendAssistantMessage(conversation, 'Today');
+    const ids = conversation.ids;
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const today = new Date();
+    conversation = {
+      ...conversation,
+      messages: {
+        ...conversation.messages,
+        [ids[0]!]: { ...conversation.messages[ids[0]!]!, createdAt: yesterday.toISOString() },
+        [ids[1]!]: { ...conversation.messages[ids[1]!]!, createdAt: today.toISOString() },
+      },
+    };
+    const { container } = render(Chat, {
+      props: {
+        id: 'chat-date-labels',
+        conversation,
+        labels: {
+          yesterday: 'Gestern',
+          today: 'Heute',
+          messagesFrom: (date: string) => `Nachrichten vom ${date}`,
+        },
+      },
+    });
+
+    expect(container.querySelector('[aria-label="Nachrichten vom Gestern"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Nachrichten vom Heute"]')).not.toBeNull();
+  });
+
+  test('keeps an approval card inside the contiguous tool group', () => {
+    const conversation = createConversation({ id: 'conversation-grouped-approval' });
+    const now = new Date().toISOString();
+    const messages: TestMessage[] = [
+      {
+        id: 'grouped-call-1',
+        role: 'tool-call',
+        content: '',
+        position: 0,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'grouped-call-1', name: 'lookup', arguments: {} },
+      },
+      {
+        id: 'grouped-call-2',
+        role: 'tool-call',
+        content: '',
+        position: 1,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'grouped-call-2', name: 'issue-refund', arguments: { amount: 20 } },
+      },
+      {
+        id: 'grouped-result-2',
+        role: 'tool-result',
+        content: '',
+        position: 2,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolResult: {
+          callId: 'grouped-call-2',
+          outcome: 'action_required',
+          content: null,
+          action: {
+            type: 'approval',
+            message: 'Refund this purchase?',
+            risk: 'high',
+            operation: { kind: 'command', command: 'refund --amount 20', argsPreview: {} },
+            policyVersion: 'test-policy',
+            idempotencyKey: 'grouped-approval',
+          },
+        },
+      },
+      {
+        id: 'grouped-call-3',
+        role: 'tool-call',
+        content: '',
+        position: 3,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'grouped-call-3', name: 'notify', arguments: {} },
+      },
+    ];
+    const groupedConversation: TestConversation = {
+      ...conversation,
+      ids: messages.map((message) => message.id),
+      messages: Object.fromEntries(messages.map((message) => [message.id, message])),
+    };
+
+    const { container } = render(Chat, {
+      props: { id: 'chat-grouped-approval', conversation: groupedConversation },
+    });
+
+    expect(container.querySelector('[data-cinder-tool-call-count="3"]')).not.toBeNull();
+    expect(container.querySelectorAll('.chat-tool-call-timeline')).toHaveLength(1);
+    expect(container.querySelectorAll('.cinder-approval-card')).toHaveLength(1);
+    expect(container.textContent).toContain('Refund this purchase?');
+  });
+
+  test('keeps an input question as a question row instead of an approval detail', async () => {
+    const conversation = createConversation({ id: 'conversation-grouped-question' });
+    const now = new Date().toISOString();
+    const messages: TestMessage[] = [
+      {
+        id: 'completed-call',
+        role: 'tool-call',
+        content: '',
+        position: 0,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'completed-call', name: 'lookup', arguments: {} },
+      },
+      {
+        id: 'completed-result',
+        role: 'tool-result',
+        content: '',
+        position: 1,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolResult: { callId: 'completed-call', outcome: 'success', content: { ok: true } },
+      },
+      {
+        id: 'question-call',
+        role: 'tool-call',
+        content: '',
+        position: 2,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'question-call', name: 'requestHumanInput', arguments: {} },
+      },
+      {
+        id: 'question-result',
+        role: 'tool-result',
+        content: '',
+        position: 3,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolResult: {
+          callId: 'question-call',
+          outcome: 'action_required',
+          content: null,
+          action: {
+            type: 'input',
+            message: 'Which ledger should I use?',
+            schema: { enum: ['October', 'November'] },
+          },
+        },
+      },
+    ];
+    const questionConversation: TestConversation = {
+      ...conversation,
+      ids: messages.map((message) => message.id),
+      messages: Object.fromEntries(messages.map((message) => [message.id, message])),
+    };
+
+    const { container } = render(Chat, {
+      props: {
+        id: 'chat-grouped-question',
+        conversation: questionConversation,
+        onInputSubmit: () => undefined,
+      },
+    });
+    await tick();
+
+    expect(container.querySelector('[data-cinder-tool-call-count="2"]')).not.toBeNull();
+    expect(container.querySelectorAll('.chat-tool-call-timeline')).toHaveLength(1);
+    expect(container.querySelector('.chat-question-choices')).not.toBeNull();
+    expect(container.querySelector('.cinder-approval-card')).toBeNull();
+  });
+
+  test('docks a pending choice question on a coarse pointer with Reply and Answer controls', async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === '(any-pointer: coarse)',
+        media: query,
+        onchange: null,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        dispatchEvent: () => false,
+      }),
+    });
+
+    try {
+      const conversation = createConversation({ id: 'conversation-coarse-question' });
+      const now = new Date().toISOString();
+      const messages: TestMessage[] = [
+        {
+          id: 'coarse-question-call',
+          role: 'tool-call',
+          content: '',
+          position: 0,
+          createdAt: now,
+          metadata: {},
+          hidden: false,
+          toolCall: { id: 'coarse-question-call', name: 'requestHumanInput', arguments: {} },
+        },
+        {
+          id: 'coarse-question-result',
+          role: 'tool-result',
+          content: '',
+          position: 1,
+          createdAt: now,
+          metadata: {},
+          hidden: false,
+          toolResult: {
+            callId: 'coarse-question-call',
+            outcome: 'action_required',
+            content: null,
+            action: {
+              type: 'input',
+              message: 'Which environment?',
+              schema: { enum: ['Staging', 'Production'] },
+            },
+          },
+        },
+      ];
+      const coarseConversation: TestConversation = {
+        ...conversation,
+        ids: messages.map((message) => message.id),
+        messages: Object.fromEntries(messages.map((message) => [message.id, message])),
+      };
+
+      const { container } = render(Chat, {
+        props: {
+          id: 'chat-coarse-question',
+          conversation: coarseConversation,
+          questionPlacement: 'inline',
+          onInputSubmit: () => undefined,
+          labels: { answer: 'Antwort' },
+        },
+      });
+      await tick();
+
+      const dock = container.querySelector('[data-chat-question-dock]');
+      expect(dock).not.toBeNull();
+      expect(dock?.textContent).toContain('Reply in chat instead');
+      expect(dock?.textContent).toContain('Antwort');
+      expect(dock?.querySelector('button[disabled]')).not.toBeNull();
+      expect(container.querySelector('.chat-question-choices')).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
   test('renders user and assistant messages with their content and roles', () => {
     let conversation = createConversation({ id: 'conversation-messages' });
     conversation = appendUserMessage(conversation, 'What is the capital of France?');

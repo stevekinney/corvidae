@@ -189,7 +189,7 @@
           }
         },
         "sm": {
-          "$value": "{space.2}",
+          "$value": "{space.3}",
           "$description": "Small button horizontal padding.",
           "$extensions": {
             "com.lostgradient.cinder": {
@@ -202,7 +202,7 @@
           }
         },
         "md": {
-          "$value": "{space.2-5}",
+          "$value": "{space.4}",
           "$description": "Medium button horizontal padding.",
           "$extensions": {
             "com.lostgradient.cinder": {
@@ -759,10 +759,10 @@
     "dot-size": {
       "$type": "dimension",
       "$value": {
-        "value": 2.75,
+        "value": 1.5,
         "unit": "rem"
       },
-      "$description": "Pagination dot hit-target size.",
+      "$description": "Pagination dot painted size; its 44px hit area is a pseudo-element.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-carousel-dot-size",

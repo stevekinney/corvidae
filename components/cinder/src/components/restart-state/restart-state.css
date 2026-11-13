@@ -130,6 +130,9 @@
   }
 
   .cinder-restart-state__details-summary {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 1.5rem;
     cursor: pointer;
     inline-size: fit-content;
     color: var(--cinder-accent-text);
@@ -162,10 +165,18 @@
     justify-content: flex-end;
   }
 
-  /* A phone gets the full width and a 44px target for the one action. */
-  @media (pointer: coarse) {
-    .cinder-restart-state__actions .cinder-button {
-      min-block-size: 2.75rem;
+  /* On a coarse pointer the summary keeps its painted box; a pseudo-element, which takes no layout
+     space, reaches 44 by 44. The action is a Button, which draws its own 44px hit area. */
+  @media (any-pointer: coarse) {
+    .cinder-restart-state__details-summary {
+      position: relative;
+    }
+
+    .cinder-restart-state__details-summary::after {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 

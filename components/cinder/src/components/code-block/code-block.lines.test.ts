@@ -245,7 +245,7 @@ describe('CodeBlock — wrapping and scrolling (row 05l)', () => {
     expect(css).toContain('.cinder-code-block__viewport::-webkit-scrollbar-thumb');
     expect(css).toContain("content: counter(cinder-code-line) / ''");
     expect(css).toMatch(/\.cinder-code-block__line--danger\s*\{[^}]*status-danger-background/s);
-    expect(css).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(css).toMatch(/overflow-wrap:\s*break-word/);
   });
 });
 

@@ -12,7 +12,12 @@
    * connected a waiting one stays answerable, and a muted line under it says the run continues once
    * a provider is connected.
    */
-  import { ApprovalCard, type ApprovalResolution } from '@lostgradient/cinder';
+  import {
+    ApprovalCard,
+    type ApprovalFailure,
+    type ApprovalOperation,
+    type ApprovalResolution,
+  } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { approvalQuestion } from '../../lib/tool-text.ts';
@@ -20,6 +25,7 @@
   import type { ToolCallEntry } from './tool-activity.ts';
 
   interface ChatApprovalProps {
+    'data-changes'?: boolean;
     /** A name that is unique on the page. */
     id: string;
     /** The call the approval is for. Its `decision` says it was decided, and how. */
@@ -32,8 +38,16 @@
     requestedAt?: number | undefined;
     /** Who the person is to this chat and where decisions were made, for a decided approval. */
     context: DecisionContext;
+    operation?: ApprovalOperation | undefined;
+    irreversible?: boolean | undefined;
+    policyVersion?: string | undefined;
+    idempotencyKey?: string | undefined;
+    expiresAt?: string | undefined;
+    actionLabel?: string | undefined;
+    failure?: ApprovalFailure | undefined;
     /** Whether Interborough cannot be reached, which turns Deny and Approve off with the reason. */
     unreachable: boolean;
+    disabledReason?: string | undefined;
     /**
      * Why nobody can answer it now, when the agent that asked is held back by a disabled plugin:
      * the approval reads Unavailable with this under it and offers no decision.
@@ -48,22 +62,33 @@
     alwaysAsks?: boolean | undefined;
     /** The answer on its way, which holds both buttons until it lands. */
     resolving?: 'approve' | 'deny' | undefined;
+    onAskAgain?: (() => void) | undefined;
     /** Sends the person's decision, the note and the grant for the rest of the chat included. */
     onResolve: (resolution: ApprovalResolution) => void;
   }
 
   let {
+    'data-changes': dataChanges = false,
     id,
     entry,
     question,
     source,
     requestedAt,
     context,
+    operation,
+    irreversible,
+    policyVersion,
+    idempotencyKey,
+    expiresAt,
+    actionLabel,
+    failure,
     unreachable,
+    disabledReason,
     unavailableReason,
     providerNote,
     alwaysAsks,
     resolving,
+    onAskAgain,
     onResolve,
   }: ChatApprovalProps = $props();
 
@@ -79,9 +104,17 @@
       summary: decision?.asked,
     }),
   );
+  const expired = $derived(
+    entry.state === 'expired' ||
+      (entry.approvalExpiresAt !== undefined && Date.now() >= entry.approvalExpiresAt) ||
+      (expiresAt !== undefined &&
+        Number.isFinite(Date.parse(expiresAt)) &&
+        Date.parse(expiresAt) <= Date.now()),
+  );
 </script>
 
 <ApprovalCard
+  {...dataChanges ? { 'data-changes': true } : {}}
   {id}
   layout="row"
   headingLevel={4}
@@ -90,16 +123,24 @@
     name: entry.name,
     ...(entry.title === undefined ? {} : { label: entry.title }),
     risk,
-    irreversible: entry.tier === 'dangerous',
+    ...(irreversible === undefined
+      ? { irreversible: entry.tier === 'dangerous' }
+      : { irreversible }),
   }}
   {source}
   {...requestedAt === undefined ? {} : { requestedAt }}
-  operation={{ kind: 'other', argsPreview: entry.arguments }}
-  policyVersion={id}
-  idempotencyKey={entry.callId}
+  operation={operation ?? { kind: 'other', argsPreview: entry.arguments }}
+  policyVersion={policyVersion ?? id}
+  idempotencyKey={idempotencyKey ?? entry.callId}
+  {...expiresAt === undefined ? {} : { expiresAt }}
+  {...actionLabel === undefined ? {} : { actionLabel }}
+  {...failure === undefined ? {} : { failure }}
+  {...onAskAgain === undefined ? {} : { onAskAgain }}
   state={decision === undefined
     ? unavailableReason === undefined
-      ? 'pending'
+      ? expired
+        ? 'expired'
+        : 'pending'
       : 'unavailable'
     : decision.outcome === 'approved'
       ? 'approved'
@@ -108,7 +149,11 @@
     ? unavailableReason === undefined
       ? {
           ...(alwaysAsks === true ? {} : { rememberScope: CHAT_COPY.approval.rememberScope }),
-          ...(unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}),
+          ...(disabledReason === undefined
+            ? unreachable
+              ? { disabledReason: CHAT_COPY.approval.unreachable }
+              : {}
+            : { disabledReason }),
           ...(resolving === undefined ? {} : { resolving }),
           onResolve,
         }
@@ -119,7 +164,14 @@
         ...(place === undefined ? {} : { decidedIn: place }),
         ...(decision.reason === undefined ? {} : { decisionNote: decision.reason }),
       }}
-  {...decision === undefined ? { 'data-approval-decision': true, tabindex: -1 } : {}}
+  {...decision === undefined
+    ? {
+        'data-approval-decision': true,
+        'data-cinder-tool-approval': true,
+        'data-cinder-tool-approval-call-id': entry.railId ?? entry.callId,
+        tabindex: -1,
+      }
+    : {}}
 />
 {#if decision === undefined && unavailableReason === undefined && providerNote !== undefined}
   <p class="weft-chat-approval__provider-note">{providerNote}</p>

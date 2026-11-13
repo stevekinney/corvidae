@@ -11,7 +11,10 @@ const { default: QuestionHeldRunExample } = await import('./question-held-run.ex
 afterEach(cleanup);
 
 test('shows the run page’s words for a held answer: Selected under the pick, one inline line with Undo and the note', async () => {
-  const { container } = render(QuestionHeldRunExample);
+  const { container, getAllByRole } = render(QuestionHeldRunExample);
+
+  // The choices are radio cards: a wrong role fails here at once instead of waiting out the guard.
+  expect(getAllByRole('radio')).toHaveLength(2);
 
   await waitFor(() => {
     const status = container.querySelector('.chat-question-status[data-state="held"]');
@@ -22,12 +25,12 @@ test('shows the run page’s words for a held answer: Selected under the pick, o
     expect(status?.querySelector('button')?.textContent?.trim()).toBe('Undo');
   });
 
-  const choices = [...container.querySelectorAll<HTMLElement>('.chat-question-choices button')];
-  const picked = choices.filter((choice) => choice.hasAttribute('data-selected'));
+  const choices = getAllByRole('radio');
+  const picked = choices.filter((choice) => choice.getAttribute('aria-checked') === 'true');
   expect(picked).toHaveLength(1);
   expect(picked[0]?.textContent).toContain('Production');
   expect(picked[0]?.textContent).toContain('Selected');
-  const others = choices.filter((choice) => !choice.hasAttribute('data-selected'));
+  const others = choices.filter((choice) => choice.getAttribute('aria-checked') !== 'true');
   expect(others[0]?.textContent).toContain('Staging');
   expect(others[0]?.textContent).not.toContain('Deploys to the staging site');
   expect(container.querySelectorAll('.chat-question-status')).toHaveLength(1);

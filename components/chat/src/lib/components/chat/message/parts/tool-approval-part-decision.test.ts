@@ -60,11 +60,12 @@ describe('ToolApprovalPart decision surface', () => {
       Array.from(card?.querySelectorAll('.cinder-approval-card__fact dt') ?? [], (term) =>
         term.textContent?.trim(),
       ),
-    ).toEqual(['Tool', 'Command']);
+    ).toEqual(['Command']);
+    expect(card?.textContent).not.toContain('Tool');
     expect(getByRole('button', { name: 'Approve' })).not.toBeNull();
   });
 
-  test('draws the decision, forwarding the irreversible flag, the label, the pause, the facts and why', () => {
+  test('draws the decision, forwarding the irreversible flag, label, facts and why without a duplicate pause sentence', () => {
     const { container, getByRole } = render(ToolApprovalPart, {
       props: { part: refundPart({ details }), onApprovalResolve: () => undefined },
     });
@@ -72,16 +73,17 @@ describe('ToolApprovalPart decision surface', () => {
 
     expect(card?.getAttribute('data-cinder-layout')).toBe('decision');
     expect(card?.querySelector('.cinder-approval-card__irreversible')?.textContent?.trim()).toBe(
-      'Irreversible',
+      "Can't be undone",
     );
-    expect(card?.querySelector('.cinder-approval-card__pause')?.textContent?.trim()).toBe(
+    expect(card?.querySelector('.cinder-approval-card__pause')?.textContent?.trim()).not.toBe(
       'The agent is paused until you decide.',
     );
     expect(
       Array.from(card?.querySelectorAll('.cinder-approval-card__fact dt') ?? [], (term) =>
         term.textContent?.trim(),
       ),
-    ).toEqual(['Tool', 'Target', 'Amount', 'Command']);
+    ).toEqual(['Target', 'Amount', 'Command']);
+    expect(card?.textContent).not.toContain('Tool');
     expect(getByRole('button', { name: 'Why the agent wants to do this' })).not.toBeNull();
     expect(getByRole('button', { name: 'Refund $42.00' })).not.toBeNull();
   });

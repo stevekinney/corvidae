@@ -224,16 +224,38 @@
     text-decoration: underline;
   }
 
-  @media (pointer: coarse) {
+  /* On touch and on a phone the action keeps its painted height; its 44px target is a hit area
+   * that takes no layout space. */
+  .cinder-toast__action {
+    position: relative;
+  }
+
+  @media (any-pointer: coarse) {
     .cinder-toast__action {
-      min-block-size: var(--cinder-touch-target-min);
       padding-inline: var(--cinder-space-2);
+    }
+
+    .cinder-toast__action::before {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block: 50% auto;
+      block-size: var(--cinder-touch-target-min);
+      transform: translateY(-50%);
     }
   }
 
   .cinder-toast-region[data-cinder-phone] .cinder-toast__action {
-    min-block-size: var(--cinder-touch-target-min);
     padding-inline: var(--cinder-space-2);
+  }
+
+  .cinder-toast-region[data-cinder-phone] .cinder-toast__action::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block: 50% auto;
+    block-size: var(--cinder-touch-target-min);
+    transform: translateY(-50%);
   }
 
   .cinder-toast__action:focus-visible {

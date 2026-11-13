@@ -19,7 +19,9 @@ const source = readFileSync(resolve(import.meta.dir, 'tool-payload-code.svelte')
 
 describe('chat tool-payload code block', () => {
   test('delegates highlighting to CodeBlock without a tool-local highlighter', () => {
-    expect(source).toContain('<CodeBlock {code} language="json" {languageLabelVisible} />');
+    expect(source).toContain(
+      '<CodeBlock {code} language="json" {languageLabelVisible} scrollFadeVisible />',
+    );
     expect(source).not.toContain('highlighter={highlightJson}');
     expect(source).not.toContain('function highlightJson');
   });
@@ -37,5 +39,11 @@ describe('chat tool-payload code block', () => {
 
   test('the CodeBlock is labelled as json', () => {
     expect(source).toContain('language="json"');
+  });
+
+  test('fills the tool details measure without narrowing the payload frame', () => {
+    expect(source).toMatch(
+      /\.tool-payload-code\s*\{[\s\S]*?inline-size:\s*100%;[\s\S]*?min-inline-size:\s*0;[\s\S]*?max-inline-size:\s*100%;/,
+    );
   });
 });

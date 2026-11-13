@@ -17,18 +17,19 @@
 </script>
 
 <div class={classNames('tool-payload-code', className)}>
-  <CodeBlock {code} language="json" {languageLabelVisible} />
+  <CodeBlock {code} language="json" {languageLabelVisible} scrollFadeVisible />
 </div>
 
 <style>
   .tool-payload-code {
-    inline-size: max-content;
-    min-inline-size: min(18rem, 100%);
+    inline-size: 100%;
+    min-inline-size: 0;
     max-inline-size: 100%;
   }
 
   .tool-payload-code :global(.cinder-code-block) {
     inline-size: 100%;
+    border: 1px solid var(--cinder-border);
   }
 
   /* Cap tall payloads so a large arguments/result blob scrolls in place instead

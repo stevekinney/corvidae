@@ -95,8 +95,6 @@ const styles = {
 describe('Chat focus-ring recipes', () => {
   const insetCases = [
     ['artifact-panel close', styles.artifactPanel, '.artifact-panel-close:focus-visible'],
-    ['chat timeline', styles.chat, '.cinder-chat .chat-timeline:focus-visible'],
-    ['chat timeline implementation', styles.chatImplementation, '.chat-timeline:focus-visible'],
     [
       'message attachment button',
       styles.messageAttachments,
@@ -112,17 +110,33 @@ describe('Chat focus-ring recipes', () => {
   for (const [name, style, selector] of insetCases) {
     test(`${name} uses the inset recipe`, () => assertInsetRecipe(style, selector));
   }
+
+  test('the scrollable timeline uses a bounded inline focus rail', () => {
+    for (const [style, selector] of [
+      [styles.chat, '.cinder-chat .chat-timeline:focus-visible'],
+      [styles.chatImplementation, '.chat-timeline:focus-visible'],
+    ] as const) {
+      const labelSelector =
+        selector === '.cinder-chat .chat-timeline:focus-visible'
+          ? '.cinder-chat .chat-timeline-focus-label'
+          : '.chat-timeline-focus-label';
+      const rule = findRules(style, labelSelector).find(
+        (candidate) => !isUnderForcedColors(candidate),
+      );
+      expect(declarationValue(rule!, 'position')).toBe('sticky');
+      expect(declarationValue(rule!, 'block-size')).toBe('0');
+      expect(declarationValue(rule!, 'min-block-size')).toBe('0');
+      expect(declarationValue(rule!, 'inset-block-start')).toBe('var(--cinder-space-2)');
+      expect(findRules(style, `${labelSelector}::after`)).not.toEqual([]);
+      expect(findRules(style, `${selector} .chat-timeline-focus-label`)).not.toEqual([]);
+    }
+  });
   const outerCases = [
     ['tool-call timeline', styles.toolCallTimeline, '.chat-tool-call-timeline:focus-visible'],
     [
       'chat export trigger',
       styles.exportActions,
       '.conversation-export-actions :global(.export-trigger:focus-visible)',
-    ],
-    [
-      'chat empty prompt',
-      loadSvelteStyle('../components/chat/container/chat.svelte'),
-      '.chat-empty-prompt:focus-visible',
     ],
     ['chat search navigation', styles.searchBar, '.chat-search-nav-button:focus-visible'],
     ['chat jump button', styles.jumpControls, '.chat-jump-button:focus-visible'],
@@ -137,6 +151,12 @@ describe('Chat focus-ring recipes', () => {
   for (const [name, style, selector] of outerCases) {
     test(`${name} uses the outer recipe`, () => assertOuterRecipe(style, selector));
   }
+
+  test('chat empty prompts delegate their focus ring to Cinder Button', () => {
+    const source = load('../components/chat/container/chat.svelte');
+    expect(source).toMatch(/<Button[\s\S]*class="chat-empty-prompt"/u);
+    expect(source).not.toContain('.chat-empty-prompt:focus-visible');
+  });
 
   test('message edit textarea uses the outer recipe and Highlight fallback', () => {
     const selector = '.chat-message-edit-textarea:focus';
@@ -176,19 +196,52 @@ describe('Chat focus-ring recipes', () => {
     expect(findRules(styles.input, '.chat-input-send[data-stop]:focus-visible')).toEqual([]);
   });
 
-  test('attachment removal paints its inset ring on the visible chip', () => {
-    const selector = '.chat-input-attachment-remove:focus-visible::before';
-    const base = findRules(styles.input, selector).find((rule) => !isUnderForcedColors(rule));
-    expect(declarationValue(base!, 'box-shadow')).toContain('inset');
-    expect(declarationValue(base!, 'box-shadow')).toContain('var(--cinder-ring-color)');
-    expect(declarationValue(base!, 'box-shadow')).not.toContain(SHARED_BOX_SHADOW);
+  test('the composer focus ring is separate from its ready glow', () => {
+    const focusRule = findRules(
+      styles.input,
+      '.chat-input:has(.chat-input-editor:focus):not([data-ready])',
+    )[0];
+    expect(declarationValue(focusRule!, 'box-shadow')).toContain('var(--cinder-ring-color)');
+    expect(styles.input).toContain('.chat-input[data-ready]');
+  });
 
-    const fallback = findRules(styles.input, selector).find((rule) => isUnderForcedColors(rule));
-    expect(declarationValue(fallback!, 'box-shadow')).toBe('none');
-    expect(declarationValue(fallback!, 'outline')).toBe(
-      'var(--cinder-ring-width) solid ButtonText',
+  test('attachment Remove, Retry and "more" are Cinder Buttons whose ring wraps the painted face', () => {
+    const source = load('../components/chat/input/chat-input.svelte');
+    for (const name of [
+      'chat-input-attachment-remove',
+      'chat-input-attachment-retry',
+      'chat-input-attachment-more',
+    ]) {
+      expect(source).toMatch(new RegExp(`<Button[^>]*?class="${name}"`, 'u'));
+      // No Chat rule repaints or suppresses the ring: Cinder's own recipe is the only one.
+      expect(styles.input).not.toMatch(new RegExp(`\\.${name}[^{]*:focus`, 'u'));
+      expect(findRules(styles.input, `.${name}::before`)).toEqual([]);
+    }
+
+    // Cinder paints that ring as a box-shadow on the button itself, which is the painted face;
+    // the 44px hit extension is the separate ::before pseudo-element and carries no ring.
+    const buttonCss = readFileSync(
+      fileURLToPath(
+        new URL('../../../../cinder/src/components/button/button.css', import.meta.url),
+      ),
+      'utf8',
     );
-    expect(declarationValue(fallback!, 'outline-offset')).toBe('var(--cinder-ring-offset)');
+    const ring = findRules(buttonCss, '.cinder-button:focus-visible').find(
+      (rule) => !isUnderForcedColors(rule),
+    );
+    expect(declarationValue(ring!, 'outline')).toBe(TRANSPARENT_OUTLINE);
+    expect(declarationValue(ring!, 'box-shadow')).toContain('var(--cinder-ring-color)');
+    const forced = findRules(buttonCss, '.cinder-button:focus-visible').find((rule) =>
+      isUnderForcedColors(rule),
+    );
+    expect(declarationValue(forced!, 'outline')).toBe('var(--cinder-ring-width) solid ButtonText');
+    for (const rule of findRules(
+      buttonCss,
+      ".cinder-button[data-cinder-hit-target='44']::before",
+    )) {
+      expect(declarationValue(rule, 'box-shadow')).toBeUndefined();
+      expect(declarationValue(rule, 'outline')).toBeUndefined();
+    }
   });
 
   for (const selector of ['.lightbox-close:focus-visible', '.lightbox-nav:focus-visible']) {
@@ -233,13 +286,13 @@ describe('Chat composer controls (COR-1552)', () => {
     expect(declarationValue(frame!, 'border')).toBe('1px solid var(--cinder-control-border)');
   });
 
-  test('Stop keeps a danger border on the secondary button; Cinder draws the quiet disabled Send', () => {
+  test('Stop keeps the neutral control border; Cinder draws the quiet disabled Send', () => {
     const stop = findRules(
       styles.input,
       '.chat-input-footer-right :global(.chat-input-send[data-stop])',
     );
     expect(stop.length).toBeGreaterThan(0);
-    expect(declarationValue(stop[0]!, 'border-color')).toBe('var(--cinder-status-danger-border)');
+    expect(declarationValue(stop[0]!, 'border-color')).toBe('var(--cinder-control-border)');
     // The shape, the disabled look and the touch target belong to Cinder's Button.
     expect(findRules(styles.input, '.chat-input-send:disabled')).toEqual([]);
     expect(findRules(styles.input, '.chat-input-send::after')).toEqual([]);

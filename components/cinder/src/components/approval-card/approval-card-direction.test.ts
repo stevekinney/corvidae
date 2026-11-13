@@ -25,7 +25,10 @@ const question = 'هل تريد استرداد الطلب 4471 بقيمة 42.00 
 const consequence = 'يعيد 42.00 دولارًا إلى البطاقة الأصلية.';
 const footnote = 'بعد قرارك، يتابع المشغل عند توفر مزود.';
 
-function arabicApproval(layout: 'card' | 'row' | 'detail'): ApprovalCardProps {
+function arabicApproval(
+  layout: 'card' | 'row' | 'detail',
+  questionOverride = question,
+): ApprovalCardProps {
   return {
     layout,
     tool: { name: 'issue-refund', label: 'Issue refund', risk: 'high' },
@@ -34,7 +37,7 @@ function arabicApproval(layout: 'card' | 'row' | 'detail'): ApprovalCardProps {
     policyVersion: 'policy-2026-06',
     idempotencyKey: 'approval-direction-test-key',
     state: 'pending',
-    question,
+    question: questionOverride,
     consequence,
     footnote,
     onResolve: () => undefined,
@@ -61,8 +64,27 @@ describe('ApprovalCard text direction', () => {
         expect(element, `no element holds "${text}"`).toBeDefined();
         expect(element?.closest('[dir="auto"]')).not.toBeNull();
       }
-      // The card itself keeps the page's direction.
-      expect(container.querySelector('article')?.hasAttribute('dir')).toBe(false);
+      // The browser establishes the root direction from the question; English facts and code
+      // runs keep their own explicit direction inside that root.
+      expect(container.querySelector('article')?.getAttribute('dir')).toBe('auto');
+      expect(container.querySelector('article')?.firstElementChild?.textContent).toBe(question);
+      expect(
+        container.querySelector('article')?.firstElementChild?.getAttribute('aria-hidden'),
+      ).toBe('true');
     },
   );
+
+  test.each([
+    ['English first 4471 ثم العربية', 'ltr'],
+    ['4471 ثم العربية', 'rtl'],
+  ] as const)('leaves mixed question direction to the platform: %s', (mixedQuestion) => {
+    const { container } = render(ApprovalCard, {
+      props: arabicApproval('row', mixedQuestion),
+    });
+
+    expect(container.querySelector('article')?.getAttribute('dir')).toBe('auto');
+    expect(
+      container.querySelector('.cinder-approval-card__row-question')?.getAttribute('dir'),
+    ).toBe('auto');
+  });
 });

@@ -4,8 +4,9 @@
  *
  * Asserts:
  *   1. `composerLead` is drawn in the composer's area before the composer, live or blocked.
- *   2. While `composerStarting` is set Send reads that word, is disabled, shows a spinner, offers no
- *      Stop, and the composer is marked busy; without it Send is Send.
+ *   2. While `composerStarting` is set Send exposes that word as its accessible name and tooltip,
+ *      is disabled, shows only a spinner, offers no Stop, and the composer is marked busy; without
+ *      it Send is Send.
  *   3. `clearComposerOnSubmit={false}` keeps the typed text after Send, and the default empties it.
  */
 
@@ -104,12 +105,13 @@ describe('Chat composerStarting', () => {
       conversation: createConversationHistory({ id: 'send' }),
     });
 
-    expect(sendButton(container).textContent).toContain('Send');
+    expect(sendButton(container).getAttribute('aria-label')).toBe('Send message');
+    expect(sendButton(container).textContent?.trim()).toBe('');
     expect(container.querySelector('.chat-input-spinner')).toBeNull();
     expect(container.querySelector('form.chat-input')?.getAttribute('aria-busy')).toBeNull();
   });
 
-  test('reads the starting word with a spinner, off, with no Stop, and marks the composer busy', async () => {
+  test('names the starting state accessibly with a spinner, off, and marks the composer busy', async () => {
     const { container } = render(Chat, {
       id: 'chat-starting',
       conversation: createConversationHistory({ id: 'starting' }),
@@ -117,11 +119,13 @@ describe('Chat composerStarting', () => {
     });
 
     const send = sendButton(container);
-    expect(send.textContent).toContain('Starting chat…');
+    expect(send.textContent).not.toContain('Starting chat…');
+    expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
     expect(send.getAttribute('aria-label')).toBe('Starting chat…');
     expect(send.disabled).toBe(true);
     expect(send.hasAttribute('data-stop')).toBe(false);
     expect(container.querySelector('.chat-input-spinner')).not.toBeNull();
+    expect(container.querySelector('.chat-input-tooltip')).not.toBeNull();
     expect(container.querySelector('form.chat-input')?.getAttribute('aria-busy')).toBe('true');
     // Even with text in the box, Send stays off while the chat starts.
     const field = container.querySelector<HTMLTextAreaElement>('textarea')!;

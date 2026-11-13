@@ -77,6 +77,9 @@ describe('CodeBlock — static structure', () => {
     // With no language, even a published highlighter must never run.
     await Promise.resolve();
     expect(highlighter).not.toHaveBeenCalled();
+    expect(
+      container.querySelector('.cinder-code-block')?.getAttribute('data-cinder-highlight-state'),
+    ).toBe('plain');
   });
 
   test('stable viewport has tabindex="0" for keyboard scroll access', () => {
@@ -103,12 +106,10 @@ describe('CodeBlock — static structure', () => {
     expect(viewport?.classList.contains('cinder-_scroll-fade-inline-end')).toBe(true);
   });
 
-  test('code-block.css sets a translucent (not fully opaque) --_cinder-scroll-fade-color', async () => {
+  test('code-block.css ends the scroll fade in the viewport surface', async () => {
     const cssPath = new URL('./code-block.css', import.meta.url);
     const source = await Bun.file(cssPath).text();
-    expect(source).toMatch(
-      /--_cinder-scroll-fade-color:\s*color-mix\(\s*in srgb,\s*var\(--cinder-code-block-background\)\s*35%,\s*transparent\s*\)/,
-    );
+    expect(source).toContain('--_cinder-scroll-fade-color: var(--cinder-code-block-background);');
   });
 
   test('preserves two-space tab sizing on plain and highlighted code via the shared token', async () => {
@@ -213,6 +214,7 @@ describe('CodeBlock — static structure', () => {
     expect(container.querySelector('.cinder-copy-button')).not.toBeNull();
 
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    expect(css).toMatch(/\.cinder-code-block--floating-meta\s*\{[^}]*position:\s*relative/s);
     expect(css).toMatch(
       /\.cinder-code-block--floating-meta \.cinder-code-block__meta\s*\{[^}]*position:\s*absolute/s,
     );
@@ -227,10 +229,9 @@ describe('CodeBlock — static structure', () => {
       /\.cinder-code-block--floating-meta:has\(> \.cinder-code-block__meta\) \{([^}]*)\}/.exec(
         css,
       )?.[1];
-    expect(reserve).toContain('padding-inline-end: var(--_cinder-code-block-float-reserve);');
     expect(reserve).toContain('min-block-size: var(--_cinder-code-block-float-reserve);');
     expect(css).toContain(
-      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-1) );',
+      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-2) );',
     );
     const button =
       /\.cinder-code-block--floating-meta \.cinder-code-block__meta \.cinder-copy-button \{([^}]*)\}/.exec(
@@ -239,17 +240,79 @@ describe('CodeBlock — static structure', () => {
     expect(button).toContain('inline-size: var(--_cinder-code-block-float-size);');
   });
 
-  // C#3 (chat stress sweep): the copy button was 28px on a phone.
-  test('on a coarse pointer the copy button is a 44px target and the floating reserve grows with it', async () => {
+  test('copyFloating gives the viewport its own rail reservation and end cue', async () => {
     const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     const css = source.replace(/\s+/g, ' ');
-    const coarse = css.slice(css.indexOf('@media (pointer: coarse)'));
-    expect(coarse).toContain(
-      '.cinder-code-block--floating-meta { --_cinder-code-block-float-size: var(--cinder-touch-target-min); }',
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta:has\(> \.cinder-code-block__meta\) \.cinder-code-block__viewport\s*\{[^}]*scroll-padding-inline-end:\s*var\(--_cinder-code-block-float-reserve\);[^}]*margin-inline-end:\s*var\(--_cinder-code-block-float-reserve\);/,
     );
-    expect(coarse).toMatch(
-      /\.cinder-code-block \.cinder-code-block__meta \.cinder-copy-button \{ min-inline-size: var\(--cinder-touch-target-min\); min-block-size: var\(--cinder-touch-target-min\); \}/,
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta \.cinder-code-block__viewport\.cinder-_scroll-fade-inline-end\[data-cinder-overflows-inline-end\]::after\s*\{[^}]*inset-inline-end:\s*var\(--_cinder-code-block-float-reserve\);/,
     );
+  });
+
+  // The copy button keeps its 28px painted box on touch: CopyButton draws the 44px hit area with a
+  // pseudo-element, so the code block never grows or reserves more for a finger.
+  test('the copy button is not resized on a coarse pointer, so its hit area adds no layout', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    expect(css).not.toMatch(/@media \((?:any-)?pointer: coarse\)/);
+    expect(css).not.toContain('--_cinder-code-block-float-size: var(--cinder-touch-target-min)');
+  });
+
+  test('copyFloating draws Copy without a background at rest, centred on the first code line', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    const button =
+      /\.cinder-code-block--floating-meta \.cinder-code-block__meta \.cinder-copy-button \{([^}]*)\}/.exec(
+        css,
+      )?.[1];
+    expect(button).toContain('background: transparent;');
+    const meta = /\.cinder-code-block--floating-meta \.cinder-code-block__meta \{([^}]*)\}/.exec(
+      css,
+    )?.[1];
+    expect(meta).toMatch(
+      /inset-block-start: calc\( var\(--cinder-code-block-padding\) \+ var\(--cinder-code-block-font-size\) \* var\(--cinder-code-block-line-height\) \/ 2 \);/,
+    );
+    expect(meta).toContain('transform: translateY(-50%);');
+    // The strip behind Copy is the code's own surface, not the tinted block.
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta \{[^}]*background: var\(--cinder-code-block-background\);/,
+    );
+  });
+
+  test('a wrapping block breaks at whitespace and splits a token only when it is longer than the line', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    expect(css).toMatch(
+      /\.cinder-code-block--wrap \.cinder-code-block__pre, \.cinder-code-block--wrap :where\(pre\.shiki\) \{[^}]*overflow-wrap: break-word;/,
+    );
+    // Only a flag's own box may break anywhere (a flag longer than the line); lines never do.
+    expect(css).not.toMatch(/--wrap \.cinder-code-block__line \{[^}]*overflow-wrap: anywhere/);
+  });
+
+  test('the streaming label sits inside the block padding, not on its edge', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    expect(css).toMatch(
+      /\.cinder-code-block--streaming:not\(\.cinder-code-block--floating-meta\) \.cinder-code-block__meta \{[^}]*padding-block-start: var\(--cinder-code-block-padding\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta \.cinder-code-block__status \{[^}]*margin-inline-end: max\(0px, calc\(var\(--cinder-code-block-padding\) - var\(--cinder-space-1\)\)\);/,
+    );
+  });
+
+  test('a wrapping block keeps each flag whole and copies the same text', () => {
+    const code = 'refund --order 4471 --notify customer';
+    const { container } = render(CodeBlock, { code, wrap: true });
+    const flags = Array.from(
+      container.querySelectorAll('.cinder-code-block__flag'),
+      (flag) => flag.textContent,
+    );
+    expect(flags).toEqual(['--order', '--notify']);
+    expect(container.querySelector('pre code')?.textContent).toBe(code);
+    const plain = render(CodeBlock, { code });
+    expect(plain.container.querySelector('.cinder-code-block__flag')).toBeNull();
   });
 
   test('streaming withholds copy, shows its status, and puts the caret after the last character', () => {
@@ -272,6 +335,13 @@ describe('CodeBlock — static structure', () => {
     expect(caret?.getAttribute('aria-hidden')).toBe('true');
     // The caret is drawn, not text: the code reads and copies exactly as written.
     expect(code?.textContent).toBe('SELECT id');
+  });
+
+  test('streaming caret is a two-pixel accent bar', async () => {
+    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-code-block__caret\s*\{[^}]*inline-size:\s*2px;[^}]*background:\s*var\(--cinder-accent-solid\);/s,
+    );
   });
 
   test('streaming does not highlight until the last token, then copy returns', async () => {
@@ -347,36 +417,8 @@ describe('CodeBlock — static structure', () => {
 
   test('code surface background is one component-owned declaration', async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
-
-    // Read the code-surface DECLARATION rather than counting `light-dark(` across
-    // the whole file. A file-wide count is a proxy for the real contract and breaks
-    // the moment CodeBlock legitimately uses `light-dark()` for anything else (a
-    // future token, a forced-colors tweak), which would be a confusing false
-    // failure pointing at the wrong line.
-    const surfaceDeclaration = css.match(/--_cinder-code-block-code-surface:\s*([\s\S]*?);/)?.[1];
-    expect(surfaceDeclaration, 'code surface declaration must exist').toBeDefined();
-
-    // Two contracts here, and the second is an accessibility one.
-    //
-    // SINGLE SOURCE: exactly one declaration decides the code surface, and every
-    // painted layer (block, viewport, plain <pre>, Shiki's <pre>) references it, so
-    // they cannot drift apart.
-    //
-    // THE FORK IS LOAD-BEARING: that declaration must stay a `light-dark()` fork
-    // whose LIGHT arm is `--cinder-surface-raised` (pure white). Shiki's
-    // `github-light` palette is fitted to #ffffff with almost no margin — `#d73a49`
-    // measures 4.58:1 on white against a 4.5:1 AA floor — so any darkening of the
-    // light surface fails WCAG. Collapsing this to a single `--cinder-surface-inset`
-    // token reads as a tidy simplification and silently drops the red to 4.07:1 and
-    // the diff green to 4.11:1, which the axe sweep then catches on CodeBlock,
-    // ApprovalCard, and everything else embedding highlighted code. It has been
-    // tried; this assertion exists so the next attempt fails here instead of in CI.
-    expect(surfaceDeclaration).toMatch(/^light-dark\(/);
-    // The LIGHT arm specifically — that is the one carrying the WCAG constraint.
-    expect(surfaceDeclaration).toMatch(
-      /^light-dark\(\s*var\(--cinder-surface-raised\)\s*,\s*var\(--cinder-surface-inset\)\s*\)$/,
-    );
-    expect(css).not.toContain('--cinder-code-block-background:');
+    expect(css).toContain('background: var(--cinder-surface-inset);');
+    expect(css).toContain('box-shadow: inset 0 0 0 1px var(--cinder-border-muted);');
     expect(css).toContain('background: var(--cinder-code-block-background);');
     expect(css).toContain('background: var(--cinder-code-block-background) !important;');
   });
@@ -411,6 +453,9 @@ describe('CodeBlock — highlighter resolution (prop, then context, then none)',
     expect(highlighter).toHaveBeenCalledWith('const x = 1;', 'js');
     // The context highlighter output replaces the plain fallback.
     expect(container.querySelector('.cinder-code-block__pre')).toBeNull();
+    expect(
+      container.querySelector('.cinder-code-block')?.getAttribute('data-cinder-highlight-state'),
+    ).toBe('ready');
   });
 
   test('an explicit highlighter prop wins over the context highlighter', async () => {

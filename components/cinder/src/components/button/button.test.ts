@@ -50,6 +50,12 @@ describe('Button rendering', () => {
     expect(button?.getAttribute('data-cinder-size')).toBe('lg');
   });
 
+  test('exposes the compact painted control and its touch target for visual harnesses', () => {
+    const { container } = render(Button, { props: { label: 'Save', size: 'sm' } });
+    const button = container.querySelector('button');
+    expect(button?.getAttribute('data-cinder-hit-target')).toBe('44');
+  });
+
   test('supports the ghost-danger variant', () => {
     const { container } = render(Button, {
       props: { label: 'Remove', variant: 'ghost-danger' },

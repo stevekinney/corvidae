@@ -143,13 +143,19 @@ test.describe('a tool approval', () => {
       'Waiting on you',
     );
     await expect(conversation(page).getByText(/^Used \d+ tools/)).toHaveCount(0);
+    // A step shows no tool name unless it is a repeated rollup: the row is named in words only.
     await expect(
-      conversation(page).locator('code').filter({ hasText: 'issue-refund' }).first(),
-    ).toBeVisible();
+      conversation(page).locator('code').filter({ hasText: 'issue-refund' }),
+    ).toHaveCount(0);
     // The seeded turn already refunded the order once, so one reply is the one the session opened with.
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(1);
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
-    await expect(page.locator('[data-cinder-tool-approval]')).toHaveCount(0);
+    // Interborough's own row carries the same marker now (so a retry can find its card), so the
+    // check is that no card other than the one row exists.
+    await expect(page.locator('[data-cinder-tool-approval]')).toHaveCount(1);
+    await expect(
+      page.locator('[data-cinder-tool-approval]:not([data-approval-decision])'),
+    ).toHaveCount(0);
     await checkA11y('a session waiting on an approval');
     await alert.getByRole('button', { name: 'Approve' }).click();
 

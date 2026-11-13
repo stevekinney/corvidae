@@ -39,7 +39,14 @@ import {
 } from './border-tier-value-resolution.ts';
 
 /** A selector's specificity as CDP reports it -- see `CSS.Specificity` in the protocol (`a` = ID selectors, `b` = classes/attributes/pseudo-classes, `c` = type selectors/pseudo-elements). */
-export type Specificity = { readonly a: number; readonly b: number; readonly c: number };
+export type Specificity = {
+  /** ID selector count. */
+  readonly a: number;
+  /** Class, attribute, and pseudo-class count. */
+  readonly b: number;
+  /** Type selector and pseudo-element count. */
+  readonly c: number;
+};
 
 /** A single CSS declaration as matched for one element by CDP's `CSS.getMatchedStylesForNode` (own rules) or its `inherited` ancestor levels (:root included). */
 export type MatchedDeclaration = {
@@ -95,7 +102,9 @@ type InheritedLevelLike = {
 
 /** A minimal structural shape for `CSS.getMatchedStylesForNode`'s return value -- only the fields {@link flattenMatchedStyles} reads. */
 export type MatchedStylesResult = {
+  /** Inline style declaration, when present. */
   readonly inlineStyle?: MatchedStyleLike;
+  /** Rules matched directly on the element. */
   readonly matchedCSSRules?: readonly RuleMatchLike[];
   /** A chain of inherited styles from the immediate parent up to `:root`. This is where a corpus alias's OWN tier reference lives when nothing in a hand-authored file ever declares it -- see the module doc comment's Toggle example. */
   readonly inherited?: readonly InheritedLevelLike[];
@@ -263,7 +272,9 @@ function outranksCurrentWinner(
 
 /** One non-border use of a structural border tier, found on a real element's matched cascade. */
 export type TierUse = {
+  /** Property containing the tier reference. */
   readonly property: string;
+  /** Authored value containing the tier reference. */
   readonly value: string;
   /**
    * Set when the tier is not named in `value` directly, but in the value of
@@ -408,6 +419,7 @@ export function tierUses(declarations: readonly MatchedDeclaration[]): TierUse[]
   return uses;
 }
 
+/** A border-tier declaration whose effective opacity is relevant. */
 export type OpacityTierDeclaration = MatchedDeclaration & {
   /** Reachable ink when var() or currentColor obscures it in the authored value. */
   readonly resolvedValue?: string;

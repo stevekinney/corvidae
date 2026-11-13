@@ -138,7 +138,7 @@ describe('Breadcrumbs phone form', () => {
 
   test('the back link is a touch target and the leaf truncates first', () => {
     expect(stylesheet).toMatch(
-      /\.cinder-breadcrumbs__back\s*\{[^}]*min-block-size:\s*var\(--cinder-touch-target-min\)/,
+      /\.cinder-breadcrumbs__back::after\s*\{[^}]*block-size:\s*var\(--cinder-touch-target-min\)/,
     );
     expect(stylesheet).toMatch(
       /\[data-cinder-collapsed\]\s+\.cinder-breadcrumbs__list\s*\{[^}]*flex:\s*1 100000 auto/,

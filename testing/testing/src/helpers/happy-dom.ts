@@ -119,6 +119,7 @@ function stubWebAnimationsApi(happyWindow: Window): void {
   Reflect.set(proto, 'animate', stubbedAnimate);
 }
 
+/** Installs a shared happy-dom window and its DOM globals for a test process. */
 export function setupHappyDom(): void {
   if (installed) return;
   // Use a document origin so relative resources have valid browser URLs.

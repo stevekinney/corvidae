@@ -57,7 +57,6 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const DRAWER_COPY = 'Waiting for your approval. Anything you send now queues until you decide.';
 const QUESTION = 'Refund order 4471 for $42.00?';
 /** A decided card is named for what was decided, not for the question it asked. */
 const APPROVED_REFUND = 'Approved: Refund $42.00, order 4471';
@@ -109,6 +108,16 @@ function sendButton(container: HTMLElement): HTMLButtonElement {
   return container.querySelector<HTMLButtonElement>('button[data-chat-send]')!;
 }
 
+function measuredBox(top: number, bottom: number, left = 0, right = 320): DOMRect {
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+const ACTION_ROW = '.cinder-approval-card__row-actions, .cinder-approval-card__action-row';
+const resolvingAdapter: ChatAdapter = {
+  sendMessage: async () => undefined,
+  resolveToolApproval: async () => undefined,
+};
+
 const refundDetails: ChatAdapter['describeApproval'] = () => ({
   irreversible: true,
   approveLabel: 'Refund $42.00',
@@ -117,6 +126,21 @@ const refundDetails: ChatAdapter['describeApproval'] = () => ({
     { label: 'Target', value: 'order 4471' },
     { label: 'Amount', value: '$42.00' },
   ],
+});
+
+describe('Chat step summary beside an approval card', () => {
+  test('the step row leaves the waiting words to the card that owns the state', () => {
+    const { container } = render(Chat, {
+      id: 'chat-summary-owned',
+      conversation: approvalConversation('summary-owned'),
+      adapter: resolvingAdapter,
+    });
+    const timeline = container.querySelector<HTMLElement>('.chat-tool-call-timeline');
+    expect(timeline).not.toBeNull();
+    expect(container.textContent).toContain(QUESTION);
+    expect(timeline!.querySelector('.chat-tool-call-summary-count')).not.toBeNull();
+    expect(timeline!.querySelector('[data-problem]')).toBeNull();
+  });
 });
 
 describe('Chat composer drawer for a waiting approval', () => {
@@ -130,7 +154,26 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(sendButton(container).getAttribute('aria-label')).toBe('Send message');
   });
 
-  test('says an approval waits, in the exact words, with Review approval', () => {
+  test('does not draw an unnecessary drawer when the measured card fits the transcript viewport', () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      if (this.matches('.chat-timeline')) return measuredBox(0, 600);
+      if (this.matches('.cinder-approval-card')) return measuredBox(120, 420, 16, 304);
+      return originalGetBoundingClientRect.call(this);
+    };
+    try {
+      const { container } = render(Chat, {
+        id: 'chat-drawer-fitting-card',
+        conversation: approvalConversation('drawer-fitting-card'),
+      });
+
+      expect(drawerOf(container)).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  test('explains the paused composer compactly without repeating the transcript card', () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-waiting',
       conversation: approvalConversation('drawer-waiting'),
@@ -138,8 +181,81 @@ describe('Chat composer drawer for a waiting approval', () => {
     const drawer = drawerOf(container);
 
     expect(drawer).not.toBeNull();
-    expect(drawer?.querySelector('.chat-approval-drawer-text')?.textContent).toBe(DRAWER_COPY);
+    expect(drawer?.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
+      'Waiting for your approval.',
+    );
     expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
+  });
+
+  test('draws no reminder while the card top is clipped but its action row is in view', () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      if (this.matches('.chat-timeline')) return measuredBox(0, 600);
+      if (this.matches('.cinder-approval-card')) return measuredBox(-60, 420, 16, 304);
+      if (this.matches(ACTION_ROW)) {
+        return measuredBox(370, 410, 16, 304);
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+    try {
+      const { container } = render(Chat, {
+        id: 'chat-drawer-clipped-top',
+        conversation: approvalConversation('drawer-clipped-top'),
+        adapter: resolvingAdapter,
+      });
+
+      expect(container.querySelector(ACTION_ROW)).not.toBeNull();
+      expect(drawerOf(container)).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  test('scrolls the transcript when the approval arrives so the action row clears the bottom', async () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    let scrolled = 0;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      if (this.matches('.chat-timeline')) return measuredBox(0, 600);
+      if (this.matches('.cinder-approval-card')) return measuredBox(330, 700, 16, 304);
+      if (this.matches(ACTION_ROW)) {
+        return measuredBox(650 - scrolled, 690 - scrolled, 16, 304);
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+    try {
+      const { container } = render(Chat, {
+        id: 'chat-drawer-arrival-scroll',
+        conversation: approvalConversation('drawer-arrival-scroll'),
+        adapter: resolvingAdapter,
+      });
+      const timeline = container.querySelector<HTMLElement>('.chat-timeline')!;
+      const before = timeline.scrollTop;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      scrolled = timeline.scrollTop - before;
+      expect(scrolled).toBeGreaterThan(0);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  test('renders host-provided approval drawer labels and accessible names', () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-labels',
+      conversation: approvalConversation('drawer-labels'),
+      labels: {
+        approvalWaiting: 'Genehmigung wartet',
+        approvalWaitingText: 'Bitte zuerst die Genehmigung prüfen.',
+        reviewApproval: 'Genehmigung öffnen',
+      },
+    });
+    const drawer = drawerOf(container)!;
+    expect(drawer.getAttribute('aria-label')).toBe('Genehmigung wartet');
+    expect(drawer.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
+      'Bitte zuerst die Genehmigung prüfen.',
+    );
+    expect(getByRole(drawer, 'button', { name: 'Genehmigung öffnen' })).not.toBeNull();
   });
 
   test('sits above the composer, so the composer keeps its place', () => {
@@ -250,8 +366,33 @@ describe('Chat composer drawer for a waiting approval', () => {
 
     const send = sendButton(container);
     expect(send.getAttribute('aria-label')).toBe('Queue message');
-    expect(send.textContent?.trim()).toBe('Queue');
     expect(send.querySelector('[data-chat-queue-icon]')).not.toBeNull();
+  });
+
+  test('a draft makes the reminder and the Queue description say what a send does now', async () => {
+    const note = 'Messages you send now wait until you decide.';
+    const { container } = render(Chat, {
+      id: 'chat-drawer-queue-note',
+      conversation: approvalConversation('drawer-queue-note'),
+      adapter: { sendMessage: async () => undefined, sendRunInput: async () => undefined },
+    });
+    const reminder = () =>
+      drawerOf(container)?.querySelector('.chat-approval-drawer-text')?.textContent?.trim();
+
+    // An empty composer keeps the short form, and Queue's note does not exist yet.
+    expect(reminder()).toBe('Waiting for your approval.');
+    expect(container.querySelector('#chat-drawer-queue-note-input-queue-note')).toBeNull();
+
+    await fireEvent.input(composerOf(container), { target: { value: 'one more thing' } });
+    await tick();
+
+    expect(reminder()).toBe(`Waiting for your approval. ${note}`);
+    const describedBy = sendButton(container).getAttribute('aria-describedby') ?? '';
+    const noteElement = describedBy
+      .split(' ')
+      .map((described) => container.ownerDocument.getElementById(described))
+      .find((element) => element?.textContent === note);
+    expect(noteElement).not.toBeUndefined();
   });
 });
 
@@ -283,15 +424,23 @@ describe('Chat approval decision surface', () => {
 
     expect(card.getAttribute('data-cinder-layout')).toBe('decision');
     expect(card.querySelector('.cinder-approval-card__irreversible')?.textContent?.trim()).toBe(
-      'Irreversible',
+      "Can't be undone",
     );
-    expect(card.querySelector('.cinder-approval-card__pause')?.textContent?.trim()).toBe(
+    expect(card.querySelector('.cinder-approval-card__pause')?.textContent?.trim()).not.toBe(
       'The agent is paused until you decide.',
     );
     const labels = Array.from(card.querySelectorAll('.cinder-approval-card__fact dt'), (term) =>
       term.textContent?.trim(),
     );
-    expect(labels).toEqual(['Tool', 'Target', 'Amount', 'Command']);
+    expect(labels).toEqual(['Target', 'Amount', 'Command']);
+    expect(card.querySelector('.cinder-approval-card__fact dt')?.textContent?.trim()).not.toBe(
+      'Tool',
+    );
+    expect(
+      Array.from(card.querySelectorAll('.cinder-approval-card__fact dd')).some((value) =>
+        value.textContent?.includes('refund --order 4471'),
+      ),
+    ).toBe(true);
     expect(getByRole(card, 'button', { name: 'Refund $42.00' })).not.toBeNull();
   });
 
@@ -534,5 +683,127 @@ describe('Chat approval receipt', () => {
 
     expect(queryByRole(view.container, 'article', { name: QUESTION })).toBeNull();
     expect(view.container.querySelector('[data-cinder-tool-approval]')).toBeNull();
+  });
+});
+
+describe('the reminder follows the decision row, not its own presence', () => {
+  const REMINDER_HEIGHT = 48;
+  const originalRect = HTMLElement.prototype.getBoundingClientRect;
+  let rowTop = 0;
+
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect;
+  });
+
+  /** Lays the page out by hand: the transcript loses the reminder's room while the reminder shows. */
+  function layOut(container: HTMLElement): HTMLElement {
+    const box = (top: number, bottom: number): DOMRect => ({
+      top,
+      bottom,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: bottom - top,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    });
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.matches('[data-chat-approval-drawer]')) return box(0, REMINDER_HEIGHT);
+      if (this.classList.contains('chat-timeline')) {
+        const shown = container.querySelector('[data-chat-approval-drawer]') !== null;
+        return box(0, 400 - (shown ? REMINDER_HEIGHT : 0));
+      }
+      if (this.matches('.cinder-approval-card__row-actions, .cinder-approval-card__action-row')) {
+        return box(rowTop, rowTop + 44);
+      }
+      if (this.matches('.cinder-approval-card')) return box(rowTop - 80, rowTop + 60);
+      return originalRect.call(this);
+    };
+    return container.querySelector<HTMLElement>('.chat-timeline')!;
+  }
+
+  async function scrollTo(scroller: HTMLElement, top: number): Promise<void> {
+    rowTop = top;
+    scroller.dispatchEvent(new Event('scroll'));
+    await tick();
+    await tick();
+  }
+
+  test('arrival, scrolling away, scrolling back and Review keep one answer per row position', async () => {
+    rowTop = 150;
+    const { container } = render(Chat, {
+      id: 'chat-reminder-geometry',
+      conversation: approvalConversation('reminder-geometry'),
+      adapter: resolvingAdapter,
+    });
+    const scroller = layOut(container);
+    await scrollTo(scroller, 150);
+    // The row is in view with the reminder off: nothing to point to.
+    expect(drawerOf(container)).toBeNull();
+
+    // Scrolled away: the row is above the fold, so the reminder shows.
+    await scrollTo(scroller, -200);
+    expect(drawerOf(container)).not.toBeNull();
+
+    // The row ends inside the strip the reminder takes, but within the box the transcript has
+    // without the reminder: it is visible in both states, so the reminder goes and stays gone.
+    // The card's bottom, 16 below the row, plus the 12 of clearance must also be inside that box.
+    await scrollTo(scroller, 328);
+    expect(drawerOf(container)).toBeNull();
+    await scrollTo(scroller, 328);
+    expect(drawerOf(container)).toBeNull();
+
+    // A row whose card clears the box by less than the clearance keeps the reminder.
+    await scrollTo(scroller, 340);
+    expect(drawerOf(container)).not.toBeNull();
+
+    // A row ending below the tall box brings the reminder back.
+    await scrollTo(scroller, 380);
+    expect(drawerOf(container)).not.toBeNull();
+    await scrollTo(scroller, 380);
+    expect(drawerOf(container)).not.toBeNull();
+
+    // Back in view, it goes.
+    await scrollTo(scroller, 200);
+    expect(drawerOf(container)).toBeNull();
+  });
+
+  test('at maximum scroll the arrival scroll hides the reminder and a clamp does not bring it back', async () => {
+    // Content is 700 tall and the row sits at 600 to 644 in it, near the end. The reminder starts
+    // shown (a 352 tall transcript, maximum scroll 348), so the row at maximum scroll is at 252 to
+    // 296. It is inside the tall box, so the reminder hides; the transcript then grows to 400, its
+    // maximum scroll falls to 300 and `scrollTop` clamps, which moves the row to 300 to 344 (its
+    // card, with the clearance, ends at 372). That is still inside the tall box, so the reminder
+    // stays hidden instead of coming back and flapping.
+    const rowDocumentTop = 600;
+    rowTop = rowDocumentTop - 348;
+    const { container } = render(Chat, {
+      id: 'chat-reminder-clamp',
+      conversation: approvalConversation('reminder-clamp'),
+      adapter: resolvingAdapter,
+    });
+    const scroller = layOut(container);
+    await scrollTo(scroller, rowDocumentTop - 348);
+    expect(drawerOf(container)).toBeNull();
+    await scrollTo(scroller, rowDocumentTop - 300);
+    expect(drawerOf(container)).toBeNull();
+    await scrollTo(scroller, rowDocumentTop - 300);
+    expect(drawerOf(container)).toBeNull();
+  });
+
+  test('Review approval focuses the card and does not answer it', async () => {
+    rowTop = -200;
+    const { container } = render(Chat, {
+      id: 'chat-reminder-review',
+      conversation: approvalConversation('reminder-review'),
+      adapter: resolvingAdapter,
+    });
+    const scroller = layOut(container);
+    await scrollTo(scroller, -200);
+    const card = getByRole(container, 'article', { name: QUESTION });
+    await fireEvent.click(getByRole(drawerOf(container)!, 'button', { name: 'Review approval' }));
+    await tick();
+    expect(document.activeElement).toBe(card);
   });
 });

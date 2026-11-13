@@ -71,7 +71,7 @@ describe('ToolApprovalPart', () => {
     expect(getByRole('article', { name: 'Deploy to production?' })).toBe(card as HTMLElement);
     const buttons = Array.from(
       container.querySelectorAll(
-        '.cinder-approval-card__input-toggle, .cinder-approval-card__row-actions button',
+        '.cinder-approval-card__input-toggle, .cinder-approval-card__note-toggle, .cinder-approval-card__row-actions button',
       ),
       (button) => button.textContent?.replace(/\s+/g, ' ').trim(),
     );
@@ -86,6 +86,42 @@ describe('ToolApprovalPart', () => {
     flushSync();
 
     expect(container.textContent).toContain('deploy_to_production --environment production');
+  });
+
+  test('uses the compact actionable row when grouped with another approval', () => {
+    const onApprovalResolve = mock(() => undefined);
+    const { container, getByRole } = render(ToolApprovalPart, {
+      props: {
+        part: pendingPart({ details: { irreversible: true } }),
+        layout: 'row',
+        onApprovalResolve,
+      },
+    });
+    const card = container.querySelector('.cinder-approval-card');
+    expect(card?.getAttribute('data-cinder-layout')).toBe('row');
+    expect(container.querySelector('.cinder-approval-card__row-actions')).not.toBeNull();
+    expect(container.textContent).toContain('Deny');
+    expect(container.textContent).toContain('Approve');
+    const approve = getByRole('button', { name: 'Approve' });
+    fireEvent.click(approve);
+    expect(onApprovalResolve).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Press again to approve');
+    fireEvent.click(getByRole('button', { name: 'Press again to approve' }));
+    expect(onApprovalResolve).toHaveBeenCalledTimes(1);
+  });
+
+  test('an expired approval asks the host for a fresh approval for its tool call', async () => {
+    const calls: string[] = [];
+    const { getByRole, queryByRole } = render(ToolApprovalPart, {
+      props: {
+        part: pendingPart({ state: 'expired' }),
+        onApprovalRequestAgain: (toolCallId: string) => calls.push(toolCallId),
+      },
+    });
+
+    expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+    await fireEvent.click(getByRole('button', { name: 'Ask again' }));
+    expect(calls).toEqual(['call-1']);
   });
 
   test('falls back to the tool name when the action has no message', () => {

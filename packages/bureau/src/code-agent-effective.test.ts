@@ -9,9 +9,10 @@ import type { PluginInputGuardrail, PluginToolGuardrail } from '@lostgradient/in
 import {
   createAgent,
   GuardrailTripwireError,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
   type ToolCallValidator,
 } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox, getToolboxApprovalOptions } from 'armorer';
 import { z } from 'zod';
 
 import type { AgentContributions } from './agent-contributions';
@@ -167,5 +168,56 @@ describe('a code agent with an override tool-call validator', () => {
       outcome: 'error',
       error: { code: 'GUARDRAIL_BLOCKED' },
     });
+  });
+});
+
+describe('a code agent whose overrides rebuild its toolbox', () => {
+  const dependencies = { descriptors: () => [], modelPolicy: () => undefined };
+
+  async function rebuiltToolboxOptions(toolboxOptions: Parameters<typeof createToolbox>[1]) {
+    const agent = createAgent({
+      name: 'refunder',
+      guardrails: false,
+      generate: async () => ({ content: 'done', toolCalls: [] }),
+      toolbox: createToolbox(
+        [
+          createTool({
+            name: 'refund',
+            description: 'Refunds an order',
+            input: z.object({}),
+            execute: async () => 'refunded',
+          }),
+        ],
+        toolboxOptions,
+      ),
+    });
+    // An approvals override is one of the overrides that rebuilds the toolbox.
+    const effective = effectiveCodeAgent(agent, { approvals: { refund: 'always' } }, dependencies);
+    const resolve = (effective as unknown as Record<symbol, unknown>)[
+      OPERATIVE_RESOLVE_RUN_OPTIONS
+    ] as (input: string) => Promise<{ toolbox: Parameters<typeof getToolboxApprovalOptions>[0] }>;
+    const options = await resolve('Refund it.');
+    return getToolboxApprovalOptions(options.toolbox);
+  }
+
+  it('keeps the binding lifetime, clock and approval policy the toolbox was built with', async () => {
+    const approvalNow = () => 1_000;
+    const approvalPolicy = { mode: 'on-mutation' } as const;
+
+    const options = await rebuiltToolboxOptions({
+      approvalBindingTtlMs: 86_400_000,
+      approvalNow,
+      approvalPolicy,
+    });
+
+    expect(options.approvalBindingTtlMs).toBe(86_400_000);
+    expect(options.approvalNow).toBe(approvalNow);
+    expect(options.approvalPolicy).toBe(approvalPolicy);
+  });
+
+  it('gives a toolbox built without a lifetime the default one', async () => {
+    const options = await rebuiltToolboxOptions(undefined);
+
+    expect(options.approvalBindingTtlMs).toBe(5 * 60_000);
   });
 });

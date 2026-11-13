@@ -249,7 +249,12 @@ describe('a message typed while a refused resume is owed', () => {
       requests.push(`${init?.method ?? 'GET'} ${url}`);
       if (url.endsWith('/messages'))
         return Response.json({ threadId: THREAD, messages: thread.rows });
-      if (url.includes('/threads/') && url.endsWith('/run')) return attachParkedOn([environment])();
+      if (url.includes('/threads/') && url.endsWith('/run')) {
+        // The run stays parked until a resume has been taken; the read after it finds it moved on.
+        return bodies.filter((entry) => entry.resume !== undefined).length < 2
+          ? attachParkedOn([environment])()
+          : sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
       if (url.includes('/runs/')) {
         return sse([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]);
       }
@@ -316,8 +321,12 @@ describe('a message typed while a refused resume is owed', () => {
       requests.push(`${init?.method ?? 'GET'} ${url}`);
       if (url.endsWith('/messages'))
         return Response.json({ threadId: THREAD, messages: thread.rows });
-      if (url.includes('/threads/') && url.endsWith('/run'))
-        return attachParkedOn([approval], true)(thread.rows);
+      if (url.includes('/threads/') && url.endsWith('/run')) {
+        // The run stays parked until a resume has been taken; the read after it finds it moved on.
+        return bodies.filter((entry) => entry.resume !== undefined).length < 2
+          ? attachParkedOn([approval], true)(thread.rows)
+          : sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
       if (url.includes('/runs/')) {
         return sse([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]);
       }

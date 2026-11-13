@@ -14,7 +14,7 @@
 
 <script lang="ts">
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-  import { onDestroy, tick } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import { default as Button } from '../button/index.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -31,6 +31,22 @@
     onCancel,
     class: className,
     children,
+    presentation = 'strip',
+    armed = $bindable(false),
+    requestKey,
+    disabled = false,
+    blocked = false,
+    mutating = false,
+    requiresSecondPress = true,
+    ariaDisabled,
+    armedLabel,
+    armedHint,
+    armedEscapeHint,
+    loading = false,
+    loadingLabel,
+    ariaDescribedBy,
+    hintClass,
+    hintId,
   }: InlineConfirmProps = $props();
   let root: HTMLElement | null = $state(null);
   let trigger: HTMLElement | null = $state(null);
@@ -41,6 +57,34 @@
   // time the component is mounted, because the input that OPENS the strip
   // happens before it renders.
   let lastInputWasKeyboard = false;
+  let armTimer: ReturnType<typeof setTimeout> | undefined;
+  let releaseArmEscape: (() => void) | null = null;
+  let previousRequestKey = untrack(() => requestKey);
+
+  function disarm(): void {
+    if (armTimer !== undefined) clearTimeout(armTimer);
+    armTimer = undefined;
+    releaseArmEscape?.();
+    releaseArmEscape = null;
+    armed = false;
+  }
+
+  function arm(): void {
+    // A parent may have cleared the bindable `armed` value. Clear any old resources before a
+    // fresh arm so an externally disarmed action can never inherit its prior timer or Escape hook.
+    disarm();
+    armed = true;
+    armTimer = setTimeout(disarm, 3_000);
+    releaseArmEscape = pushEscapeHandler((event) => {
+      event.preventDefault();
+      disarm();
+    });
+  }
+
+  $effect(() => {
+    if (presentation !== 'two-press' || armed) return;
+    if (armTimer !== undefined || releaseArmEscape !== null) disarm();
+  });
 
   $effect(() => {
     const onKeydown = (event: KeyboardEvent) => {
@@ -58,7 +102,17 @@
   });
 
   $effect(() => {
-    if (open === wasOpen) return;
+    if (presentation !== 'two-press' || requestKey === previousRequestKey) return;
+    previousRequestKey = requestKey;
+    disarm();
+  });
+
+  $effect(() => {
+    if (presentation === 'two-press' && (disabled || blocked || loading)) disarm();
+  });
+
+  $effect(() => {
+    if (presentation === 'two-press' || open === wasOpen) return;
     wasOpen = open;
     if (open) {
       trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -79,6 +133,7 @@
   });
 
   onDestroy(() => {
+    disarm();
     releaseEscape?.();
     releaseEscape = null;
     restoreTriggerFocus();
@@ -97,16 +152,59 @@
     open = false;
     onConfirm?.();
   }
+
+  function pressTwoPressAction(): void {
+    if (disabled || blocked || loading) return;
+    if (requiresSecondPress && !armed) {
+      arm();
+      return;
+    }
+    disarm();
+    onConfirm?.();
+  }
 </script>
 
-{#if open}
+{#if presentation === 'two-press'}
+  <span class={classNames('cinder-inline-confirm__two-press', className)}>
+    <Button
+      variant={armed ? 'danger' : 'primary'}
+      size="sm"
+      {mutating}
+      disabled={disabled || loading}
+      {loading}
+      {...ariaDisabled || blocked ? { 'aria-disabled': 'true' } : {}}
+      {...loadingLabel !== undefined ? { loadingStatus: loadingLabel } : {}}
+      {...ariaDescribedBy !== undefined ? { 'aria-describedby': ariaDescribedBy } : {}}
+      onclick={pressTwoPressAction}
+      label={loading
+        ? (loadingLabel ?? confirmLabel)
+        : armed
+          ? (armedLabel ?? `Press again to ${confirmLabel.toLowerCase()}`)
+          : confirmLabel}
+    ></Button>
+    {#if armed && armedHint !== undefined}
+      <span
+        id={hintId}
+        class={classNames('cinder-inline-confirm__two-press-hint', hintClass)}
+        role="status"
+      >
+        {armedHint}
+        {#if armedEscapeHint !== undefined}
+          <span class="cinder-inline-confirm__armed-escape">
+            {' '}{armedEscapeHint}
+          </span>
+        {/if}
+      </span>
+    {/if}
+  </span>
+{:else if open}
   <div
     bind:this={root}
     class={classNames('cinder-inline-confirm', className)}
     data-cinder-destructive={destructive ? '' : undefined}
     data-cinder-flush={flush ? '' : undefined}
     role="group"
-    aria-label={prompt}
+    aria-label={prompt ?? confirmLabel}
   >
     <p class="cinder-inline-confirm__prompt">
       {#if destructive}
@@ -116,12 +214,19 @@
     </p>
     {@render children?.()}
     <div class="cinder-inline-confirm__actions">
-      <Button variant="secondary" size="xs" data-cinder-inline-cancel onclick={cancel}
-        >{cancelLabel}</Button
-      >
-      <Button variant={destructive ? 'danger' : 'primary'} size="xs" onclick={confirm}
-        >{confirmLabel}</Button
-      >
+      <Button
+        variant="secondary"
+        size="xs"
+        data-cinder-inline-cancel
+        onclick={cancel}
+        label={cancelLabel}
+      ></Button>
+      <Button
+        variant={destructive ? 'danger' : 'primary'}
+        size="xs"
+        onclick={confirm}
+        label={confirmLabel}
+      ></Button>
     </div>
   </div>
 {/if}

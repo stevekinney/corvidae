@@ -28,15 +28,27 @@
       var(--cinder-surface-inset)
     );
 
-    background: var(--cinder-code-block-background);
-    /* Flat: no border and no inner frame. The fill alone separates the code
-     * field from the surface behind it. */
+    position: relative;
+    background: var(--cinder-surface-inset);
     /* A code block is a block-level PANEL, not a control: it takes the surface
      * radius, the same step cards and dialogs use. At the control radius it read
      * as a hard-cornered plate at panel width. */
     border-radius: var(--cinder-radius-lg);
     overflow: hidden;
     user-select: none;
+  }
+
+  /* A code field is a contained panel with one quiet hairline. The edge is drawn over the
+   * content, not on the root's own background: the scroller is opaque and an inset shadow on the
+   * root would sit under it, so the edge would show only around the Copy column (a seam). */
+  .cinder-code-block::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--cinder-border-muted);
+    pointer-events: none;
   }
 
   /* The language label and copy action share one quiet row at the top of the
@@ -63,15 +75,7 @@
    * client-side highlighted state. It owns keyboard focus and overflow so the
    * inner pre elements can stay metrically identical. */
   .cinder-code-block__viewport {
-    /* Partial, not full, opacity: a half-covered glyph should still read as a
-     * glyph, not as a hard cutoff — the one edge case in `_scroll-fade.css`
-     * where the endpoint color is deliberately translucent rather than the
-     * viewport's own opaque background. */
-    --_cinder-scroll-fade-color: color-mix(
-      in srgb,
-      var(--cinder-code-block-background) 35%,
-      transparent
-    );
+    --_cinder-scroll-fade-color: var(--cinder-code-block-background);
 
     display: block;
     block-size: var(--cinder-code-block-height);
@@ -286,6 +290,9 @@
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* On a touch screen the copy button keeps its painted 28px box. CopyButton gives it the 44px hit
+   * area through a pseudo-element, so the block's layout never grows for a finger. */
+
   .cinder-code-block .cinder-code-block__meta .cinder-copy-button:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
@@ -344,7 +351,9 @@
   .cinder-code-block--wrap .cinder-code-block__pre,
   .cinder-code-block--wrap :where(pre.shiki) {
     width: auto;
-    overflow-wrap: anywhere;
+    /* Break at whitespace; a token (a flag such as --notify) breaks inside itself only when it is
+     * longer than the whole line. `anywhere` would break any token wherever it ends. */
+    overflow-wrap: break-word;
     white-space: pre-wrap;
   }
 
@@ -376,9 +385,19 @@
     counter-increment: cinder-code-line;
   }
 
-  .cinder-code-block--wrap .cinder-code-block__line {
+  /* A flag such as --notify is one atomic box, so it never breaks after its hyphens: it moves to
+   * the next line whole. A flag longer than the whole line still breaks inside itself. */
+  .cinder-code-block--wrap .cinder-code-block__flag {
+    display: inline-block;
+    max-inline-size: 100%;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    vertical-align: top;
+  }
+
+  .cinder-code-block--wrap .cinder-code-block__line {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
   }
 
   .cinder-code-block--numbered .cinder-code-block__line {
@@ -528,47 +547,73 @@
      * instead of running under it (C#5: on a one-line block the icon sat on the characters). */
     --_cinder-code-block-float-size: 1.75rem;
     --_cinder-code-block-float-reserve: calc(
-      var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-1)
+      var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-2)
     );
 
     position: relative;
+
+    /* The strip behind the copy button is the code's own surface, so no tinted column shows
+     * where the button sits. */
+    background: var(--cinder-code-block-background);
   }
 
   /* The block is at least as tall as the button, so the clipped root never cuts it off. */
   .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) {
     min-block-size: var(--_cinder-code-block-float-reserve);
-    padding-inline-end: var(--_cinder-code-block-float-reserve);
   }
 
+  /* Keep the scrollport's actual inline size independent from the copy rail. Padding expands the
+   * scrollable content area; an end margin shrinks the scrollport itself, so long lines and their
+   * scroll cue can never run underneath the opaque copy surface. */
+  .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) .cinder-code-block__viewport {
+    scroll-padding-inline-end: var(--_cinder-code-block-float-reserve);
+    margin-inline-end: var(--_cinder-code-block-float-reserve);
+  }
+
+  /* The shared fade normally hugs the scrollport edge. Stop it before the reserved copy rail so
+   * the last visible characters dissolve into the code surface instead of disappearing under the
+   * button. The attachment still controls when this cue appears. */
+  .cinder-code-block--floating-meta
+    .cinder-code-block__viewport.cinder-_scroll-fade-inline-end[data-cinder-overflows-inline-end]::after {
+    inset-inline-end: var(--_cinder-code-block-float-reserve);
+  }
+
+  /* The control is centred on the first code line: the line's centre is the block's padding plus
+   * half a line box, and the translation puts the control's own middle there. */
   .cinder-code-block--floating-meta .cinder-code-block__meta {
     position: absolute;
-    inset-block-start: 0;
+    inset-block-start: calc(
+      var(--cinder-code-block-padding) + var(--cinder-code-block-font-size) *
+        var(--cinder-code-block-line-height) / 2
+    );
     inset-inline-end: 0;
     z-index: 1;
-    padding: var(--cinder-space-1);
+    /* The inset keeps the button's 44px hit area, 8px past its painted edge, inside the block's
+     * clipped box. */
+    padding: 0 var(--cinder-space-2);
+    transform: translateY(-50%);
   }
 
+  /* Copy is transparent at rest, like the message actions; only hover and focus paint it. */
   .cinder-code-block--floating-meta .cinder-code-block__meta .cinder-copy-button {
     inline-size: var(--_cinder-code-block-float-size);
     min-block-size: var(--_cinder-code-block-float-size);
-    background: var(--cinder-code-block-background);
+    background: transparent;
   }
 
-  /* A touch screen gets a 44px copy target, and the reserve grows with it (C#3). */
-  @media (pointer: coarse) {
-    .cinder-code-block--floating-meta {
-      --_cinder-code-block-float-size: var(--cinder-touch-target-min);
-    }
-
-    .cinder-code-block .cinder-code-block__meta .cinder-copy-button {
-      min-inline-size: var(--cinder-touch-target-min);
-      min-block-size: var(--cinder-touch-target-min);
-    }
+  /* The status label sits inside the block's own padding, on the first line's centre. */
+  .cinder-code-block--floating-meta .cinder-code-block__status {
+    margin-inline-end: max(0px, calc(var(--cinder-code-block-padding) - var(--cinder-space-1)));
   }
 
   /* ── Streaming (`streaming`) ─────────────────────────────────────────────
    * Code that is still arriving: a status where the copy action will be, a caret after the final
    * character, and a dashed bottom edge that says the block is open. */
+  .cinder-code-block--streaming:not(.cinder-code-block--floating-meta) .cinder-code-block__meta {
+    padding-block-start: var(--cinder-code-block-padding);
+    padding-inline-end: var(--cinder-code-block-padding);
+  }
+
   .cinder-code-block--streaming {
     border-block-end: 1px dashed var(--cinder-border-strong);
     border-end-start-radius: 0;
@@ -583,11 +628,11 @@
 
   .cinder-code-block__caret {
     display: inline-block;
-    inline-size: 0.5ch;
+    inline-size: 2px;
     block-size: 1lh;
     margin-inline-start: 1px;
     vertical-align: top;
-    background: currentColor;
+    background: var(--cinder-accent-solid);
   }
 
   @media (forced-colors: active) {

@@ -20,6 +20,8 @@
     startedAt?: number | undefined;
     /** The words of the step's position, its failed count and a failed step's controls. */
     labels?: Partial<ChatTurnLabels> | undefined;
+    /** The calls a card in the same turn (an approval or a question) already speaks for. */
+    cardOwnedCallIds?: ReadonlySet<string> | undefined;
   };
 </script>
 
@@ -36,6 +38,7 @@
     durationMilliseconds,
     startedAt,
     labels,
+    cardOwnedCallIds,
   }: ToolCallPartProps = $props();
 
   const pairs = $derived([part.pair]);
@@ -77,4 +80,5 @@
   {startTimes}
   {onRetryStep}
   {labels}
+  {cardOwnedCallIds}
 />

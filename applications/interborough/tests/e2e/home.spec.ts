@@ -28,6 +28,7 @@ import {
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_JOURNEY_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, test } from './fixtures.ts';
+import { touchHeight } from './hit-area.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -970,7 +971,7 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
         .getByRole('link', { name: /Which environment|Refund order/ })
         .count();
       expect(title).toBeLessThanOrEqual(1);
-      expect(box!.height, `${name} is 44px`).toBeGreaterThanOrEqual(44);
+      expect(await touchHeight(button), `${name} is 44px`).toBeGreaterThanOrEqual(44);
       expect(box!.width, `${name} is the row's width`).toBeGreaterThan(row!.width - 40);
     }
     await expect(needsYou(page).getByRole('button', { name: 'More actions' })).toHaveCount(0);

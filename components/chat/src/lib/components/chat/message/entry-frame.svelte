@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { Collapsible } from '@lostgradient/cinder';
+  import type { CollapsibleVariant } from '@lostgradient/cinder';
+  import type { ChatLabels } from '../chat-labels.ts';
+  import { resolveChatLabels } from '../chat-labels.ts';
 
   let {
     id,
@@ -9,11 +12,14 @@
     status,
     triggerClass,
     busy = false,
+    busyIndicator = true,
     open = $bindable(false),
     disabled = false,
     onToggle,
     children,
     leadingIcon,
+    variant = 'default',
+    labels: labelOverrides,
   }: {
     id: string;
     label: string;
@@ -21,12 +27,17 @@
     status?: string | undefined;
     triggerClass?: string | undefined;
     busy?: boolean;
+    /** Draws the pulsing dot while `busy`; the accessible name still says in progress. */
+    busyIndicator?: boolean;
     open?: boolean;
     disabled?: boolean;
     onToggle?: ((open: boolean) => void) | undefined;
     children: Snippet;
     leadingIcon?: Snippet | undefined;
+    variant?: CollapsibleVariant;
+    labels?: Partial<ChatLabels> | undefined;
   } = $props();
+  const labels = $derived(resolveChatLabels(labelOverrides));
 </script>
 
 <div
@@ -40,16 +51,18 @@
     idBase={id}
     class="chat-entry-frame"
     animated={false}
+    chevron="start"
     triggerClass={`chat-entry-frame__trigger${triggerClass ? ` ${triggerClass}` : ''}`}
     labelClass={labelClass ?? ''}
+    {variant}
     triggerAriaLabel={({ open: currentOpen }) =>
-      `${currentOpen ? 'Collapse' : 'Expand'} ${label}${status ? `, ${status}` : busy ? ', In progress' : ''}`}
+      `${currentOpen ? labels.collapse : labels.expand} ${label}${status ? `, ${status}` : busy ? `, ${labels.inProgress}` : ''}`}
     {disabled}
     onToggle={(nextOpen) => onToggle?.(nextOpen)}
   >
     {@render children()}
   </Collapsible>
-  {#if busy}<span class="chat-entry-frame__busy" aria-hidden="true"></span>{/if}
+  {#if busy && busyIndicator}<span class="chat-entry-frame__busy" aria-hidden="true"></span>{/if}
   {#if status}<span class="chat-entry-frame__status" aria-hidden="true">{status}</span>{/if}
 </div>
 
@@ -58,7 +71,7 @@
     position: relative;
   }
 
-  .chat-entry-frame-shell :global(.chat-entry-frame) {
+  .chat-entry-frame-shell :global(.chat-entry-frame:not([data-cinder-variant='flat'])) {
     inline-size: 100%;
     overflow: hidden;
     border: 1px solid var(--_chat-entry-frame-border-color, var(--cinder-border));
@@ -69,8 +82,10 @@
   .chat-entry-frame-shell :global(.chat-entry-frame__trigger) {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     inline-size: 100%;
     min-block-size: var(--cinder-touch-target-min);
+    gap: var(--cinder-space-2);
     padding: var(--cinder-space-2) var(--cinder-space-3);
     border: 0;
     background: transparent;
@@ -80,7 +95,9 @@
   }
 
   .chat-entry-frame-shell :global(.cinder-collapsible__label) {
+    flex: 0 1 auto;
     min-inline-size: 0;
+    max-inline-size: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -120,7 +137,7 @@
      status by the status's own length (in characters, which over-reserves a little because the
      label's type is larger), so a long title ends in an ellipsis and "3 steps" stays whole. The
      2.5rem is the chevron's column, which the status sits to the left of. */
-  .chat-entry-frame-shell:has(.chat-entry-frame__status) :global(.cinder-collapsible__label) {
+  .chat-entry-frame-shell:has(.chat-entry-frame__status) :global(.cinder-collapsible__trigger) {
     padding-inline-end: calc(
       2.5rem + var(--_chat-entry-frame-status-length, 0) * 1ch + var(--cinder-space-2)
     );
@@ -129,11 +146,12 @@
   .chat-entry-frame-shell :global(.cinder-collapsible__chevron) {
     inline-size: 1rem;
     block-size: 1rem;
-    margin-inline-start: var(--cinder-space-2);
+    margin-inline-start: 0;
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .chat-entry-frame-shell :global(.cinder-collapsible__panel-inner) {
+  .chat-entry-frame-shell
+    :global(.chat-entry-frame:not([data-cinder-variant='flat']) .cinder-collapsible__panel-inner) {
     max-block-size: 16rem;
     overflow: auto;
     padding: var(--cinder-space-3);

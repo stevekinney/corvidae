@@ -19,7 +19,8 @@
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
   import { mediaDisplayUrl } from '../builders.ts';
-  import { Button, Maximize2, RotateCcw } from '@lostgradient/cinder';
+  import { ImageOff, Maximize2 } from '@lostgradient/cinder';
+  import RetryButton from './retry-button.svelte';
   import { SvelteMap } from 'svelte/reactivity';
   import ImageLightbox from './image-lightbox.svelte';
 
@@ -131,33 +132,33 @@
     {@const displayIndex = loopIndex + 1}
     {@const alt = getAltText(image, displayIndex)}
     {@const unavailable = failedUrls.includes(url)}
+    {#snippet unavailableFallback()}
+      <div class="message-attachment-unavailable">
+        <ImageOff class="message-attachment-unavailable-icon cinder-icon-sm" aria-hidden="true" />
+        <p class="message-attachment-unavailable-text" dir="auto">
+          <span class="message-attachment-unavailable-name">{alt}</span>
+          didn't load
+        </p>
+        <RetryButton
+          class="message-attachment-retry"
+          iconOnly
+          ariaLabel={`Retry loading ${alt}`}
+          onclick={() => retryImage(url)}
+        />
+      </div>
+    {/snippet}
     <figure
       class="message-attachment"
       role="listitem"
       data-cinder-image-placeholder={dimensions ? undefined : ''}
       data-unavailable={unavailable ? '' : undefined}
-      style={dimensions ? `aspect-ratio: ${dimensions.width} / ${dimensions.height}` : undefined}
+      style={dimensions && !unavailable
+        ? `aspect-ratio: ${dimensions.width} / ${dimensions.height}`
+        : undefined}
     >
       {#if unavailable}
-        <!-- The image failed: the same reserved box names what did not load and offers Retry,
-             with no zoom and no native broken-image glyph. -->
-        <div class="message-attachment-unavailable">
-          <p class="message-attachment-unavailable-text" dir="auto">
-            <span class="message-attachment-unavailable-name">{alt}</span>
-            didn't load
-          </p>
-          <Button
-            type="button"
-            class="message-attachment-retry"
-            size="xs"
-            variant="secondary"
-            aria-label={`Retry loading ${alt}`}
-            onclick={() => retryImage(url)}
-          >
-            <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
-            Retry
-          </Button>
-        </div>
+        <!-- The image failed: the reserved box names what did not load and offers Retry. -->
+        {@render unavailableFallback()}
       {:else}
         <button
           type="button"
@@ -195,7 +196,8 @@
   .message-attachments {
     display: grid;
     gap: var(--cinder-space-2);
-    margin-top: var(--cinder-space-2);
+    /* The space above the tiles belongs to the message: it is added only after text, so an
+     * image-only bubble has the same inset above and below. */
   }
 
   /* Single images use their intrinsic ratio and stay within the message width. */
@@ -232,26 +234,32 @@
     inline-size: min(20rem, 100%);
   }
 
-  /* A failed image keeps its footprint as a dashed outline, so the layout does not move. */
+  /* A failed image is a compact attachment row (icon, name, "didn't load", Retry), not a frame
+   * that keeps the image's aspect ratio. */
   .message-attachment[data-unavailable] {
-    border: 1px dashed var(--cinder-border-strong);
-    background: transparent;
+    aspect-ratio: auto;
+    min-block-size: 0;
+    max-block-size: none;
+    align-self: start;
+    background: var(--cinder-surface-inset);
   }
 
   .message-attachments[data-count='1'] .message-attachment[data-unavailable] {
-    inline-size: min(20rem, 100%);
-    min-block-size: 6rem;
+    inline-size: min(24rem, 100%);
   }
 
   .message-attachment-unavailable {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: center;
+    justify-content: stretch;
     gap: var(--cinder-space-2);
-    block-size: 100%;
-    padding: var(--cinder-space-3);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
     text-align: start;
+  }
+
+  .message-attachment-unavailable-icon {
+    color: var(--cinder-text-muted);
   }
 
   .message-attachment-unavailable-text {
@@ -323,8 +331,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: var(--cinder-touch-target-min);
-    block-size: var(--cinder-touch-target-min);
+    inline-size: 2rem;
+    block-size: 2rem;
     color: var(--cinder-text-default);
     background: color-mix(in oklch, var(--cinder-surface), transparent 12%);
     border-radius: var(--cinder-radius-full);

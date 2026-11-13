@@ -273,6 +273,22 @@ describe('Chat — typingParticipants prop', () => {
     unmount(instance);
   });
 
+  test('an idle empty streamingStatus does not hide the participant typing label', () => {
+    // A host that clears its status to '' between runs is idle, not busy.
+    const { container, instance } = mountChat({
+      id: 'chat-typing-empty-status',
+      conversation: createConversation(),
+      streamingStatus: '',
+      typingParticipants: [{ id: 'alice', name: 'Alice' }],
+    });
+
+    expect(container.querySelector('.chat-participant-typing-label')?.textContent).toBe(
+      'Alice is typing…',
+    );
+
+    unmount(instance);
+  });
+
   test('two participants: exact string "Alice and Bob are typing…"', () => {
     let conversation = createConversation();
     conversation = appendMessage(conversation, 'user', 'Hello');
@@ -621,6 +637,56 @@ describe('useChatTypingIndicator — debounce timer paths via adapter push', () 
 // ---------------------------------------------------------------------------
 
 describe('Chat — no scroll jump: outer typing wrapper always in DOM', () => {
+  test('reconnecting assistant progress does not render the separate assistant typing row', () => {
+    let conversation = createConversation();
+    conversation = appendMessage(conversation, 'assistant', '');
+    const messageId = conversation.ids.at(-1)!;
+    conversation = {
+      ...conversation,
+      messages: {
+        ...conversation.messages,
+        [messageId]: {
+          ...conversation.messages[messageId]!,
+          metadata: { streaming: true },
+        },
+      },
+    };
+
+    const { container, instance } = mountChat({
+      id: 'chat-typing-reconnecting-assistant',
+      conversation,
+      streaming: true,
+      streamingMessageId: messageId,
+      streamingContent: '',
+      messageTurnState: () => ({ kind: 'reconnecting', attempt: 1, attempts: 3, nextTryIn: 1 }),
+    });
+
+    expect(container.querySelector('.chat-typing-indicator')).toBeNull();
+    unmount(instance);
+  });
+
+  test('explicit run progress suppresses the redundant participant typing count', async () => {
+    const source = await Bun.file(`${import.meta.dir}/container/chat.svelte`).text();
+    expect(source).toContain('streamingStatus !== undefined');
+    expect(source).toContain('transcript.reasoningStreaming');
+    expect(source).toContain('transcript.toolActivity');
+  });
+
+  test('active run progress suppresses a second participant typing bubble', () => {
+    let conversation = createConversation();
+    conversation = appendMessage(conversation, 'user', 'Hello');
+    const { container, instance } = mountChat({
+      id: 'chat-typing-active-run',
+      conversation,
+      streaming: true,
+      streamingStatus: 'Thinking through the answer',
+      typingParticipants: [{ id: 'alice', name: 'Alice' }],
+    });
+
+    expect(container.querySelector('[data-cinder-participant-typing]')).toBeNull();
+    unmount(instance);
+  });
+
   test('participant typing wrapper cannot flex-collapse when the transcript overflows', async () => {
     const source = await Bun.file(
       `${import.meta.dir}/container/chat-participant-typing.svelte`,

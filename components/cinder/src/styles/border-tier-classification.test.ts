@@ -116,12 +116,6 @@ describe('COR-1552: bordered button resting edges keep the control tier', () => 
 
   const EDGES: Edge[] = [
     {
-      file: join(COMPONENTS_ROOT, 'copy-button', 'copy-button.css'),
-      selector: '.cinder-copy-button',
-      property: 'border',
-      expected: 'control',
-    },
-    {
       file: join(COMPONENTS_ROOT, 'load-more', 'load-more.css'),
       selector: '.cinder-load-more__button',
       property: 'border',

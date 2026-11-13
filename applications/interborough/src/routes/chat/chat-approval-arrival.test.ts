@@ -109,12 +109,14 @@ describe('a chat that opens on an approval', () => {
     landAt('/chats/session-1');
     const { container } = mount();
 
+    // The row is drawn again when the joined run's state arrives, so the focus is read on the row
+    // that is on the page once it settles, not on the first one drawn.
     const row = await waitFor(() => {
       const found = container.querySelector<HTMLElement>('[data-approval-decision]');
       if (found === null) throw new Error('The approval did not render.');
+      if (document.activeElement !== found) throw new Error('The approval has not taken focus.');
       return found;
     });
-    await waitFor(() => expect(document.activeElement === row).toBe(true));
     expect(scrolled.includes(row)).toBe(true);
     // Cinder's approval row is an article named by the question it asks.
     expect(row.tagName).toBe('ARTICLE');
@@ -128,6 +130,43 @@ describe('a chat that opens on an approval', () => {
     expect(document.activeElement).toBe(row);
     expect(answers).toEqual([]);
     scroll.mockRestore();
+  });
+
+  test('takes focus back from the transcript, where Chat parks it when the focused row is drawn again', async () => {
+    serve(() => sse(PARKED));
+    landAt('/chats/session-1');
+    const { container } = mount();
+
+    await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-approval-decision]');
+      if (found === null || document.activeElement !== found) throw new Error('Not focused yet.');
+    });
+    // Chat parks focus on its transcript when the row that held it is removed.
+    const transcript = container.querySelector<HTMLElement>('.chat-timeline')!;
+    transcript.focus();
+    expect(document.activeElement).toBe(transcript);
+
+    await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-approval-decision]');
+      if (found === null || document.activeElement !== found) {
+        throw new Error('The approval has not taken focus back from the transcript.');
+      }
+    });
+  });
+
+  test('leaves focus where the person put it, outside the rows', async () => {
+    serve(() => sse(PARKED));
+    landAt('/chats/session-1');
+    const { container } = mount();
+
+    await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-approval-decision]');
+      if (found === null || document.activeElement !== found) throw new Error('Not focused yet.');
+    });
+    const box = container.querySelector<HTMLTextAreaElement>('textarea')!;
+    box.focus();
+    await quietFor(250);
+    expect(document.activeElement).toBe(box);
   });
 
   test('keeps the row out of the Tab order, so only the opening brings focus to it', async () => {

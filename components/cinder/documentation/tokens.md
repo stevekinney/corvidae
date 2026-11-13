@@ -639,7 +639,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-button-padding-x-sm` | `var(--cinder-space-2)` | Small button horizontal padding. |
+| `--cinder-button-padding-x-sm` | `var(--cinder-space-3)` | Small button horizontal padding. |
 | `--cinder-button-padding-y-sm` | `var(--cinder-space-1)` | Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`. |
 | `--cinder-button-height-sm` | `var(--cinder-control-height-sm)` | Small button height: `control.height.sm` (28px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. |
 | `--cinder-button-font-size-sm` | `var(--cinder-text-sm)` | Small button label font size. |
@@ -653,7 +653,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-button-padding-x-md` | `var(--cinder-space-2-5)` | Medium button horizontal padding. |
+| `--cinder-button-padding-x-md` | `var(--cinder-space-4)` | Medium button horizontal padding. |
 | `--cinder-button-padding-y-md` | `var(--cinder-space-1-5)` | Medium button vertical padding. |
 | `--cinder-button-height-md` | `var(--cinder-control-height-md)` | Medium button height: `control.height.md` (32px). |
 | `--cinder-button-font-size-md` | `var(--cinder-text-sm)` | Medium button label font size. |
@@ -755,7 +755,7 @@ Component-owned custom-property theming surfaces, one section per component (bes
 | `--cinder-carousel-slide-size` | `100%` | Slide inline-size as a percentage of the viewport. `$value` (100) is the percentage number, not a dimension -- CSS `100%` has no DTCG dimension representation. Excluded from the published resolved-context JSON (`nonRepresentableValue`) so a generic consumer does not apply a bare unitless `100` as a CSS length. |
 | `--cinder-carousel-gap` | `var(--cinder-space-3)` | Gap between slides. |
 | `--cinder-carousel-aspect-ratio` | `16 / 9` | Slide aspect ratio (16:9). `$value` is the ratio as a number (16/9); `cssRecipe` emits the exact `16 / 9` CSS `aspect-ratio` syntax. Excluded from the published resolved-context JSON (`nonRepresentableValue`) so a generic consumer does not apply the bare ratio number as a CSS `aspect-ratio` value. |
-| `--cinder-carousel-dot-size` | `2.75rem` | Pagination dot hit-target size. |
+| `--cinder-carousel-dot-size` | `1.5rem` | Pagination dot painted size; its 44px hit area is a pseudo-element. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

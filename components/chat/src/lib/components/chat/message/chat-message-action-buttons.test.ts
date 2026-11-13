@@ -27,12 +27,12 @@ describe('chat message action buttons', () => {
     expect(source).toContain('class="chat-message-action-button chat-message-edit-button"');
   });
 
-  test('exactly one .chat-message-action-button base selector exists outside the touch block', () => {
+  test('default and transcript action buttons each use the shared base selector', () => {
     const withoutTouchBlock = source.replace(extractTouchMediaBlock(source), '');
     // The selector is wrapped in :global() so Svelte scoping does not prevent it
     // from reaching the CopyButton child component's rendered <button>.
-    // The transcript line restyles the same buttons as words (`.chat-message-line :global(...)`),
-    // a scoped override of the one base rule, so it is not counted as a second base.
+    // Default message actions and transcript line actions have separate layout contexts, so each
+    // owns one base rule while their touch overrides remain inside media blocks.
     const baseRuleMatches = withoutTouchBlock
       .replaceAll('.chat-message-line :global(.chat-message-action-button)', '')
       .match(/(?::global\()?\.chat-message-action-button(?:\))?\s*\{/g);
@@ -40,26 +40,47 @@ describe('chat message action buttons', () => {
     expect(baseRuleMatches).toHaveLength(1);
   });
 
+  test('a message that ends on an answered question receipt is never content-skipped', () => {
+    // `content-visibility: auto` contains paint at the message's edge and would cut the 44px
+    // area of the receipt's Change action where the message ends.
+    expect(source).toMatch(
+      /\.chat-message:has\(:global\(\.chat-question-receipt\)\),\s*\.chat-message:has\(:global\(\.chat-question-choices\)\) \{\s*content-visibility: visible;/,
+    );
+  });
+
+  test('a message that holds an open question is never content-skipped either', () => {
+    // The last choice row's 44px area overhangs its 38px card; paint containment at the message's
+    // edge would hand a tap below the card to the message.
+    expect(source).toContain(':has(:global(.chat-question-choices))');
+  });
+
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
-    const lineRule = extractRule(source, /(?:^|\n)\s*\.chat-message-line\s*\{/);
-    expect(lineRule).toContain('gap: var(--cinder-space-1) var(--cinder-space-3)');
-    const actionsRule = extractRule(source, '.chat-message-line-actions {');
-    expect(actionsRule).toContain('gap: var(--cinder-space-1) var(--cinder-space-3)');
+    const lineRule = extractRule(source, '.chat-message-line {\n    position: relative;');
+    expect(lineRule).toContain('gap: var(--cinder-space-1)');
+    // The actions' 44px hit areas overhang the line; a stacking position keeps the next bubble
+    // (a `content-visibility: auto` stacking context) from painting over that overhang.
+    expect(lineRule).toContain('z-index: 1;');
+    const actionsRule = extractRule(source, '\n  .chat-message-line-actions {');
+    expect(actionsRule).toContain('gap: var(--cinder-space-1)');
     const buttonRule = extractRule(
       source,
       '.chat-message-line :global(.chat-message-action-button) {',
     );
     expect(buttonRule).toContain('padding: 0;');
+    expect(buttonRule).toContain('justify-content: center;');
+    expect(buttonRule).toContain('min-inline-size: 1.5rem;');
   });
 
-  test('on a touch screen each line action is a full touch target that keeps the line height (C#3)', () => {
+  test('on a touch screen each line action keeps its painted box and takes a layout-free 44px hit region (C#3)', () => {
     const coarse = extractMediaBlock(
       source,
       '@media (any-pointer: coarse) {',
-      '.chat-message-line :global(.chat-message-action-button)',
+      ':global(.chat-message-action-button:not(.cinder-button))::after',
     );
-    expect(coarse).toContain('min-block-size: var(--cinder-touch-target-min)');
-    expect(coarse).toContain('margin-block: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
+    expect(coarse).toContain('inset: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
+    expect(source).not.toContain(
+      'min-block-size: var(--cinder-touch-target-min);\n      margin-block',
+    );
   });
 
   test('Regenerate is an optional action that follows Quote, in both presentations', () => {
@@ -68,6 +89,46 @@ describe('chat message action buttons', () => {
     expect(source.indexOf('chat-message-quote-button')).toBeLessThan(
       source.indexOf('chat-message-regenerate-button'),
     );
+  });
+
+  test('assistant bubbles use body rhythm and action cells without an inter-button gap', () => {
+    const assistantRule = extractRule(
+      source,
+      ".chat-message-wrapper[data-role='assistant'] .chat-message {",
+    );
+    expect(assistantRule).toContain('padding-block: 0;');
+    const actionsRule = extractRule(source, '.chat-message-actions {');
+    expect(actionsRule).toContain('gap: 0;');
+    const buttonRule = extractRule(source, ':global(.chat-message-action-button) {');
+    expect(buttonRule).toContain('min-width: var(--cinder-touch-target-min);');
+    expect(buttonRule).toContain('min-height: var(--cinder-touch-target-min);');
+  });
+
+  test('keeps keyboard focus visible on the painted face of each action', () => {
+    const focusRule = extractRule(
+      source,
+      '.chat-message-line :global(.chat-message-action-button:focus-visible) {',
+    );
+    expect(focusRule).toContain('box-shadow: var(--_cinder-focus-ring-shadow);');
+    expect(source).not.toContain(
+      '.chat-message-line :global(.chat-message-action-button:focus-visible)::before',
+    );
+    expect(source).toContain('.chat-message-not-sent-icon:focus-visible');
+    expect(source).toContain('outline: var(--cinder-ring-width) solid var(--cinder-ring-color);');
+  });
+
+  test('a settled assistant turn draws an unavailable action disabled rather than omitting it', () => {
+    expect(source).toContain('disabled={!regenerateAvailable}');
+    expect(source).toContain('disabled={quoteDisabled || !quoteAvailable}');
+  });
+
+  test('an RTL reply line takes the message direction, time first', () => {
+    const rule = extractRule(
+      source,
+      ".chat-message-wrapper[data-message-direction='rtl'][data-role='assistant'] .chat-message-line {",
+    );
+    expect(rule).toContain('direction: rtl;');
+    expect(rule).toContain('justify-content: flex-start;');
   });
 
   test('base rule uses border-box sizing and a transparent reserving border', () => {
@@ -129,6 +190,17 @@ describe('chat message action buttons', () => {
       );
       expect(rule).toContain('padding-top: 0');
     }
+  });
+
+  test('RTL side footers stay on the center-facing edge while actions retain order', () => {
+    expect(source).toContain(
+      ".chat-message-wrapper:dir(rtl)[data-role='user'] .chat-message-footer",
+    );
+    expect(source).toContain(
+      ".chat-message-wrapper:dir(rtl)[data-role='assistant'] .chat-message-footer",
+    );
+    const actionsRule = extractRule(source, '.chat-message-actions {');
+    expect(actionsRule).toContain('direction: ltr;');
   });
 
   test('narrow side footers restore the below-bubble hover bridge', () => {

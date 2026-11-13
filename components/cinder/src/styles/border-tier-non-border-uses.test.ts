@@ -211,6 +211,22 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/button-group/button-group.css': [
     { declaration: 'background: var(--cinder-border-strong);', category: 'hairline' },
   ],
+  'components/cinder/src/components/spinner/spinner.css': [
+    {
+      declaration: 'stroke: var(--cinder-spinner-track, var(--cinder-border-contrast));',
+      category: 'area',
+      audit: 'spinner',
+    },
+    {
+      // Under reduced motion the still indicator takes the track colour, undimmed, so the ring
+      // keeps the track's measured contrast (a media query and an explicit attribute).
+      declaration:
+        '--cinder-spinner-indicator: var(--cinder-spinner-track, var(--cinder-border-contrast));',
+      category: 'area',
+      audit: 'spinner',
+      occurrences: 2,
+    },
+  ],
   'components/cinder/src/components/chip/chip.css': [
     { declaration: 'var(--cinder-border-strong) 65%', category: 'mix' },
   ],
@@ -263,6 +279,12 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   'components/cinder/src/components/kbd/kbd.css': [
     { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
+  ],
+  'components/cinder/src/components/code-block/code-block.css': [
+    {
+      declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-muted);',
+      category: 'hairline',
+    },
   ],
   'components/cinder/src/components/media-controls/media-controls.css': [
     {

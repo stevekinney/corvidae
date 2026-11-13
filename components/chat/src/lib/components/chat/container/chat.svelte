@@ -27,7 +27,7 @@
 </script>
 
 <script lang="ts">
-  import { flushSync, tick, untrack } from 'svelte';
+  import { flushSync, tick, untrack, type Snippet } from 'svelte';
   import { isStreamingMessage } from '../builders.ts';
   import type { Message, MessageInput, ToolCallPair } from '../conversation-model.ts';
   import { isComposerNoticeStatus, type ChatComposerStatus } from '../input/composer-status.ts';
@@ -64,7 +64,15 @@
   import { appendToDraft, followUpText, type QueuedFollowUp } from './chat-follow-up-queue.ts';
   import { useChatFollowUpQueue } from './use-chat-follow-up-queue.svelte.ts';
   import { useChatApprovalWait } from './use-chat-approval-wait.svelte.ts';
-  import { focusPendingApproval } from './chat-approval-review.ts';
+  import {
+    approvalActionRow,
+    approvalActionRowShift,
+    approvalReviewBox,
+    approvalRowVisible,
+    approvalVisibleBox,
+    focusPendingApproval,
+    pendingApprovalCard,
+  } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
@@ -85,7 +93,10 @@
   import ChatParticipantTyping from './chat-participant-typing.svelte';
   import ChatReadReceipt from '../message/chat-read-receipt.svelte';
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
+  import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
+  import { resolveTurnLabels } from '../message/turn-labels.ts';
+  import { resolveChatLabels } from '../chat-labels.ts';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
   import {
     Button,
@@ -200,11 +211,13 @@
     onSuggestionSelect,
     messageTurnState,
     turnLabels,
+    labels,
     onRetryConnection,
     onContinueTurn,
     onDiscardTurn,
     onRetryTurn,
     onRetryStep,
+    onApprovalRequestAgain,
     style,
     onLoadHistory,
     onStopGenerating,
@@ -231,6 +244,34 @@
     ...rest
   }: ChatImplementationProps = $props();
 
+  const chatWords = $derived(resolveTurnLabels(turnLabels));
+  const chatLabels = $derived(resolveChatLabels(labels));
+  // Shared Chat words provide defaults for the dock; an explicit questionLabels override always
+  // wins so hosts can specialize question vocabulary without changing the rest of Chat.
+  const questionDockLabels = $derived({
+    answer: chatLabels.answer,
+    failed: chatLabels.answerFailed,
+    ownAnswer: chatLabels.yourOwnAnswer,
+    yes: chatLabels.yes,
+    no: chatLabels.no,
+    ...questionLabels,
+  });
+  const initialCoarsePointer =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(any-pointer: coarse)').matches
+      : false;
+  let coarsePointer = $state(initialCoarsePointer);
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(any-pointer: coarse)');
+    const update = (): void => {
+      coarsePointer = media.matches;
+    };
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  });
+
   function updateAtBottomBinding(value: boolean): void {
     atBottom = value;
     onatbottombindingchange?.(value);
@@ -252,6 +293,8 @@
 
   let viewport = $state<HTMLElement | null>(null);
   let containerRef = $state<HTMLElement | null>(null);
+  /** What the composer holds, so the approval reminder can say what sending it does now. */
+  let composerDraft = $state('');
   let inputRef:
     | {
         focus: () => void;
@@ -439,7 +482,9 @@
       isComposerNoticeStatus(composerStatus) ||
       availabilityReplacesComposer(availability)
         ? 'inline'
-        : questionPlacement,
+        : coarsePointer
+          ? 'docked'
+          : questionPlacement,
   );
   provideQuestionStore(questions);
 
@@ -546,6 +591,14 @@
     getIsVirtualized: () => isVirtualized,
   });
 
+  /**
+   * Whether the streamed text ends inside an unclosed code fence. That code block says "Writing…"
+   * itself, so the typing dots stay out of its way.
+   */
+  function streamingFenceIsOpen(content: string): boolean {
+    return (content.match(/^ {0,3}```/gmu)?.length ?? 0) % 2 === 1;
+  }
+
   let rollbackMessageId = $state<string | null>(null);
   let rollbackConversationIdentity: string | undefined;
 
@@ -562,6 +615,16 @@
     getStreamingContent: () => streamingState.content,
     getMessageReasoning: () => messageReasoning,
     getFirstUnreadId: () => unreadState.firstUnreadId,
+    // The dots say work goes on when nothing else does: a reconnecting turn, a waiting approval, an
+    // open question and an availability banner each already say so, and the dots stay out from under them.
+    getSuppressTypingIndicator: () =>
+      composerStatus?.kind === 'reconnecting' ||
+      approvalWaiting ||
+      questions.dockedQuestions.length > 0 ||
+      questions.composerTarget !== undefined ||
+      availability !== undefined ||
+      streamingFenceIsOpen(streamingState.content),
+    getMessageTurnState: () => messageTurnState,
     // A call whose question was answered here, or whose approval was decided here, keeps its own
     // row so the answer or the receipt stays readable once the run resumes. So does a call that
     // carries reasoning or steps of its own, which a group does not draw, and, while the host
@@ -680,6 +743,24 @@
       const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
       return pair ? [{ message, pair }] : [];
     });
+  }
+
+  function actionRequiredApprovalMessages(groupMessages: readonly Message[]): Message[] {
+    return toolCallGroupPairs(groupMessages)
+      .filter(
+        ({ pair }) =>
+          pair.result?.outcome === 'action_required' && pair.result.action?.type === 'approval',
+      )
+      .map(({ message }) => message);
+  }
+
+  function actionRequiredInputMessages(groupMessages: readonly Message[]): Message[] {
+    return toolCallGroupPairs(groupMessages)
+      .filter(
+        ({ pair }) =>
+          pair.result?.outcome === 'action_required' && pair.result.action?.type === 'input',
+      )
+      .map(({ message }) => message);
   }
 
   /** How long each call took, from its message to its result's, when both have times. */
@@ -934,6 +1015,18 @@
   const typingIndicatorState = useChatTypingIndicator({
     getTypingParticipants: () => typingParticipants,
   });
+
+  // Reconnecting already owns the visible progress state; a second typing bubble would duplicate
+  // it and push the composer below the decision surface.
+  const participantTypingCount = $derived(
+    composerStatus?.kind === 'reconnecting' ||
+      streaming ||
+      (streamingStatus !== undefined && streamingStatus !== '') ||
+      transcript.reasoningStreaming ||
+      transcript.toolActivity
+      ? 0
+      : typingIndicatorState.participantCount,
+  );
 
   // The empty state, composer and footer are one centered block only while nothing has been said.
   const composerCentered = $derived(
@@ -1387,8 +1480,16 @@
   const transcriptHidden = $derived(availability !== undefined);
   const composerHidden = $derived(availabilityReplacesComposer(availability));
   const composerWaitsForHistory = $derived(
-    availability?.kind === 'loading' || availability?.kind === 'canceled'
-      ? availabilityLabels(availability).sendWaits
+    availability?.kind === 'loading' ? availabilityLabels(availability).sendWaits : undefined,
+  );
+  const availabilityComposerStatus = $derived<ChatComposerStatus | undefined>(
+    availability?.kind === 'canceled'
+      ? {
+          kind: 'drawer-notice',
+          text: availabilityLabels(availability).canceledComposer,
+          tone: 'neutral',
+          sendDisabledReason: availabilityLabels(availability).sendBlocked,
+        }
       : undefined,
   );
   // While a question Chat draws waits on the composer, its placeholder says what to do: a free-text
@@ -1419,6 +1520,171 @@
       composerStatus?.kind !== 'blocked' &&
       !isComposerNoticeStatus(composerStatus),
   );
+  let approvalFullyVisible = $state(false);
+  // The room the reminder takes from the transcript (its height and margins), last read while it
+  // was on screen; the estimate holds until the first read. It is not state: nothing renders from
+  // it, and it only keeps the box the row is judged against the same with the reminder on and off.
+  let approvalReminderBlockSize = 48;
+  /**
+   * Reads the reminder from the page, not from state: what the transcript's box excludes is what is
+   * drawn now, and a state update the page has not yet drawn would count the reminder twice.
+   */
+  function readApprovalReminder(): { shown: boolean; blockSize: number } {
+    const reminder = containerRef?.querySelector<HTMLElement>('[data-chat-approval-drawer]');
+    if (reminder === null || reminder === undefined) {
+      return { shown: false, blockSize: approvalReminderBlockSize };
+    }
+    const reminderStyle = getComputedStyle(reminder);
+    const blockSize =
+      reminder.getBoundingClientRect().height +
+      (Number.parseFloat(reminderStyle.marginTop) || 0) +
+      (Number.parseFloat(reminderStyle.marginBottom) || 0);
+    if (blockSize > 0) approvalReminderBlockSize = blockSize;
+    return { shown: true, blockSize: approvalReminderBlockSize };
+  }
+  $effect(() => {
+    const scroller = viewport;
+    const messageId = approvalWait.messageId;
+    if (scroller === null || !approvalWaiting || messageId === undefined) {
+      approvalFullyVisible = false;
+      return undefined;
+    }
+
+    let observer: IntersectionObserver | undefined;
+    let resizeObserver: ResizeObserver | undefined;
+    let detachScroll: (() => void) | undefined;
+    const attach = (): void => {
+      observer?.disconnect();
+      resizeObserver?.disconnect();
+      detachScroll?.();
+      detachScroll = undefined;
+      const card = pendingApprovalCard(containerRef, messageId);
+      if (card === null) {
+        approvalFullyVisible = false;
+        return;
+      }
+      const updateVisibility = (): void => {
+        const cardBox = card.getBoundingClientRect();
+        const viewportBox = scroller.getBoundingClientRect();
+        // Happy DOM and an initial browser layout can report zero-sized boxes before the first
+        // real layout delivery. Treat that state as unknown so the safety drawer stays available;
+        // the observer will replace it once measurable geometry arrives.
+        if (
+          cardBox.width <= 0 ||
+          cardBox.height <= 0 ||
+          viewportBox.width <= 0 ||
+          viewportBox.height <= 0
+        ) {
+          approvalFullyVisible = false;
+          return;
+        }
+        // The reminder is for a card whose decision buttons are out of reach: while its action
+        // row is wholly in view there is nothing to point to. A card that draws no row falls back
+        // to the whole card.
+        const actionRow = approvalActionRow(card);
+        const reminder = readApprovalReminder();
+        approvalFullyVisible = approvalRowVisible(
+          actionRow === null
+            ? cardBox
+            : approvalReviewBox(
+                actionRow.getBoundingClientRect(),
+                cardBox,
+                viewportBox.bottom - viewportBox.top + (reminder.shown ? reminder.blockSize : 0),
+              ),
+          viewportBox,
+          reminder.shown,
+          reminder.blockSize,
+        );
+      };
+      observer = new IntersectionObserver(updateVisibility, { root: scroller, threshold: 1 });
+      resizeObserver = new ResizeObserver(updateVisibility);
+      resizeObserver.observe(card);
+      resizeObserver.observe(scroller);
+      // Keep the full context criterion. If the drawer itself reduced the viewport, its measured
+      // block size is reclaimable; genuinely top-clipped or taller cards still keep the drawer.
+      observer.observe(card);
+      // The reminder follows the decision row, so the row's own visibility (not only the card's)
+      // and any scroll re-read it: a card can stay partly out of view while its row crosses in.
+      const decisionRow = approvalActionRow(card);
+      if (decisionRow !== null) observer.observe(decisionRow);
+      scroller.addEventListener('scroll', updateVisibility, { passive: true });
+      detachScroll = () => scroller.removeEventListener('scroll', updateVisibility);
+      updateVisibility();
+    };
+    const changes = new MutationObserver(attach);
+    changes.observe(scroller, { childList: true, subtree: true });
+    attach();
+    return () => {
+      observer?.disconnect();
+      resizeObserver?.disconnect();
+      detachScroll?.();
+      changes.disconnect();
+    };
+  });
+
+  // When an approval arrives the transcript scrolls so the card's row of decision buttons clears
+  // the composer and any notice above it, and keeps doing so as the layout settles (the notice
+  // itself shrinks the transcript) until the person scrolls, wheels, touches or presses a key
+  // there, or focus is inside the card. A card taller than the transcript is the lift's to place.
+  // The row is judged against the box the transcript has without the reminder, the same box that
+  // decides whether the reminder shows.
+  $effect(() => {
+    const scroller = viewport;
+    const messageId = approvalWait.messageId;
+    if (scroller === null || !approvalWaiting || messageId === undefined) return undefined;
+    let released = false;
+    let frame = 0;
+    const settle = (): void => {
+      frame = 0;
+      if (released) return;
+      const card = pendingApprovalCard(containerRef, messageId);
+      const actionRow = card === null ? null : approvalActionRow(card);
+      if (card === null || actionRow === null) return;
+      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
+      // The same box the reminder is judged against, so a row this puts in view is one the
+      // reminder agrees is in view, with it on screen or not.
+      const reminder = readApprovalReminder();
+      const viewportBox = approvalVisibleBox(
+        scroller.getBoundingClientRect(),
+        reminder.shown,
+        reminder.blockSize,
+      );
+      const cardBox = card.getBoundingClientRect();
+      if (cardBox.height >= viewportBox.bottom - viewportBox.top) return;
+      const shift = approvalActionRowShift(
+        approvalReviewBox(
+          actionRow.getBoundingClientRect(),
+          cardBox,
+          viewportBox.bottom - viewportBox.top,
+        ),
+        viewportBox,
+        0,
+      );
+      if (shift !== 0) {
+        scroller.scrollTop += shift;
+      }
+    };
+    const schedule = (): void => {
+      if (frame === 0 && !released) frame = requestAnimationFrame(settle);
+    };
+    const release = (): void => {
+      released = true;
+    };
+    const inputs = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+    for (const type of inputs) scroller.addEventListener(type, release, { passive: true });
+    const resizes =
+      typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
+    resizes?.observe(scroller);
+    const changes = new MutationObserver(schedule);
+    changes.observe(scroller, { childList: true, subtree: true });
+    schedule();
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      resizes?.disconnect();
+      changes.disconnect();
+      for (const type of inputs) scroller.removeEventListener(type, release);
+    };
+  });
 
   // A pending approval or question taller than the room left would land with only its buttons in
   // view when the transcript pins to its end. While the transcript sits at its end, the item's top
@@ -1518,6 +1784,15 @@
   const followUps = useChatFollowUpQueue({
     isEnabled: () => followUpsEnabled && !composerCompact,
     isRunActive: () => composerSending || approvalWaiting,
+    isSendNowAvailable: () => composerStatus?.kind !== 'offline',
+    getRunOutcome: () => {
+      const latestAssistant = messages.findLast((message) => message.role === 'assistant');
+      const outcome =
+        latestAssistant === undefined
+          ? undefined
+          : resolveMessageTurnState(latestAssistant, messageTurnState)?.kind;
+      return outcome === 'stopped' || outcome === 'failed' ? outcome : undefined;
+    },
     getConversationIdentity: () => conversationId,
     submit: (message, attachments, onOutcome) => handleSubmit(message, attachments, onOutcome),
   });
@@ -2085,7 +2360,21 @@
       </button>
     {/snippet}
 
-    {#snippet renderMessageRow(messageRow: ChatMessageRenderRow)}
+    {#snippet renderApprovalPart(part: BodyMessagePart, renderDefault: Snippet<[BodyMessagePart]>)}
+      {#if part.type !== 'tool-call'}
+        {#if messagePart !== undefined}
+          {@render messagePart(part, renderDefault)}
+        {:else}
+          {@render renderDefault(part)}
+        {/if}
+      {/if}
+    {/snippet}
+
+    {#snippet renderMessageRow(
+      messageRow: ChatMessageRenderRow,
+      suppressToolCall = false,
+      approvalLayout: 'decision' | 'row' = 'decision',
+    )}
       {@const message = messageRow.message}
       {@const pairs = message.toolCall?.id
         ? (toolCallPairsByCallId.get(message.toolCall.id) ?? [])
@@ -2153,7 +2442,9 @@
           {message}
           {...receipt ? { metadata: readReceiptMetadata } : {}}
           toolCallPairs={pairs}
-          {messagePart}
+          messagePart={suppressToolCall ? renderApprovalPart : messagePart}
+          labels={chatLabels}
+          {approvalLayout}
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           presentation={variant === 'transcript' ? 'transcript' : 'default'}
@@ -2218,6 +2509,7 @@
           {onRetryTurn}
           {onRetryStep}
           onAnnounce={(text) => announcements.announce(text)}
+          {onApprovalRequestAgain}
           toolCallDurations={ownToolCallPairs.length > 0
             ? toolCallDurations(ownToolCallPairs)
             : undefined}
@@ -2252,11 +2544,19 @@
 
     {#snippet renderChatRow(renderRow: ChatRenderRow)}
       {#if renderRow.type === 'date'}
-        <ChatDateSeparator date={renderRow.date} />
+        <ChatDateSeparator
+          date={renderRow.date}
+          labels={{
+            today: chatLabels.today,
+            yesterday: chatLabels.yesterday,
+            invalidDate: chatLabels.invalidDate,
+            messagesFrom: chatLabels.messagesFrom,
+          }}
+        />
       {:else if renderRow.type === 'unread-divider'}
-        <div class="chat-unread-divider" role="separator" aria-label="New messages below">
+        <div class="chat-unread-divider" role="separator" aria-label={chatLabels.newMessagesBelow}>
           <span class="chat-unread-divider-line" aria-hidden="true"></span>
-          <span class="chat-unread-divider-label">New</span>
+          <span class="chat-unread-divider-label">{chatLabels.newMessagesLabel}</span>
           <span class="chat-unread-divider-line" aria-hidden="true"></span>
         </div>
       {:else if renderRow.type === 'typing'}
@@ -2264,21 +2564,53 @@
       {:else if renderRow.type === 'tool-call-group'}
         {@const artifacts = artifactsForToolCallMessages(renderRow.messages)}
         {@const groupPairs = toolCallGroupPairs(renderRow.messages)}
-        <ToolCallTimeline
-          messageId={renderRow.messages[0]!.id}
-          activityActive={progressState === 'tool' &&
-            renderRow.messages.some((message) => activeTurnMessageIds.has(message.id))}
-          describeToolCall={adapter?.describeToolCall
-            ? (pair) => describeToolCallSafely(pair.call, pair.result)
-            : undefined}
-          pairs={groupPairs.map(({ pair }) => pair)}
-          approvalStates={commandActions.approvalStates}
-          durations={toolCallDurations(groupPairs)}
-          startTimes={toolCallStartTimes(groupPairs)}
-          {onRetryStep}
-          labels={turnLabels}
-          onToggle={onExpandedChange}
-        />
+        {@const approvalMessages = actionRequiredApprovalMessages(renderRow.messages)}
+        {@const inputMessages = actionRequiredInputMessages(renderRow.messages)}
+        {@const compactApprovalMessages = approvalMessages.length > 1 ? approvalMessages : []}
+        {@const approvalIds = new Set(compactApprovalMessages.map((message) => message.id))}
+        {@const cardOwnedCallIds = new Set([
+          ...approvalMessages.flatMap((message) => (message.toolCall ? [message.toolCall.id] : [])),
+          ...inputMessages.flatMap((message) => (message.toolCall ? [message.toolCall.id] : [])),
+          ...questions.dockedQuestions.map((question) => question.toolCallId),
+        ])}
+        {@const ordinaryPairs = groupPairs.filter(({ message }) => !approvalIds.has(message.id))}
+        <div class="chat-tool-call-group">
+          {#if compactApprovalMessages.length > 1}
+            <h3 class="chat-approval-group-heading">
+              {chatWords.approvalWaiting(compactApprovalMessages.length)}
+            </h3>
+          {/if}
+          {#if ordinaryPairs.length > 0}
+            <ToolCallTimeline
+              messageId={renderRow.messages[0]!.id}
+              activityActive={progressState === 'tool' &&
+                renderRow.messages.some((message) => activeTurnMessageIds.has(message.id))}
+              describeToolCall={adapter?.describeToolCall
+                ? (pair) => describeToolCallSafely(pair.call, pair.result)
+                : undefined}
+              pairs={ordinaryPairs.map(({ pair }) => pair)}
+              approvalStates={commandActions.approvalStates}
+              durations={toolCallDurations(ordinaryPairs)}
+              startTimes={toolCallStartTimes(ordinaryPairs)}
+              {onRetryStep}
+              labels={turnLabels}
+              {cardOwnedCallIds}
+              onToggle={onExpandedChange}
+            />
+          {/if}
+          <div class="chat-approval-group-rows">
+            {#each approvalMessages as actionRequiredMessage (actionRequiredMessage.id)}
+              {@render renderMessageRow(
+                { type: 'message', message: actionRequiredMessage },
+                true,
+                compactApprovalMessages.length > 1 ? 'row' : 'decision',
+              )}
+            {/each}
+          </div>
+          {#each inputMessages.filter((message) => !approvalIds.has(message.id)) as inputMessage (inputMessage.id)}
+            {@render renderMessageRow({ type: 'message', message: inputMessage }, true)}
+          {/each}
+        </div>
         {#if artifacts.length > 0}
           <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">
             {#each artifacts as artifact (artifact.id)}
@@ -2294,9 +2626,15 @@
     {#snippet emptyPromptButtons()}
       <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
         {#each emptyPrompts ?? [] as prompt, index (index)}
-          <button type="button" class="chat-empty-prompt" onclick={() => handlePromptClick(prompt)}>
+          <Button
+            type="button"
+            class="chat-empty-prompt"
+            size="sm"
+            variant="secondary"
+            onclick={() => handlePromptClick(prompt)}
+          >
             {prompt}
-          </button>
+          </Button>
         {/each}
       </div>
     {/snippet}
@@ -2311,7 +2649,7 @@
           scrollFadeVisible && 'cinder-_scroll-fade cinder-_scroll-fade-start',
         )}
         role="log"
-        aria-label="Messages"
+        aria-label={chatLabels.messages}
         aria-describedby={statusId}
         aria-live={isVirtualized ? 'off' : 'polite'}
         aria-relevant={isVirtualized ? undefined : 'additions'}
@@ -2329,6 +2667,9 @@
         {@attach viewportAttach}
         {@attach timelineScrollFadeAttachment}
       >
+        <span class="chat-timeline-focus-label" data-label={chatLabels.messages} aria-hidden="true"
+          >{chatLabels.messages}</span
+        >
         {#if showHistoryTrigger}
           <ChatHistoryTrigger
             bind:this={historyTriggerRef}
@@ -2389,7 +2730,7 @@
            IntersectionObserver fires correctly when the typing region gains height. -->
         <ChatParticipantTyping
           typingLabel={typingIndicatorState.typingLabel}
-          participantCount={typingIndicatorState.participantCount}
+          participantCount={participantTypingCount}
         />
 
         {#if trailing}
@@ -2415,6 +2756,7 @@
         unreadCount={unreadState.unreadCount}
         displayUnreadCount={unreadState.displayUnreadCount}
         hasLargeCount={unreadState.hasLargeCount}
+        labels={chatLabels}
         onJumpToLatest={handleJumpToLatest}
       />
 
@@ -2437,12 +2779,17 @@
             {@render composerLead()}
           </div>
         {/if}
-        {#if approvalWaiting}
-          <ChatApprovalDrawer onreview={reviewPendingApproval} />
+        {#if approvalWaiting && !approvalFullyVisible}
+          <ChatApprovalDrawer
+            labels={chatLabels}
+            draft={composerDraft.trim() !== ''}
+            onreview={reviewPendingApproval}
+          />
         {/if}
         {#if followUps.discarded !== undefined}
           <ChatFollowUpDiscardDrawer
             discarded={followUps.discarded}
+            labels={chatLabels}
             onrestore={restoreDiscardedFollowUps}
             ondismiss={followUps.dismiss}
           />
@@ -2451,6 +2798,7 @@
           <ChatFollowUpDrawer
             id={inputId}
             items={followUps.items}
+            labels={chatLabels}
             canSendNow={followUps.canSendNow}
             onsendnow={followUps.sendNow}
             onedit={editQueuedFollowUp}
@@ -2465,13 +2813,16 @@
               position={dockedPosition}
               total={dockedTotal}
               onReply={() => replyInChatInstead(dockedQuestion.toolCallId)}
-              labels={questionLabels}
+              labels={questionDockLabels}
             />
           {/key}
         {/if}
         <ChatInput
+          labels={chatLabels}
           id={inputId}
           bind:this={inputRef}
+          bind:value={composerDraft}
+          queueNote={approvalWaiting ? chatLabels.approvalQueueNote : undefined}
           onsubmit={handleComposerSubmit}
           placeholder={composerAnswerPlaceholder ?? composerPlaceholder}
           answering={questions.composerTarget !== undefined || composerAnswering}
@@ -2491,7 +2842,7 @@
           toolbar={composerToolbar}
           formattingToolbar={composerFormattingToolbar}
           markdownStyling={composerMarkdownStyling}
-          status={resolvedComposerStatus}
+          status={resolvedComposerStatus ?? availabilityComposerStatus}
           {allowAttachments}
           onstop={composerSending ? stopGenerating : undefined}
           {onComposerInput}
@@ -2613,6 +2964,11 @@
     /* Narrow-viewport tokens: tighter padding/gap at ≤480px (comfortable density). */
     --cinder-chat-narrow-padding: var(--cinder-space-3);
     --cinder-chat-narrow-gap: var(--cinder-space-2);
+    --cinder-chat-reading-max-width: min(100%, var(--cinder-chat-message-max-width, 48rem));
+    --cinder-chat-reading-inline-padding: max(
+      var(--cinder-chat-timeline-padding),
+      calc((100% - var(--cinder-chat-reading-max-width)) / 2)
+    );
   }
 
   .chat-container[data-cinder-density='compact'] {
@@ -2654,9 +3010,15 @@
 
   /* Timeline / Message Area */
   .chat-timeline {
+    position: relative;
+    /* A stacking context of its own: a message line's z-index (chat-message.svelte) lifts its
+     * hit-area overhang above the next bubble, and must never reach the jump controls, the
+     * composer, or any surface outside the transcript. */
+    isolation: isolate;
     flex: 1;
     overflow-y: auto;
-    padding: var(--cinder-chat-timeline-padding);
+    scroll-padding-block: var(--cinder-space-2);
+    padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
     display: flex;
     flex-direction: column;
     gap: var(--cinder-chat-message-gap);
@@ -2667,14 +3029,59 @@
      it is present before an asynchronously loaded public-wrapper stylesheet. */
   .chat-timeline:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: inset 0 0 0 var(--cinder-ring-width)
-      var(--_cinder-chat-timeline-ring, var(--cinder-ring-color));
+    box-shadow: none;
+  }
+
+  .chat-timeline-focus-label {
+    position: sticky;
+    inset-block-start: var(--cinder-space-2);
+    align-self: flex-start;
+    z-index: 2;
+    inline-size: 0;
+    block-size: 0;
+    min-inline-size: 0;
+    min-block-size: 0;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    font-size: 0;
+    line-height: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .chat-timeline-focus-label::after {
+    content: attr(data-label);
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-block-size: 24px;
+    inline-size: 7rem;
+    max-inline-size: calc(100vw - 2 * var(--cinder-chat-reading-inline-padding));
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    overflow: hidden;
+    color: var(--cinder-accent-text);
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+    border: 1px solid var(--cinder-accent-solid);
+    border-radius: var(--cinder-radius-full);
+    font-size: var(--cinder-text-xs);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .chat-timeline:focus-visible .chat-timeline-focus-label {
+    opacity: 1;
   }
 
   @media (forced-colors: active) {
-    .chat-timeline:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: calc(var(--cinder-ring-width) * -1);
+    .chat-timeline-focus-label::after {
+      color: CanvasText;
+      background: Canvas;
+      border-color: ButtonText;
     }
   }
 
@@ -2722,14 +3129,25 @@
    * in default surfaceMode; embedded contexts using surfaceMode="transparent"
    * inherit their host's background. */
   .chat-container[data-surface-mode='default'] {
-    --_cinder-chat-shared-surface: light-dark(
-      var(--cinder-surface-inset),
-      var(--cinder-surface-canvas)
-    );
+    --_cinder-chat-shared-surface: var(--cinder-surface-canvas);
+    background: var(--_cinder-chat-shared-surface);
   }
 
   .chat-container[data-surface-mode='default'] .chat-timeline {
     background: var(--_cinder-chat-shared-surface);
+  }
+
+  .chat-container[data-surface-mode='default'] > :global(.chat-availability) {
+    background: var(--_cinder-chat-shared-surface);
+  }
+
+  /* Availability and the composer occupy the same bounded reading measure. The surrounding
+     container keeps the quiet canvas surface, so the old full-width white composer strip cannot
+     split loading states from the transcript. */
+  .chat-container[data-surface-mode='default'] > :global(.chat-availability),
+  .chat-container[data-surface-mode='default'] .chat-input-wrapper {
+    inline-size: min(calc(100% - 2rem), var(--cinder-chat-message-max-width, 48rem));
+    align-self: center;
   }
 
   /* Scroll-fade color must match the background set immediately above — the
@@ -2758,7 +3176,8 @@
     display: inline-flex;
     align-items: center;
     max-inline-size: min(100%, 24rem);
-    min-block-size: var(--cinder-touch-target-min);
+    position: relative;
+    min-block-size: 2rem;
     padding: 0 var(--cinder-space-2);
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
@@ -2768,6 +3187,14 @@
     font: inherit;
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     text-align: start;
+  }
+
+  /* The painted action stays compact; its 44px hit area is a pseudo-element that takes no layout. */
+  .chat-artifact-action::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 
   .chat-artifact-action__label {
@@ -2818,38 +3245,6 @@
     padding: 0 var(--cinder-space-4);
   }
 
-  .chat-empty-prompt {
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    color: var(--cinder-text-default);
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-    cursor: pointer;
-    transition:
-      background var(--cinder-duration-fast) var(--cinder-ease-standard),
-      border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  @media (hover: hover) {
-    .chat-empty-prompt:hover {
-      background: var(--cinder-surface-hover);
-      border-color: var(--cinder-accent-solid);
-    }
-  }
-
-  .chat-empty-prompt:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  @media (forced-colors: active) {
-    .chat-empty-prompt:focus-visible {
-      outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: 3px;
-    }
-  }
-
   /* Unread Divider */
   .chat-unread-divider {
     display: flex;
@@ -2892,10 +3287,9 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-1);
-    padding: var(--cinder-space-3) var(--cinder-space-4);
+    /* Quiet and inline: no bubble, on the same edge as the assistant's text above it. */
+    padding: var(--cinder-space-1) 0;
     max-width: max-content;
-    background: var(--cinder-surface-raised);
-    border-radius: var(--cinder-radius-lg);
     animation: typing-indicator-enter var(--cinder-duration-base) var(--cinder-ease-decelerate);
   }
 
@@ -2974,6 +3368,16 @@
   .chat-input-wrapper {
     position: relative;
     flex-shrink: 0;
+    inline-size: calc(100% - 2rem);
+    max-inline-size: var(--cinder-chat-reading-max-width);
+    margin-inline: auto;
+  }
+
+  @container (min-width: 481px) {
+    .chat-input-wrapper {
+      inline-size: calc(100% - 2rem);
+      max-inline-size: var(--cinder-chat-message-max-width, 48rem);
+    }
   }
 
   /* Centered placement: with nothing said yet, the empty state, the composer and the footer under
@@ -2992,12 +3396,88 @@
 
   .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
     align-self: center;
-    inline-size: 100%;
+    inline-size: calc(100% - 2rem);
     max-inline-size: 52rem;
+  }
+
+  @container (max-width: 64rem) {
+    .chat-input-wrapper,
+    .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
+      inline-size: calc(100% - 2rem);
+    }
+  }
+
+  @container (max-width: 480px) {
+    .chat-input-wrapper,
+    .chat-container[data-composer-placement='centered'] .chat-input-wrapper,
+    .chat-container[data-surface-mode='default'] .chat-input-wrapper,
+    .chat-container[data-surface-mode='default'] > :global(.chat-availability) {
+      inline-size: 100%;
+    }
+  }
+
+  @media (min-width: 481px) and (max-width: 64rem) {
+    .chat-input-wrapper,
+    .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
+      inline-size: calc(100% - 2rem);
+    }
   }
 
   .chat-composer-footer {
     margin-block-start: var(--cinder-space-4);
+  }
+
+  .chat-approval-group-heading {
+    margin: 0 0 var(--cinder-space-2);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .chat-tool-call-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+    max-inline-size: var(--cinder-chat-message-max-width, 48rem);
+    min-inline-size: 0;
+  }
+
+  .chat-approval-group-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
+  }
+
+  .chat-approval-group-rows :global(.chat-message-wrapper) {
+    inline-size: 100%;
+    max-inline-size: 100%;
+  }
+
+  /* A decision row has no message actions of its own. On a coarse pointer the message reserves a
+   * touch-target row under any bubble whose footer holds actions, which left two batch cards
+   * 36 to 40px apart: the rows of one batch sit a space apart and draw no footer. The doubled class
+   * outranks the message's own reserve whichever stylesheet loads last. */
+  .chat-approval-group-rows :global(.chat-message-wrapper.chat-message-wrapper) {
+    margin-block-end: 0;
+  }
+
+  .chat-approval-group-rows :global(.chat-message-wrapper .chat-message-footer) {
+    display: none;
+  }
+
+  /* What stood between two cards besides the gap: each bubble's own block padding (8px above and
+   * below) and the message's empty actions line (a 24px minimum, drawn even when it holds nothing
+   * because a decision row has no time or actions). With both gone the cards sit exactly one
+   * group gap apart. */
+  .chat-approval-group-rows :global(.chat-message-wrapper .chat-message) {
+    padding-block: 0;
+  }
+
+  .chat-approval-group-rows :global(.chat-message-wrapper .chat-message-line),
+  .chat-approval-group-rows :global(.chat-message-wrapper .chat-message-notes) {
+    display: none;
   }
 
   /* The host's note above the composer, such as where a new chat was started from. */
@@ -3008,15 +3488,34 @@
   /* Input Area */
   .chat-input-area {
     flex-shrink: 0;
-    padding: var(--cinder-chat-timeline-padding);
+    box-sizing: border-box;
+    inline-size: 100%;
+    padding: var(--cinder-chat-timeline-padding) 0;
     /* On a phone with a home indicator the composer keeps clear of it: the area's own bottom
        padding grows by the safe-area inset, which is 0 wherever the page has none. */
-    padding-block-end: calc(var(--cinder-chat-timeline-padding) + env(safe-area-inset-bottom, 0px));
+    padding-block-end: calc(
+      var(--cinder-chat-timeline-padding) +
+        var(--_cinder-chat-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
+    );
     background: var(--cinder-surface);
+  }
+
+  .chat-container[data-surface-mode='default'] .chat-input-area {
+    background: var(--_cinder-chat-shared-surface);
   }
 
   .chat-container[data-surface-mode='transparent'] .chat-input-area {
     background: transparent;
+  }
+
+  .chat-input-area > :global(.chat-input-shell),
+  .chat-input-area > .chat-composer-lead,
+  .chat-input-area > :global(.chat-follow-up-drawer),
+  .chat-input-area > :global(.chat-follow-up-discard),
+  .chat-input-area > :global(.chat-question-dock),
+  .chat-input-area > .chat-composer-footer {
+    max-inline-size: 100%;
+    margin-inline: auto;
   }
 
   /* A docked question takes the composer's place. The composer stays mounted, so a draft and its
@@ -3035,7 +3534,12 @@
     }
 
     .chat-input-area {
-      padding: var(--cinder-chat-narrow-padding);
+      padding-inline: var(--cinder-chat-narrow-padding);
+      padding-block-start: var(--cinder-chat-narrow-padding);
+      padding-block-end: calc(
+        var(--cinder-chat-narrow-padding) +
+          var(--_cinder-chat-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
+      );
     }
   }
 

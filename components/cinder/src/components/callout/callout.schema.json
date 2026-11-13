@@ -14,6 +14,14 @@
       "enum": ["aside", "note"],
       "description": "Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark."
     },
+    "actionLayout": {
+      "enum": ["stacked", "inline"],
+      "description": "Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message."
+    },
+    "dismissLabel": {
+      "type": "string",
+      "description": "Accessible name of the dismiss button. Default `'Dismiss'`."
+    },
     "class": {
       "type": "string",
       "description": "Extra classes appended to the root element. Pass via the explicit\n`class` prop — it is excluded from rest-prop spread, so writing\n`class=\"x\"` inside spread attributes will not reach the root."
@@ -37,6 +45,16 @@
         "name": "icon",
         "reason": "function-or-snippet",
         "description": "Optional decorative icon rendered inside an `aria-hidden` wrapper.\n\nThe icon is a second visual channel alongside variant color — it\nhelps satisfy WCAG 1.4.1 (Use of Color) by ensuring the variant is\nconveyed by more than color alone. The accessible meaning still\nlives in `title` and/or `children`; the icon must not be the only\ncarrier of information."
+      },
+      {
+        "name": "onDismiss",
+        "reason": "function-or-snippet",
+        "description": "When set, a compact dismiss button renders at the trailing end and calls this on activation.\nThe callout stays static: the caller removes it."
+      },
+      {
+        "name": "progress",
+        "reason": "function-or-snippet",
+        "description": "Optional progress line rendered under the message inside the content column, usually a small\n`Progress`. It is decorative to the callout: give the Progress its own accessible name."
       }
     ]
   }

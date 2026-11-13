@@ -1,5 +1,11 @@
 /** A CSS fragment and the source stylesheet it proves was included. */
-export type StyleMarker = { marker: string; source: string };
+/** A source marker expected in a stylesheet. */
+export type StyleMarker = {
+  /** Marker text. */
+  marker: string;
+  /** Source file expected to contain the marker. */
+  source: string;
+};
 
 /** Returns every marker that no stylesheet contains. */
 export function findMissingStyleMarkers(

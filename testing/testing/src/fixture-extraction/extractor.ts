@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { loadFixtureFile } from './loader.ts';
 import type { FixtureExtractResult } from './types.ts';
 
+/** Extracts and validates fixture files below a components root. */
 export async function extractFixtures(componentsRoot: string): Promise<FixtureExtractResult> {
   const glob = new Bun.Glob('**/*-fixtures.ts');
   const entries: FixtureExtractResult['entries'] = [];
@@ -15,6 +16,7 @@ export async function extractFixtures(componentsRoot: string): Promise<FixtureEx
   return { entries, violations };
 }
 
+/** Writes the extracted fixture entries as a deterministic manifest. */
 export async function writeFixtureManifest(
   result: FixtureExtractResult,
   outputPath: string,

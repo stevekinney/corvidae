@@ -628,9 +628,12 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
     // The row collapses to a check, the question and the decision: no tool line and no Input.
+    // The card holds the question twice in its text: once in an aria-hidden screen-reader-only
+    // span that only matchers read, and once as the heading a person sees.
     await expect(decided).toHaveText(
-      /^\s*Refund order 4471 for \$42\.00\?\s*Approved by you in Reviews,\s*10:46 AM\s*$/,
+      /^\s*(?:Refund order 4471 for \$42\.00\?\s*){2}Approved by you in Reviews,\s*10:46 AM\s*$/,
     );
+    await expect(decided.getByRole('heading')).toHaveText('Refund order 4471 for $42.00?');
     await expect(decided.locator('.cinder-approval-card__decided-glyph')).toHaveAttribute(
       'data-cinder-tone',
       'success',
@@ -862,13 +865,15 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
         `You denied this refund and said: “${NOTE}” I haven’t issued it, and I’ll wait for the claim before trying again.`,
       ),
     ).toBeVisible();
-    // The reply's line reads the time, then Copy and Quote, then the model the host adds (COR-2281);
-    // they are separate items in a flex row with a gap, so no separator is written between them.
-    await expect(
-      conversationArea(page)
-        .getByRole('group', { name: 'Message details' })
-        .filter({ hasText: /^\s*10:40 AM\s*Copy\s*Quote\s*Claude Sonnet 5\.5/ }),
-    ).toHaveCount(1);
+    // The reply's line reads the time, then the names of Copy, Quote message and Regenerate (the
+    // latest reply offers all three, each an icon-only button), then the model the host adds
+    // (COR-2281).
+    const details = conversationArea(page)
+      .getByRole('group', { name: 'Message details' })
+      .filter({ hasText: /^\s*10:40 AM\s*Copy\s*Quote message\s*Regenerate\s*Claude Sonnet 5\.5/ });
+    await expect(details).toHaveCount(1);
+    await expect(details.getByRole('button', { name: 'Copy' })).toBeVisible();
+    await expect(details.getByRole('button', { name: 'Quote message' })).toBeVisible();
     // The composer is the normal live one with Send, and the chat is Done.
     const composer = conversationArea(page).getByRole('textbox', { name: 'Message' });
     await expect(composer).toBeEnabled();

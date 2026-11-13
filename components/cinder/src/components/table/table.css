@@ -26,7 +26,7 @@
      * container, so a sticky header still pins to the real scroll parent. */
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     overflow: clip;
     font-size: var(--cinder-text-sm);
@@ -56,7 +56,7 @@
     overflow-x: auto;
     overscroll-behavior-inline: contain;
     -webkit-overflow-scrolling: touch;
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface);
     /* The fade is opaque in the surface color; see _scroll-fade.css rule 1. */

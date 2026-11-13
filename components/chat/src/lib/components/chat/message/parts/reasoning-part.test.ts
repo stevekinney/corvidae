@@ -66,15 +66,15 @@ describe('ReasoningPart — label (C#10)', () => {
       const label = () => container.querySelector('.chat-reasoning-label')?.textContent?.trim();
       const status = () => container.querySelector('.chat-entry-frame__status')?.textContent;
       expect(label()).toBe('Thinking…');
-      expect(status()).toBe('0 s');
+      expect(status()).toBe('0s');
 
       jest.advanceTimersByTime(4_000);
       flushSync();
-      expect(status()).toBe('4 s');
+      expect(status()).toBe('4s');
 
       rerender({ part: makePart({ streaming: false }) });
       flushSync();
-      expect(label()).toBe('Thought for 4 s');
+      expect(label()).toBe('Thought for 4s');
       expect(container.querySelector('.chat-entry-frame__status')).toBeNull();
       expect(container.textContent).not.toContain('token');
     } finally {
@@ -128,6 +128,18 @@ describe('ReasoningPart — collapsed state (default)', () => {
     const button = container.querySelector('button');
     const controlsId = button?.getAttribute('aria-controls');
     expect(controlsId).toBeNull();
+  });
+
+  test('user can reopen finished reasoning and reveal its content', () => {
+    const { container } = render(ReasoningPart, { props: { part: makePart() } });
+    const button = container.querySelector('button');
+    expect(button?.getAttribute('aria-expanded')).toBe('false');
+
+    button && fireEvent.click(button);
+    flushSync();
+
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.textContent).toContain('This is my extended reasoning about the problem.');
   });
 });
 
@@ -208,6 +220,23 @@ describe('ReasoningPart — expanded state', () => {
 });
 
 describe('ReasoningPart — streaming state', () => {
+  test('opens while streaming and folds when streaming finishes unless controlled open', () => {
+    const { container, rerender } = render(ReasoningPart, {
+      props: { part: makePart({ streaming: true }) },
+    });
+    const button = container.querySelector('button');
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.textContent).toContain('This is my extended reasoning about the problem.');
+
+    rerender({ part: makePart({ streaming: false }) });
+    flushSync();
+    expect(button?.getAttribute('aria-expanded')).toBe('false');
+
+    rerender({ part: makePart({ streaming: false }), expanded: true });
+    flushSync();
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+  });
+
   test('toggle button is disabled when streaming', () => {
     const { container } = render(ReasoningPart, {
       props: { part: makePart({ streaming: true }) },
@@ -261,12 +290,20 @@ describe('ReasoningPart — streaming state', () => {
     expect(contentEl?.getAttribute('aria-live')).toBeNull();
   });
 
-  test('shared busy indicator is present in the label when streaming', () => {
+  test('no status dot is drawn while streaming; the name still says in progress', () => {
     const { container } = render(ReasoningPart, {
       props: { part: makePart({ streaming: true }) },
     });
-    expect(container.querySelector('.chat-entry-frame__busy')).not.toBeNull();
-    expect(container.querySelectorAll('.chat-entry-frame__busy')).toHaveLength(1);
+    expect(container.querySelector('.chat-entry-frame__busy')).toBeNull();
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toContain('0s');
+  });
+
+  test('leading whitespace is trimmed from the reasoning body', () => {
+    const { container } = render(ReasoningPart, {
+      props: { part: makePart({ content: '\n\n  Start here.' }), expanded: true },
+    });
+    // The text is the only pre-wrapped node, so no layout whitespace can lead it.
+    expect(container.querySelector('.chat-reasoning-text')?.textContent).toBe('Start here.');
   });
 
   test('shared busy indicator is absent when not streaming', () => {

@@ -188,10 +188,9 @@ describe('AppBar (COR-2321)', () => {
     expect(onclick).not.toHaveBeenCalled();
   });
 
-  test('icon actions have a 44px target under a coarse pointer', () => {
-    expect(stylesheet).toMatch(
-      /@media \(pointer: coarse\) \{\s*\.cinder-app-bar \.cinder-app-bar__action\.cinder-button\[data-cinder-icon-only\] \{\s*min-inline-size: var\(--cinder-touch-target-min\);\s*min-block-size: var\(--cinder-touch-target-min\);/,
-    );
+  test('icon actions keep their painted box: the 44px target is the Button hit area, not layout', () => {
+    expect(stylesheet).not.toContain('--cinder-touch-target-min');
+    expect(stylesheet).not.toMatch(/@media \(pointer: coarse\)/);
     expect(tokens).toContain('--cinder-touch-target-min: 44px;');
   });
 

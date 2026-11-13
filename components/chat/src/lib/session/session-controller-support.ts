@@ -302,6 +302,8 @@ export type ChatApprovalExpiryObservation = {
 
 export type ChatSessionController = {
   adapter: ChatAdapter;
+  /** Starts an internal attach/resume transport turn without deleting visible pending history. */
+  sendHiddenMessage: () => Promise<void>;
   stop: () => Promise<void>;
   /**
    * Imports an approval's deadline the host learned elsewhere (COR-2280). It applies only to a call

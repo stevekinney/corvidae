@@ -17,6 +17,10 @@
     displayUnreadCount: string;
     /** Whether the count exceeds 99 (for compact badge styling) */
     hasLargeCount: boolean;
+    /** Host-resolved accessible and visible jump labels. */
+    labels: Pick<ChatLabels, 'jumpToLatest' | 'jumpToNewMessages' | 'newMessages'>;
+    /** Places the control alongside the approval drawer's action. */
+    inline?: boolean;
     /** Callback when jump-to-latest is clicked */
     onJumpToLatest?: () => void;
   };
@@ -24,6 +28,7 @@
 
 <script lang="ts">
   import { ChevronDown } from '@lostgradient/cinder';
+  import type { ChatLabels } from '../chat-labels.ts';
 
   let {
     showJumpButton,
@@ -31,6 +36,8 @@
     unreadCount,
     displayUnreadCount,
     hasLargeCount,
+    labels,
+    inline = false,
     onJumpToLatest,
   }: ChatJumpControlsProps = $props();
 
@@ -39,55 +46,91 @@
   }
 </script>
 
-<!-- Jump to Latest Button (shown when scrolled far enough) -->
-{#if showJumpButton}
-  <button
-    type="button"
-    class="chat-jump-button"
-    onclick={handleJump}
-    aria-label={unreadCount > 0
-      ? `Jump to ${unreadCount} new message${unreadCount !== 1 ? 's' : ''}`
-      : 'Jump to latest'}
+{#if showJumpButton || hasNewMessageIndicator}
+  <div
+    class="chat-jump-dock"
+    data-jump-latest={showJumpButton || undefined}
+    data-inline={inline || undefined}
   >
-    <ChevronDown class="cinder-icon-sm" />
-    {#if unreadCount > 0}
-      <span class="chat-jump-badge" data-large={hasLargeCount || undefined}>
-        {displayUnreadCount}
-      </span>
+    {#if showJumpButton}
+      <button
+        type="button"
+        class="chat-jump-button"
+        onclick={handleJump}
+        aria-label={unreadCount > 0 ? labels.jumpToNewMessages(unreadCount) : labels.jumpToLatest}
+      >
+        <ChevronDown class="cinder-icon-sm" />
+        {#if unreadCount > 0}
+          <span class="chat-jump-badge" data-large={hasLargeCount || undefined}>
+            {displayUnreadCount}
+          </span>
+        {/if}
+      </button>
+    {:else}
+      <button
+        type="button"
+        class="chat-new-indicator"
+        onclick={handleJump}
+        aria-label={labels.newMessages(unreadCount)}
+      >
+        <ChevronDown class="cinder-icon-xs" />
+        <span aria-hidden="true">{labels.newMessages(unreadCount)}</span>
+      </button>
     {/if}
-  </button>
-{/if}
-
-<!-- New Message Indicator (centered toast-style, shows in hysteresis zone) -->
-{#if hasNewMessageIndicator && !showJumpButton}
-  <button
-    type="button"
-    class="chat-new-indicator"
-    onclick={handleJump}
-    aria-label="Jump to {displayUnreadCount} new message{unreadCount !== 1 ? 's' : ''}"
-  >
-    <ChevronDown class="cinder-icon-xs" />
-    <span aria-hidden="true">{displayUnreadCount} new message{unreadCount !== 1 ? 's' : ''}</span>
-  </button>
+  </div>
 {/if}
 
 <style>
-  /* Jump to Latest Button
-   * Uses --cinder-touch-target-min (44px) for WCAG 2.2 AA touch target compliance */
-  .chat-jump-button {
+  /* The controls float over the transcript's bottom edge, above the composer, and take no height
+   * of their own: no band is reserved, so no line of the transcript is ever sliced by one. */
+  .chat-jump-dock {
     position: absolute;
-    bottom: 100%;
-    right: var(--cinder-space-4);
-    margin-bottom: var(--cinder-space-2);
+    inset-block-end: calc(100% + var(--cinder-space-2));
+    inset-inline: 0;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .chat-jump-dock > * {
+    pointer-events: auto;
+  }
+
+  /* The button's 44 px hit area reaches past its painted 32 px by half the difference on each side,
+   * so the trailing inset is that overhang plus a step of space: the whole area stays inside the
+   * chat, where a parent's clip or the page beside it would take a tap at its edge. */
+  .chat-jump-dock[data-jump-latest] {
+    justify-content: end;
+    padding-inline-end: calc((var(--cinder-touch-target-min) - 2rem) / 2 + var(--cinder-space-1));
+  }
+
+  .chat-jump-dock[data-inline] {
+    position: static;
+    padding-inline: 0;
+  }
+
+  .chat-jump-dock[data-inline] .chat-jump-button {
+    box-shadow: none;
+  }
+
+  .chat-jump-dock[data-inline] .chat-jump-button:focus-visible {
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* Jump to Latest Button: painted 32 px; the hit area reaches 44 px (WCAG 2.2 AA) through an
+   * invisible ::before, so it never changes the layout. */
+  .chat-jump-button {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--cinder-touch-target-min);
-    height: var(--cinder-touch-target-min);
+    width: 2rem;
+    height: 2rem;
     padding: 0;
     /* --cinder-surface-raised does not exist in tokens; use --cinder-surface and
      * lean on the shadow + border for elevation against the inset chat timeline. */
-    background: var(--cinder-surface);
+    background: transparent;
     border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-full);
     box-shadow: var(--cinder-shadow-md);
@@ -98,14 +141,27 @@
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard),
       opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
       transform var(--cinder-duration-fast) var(--cinder-ease-standard);
-    z-index: var(--cinder-z-dropdown);
     animation: jump-button-enter var(--cinder-duration-base) var(--cinder-ease-decelerate);
+  }
+
+  .chat-jump-button::before {
+    content: '';
+    position: absolute;
+    /* An absolute box insets from the padding edge, inside the 1px border, so the border is
+     * added back: the area is 44 px, centred on the painted 32 px. */
+    inset: calc((2rem - var(--cinder-touch-target-min)) / 2 - 1px);
+  }
+
+  .chat-jump-button > :global(svg) {
+    display: block;
+    color: var(--cinder-text-default);
+    opacity: 1;
   }
 
   @keyframes jump-button-enter {
     from {
       opacity: 0;
-      transform: scale(0.8) translateY(0.5rem);
+      transform: scale(0.8);
     }
     to {
       opacity: 1;
@@ -151,15 +207,10 @@
   /* New Message Indicator (centered)
    * Uses min-height for WCAG 2.2 AA touch target compliance */
   .chat-new-indicator {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    margin-bottom: var(--cinder-space-2);
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
-    min-height: var(--cinder-touch-target-min);
+    position: relative;
     padding: var(--cinder-space-1-5) var(--cinder-space-3);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
@@ -169,8 +220,15 @@
     border-radius: var(--cinder-radius-full);
     box-shadow: var(--cinder-shadow-lg);
     cursor: pointer;
-    z-index: var(--cinder-z-dropdown);
     animation: slide-up var(--cinder-duration-base) var(--cinder-ease-decelerate);
+  }
+
+  /* The painted pill stays compact; its 44px hit area is a pseudo-element that takes no layout. */
+  .chat-new-indicator::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    inset-inline: 0;
   }
 
   .chat-new-indicator:hover {
@@ -194,11 +252,11 @@
   @keyframes slide-up {
     from {
       opacity: 0;
-      transform: translateX(-50%) translateY(100%);
+      transform: translateY(25%);
     }
     to {
       opacity: 1;
-      transform: translateX(-50%) translateY(0);
+      transform: translateY(0);
     }
   }
 
@@ -208,36 +266,6 @@
     }
 
     .chat-new-indicator {
-      animation: none;
-    }
-  }
-
-  /* Responsive adjustments */
-  @container (max-width: 480px) {
-    .chat-jump-button {
-      right: var(--cinder-space-3);
-    }
-  }
-
-  /* On a phone the controls never float over the transcript, where they would cover the end of a
-   * waiting approval's buttons: each takes its own line at the composer's top edge, outside the
-   * transcript (C#7). */
-  @container (max-width: 30rem) {
-    .chat-jump-button {
-      position: relative;
-      bottom: auto;
-      right: auto;
-      margin: 0 var(--cinder-space-3) var(--cinder-space-1) auto;
-    }
-
-    .chat-new-indicator {
-      position: relative;
-      bottom: auto;
-      left: auto;
-      display: flex;
-      inline-size: fit-content;
-      margin: 0 auto var(--cinder-space-1);
-      transform: none;
       animation: none;
     }
   }

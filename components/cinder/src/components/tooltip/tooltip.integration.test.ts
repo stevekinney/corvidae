@@ -352,6 +352,39 @@ describe('Tooltip', () => {
     trigger.remove();
   });
 
+  test('a tooltip with no text never shows an empty panel', async () => {
+    const empty = render(Tooltip, { props: { text: '', children: triggerSnippet } });
+    const named = render(Tooltip, { props: { text: 'Tooltip content', children: triggerSnippet } });
+    for (const view of [empty, named]) {
+      await fireEvent.focusIn(
+        requiredInstance(view.container.querySelector('.cinder-tooltip-wrapper'), HTMLElement),
+      );
+    }
+
+    const visiblePanels = () => [
+      ...document.querySelectorAll('[role="tooltip"][data-cinder-visible]'),
+    ];
+    await waitFor(() => expect(visiblePanels().length).toBeGreaterThan(0));
+    const shown = visiblePanels();
+    expect(shown.map((panel) => panel.textContent?.trim())).toEqual(['Tooltip content']);
+    empty.unmount();
+    named.unmount();
+  });
+
+  test('triggerRef shows when rebound to an already-focused external trigger', async () => {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    document.body.append(trigger);
+    trigger.focus();
+
+    const view = render(Tooltip, { props: { text: 'Tooltip content', triggerRef: null } });
+    await view.rerender({ text: 'Tooltip content', triggerRef: trigger });
+
+    await waitFor(() => expect(queryTooltip()?.getAttribute('data-cinder-visible')).toBe(''));
+    view.unmount();
+    trigger.remove();
+  });
+
   test('a pending show is cleared, not left to fire later, when triggerRef is swapped away before it resolves (COR-1219)', async () => {
     // Neither `handleFocusOut` nor a native DOM event runs here — the trigger
     // is swapped by reference, not removed or blurred, which is exactly why

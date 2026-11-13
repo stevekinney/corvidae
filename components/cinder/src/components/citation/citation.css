@@ -2,15 +2,52 @@
 @import '../popover/popover.css';
 @layer cinder.components {
   .cinder-citation {
-    display: inline;
+    /* A Citation can be a flex item in chat source rows. `inline` blockifies to a zero-width flex
+     * item when combined with inline-size containment, leaving its marker painted offscreen. Keep
+     * the inline flow contract while giving flex layout a measurable intrinsic width. */
+    display: inline-block;
   }
   .cinder-citation__marker {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
     border: 0;
+    border-radius: 0;
     background: none;
     color: var(--cinder-accent-text);
     cursor: pointer;
     font: inherit;
-    padding: 0 var(--cinder-space-0-5);
+    padding: 0;
+    vertical-align: baseline;
+    text-decoration: none;
+    /* Anchors the hit area below. */
+    position: relative;
+  }
+
+  /* The marker is painted at its text height, but its hit area is at least 24px tall (and 44px on
+   * a coarse pointer) without taking layout space, so a row of markers does not grow. */
+  .cinder-citation__marker::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - 24px) / 2));
+    inset-inline: min(0px, calc((100% - 24px) / 2));
+  }
+
+  /* The ring wraps the marker with 2px of padding and the compact-control radius. */
+  .cinder-citation__marker:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    box-shadow:
+      0 0 0 2px var(--cinder-ring-offset-color),
+      0 0 0 calc(2px + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-citation__marker:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
   }
   /* The panel is a column, so the title, the optional excerpt, the optional link and the pager
      are separate boxes with one token gap between them. An absent excerpt is an absent box and
@@ -23,6 +60,27 @@
     text-align: start;
     overflow-wrap: anywhere;
     line-height: var(--cinder-leading-normal);
+    /* The owning Popover/Drawer supplies the surface inset. Keeping this panel content-only
+       prevents an empty band when a source has no excerpt or link. */
+    padding: 0;
+  }
+
+  /* Citation owns a compact sheet contract while Popover/Drawer continue to own modal focus,
+     safe-area handling and dismissal. The drawer remains one raised surface; only its body carries
+     the citation panel's shared 12px edge. */
+  .cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__header {
+    padding: var(--cinder-space-1) var(--cinder-space-3);
+    border-block-end: 0;
+    background: transparent;
+  }
+
+  .cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__title {
+    font-size: var(--cinder-text-md);
+  }
+
+  .cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__body {
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    background: transparent;
   }
   /* A title is clamped to two lines; its whole text stays in the DOM for assistive technology. */
   .cinder-citation__title {
@@ -66,18 +124,69 @@
     gap: var(--cinder-space-1);
     min-width: 0;
   }
+  /* A standalone link in the popover is a target of its own: at least 24px tall. */
+  .cinder-citation__link {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 1.5rem;
+  }
   .cinder-citation__pagination {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
     align-items: center;
+    justify-content: center;
   }
-  @media (pointer: coarse) {
+  .cinder-citation__pagination button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
+  }
+  .cinder-citation__pagination button svg {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+  @media (any-pointer: coarse) {
+    .cinder-citation__marker::before {
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
     .cinder-citation__pagination button,
+    /* The link stays compact; its 44px hit area is a pseudo-element that takes no layout. */
     .cinder-citation__link {
-      display: inline-flex;
-      align-items: center;
-      min-height: var(--cinder-touch-target-min);
+      position: relative;
+    }
+    .cinder-citation__link::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
+    .cinder-citation__pagination button {
+      inline-size: var(--cinder-touch-target-min);
+    }
+    /* The pager buttons paint 32px tall and reach 44px through a pseudo-element that takes no
+       layout, as the link and the marker do; it covers the space around the button, never another
+       control, because the row gap and the panel's padding keep the neighbours further than it. */
+    .cinder-citation__pagination button::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
+  }
+
+  @container (inline-size < 30rem) {
+    .cinder-citation__panel {
+      gap: var(--cinder-space-1);
+    }
+
+    .cinder-citation__list {
+      gap: var(--cinder-space-2);
     }
   }
 }

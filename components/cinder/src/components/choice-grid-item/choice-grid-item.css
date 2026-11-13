@@ -175,11 +175,17 @@
     font-size: var(--cinder-button-font-size-sm);
   }
 
-  @media (pointer: coarse) {
-    .cinder-choice-grid-item[data-cinder-size='sm'] {
-      block-size: auto;
-      min-block-size: 44px;
-      min-inline-size: 44px;
+  @media (any-pointer: coarse) {
+    /* Painted at its own size; the 44px target is a hit area that takes no layout space, so a row
+     * under 44px (a card or a compact cell alike) still reaches a finger without growing. */
+    .cinder-choice-grid-item {
+      position: relative;
+    }
+
+    .cinder-choice-grid-item::before {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
     }
   }
 
@@ -206,6 +212,28 @@
     border-width: 1px;
     border-radius: var(--cinder-radius-md);
     text-align: start;
+  }
+
+  /* A card rests on the quiet hairline; only selection, focus and feedback draw a stronger edge. */
+  .cinder-choice-grid-item[data-cinder-variant='card']:not([data-cinder-selected]):not(
+      [data-cinder-state]
+    ):not(:focus-visible) {
+    border-color: var(--cinder-border-muted);
+  }
+
+  /* A card with no description has one line, so its label centres in the row and the indicator
+   * loses the nudge that aligned it with a first line of a taller card. */
+  .cinder-choice-grid-item[data-cinder-variant='card']:not(
+      :has(.cinder-choice-grid-item__description)
+    ) {
+    align-items: center;
+  }
+
+  .cinder-choice-grid-item[data-cinder-variant='card']:not(
+      :has(.cinder-choice-grid-item__description)
+    )
+    .cinder-choice-grid-item__indicator {
+    margin-block-start: 0;
   }
 
   .cinder-choice-grid-item[data-cinder-variant='card'][data-cinder-selected] {

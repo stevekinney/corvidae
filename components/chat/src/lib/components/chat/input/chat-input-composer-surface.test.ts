@@ -250,31 +250,33 @@ describe('the controls snippet is told when the composer is narrow', () => {
   test('the footer never wraps and its controls are touch-sized on a phone-width composer', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(/\.chat-input-footer-left\s*\{[^}]*flex-wrap:\s*nowrap;/);
-    expect(source).toMatch(
-      /@container \(max-inline-size: 28rem\)\s*\{\s*\.chat-input-footer :global\(\.cinder-button\)\s*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
-    );
+    // Buttons are painted compact: Cinder's hit area reaches 44px, so no rule inflates their face.
+    expect(source).not.toMatch(/\.chat-input-footer :global\(\.cinder-button\)\s*\{/);
   });
 
   test('a capped attachment list is no scroll box, and on a phone each file is a full-width row (C#4)', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(
-      /\.chat-input-attachments:not\(\[data-capped\]\)\s*\{\s*max-block-size: 12rem;\s*overflow-y: auto;/,
+      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*max-block-size: 12rem;[^}]*overflow-y: auto;/,
     );
     expect(source).not.toContain('mask-image');
     expect(source).toMatch(
       /@container \(max-inline-size: 30rem\)\s*\{\s*\.chat-input-attachments\s*\{\s*align-items: stretch;/,
     );
-    // The name wraps there instead of being cut to its first letter.
-    expect(source).toMatch(
-      /:global\(\.chat-attachment-preview-name\)\s*\{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;/,
-    );
+    // The name never wraps there: the script shortens it to one line, and a wrapped name would
+    // move the row's controls and height whenever the fit overshoots.
+    const phoneRule = source.match(/:global\(\.chat-attachment-preview-name\)\s*\{[^}]*\}/)?.[0];
+    expect(phoneRule).toMatch(/white-space: nowrap;/);
+    expect(phoneRule).not.toMatch(/white-space: normal|overflow-wrap/);
   });
 
-  test('Attach and Send are at least 44px on both sides on a phone-width composer and a touch screen', async () => {
+  test('Attach and Send keep a compact face with the 44px hit area from Cinder, and the one-row form is the default', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
-    const touchSized =
-      /\.chat-input-footer :global\(\.cinder-button\) \{\s*min-block-size: var\(--cinder-touch-target-min\);\s*min-inline-size: var\(--cinder-touch-target-min\);/g;
-    expect(source.match(touchSized)).toHaveLength(2);
+    expect(source).not.toMatch(
+      /\.chat-input-footer :global\(\.cinder-button\) \{\s*min-block-size/,
+    );
+    expect(source).toContain('data-single-row=');
+    expect(source).not.toContain('data-queueing-compact');
   });
 });
 
@@ -296,26 +298,66 @@ describe('attachments', () => {
 
     const chip = target.querySelector('.chat-attachment-preview')!;
     expect(chip.textContent?.replace(/\s+/g, ' ').trim()).toBe('PNG refund-photo.png 240 KB');
-    expect(chip.querySelector('.chat-attachment-preview-extension')?.textContent).toBe('.png');
+    const filename = chip.querySelector<HTMLElement>('.chat-attachment-preview-name');
+    expect(filename?.textContent).toBe('refund-photo.png');
+    expect(filename?.getAttribute('title')).toBe('refund-photo.png');
     expect(chip.querySelector('button[aria-label="Remove refund-photo.png"]')).not.toBeNull();
     expect(target.querySelector('[data-attachment-error]')).toBeNull();
     unmount(instance);
   });
 
-  test('chips sit between the text and the controls', async () => {
+  test('the attachment shelf sits above the text and before the controls', async () => {
     const { target, instance } = mountInput();
     instance.addFiles([png('refund-photo.png')]);
     await tick();
 
     const list = target.querySelector('[aria-label="Attached files"]')!;
     expect(
-      target.querySelector('textarea')!.compareDocumentPosition(list) &
+      list.compareDocumentPosition(target.querySelector('textarea')!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       list.compareDocumentPosition(target.querySelector('.chat-input-footer')!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    unmount(instance);
+  });
+
+  test('renders host-provided attachment labels in visible and accessible controls', async () => {
+    const { target, instance } = mountInput({
+      labels: {
+        attachedFiles: 'Angehängte Dateien',
+        moreAttachments: (count: number) => `${count} weitere unten`,
+        retryAttachment: 'Erneut versuchen',
+        retryAttachmentAccessible: (name: string) => `Erneut versuchen: ${name}`,
+        removeAttachment: 'Entfernen',
+        removeAttachmentAccessible: (name: string) => `Entfernen: ${name}`,
+        attachmentBlockingReason: () => 'Bitte Dateien erneut versuchen oder entfernen',
+      },
+    });
+    instance.addFiles(Array.from({ length: 4 }, (_, index) => png(`foto-${index}.png`)));
+    await tick();
+
+    expect(target.querySelector('[aria-label="Angehängte Dateien"]')).not.toBeNull();
+    expect(target.querySelector('.chat-input-attachment-more')?.textContent?.trim()).toBe(
+      '2 weitere unten',
+    );
+    expect(target.querySelector('button[aria-label="Entfernen: foto-1.png"]')).not.toBeNull();
+    unmount(instance);
+  });
+
+  test('renders host-provided composer labels', () => {
+    const { target, instance } = mountInput({
+      labels: {
+        composer: 'Nachricht verfassen',
+        sendMessage: 'Nachricht senden',
+      },
+    });
+
+    expect(target.querySelector('form')?.getAttribute('aria-label')).toBe('Nachricht verfassen');
+    expect(target.querySelector('[data-chat-send]')?.getAttribute('aria-label')).toBe(
+      'Nachricht senden',
+    );
     unmount(instance);
   });
 
@@ -342,7 +384,7 @@ describe('attachments', () => {
     unmount(instance);
   });
 
-  test('a failed file turns Send off, says why under the composer, and Send names the reason', async () => {
+  test('a failed file turns Send off, keeps its reason in the shelf, and Send names it', async () => {
     const submissions: unknown[] = [];
     const { target, instance } = mountInput({
       maxFileSize: 100,
@@ -359,7 +401,7 @@ describe('attachments', () => {
     const reason = target.querySelector<HTMLElement>('.chat-input-attachment-reason')!;
     expect(reason.textContent?.trim()).toBe('Retry or remove 1 file to send');
     expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(reason.id);
-    expect(target.querySelector('form.chat-input')?.contains(reason)).toBe(false);
+    expect(target.querySelector('.chat-input-attachment-shelf')?.contains(reason)).toBe(true);
 
     await fireEvent.keyDown(editor, { key: 'Enter' });
     await tick();
@@ -375,14 +417,13 @@ describe('attachments', () => {
     unmount(instance);
   });
 
-  test('the count over the tiles names the files, and only the line under the composer says what blocks Send (C#16)', async () => {
+  test('the count over the tiles names the files, and the shelf says what blocks Send (C#16)', async () => {
     const { target, instance } = mountInput({ maxFileSize: 1024 });
     instance.addFiles([png('small.png', 10), png('big.png'), png('bigger.png')]);
     await tick();
 
     const summary = target.querySelector('[data-chat-attachment-summary]')!;
-    expect(summary.textContent?.trim()).toBe('3 files');
-    expect(summary.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(summary.textContent?.replace(/\s+/g, ' ').trim()).toBe('3 files 1 more below');
     expect(target.querySelector('.chat-input-attachment-reason')?.textContent?.trim()).toBe(
       'Retry or remove 2 files to send',
     );
@@ -398,18 +439,18 @@ describe('attachments', () => {
     await tick();
 
     const list = target.querySelector<HTMLElement>('[aria-label="Attached files"]')!;
-    expect(list.hasAttribute('data-capped')).toBe(true);
+    expect(list.hasAttribute('data-expanded')).toBe(false);
     // Exactly the tiles shown are drawn, so the count under them is the rest of the files (C#4).
-    expect(list.querySelectorAll('li')).toHaveLength(3);
+    expect(list.querySelectorAll('li')).toHaveLength(2);
     const more = target.querySelector<HTMLButtonElement>('.chat-input-attachment-more')!;
-    expect(more.textContent?.trim()).toBe('11 more');
+    expect(more.textContent?.trim()).toBe('12 more below');
     expect(more.getAttribute('aria-controls')).toBe(list.id);
 
     await fireEvent.click(more);
     await tick();
 
     expect(list.querySelectorAll('li')).toHaveLength(14);
-    expect(list.hasAttribute('data-capped')).toBe(false);
+    expect(list.hasAttribute('data-expanded')).toBe(true);
     expect(target.querySelector('.chat-input-attachment-more')).toBeNull();
     // Every file can still be removed, and Send stays a control of the composer.
     expect(target.querySelector('[aria-label="Remove page-14.png"]')).not.toBeNull();

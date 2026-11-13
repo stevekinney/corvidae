@@ -9,14 +9,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { captureForDesignReview, withPointerCleanup } from '../tests/e2e/design-review-capture.ts';
 import {
-  type CaptureEnvironment,
   captureCount,
   captureDesignReview,
   hostEnvironment,
   parseArguments,
   portIsFree,
   probeSocketHandlers,
+  type CaptureEnvironment,
 } from './design-review-capture.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
@@ -225,6 +226,81 @@ describe('captureCount', () => {
     expect(await captureCount(directory)).toBe(0);
     await writeFile(join(directory, 'manifest.jsonl'), '{"a":1}\n\n  \n{"a":2}\n');
     expect(await captureCount(directory)).toBe(2);
+  });
+});
+
+describe('captureForDesignReview readiness', () => {
+  test('runs the readiness condition after viewport changes and before each screenshot', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'design-review-ready-'));
+    const previousCapture = process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+    const previousScheme = process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+    const events: string[] = [];
+    const page = {
+      viewportSize: () => ({ width: 1280, height: 900 }),
+      async setViewportSize(size: { width: number; height: number }) {
+        events.push(`viewport:${size.width}x${size.height}`);
+      },
+      async screenshot() {
+        events.push('screenshot');
+      },
+      url: () => 'http://127.0.0.1/ready',
+      evaluate: async () => ({ viewport: { width: 1280, height: 900 } }),
+      locator() {
+        return {
+          evaluate: async () => 1,
+        };
+      },
+    };
+    process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = directory;
+    process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'light';
+    try {
+      await captureForDesignReview(page as never, {
+        route: '/ready',
+        state: 'settled',
+        source: 'test',
+        ready: async () => {
+          events.push('ready');
+        },
+      });
+      expect(events).toEqual([
+        'ready',
+        'screenshot',
+        'viewport:1280x901',
+        'ready',
+        'screenshot',
+        'viewport:1280x900',
+        'ready',
+      ]);
+    } finally {
+      if (previousCapture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+      else process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = previousCapture;
+      if (previousScheme === undefined)
+        delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+      else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = previousScheme;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('capture cleanup failures', () => {
+  test('preserves the original capture failure when pointer cleanup also fails', async () => {
+    const captureError = new Error('original capture assertion');
+    const cleanupError = new Error('page closed before pointer cleanup');
+    let thrown: unknown;
+    try {
+      await withPointerCleanup(
+        async () => {
+          throw captureError;
+        },
+        async () => {
+          throw cleanupError;
+        },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([captureError, cleanupError]);
   });
 });
 
@@ -449,5 +525,6 @@ describe('hostEnvironment', () => {
 afterAll(() => {
   // A spawned Bun child can leave the coverage loader resolving the next late import against the
   // document origin. Keep the next UI test file from handing it a network origin.
-  if (window instanceof Window) window.happyDOM.setURL('about:blank');
+  if (typeof window !== 'undefined' && window instanceof Window)
+    window.happyDOM.setURL('about:blank');
 });

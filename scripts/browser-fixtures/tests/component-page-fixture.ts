@@ -9,6 +9,8 @@ type OpenArgs = {
   viewport: Viewport;
   fixtureName?: string;
   fixtureContentHash?: string;
+  /** Emulate a touch screen, so `(any-pointer: coarse)` matches and the coarse hit areas apply. */
+  hasTouch?: boolean;
   onPage?: (page: Page) => void | Promise<void>;
 };
 
@@ -43,9 +45,10 @@ export const test = base.extend<Fixtures>({
     const diagnostics: string[] = [];
     try {
       await use({
-        async open({ entry, theme, viewport, fixtureName, fixtureContentHash, onPage }) {
+        async open({ entry, theme, viewport, fixtureName, fixtureContentHash, hasTouch, onPage }) {
           const context = await browser.newContext({
             ...themeContextOptions(theme),
+            ...(hasTouch === undefined ? {} : { hasTouch }),
             viewport: { width: viewport.width, height: viewport.height },
             baseURL,
           });

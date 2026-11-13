@@ -83,6 +83,68 @@ afterEach(() => {
 });
 
 describe('ChatMessage — tool-call rendering', () => {
+  test('does not leave an orphan timestamp for a paired pending approval', () => {
+    const message = toolCallMessage();
+    const pair: ToolCallPair = {
+      call: message.toolCall!,
+      result: {
+        callId: message.toolCall!.id,
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: {} },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'approval-1',
+        },
+      },
+    } as unknown as ToolCallPair;
+    const { container } = render(ChatMessage, {
+      props: {
+        message: { ...message, content: '' },
+        toolCallPairs: [pair],
+        presentation: 'transcript',
+      },
+    });
+
+    expect(container.querySelector('[data-cinder-tool-approval]')).not.toBeNull();
+    expect(container.querySelector('.chat-message-line')).not.toBeNull();
+    expect(container.querySelectorAll('time')).toHaveLength(0);
+  });
+
+  test('forwards an expired approval retry to the host with its tool call id', async () => {
+    const message = toolCallMessage();
+    const pair: ToolCallPair = {
+      call: message.toolCall!,
+      result: {
+        callId: message.toolCall!.id,
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: {} },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'approval-1',
+          expiresAt: '2020-01-01T00:00:00.000Z',
+        },
+      },
+    };
+    const calls: string[] = [];
+    const { getByRole } = render(ChatMessage, {
+      props: {
+        message: { ...message, content: '' },
+        toolCallPairs: [pair],
+        approvalStates: new Map([['call-1', 'expired' as const]]),
+        onApprovalRequestAgain: (toolCallId: string) => calls.push(toolCallId),
+      },
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Ask again' }));
+    expect(calls).toEqual(['call-1']);
+  });
+
   test('threads owning stream activity through message tool rendering', () => {
     const messageSource = readFileSync(join(import.meta.dir, 'chat-message.svelte'), 'utf8');
     const rendererSource = readFileSync(
@@ -103,6 +165,31 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(source).toContain('class="chat-tool-call-toggle"');
     expect(source).not.toContain('RunStepTimeline');
     expect(source).not.toContain('tool-call-group');
+  });
+
+  test('keeps tool surfaces on their structural reading widths without changing user bubbles', () => {
+    const messageSource = readFileSync(join(import.meta.dir, 'chat-message.svelte'), 'utf8');
+    const timelineSource = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
+    expect(messageSource).toMatch(
+      /\.chat-message-wrapper\[data-tool-pair\]\s*\{[^}]*inline-size:\s*100%;[^}]*max-inline-size:\s*var\(--cinder-chat-message-max-width,\s*48rem\);[^}]*min-inline-size:\s*0;/s,
+    );
+    expect(messageSource).toContain(
+      'max-width: min(80%, var(--cinder-chat-message-max-width, 48rem));',
+    );
+    expect(timelineSource).toMatch(
+      /\.chat-tool-call-timeline\s*\{[^}]*inline-size:\s*100%;[^}]*max-inline-size:\s*var\(--cinder-chat-message-max-width,\s*48rem\);[^}]*min-inline-size:\s*0;/s,
+    );
+    expect(messageSource).not.toMatch(
+      /\.chat-message-wrapper\[data-tool-pair\][\s\S]{0,180}inline-size:\s*min\(80%/,
+    );
+    expect(timelineSource).not.toMatch(/\.chat-tool-call-timeline[\s\S]{0,180}42rem/);
+  });
+
+  test('separates a timeline summary from its single approval card', () => {
+    const source = readFileSync(join(import.meta.dir, '../container/chat.svelte'), 'utf8');
+    expect(source).toMatch(
+      /\.chat-tool-call-group\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*var\(--cinder-space-2\);/s,
+    );
   });
 
   test('renders custom message status inside the semantic article while timestamps stay below the bubble', () => {
@@ -234,6 +321,55 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(inactive.container.querySelector('[data-cinder-tool-activity-active]')).toBeNull();
   });
 
+  test('renders host tool labels for counts, statuses, problems, announcements and payloads', async () => {
+    const failed: ToolCallPair = {
+      call: { id: 'failed-labels', name: 'charge_card', arguments: { amount: 20 } },
+      result: {
+        callId: 'failed-labels',
+        outcome: 'error',
+        error: { message: 'Card declined' },
+        content: 'declined',
+      },
+    } as unknown as ToolCallPair;
+    const succeeded: ToolCallPair = {
+      call: { id: 'success-labels', name: 'read_receipt', arguments: { format: 'json' } },
+      result: { callId: 'success-labels', outcome: 'success', content: { ok: true } },
+    };
+    const { container } = render(ToolCallTimeline, {
+      props: {
+        pairs: [failed, succeeded],
+        labels: {
+          calls: (count) => `CALLS ${count}`,
+          steps: (count) => `STEPS ${count}`,
+          stepsDone: (done, total) => `DONE ${done}/${total}`,
+          input: 'IN',
+          output: 'OUT',
+          error: 'ERR',
+          toolStatus: (status) => `STATUS ${status}`,
+          toolProblem: (count, status) => `PROBLEM ${count} ${status}`,
+          toolAnnouncement: (name, status) => `ANN ${name} ${status}`,
+        },
+      },
+    });
+
+    expect(container.querySelector('.chat-tool-call-summary-count')?.textContent).toBe('DONE 1/2');
+    expect(container.querySelector('.chat-tool-call-summary-segment')?.textContent).toBe(
+      'PROBLEM 1 failed',
+    );
+    expect(container.querySelector('.chat-tool-call-list')?.getAttribute('aria-label')).toBe(
+      'CALLS 2',
+    );
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toContain(
+      'ANN charge_card failed',
+    );
+    // A failed step says it once, through its title and cause line: no separate status word.
+    expect(container.textContent).not.toContain('STATUS failed');
+    expect(container.textContent).toContain('Card declined');
+    await openCall(container, 1);
+    expect(container.textContent).toContain('IN');
+    expect(container.textContent).toContain('OUT');
+  });
+
   test('result payloads keep ordinary strings as text and structured JSON as code', async () => {
     const textResult = render(ToolCallTimeline, {
       props: {
@@ -363,9 +499,12 @@ describe('ChatMessage — tool-call rendering', () => {
     const view = render(ToolCallTimeline, {
       props: { pairs: [running], messageId: 'running', describeToolCall },
     });
-    expect(view.container.querySelector('h3')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Using Lookup order…',
-    );
+    const runningHeading = view.container
+      .querySelector('h3')
+      ?.textContent?.replace(/\s+/g, ' ')
+      .trim();
+    expect(runningHeading).toContain('Using Lookup order…');
+    expect(runningHeading).toContain('Step 1 of 1');
     cleanup();
 
     const answered = render(ToolCallTimeline, {
@@ -643,15 +782,15 @@ describe('ChatMessage — tool-call rendering', () => {
       const toggle = groupToggle(container);
       const list = container.querySelector<HTMLElement>('.chat-tool-call-list')!;
 
-      // The header is the step count, the tools and the total time, one field each and no
-      // separator character between them.
-      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 steps lookup-order ×2 0.7s');
+      // The header is the step count and the total time, one field each and no separator
+      // character between them; the tool's name stays in the expanded row, not the summary.
+      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 steps 700ms');
       expect(toggle.textContent).not.toContain(String.fromCodePoint(0xb7));
       expect(
         Array.from(toggle.querySelectorAll('.chat-tool-call-summary > *'), (field) =>
           field.textContent?.trim(),
         ),
-      ).toEqual(['2 steps', 'lookup-order ×2', '0.7s']);
+      ).toEqual(['2 steps', '700ms']);
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
       expect(list.hidden).toBe(true);
 
@@ -661,8 +800,8 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(list.hidden).toBe(false);
       const rows = callRows(container);
       expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-        'lookup-order 4471 → $42.10, delivered Monday 0.4s',
-        'lookup-order 4402 → $18.00, refunded Oct 12 0.3s',
+        'lookup-order 4471 → $42.10, delivered Monday 400ms',
+        'lookup-order 4402 → $18.00, refunded Oct 12 300ms',
       ]);
 
       await clickAndFlush(rows[1]!);
@@ -776,6 +915,22 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(summaryOf(container)).toContain('1 expired');
     });
 
+    test('shows denied approvals as a summary without duplicating their receipt details', async () => {
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs: [waitingPair('refund-1', 60_000)],
+          approvalStates: new Map([['refund-1', 'denied' as const]]),
+        },
+      });
+      await tick();
+      const toggle = container.querySelector<HTMLButtonElement>('.chat-tool-call-toggle')!;
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      toggle.click();
+      await tick();
+      expect(container.textContent).toContain('Denied');
+      expect(container.querySelector('.chat-tool-call-details')).toBeNull();
+    });
+
     test('lets a state the host settled win over the deadline', async () => {
       jest.useFakeTimers({ now: NOW });
       const settled: ToolCallPair = {
@@ -808,7 +963,7 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(summaryOf(container)).not.toContain('waiting');
     });
 
-    test('joins the header phrases with a comma each, so they read as one sentence (C#15)', async () => {
+    test('separates the header count and status facts without punctuation (C#15)', async () => {
       const failed: ToolCallPair = {
         call: { id: 'refund-2', name: 'issue-refund', arguments: {} },
         result: { callId: 'refund-2', outcome: 'error', content: null },
@@ -824,7 +979,7 @@ describe('ChatMessage — tool-call rendering', () => {
       const phrases = [
         ...container.querySelectorAll('.chat-tool-call-summary-count, [data-problem]'),
       ].map((element) => element.textContent);
-      expect(phrases).toEqual(['0 of 2 steps,', '1 failed,', '1 denied']);
+      expect(phrases).toEqual(['0 of 2 steps', '1 failed', '1 denied']);
     });
 
     test('counts only the calls still waiting in a group with an expired one', async () => {
@@ -931,7 +1086,7 @@ describe('ChatMessage — tool-call rendering', () => {
         'Compared recent orders…',
       );
       expect(done.querySelector('.chat-tool-call-name')?.textContent).toBe('lookup_order');
-      expect(done.querySelector('.chat-tool-call-duration')?.textContent).toBe('0.4s');
+      expect(done.querySelector('.chat-tool-call-duration')?.textContent).toBe('400ms');
       // The pending call has no answer, so the host words it in the present tense.
       expect(rows[1]!.querySelector('.chat-tool-call-label')?.textContent).toBe(
         'Comparing recent orders…',
@@ -969,7 +1124,11 @@ describe('ChatMessage — tool-call rendering', () => {
     test('on a touch screen the summary line and each step row are full touch targets (C#3)', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
       expect(source).toMatch(
-        /@media \(any-pointer: coarse\) \{\s*\.chat-tool-call-toggle,\s*\.chat-tool-call-row,[^{]*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
+        /@media \(any-pointer: coarse\) \{\s*\.chat-tool-call-toggle,\s*\.chat-tool-call-row\s*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
+      );
+      // A failed step's Retry and Copy error are Cinder Buttons: compact paint, hit-area extension.
+      expect(source).not.toMatch(
+        /@media \(any-pointer: coarse\) \{[^}]*chat-tool-call-failure-action/,
       );
     });
 
@@ -981,13 +1140,13 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).not.toContain(String.fromCodePoint(0xb7));
     });
 
-    test('a narrow header drops the raw tool names and each phrase stays on one line', () => {
+    test('a narrow header truncates long tool names and keeps its count and duration readable', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
       expect(source).toMatch(
-        /@container \(max-width: 21\.99rem\)\s*\{\s*\.chat-tool-call-summary-tools\s*\{\s*display:\s*none;/,
+        /\.chat-tool-call-summary-tools\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
       );
       expect(source).toMatch(
-        /\.chat-tool-call-summary-count,\s*\.chat-tool-call-summary-segment,\s*\.chat-tool-call-summary-duration\s*\{\s*white-space:\s*nowrap;/,
+        /\.chat-tool-call-summary-count,\s*\.chat-tool-call-summary-description,\s*\.chat-tool-call-summary-segment,\s*\.chat-tool-call-summary-duration\s*\{\s*white-space:\s*nowrap;/,
       );
       // The tool names are cut with an ellipsis, which needs one line: they never wrap.
       expect(source).toMatch(
@@ -997,7 +1156,7 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).toMatch(/\.chat-tool-call-running\s*\{[^}]*overflow-wrap:\s*anywhere/s);
       // A row wraps between its parts in a narrow chat, so a tool's name is never clipped there.
       expect(source).toMatch(
-        /@container \(max-width: 21\.99rem\)\s*\{[^@]*\.chat-tool-call-row\s*\{\s*flex-wrap:\s*wrap;/s,
+        /@container \(max-width: 21\.99rem\)\s*\{[^@]*\.chat-tool-call-row\s*\{\s*display:\s*grid;/s,
       );
       // A long result line takes only what is left, so it never squeezes the title.
       expect(source).toMatch(/\.chat-tool-call-result\s*\{\s*flex:\s*1 1 0;/);
@@ -1023,7 +1182,7 @@ describe('ChatMessage — tool-call rendering', () => {
       const rows = callRows(container);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Compared recent orders… lookup_order ×20 6.1s',
+        'Compared recent orders… lookup_order ×20 6s',
       );
       expect(
         container
@@ -1032,7 +1191,7 @@ describe('ChatMessage — tool-call rendering', () => {
       ).toBe('20');
       // The group still counts every step, and its navigation row still counts every call.
       expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        '20 steps lookup_order ×20 6.1s',
+        '20 steps Compared recent orders… lookup_order ×20 6s',
       );
       expect(
         container

@@ -12,7 +12,7 @@ import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
-const { render, cleanup } = await import('@testing-library/svelte');
+const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: EntryFrame } = await import('./entry-frame.svelte');
 
 afterEach(() => {
@@ -42,6 +42,33 @@ describe('EntryFrame status', () => {
     expect(container.querySelector('.chat-entry-frame__status')).toBeNull();
   });
 
+  test('forwards the flat variant and leaves the frame unboxed', () => {
+    const { container } = render(EntryFrame, {
+      props: { id: 'frame-flat', label: 'Thinking', variant: 'flat', children: body },
+    });
+
+    const frame = container.querySelector('.chat-entry-frame');
+    expect(frame?.getAttribute('data-cinder-variant')).toBe('flat');
+  });
+
+  test('uses a leading chevron that points right, then down when expanded', async () => {
+    const { container } = render(EntryFrame, {
+      props: { id: 'frame-chevron', label: 'Thinking', children: body },
+    });
+
+    const frame = container.querySelector<HTMLElement>('.chat-entry-frame');
+    const trigger = container.querySelector<HTMLButtonElement>('.cinder-collapsible__trigger');
+    expect(frame?.getAttribute('data-cinder-chevron')).toBe('start');
+    expect(trigger?.firstElementChild?.classList.contains('cinder-collapsible__chevron')).toBe(
+      true,
+    );
+    expect(trigger?.querySelector('.cinder-collapsible__label')).not.toBeNull();
+    expect(trigger?.lastElementChild?.classList.contains('cinder-collapsible__label')).toBe(true);
+
+    await fireEvent.click(trigger!);
+    expect(frame?.hasAttribute('data-cinder-expanded')).toBe(true);
+  });
+
   test('truncates the title and keeps the status on one line in the stylesheet', async () => {
     const source = await Bun.file(new URL('./entry-frame.svelte', import.meta.url)).text();
 
@@ -50,7 +77,7 @@ describe('EntryFrame status', () => {
       /:global\(\.cinder-collapsible__label\) \{[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/,
     );
     expect(source).toMatch(
-      /:has\(\.chat-entry-frame__status\) :global\(\.cinder-collapsible__label\) \{\s*padding-inline-end: calc\([^)]*--_chat-entry-frame-status-length/,
+      /:has\(\.chat-entry-frame__status\) :global\(\.cinder-collapsible__trigger\) \{\s*padding-inline-end: calc\([^)]*--_chat-entry-frame-status-length/s,
     );
   });
 });

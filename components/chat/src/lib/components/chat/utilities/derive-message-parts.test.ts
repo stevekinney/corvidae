@@ -499,6 +499,48 @@ describe('deriveMessageParts — tool-result body', () => {
     const parts = deriveMessageParts(message({ role: 'tool-result', content: 'orphan result' }));
     expect(parts[0]).toMatchObject({ type: 'markdown', content: 'orphan result' });
   });
+
+  it('marks pending input separately from an answered input receipt', () => {
+    const pending = deriveMessageParts(
+      message({
+        id: 'pending-input',
+        role: 'tool-result',
+        toolResult: {
+          callId: 'ask-1',
+          outcome: 'action_required',
+          content: null,
+          action: { type: 'input', message: 'Choose an environment', schema: { type: 'string' } },
+        },
+      }),
+    );
+    expect(pending).toMatchObject([{ type: 'tool-input' }]);
+    expect('resolved' in pending[0]!).toBe(false);
+
+    const answered = deriveMessageParts(
+      message({
+        id: 'answered-input',
+        role: 'tool-result',
+        toolResult: { callId: 'ask-1', outcome: 'success', content: { ok: true } },
+      }),
+      {
+        questionAnswers: new Map([
+          [
+            'ask-1',
+            {
+              toolCallId: 'ask-1',
+              toolName: 'ask',
+              message: 'Choose an environment',
+              schema: { type: 'string' },
+              summary: 'staging',
+              value: 'staging',
+              secret: false,
+            },
+          ],
+        ]),
+      },
+    );
+    expect(answered).toMatchObject([{ type: 'tool-input', resolved: true }]);
+  });
 });
 
 describe('deriveMessageParts — purity', () => {

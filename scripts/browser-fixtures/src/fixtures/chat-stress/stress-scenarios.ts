@@ -8,12 +8,15 @@
  */
 import {
   appendAssistantMessage,
+  appendStreamingMessage,
   appendToolCall,
   appendToolResult,
   appendUserMessage,
   createConversation,
+  updateStreamingMessage,
   type ChatApprovalDetails,
   type ChatCapabilities,
+  type ChatTurnLabels,
   type ChatTurnState,
   type ConversationHistory,
   type Message,
@@ -23,14 +26,23 @@ import {
 } from '@lostgradient/chat';
 import type { CitationSource } from '@lostgradient/cinder';
 
-import type { StressCase, StressScenarioName } from './stress-cases.ts';
+import { STRESS_NOW, type StressCase, type StressScenarioName } from './stress-cases.ts';
 
 const BASE_TIME = Date.parse('2026-11-02T15:00:00.000Z');
+const APPROVAL_EXPIRY = new Date(Date.parse(STRESS_NOW) + 30_000).toISOString();
+
+function approvalMessage(command: string): string {
+  const match = /^refund order (\d+) --amount (\d+)/i.exec(command);
+  if (match === null) return 'Approve running this tool before it executes?';
+  const amount = Number(match[2]);
+  return `Refund order ${match[1]} for $${(amount / 100).toFixed(2)}?`;
+}
 
 /** What the fixture shows in place of the transcript or the composer, as plain data. */
 export type StressAvailability =
   | { kind: 'loading'; slowAfterSeconds?: number }
   | { kind: 'error'; cause: string; detail?: string }
+  | { kind: 'unconfigured' }
   | { kind: 'deleted' };
 
 /** The composer status a case seeds, as plain data; the fixture adds the callbacks. */
@@ -59,6 +71,8 @@ export interface StressSetup {
   capabilities: ChatCapabilities;
   uploads: StressUploads;
   approvalDetails: Record<string, ChatApprovalDetails>;
+  /** Receipt data returned by the host for an approval decided in its Reviews surface. */
+  externalApproval?: { actor: string; decidedAt: string; action: string; command: string };
   reasoning: Record<number, ReasoningInfo>;
   /** Sources by the assistant turn's position, from zero. */
   sources: Record<number, CitationSource[]>;
@@ -75,6 +89,8 @@ export interface StressSetup {
   direction?: 'rtl';
   /** The sample sources a host can withdraw while a citation is open. */
   withdrawable: boolean;
+  /** Host wording for a turn's step summary, when a scenario has semantic count-bearing copy. */
+  turnLabels?: Partial<ChatTurnLabels>;
 }
 
 /** The empty setup every scenario starts from. */
@@ -176,18 +192,39 @@ export function describeStressCall(
 export function stabilize(history: ConversationHistory): ConversationHistory {
   const ids = history.ids.map((_, index) => `stress-m${index + 1}`);
   const messages: Record<string, Message> = {};
+  const fixtureCallOffsets = new Map<string, number>();
   history.ids.forEach((id, index) => {
     const message = history.messages[id];
     const stableId = ids[index];
     if (message === undefined || stableId === undefined) return;
+    const offset = fixtureNumber(message.metadata['chat-stress-offset-ms']);
+    const resultOffset =
+      message.toolResult === undefined
+        ? undefined
+        : fixtureCallOffsets.get(message.toolResult.callId);
+    const repeatedCall = offset !== undefined || resultOffset !== undefined;
+    const messageOffset = offset ?? resultOffset ?? index * 60_000;
+    if (offset !== undefined && message.toolCall !== undefined) {
+      fixtureCallOffsets.set(message.toolCall.id, offset);
+    }
+    const duration =
+      message.toolResult === undefined
+        ? 0
+        : (fixtureNumber(message.metadata['chat-stress-duration-ms']) ?? 0);
     messages[stableId] = {
       ...message,
       id: stableId,
-      createdAt: new Date(BASE_TIME + index * 60_000).toISOString(),
+      createdAt: new Date(
+        BASE_TIME + (repeatedCall ? messageOffset + duration : messageOffset),
+      ).toISOString(),
     };
   });
   const created = new Date(BASE_TIME).toISOString();
   return { ...history, ids, messages, createdAt: created, updatedAt: created };
+}
+
+function fixtureNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function start(id: string): ConversationHistory {
@@ -200,10 +237,19 @@ function withCall(
   name: string,
   args: Record<string, string | number | boolean>,
   result?: Record<string, string | number | boolean>,
+  metadata?: Record<string, number>,
 ): ConversationHistory {
-  const called = appendToolCall(history, { id, name, arguments: args });
+  const called = appendToolCall(
+    history,
+    { id, name, arguments: args },
+    metadata === undefined ? {} : { metadata },
+  );
   if (result === undefined) return called;
-  return appendToolResult(called, { callId: id, outcome: 'success', content: result });
+  return appendToolResult(
+    called,
+    { callId: id, outcome: 'success', content: result },
+    metadata === undefined ? {} : { metadata },
+  );
 }
 
 function withFailedCall(
@@ -235,12 +281,12 @@ function withApproval(
     content: null,
     action: {
       type: 'approval',
-      message: options.message ?? 'Approve running this tool before it executes?',
+      message: options.message ?? approvalMessage(command),
       risk: options.risk ?? 'high',
       operation: { kind: 'command', command, argsPreview: { command } },
       sandbox: { provider: 'Corvidae', name: 'stress', workingDir: '/workspace/corvidae' },
       snapshotId: `snapshot-${id}`,
-      expiresAt: options.expiresAt ?? '2999-01-01T00:00:00.000Z',
+      expiresAt: options.expiresAt ?? APPROVAL_EXPIRY,
       policyVersion: 'stress-policy-v1',
       idempotencyKey: `stress-${id}`,
     },
@@ -296,6 +342,21 @@ const SAMPLE_SOURCES: CitationSource[] = [
   },
   { label: 'Order 4471 audit log', url: 'https://audit.example.org/orders/4471' },
   { label: 'Support playbook', detail: 'Internal document with no public address.' },
+  { label: 'Duplicate-charge runbook', url: 'https://docs.example.com/duplicate-charges' },
+  { label: 'Refund ledger entry', url: 'https://audit.example.org/ledger/4471' },
+  { label: 'Customer support case', detail: 'Internal case notes for order 4471.' },
+];
+
+const SOURCE_LIST_CONTRACT_SOURCES: CitationSource[] = [
+  {
+    label:
+      'A deliberately long source title that should remain readable without becoming an unbounded card row',
+    url: 'https://docs.example.com/long-source-title',
+    detail:
+      'Refunds over $40 need review. The title is intentionally long so the list proves its two-line clamp.',
+  },
+  { label: 'Internal refund notes', detail: 'Internal document with no public address.' },
+  { label: 'Rejected source address', url: 'javascript:alert(1)' },
 ];
 
 /** A shared transcript: one question and one answer. */
@@ -318,7 +379,11 @@ const scenarios: Record<StressScenarioName, Scenario> = {
   },
 
   availability: (stressCase) => {
-    const kind = param<'loading' | 'error' | 'deleted'>(stressCase, 'kind', 'loading');
+    const kind = param<'loading' | 'error' | 'unconfigured' | 'deleted'>(
+      stressCase,
+      'kind',
+      'loading',
+    );
     const setup = baseSetup(
       plainTurn('stress-availability', 'Where did the refund go?', 'It was issued on Nov 1.'),
     );
@@ -333,6 +398,8 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         cause: 'The history service did not answer. Nothing was lost.',
         detail: 'fault ECONNRESET at history.read',
       };
+    } else if (kind === 'unconfigured') {
+      setup.availability = { kind: 'unconfigured' };
     } else setup.availability = { kind: 'deleted' };
     return setup;
   },
@@ -353,7 +420,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
     else {
       setup.status = {
         kind: 'read-only',
-        tooltip: 'Dana Reyes removed your write access on Nov 3',
+        tooltip: 'Support Ops can grant you write access',
       };
     }
     return setup;
@@ -456,12 +523,17 @@ const scenarios: Record<StressScenarioName, Scenario> = {
           'lookup_order',
           { orderId: `${4400 + index}` },
           { status: 'found' },
+          { 'chat-stress-offset-ms': index * 1_000, 'chat-stress-duration-ms': 305 },
         );
       }
       conversation = appendAssistantMessage(
         conversation,
         'Compared 20 recent orders. All of them match the ledger.',
       );
+      setup.turnLabels = {
+        steps: (count) => `Compared ${count} recent orders…`,
+        stepsDone: (_done, total) => `Compared ${total} recent orders…`,
+      };
     } else if (shape === 'steps') {
       conversation = withCall(
         conversation,
@@ -523,6 +595,10 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         LONG_TOOL,
         `${LONG_TOOL} --since 2026-10-01`,
       );
+      setup.approvalDetails[LONG_TOOL] = {
+        irreversible: true,
+        approveLabel: 'Run export',
+      };
     } else {
       conversation = withCall(
         conversation,
@@ -556,12 +632,38 @@ const scenarios: Record<StressScenarioName, Scenario> = {
   },
 
   approval: (stressCase) => {
-    const shape = param<'reversible' | 'irreversible' | 'expired' | 'two' | 'command' | 'rtl'>(
-      stressCase,
-      'shape',
-      'reversible',
-    );
-    let conversation = appendUserMessage(start('stress-approval'), 'Refund order 4471.');
+    const shape = param<
+      'reversible' | 'irreversible' | 'expired' | 'two' | 'command' | 'rtl' | 'elsewhere'
+    >(stressCase, 'shape', 'reversible');
+    if (shape === 'elsewhere') {
+      const setup = baseSetup(
+        plainTurn(
+          'stress-approval-elsewhere',
+          'Refund order 4471.',
+          'The refund has been approved.',
+        ),
+      );
+      setup.externalApproval = {
+        actor: 'Priya Raman',
+        decidedAt: STRESS_NOW,
+        action: 'Refund $42.00',
+        command: 'refund order 4471 --amount 4200',
+      };
+      return setup;
+    }
+    let conversation = start('stress-approval');
+    if (param(stressCase, 'approvalOffscreen', false)) {
+      for (let index = 1; index <= 8; index += 1) {
+        conversation = appendAssistantMessage(
+          appendUserMessage(
+            conversation,
+            `Earlier question ${index}: confirm the refund ledger details.`,
+          ),
+          `Earlier answer ${index}: the ledger details remain unchanged.`,
+        );
+      }
+    }
+    conversation = appendUserMessage(conversation, 'Refund order 4471.');
     const setup = baseSetup(conversation);
     if (shape === 'expired') {
       conversation = withApproval(
@@ -570,7 +672,8 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         'issue_refund',
         'refund order 4471 --amount 4200',
         {
-          expiresAt: '2026-11-02T15:30:00.000Z',
+          message: 'Refund order 4471 for $42.00?',
+          expiresAt: APPROVAL_EXPIRY,
         },
       );
     } else if (shape === 'two') {
@@ -594,6 +697,10 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         'refund order 4471 --amount 4200 --reason "duplicate charge reported by the customer" --notify customer@example.com --ledger october-2026',
       );
     } else if (shape === 'rtl') {
+      conversation = appendAssistantMessage(
+        conversation,
+        'تمت مراجعة طلب الاسترداد، وتوضح السياسة متى يسمح النظام برد المبلغ.',
+      );
       conversation = withApproval(
         conversation,
         'refund-4471',
@@ -604,6 +711,14 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         },
       );
       setup.direction = 'rtl';
+      setup.sources[0] = [
+        {
+          label: 'سياسة الاسترداد',
+          detail: 'توضح السياسة متى يسمح النظام برد المبلغ.',
+          url: 'https://docs.example.com/refunds',
+        },
+      ];
+      setup.sourcePresentation = 'list';
     } else {
       conversation = withApproval(
         conversation,
@@ -618,8 +733,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
     const irreversible = shape === 'irreversible' || shape === 'two' || shape === 'command';
     setup.approvalDetails['issue_refund'] = {
       irreversible,
-      // A reversible approval keeps the default Approve; an irreversible one names its action.
-      ...(irreversible ? { approveLabel: 'Refund $42.00' } : {}),
+      approveLabel: 'Refund $42.00',
       pauseSentence: 'The agent is paused until you decide.',
       facts: [
         { label: 'Target', value: 'order 4471' },
@@ -627,6 +741,18 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       ],
       why: 'The customer was charged twice for the same order.',
     };
+    if (shape === 'two') {
+      setup.approvalDetails['refund-4472'] = {
+        irreversible: true,
+        approveLabel: 'Refund $18.00',
+        pauseSentence: 'The agent is paused until you decide.',
+        facts: [
+          { label: 'Target', value: 'order 4472' },
+          { label: 'Amount', value: '$18.00' },
+        ],
+        why: 'The delivery fee was charged twice.',
+      };
+    }
     return setup;
   },
 
@@ -685,7 +811,13 @@ const scenarios: Record<StressScenarioName, Scenario> = {
     // load error and the thumbnail falls back to its named placeholder.
     const missing = {
       type: 'image' as const,
-      source: { kind: 'remote-url' as const, url: '/stress-missing-receipt.png' },
+      source: {
+        kind: 'remote-url' as const,
+        url: new URL(
+          '/stress-missing-receipt.png',
+          globalThis.location?.origin ?? 'http://localhost',
+        ).href,
+      },
       alt: 'receipt.png',
     };
     const content =
@@ -706,7 +838,10 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         'The order was charged twice, and the refund policy allows a full refund in that case.',
       ),
     );
-    setup.sources[0] = SAMPLE_SOURCES;
+    setup.sources[0] =
+      param<'contract' | undefined>(stressCase, 'sourceSet', undefined) === 'contract'
+        ? SOURCE_LIST_CONTRACT_SOURCES
+        : SAMPLE_SOURCES;
     setup.sourcePresentation = presentation;
     setup.withdrawable = param(stressCase, 'withdrawable', false);
     return setup;
@@ -741,6 +876,11 @@ const scenarios: Record<StressScenarioName, Scenario> = {
 
   'turn-state': (stressCase) => {
     const initial = param<'streaming' | 'complete'>(stressCase, 'initial', 'streaming');
+    const content = param(
+      stressCase,
+      'content',
+      'The October ledger has 212 entries and three of them',
+    );
     let conversation = appendUserMessage(start('stress-turn'), 'Reconcile the October ledger.');
     conversation = withCall(
       conversation,
@@ -749,10 +889,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       { month: 'october' },
       { status: 'ok' },
     );
-    conversation = appendAssistantMessage(
-      conversation,
-      'The October ledger has 212 entries and three of them',
-    );
+    conversation = appendAssistantMessage(conversation, content);
     const setup = baseSetup(conversation);
     setup.streaming = initial === 'streaming';
     setup.runInput = true;
@@ -762,8 +899,14 @@ const scenarios: Record<StressScenarioName, Scenario> = {
 
   reasoning: (stressCase) => {
     const live = param(stressCase, 'live', true);
-    const conversation = appendAssistantMessage(
-      appendUserMessage(start('stress-reasoning'), 'Should we refund order 4471?'),
+    const userMessage = appendUserMessage(
+      start('stress-reasoning'),
+      'Should we refund order 4471?',
+    );
+    const started = appendStreamingMessage(userMessage, 'assistant');
+    const conversation = updateStreamingMessage(
+      started.conversation,
+      started.messageId,
       'Yes, the order was charged twice.',
     );
     const setup = baseSetup(conversation);

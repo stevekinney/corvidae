@@ -17,12 +17,12 @@ afterEach(() => {
   root.remove();
 });
 
-/** Markup shaped like `ChatQuestion`'s: a root with its kind, and a column of buttons. */
+/** Markup shaped like `ChatQuestion`'s: a root with its kind, and a grid of radio cards. */
 function question(kind: string, labels: readonly string[], extra = ''): void {
   root.innerHTML = `
     <div class="chat-question" data-question-kind="${kind}">
-      <div class="chat-question-choices" role="group">
-        ${labels.map((label) => `<button type="button" class="chat-question-choice">${label}</button>`).join('')}
+      <div class="chat-question-choices" role="radiogroup">
+        ${labels.map((label) => `<div role="radio" aria-checked="false" tabindex="0" class="cinder-choice-grid-item">${label}</div>`).join('')}
       </div>
       ${extra}
     </div>`;
@@ -97,7 +97,7 @@ describe('picking a choice by its number', () => {
 
   test('presses nothing while the choice is disabled, as while an answer is being sent', () => {
     question('choice', ['staging']);
-    choiceButtons(root)[0]!.disabled = true;
+    choiceButtons(root)[0]!.setAttribute('aria-disabled', 'true');
     expect(pickChoice(root, 1)).toBe(false);
   });
 });

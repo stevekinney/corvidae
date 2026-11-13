@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { declarationsFor, injectStrippedStyles } from '../test/css.ts';
+import { injectStrippedStyles } from '../test/css.ts';
 
 setupHappyDom();
 
@@ -64,13 +64,13 @@ describe('header actions never grow the header', () => {
   });
 });
 
-describe('coarse pointers get the touch target from hit-area padding, not visual height', () => {
+describe('coarse pointers get a real touch box without enlarging the painted control', () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
   const tokens = read('../styles/tokens-base.css');
   const foundation = read('../styles/foundation.css');
   const buttonCss = read('../components/button/button.css');
 
-  // happy-dom cannot evaluate `(pointer: coarse)`, so the coarse run applies that block
+  // happy-dom cannot evaluate `(pointer: coarse)`, so the coarse run applies those blocks
   // unconditionally (`@media all`); the fine run is the stylesheet as authored.
   const emulate = (pointer: 'fine' | 'coarse') =>
     injectStrippedStyles(
@@ -78,7 +78,9 @@ describe('coarse pointers get the touch target from hit-area padding, not visual
       pointer === 'coarse'
         ? foundation.replace('@media (pointer: coarse) {', '@media all {')
         : foundation,
-      buttonCss,
+      pointer === 'coarse'
+        ? buttonCss.replace('@media (any-pointer: coarse) {', '@media all {')
+        : buttonCss,
     );
 
   const pixels = (value: string): number => {
@@ -90,28 +92,31 @@ describe('coarse pointers get the touch target from hit-area padding, not visual
   const rootValue = (name: string) =>
     getComputedStyle(document.documentElement).getPropertyValue(name);
 
-  /** How far the hit area's `::before` extends past each block edge of a button drawn `visualHeight` tall (negative inset is outward). */
-  const hitAreaInset = (visualHeight: number): number => {
-    const inset = declarationsFor(buttonCss, '.cinder-button[data-cinder-compact]::before').get(
-      'inset-block',
-    );
-    const match = /^calc\(\(100% - var\((--[\w-]+)\)\) \/ 2\)$/.exec(inset ?? '');
-    if (match === null) throw new Error(`unexpected hit-area inset: ${inset}`);
-    return (visualHeight - pixels(rootValue(match[1] as string))) / 2;
-  };
-
-  test('a coarse pointer raises the xs step to 44px but the compact height stays 24px', () => {
+  test('a coarse pointer raises the xs step while compact buttons reach 44px by a hit-area pseudo-element', () => {
     const clean = emulate('coarse');
     try {
       expect(pixels(rootValue('--cinder-control-height-xs'))).toBe(44);
       expect(pixels(rootValue('--_cinder-compact-control-height'))).toBe(24);
+      // The hit region is a pseudo-element reaching 44px that takes no layout space; the box
+      // itself never carries the touch minimum or a transparent border.
+      const hitRule =
+        /\.cinder-button\[data-cinder-hit-target='44'\]::before\s*\{[^}]*\}/s.exec(
+          buttonCss,
+        )?.[0] ?? '';
+      expect(hitRule).toContain('position: absolute;');
+      expect(hitRule).toContain('var(--cinder-touch-target-min)');
+      expect(buttonCss).not.toMatch(
+        /\.cinder-button\[data-cinder-hit-target='44'\]\s*\{[^}]*min-height:\s*var\(--cinder-touch-target-min\)/s,
+      );
+      expect(buttonCss).not.toContain('border: 10px solid transparent');
+      expect(buttonCss).not.toContain('background-clip');
     } finally {
       clean();
     }
   });
 
   for (const kind of ['card', 'section-heading'] as const) {
-    test(`${kind}: on a coarse pointer a header button is drawn at the fine xs height and its hit area reaches 44px`, () => {
+    test(`${kind}: on a coarse pointer a header button owns a 44px hit box without changing its compact face`, () => {
       const fineClean = emulate('fine');
       const fineRender = render(Harness, { props: { kind, withActions: true } });
       const fineHeight = pixels(
@@ -125,13 +130,10 @@ describe('coarse pointers get the touch target from hit-area padding, not visual
       try {
         const { getByTestId } = render(Harness, { props: { kind, withActions: true } });
         const header = pixels(getComputedStyle(getByTestId('header-button')).minHeight);
-        // Visual height is unchanged from a fine pointer; only a button outside the header grows.
-        expect(header).toBe(fineHeight);
-        expect(pixels(getComputedStyle(getByTestId('body-button')).minHeight)).toBe(44);
-        // The extension overhangs each edge by 10px, so the hit area is 24 + 20 = 44px.
-        const inset = hitAreaInset(header);
-        expect(inset).toBe(-10);
-        expect(header - 2 * inset).toBe(44);
+        // The layout box is the painted face; the 44px region is a pseudo-element (asserted above).
+        expect(header).toBe(24);
+        expect(pixels(getComputedStyle(getByTestId('body-button')).minHeight)).toBe(32);
+        expect(fineHeight).toBe(24);
       } finally {
         clean();
       }

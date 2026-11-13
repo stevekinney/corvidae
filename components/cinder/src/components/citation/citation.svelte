@@ -17,6 +17,9 @@
 </script>
 
 <script lang="ts">
+  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
+
   import { classNames } from '../../utilities/class-names.ts';
   import { default as Popover } from '../popover/index.ts';
 
@@ -27,6 +30,8 @@
     sources = [],
     label = 'Sources',
     labels,
+    closeOnSourceRemoval = false,
+    onCloseComplete,
     children,
     class: customClassName,
     ...rest
@@ -35,6 +40,7 @@
   let open = $state(false);
   let markerElement = $state<HTMLButtonElement | null>(null);
   let preserveMarkerForClose = $state(false);
+  let previousSourceKeys: string[] | undefined;
   const markerDisabled = $derived(sources.length === 0 && !preserveMarkerForClose);
   const source = $derived(sources[page]);
   // Five or fewer sources read as one list; more are paged so the panel stays short.
@@ -48,7 +54,20 @@
     return labels?.open?.(host) ?? (host === undefined ? 'Open source' : `Open ${host}`);
   }
 
+  function sourceKey(entry: CitationSource): string {
+    return `${entry.url ?? ''}\u0000${entry.label}\u0000${entry.detail ?? ''}`;
+  }
+
   $effect(() => {
+    const keys = sources.map(sourceKey);
+    if (
+      closeOnSourceRemoval &&
+      previousSourceKeys !== undefined &&
+      previousSourceKeys.some((key) => !keys.includes(key))
+    ) {
+      open = false;
+    }
+    previousSourceKeys = keys;
     if (sources.length === 0) {
       page = 0;
       if (open) {
@@ -87,6 +106,7 @@
     triggerRef={markerElement}
     onExitComplete={() => {
       preserveMarkerForClose = false;
+      onCloseComplete?.();
     }}
   >
     {#snippet trigger()}<button
@@ -114,7 +134,7 @@
             onclick={() => (page = Math.max(0, page - 1))}
             disabled={page === 0}
             aria-label={labels?.previousSource ?? 'Previous source'}
-            >{labels?.previous ?? 'Previous'}</button
+            title={labels?.previous ?? 'Previous'}><ChevronLeft aria-hidden="true" /></button
           ><span aria-live="polite"
             >{labels?.position?.(page + 1, sources.length) ??
               `${page + 1} of ${sources.length}`}</span
@@ -122,7 +142,8 @@
             type="button"
             onclick={() => (page = Math.min(sources.length - 1, page + 1))}
             disabled={page === sources.length - 1}
-            aria-label={labels?.nextSource ?? 'Next source'}>{labels?.next ?? 'Next'}</button
+            aria-label={labels?.nextSource ?? 'Next source'}
+            title={labels?.next ?? 'Next'}><ChevronRight aria-hidden="true" /></button
           >
         </div>{/if}
     </section>

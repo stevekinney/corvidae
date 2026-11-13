@@ -116,6 +116,8 @@ describe('free text answered through the composer', () => {
     expect(messages).toEqual([]);
     expect(container.textContent).toContain('You answered');
     expect(container.textContent).toContain('staging please');
+    expect(container.querySelector('.chat-tool-call-summary')?.textContent).toContain('1 answered');
+    expect(container.textContent).not.toContain('waiting for input');
     // With nothing left to answer, the composer sends messages again.
     expect(composerOf(container).placeholder).not.toBe('Answer');
   });
@@ -181,7 +183,7 @@ describe('free text answered through the composer', () => {
     });
     await tick();
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Staging' }));
+    await fireEvent.click(screen.getByRole('radio', { name: /staging/i }));
     await settle();
 
     expect(answers).toEqual(['staging']);
@@ -235,7 +237,7 @@ describe('a choice that takes your own answer, in the composer', () => {
     });
     await tick();
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Staging' }));
+    await fireEvent.click(screen.getByRole('radio', { name: /staging/i }));
     await settle();
 
     expect(answers).toEqual(['staging']);
@@ -281,7 +283,7 @@ describe('answered questions', () => {
       onInputSubmit: () => undefined,
     });
     await tick();
-    await fireEvent.click(screen.getByRole('button', { name: 'Staging' }));
+    await fireEvent.click(screen.getByRole('radio', { name: /staging/i }));
     await settle();
 
     await view.rerender({
@@ -350,7 +352,7 @@ describe('a question whose run has resumed', () => {
       onInputSubmit: () => undefined,
     });
     await tick();
-    await fireEvent.click(screen.getByRole('button', { name: 'staging' }));
+    await fireEvent.click(screen.getByRole('radio', { name: /staging/i }));
     await settle();
     expect(screen.queryByRole('button', { name: 'Change' })).not.toBeNull();
 
@@ -444,7 +446,7 @@ describe('answers are held to the whole schema, and belong to their conversation
       onInputSubmit: () => undefined,
     });
     await tick();
-    await fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await fireEvent.click(screen.getByRole('radio', { name: /^Yes\b/ }));
     await settle();
     expect(view.container.textContent).toContain('You answered');
 
@@ -452,7 +454,7 @@ describe('answers are held to the whole schema, and belong to their conversation
     await settle();
 
     expect(view.container.textContent).not.toContain('You answered');
-    expect(screen.queryByRole('button', { name: 'Yes' })).not.toBeNull();
+    expect(screen.queryByRole('radio', { name: /^Yes\b/ })).not.toBeNull();
   });
 
   test('an answer still in flight when the conversation changes does not land in the next one', async () => {
@@ -466,7 +468,7 @@ describe('answers are held to the whole schema, and belong to their conversation
         }),
     });
     await tick();
-    await fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await fireEvent.click(screen.getByRole('radio', { name: /^Yes\b/ }));
     await settle();
 
     await view.rerender({ conversation: questionConversation('q-late-2', { type: 'boolean' }) });

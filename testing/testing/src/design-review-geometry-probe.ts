@@ -15,7 +15,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import type { GeometryFacts } from '../../scripts/design-review-geometry.ts';
+import type { GeometryFacts } from './design-review-geometry.ts';
 
 /** Runs in the page: answers the facts the geometry audit reads. */
 export function collectGeometryFacts(): GeometryFacts {
@@ -43,6 +43,63 @@ export function collectGeometryFacts(): GeometryFacts {
       width: half(bounds.right - bounds.left),
       height: half(bounds.bottom - bounds.top),
     };
+  }
+
+  function paintedBox(element: Element, rect: DOMRect, style: CSSStyleDeclaration): Bounds {
+    const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0;
+    const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
+    const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
+    const borderBottom = Number.parseFloat(style.borderBottomWidth) || 0;
+    const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+    const paddingRight = Number.parseFloat(style.paddingRight) || 0;
+    const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+    const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+    const clip = style.backgroundClip;
+    const left =
+      clip === 'content-box' ? rect.left + borderLeft + paddingLeft : rect.left + borderLeft;
+    const top = clip === 'content-box' ? rect.top + borderTop + paddingTop : rect.top + borderTop;
+    const right =
+      clip === 'content-box'
+        ? rect.right - borderRight - paddingRight
+        : clip === 'padding-box'
+          ? rect.right - borderRight
+          : rect.right;
+    const bottom =
+      clip === 'content-box'
+        ? rect.bottom - borderBottom - paddingBottom
+        : clip === 'padding-box'
+          ? rect.bottom - borderBottom
+          : rect.bottom;
+    let clipped: Bounds = {
+      left,
+      top,
+      right: Math.max(left, right),
+      bottom: Math.max(top, bottom),
+    };
+    for (
+      let ancestor = element.parentElement;
+      ancestor !== null;
+      ancestor = ancestor.parentElement
+    ) {
+      const ancestorStyle = getComputedStyle(ancestor);
+      const clips = ['hidden', 'clip', 'auto', 'scroll'];
+      if (!clips.includes(ancestorStyle.overflow) && !clips.includes(ancestorStyle.overflowY))
+        continue;
+      const ancestorBox = ancestor.getBoundingClientRect();
+      clipped = {
+        left: Math.max(clipped.left, ancestorBox.left + ancestor.clientLeft),
+        top: Math.max(clipped.top, ancestorBox.top + ancestor.clientTop),
+        right: Math.min(
+          clipped.right,
+          ancestorBox.left + ancestor.clientLeft + ancestor.clientWidth,
+        ),
+        bottom: Math.min(
+          clipped.bottom,
+          ancestorBox.top + ancestor.clientTop + ancestor.clientHeight,
+        ),
+      };
+    }
+    return clipped;
   }
 
   function isShown(element: Element): boolean {
@@ -217,10 +274,11 @@ export function collectGeometryFacts(): GeometryFacts {
     // The pseudo-element is placed against this element only when this element is positioned.
     if (own.position === 'static') return null;
     const rect = element.getBoundingClientRect();
-    const insets = [style.top, style.right, style.bottom, style.left].map((inset) =>
+    const insetValues = [style.top, style.right, style.bottom, style.left].map((inset) =>
       Number.parseFloat(inset),
     );
-    const [top = Number.NaN, right = Number.NaN, bottom = Number.NaN, left = Number.NaN] = insets;
+    const [top = Number.NaN, right = Number.NaN, bottom = Number.NaN, left = Number.NaN] =
+      insetValues;
     if ([top, right, bottom, left].some((inset) => Number.isNaN(inset))) return null;
     return {
       left: rect.left + Number.parseFloat(own.borderLeftWidth) + left,
@@ -436,6 +494,7 @@ export function collectGeometryFacts(): GeometryFacts {
           : parent.clientWidth -
             Number.parseFloat(parentStyle.paddingLeft) -
             Number.parseFloat(parentStyle.paddingRight);
+      const hit = hitBounds(element);
       found.push({
         name: nameOf(element),
         kind: controlKind(element),
@@ -471,7 +530,12 @@ export function collectGeometryFacts(): GeometryFacts {
             style.borderTopStyle !== 'none' &&
             colorOf(style.borderTopColor)[3] > 0),
         labelRuns: textNodes(element, true).length,
-        hit: boxOf(hitBounds(element)),
+        hit: boxOf(hit),
+        extendedHitArea:
+          hit.left < layout.left ||
+          hit.top < layout.top ||
+          hit.right > layout.right ||
+          hit.bottom > layout.bottom,
         unreached: unreachedSides(element),
         parent: parentOf(element),
         // Filling a container that hugs it is not stretching, so it must also span half the viewport.
@@ -906,7 +970,8 @@ export function collectGeometryFacts(): GeometryFacts {
         const boxed =
           colorOf(style.backgroundColor)[3] > 0 || Number.parseFloat(style.borderTopWidth) > 0;
         // What lies on the text is what the control draws: its box, or else its label and icon.
-        const drawn = boxed ? union(null, element.getBoundingClientRect()) : contentBounds(element);
+        const elementRect = element.getBoundingClientRect();
+        const drawn = boxed ? paintedBox(element, elementRect, style) : contentBounds(element);
         if (drawn === null) continue;
         const rect = new DOMRect(
           drawn.left,

@@ -93,11 +93,17 @@ describe('Chat attachments', () => {
 
     expect(uploaded).toEqual(['ok.png']);
     expect(failures.map((failure) => failure.kind)).toEqual(['too-large', 'type-not-accepted']);
-    expect(
+    // The shelf draws two tiles and puts the rest behind "N more": all three files are attached.
+    const previewStates = () =>
       [...target.querySelectorAll('.chat-attachment-preview')].map((node) =>
         node.getAttribute('data-state'),
-      ),
-    ).toEqual(['ready', 'error', 'error']);
+      );
+    expect(previewStates()).toEqual(['error', 'error']);
+    const more = target.querySelector<HTMLButtonElement>('.chat-input-attachment-more');
+    expect(more?.textContent?.trim()).toBe('1 more below');
+    more?.click();
+    await tick();
+    expect(previewStates()).toEqual(['ready', 'error', 'error']);
     unmount(instance);
   });
 

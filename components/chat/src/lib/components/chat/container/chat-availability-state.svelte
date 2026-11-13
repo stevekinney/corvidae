@@ -15,7 +15,17 @@
    * deleted. The ticking number is never in a live region: a screen reader hears the status line
    * once, and again when the read turns slow.
    */
-  import { Button, ChevronLeft, ErrorState, Skeleton, Spinner } from '@lostgradient/cinder';
+  import {
+    Button,
+    Callout,
+    ChevronLeft,
+    EmptyState,
+    ErrorState,
+    Skeleton,
+    Spinner,
+    Trash2,
+    X,
+  } from '@lostgradient/cinder';
 
   import {
     availabilityLabels,
@@ -52,7 +62,7 @@
 
 {#if availability.kind === 'loading'}
   {@const slow = isSlowRead(elapsed, availability.slowAfterSeconds)}
-  {@const reading = formatElapsedSeconds(elapsed, labels.secondsUnit)}
+  {@const reading = formatElapsedSeconds(elapsed)}
   <div
     class="chat-availability chat-availability-loading"
     data-chat-availability="loading"
@@ -74,19 +84,27 @@
     </div>
     <div class="chat-availability-status" dir="auto">
       {#if slow}
-        <Spinner size="sm" label={labels.slow} />
-        <span class="chat-availability-reading">{labels.slow}</span>
-        <span class="chat-availability-elapsed" data-chat-availability-elapsed>{reading}</span>
-        {#if availability.onCancel !== undefined}
-          <Button type="button" variant="ghost" size="sm" onclick={availability.onCancel}>
-            {labels.cancel}
-          </Button>
-        {/if}
+        <!-- The slow read is one notice: the spinner as its icon, the elapsed time in the
+             sentence, and Cancel as the inline action. -->
+        <Callout
+          class="chat-availability-notice"
+          semantic="note"
+          aria-label={labels.slow}
+          {...availability.onCancel === undefined ? {} : { action: cancelButton }}
+        >
+          {#snippet icon()}
+            <Spinner size="sm" label={labels.slow} class="chat-availability-spinner" />
+          {/snippet}
+          <span class="chat-availability-reading">{labels.slow}</span>
+          <span class="chat-availability-elapsed" data-chat-availability-elapsed>{reading}</span>
+        </Callout>
       {:else}
         <span class="chat-availability-reading" aria-hidden="true">{labels.loading}</span>
-        <span class="chat-availability-elapsed" data-chat-availability-elapsed aria-hidden="true">
-          {reading}
-        </span>
+        {#if elapsed > 0}
+          <span class="chat-availability-elapsed" data-chat-availability-elapsed aria-hidden="true">
+            {reading}
+          </span>
+        {/if}
         <span class="cinder-sr-only" role="status">{labels.loading}</span>
       {/if}
     </div>
@@ -102,7 +120,11 @@
       retryLabel={labels.retry}
       onRetry={availability.onRetry}
       {...allConversations === undefined ? {} : { secondaryAction: allConversationsButton }}
-    />
+    >
+      {#snippet icon()}
+        <X class="chat-availability-canceled-icon" aria-hidden="true" />
+      {/snippet}
+    </ErrorState>
   </div>
 {:else if availability.kind === 'error'}
   <div class="chat-availability">
@@ -117,6 +139,23 @@
       {...allConversations === undefined ? {} : { secondaryAction: allConversationsButton }}
     />
   </div>
+{:else if availability.kind === 'unconfigured'}
+  {@const connect = availability.onConnect}
+  <div class="chat-availability">
+    <EmptyState
+      data-chat-availability="unconfigured"
+      kind="disabled"
+      headingLevel={2}
+      title={labels.unconfiguredTitle}
+      description={labels.unconfiguredDescription}
+    >
+      {#snippet action()}
+        <Button variant="primary" class="chat-availability-connect" onclick={connect}>
+          {labels.connectProvider}
+        </Button>
+      {/snippet}
+    </EmptyState>
+  </div>
 {:else}
   <div class="chat-availability">
     <ErrorState
@@ -128,12 +167,23 @@
       retryLabel={availability.allConversations.label}
       onRetry={availability.allConversations.onclick}
     >
+      {#snippet icon()}
+        <Trash2 class="chat-availability-deleted-icon" aria-hidden="true" />
+      {/snippet}
       {#snippet retryIcon()}
         <ChevronLeft size={14} aria-hidden="true" />
       {/snippet}
     </ErrorState>
   </div>
 {/if}
+
+{#snippet cancelButton()}
+  {#if availability.kind === 'loading' && availability.onCancel !== undefined}
+    <Button type="button" variant="secondary" size="sm" onclick={availability.onCancel}>
+      {labels.cancel}
+    </Button>
+  {/if}
+{/snippet}
 
 {#snippet allConversationsButton()}
   {#if allConversations !== undefined}
@@ -150,7 +200,17 @@
     flex-direction: column;
     justify-content: center;
     min-block-size: 0;
+    box-sizing: border-box;
+    inline-size: 100%;
     padding: var(--cinder-chat-timeline-padding, var(--cinder-space-4));
+  }
+
+  /* On a phone the composer and the other notices above it start at the narrow padding; the
+     notice stands on the same edge. */
+  @container (max-width: 480px) {
+    .chat-availability {
+      padding: var(--cinder-chat-narrow-padding, var(--cinder-space-3));
+    }
   }
 
   .chat-availability-loading {
@@ -185,6 +245,21 @@
     gap: var(--cinder-space-2);
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+  }
+
+  .chat-availability-loading[data-slow] .chat-availability-status {
+    display: block;
+  }
+
+  .chat-availability-status :global(.cinder-spinner) {
+    color: var(--cinder-accent-text);
+    --cinder-spinner-size: 1rem;
+    --cinder-spinner-indicator: currentColor;
+    --cinder-spinner-track: color-mix(in srgb, currentColor 30%, transparent);
+  }
+
+  .chat-availability-reading {
+    min-inline-size: 0;
   }
 
   .chat-availability-elapsed {

@@ -16,6 +16,7 @@ import { NAVIGATION_COPY } from '../../src/app/copy/shell.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { touchHeight } from './hit-area.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -94,6 +95,9 @@ async function expectApprovalTitleInView(page: Page): Promise<void> {
 }
 
 test.describe('Chat on a phone (04y, 06l, 06m)', () => {
+  // A button's 44px hit area exists only under a coarse pointer, so the phone is a touch phone.
+  test.use({ hasTouch: true, isMobile: true });
+
   test('lists the chats as a screen of its own: the status, a dot, then the latest message on line two (06l)', async ({
     page,
   }) => {
@@ -177,14 +181,30 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await connected.close();
   });
 
-  test('draws Deny and Approve at equal widths and 44px (06m)', async ({ page }) => {
+  test('draws Deny and the primary as compact buttons on one row, the primary last, each with a 44px hit area and neither clipped by the card (06m)', async ({
+    page,
+  }) => {
     await openRefundFromList(page);
     const row = page.locator('[data-approval-decision]');
-    const deny = await boxOf(row.getByRole('button', { name: 'Deny' }));
-    const approve = await boxOf(row.getByRole('button', { name: 'Approve' }));
-    expect(deny.height).toBeGreaterThanOrEqual(44);
-    expect(approve.height).toBeGreaterThanOrEqual(44);
-    expect(Math.abs(deny.width - approve.width)).toBeLessThan(1);
+    const denyButton = row.getByRole('button', { name: 'Deny' });
+    const approveButton = row.getByRole('button', { name: 'Approve' });
+    const rowBox = await boxOf(row);
+    const deny = await boxOf(denyButton);
+    const approve = await boxOf(approveButton);
+    // One row, in reading order, the primary decision last.
+    expect(Math.abs(deny.y - approve.y)).toBeLessThan(1);
+    expect(approve.x).toBeGreaterThanOrEqual(deny.x + deny.width - 1);
+    // Compact to the eye, never a full-width phone slab.
+    expect(deny.height).toBeLessThanOrEqual(32);
+    expect(approve.height).toBeLessThanOrEqual(32);
+    // Generous to a finger.
+    expect(await touchHeight(denyButton)).toBeGreaterThanOrEqual(44);
+    expect(await touchHeight(approveButton)).toBeGreaterThanOrEqual(44);
+    // Inside the card, with nothing cut off at its edges.
+    for (const box of [deny, approve]) {
+      expect(box.x).toBeGreaterThanOrEqual(rowBox.x - 0.5);
+      expect(box.x + box.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 0.5);
+    }
   });
 
   test('with no provider the composer is the blocked row: the reason wraps, and "Connect a provider" drops to its own full-width 44px line beneath (06m, 04y)', async ({
@@ -204,7 +224,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     const rowBox = await boxOf(row);
     // Beneath the text, never over it, and across the row.
     expect(actionBox.y).toBeGreaterThanOrEqual(reason.y + reason.height - 1);
-    expect(actionBox.height).toBeGreaterThanOrEqual(44);
+    expect(await touchHeight(action)).toBeGreaterThanOrEqual(44);
     expect(actionBox.width).toBeGreaterThan(rowBox.width * 0.85);
     // Nothing is queued and nothing pretends to be pending.
     await expect(page.getByText(/queued|sending|pending/i)).toHaveCount(0);
@@ -285,7 +305,7 @@ test.describe('Keyboard hints on a phone', () => {
   }) => {
     await connectProvider(page);
     await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
-    await expect(page.getByRole('button', { name: /Staging/ })).toBeVisible();
+    await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
     await expect(page.getByText(CHAT_COPY.pickHint)).toBeVisible();
   });
 
@@ -297,7 +317,7 @@ test.describe('Keyboard hints on a phone', () => {
     }) => {
       await connectProvider(page);
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
-      await expect(page.getByRole('button', { name: /Staging/ })).toBeVisible();
+      await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
       await expect(page.getByText(CHAT_COPY.pickHint)).toHaveCount(1);
       await expect(page.getByText(CHAT_COPY.pickHint)).toBeHidden();
 
@@ -356,6 +376,9 @@ test.describe('Chat on a tablet (06n)', () => {
 });
 
 test.describe('Chat with no provider (14h)', () => {
+  // The phone case measures a 44px hit area, which exists only under a coarse pointer.
+  test.use({ hasTouch: true, isMobile: true });
+
   test('on New chat from a model agent, the reason sits where it blocks sending, nothing is queued, and no banner is drawn', async ({
     page,
   }) => {
@@ -397,7 +420,9 @@ test.describe('Chat with no provider (14h)', () => {
     const reason = await boxOf(row.getByText(REASON));
     const action = await boxOf(row.getByRole('link', { name: 'Connect a provider' }));
     expect(action.y).toBeGreaterThanOrEqual(reason.y + reason.height - 1);
-    expect(action.height).toBeGreaterThanOrEqual(44);
+    expect(
+      await touchHeight(row.getByRole('link', { name: 'Connect a provider' })),
+    ).toBeGreaterThanOrEqual(44);
     expect(await scrollsSideways(page)).toBe(false);
     await captureForDesignReview(page, {
       route: '/chats/new',

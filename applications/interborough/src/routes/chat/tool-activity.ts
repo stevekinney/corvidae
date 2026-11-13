@@ -9,6 +9,7 @@ import {
   type ConversationHistory,
   type ToolCallPair,
 } from '@lostgradient/chat';
+import { parseStepRowIdentifier } from '@lostgradient/operative';
 
 import type { ToolCallRailCall } from '@lostgradient/cinder';
 
@@ -25,11 +26,19 @@ import { opensTurn } from './event-notes.ts';
 /** One row of a conversation. */
 type Message = ConversationHistory['messages'][string];
 
+function approvalRound(row: Message): number | undefined {
+  const bureau = row.metadata?.['@lostgradient/bureau'];
+  if (typeof bureau !== 'object' || bureau === null) return undefined;
+  const round = Reflect.get(bureau, 'round');
+  return typeof round === 'number' ? round : undefined;
+}
+
 /**
  * Where one call stands. `interrupted` is a call with no answer that nothing is working on any more:
  * the run ended while it was under way, so how it ended is not known.
  */
-export type ToolCallState = 'running' | 'needs-you' | 'done' | 'failed' | 'denied' | 'interrupted';
+export type ToolCallState =
+  'running' | 'needs-you' | 'expired' | 'done' | 'failed' | 'denied' | 'interrupted';
 
 /** What the tool catalog says of a tool: its name for a person, and what it may do. */
 export type ToolInfo = {
@@ -40,6 +49,12 @@ export type ToolInfo = {
 export type ToolCallEntry = {
   /** The tool call's identifier, which an approval names. */
   readonly callId: string;
+  /** Stable transcript identity for the rail and approval DOM, when the host supplied a result row. */
+  readonly railId?: string | undefined;
+  /** Stable host identity for a pending approval and its durable Review row. */
+  readonly approvalKey?: string | undefined;
+  /** Authoritative approval deadline, when one was observed. */
+  readonly approvalExpiresAt?: number | undefined;
   /** The tool's identifier ("lookup-order"), which is its name when the catalog gives it no title. */
   readonly name: string;
   /** The tool's name for a person ("Lookup order"), from the catalog; absent when it has none. */
@@ -199,7 +214,7 @@ function intervalOf(
   rows: CallRows,
   timing: ToolTimingContext | undefined,
 ): { readonly start: number; readonly end: number } | undefined {
-  if (timing === undefined || state === 'needs-you') return undefined;
+  if (timing === undefined || state === 'needs-you' || state === 'expired') return undefined;
   const recorded = recordedTiming(rows.result?.metadata);
   if (recorded !== undefined) return { start: recorded.startedAt, end: recorded.endedAt };
   if (state === 'denied') return undefined;
@@ -292,14 +307,34 @@ function refusalReason(pair: ToolCallPair): string | undefined {
   return refused === null ? undefined : (refused[1] ?? '').trim();
 }
 
+function earliestTime(...values: readonly (number | undefined)[]): number | undefined {
+  const finite = values.filter(
+    (value): value is number => value !== undefined && Number.isFinite(value),
+  );
+  return finite.length === 0 ? undefined : Math.min(...finite);
+}
+
 /**
  * Where a call stands, from its result: none yet is still running, and a parked one needs a
  * person. A call the person refused is denied and not failed: it did what was asked of it.
  */
-export function toolCallState(pair: ToolCallPair, runActive = true): ToolCallState {
+export function toolCallState(
+  pair: ToolCallPair,
+  runActive = true,
+  now = Date.now(),
+  approvalExpiresAt?: number,
+): ToolCallState {
   const outcome = pair.result?.outcome;
   if (outcome === undefined) return runActive ? 'running' : 'interrupted';
-  if (outcome === 'action_required') return 'needs-you';
+  if (outcome === 'action_required') {
+    if (
+      pair.result?.action?.type === 'approval' &&
+      approvalExpiresAt !== undefined &&
+      now >= approvalExpiresAt
+    )
+      return 'expired';
+    return 'needs-you';
+  }
   if (outcome !== 'error') return 'done';
   return refusalReason(pair) === undefined ? 'failed' : 'denied';
 }
@@ -376,8 +411,38 @@ function entryOf(
   tools: ReadonlyMap<string, ToolInfo>,
   rows?: CallRows,
   timing?: ToolTimingContext,
+  expiredApprovalAt?: ReadonlyMap<string, number>,
+  observedApprovalAt?: ReadonlyMap<string, number>,
+  carriedApprovalRailIds?: ReadonlyMap<string, string>,
 ): ToolCallEntry {
-  const state = toolCallState(pair, runActive);
+  const approvalIdentity =
+    rows?.result?.toolResult?.outcome === 'action_required'
+      ? (() => {
+          const parsed = parseStepRowIdentifier(rows.result.id);
+          const rawCallId =
+            parsed?.callId ?? rows.result.toolResult?.providerCallId ?? pair.call.id;
+          return parsed?.kind === 'result'
+            ? {
+                key: `approval:${parsed.runId}:${rawCallId}:${rows.result.id}:round:${approvalRound(rows.result) ?? 'unknown'}`,
+                railId: `approval:${parsed.runId}:${rawCallId}:call:${rawCallId}`,
+              }
+            : undefined;
+        })()
+      : undefined;
+  const approvalKey = approvalIdentity?.key;
+  const carriedRailId =
+    approvalIdentity === undefined ? carriedApprovalRailIds?.get(pair.call.id) : undefined;
+  const approvalExpiresAt =
+    pair.result?.action?.type === 'approval'
+      ? approvalKey !== undefined && observedApprovalAt?.has(approvalKey)
+        ? observedApprovalAt.get(approvalKey)
+        : earliestTime(
+            epochOf(pair.result.action.expiresAt),
+            approvalKey === undefined ? undefined : expiredApprovalAt?.get(approvalKey),
+            approvalKey === undefined ? expiredApprovalAt?.get(pair.call.id) : undefined,
+          )
+      : undefined;
+  const state = toolCallState(pair, runActive, timing?.now, approvalExpiresAt);
   const failure = pair.result?.error?.message;
   const error = pair.result?.error;
   const info = tools.get(pair.call.name);
@@ -391,6 +456,12 @@ function entryOf(
     ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
     ...(decision === undefined ? {} : { decision }),
     callId: pair.call.id,
+    ...(approvalIdentity === undefined
+      ? carriedRailId === undefined
+        ? {}
+        : { railId: carriedRailId }
+      : { approvalKey, railId: approvalIdentity.railId }),
+    ...(approvalExpiresAt === undefined ? {} : { approvalExpiresAt }),
     name: pair.call.name,
     title: toolDisplayName(pair.call.name, info?.title),
     tier: info?.tier,
@@ -401,7 +472,10 @@ function entryOf(
     summary:
       created !== undefined
         ? created.title
-        : state === 'needs-you' || state === 'running' || state === 'interrupted'
+        : state === 'needs-you' ||
+            state === 'expired' ||
+            state === 'running' ||
+            state === 'interrupted'
           ? ''
           : state === 'denied'
             ? (refusalReason(pair) ?? '')
@@ -445,7 +519,7 @@ export function railCall(
 ): ToolCallRailCall {
   const decided = decidedLine(entry, context);
   const named = {
-    id: entry.callId,
+    id: entry.railId ?? entry.callId,
     name: entry.title ?? entry.name,
     identifier: entry.name,
     ...(entry.input === undefined || entry.input === '' ? {} : { input: entry.input }),
@@ -459,6 +533,13 @@ export function railCall(
       return { ...named, status: 'running' };
     case 'needs-you':
       return { ...named, status: 'waiting' };
+    case 'expired':
+      return {
+        ...named,
+        status: 'expired',
+        result: CHAT_COPY.tools.expiredBeforeDecision,
+        pinned: true,
+      };
     case 'interrupted':
       return { ...named, status: 'interrupted', result: interruptedWords(entry) };
     case 'denied':
@@ -526,6 +607,10 @@ export function toolGroups(
   options: {
     readonly runActive?: boolean;
     readonly tools?: ReadonlyMap<string, ToolInfo>;
+    readonly expiredApprovalAt?: ReadonlyMap<string, number> | undefined;
+    readonly observedApprovalAt?: ReadonlyMap<string, number> | undefined;
+    /** Parsed approval rail identities carried while hidden attach temporarily removes parked rows. */
+    readonly carriedApprovalRailIds?: ReadonlyMap<string, string> | undefined;
     /** What each call's duration is read against; without it no call has one. */
     readonly timing?: ToolTimingContext | undefined;
   } = {},
@@ -586,6 +671,9 @@ export function toolGroups(
       options.tools ?? new Map(),
       rows,
       options.timing,
+      options.expiredApprovalAt,
+      options.observedApprovalAt,
+      options.carriedApprovalRailIds,
     );
     current.entries.push(entry);
     current.intervals.push(intervalOf(entry.state, rows, options.timing));

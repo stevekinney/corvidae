@@ -94,15 +94,19 @@ describe('R3: reconnecting', () => {
     expect(warning?.querySelector('[role="note"]')?.getAttribute('data-cinder-variant')).toBe(
       'warning',
     );
+    expect(warning?.querySelector('.cinder-callout--inline-action')).not.toBeNull();
+    expect(warning?.querySelector('.cinder-callout__action button')?.textContent?.trim()).toBe(
+      'Retry',
+    );
     expect(warning?.querySelector('.chat-turn-text')?.textContent?.trim()).toBe(
-      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8 s.',
+      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8s.',
     );
 
     const bar = getByRole('progressbar', { name: 'Time until the next try' });
     expect(bar.getAttribute('aria-valuenow')).toBe('80');
-    expect(bar.getAttribute('aria-valuetext')).toBe('8 s');
+    expect(bar.getAttribute('aria-valuetext')).toBe('8s');
 
-    await fireEvent.click(getByRole('button', { name: 'Retry now' }));
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryConnection).toHaveBeenCalledWith('a1');
   });
 
@@ -113,18 +117,18 @@ describe('R3: reconnecting', () => {
     const bar = view.getByRole('progressbar', { name: 'Time until the next try' });
     expect(bar.getAttribute('aria-valuenow')).toBe('30');
     expect(view.container.querySelector('.chat-turn-text')?.textContent).toContain(
-      'Next try in 3 s.',
+      'Next try in 3s.',
     );
   });
 
   test('without the callback there is no Retry now', () => {
     const { queryByRole } = mount({ turnState: reconnecting });
-    expect(queryByRole('button', { name: 'Retry now' })).toBeNull();
+    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });
 
 describe('R4: stopped', () => {
-  test('a neutral pill, Discard on the left and Continue on the right, and the turn keeps its line', async () => {
+  test('a contained neutral notice keeps Discard and Continue beside the stopped status', async () => {
     const continueTurn = mock((_messageId: string) => undefined);
     const discardTurn = mock((_messageId: string) => undefined);
     const { container, getByRole } = mount({
@@ -134,20 +138,27 @@ describe('R4: stopped', () => {
     });
     const row = outcome(container);
     expect(row?.getAttribute('data-kind')).toBe('stopped');
-    const pill = row?.querySelector('.cinder-badge');
-    expect(pill?.textContent?.trim()).toBe('Stopped by you, partial answer');
-    expect(pill?.textContent).not.toContain(String.fromCodePoint(0xb7));
+    const card = row?.querySelector('.chat-turn-stopped-card');
+    expect(card?.getAttribute('role')).toBe('note');
+    expect(card?.textContent).toContain('Stopped. The answer above is partial.');
 
     const buttons = Array.from(row?.querySelectorAll('button') ?? [], (button) =>
       button.textContent?.trim(),
     );
-    expect(buttons).toEqual(['Discard', 'Continue']);
+    expect(buttons).toEqual(['Continue', 'Discard']);
+    expect(
+      getByRole('button', { name: 'Continue' }).getAttribute('aria-describedby'),
+    ).not.toBeNull();
+    expect(
+      getByRole('button', { name: 'Discard' }).getAttribute('aria-describedby'),
+    ).not.toBeNull();
     expect(getByRole('button', { name: 'Continue' }).getAttribute('data-cinder-variant')).toBe(
       'primary',
     );
     expect(getByRole('button', { name: 'Discard' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
+    expect(card?.querySelector('.cinder-callout__action')).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Continue' }));
     await fireEvent.click(getByRole('button', { name: 'Discard' }));
@@ -165,12 +176,34 @@ describe('R4: stopped', () => {
     expect(container.textContent).not.toContain('You stopped the run.');
   });
 
-  test('a stopped turn offers no Regenerate', () => {
-    const { queryByRole } = mount({
+  test('a stopped turn shows Regenerate disabled, so every settled turn has the same actions', () => {
+    const { getByRole } = mount({
       turnState: { kind: 'stopped' },
       onRegenerate: () => undefined,
     });
-    expect(queryByRole('button', { name: /Regenerate/u })).toBeNull();
+    expect((getByRole('button', { name: /Regenerate/u }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test('an outcome that carries its own recovery hides Quote and Regenerate, and keeps Copy', () => {
+    const turns: Array<Record<string, unknown>> = [
+      { turnState: { kind: 'stopped' }, onContinueTurn: () => undefined },
+      { turnState: { kind: 'empty' }, onRetryTurn: () => undefined },
+      {
+        turnState: { kind: 'failed', cause: 'The connection dropped.' },
+        onRetryTurn: () => undefined,
+      },
+    ];
+    for (const props of turns) {
+      cleanup();
+      const { queryByRole } = mount({
+        ...props,
+        onRegenerate: () => undefined,
+        onQuote: () => undefined,
+      });
+      expect(queryByRole('button', { name: /Regenerate/u })).toBeNull();
+      expect(queryByRole('button', { name: /Quote/u })).toBeNull();
+      expect(queryByRole('button', { name: /Copy/u })).not.toBeNull();
+    }
   });
 });
 
@@ -187,14 +220,16 @@ describe('R5: failed partway', () => {
     });
     const block = outcome(container);
     expect(block?.getAttribute('data-kind')).toBe('failed');
-    const alert = block?.querySelector('[role="alert"]');
+    const alert = block?.querySelector('.cinder-callout');
     expect(alert?.getAttribute('data-cinder-variant')).toBe('danger');
-    expect(alert?.textContent).toContain('This answer is incomplete.');
-    expect(block?.querySelector('.chat-turn-cause')?.textContent).toBe(
-      'The model provider dropped the connection.',
+    expect(getByRole('button', { name: 'Retry' }).getAttribute('data-cinder-variant')).toBe(
+      'secondary',
     );
-    expect(block?.querySelector('.chat-turn-keeps')?.textContent?.trim()).toBe(
-      'Retry keeps the text above and the 2 steps that finished.',
+    expect(alert?.textContent).toContain('This answer is incomplete.');
+    expect(
+      block?.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim(),
+    ).toBe(
+      'The model provider dropped the connection. Retry keeps the text above and the 2 steps that finished.',
     );
     await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryTurn).toHaveBeenCalledWith('a1');
@@ -204,9 +239,9 @@ describe('R5: failed partway', () => {
 
   test('without a host sentence, the alert says what Retry keeps in Chat’s words', () => {
     const { container } = mount({ turnState: { kind: 'failed', cause: 'Timed out.' } });
-    expect(container.querySelector('.chat-turn-keeps')?.textContent?.trim()).toBe(
-      'Retry keeps what was written so far.',
-    );
+    expect(
+      container.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim(),
+    ).toBe('Timed out. Retry keeps what was written so far.');
   });
 
   test('a failed stop note is not drawn beside the alert', () => {
@@ -231,28 +266,32 @@ describe('R6: empty answer', () => {
     expect(row?.querySelector('.chat-turn-text')?.textContent).toBe(
       'The agent finished without writing an answer.',
     );
-    expect(row?.querySelector('time')?.getAttribute('datetime')).toBe(SENT_AT);
-    // The only time on the turn is the row's own: no orphan line or footnote under it.
-    expect(container.querySelector('.chat-message-line')).toBeNull();
+    // The turn's time sits inside the notice, muted, and no separate line carries it.
+    expect(
+      row?.querySelector('.chat-turn-text ~ time.chat-turn-time')?.getAttribute('datetime'),
+    ).toBe(SENT_AT);
+    expect(container.querySelector('.chat-message-line time')).toBeNull();
     expect(container.querySelectorAll('time')).toHaveLength(1);
 
-    await fireEvent.click(getByRole('button', { name: 'Try again' }));
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryTurn).toHaveBeenCalledWith('a1');
   });
 
-  test('the default presentation drops its time line for an empty turn too', () => {
+  test('the default presentation also puts the empty turn’s time in its notice, not a metadata row', () => {
     const { container } = render(ChatMessage, {
       props: { message: reply({ content: '' }), turnState: { kind: 'empty' } },
     } as never);
     expect(container.querySelector('.chat-message-metadata')).toBeNull();
+    expect(container.querySelector('.chat-turn-empty time.chat-turn-time')).not.toBeNull();
     expect(container.querySelectorAll('time')).toHaveLength(1);
   });
 
-  test('the dashed row is drawn with a dashed neutral border', async () => {
-    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
-    expect(source).toMatch(
-      /\.chat-turn-empty\s*\{[^}]*border:\s*1px dashed var\(--cinder-border\);/su,
-    );
+  test('the empty outcome is one compact neutral card without a dashed placeholder edge', () => {
+    const { container } = mount({ turnState: { kind: 'empty' } });
+    const card = container.querySelector('.chat-turn-empty-card');
+    expect(card?.classList.contains('cinder-callout')).toBe(true);
+    expect(card?.getAttribute('data-cinder-variant')).toBe('neutral');
+    expect(card?.querySelector('.cinder-callout__icon')).not.toBeNull();
   });
 });
 
@@ -279,5 +318,13 @@ describe('a turn without a state', () => {
       turnState: { kind: 'reconnecting', attempt: 9, attempts: 3, nextTryIn: 2 },
     });
     expect(outcome(container)).toBeNull();
+  });
+});
+
+describe('approval receipt timestamp', () => {
+  test('suppresses the transcript timestamp only for approval-only turns', async () => {
+    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
+    expect(source).toContain("part.type === 'tool-approval'");
+    expect(source).toMatch(/createdAtValue\s*&&\s*formattedCreatedAt\s*&&\s*!approvalOnlyTurn/u);
   });
 });

@@ -268,4 +268,30 @@ describe('callout — one edge, no stripe', () => {
       expect(oklchChroma(dark)).toBe(SOFT_BORDER_CHROMA.dark);
     });
   });
+
+  describe('inline action layout', () => {
+    test('the icon stays on the first line while only the action is centred', () => {
+      const icon = findRuleIn(root, '.cinder-callout--inline-action .cinder-callout__icon');
+      const alignSelf = icon.nodes.find(
+        (node): node is Declaration => node.type === 'decl' && node.prop === 'align-self',
+      );
+      expect(alignSelf?.value).toBe('start');
+    });
+
+    test('the progress line is drawn in the tone colour, not the accent', () => {
+      const css = calloutCss.replace(/\s+/g, ' ');
+      expect(css).toContain(
+        '.cinder-callout__progress .cinder-progress__fill { background: var(--_cinder-status-base); }',
+      );
+    });
+  });
+
+  describe('phone layout', () => {
+    test('under 30rem the message takes the full row so the action stacks under it', () => {
+      const css = calloutCss.replace(/\s+/g, ' ');
+      expect(css).toMatch(
+        /@container \(inline-size < 30rem\) \{[^@]*\.cinder-callout__body > \.cinder-callout__content \{ flex: 1 1 100%; \}/,
+      );
+    });
+  });
 });
