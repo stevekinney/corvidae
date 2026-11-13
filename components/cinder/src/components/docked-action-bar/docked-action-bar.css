@@ -68,16 +68,6 @@
     flex: 1 1 auto;
   }
 
-  /* Equal-width actions: a Deny and Approve pair shares the row evenly. */
-  .cinder-docked-action-bar[data-cinder-equal-actions] .cinder-docked-action-bar__actions {
-    flex: 1 1 0;
-  }
-
-  .cinder-docked-action-bar[data-cinder-equal-actions] .cinder-docked-action-bar__actions > * {
-    flex: 1 1 0;
-    min-inline-size: 0;
-  }
-
   /* The reason an off bar gives sits under the row, as muted text. The status node stays mounted
    * and empty otherwise, so it takes no room. */
   .cinder-docked-action-bar__status:empty {
@@ -128,8 +118,7 @@
     }
 
     /* The actions wrap onto further lines before they would overflow the bar, each at its own
-     * compact width and ending at the trailing edge, the primary last. An equal pair (Deny,
-     * Approve), asked for with `equalActions`, keeps one line. */
+     * compact width and ending at the trailing edge, the primary last. */
     .cinder-docked-action-bar__actions {
       flex: 1 1 100%;
       flex-wrap: wrap;
@@ -139,14 +128,6 @@
     .cinder-docked-action-bar__actions > * {
       flex: 0 1 auto;
       min-inline-size: 0;
-    }
-
-    .cinder-docked-action-bar[data-cinder-equal-actions] .cinder-docked-action-bar__actions {
-      flex-wrap: nowrap;
-    }
-
-    .cinder-docked-action-bar[data-cinder-equal-actions] .cinder-docked-action-bar__actions > * {
-      flex: 1 1 0;
     }
 
     .cinder-docked-action-bar .cinder-button[data-cinder-size],

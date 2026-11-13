@@ -200,7 +200,7 @@ describe('ApprovalCard decision layout', () => {
       }),
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(getByRole('button', { name: 'Add note' }));
     await fireEvent.input(getByLabelText('Note (optional)'), { target: { value: 'Looks right' } });
     await fireEvent.click(getByRole('button', { name: 'Publish' }));
 
@@ -762,7 +762,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
 
   test('Add a note is a ghost small Cinder Button with an icon and a tooltip', () => {
     const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
-    const toggle = getByRole('button', { name: 'Add a note' });
+    const toggle = getByRole('button', { name: 'Add note' });
     expect(toggle.classList.contains('cinder-button')).toBe(true);
     expect(toggle.classList.contains('cinder-approval-card__note-toggle')).toBe(true);
     expect(toggle.getAttribute('data-cinder-variant')).toBe('ghost');
@@ -772,9 +772,9 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(toggle.closest('.cinder-approval-card__note-toggle-tip')).not.toBeNull();
     // The pencil is the glyph; the words are the label at the leading end of the action row.
     expect(toggle.querySelector('svg.lucide-pencil')).not.toBeNull();
-    // The visible words are "Add note"; the accessible name stays "Add a note".
+    // The visible words are "Add note", and so is the accessible name: the label is in the name.
     expect(squash(toggle.textContent)).toBe('Add note');
-    expect(toggle.getAttribute('aria-label')).toBe('Add a note');
+    expect(toggle.getAttribute('aria-label')).toBe(squash(toggle.textContent));
     const group = container.querySelector('[aria-label="Approval actions"]');
     expect(group?.firstElementChild?.contains(toggle)).toBe(true);
   });

@@ -549,7 +549,7 @@ describe('Chat approval receipt', () => {
     });
     const card = getByRole(container, 'article', { name: QUESTION });
 
-    await fireEvent.click(getByRole(card, 'button', { name: 'Add a note' }));
+    await fireEvent.click(getByRole(card, 'button', { name: 'Add note' }));
     await fireEvent.input(card.querySelector('textarea')!, {
       target: { value: 'Checked the order' },
     });

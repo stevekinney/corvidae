@@ -17,8 +17,8 @@
 <!-- A quiet ghost Button with a pencil and "Add note", at the leading end of the action row. Only
      when the row cannot fit the words does `fitNoteLabel` hide them and the stylesheet paints it
      with Deny's outline, so a lone glyph still reads as a button; the tooltip carries the words
-     and the accessible name, "Add a note", is the same either way. -->
-<Tooltip text="Add a note" describe={false} class="cinder-approval-card__note-toggle-tip">
+     and the accessible name, "Add note", is the visible label and the same either way. -->
+<Tooltip text="Add note" describe={false} class="cinder-approval-card__note-toggle-tip">
   <Button
     type="button"
     variant="ghost"
@@ -26,7 +26,7 @@
     class="cinder-approval-card__note-toggle"
     aria-expanded={false}
     label="Add note"
-    aria-label="Add a note"
+    aria-label="Add note"
     {disabled}
     onclick={onOpen}
   >

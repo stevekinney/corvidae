@@ -1327,7 +1327,7 @@ describe('ApprovalCard row layout', () => {
       container.querySelector('.cinder-approval-card__command .cinder-code-block--wrap'),
     ).not.toBeNull();
     expect(container.querySelector('pre.cinder-approval-card__command')).toBeNull();
-    expect(getByRole('button', { name: 'Add a note' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Add note' })).not.toBeNull();
     expect(container.querySelector('.cinder-approval-card__details')).toBeNull();
   });
 
@@ -1562,7 +1562,7 @@ describe('ApprovalCard row layout', () => {
     });
     expect(queryByLabelText('Note (optional)')).toBeNull();
 
-    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(getByRole('button', { name: 'Add note' }));
 
     const field = requiredInstance(getByLabelText('Note (optional)'), HTMLTextAreaElement);
     expect(field.placeholder).toBe('Add a note for the agent or the record');
@@ -1590,7 +1590,7 @@ describe('ApprovalCard row layout', () => {
       idempotencyKey: 'one',
     });
     const view = render(ApprovalCard, { props });
-    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
     await fireEvent.input(view.getByLabelText('Note (optional)'), {
       target: { value: 'Draft for the first.' },
     });
@@ -1677,7 +1677,7 @@ describe('ApprovalCard row layout', () => {
       await fireEvent.click(button);
     }
     expect(onResolve).not.toHaveBeenCalled();
-    expect(getByRole('button', { name: 'Add a note' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Add note' })).not.toBeNull();
     expect(getByRole('button', { name: /^Input/ })).not.toBeNull();
   });
 
@@ -1756,7 +1756,7 @@ describe('ApprovalCard row layout', () => {
       'Pending',
     );
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
-    expect(queryByRole('button', { name: 'Add a note' })).toBeNull();
+    expect(queryByRole('button', { name: 'Add note' })).toBeNull();
   });
 
   test('writes the time the approval was asked as a time element and drops it once decided', () => {
@@ -1938,7 +1938,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         const note = container.querySelector('textarea');
         if (note !== null) expect(note.disabled).toBe(true);
         else
-          expect((getByRole('button', { name: 'Add a note' }) as HTMLButtonElement).disabled).toBe(
+          expect((getByRole('button', { name: 'Add note' }) as HTMLButtonElement).disabled).toBe(
             true,
           );
       });
