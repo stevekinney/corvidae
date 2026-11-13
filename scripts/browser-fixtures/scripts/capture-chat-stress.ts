@@ -2599,6 +2599,12 @@ export const LABEL_FIT_ROWS: readonly {
     attribute: 'data-cinder-note-compact',
     ignore: '.cinder-inline-confirm__two-press-hint',
   },
+  {
+    row: '.chat-question-dock-actions',
+    control: '.chat-question-dock-reply-tip',
+    attribute: 'data-chat-reply-compact',
+    ignore: '[hidden]',
+  },
 ];
 
 /**

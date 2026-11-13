@@ -488,7 +488,7 @@
   );
   provideQuestionStore(questions);
 
-  // The first open question that is docked takes the composer's place; Reply in chat instead puts
+  // The first open question that is docked takes the composer's place; Reply in chat puts
   // it back in its row and gives the composer back.
   const dockedQuestion = $derived(questions.dockedQuestions[0]);
   const dockedPosition = $derived(questions.dockedAnswered + 1);

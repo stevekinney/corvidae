@@ -1,7 +1,7 @@
 /**
  * A question that has choices, docked in place of the composer (COR-2278, row P3): the Needs you
  * warning, the fieldset named Question, radio cards with the keys 1, 2 and 3, Something
- * else with its field, a secondary Reply in chat instead and a primary Answer, progress through
+ * else with its field, a quiet Reply in chat and a primary Answer, progress through
  * several questions, and the answer receipt that stays in the transcript.
  */
 
@@ -285,20 +285,33 @@ describe('a docked question', () => {
     expect(answer.hasAttribute('aria-describedby')).toBe(false);
   });
 
-  test('puts the secondary Reply in chat instead before the primary Answer', async () => {
+  test('puts a quiet Reply in chat, glyph and words, before the primary Answer', async () => {
     const { container } = mountDocked('dock-actions', ENVIRONMENT);
     await settle();
 
     const buttons = [
       ...container.querySelectorAll<HTMLButtonElement>('.chat-question-dock-actions button'),
     ];
+    const words = container.querySelector<HTMLButtonElement>('.chat-question-dock-reply-words')!;
+    const icon = container.querySelector<HTMLButtonElement>('.chat-question-dock-reply-icon')!;
+    const answer = buttons[buttons.length - 1]!;
+    expect(buttons.indexOf(words)).toBeLessThan(buttons.indexOf(answer));
+    // The visible words are the accessible name, with the glyph beside them.
+    expect(words.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(words.textContent?.trim()).toBe('Reply in chat');
+    expect(words.getAttribute('aria-label')).toBeNull();
+    expect(words.querySelector('svg')).not.toBeNull();
+    expect(words.closest('.cinder-tooltip-wrapper')).not.toBeNull();
+    // The icon-only fallback is the secondary outline with the same name; it shows only when the
+    // row cannot hold the words.
+    expect(icon.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(icon.getAttribute('data-cinder-icon-only')).toBe('');
+    expect(icon.getAttribute('aria-label') ?? icon.textContent?.trim()).toBe('Reply in chat');
     expect(
-      buttons.map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim()),
-    ).toEqual(['Reply in chat instead', 'Answer']);
-    expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(buttons[0]!.getAttribute('data-cinder-icon-only')).toBe('');
-    expect(buttons[0]!.closest('.cinder-tooltip-wrapper')).not.toBeNull();
-    expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('primary');
+      words.closest('.chat-question-dock-actions')?.hasAttribute('data-chat-reply-compact'),
+    ).toBe(false);
+    expect(answer.textContent?.trim()).toBe('Answer');
+    expect(answer.getAttribute('data-cinder-variant')).toBe('primary');
   });
 
   test('a choice only selects; Answer sends it, and the row keeps the receipt', async () => {
@@ -444,14 +457,14 @@ describe('a docked question', () => {
     ).toEqual(['Approve it', 'Reject it']);
   });
 
-  test('Reply in chat instead gives the composer back and returns the question to its row', async () => {
+  test('Reply in chat gives the composer back and returns the question to its row', async () => {
     const answers: unknown[] = [];
     const { container } = mountDocked('dock-reply', ENVIRONMENT, (_toolCallId, value) => {
       answers.push(value);
     });
     await settle();
 
-    await fireEvent.click(buttonNamed(container, 'Reply in chat instead')!);
+    await fireEvent.click(buttonNamed(container, 'Reply in chat')!);
     await settle();
 
     expect(dockOf(container)).toBeNull();

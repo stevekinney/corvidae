@@ -679,7 +679,7 @@
           {
             "action": "expect",
             "role": "button",
-            "name": "Reply in chat instead"
+            "name": "Reply in chat"
           },
           {
             "action": "expect",
@@ -2140,7 +2140,7 @@
   {
     "id": 65,
     "slug": "docked-reply-in-chat",
-    "title": "Reply in chat instead gives the composer back.",
+    "title": "Reply in chat gives the composer back.",
     "provenance": "derived",
     "source": "Derived from design row P3; the original definition of this number was lost.",
     "rows": ["P3"],
@@ -2153,7 +2153,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Reply in chat instead"
+        "name": "Reply in chat"
       },
       {
         "action": "expect",

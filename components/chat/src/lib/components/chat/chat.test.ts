@@ -931,7 +931,7 @@ describe('Chat — message rendering', () => {
 
       const dock = container.querySelector('[data-chat-question-dock]');
       expect(dock).not.toBeNull();
-      expect(dock?.textContent).toContain('Reply in chat instead');
+      expect(dock?.textContent).toContain('Reply in chat');
       expect(dock?.textContent).toContain('Antwort');
       expect(dock?.querySelector('button[disabled]')).not.toBeNull();
       expect(container.querySelector('.chat-question-choices')).toBeNull();

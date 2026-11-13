@@ -374,8 +374,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * choice questions dock so phone users always get the explicit Reply and Answer controls.
    * `'docked'` draws the question in place of the composer: a Needs you warning, a fieldset named Question (its legend is visually hidden),
    * radio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
-   * secondary Reply in chat instead and a primary Answer, with `Question 2 of 3` when several were
-   * asked together. A choice only selects; Answer sends it. Reply in chat instead gives the
+   * quiet Reply in chat and a primary Answer, with `Question 2 of 3` and previous and next buttons
+   * when several were asked together. A choice only selects; Answer sends it. Reply in chat gives the
    * composer back and returns the question to its row. Every other kind of question stays in its
    * row either way. Needs {@link ChatProps.onInputSubmit}.
    */

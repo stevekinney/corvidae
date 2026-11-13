@@ -24,7 +24,7 @@
    * warning that the run needs the person, a fieldset named for what the agent is asking, radio
    * cards with the keys 1, 2 and 3 for the choices, and Something else, which opens a field. Every
    * choice is shown. The answer is always explicit: a choice only selects, and Answer sends it.
-   * Reply in chat instead (secondary, on the left) gives the composer back; Answer (primary, on the
+   * Reply in chat (quiet, on the left) gives the composer back; Answer (primary, on the
    * right) stays off, with its reason in view, until there is something to send. The keys work only
    * while focus is inside the dock and never inside a field, so they cannot take over typing.
    */
@@ -33,6 +33,7 @@
     ChoiceGrid,
     ChoiceGridItem,
     CircleAlert,
+    createLabelFit,
     Input,
     MessageSquare,
     Tooltip,
@@ -66,6 +67,13 @@
   );
   const allowsOther = $derived(kind === 'choice-other');
   const choiceCount = $derived(choices.length + (allowsOther ? 1 : 0));
+
+  // The reply button shows its words while the whole row fits on one line with them.
+  const fitReply = createLabelFit({
+    control: '.chat-question-dock-reply-tip',
+    attribute: 'data-chat-reply-compact',
+    ignore: '[hidden]',
+  });
 
   let root = $state<HTMLFormElement | undefined>();
   let optionsScroll = $state<HTMLDivElement | undefined>();
@@ -217,11 +225,30 @@
       </div>
     </fieldset>
   </div>
-  <div class="chat-question-dock-actions">
-    <Tooltip text={labels.replyInChat} placement="top" describe={false}>
+  <div class="chat-question-dock-actions" {@attach fitReply}>
+    <!-- A quiet button with its glyph and its words. Only when the row cannot hold the words does
+         the row's fit mark the wrapper compact, and the icon-only button with the secondary outline
+         takes the words' place (the other is not displayed, so one control is ever reachable). -->
+    <Tooltip
+      text={labels.replyInChat}
+      placement="top"
+      describe={false}
+      class="chat-question-dock-reply-tip"
+    >
       <Button
         type="button"
-        class="chat-question-dock-reply"
+        class="chat-question-dock-reply-words"
+        size="sm"
+        variant="ghost"
+        label={labels.replyInChat}
+        disabled={question.busy}
+        onclick={onReply}
+      >
+        {#snippet leadingIcon()}<MessageSquare aria-hidden="true" />{/snippet}
+      </Button>
+      <Button
+        type="button"
+        class="chat-question-dock-reply-icon"
         size="sm"
         variant="secondary"
         iconOnly
@@ -407,8 +434,33 @@
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
-  /* The icon-only "Reply in chat" stays at the leading end and Answer, the primary, ends at the
-   * trailing content edge, also when the row wraps; both keep their compact width. */
+  /* "Reply in chat" stays at the leading end and Answer, the primary, ends at the trailing content
+   * edge, also when the row wraps; both keep their compact width. The quiet button is pulled back by
+   * its own inline padding so its glyph starts on the panel's content edge; its 44px hit area comes
+   * from the Button's pseudo-element, which takes no layout. */
+  .chat-question-dock-actions :global(.chat-question-dock-reply-tip) {
+    flex: none;
+    margin-inline-end: auto;
+  }
+
+  .chat-question-dock-actions :global(.chat-question-dock-reply-words) {
+    margin-inline-start: calc(-1 * var(--cinder-button-padding-x-sm));
+    white-space: nowrap;
+  }
+
+  .chat-question-dock-actions :global(.chat-question-dock-reply-icon) {
+    display: none;
+  }
+
+  /* The row cannot hold the words: the icon-only button with the secondary outline replaces them. */
+  .chat-question-dock-actions :global([data-chat-reply-compact] .chat-question-dock-reply-words) {
+    display: none;
+  }
+
+  .chat-question-dock-actions :global([data-chat-reply-compact] .chat-question-dock-reply-icon) {
+    display: inline-flex;
+  }
+
   .chat-question-dock-actions {
     display: flex;
     flex-wrap: wrap;

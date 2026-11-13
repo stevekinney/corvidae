@@ -20,7 +20,7 @@ export type ChatQuestionDockLabels = {
   ownAnswer: string;
   /** The placeholder of that field. Default `Type your answer`. */
   ownAnswerPlaceholder: string;
-  /** The secondary button that gives the composer back so the person can reply in a message. Default `Reply in chat instead`. */
+  /** The quiet button that gives the composer back so the person can reply in a message; its glyph and these words, or only the glyph when the row cannot hold them. Default `Reply in chat`. */
   replyInChat: string;
   /** The primary button that sends the chosen answer. Default `Answer`. */
   answer: string;
@@ -41,7 +41,7 @@ export const DEFAULT_QUESTION_DOCK_LABELS: ChatQuestionDockLabels = {
   somethingElse: 'Something else',
   ownAnswer: 'Your own answer',
   ownAnswerPlaceholder: 'Type your answer',
-  replyInChat: 'Reply in chat instead',
+  replyInChat: 'Reply in chat',
   answer: 'Answer',
   failed: 'The answer could not be sent. Try again.',
   yes: 'Yes',
