@@ -10,6 +10,7 @@ import {
   readCalloutSpacingProblems,
   readFailureSummaryProblems,
   readIconSizeProblems,
+  readLabelFitProblems,
   readRepeatedSummaryProblems,
   readWithdrawal,
   revealScrollableControls,
@@ -114,6 +115,108 @@ describe('chat stress visual measurement', () => {
 
     it('passes when the duration sits beside the tool name in its own column', async () => {
       expect(await problemsFor(failedRow('2 / 3 / 3 / 4'))).toEqual([]);
+    });
+  });
+
+  describe('label fit guard', () => {
+    // The real mechanism of the approval card's action row: the note toggle's tooltip wrapper is
+    // centred, Deny and the primary stretch, a visually hidden live region sits one pixel above the
+    // line, and InlineConfirm's wrapper makes no box of its own. The words are a nowrap label; the
+    // attribute hides them.
+    const actionRow = (width: number, attribute: string): string => `
+      <style>
+        body { margin: 0; }
+        .cinder-approval-card__row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; gap: 4px; row-gap: 12px; width: ${width}px; font: 13px monospace; }
+        .cinder-tooltip-wrapper { flex: none; align-self: center; margin-inline-end: auto; padding-inline-end: 8px; }
+        .cinder-approval-card__note-toggle { display: inline-flex; height: 28px; white-space: nowrap; }
+        .cinder-approval-card__note-toggle[data-cinder-note-compact] .cinder-button__label { display: none; }
+        .cinder-button { align-self: stretch; padding: 0 12px; }
+        .cinder-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; }
+        .cinder-inline-confirm__two-press { display: contents; }
+      </style>
+      <main data-testid="chat-stress-shell">
+        <div class="cinder-approval-card__row-actions">
+          <span class="cinder-tooltip-wrapper"><button class="cinder-approval-card__note-toggle" ${attribute}>ico <span class="cinder-button__label">Add note</span></button></span>
+          <button class="cinder-button">Deny</button>
+          <span class="cinder-sr-only">live</span>
+          <span class="cinder-inline-confirm__two-press"><button class="cinder-button">Refund $42.00</button></span>
+        </div>
+      </main>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await readLabelFitProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    // Runs the shipped attachment (its TypeScript with the exports dropped) on the row, starting
+    // from the opposite state, and reports whether the control ended icon-only.
+    const compactAfterFitting = async (width: number): Promise<boolean> => {
+      const source = await Bun.file(
+        new URL('../../../components/cinder/src/utilities/fit-label-to-row.ts', import.meta.url),
+      ).text();
+      const script = new Bun.Transpiler({ loader: 'ts' })
+        .transformSync(source)
+        .replace(/^export /gmu, '');
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(actionRow(width, ''));
+        await page.addScriptTag({ content: script });
+        return await page.evaluate(() => {
+          const fit = (
+            window as unknown as {
+              createLabelFit: (options: {
+                control: string;
+                attribute: string;
+              }) => (row: HTMLElement) => unknown;
+            }
+          ).createLabelFit;
+          const row = document.querySelector<HTMLElement>('.cinder-approval-card__row-actions')!;
+          const control = row.querySelector('.cinder-approval-card__note-toggle')!;
+          control.setAttribute('data-cinder-note-compact', '');
+          fit({
+            control: '.cinder-approval-card__note-toggle',
+            attribute: 'data-cinder-note-compact',
+          })(row);
+          return control.hasAttribute('data-cinder-note-compact');
+        });
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('the shipped attachment shows the words on a row that holds them, though a centred control and a hidden live region sit at other tops', async () => {
+      expect(await compactAfterFitting(390)).toBe(false);
+    });
+
+    it('the shipped attachment goes icon-only on a row that cannot hold the words', async () => {
+      expect(await compactAfterFitting(200)).toBe(true);
+    });
+
+    it('passes when the words show and the row holds them on one line', async () => {
+      expect(await problemsFor(actionRow(390, ''))).toEqual([]);
+    });
+
+    it('fails when the control is icon-only although the row has room for its words', async () => {
+      expect(await problemsFor(actionRow(390, 'data-cinder-note-compact'))).toEqual([
+        expect.stringContaining('is icon-only with room for its words'),
+      ]);
+    });
+
+    it('fails when the words stay while the row is too narrow to hold them', async () => {
+      expect(await problemsFor(actionRow(200, ''))).toEqual([
+        expect.stringContaining('keeps its words while the row cannot hold them'),
+      ]);
+    });
+
+    it('passes when the control is icon-only because the row is too narrow', async () => {
+      expect(await problemsFor(actionRow(200, 'data-cinder-note-compact'))).toEqual([]);
     });
   });
 

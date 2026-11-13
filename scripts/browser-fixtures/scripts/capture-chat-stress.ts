@@ -2333,6 +2333,7 @@ async function measure(
     problems.push(...(await readFailureSummaryProblems(opened.page)));
   }
   problems.push(...(await readActionRowProblems(opened.page)));
+  problems.push(...(await readLabelFitProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
   problems.push(...(await readIconSizeProblems(opened.page)));
   return { measurement, problems };
@@ -2579,6 +2580,76 @@ export async function readActionRowProblems(
     },
     { selectors: [...selectors], tolerance: ACTION_ROW_TOLERANCE },
   );
+}
+
+/**
+ * The action rows whose control gives up its words for its icon only when the row cannot hold them
+ * on one line: the row, the control, the attribute that makes it icon-only, and the parts that are
+ * meant to take a line of their own. A new row of this kind joins this list.
+ */
+export const LABEL_FIT_ROWS: readonly {
+  readonly row: string;
+  readonly control: string;
+  readonly attribute: string;
+  readonly ignore: string;
+}[] = [
+  {
+    row: '.cinder-approval-card__row-actions',
+    control: '.cinder-approval-card__note-toggle',
+    attribute: 'data-cinder-note-compact',
+    ignore: '.cinder-inline-confirm__two-press-hint',
+  },
+];
+
+/**
+ * Measures that a control shows its words exactly when its row has room for them. The check does
+ * not use the helper's own test (items sharing a line): it puts the words back, adds the widths of
+ * the row's items and their gaps, and compares the sum with the row's width. A control that is
+ * icon-only with room to spare, or that keeps its words while the row cannot hold them, is a problem.
+ * The attribute is restored before returning.
+ */
+export async function readLabelFitProblems(
+  page: Page,
+  rows: typeof LABEL_FIT_ROWS = LABEL_FIT_ROWS,
+): Promise<string[]> {
+  return page.evaluate((specs) => {
+    const problems: string[] = [];
+    for (const spec of specs) {
+      for (const row of document.querySelectorAll<HTMLElement>(spec.row)) {
+        const control = row.querySelector<HTMLElement>(spec.control);
+        if (control === null || row.clientWidth === 0) continue;
+        const items = (parent: Element): HTMLElement[] =>
+          [...parent.children].flatMap((child) => {
+            if (!(child instanceof HTMLElement) || child.matches(spec.ignore)) return [];
+            const style = getComputedStyle(child);
+            if (style.display === 'none' || style.position === 'absolute') return [];
+            if (style.display === 'contents') return items(child);
+            return child.getBoundingClientRect().width > 0 ? [child] : [];
+          });
+        const compact = control.hasAttribute(spec.attribute);
+        control.removeAttribute(spec.attribute);
+        const laidOut = items(row);
+        const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+        const needed =
+          laidOut.reduce((sum, item) => sum + item.getBoundingClientRect().width, 0) +
+          gap * Math.max(0, laidOut.length - 1);
+        if (compact) control.setAttribute(spec.attribute, '');
+        const fits = needed <= row.clientWidth + 0.5;
+        const label = (row.className.split(/\s+/)[0] ?? row.tagName).trim();
+        if (compact && fits) {
+          problems.push(
+            `${spec.control} in .${label} is icon-only with room for its words (${needed.toFixed(1)}px of ${row.clientWidth}px)`,
+          );
+        }
+        if (!compact && !fits) {
+          problems.push(
+            `${spec.control} in .${label} keeps its words while the row cannot hold them (${needed.toFixed(1)}px of ${row.clientWidth}px)`,
+          );
+        }
+      }
+    }
+    return problems;
+  }, rows);
 }
 
 /** How far apart the two gaps around a notice's progress line may be, in pixels (owner decision of 2026-11-13). */
