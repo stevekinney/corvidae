@@ -92,51 +92,39 @@ export function approvalActionRow(card: ParentNode): HTMLElement | null {
 }
 
 /**
- * How far the transcript scrolls (positive scrolls down) to rest on an approval that waits.
- *
- * Two rules decide it, the first outranking the second. The card's row of decision buttons is
- * wholly inside the box with `APPROVAL_BOTTOM_CLEARANCE` below it (below the card, when the card
- * with its clearance fits from the row's top), clear of the composer and any reminder. And the
- * block that owns the approval, its step row and its card, starts at the box's top, so no line of
- * text above it is left half cut; a block taller than the box cannot, and rests as near its top as
- * the first rule allows. The answer is 0 once it rests, so applying it again moves nothing.
+ * How far the transcript scrolls, in pixels (positive scrolls down), so a card's row of decision
+ * buttons sits wholly inside the transcript with `inset` to spare below it, clear of the composer
+ * and any notice above it. It is 0 when the row already fits or the viewport is too short to hold
+ * it with its inset, and a row above the top scrolls up just far enough to show it.
+ */
+export function approvalActionRowShift(
+  row: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  inset = 0,
+): number {
+  const rowHeight = row.bottom - row.top;
+  if (rowHeight + inset > viewport.bottom - viewport.top) return 0;
+  const below = row.bottom + inset - viewport.bottom;
+  if (below > 0) return below;
+  const above = viewport.top - row.top;
+  return above > 0 ? -above : 0;
+}
+
+/**
+ * How far the transcript scrolls (positive scrolls down) so the block that owns a waiting approval,
+ * its step row and its card, starts at the top of the transcript's box, or `undefined` when the
+ * block with its card's clearance is taller than the box and cannot be shown whole. A whole block
+ * at the top never leaves a line of the text above it cut in half, and the card ends inside the box
+ * with the clearance the decision buttons need.
  */
 export function approvalArrivalShift(
   block: Pick<DOMRectReadOnly, 'top'>,
   card: Pick<DOMRectReadOnly, 'bottom'>,
-  row: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
   box: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
-): number {
-  const room = box.bottom - box.top;
-  const bottomEdge =
-    card.bottom + APPROVAL_BOTTOM_CLEARANCE - row.top <= room ? card.bottom : row.bottom;
-  const least = bottomEdge + APPROVAL_BOTTOM_CLEARANCE - box.bottom;
-  const most = row.top - box.top;
-  return Math.min(Math.max(block.top - box.top, least), most);
-}
-
-/**
- * The attribute a host's own message row sets on the element that owns a waiting approval (its
- * step row and its card), holding the ids of the messages the element stands for, space separated.
- * Chat draws its own rows as `article[data-message-id]`; a host that draws a row itself names the
- * block here, so Chat finds the card and rests the transcript on the block, not a part of it.
- */
-export const APPROVAL_BLOCK_ATTRIBUTE = 'data-chat-approval-block';
-
-/**
- * Returns the element that owns the approval a message shows: a host's block that names the
- * message in `data-chat-approval-block`, else Chat's own `article[data-message-id]` row.
- */
-export function pendingApprovalBlock(
-  root: ParentNode | null | undefined,
-  messageId: string,
-): HTMLElement | null {
-  if (root === null || root === undefined) return null;
-  const escaped = CSS.escape(messageId);
-  return (
-    root.querySelector<HTMLElement>(`[${APPROVAL_BLOCK_ATTRIBUTE}~="${escaped}"]`) ??
-    root.querySelector<HTMLElement>(`article[data-message-id="${escaped}"]`)
-  );
+): number | undefined {
+  const needed = card.bottom + APPROVAL_BOTTOM_CLEARANCE - block.top;
+  if (needed > box.bottom - box.top) return undefined;
+  return block.top - box.top;
 }
 
 /** Returns the pending approval card rendered by the message that is waiting. */
@@ -144,10 +132,12 @@ export function pendingApprovalCard(
   root: ParentNode | null | undefined,
   messageId: string,
 ): HTMLElement | null {
+  const message = root?.querySelector<HTMLElement>(
+    `article[data-message-id="${CSS.escape(messageId)}"]`,
+  );
   return (
-    pendingApprovalBlock(root, messageId)?.querySelector<HTMLElement>(
-      '.cinder-approval-card[data-cinder-state="pending"]',
-    ) ?? null
+    message?.querySelector<HTMLElement>('.cinder-approval-card[data-cinder-state="pending"]') ??
+    null
   );
 }
 

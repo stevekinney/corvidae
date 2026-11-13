@@ -2128,7 +2128,6 @@
               entries={group.entries.map(displayEntry)}
               decided={decisionContext}
               selectedId={selectedCallId}
-              approvalBlock={[message.id, ...group.messageIds].join(' ')}
               onSelect={selectCall}
               endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
               duration={group.durationMilliseconds === undefined

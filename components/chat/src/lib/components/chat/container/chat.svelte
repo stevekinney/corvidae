@@ -66,12 +66,12 @@
   import { useChatApprovalWait } from './use-chat-approval-wait.svelte.ts';
   import {
     approvalActionRow,
+    approvalActionRowShift,
     approvalArrivalShift,
     approvalReviewBox,
     approvalRowVisible,
     approvalVisibleBox,
     focusPendingApproval,
-    pendingApprovalBlock,
     pendingApprovalCard,
   } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
@@ -1623,25 +1623,18 @@
     };
   });
 
-  // The card the arrival rest holds the transcript on, for as long as the person has not moved it;
-  // the attention lift below stands down for an item that holds it, so the two never take turns.
-  let approvalRestCard: HTMLElement | null = null;
-  // When an approval arrives the transcript rests on it: the block that owns it starts at the top
-  // when it fits, and the card's row of decision buttons is always whole above the composer and any
-  // notice (`approvalArrivalShift`). It re-rests as the layout settles (the notice itself shrinks
-  // the transcript, rows resolve their size) until the person scrolls, wheels, touches or presses
-  // a key there, so nothing moves it afterwards. The row is judged against the box the transcript has without the reminder, the same box that
+  // When an approval arrives the transcript scrolls so the card's row of decision buttons clears
+  // the composer and any notice above it, and keeps doing so as the layout settles (the notice
+  // itself shrinks the transcript) until the person scrolls, wheels, touches or presses a key
+  // there, or focus is inside the card. A card taller than the transcript is the lift's to place.
+  // The row is judged against the box the transcript has without the reminder, the same box that
   // decides whether the reminder shows.
   $effect(() => {
     const scroller = viewport;
     const messageId = approvalWait.messageId;
-    // Not `approvalWaiting`: a blocked composer or a notice under the transcript (no model
-    // provider) silences the composer's reminder, not the approval, which still waits in the
-    // transcript and still rests where its decision row is whole.
-    if (scroller === null || messageId === undefined) return undefined;
+    if (scroller === null || !approvalWaiting || messageId === undefined) return undefined;
     let released = false;
     let frame = 0;
-    let restRoom = 0;
     const settle = (): void => {
       frame = 0;
       if (released) return;
@@ -1656,67 +1649,56 @@
         reminder.shown,
         reminder.blockSize,
       );
+      const cardBox = card.getBoundingClientRect();
+      if (cardBox.height >= viewportBox.bottom - viewportBox.top) return;
       // Arriving on an approval, the block that owns it (its step row and card) starts at the top
-      // of the transcript when it fits whole, so no line of the text above is left half cut, and
-      // the decision row is always whole above the composer. A host focuses the card as the chat
-      // opens, which is not a reason to leave it elsewhere; the person's own input releases this.
+      // of the transcript when it fits whole, so no line of the text above is left half cut. A
+      // host focuses the card as the chat opens, which is not a reason to leave it elsewhere; the
+      // person's own input releases this.
       const block =
         card.closest<HTMLElement>('.chat-tool-call-group') ??
-        pendingApprovalBlock(containerRef, messageId) ??
-        card;
-      const shift = approvalArrivalShift(
-        block.getBoundingClientRect(),
-        card.getBoundingClientRect(),
-        actionRow.getBoundingClientRect(),
-        viewportBox,
-      );
-      approvalRestCard = card;
-      if (Math.abs(shift) < 0.5) return;
-      // A block with little content after it cannot reach the top: the transcript's end would stop
-      // the scroll short. The room it lacks is added after the last row, exactly what the rest
-      // needs, so the end of the transcript is the rest and nothing clamps it later.
-      const wanted = scroller.scrollTop + shift;
-      const reachable = scroller.scrollHeight - scroller.clientHeight - restRoom;
-      const room = Math.max(0, Math.ceil(wanted - reachable));
-      if (room !== restRoom) {
-        restRoom = room;
-        scroller.style.setProperty('--cinder-chat-approval-rest-room', `${room}px`);
+        card.closest<HTMLElement>('article[data-message-id]');
+      const arrival =
+        block === null || block === card
+          ? undefined
+          : approvalArrivalShift(block.getBoundingClientRect(), cardBox, viewportBox);
+      if (arrival !== undefined) {
+        if (arrival !== 0) scroller.scrollTop += arrival;
+        return;
       }
-      scroller.scrollTop = wanted;
+      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
+      const shift = approvalActionRowShift(
+        approvalReviewBox(
+          actionRow.getBoundingClientRect(),
+          cardBox,
+          viewportBox.bottom - viewportBox.top,
+        ),
+        viewportBox,
+        0,
+      );
+      if (shift !== 0) {
+        scroller.scrollTop += shift;
+      }
     };
     const schedule = (): void => {
       if (frame === 0 && !released) frame = requestAnimationFrame(settle);
     };
     const release = (): void => {
       released = true;
-      approvalRestCard = null;
     };
     const inputs = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
     for (const type of inputs) scroller.addEventListener(type, release, { passive: true });
     const resizes =
       typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
     resizes?.observe(scroller);
-    // Rows resolving their real size (content-visibility, late images, a notice mounting) move the
-    // block without resizing the scroller, so each row is watched too; the rest holds through them.
-    const watchRows = (): void => {
-      for (const row of scroller.children) resizes?.observe(row);
-      const card = pendingApprovalCard(containerRef, messageId);
-      if (card !== null) resizes?.observe(card);
-    };
-    const changes = new MutationObserver(() => {
-      watchRows();
-      schedule();
-    });
+    const changes = new MutationObserver(schedule);
     changes.observe(scroller, { childList: true, subtree: true });
-    watchRows();
     schedule();
     return () => {
       if (frame !== 0) cancelAnimationFrame(frame);
       resizes?.disconnect();
       changes.disconnect();
       for (const type of inputs) scroller.removeEventListener(type, release);
-      approvalRestCard = null;
-      scroller.style.removeProperty('--cinder-chat-approval-rest-room');
     };
   });
 
@@ -1747,7 +1729,6 @@
         if (next === null) attentionLifted = false;
       }
       if (target === null || released) return;
-      if (approvalRestCard !== null && target.contains(approvalRestCard)) return;
       if (focusIsInside(target, scroller.ownerDocument.activeElement)) return;
       const pinned = isAtBottom(
         {
@@ -3054,10 +3035,6 @@
     overflow-y: auto;
     scroll-padding-block: var(--cinder-space-2);
     padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
-    /* The room after the last row that lets a waiting approval's block rest at the top. */
-    padding-block-end: calc(
-      var(--cinder-chat-timeline-padding) + var(--cinder-chat-approval-rest-room, 0px)
-    );
     display: flex;
     flex-direction: column;
     gap: var(--cinder-chat-message-gap);
