@@ -50,7 +50,6 @@
     Button,
     Chip,
     ConfirmDialog,
-    EmptyState,
     PageHeader,
     StatusDot,
     ToolCallPanel,
@@ -64,6 +63,7 @@
     createConversationHistory,
     McpApp,
     resolveMessageNotes,
+    type ChatAvailability,
     type ChatRowContext,
     type MessageNoteInfo,
   } from '@lostgradient/chat';
@@ -132,6 +132,7 @@
   import ChatDetails from './chat-details.svelte';
   import { approvalHoldsChat } from './chat-waiting.ts';
   import ChatMoreMenu from './chat-more-menu.svelte';
+  import { examplePrompts } from './new-chat.ts';
   import { takeFirstMessage } from './new-chat-handoff.ts';
   import AgentSelect from './agent-select.svelte';
   import ComposerSettings from './composer-settings.svelte';
@@ -180,6 +181,8 @@
      * and the composer says no agent can create workflows, with the way to Agents.
      */
     fromWorkflows?: boolean;
+    /** What the person typed while the chat was read (`chat-unavailable.svelte`); the box starts with it. */
+    draft?: string | undefined;
   }
 
   let {
@@ -188,6 +191,7 @@
     agentName,
     isNew = false,
     fromWorkflows = false,
+    draft,
   }: ChatConversationProps = $props();
 
   const queryClient = useQueryClient();
@@ -522,6 +526,43 @@
     }),
   );
 
+  /**
+   * What stands in for the conversation when it cannot be shown (COR-2285 V3): a chat deleted while
+   * its page is open has Chat's deleted state, with All conversations and no composer.
+   */
+  const availability = $derived<ChatAvailability | undefined>(
+    gone
+      ? {
+          kind: 'deleted',
+          allConversations: {
+            label: CHAT_COPY.load.allConversations,
+            onclick: () => router.navigate('/chats'),
+          },
+          labels: {
+            deletedTitle: CHAT_COPY.gone.title,
+            deletedDescription: CHAT_COPY.gone.description,
+          },
+        }
+      : undefined,
+  );
+
+  // An open chat with no message yet is Chat's first-use state (COR-2285 V1): the agent's own
+  // description, and the prompts it suggests as buttons that send. None is offered while a prompt
+  // could not be sent: the composer is a blocked row, paused, or the chat is gone.
+  const listedAgent = $derived(agents.data?.find((entry) => entry.name === agent));
+  const emptyDescription = $derived(
+    listedAgent?.description ?? CHAT_COPY.emptyTranscript.description,
+  );
+  const emptyPrompts = $derived(
+    listedAgent === undefined ||
+      composerStatus?.kind === 'blocked' ||
+      session.disconnected ||
+      connection.unreachable ||
+      gone
+      ? []
+      : [...examplePrompts(listedAgent)],
+  );
+
   // What the person chose in the composer before the chat had a session. A session is what the
   // Bureau steers, so the choices wait here and are applied, one after the other, as soon as the
   // first message has started it (`applyDraft`); they take effect from the run's next step.
@@ -745,8 +786,15 @@
   // A chat started from Workflows holds the start of a request for the person to finish. It waits
   // for a composer to put it in: a blocked row has no box, so with no provider (or no agent that can
   // create workflows) it appears once there is one, and it never replaces what the person typed.
+  // An open chat starts with what the person typed while it was read, which waits the same way.
   let prefill = $state<string | undefined>(
-    untrack(() => (isNew && fromWorkflows ? CHAT_COPY.newChatWelcome.workflowPrefill : undefined)),
+    untrack(() =>
+      isNew && fromWorkflows
+        ? CHAT_COPY.newChatWelcome.workflowPrefill
+        : draft === undefined || draft === ''
+          ? undefined
+          : draft,
+    ),
   );
   $effect(() => {
     const text = prefill;
@@ -1915,19 +1963,6 @@
       </Alert>
     {/if}
 
-    {#if gone}
-      <Alert variant="danger" data-testid="chat-gone">
-        <p class="weft-chat-approval__title">{CHAT_COPY.gone.title}</p>
-        <p class="weft-chat-approval__message">{CHAT_COPY.gone.description}</p>
-        <Button
-          size="sm"
-          variant="secondary"
-          label={CHAT_COPY.gone.back}
-          onclick={() => router.navigate('/chats')}
-        />
-      </Alert>
-    {/if}
-
     <!-- A decision made on another page, said once to a screen reader; the row itself changes in place. -->
     <VisuallyHidden role="status" aria-live="polite" data-testid="chat-decision-announcement">
       {announcement}
@@ -1963,6 +1998,11 @@
         adapter={chatAdapter}
         onRegenerate={regenerateAnswer}
         messageStatus={regenerationStatus}
+        {availability}
+        {...choosing ? { empty: newChatEmpty } : {}}
+        emptyTitle={CHAT_COPY.emptyTranscript.title}
+        {emptyDescription}
+        {emptyPrompts}
         streaming={session.streaming && !choosing}
         surfaceMode="transparent"
         variant="transcript"
@@ -2038,28 +2078,6 @@
               {/if}
             </div>
           {/each}
-        {/snippet}
-        {#snippet empty()}
-          {#if choosing}
-            <NewChatWelcome
-              agents={agents.data ?? []}
-              selected={agent === '' ? undefined : agent}
-              sentence={!fromWorkflows}
-            />
-            <!-- On a phone the composer is docked to the bottom, so the prompts and the other agents
-                 scroll in one column with the greeting instead of sitting under the composer. -->
-            {#if phone.current && startFailure === undefined && !fromWorkflows && !startingFirstMessage}
-              {@render newChatChoices()}
-            {/if}
-          {:else}
-            <EmptyState
-              kind="first-use"
-              size="compact"
-              headingLevel={2}
-              title={CHAT_COPY.emptyTranscript.title}
-              description={CHAT_COPY.emptyTranscript.description}
-            />
-          {/if}
         {/snippet}
         {#snippet composerControls({ folded })}
           {#if folded}
@@ -2300,6 +2318,21 @@
     {/snippet}
 
     <!-- The prompts and the other agents to chat with, under a new chat's composer. -->
+    <!-- A new chat's greeting. An open chat with no message yet has Chat's own first-use state, with
+         the agent's description and its suggested prompts (COR-2285 V1). -->
+    {#snippet newChatEmpty()}
+      <NewChatWelcome
+        agents={agents.data ?? []}
+        selected={agent === '' ? undefined : agent}
+        sentence={!fromWorkflows}
+      />
+      <!-- On a phone the composer is docked to the bottom, so the prompts and the other agents
+           scroll in one column with the greeting instead of sitting under the composer. -->
+      {#if phone.current && startFailure === undefined && !fromWorkflows && !startingFirstMessage}
+        {@render newChatChoices()}
+      {/if}
+    {/snippet}
+
     {#snippet newChatChoices()}
       <NewChatChoices
         agents={agents.data ?? []}

@@ -8,7 +8,7 @@
    */
   import { untrack } from 'svelte';
 
-  import { Button, ErrorState } from '@lostgradient/cinder';
+  import type { ChatAvailability, ChatAvailabilityAction } from '@lostgradient/chat';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
@@ -25,7 +25,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import ChatConversation from './chat-conversation.svelte';
-  import ChatLoading from './chat-loading.svelte';
+  import ChatUnavailable from './chat-unavailable.svelte';
   import NewChatLoading from './new-chat-loading.svelte';
 
   interface ChatPaneProps {
@@ -96,11 +96,61 @@
     return () => connection.setShownInPlace(false);
   });
 
-  /** Stops asking for a chat that is slow to load, and goes back to the list. */
+  // Whether the person canceled a slow read: the chat is then not asked for until they retry.
+  let canceled = $state(false);
+  // What the person typed while the chat was read, for the conversation that replaces the stand-in.
+  let draft = $state('');
+
+  /** Stops asking for a chat that is slow to load; the pane then offers Retry. */
   function cancelLoading(): void {
+    canceled = true;
     void queryClient.cancelQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
-    router.navigate('/chats');
   }
+
+  function retryLoading(): void {
+    canceled = false;
+    void context.refetch();
+  }
+
+  const allConversations: ChatAvailabilityAction = {
+    label: CHAT_COPY.load.allConversations,
+    onclick: () => router.navigate('/chats'),
+  };
+
+  /**
+   * What stands in for a chat that cannot be shown yet, by precedence: a read that failed, then a
+   * read the person canceled, then a read still going. Chat draws each (COR-2285 V2 and V3) in the
+   * page's own words.
+   */
+  const availability = $derived.by((): ChatAvailability => {
+    if (failedToLoad) {
+      return {
+        kind: 'error',
+        cause: CHAT_COPY.load.errorDescription,
+        onRetry: retryLoading,
+        allConversations,
+        labels: { errorTitle: CHAT_COPY.load.errorTitle, tryAgain: CHAT_COPY.load.tryAgain },
+      };
+    }
+    if (canceled) {
+      return {
+        kind: 'canceled',
+        onRetry: retryLoading,
+        allConversations,
+        labels: {
+          canceledTitle: CHAT_COPY.load.canceledTitle,
+          canceledDescription: CHAT_COPY.load.canceledDescription,
+          canceledComposer: CHAT_COPY.load.canceledComposer,
+          sendBlocked: CHAT_COPY.load.sendBlocked,
+        },
+      };
+    }
+    return {
+      kind: 'loading',
+      onCancel: cancelLoading,
+      labels: { loading: CHAT_COPY.load.loading, slow: CHAT_COPY.load.stillLoading },
+    };
+  });
 </script>
 
 {#if startsNew}
@@ -116,8 +166,13 @@
     <NewChatLoading onCancel={() => router.navigate('/chats')} />
   {/if}
 {:else if context.data}
-  <ChatConversation {sessionId} title={context.data.title} agentName={context.data.agentName} />
-{:else if context.isError}
+  <ChatConversation
+    {sessionId}
+    title={context.data.title}
+    agentName={context.data.agentName}
+    {draft}
+  />
+{:else if context.isError && !failedToLoad}
   {#if classifyFault(context.error)?.kind === 'not-found' && VIEW_COPY.chat.notFound}
     <NotFoundState
       title={VIEW_COPY.chat.notFound.title}
@@ -126,28 +181,15 @@
       create={VIEW_COPY.chat.notFound.create}
       back={VIEW_COPY.chat.notFound.back}
     />
-  {:else if classifyFault(context.error)?.kind === 'unauthorized'}
+  {:else}
     <ForbiddenState
       title={VIEW_COPY.chat.forbidden.title}
       requirement={VIEW_COPY.chat.forbidden.requirement}
     />
-  {:else}
-    <!-- Nothing old to show, so the error state is the whole conversation area: no banner above it,
-         no composer under it (there is nothing to send to), and the list beside it stays live. -->
-    <ErrorState
-      title={CHAT_COPY.load.errorTitle}
-      description={CHAT_COPY.load.errorDescription}
-      headingLevel={1}
-      retryLabel={CHAT_COPY.load.tryAgain}
-      onRetry={() => void context.refetch()}
-    >
-      {#snippet secondaryAction()}
-        <Button variant="ghost" onclick={() => router.navigate('/chats')}>
-          {CHAT_COPY.load.backToChats}
-        </Button>
-      {/snippet}
-    </ErrorState>
   {/if}
 {:else}
-  <ChatLoading {agent} onCancel={cancelLoading} />
+  <!-- Loading, canceled, or failed with nothing old to show: Chat's availability state is the whole
+       conversation area. A failed read has no banner above it and no composer under it (there is
+       nothing to send to), and the list beside it stays live. -->
+  <ChatUnavailable {sessionId} {availability} {agent} onDraft={(text) => (draft = text)} />
 {/if}

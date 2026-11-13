@@ -177,9 +177,11 @@ const opacityOf = (locator: Locator) =>
 const conversationArea = (page: Page) => page.getByRole('region', { name: 'Open chat' });
 
 test.describe('an open chat while it loads (17j, 17y)', () => {
-  test('draws nothing for 300 ms, then placeholders in the real layout, with the composer disabled until the chat loads (17j)', async ({
+  test('draws nothing for 300 ms, then Chat’s skeleton turns, keeps the editor, and the typed text survives the load (17j, COR-2285 V2)', async ({
     page,
   }) => {
+    // With a key in place the chat's own composer is live, so the typed text has a box to land in.
+    await connectProvider(page);
     await page.clock.pauseAt(SAMPLE_NOW);
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
@@ -191,27 +193,27 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
-    const loading = page.getByTestId('chat-loading');
+    const loading = page.getByTestId('chat-unavailable');
     await expect(loading).toBeAttached();
     // A read that is quick never flashes a placeholder.
     await expect(loading.locator('.cinder-skeleton')).toHaveCount(0);
     await expect(loading.getByRole('textbox')).toHaveCount(0);
 
     await page.clock.runFor(300);
-    await expect(loading.locator('.cinder-skeleton').first()).toBeVisible();
-    // The composer is the real one: the agent's placeholder, a placeholder for each select, and a
-    // Send that cannot be pressed.
+    const state = loading.locator('[data-chat-availability="loading"]');
+    await expect(state.locator('.cinder-skeleton').first()).toBeVisible();
+    await expect(state).toContainText('Loading this chat…');
+    // The editor stays, with the agent's placeholder, and Send waits for the history.
     const composer = loading.getByRole('textbox', { name: 'Message' });
     await expect(composer).toHaveAttribute('placeholder', 'Message Tool runner…');
-    await expect(composer).toBeDisabled();
-    await expect(loading.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    await expect(loading.locator('.ib-chat-loading__controls .cinder-skeleton')).toHaveCount(3);
+    await expect(composer).toBeEditable();
+    await expect(loading.getByRole('button', { name: 'Loading…' })).toBeDisabled();
     // The breadcrumb does not show the chat's identifier while the read is out.
     const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' });
     await expect(crumbs).toContainText('This chat');
     await expect(crumbs).not.toContainText(SAMPLE_WORLD_THREADS.refund);
-    // The status line is for a read that is slow.
-    await expect(loading.locator('.cinder-skeleton-status')).toBeEmpty();
+    // The slow notice is for a read that is slow.
+    await expect(state).not.toHaveAttribute('data-slow');
     // The list beside it is live.
     await expect(page.locator('[data-chat]')).toHaveCount(5);
     await captureForDesignReview(page, {
@@ -219,42 +221,50 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
       state: 'loading',
       source: SOURCE,
     });
+    await composer.fill('Typed while it loads');
     await page.clock.resume();
     release();
-    await expect(page.getByTestId('chat-loading')).toHaveCount(0);
+    await expect(page.getByTestId('chat-unavailable')).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue(
+      'Typed while it loads',
+    );
   });
 
-  test('says "Still loading this chat…" after 10 s with a ghost Cancel, which returns to the chat list (17y)', async ({
+  test('says "Still loading this chat…" after 10 s with the elapsed time and Cancel, then offers Retry (17y, COR-2285 V2)', async ({
     page,
+    checkA11y,
   }) => {
     await page.clock.pauseAt(SAMPLE_NOW);
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let reads = 0;
     await answerOperation(page, 'bureau.contexts.get', async (route) => {
-      await gate;
+      reads += 1;
+      if (reads === 1) await gate;
       await route.fallback().catch(() => undefined);
     });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
-    const loading = page.getByTestId('chat-loading');
-    // The skeleton counts from when the pane mounts, so the clock moves once it has.
+    const loading = page.getByTestId('chat-unavailable');
+    // The read counts from when the pane mounts, so the clock moves once it has.
     await expect(loading).toBeAttached();
+    await page.clock.runFor(300);
+    await expect(loading.locator('[data-chat-availability="loading"]')).toBeVisible();
     await page.clock.runFor(10_000);
 
-    // Cinder skeleton's own status line, under the placeholders and above the composer, not a banner.
-    const status = loading.locator('.cinder-skeleton-status');
-    await expect(status).toContainText('Still loading this chat…');
-    await expect(status).toHaveAttribute('role', 'status');
+    // Chat's own slow notice, under the placeholders and above the composer, not a banner.
+    const state = loading.locator('[data-chat-availability="loading"][data-slow]');
+    await expect(state).toContainText('Still loading this chat…');
+    await expect(state.locator('[data-chat-availability-elapsed]')).toHaveText(/^\d+s$/);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
-    await expect(page.getByRole('alert').filter({ hasText: /\S/ })).toHaveCount(0);
-    const cancel = status.getByRole('button', { name: 'Cancel' });
-    await expect(cancel).toHaveAttribute('data-cinder-variant', 'ghost');
-    const statusBox = await status.boundingBox();
+    const cancel = state.getByRole('button', { name: 'Cancel' });
+    const statusBox = await state.locator('.chat-availability-status').boundingBox();
     const composerBox = await loading.getByRole('textbox', { name: 'Message' }).boundingBox();
     expect(statusBox!.y + statusBox!.height).toBeLessThanOrEqual(composerBox!.y);
-    await expect(loading.getByRole('textbox', { name: 'Message' })).toBeDisabled();
+    await checkA11y('a slow chat read');
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'slow loading',
@@ -262,9 +272,26 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     });
 
     await cancel.click();
-    await expect(page).toHaveURL(/\/chats$/);
-    await expect(page.getByTestId('chat-loading')).toHaveCount(0);
+    const canceled = loading.locator('[data-chat-availability="canceled"]');
+    await expect(canceled).toContainText('Loading was canceled');
+    await expect(page).toHaveURL(new RegExp(`/chats/${SAMPLE_WORLD_THREADS.refund}$`));
+    await expect(canceled.getByRole('button', { name: 'Retry' })).toHaveAttribute(
+      'data-cinder-variant',
+      'primary',
+    );
+    await expect(canceled.getByRole('button', { name: 'All conversations' })).toBeVisible();
+    await checkA11y('a canceled chat read');
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'loading canceled',
+      source: SOURCE,
+    });
+
     release();
+    await page.clock.resume();
+    await canceled.getByRole('button', { name: 'Retry' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
+    await expect(page.getByTestId('chat-unavailable')).toHaveCount(0);
   });
 });
 
@@ -285,21 +312,25 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
 
     const area = conversationArea(page);
+    // COR-2285 V3: Chat's error state, with the cause, Try again and All conversations.
+    const state = area.locator('[data-chat-availability="error"]');
     await expect(
-      area.getByRole('heading', { level: 1, name: 'This chat couldn’t be loaded' }),
+      state.getByRole('heading', { level: 2, name: 'This chat couldn’t be loaded' }),
     ).toBeVisible();
-    await expect(area).toContainText(
+    await expect(state).toContainText(
       'Interborough didn’t send it back. Nothing was lost; the messages are stored with the chat.',
     );
-    await expect(area.getByRole('button', { name: 'Try again' })).toHaveAttribute(
+    await expect(state.getByRole('button', { name: 'Try again' })).toHaveAttribute(
       'data-cinder-variant',
       'primary',
     );
-    await expect(area.getByRole('button', { name: 'Back to chats' })).toBeVisible();
+    await expect(state.getByRole('button', { name: 'All conversations' })).toHaveAttribute(
+      'data-cinder-variant',
+      'secondary',
+    );
     // Nothing old to show, so no banner; nothing to send to, so no composer.
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
     await expect(area.getByRole('textbox')).toHaveCount(0);
-    await expect(page.locator('.weft-chat-surface')).toHaveCount(0);
     // The breadcrumb names the chat that could not be read, and the list beside it stays live.
     await expect(trail(page).getByRole('link', { name: 'Chat' })).toBeVisible();
     await expect(trail(page).getByText('This chat', { exact: true })).toBeVisible();
@@ -312,7 +343,7 @@ test.describe('an open chat that cannot be loaded (17c, 17e)', () => {
       source: SOURCE,
     });
 
-    await area.getByRole('button', { name: 'Back to chats' }).click();
+    await state.getByRole('button', { name: 'All conversations' }).click();
     await expect(page).toHaveURL(/\/chats$/);
   });
 });
