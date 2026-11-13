@@ -1,3 +1,10 @@
+import {
+  type BackendDescriptor,
+  createModelCatalog,
+  type DecisionKind,
+  type DecisionModel,
+} from '@lostgradient/operative';
+import type { DecisionScenario } from '@lostgradient/operative/decision-testing';
 import { describe, expect, test } from 'bun:test';
 
 import type { PluginInterceptor } from '../contributions.ts';
@@ -6,6 +13,7 @@ import { PLUGIN_CONTRACT_UNCHECKED_HOOK_POINTS } from './hook-observation.ts';
 import {
   checkPluginContract,
   type CreatePluginTestHost,
+  type PluginDecisionModelRequest,
   type PluginTestHost,
   type PluginTestHostListing,
 } from './plugin-contract.ts';
@@ -242,5 +250,121 @@ describe('the hook points the contract runs', () => {
       'beforeCompaction',
       'onRunAbort',
     ]);
+  });
+});
+
+describe('the native decision scenarios (COR-2159)', () => {
+  const DECISION_CHECK = 'answers the decision scenarios of every row with native decision kinds';
+  const [seed] = createModelCatalog().descriptors;
+  if (seed === undefined) throw new Error('Expected the seed catalog to hold rows.');
+  const row: BackendDescriptor = {
+    ...seed,
+    provider: 'judge',
+    model: 'oracle',
+    aliases: [],
+    decisions: { kinds: ['boolean'], only: true },
+  };
+
+  function judgePlugin(options: { readonly rows?: readonly BackendDescriptor[] } = {}) {
+    return definePlugin({
+      name: 'example',
+      version: '1.0.0',
+      description: 'An example plugin.',
+      setup: () => ({
+        providers: [
+          {
+            name: 'judge',
+            decide: () => ({ name: 'judge', kinds: new Set(), decide: async () => ({}) as never }),
+            rows: options.rows ?? [row],
+          },
+        ],
+      }),
+    });
+  }
+
+  /** A native model that serves `kinds` and answers each scenario with `answer(scenario)`. */
+  function modelServing(
+    kinds: readonly DecisionKind[],
+    answer: (scenario: DecisionScenario | undefined) => unknown = (scenario) => scenario?.expected,
+  ) {
+    return ({ scenario }: PluginDecisionModelRequest): DecisionModel => ({
+      name: 'judge',
+      kinds: new Set(kinds),
+      decide: async () => ({
+        value: answer(scenario) as never,
+        provider: 'judge',
+        model: 'oracle',
+      }),
+    });
+  }
+
+  const { createHost } = hostReporting({
+    descriptor: { name: 'example' },
+    status: 'running',
+    problems: [],
+  });
+
+  test('passes a provider whose native model serves the declared kinds and answers every scenario of them', async () => {
+    const failures = await checkPluginContract(judgePlugin(), {
+      createHost,
+      createDecisionModel: modelServing(['boolean']),
+    });
+    expect(failures).toEqual([]);
+  });
+
+  test('fails a provider whose native model serves a kind its row did not declare', async () => {
+    const failures = await checkPluginContract(judgePlugin(), {
+      createHost,
+      createDecisionModel: modelServing(['boolean', 'scale']),
+    });
+    expect(failures).toEqual([
+      {
+        check: DECISION_CHECK,
+        message:
+          'The native model of "judge/oracle" serves "scale", which its row does not declare (boolean).',
+      },
+    ]);
+  });
+
+  test('fails a provider whose native model omits a kind its row declares', async () => {
+    const failures = await checkPluginContract(judgePlugin(), {
+      createHost,
+      createDecisionModel: modelServing(['scale']),
+    });
+    expect(failures[0]?.message).toContain(
+      'The native model of "judge/oracle" does not serve "boolean", which its row declares.',
+    );
+  });
+
+  test('fails a provider whose native model answers a scenario wrongly, naming the scenario', async () => {
+    const failures = await checkPluginContract(judgePlugin(), {
+      createHost,
+      createDecisionModel: modelServing(['boolean'], () => 'maybe'),
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.message).toContain(
+      '"judge/oracle" did not answer the scenario "boolean-true"',
+    );
+  });
+
+  test('fails a row with native kinds when the contract is given no way to build its model, or its provider cannot decide', async () => {
+    const unbuilt = await checkPluginContract(judgePlugin(), { createHost });
+    expect(unbuilt[0]?.message).toContain('needs the createDecisionModel option');
+    const mute = definePlugin({
+      name: 'example',
+      version: '1.0.0',
+      description: 'An example plugin.',
+      setup: () => ({
+        providers: [{ name: 'judge', generate: () => async () => ({}) as never, rows: [row] }],
+      }),
+    });
+    const failures = await checkPluginContract(mute, { createHost });
+    expect(failures[0]?.message).toContain('its provider has no decide');
+  });
+
+  test('asks nothing of a row that declares no native kinds', async () => {
+    const generating = { ...row, decisions: undefined };
+    const failures = await checkPluginContract(judgePlugin({ rows: [generating] }), { createHost });
+    expect(failures).toEqual([]);
   });
 });

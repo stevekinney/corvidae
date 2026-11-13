@@ -3,6 +3,7 @@ import { type AnyToolbox, createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import { ModelPolicyDeniedError } from '../file-agent-generate.ts';
+import { PluginNeedsSetupError } from '../plugins/plugin-secret-gate.ts';
 import {
   DECISION_SCHEMA_MAXIMUM_BYTES,
   DecisionSchemaRefusedError,
@@ -45,6 +46,7 @@ export type DecideRefusalReason =
   | 'invalid-request'
   | 'invalid-schema'
   | 'not-configured'
+  | 'needs-setup'
   | 'model-policy-denied'
   | 'model-answer-invalid';
 
@@ -180,6 +182,10 @@ export function createDecideToolbox(options: DecideToolOptions): AnyToolbox {
             refusal: 'not-configured',
             message: 'No model is configured to answer decisions.',
           };
+        }
+        if (error instanceof PluginNeedsSetupError) {
+          // A plugin's model needs a secret that is not saved. The message names the secret, never a value.
+          return { ok: false, refusal: 'needs-setup', message: error.message };
         }
         if (error instanceof ModelPolicyDeniedError) {
           // The policy leaves no model that may answer; the agent can read why and carry on.

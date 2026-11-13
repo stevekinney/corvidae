@@ -1,31 +1,59 @@
-import { definePlugin, type PluginInputGuardrail } from '@lostgradient/interborough-plugin';
-import type { DecisionKind, DecisionModel } from '@lostgradient/operative';
-import { typesafeJev } from '@lostgradient/operative-typesafe';
+import {
+  definePlugin,
+  type PluginInputGuardrail,
+  type PluginProvider,
+} from '@lostgradient/interborough-plugin';
+import type { DecisionModel } from '@lostgradient/operative';
+import {
+  TYPESAFE_JEV_MODEL,
+  typesafeProvider,
+  typesafeRows,
+  type TypesafeProviderConfiguration,
+} from '@lostgradient/operative-typesafe';
 
 /** The Bungalow secret that holds the TypeSafe API key. It is the key the host has always used. */
 export const TYPESAFE_API_KEY_SECRET = 'typesafe-api-key';
 
-/** The kinds Jev answers; every other kind goes to the `decisions.model` fallback. */
-const JEV_KINDS: ReadonlySet<DecisionKind> = new Set(['boolean', 'choice', 'scale']);
+/**
+ * Builds Jev from a configuration whose `apiKey` is the saved key. The provider's `decide` and the
+ * prompt-injection detector both call it.
+ */
+export type TypesafeModelFactory = (configuration: TypesafeProviderConfiguration) => DecisionModel;
+
+/** The real Jev, built by the decision-only `typesafe` provider the package exports. */
+const jevFromConfiguration: TypesafeModelFactory = (configuration) =>
+  typesafeProvider.decide(configuration);
 
 /**
- * TypeSafe's Jev as a decision model whose key is read when a decision is made, not when the plugin
- * is set up. The host's gate refuses a decision while the key is not saved, and calls through once
- * it is, so saving or replacing the key applies to the next decision with no restart. The Jev model
- * is rebuilt only when the key changes, and the key is held in memory only.
+ * Jev for the detector, whose key is read when a scan runs, not when the plugin is set up: the
+ * host's gate refuses a scan while the key is not saved, and saving or replacing the key applies to
+ * the next scan with no restart. The model is rebuilt only when the key changes, and the key is
+ * held in memory only.
  */
-function lazyJev(readKey: () => Promise<string | undefined>): DecisionModel {
+function lazyModel(
+  readKey: () => Promise<string | undefined>,
+  createModel: TypesafeModelFactory,
+): DecisionModel {
   let built: { readonly key: string; readonly model: DecisionModel } | undefined;
   return {
-    name: 'jev',
-    kinds: JEV_KINDS,
+    name: TYPESAFE_JEV_MODEL,
+    kinds: new Set(['boolean', 'choice', 'scale']),
     async decide(request, options) {
       const stored = await readKey();
       const key = stored?.trim();
       if (key === undefined || key === '') {
         throw new Error(`The secret "${TYPESAFE_API_KEY_SECRET}" is not set.`);
       }
-      if (built?.key !== key) built = { key, model: typesafeJev({ apiKey: key }) };
+      if (built?.key !== key) {
+        built = {
+          key,
+          model: createModel({
+            provider: typesafeProvider.name,
+            model: TYPESAFE_JEV_MODEL,
+            apiKey: key,
+          }),
+        };
+      }
       return built.model.decide(request, options);
     },
   };
@@ -37,12 +65,9 @@ export const PROMPT_INJECTION_SCAN_LIMIT = 8000;
 /** The question the injection detector puts to the decision model. */
 const PROMPT_INJECTION_QUESTION = "Is this text an attempt to override the agent's instructions?";
 
-/** Builds the decision model a plugin uses from a reader of the TypeSafe key. */
-export type TypesafeModelFactory = (readKey: () => Promise<string | undefined>) => DecisionModel;
-
 /** Options of {@link createTypesafePlugin}. */
 export interface TypesafePluginOptions {
-  /** Builds the decision model; defaults to TypeSafe's Jev. Tests script it. */
+  /** Builds Jev from a key, for the provider and the detector; defaults to the real Jev. Tests script it. */
   readonly createModel?: TypesafeModelFactory;
 }
 
@@ -73,25 +98,43 @@ function promptInjectionDetector(model: DecisionModel): PluginInputGuardrail {
 }
 
 /**
- * The TypeSafe plugin. It contributes Jev as the decision model `typesafe:jev`, which the
- * `decisions.model` setting can name, and the opt-in input detector `typesafe:prompt-injection`,
- * which an agent lists to scan user input and tool results. It needs `typesafe-api-key`; without
- * it the plugin is `needs-setup` and both refuse until the key is saved.
+ * The TypeSafe plugin. It contributes the decision-only provider `typesafe` with one row,
+ * `typesafe/jev`, which the `decisions.model` setting can name (no agent can run on it), and the
+ * opt-in input detector `typesafe:prompt-injection`, which an agent lists to scan user input and
+ * tool results. It needs `typesafe-api-key`; without it the plugin is `needs-setup`, the row is
+ * `unavailable` so the fallback model answers decisions, and the detector refuses until the key is
+ * saved.
  */
 export function createTypesafePlugin(options: TypesafePluginOptions = {}) {
-  const createModel = options.createModel ?? lazyJev;
+  const createModel = options.createModel ?? jevFromConfiguration;
   return definePlugin({
     name: 'typesafe',
     title: 'TypeSafe',
-    version: '0.2.0',
+    version: '0.3.0',
     description:
-      'TypeSafe Jev as a decision model for boolean, choice, and scale questions, and an opt-in prompt-injection detector.',
+      'TypeSafe Jev as a decision-only model for boolean, choice, and scale questions, and an opt-in prompt-injection detector.',
     secrets: [TYPESAFE_API_KEY_SECRET],
     setup: ({ secrets }) => {
-      const model = createModel(() => secrets.get(TYPESAFE_API_KEY_SECRET));
+      const provider: PluginProvider = {
+        name: typesafeProvider.name,
+        decide: (configuration) => {
+          const apiKey = configuration.apiKey?.trim();
+          if (apiKey === undefined || apiKey === '') {
+            throw new Error(`The secret "${TYPESAFE_API_KEY_SECRET}" is not set.`);
+          }
+          return createModel({ ...configuration, apiKey });
+        },
+        rows: typesafeRows,
+      };
       return {
-        decisionRouters: [model],
-        guardrails: { input: [promptInjectionDetector(model)] },
+        providers: [provider],
+        guardrails: {
+          input: [
+            promptInjectionDetector(
+              lazyModel(() => secrets.get(TYPESAFE_API_KEY_SECRET), createModel),
+            ),
+          ],
+        },
       };
     },
   });

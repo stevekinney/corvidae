@@ -1,3 +1,8 @@
+import {
+  type BackendDescriptor,
+  createModelCatalog,
+  type DecisionKind,
+} from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
@@ -137,6 +142,85 @@ describe('pluginIdentities', () => {
     const [afterConfiguration, afterTool] = after.entries;
     expect(afterConfiguration).toEqual(beforeConfiguration);
     expect(afterTool?.schema).not.toBe(beforeTool?.schema);
+  });
+
+  describe('a provider (COR-2158)', () => {
+    const [first] = createModelCatalog().descriptors;
+    if (first === undefined) throw new Error('Expected the seed catalog to hold rows.');
+    const seed: BackendDescriptor = first;
+
+    function providerPlugin(
+      options: {
+        readonly version?: string;
+        readonly kinds?: readonly DecisionKind[];
+        readonly only?: boolean;
+      } = {},
+    ) {
+      const row: BackendDescriptor = {
+        ...seed,
+        provider: 'judge',
+        model: 'oracle',
+        aliases: [],
+        ...(options.kinds === undefined
+          ? {}
+          : { decisions: { kinds: options.kinds, only: options.only ?? true } }),
+      };
+      return definePlugin({
+        ...base,
+        setup: () => ({
+          providers: [
+            {
+              name: 'judge',
+              decide: () => ({
+                name: 'judge',
+                kinds: new Set(),
+                decide: async () => ({}) as never,
+              }),
+              rows: [row],
+              ...(options.version === undefined ? {} : { version: options.version }),
+            },
+          ],
+        }),
+      });
+    }
+
+    const providerEntry = async (plugin: ReturnType<typeof providerPlugin>) => {
+      const { entries } = await pluginIdentities(plugin);
+      const found = entries.find(({ kind }) => kind === 'provider');
+      if (found === undefined) throw new Error('Expected a provider entry.');
+      return found;
+    };
+
+    test('lists the provider with a digest, and with the plugin version when it declares none', async () => {
+      const entry = await providerEntry(providerPlugin({ kinds: ['boolean'] }));
+      expect(entry).toMatchObject({ id: 'example:judge', version: '1.2.0' });
+      expect(entry.schema).toStartWith('sha256:');
+    });
+
+    test('changes the digest when the provider version changes', async () => {
+      const first = await providerEntry(providerPlugin({ version: '1.0.0', kinds: ['boolean'] }));
+      const second = await providerEntry(providerPlugin({ version: '1.1.0', kinds: ['boolean'] }));
+      expect(first.version).toBe('1.0.0');
+      expect(second.schema).not.toBe(first.schema);
+    });
+
+    test('changes the digest when a row’s native decision kinds change, in any order', async () => {
+      const first = await providerEntry(providerPlugin({ kinds: ['boolean', 'choice'] }));
+      const reordered = await providerEntry(providerPlugin({ kinds: ['choice', 'boolean'] }));
+      const widened = await providerEntry(
+        providerPlugin({ kinds: ['boolean', 'choice', 'scale'] }),
+      );
+      const dropped = await providerEntry(providerPlugin());
+      expect(reordered.schema).toBe(first.schema);
+      expect(widened.schema).not.toBe(first.schema);
+      expect(dropped.schema).not.toBe(first.schema);
+    });
+
+    test('changes the digest when a row stops being decision-only', async () => {
+      const only = await providerEntry(providerPlugin({ kinds: ['boolean'], only: true }));
+      const both = await providerEntry(providerPlugin({ kinds: ['boolean'], only: false }));
+      expect(both.schema).not.toBe(only.schema);
+    });
   });
 
   test('includes trigger kinds and hook actions by their configuration schema', async () => {

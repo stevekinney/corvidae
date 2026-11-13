@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 
-import { guardrailOf } from '@lostgradient/operative';
+import { createModelCatalog, guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { type DefinitionSchema, definitionSchemaToJsonSchema } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { PluginContributions } from '../contributions.ts';
+import type { PluginContributions, PluginProvider } from '../contributions.ts';
 import { type GuardrailFamily, isGuardrailFactory } from '../guardrail-family.ts';
 import type { PluginHost } from '../host-api.ts';
 import type { PluginDescriptor } from '../plugin-descriptor.ts';
@@ -218,6 +218,31 @@ function named(item: Named, kind: string, schema?: unknown) {
 }
 
 /**
+ * A provider's entry: kind `provider`, whose digest covers the provider's version and the native
+ * decision kinds of each row that declares any (COR-2158). Routers carried no version and a change
+ * to the kinds they served went unnoticed; a provider's identity is its catalog rows, so a change
+ * to either fails the snapshot guard. A row that declares no decision kinds adds nothing, so a
+ * model added to Operative's static rows does not change a provider that never decided.
+ */
+function providerNamed(provider: PluginProvider, plugin: PluginDescriptor<z.ZodType>) {
+  const rows =
+    provider.rows ??
+    createModelCatalog().descriptors.filter((descriptor) => descriptor.provider === provider.name);
+  const decisions = rows
+    .filter((row) => row.decisions !== undefined)
+    .map((row) => ({
+      model: row.model,
+      kinds: [...(row.decisions?.kinds ?? [])].toSorted(compareText),
+      only: row.decisions?.only === true,
+    }))
+    .toSorted((left, right) => compareText(left.model, right.model));
+  return named(provider, 'provider', {
+    version: provider.version ?? plugin.version,
+    decisions,
+  });
+}
+
+/**
  * A guardrail's entry: kind `guardrail`, named `family/name`, so the id is `plugin:family/name`.
  * Names are claimed per family, which lets one detector serve `input` and `memory` under one name.
  */
@@ -238,8 +263,7 @@ function guardrailNamed(item: Named, family: GuardrailFamily) {
  * produce equal snapshots. Every guardrail is a `guardrail`, whose schema is a factory's configuration
  * schema or none for a detector or validator, and its id records its
  * family (`plugin:input/name`, `plugin:output/name`, `plugin:tools/name`, `plugin:memory/name`); an
- * agent file lists an input, output or tool-call guardrail as `plugin:name`. Decision routers carry no name a record or file can
- * refer to, so they are not listed.
+ * agent file lists an input, output or tool-call guardrail as `plugin:name`.
  */
 export async function pluginIdentities(
   descriptor: PluginDescriptor<z.ZodType>,
@@ -325,7 +349,11 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(contributions.scorers, (judge) => named(judge, 'scorer'), descriptor),
-    ...entriesOf(contributions.providers, (provider) => named(provider, 'provider'), descriptor),
+    ...entriesOf(
+      contributions.providers,
+      (provider) => providerNamed(provider, descriptor),
+      descriptor,
+    ),
     ...entriesOf(contributions.interceptors, (hooks) => named(hooks, 'interceptor'), descriptor),
     ...entriesOf(
       contributions.formatters,

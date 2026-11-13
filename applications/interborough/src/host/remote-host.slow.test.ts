@@ -175,6 +175,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
       { name: 'anthropic', secretFile: `workspace:${host.workspaceId}/anthropic-api-key` },
       { name: 'openai', secretFile: `workspace:${host.workspaceId}/openai-api-key` },
       { name: 'gemini', secretFile: `workspace:${host.workspaceId}/gemini-api-key` },
+      { name: 'typesafe', secretFile: `workspace:${host.workspaceId}/typesafe-api-key` },
     ]);
     for (const secret of [PASSWORD, client.secretAccessKey, client.accessKeyId]) {
       expect(body).not.toContain(secret);

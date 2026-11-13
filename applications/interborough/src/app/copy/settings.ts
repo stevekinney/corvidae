@@ -211,6 +211,8 @@ export const SETTINGS_COPY = {
   unset: 'Not set. The code default applies.',
   /** What a setting with no value reads, and the option of a select that chooses none. */
   notSet: 'Not set',
+  /** The option of a select that chooses none, when the row the setting applies by is known: "Claude Haiku 5.5 (default)". */
+  defaultOption: (name: string) => `${name} (default)`,
   /** Reveals the fields of a setting that has no value. */
   setAction: 'Set a value',
   /** Puts a setting whose fields were revealed back to having no value, before it is saved. */

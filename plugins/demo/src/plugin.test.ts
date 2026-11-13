@@ -99,6 +99,16 @@ describe('the demo plugin', () => {
     expect(ids).toEqual(DEMO_AGENT_NAMES.map((name) => `demo:${name}`).toSorted());
   });
 
+  test('hides only the internal agent from Chat, which a workflow or a child still runs by name (COR-2233)', async () => {
+    const bureau = await start({ secret: 'fixture-demo-approval-secret' });
+    const hidden = bureau.agents
+      .list()
+      .filter(({ id, visibility }) => id.startsWith('demo:') && visibility === 'hidden')
+      .map(({ id }) => id);
+    expect(hidden).toEqual(['demo:internal']);
+    expect(bureau.agents.has('demo:internal')).toBe(true);
+  });
+
   test('answers from its scripts', async () => {
     const bureau = await start({ secret: 'fixture-demo-approval-secret' });
     const assistantTask = await bureau.tasks.start('demo:assistant', 'Hello');

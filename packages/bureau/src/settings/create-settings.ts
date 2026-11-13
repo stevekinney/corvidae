@@ -56,6 +56,11 @@ export interface StoredSettings {
    * process on the same store may run a build that reads them, so an update keeps them.
    */
   readonly storedValues: Readonly<Record<string, unknown>>;
+  /**
+   * The stored keys this build did not apply, and why (empty when none): a snapshot reports each
+   * as the `problem` of its key.
+   */
+  readonly dropped?: readonly DroppedSetting[];
   readonly raw: string | null;
 }
 
@@ -76,6 +81,24 @@ export interface DroppedSetting {
   readonly message: string;
 }
 
+/** The `problem` entry of a key's state: why its stored value is not applied, when it is not. */
+function problemOf(
+  dropped: readonly DroppedSetting[] | undefined,
+  key: SettingKey,
+): { readonly problem: string } | Record<string, never> {
+  const found = dropped?.find((entry) => entry.key === key);
+  return found === undefined ? {} : { problem: found.message };
+}
+
+/**
+ * The name a stored `decisions.model` of `typesafe:jev` is read as: the catalog row `typesafe/jev`,
+ * which replaced the decision router the typesafe plugin registered under that name (COR-2154,
+ * COR-2157). It was the only router that shipped, so no other name is rewritten.
+ */
+function rewrittenDecisionModel(value: unknown): string | undefined {
+  return value === 'typesafe:jev' ? 'typesafe/jev' : undefined;
+}
+
 /**
  * The stored values this build applies, and the ones it drops: a key the schema does not have, a
  * value the schema refuses, and a value a consumer refuses given the others in force (Weft's
@@ -94,8 +117,11 @@ export function admissibleSettings(
       continue;
     }
     const checked = parseValue(key, value);
-    if (checked.ok) values[key] = checked.value;
-    else dropped.push({ key, message: checked.message });
+    if (checked.ok) {
+      values[key] =
+        (key === 'decisions.model' ? rewrittenDecisionModel(checked.value) : undefined) ??
+        checked.value;
+    } else dropped.push({ key, message: checked.message });
   }
   for (;;) {
     const failures = settingsFailures(
@@ -196,6 +222,7 @@ export function parseSettingsRecord(
   }
   return {
     storedValues,
+    dropped,
     record: {
       schemaVersion: 1,
       revision: candidate.revision,
@@ -372,6 +399,7 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
                 apply: SETTING_APPLY[key],
                 locked: lockReason !== undefined,
                 ...(lockReason === undefined ? {} : { lockReason }),
+                ...problemOf(stored.dropped, key),
                 pendingRestart:
                   SETTING_APPLY[key] === 'restart' && !sameValue(configured[key], bootValues[key]),
               },

@@ -100,3 +100,35 @@ test('a chat that names an existing thread reads its history when nothing is goi
 
   expect(requests.some(isHistoryRead)).toBe(true);
 });
+
+test('a refresh whose read a whole turn began and ended inside keeps the message that turn sent', async () => {
+  // COR-2412: the refresh after an approval's run stopped read the thread while the follow-up from
+  // Up next was sent and stopped on its own approval; the stale read replaced the follow-up's row.
+  const staleHistory = Promise.withResolvers<Response>();
+  let historyRequested = false;
+  const session = open(async (input, init) => {
+    const url = urlOf(input);
+    if (isHistoryRead(url)) {
+      historyRequested = true;
+      return staleHistory.promise;
+    }
+    // The attach after a refresh joins the waiting run from its cursor: no messages snapshot.
+    if (url === `${AG_UI_PATH}/threads/thread/run`)
+      return sse([started, { type: 'STATE_SNAPSHOT', snapshot: {} }, finished]);
+    if (init?.method === 'POST') return sse([started, ...reply, finished]);
+    return new Response('', { status: 404 });
+  });
+
+  const refreshing = session.refresh().catch(() => false);
+  await waitUntil(() => historyRequested, { message: 'the refresh read the thread' });
+  await session.send('And one more thing');
+  expect(session.streaming).toBe(false);
+
+  staleHistory.resolve(Response.json({ threadId: 'thread', messages: [] }));
+  expect(await refreshing).toBe(false);
+
+  const texts = session.conversation.ids.map((id) =>
+    JSON.stringify(session.conversation.messages[id]?.content ?? ''),
+  );
+  expect(texts.some((text) => text.includes('And one more thing'))).toBe(true);
+});

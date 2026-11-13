@@ -18,6 +18,7 @@ import { createBureau } from '../create-bureau.ts';
 import { runTask } from '../test/index.ts';
 import type { Bureau } from '../bureau-types/facade.ts';
 import type { BureauOptions } from '../bureau-types/options.ts';
+import { PluginNeedsSetupError } from '../plugins/plugin-secret-gate.ts';
 import { createDecideToolbox, type DecideToolResult } from './decide-tool.ts';
 import type { DecisionSource } from './types.ts';
 import { hosted } from './hosted-decisions.test-support.ts';
@@ -227,6 +228,27 @@ describe('createDecideToolbox', () => {
   const answering: DecisionSource = {
     decide: async () => ({ value: true, provider: 'p', model: 'm' }),
   };
+
+  it('answers a plugin that needs setup with a typed refusal, not a thrown tool error', async () => {
+    const toolbox = createDecideToolbox({
+      decisions: {
+        decide: async () => {
+          throw new PluginNeedsSetupError('typesafe', 'typesafe:jev', ['typesafe-api-key']);
+        },
+      },
+      principal: undefined,
+      taskId: 't1',
+      maximumPerTask: 20,
+    });
+
+    const result = await call(toolbox, { kind: 'boolean', question: 'Q?' });
+
+    expect(result).toMatchObject({
+      ok: false,
+      refusal: 'needs-setup',
+      message: expect.stringContaining('typesafe-api-key'),
+    });
+  });
 
   it('refuses the 21st call of a task at the default cap of 20', async () => {
     const toolbox = createDecideToolbox({

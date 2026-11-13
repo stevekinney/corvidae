@@ -359,6 +359,7 @@ export class ChatSessionState {
           // turn that reads a run the page joins is nobody's attempt: it is how the page finds out
           // what to say next, and must not wipe what the refusal before it said.
           if (streaming) {
+            this.#turnsBegun += 1;
             if (!this.attaching) this.failure = undefined;
           }
           // A turn that ended in an error or a stop has no history to carry the assets it
@@ -591,8 +592,13 @@ export class ChatSessionState {
     // A new chat's thread is not kept until its first run begins: there is nothing to read yet.
     if (!this.#opened) return false;
     if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
+    // A turn that began during the read, even one that has ended since (a follow-up promoted from
+    // Up next that stopped on an approval), wrote rows the read cannot hold: restoring it would
+    // drop the person's message from the transcript.
+    const turnsBegun = this.#turnsBegun;
     const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
     if (history === undefined || this.streaming || this.attaching) return false;
+    if (this.#turnsBegun !== turnsBegun) return false;
     this.restore(history);
     await this.attach({ rereading: true });
     // A read that failed has not said what the run waits on, so the caller reads again.
@@ -975,6 +981,9 @@ export class ChatSessionState {
 
   /** Every line this page was shown of why a run stopped, by its identity, at its row. */
   #stopLines: ReadonlyMap<string, HeldStopLine> = new Map();
+
+  /** How many turns of the controller have begun, so a read can tell that one began while it ran. */
+  #turnsBegun = 0;
 
   /**
    * Shows `next`, with the lines of why an earlier run stopped that it does not give, so the

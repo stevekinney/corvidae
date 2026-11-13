@@ -82,6 +82,30 @@ describe('decisionValidator', () => {
     expect(generate.callCount).toBe(1);
   });
 
+  it('files its decision record under the goal run, as the validator’s principal (COR-2155)', async () => {
+    const goalRunIds: string[] = [];
+    const validator = decisionValidator({
+      ...JUDGE,
+      principal: 'validator:judge',
+      request: (input) => {
+        goalRunIds.push(input.goalRunId);
+        return { kind: 'boolean', question: 'Is the answer acceptable?' };
+      },
+      verdict: () => ({ kind: 'pass', evidence: [] }),
+    });
+    const { bureau } = await openGoalBureau(['{"answer":true}'], validator);
+
+    await bureau.goals.create(goalRequest({ validator: JUDGE }));
+    await ended(bureau);
+
+    const records = (await bureau.internals.auditTrail?.query({ type: 'decision.made' })) ?? [];
+    expect(records.map((record) => [record.runId, record.principal])).toEqual([
+      [goalRunIds[0], 'validator:judge'],
+    ]);
+    expect(goalRunIds[0]).toBeDefined();
+    expect(goalRunIds[0]?.startsWith('decision:')).toBe(false);
+  });
+
   it('retries the goal on a scripted false and passes on the next true', async () => {
     const { bureau, generate } = await openGoalBureau(['{"answer":false}', '{"answer":true}']);
 

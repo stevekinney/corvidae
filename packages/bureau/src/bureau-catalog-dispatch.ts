@@ -28,6 +28,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
+import { definitionDrift, describeDefinitionDrift, pinOf } from './agent-definition-pin';
 import type { FileAgentRuntime } from './agent-file-runtime';
 import type { SettledCatalogHandle } from './catalog-run-asset-release';
 import type { ChildTopologyStart } from './child-topology';
@@ -101,7 +102,8 @@ export interface CatalogDispatcherDependencies {
   readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   readonly configureDurableRun?:
     ((runId: string, services: DurableRunDeps, principal: string) => void) | undefined;
-  readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'>;
+  readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'> &
+    Partial<Pick<BureauAgentCatalog<AgentDefinitions>, 'definitionPin' | 'overrides'>>;
   readonly runtime: RuntimeComposition;
   readonly runtimeServices: RuntimeServices;
   readonly getShutdownPromise: () => Promise<unknown> | undefined;
@@ -315,6 +317,21 @@ export class GoalAttemptNotDurableCapableError extends Error {
 }
 
 /**
+ * COR-2230 — a start continuing an earlier execution's claim found the code agent moved since
+ * the claim recorded it (its plugin or agent `version`, or its overrides). The claim's run began
+ * on a definition this execution cannot rebuild, so it is refused the way recovery refuses the
+ * run. Permanent for the claim, which stays as it was written: the attempt ends with this reason
+ * instead of an activity that would retry the same refusal forever.
+ */
+export class DefinitionDriftedError extends Error {
+  readonly reason = 'definition-drifted';
+  constructor(message: string) {
+    super(message);
+    this.name = 'DefinitionDriftedError';
+  }
+}
+
+/**
  * COR-851 — a goal attempt's agent declared a cost estimator that cannot be
  * persisted as plain JSON (a cycle, a bigint, a throwing `toJSON`, fields the
  * decoder does not know, or an invalid price). The agent resolves the same way
@@ -513,7 +530,7 @@ export function createCatalogDispatcher({
     runOptions: BureauRunOptions | undefined,
     context: AgentRunContext,
     principal: string | undefined,
-    agent: AnyRunnableAgent & DefinitionResolvingAgentWithResolver,
+    foundAgent: AnyRunnableAgent & DefinitionResolvingAgentWithResolver,
     /**
      * COR-772 — a child dispatch supplies its own stable run id, recorded in
      * Bureau's topology before this starts, so the durable workflow's id is
@@ -555,6 +572,13 @@ export function createCatalogDispatcher({
       throw createBureauError('Durable runtime unavailable', 'CONFLICT');
     }
     const runId = runIdOverride ?? runtimeServices.identifiers.next('agent-run');
+    // COR-2230 — what the code agent is as this run starts, which the record or claim below pins
+    // and a later execution compares. `undefined` for a file agent, which pins its own definition
+    // hash. The agent and the pin are read again from the store as the start resolves (see
+    // `resolveDurableAgent`), for the caller found them from the overrides this Bureau loaded at
+    // boot, which another Bureau on a shared store may have moved past.
+    let agent = foundAgent;
+    let agentPin = agentCatalog.definitionPin?.(name);
     // COR-1302 — the handle returned below exists before the durable run does,
     // so it takes this id now: `createDeferredAgentRun` reports it as the
     // handle's `id` and liveness `snapshot().id`, and the resolved run adopts
@@ -698,7 +722,7 @@ export function createCatalogDispatcher({
      */
     // COR-1367 — read once: the agent applies its own guardrails, so Bureau's
     // tier carries none for it (see `inheritedGuardrailsContext`).
-    const agentResolvesGuardrails = resolvesOwnGuardrails(agent);
+    let agentResolvesGuardrails = resolvesOwnGuardrails(agent);
     // COR-1577 — `requestHumanInput` on a `bureau.run()` run, wired as the session path wires it:
     // the tool parks the workflow through the run's own `ctx.services`, captured by `onServices`
     // as the engine starts it, and announces the park on the emitter the run's `ActiveRun` uses.
@@ -768,6 +792,20 @@ export function createCatalogDispatcher({
     };
     const resolveDurableAgent = async (): Promise<RunnableAgent<unknown, boolean>> => {
       let resolvedOptions: RunOptions;
+      if (agentPin !== undefined) {
+        // COR-2230 — a code agent's overrides are read from the store, then the agent is built and
+        // pinned from them in the same turn: the agent this run uses, the pin its record or claim
+        // holds, and the pin a claim already there is compared with all describe what the store
+        // holds now. A start another Bureau began and this one reclaims is thus compared with the
+        // overrides that are stored, never with a copy this Bureau loaded at boot.
+        await agentCatalog.overrides?.reload(name);
+        const current = agentCatalog.find(name);
+        if (current !== undefined && hasDefinitionResolver(current)) {
+          agent = current;
+          agentResolvesGuardrails = resolvesOwnGuardrails(current);
+          agentPin = agentCatalog.definitionPin?.(name);
+        }
+      }
       try {
         const capturedContext = normalizeRunRequestContext(
           undefined,
@@ -880,6 +918,15 @@ export function createCatalogDispatcher({
         // empty on the new process.
         ...(principal !== undefined ? { principal } : {}),
         ...(fileBinding === undefined ? {} : { agentDefinitionHash: fileBinding.hash }),
+        // COR-2230: the code agent's plugin version (a built-in agent has none) and overrides as
+        // they were when this run started, so recovery and a second execution of the claim can
+        // tell the agent moved.
+        ...(agentPin?.agentPluginVersion === undefined
+          ? {}
+          : { agentPluginVersion: agentPin.agentPluginVersion }),
+        ...(agentPin?.agentOverrideHash === undefined
+          ? {}
+          : { agentOverrideHash: agentPin.agentOverrideHash }),
         // COR-1481: the context the caller named, so a task rebuilt from this record keeps it.
         ...(runOptions?.sessionId === undefined ? {} : { contextId: runOptions.sessionId }),
         ...(goalAttempt === undefined ? {} : { goalAttempt }),
@@ -954,6 +1001,20 @@ export function createCatalogDispatcher({
           // drift, and this start is no different. A file agent's claim is rebuilt from its
           // snapshot at the revision the claim recorded (COR-1584), below.
           const claimed = existing.record;
+          // COR-2230 — a code agent that moved since the claim recorded it cannot continue the
+          // claim's run: the run began on a definition this catalog no longer holds. Checked after
+          // the tombstone (which takes precedence) and before anything is rebuilt or resolved; a
+          // claim from before the pin carries neither field and continues as it always did.
+          const drift = definitionDrift(
+            pinOf(claimed.agentPluginVersion, claimed.agentOverrideHash),
+            agentPin,
+          );
+          if (drift.length > 0) {
+            releaseAttribution();
+            throw new DefinitionDriftedError(
+              `Run "${runId}": definition-drifted: ${describeDefinitionDrift(name, drift)}`,
+            );
+          }
           // COR-1868 — the task is whatever the winning claim says: a claim written before
           // the field existed is not one, and this execution does not make it one.
           storedTaskOrigin = claimed.taskOrigin;

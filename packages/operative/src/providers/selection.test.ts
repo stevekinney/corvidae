@@ -112,6 +112,56 @@ describe('select: fixed Agent, one eligible descriptor', () => {
   });
 });
 
+describe('select: a row that only decides (COR-2156)', () => {
+  const decisionOnly: BackendDescriptor = {
+    ...openai,
+    model: 'jev',
+    aliases: [],
+    decisions: { kinds: ['boolean'], only: true },
+  };
+
+  it('is never a candidate, however the catalog is ordered or priced', () => {
+    for (const rows of [
+      [decisionOnly, anthropic],
+      [anthropic, decisionOnly],
+    ]) {
+      const plan = select(baseRequest(), baseOptions(catalogOf(rows)));
+      expect(plan.candidates.map((candidate) => candidate.descriptorSnapshot.model)).toEqual([
+        'claude-fable-5',
+      ]);
+      expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    }
+  });
+
+  it('is not selected by an exact override either, and the plan has no candidate', () => {
+    const plan = select(
+      baseRequest({ requestedValue: { target: 'model', override: 'jev' } as never }),
+      baseOptions(catalogOf([decisionOnly])),
+    );
+    expect(plan.outcome).toBe('no-candidate');
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it('is not listed on a stale catalog', () => {
+    const plan = select(
+      baseRequest(),
+      baseOptions(catalogOf([decisionOnly, anthropic], { stale: true })),
+    );
+    expect(plan.candidates.map((candidate) => candidate.descriptorSnapshot.model)).toEqual([
+      'claude-fable-5',
+    ]);
+  });
+
+  it('is still a candidate when `only` is false, so a row that decides and generates stays', () => {
+    const both: BackendDescriptor = {
+      ...decisionOnly,
+      decisions: { kinds: ['boolean'], only: false },
+    };
+    const plan = select(baseRequest(), baseOptions(catalogOf([both])));
+    expect(plan.selected).toEqual({ provider: 'openai', model: 'jev' });
+  });
+});
+
 describe('select: custom opaque generator (empty descriptor set)', () => {
   it('yields empty candidates, an absent selected, and no fabricated descriptor', () => {
     const plan = select(baseRequest(), baseOptions(catalogOf([])));

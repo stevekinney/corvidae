@@ -5462,6 +5462,47 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     }
   });
 
+  it.each([
+    [
+      'a record that pins a plugin version and overrides',
+      { agentPluginVersion: '1.0.0', agentOverrideHash: 'h' },
+      'found',
+    ],
+    [
+      'a built-in agent’s record, which pins only its overrides',
+      { agentOverrideHash: 'h' },
+      'found',
+    ],
+    ['a record written before the pin', {}, 'found'],
+    ['a record whose plugin version is not a string', { agentPluginVersion: 1 }, 'corrupt'],
+    ['a record whose override hash is not a string', { agentOverrideHash: 7 }, 'corrupt'],
+  ] as const)('COR-2230: reads %s as %s', async (_label, pin, expected) => {
+    const runtime = await createRuntimeComposition({
+      storage: new MemoryStorage(),
+      durable: true,
+    });
+
+    try {
+      await runtime.durable!.engine.storage.put(
+        `${CATALOG_RUN_RECOVERY_KEY_PREFIX}catalog-run-pinned`,
+        encode({
+          schemaVersion: 1,
+          agentName: 'p:echo',
+          definitionRevision: 1,
+          input: 'x',
+          ...pin,
+        }),
+      );
+
+      const loaded = await runtime.loadCatalogRunRecoveryRecord('catalog-run-pinned');
+
+      expect(loaded.status).toBe(expected);
+      if (loaded.status === 'found') expect(loaded.record).toMatchObject(pin);
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
   it('reads a decodable record of the wrong shape as corrupt for ownership, and as missing for every other consumer', async () => {
     const runtime = await createRuntimeComposition({
       storage: new MemoryStorage(),

@@ -53,7 +53,13 @@ describe('definePlugin', () => {
       ...valid,
       setup: () => ({
         activities: [
-          { name: 'sync-issue', version: '2.1.0', execute: async () => ({ synced: true }) },
+          {
+            name: 'sync-issue',
+            version: '2.1.0',
+            title: 'Sync an issue',
+            inputSchema: z.object({}),
+            execute: async () => ({ synced: true }),
+          },
         ],
       }),
     });

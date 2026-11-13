@@ -33,6 +33,7 @@ import {
   type AgentOverrideVersionRecord,
   type AgentOverrideWriteResult,
   agentOverridesSchema,
+  hashAgentOverrides,
 } from './agent-override-store';
 import { modelPolicyDenialOf, type BureauModelPolicyOptions } from './model-policy';
 import { ownerOrLocal } from './owner-of-record';
@@ -89,6 +90,13 @@ export interface CodeAgentOverrides {
    * process saved on the same store is read then.
    */
   load(): Promise<void>;
+  /**
+   * COR-2230 — reads the overrides in force of code agent `id` from the store now, for {@link
+   * inForce}; a no-op for any other identifier. A run another process started on a shared store
+   * pinned the overrides it saw, so a Bureau that is about to compare that pin, or to continue
+   * that run's claim, reads the store first rather than compare with what it loaded at boot.
+   */
+  reload(id: string): Promise<void>;
   /**
    * Saves version `version` of code agent `id` again as a new version, under the checks and
    * failures of {@link save}, and `agent-version-not-found` when no such version is stored.
@@ -333,7 +341,13 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
 
   async function loadOne(id: string): Promise<void> {
     const state = await store.current(id);
-    inForce.set(id, state.overrides);
+    const held = inForce.get(id);
+    // The object held is kept while the store's overrides hash the same: the catalog caches the
+    // agent it built from an overrides object by identity, and a read that changed nothing must
+    // not rebuild it.
+    if (held === undefined || hashAgentOverrides(held) !== state.hash) {
+      inForce.set(id, state.overrides);
+    }
   }
 
   /** Runs a write, then holds what is in force after it: the saved overrides, or the store's. */
@@ -443,6 +457,9 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
     },
     async load() {
       await Promise.all([...codeAgents.keys()].map(loadOne));
+    },
+    async reload(id) {
+      if (isCodeAgent(id)) await loadOne(id);
     },
   };
 }

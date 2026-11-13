@@ -98,6 +98,8 @@
         "{applications,components,packages,testing,internal,plugins}/**/*.{slow,integration}.test.ts",
         "scripts/browser-fixtures/package.json",
         "scripts/browser-fixtures/tsconfig*.json",
+        "scripts/groom/package.json",
+        "scripts/groom/tsconfig*.json",
         "testing/testing/src/hang-guard.ts",
         "testing/testing/src/helpers/promise-outcome.ts",
         "testing/testing/src/wait-until.ts"

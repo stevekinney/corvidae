@@ -90,11 +90,6 @@
     "reason": "Predates the guard (COR-2022 sweep W44): a compact or grouped control whose visible label is drawn by its row or group. Restore the visible label, or remove the entry, as the page is redesigned."
   },
   {
-    "file": "applications/interborough/src/routes/settings/models/decisions-section.svelte",
-    "count": 1,
-    "reason": "Predates the guard (COR-2022 sweep W44): a compact or grouped control whose visible label is drawn by its row or group. Restore the visible label, or remove the entry, as the page is redesigned."
-  },
-  {
     "file": "applications/interborough/src/routes/settings/plugins/plugin-configuration.svelte",
     "count": 1,
     "reason": "Predates the guard (COR-2022 sweep W44): a compact or grouped control whose visible label is drawn by its row or group. Restore the visible label, or remove the entry, as the page is redesigned."

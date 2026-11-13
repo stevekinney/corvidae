@@ -24,6 +24,7 @@ import { type BackendDescriptor, readGenerationProfile } from '@lostgradient/ope
 
 import type { AgentFileProblem } from './agent-file';
 import { usdPricingOfRow } from './file-agent-cost-budget';
+import { isOfferedCatalogRow } from './models/create-models';
 import { type BureauModelPolicyOptions, modelPolicyDenialOf } from './model-policy';
 import {
   allowedDescriptorsOfFileAgent,
@@ -138,7 +139,7 @@ export function describeAgentModels(
     const allowed = profile.allowedCandidates;
     const rows =
       allowed === undefined
-        ? descriptors.filter((row) => row.lifecycle !== 'retired')
+        ? descriptors.filter(isOfferedCatalogRow)
         : descriptors.filter((row) =>
             allowed.some(
               (candidate) => candidate.provider === row.provider && candidate.model === row.model,

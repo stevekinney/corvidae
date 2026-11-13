@@ -15,8 +15,8 @@ import type { BackendDescriptor } from '@lostgradient/operative';
 import { Engine } from '@lostgradient/weft';
 import { MemoryStorage } from '@lostgradient/storage';
 
-import { validateDecisionsOptions } from '../decisions/create-decisions.ts';
-import { findCatalogRow } from '../models/create-models.ts';
+import { CATALOG_DECISION_MODEL, validateDecisionsOptions } from '../decisions/create-decisions.ts';
+import { findCatalogRow, findDecisionRow } from '../models/create-models.ts';
 import { validateHumanInputOption } from '../human-input-option.ts';
 import {
   type BadRequest,
@@ -219,6 +219,47 @@ export function summarizerFailures(
 }
 
 /**
+ * Why `name` cannot be a `decisions.model`, or `undefined` when it can: a decision model this host
+ * registers, or a catalog row written `<provider>/<model>`. Whether the row exists is judged at
+ * write ({@link decisionModelFailures}) and at each use, because the catalog is not built when a
+ * stored value is read and `models.replace` changes it later.
+ */
+export function decisionModelProblem(
+  name: string,
+  registered: ReadonlySet<string>,
+): string | undefined {
+  if (registered.has(name) || /^[^/\s]+\/\S+$/.test(name)) return undefined;
+  if (name === CATALOG_DECISION_MODEL) {
+    return 'The "catalog" decision model no longer exists; name a catalog row as "<provider>/<model>", or leave the setting unset to have the fallback model answer';
+  }
+  return `"${name}" is not a catalog row written "<provider>/<model>"${
+    registered.size === 0
+      ? ''
+      : ` or one of the registered decision models (${[...registered].join(', ')})`
+  }`;
+}
+
+/**
+ * The check `decisions.model` gets at write: a name that is not a registered decision model must
+ * name a row of `catalog` of a known provider, whether or not that provider's key is saved yet
+ * (its rows are `unavailable` until it is). Unlike the summarizer, it does not refuse an
+ * `unavailable` row, and it finds a row that only decides.
+ */
+export function decisionModelFailures(
+  values: SettingsValues,
+  catalog: readonly BackendDescriptor[],
+  registered: ReadonlySet<string>,
+): SettingsFailure[] {
+  const name = values['decisions.model'];
+  if (name === undefined || registered.has(name)) return [];
+  const problem = decisionModelProblem(name, registered);
+  if (problem !== undefined) return [{ keys: ['decisions.model'], message: problem }];
+  return findDecisionRow(catalog, name) === undefined
+    ? [{ keys: ['decisions.model'], message: `The model catalog has no row "${name}"` }]
+    : [];
+}
+
+/**
  * Every check a consumer of `values` would fail: Bureau's option validator for each key, and
  * Weft's engine options. `values` are the settings in force, code defaults included, so a check
  * across keys sees the value each one would really have.
@@ -229,11 +270,9 @@ export function settingsFailures(
 ): SettingsFailure[] {
   const failures: SettingsFailure[] = [];
   const model = values['decisions.model'];
-  if (decisionModels !== undefined && model !== undefined && !decisionModels.has(model)) {
-    failures.push({
-      keys: ['decisions.model'],
-      message: `No decision model is registered as "${model}"; the names are ${[...decisionModels].join(', ')}`,
-    });
+  if (decisionModels !== undefined && model !== undefined) {
+    const problem = decisionModelProblem(model, decisionModels);
+    if (problem !== undefined) failures.push({ keys: ['decisions.model'], message: problem });
   }
   for (const [key, validate] of Object.entries(OPTION_VALIDATORS)) {
     const value = values[key as SettingKey];

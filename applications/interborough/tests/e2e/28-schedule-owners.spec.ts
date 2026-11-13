@@ -13,6 +13,7 @@ import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
 
+import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SCHEDULE_COPY } from '../../src/app/copy/schedules.ts';
 import { E2E_BASE_URL, E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -75,6 +76,10 @@ const activeSwitch = (page: Page): Locator => page.getByRole('switch', { name: /
 test.use({ baseURL: E2E_BUREAU_URL });
 
 test.describe('what each schedule starts', () => {
+  // The seeded schedule runs in UTC, and its page names that zone only to a viewer in another one: a
+  // browser on a UTC runner reads a bare "9:00 AM" (COR-2412), so the viewer's zone is held still.
+  test.use({ timezoneId: SAMPLE_TIME_ZONE });
+
   for (const width of WIDTHS) {
     test(`labels the seeded agent run and links it to its agent, at ${width} pixels`, async ({
       page,

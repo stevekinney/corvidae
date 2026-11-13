@@ -305,12 +305,8 @@ export function isDuration(name: string): boolean {
 }
 
 /**
- * The decision models a host registers by name, which `decisions.model` takes: `catalog`, the
- * language-model fallback alone, and `typesafe:jev`, the model the typesafe plugin contributes
- * (`plugins/typesafe`).
- * The Bureau lists no names, and refuses one the host did not register, which the page says.
+ * The decision models the picker offers for `decisions.model`, which names a catalog row as
+ * `<provider>/<model>`: `typesafe/jev`, the row the typesafe plugin contributes (`plugins/typesafe`).
+ * The `catalog` choice no longer exists. COR-2160 replaces this list with the catalog's own rows.
  */
-export const HOST_DECISION_MODELS = [
-  { value: 'catalog', label: 'The language model alone' },
-  { value: 'typesafe:jev', label: 'TypeSafe' },
-] as const;
+export const HOST_DECISION_MODELS = [{ value: 'typesafe/jev', label: 'TypeSafe' }] as const;

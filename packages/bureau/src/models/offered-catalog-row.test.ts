@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { type BackendDescriptor, createModelCatalog } from '@lostgradient/operative';
 
 import { allowedDescriptorsOfFileAgent, resolveModelDescriptor } from '../agent-file-catalog';
-import { findCatalogRow, isOfferedCatalogRow } from './create-models';
+import { findCatalogRow, findDecisionRow, isOfferedCatalogRow } from './create-models';
 
 const seed = createModelCatalog().descriptors.find((row) => row.provider === 'anthropic')!;
 
@@ -15,6 +15,35 @@ function row(model: string, lifecycle?: 'retired'): BackendDescriptor {
     ...(lifecycle === undefined ? {} : { lifecycle }),
   };
 }
+
+function decisionOnly(model: string): BackendDescriptor {
+  return { ...row(model), decisions: { kinds: ['boolean'], only: true } };
+}
+
+describe('a row that only decides (COR-2156)', () => {
+  const rows = [row('live'), decisionOnly('jev')];
+
+  it('is not offered to agents, and an agent file naming it is told the row only decides', () => {
+    expect(isOfferedCatalogRow(rows[1]!)).toBe(false);
+    const problem = resolveModelDescriptor(`${seed.provider}/jev`, rows);
+    expect(problem).toMatchObject({ code: 'unknown-model' });
+    expect('message' in problem && problem.message).toContain('only decides');
+    expect(allowedDescriptorsOfFileAgent(undefined, rows)).toEqual([rows[0]!]);
+    expect(findCatalogRow(rows, `${seed.provider}/jev`)).toBeUndefined();
+  });
+
+  it('is still found for decisions.model, and a row that also generates stays offered', () => {
+    expect(findDecisionRow(rows, `${seed.provider}/jev`)).toBe(rows[1]);
+    expect(findDecisionRow(rows, `${seed.provider}/jev-alias`)).toBe(rows[1]);
+    const both = { ...rows[1]!, decisions: { kinds: ['boolean' as const], only: false } };
+    expect(isOfferedCatalogRow(both)).toBe(true);
+  });
+
+  it('is not what a model the catalog lacks reads as', () => {
+    const missing = resolveModelDescriptor(`${seed.provider}/nope`, rows);
+    expect('message' in missing && missing.message).toContain("not in the deployment's");
+  });
+});
 
 describe('isOfferedCatalogRow', () => {
   const rows = [row('live'), row('old', 'retired')];

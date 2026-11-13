@@ -24,6 +24,7 @@ import {
   runScopedExecutionContextOf,
 } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
+import { describeDefinitionDrift } from '../agent-definition-pin';
 import { BUREAU_AGENT_NAME, detachBestEffortPromise } from '../bureau-construction-support';
 import type { BureauCore, ChatRunSpend } from './core';
 import { BureauError, toBadRequest } from '../bureau-errors';
@@ -31,10 +32,15 @@ import type { BureauSteeringGate } from '../steering';
 import {
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
+  sessionPinMetadata,
 } from '../session-agent-revision';
 import { registerTrailingOnStep } from '../bureau-invariant-hooks';
 import { sessionRunMediaOptions } from '../provider-resolution';
-import { type BureauToolbox, type SessionAgentRun } from '../runtime-composition-types';
+import {
+  type BureauToolbox,
+  type SessionAgentRun,
+  type SessionAgentRunResolution,
+} from '../runtime-composition-types';
 import { wireDurableOptInTools } from '../run-request-context';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
@@ -196,6 +202,24 @@ export interface RunCreationPeers {
   readonly disposeRegisteredStreamListeners: (listeners: Array<() => void>) => void;
 }
 
+/**
+ * What a start whose agent did not resolve throws, past a missing agent and one with no resolver:
+ * the resolver's own failure, or (COR-2230) a drift. A start names no recorded definition, so it
+ * has nothing to drift from; the case only keeps the resolution union narrowed, and a run that did
+ * reach it would be refused as recovery refuses it.
+ */
+function unresolvedStart(
+  agentName: string,
+  resolution: Extract<
+    SessionAgentRunResolution,
+    { status: 'resolver-failed' | 'definition-drifted' }
+  >,
+): unknown {
+  return resolution.status === 'resolver-failed'
+    ? resolution.error
+    : new BureauError(describeDefinitionDrift(agentName, resolution.drift), 'CONFLICT');
+}
+
 /** Builds the run creation functions of one Bureau. Synchronous, and registers nothing. */
 export function createRunCreation<D extends AgentDefinitions>(
   core: BureauCore<D>,
@@ -289,7 +313,7 @@ export function createRunCreation<D extends AgentDefinitions>(
         'UNSUPPORTED_CAPABILITY',
       );
     }
-    if (resolution.status === 'resolver-failed') throw resolution.error;
+    if (resolution.status !== 'resolved') throw unresolvedStart(agentName, resolution);
     const sessionAgent: SessionAgentRun = resolution.run;
     // Request beats agent, and agent beats Bureau, for what the run is seeded and capped with.
     const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
@@ -477,6 +501,10 @@ export function createRunCreation<D extends AgentDefinitions>(
           // COR-1524 — the file the agent was read from, by hash, so recovery builds from the
           // snapshot. Null for a code-defined agent, and for the default one.
           [SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]: sessionAgent?.agentBinding?.hash ?? null,
+          // COR-2230 — what a code agent was when this run started, which recovery compares with
+          // the agent it finds: the plugin version (a built-in agent has none) and the overrides
+          // in force. Null for a file agent and the default agent.
+          ...sessionPinMetadata(sessionAgent?.agentPin, runId),
           // Reset the active-skill snapshot at the start of every run so a reused
           // session never seeds a fresh run with the PREVIOUS run's active skills.
           // The snapshot is otherwise written only by createSkillRecordSnapshotHook

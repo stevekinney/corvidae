@@ -33,6 +33,13 @@ const SNAPSHOT: ProvidersSnapshot = {
       off: true,
       decisions: { kinds: ['boolean', 'structured'], only: true },
     },
+    {
+      // Lowered media limits survive a read, so the page writes them back unchanged (COR-2413).
+      provider: 'anthropic',
+      model: 'sonnet',
+      mediaLimits: [{ scope: 'per-part', modality: 'image', maxBytes: 1_048_576 }],
+      mediaCounts: [{ modality: 'image', maxPerRequest: 4 }],
+    },
   ],
   models: [
     {

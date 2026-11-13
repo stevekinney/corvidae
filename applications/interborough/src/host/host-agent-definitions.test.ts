@@ -188,6 +188,7 @@ describe('the host’s /host/paths', () => {
       { name: 'anthropic', secretFile: `workspace:${host.workspaceId}/anthropic-api-key` },
       { name: 'openai', secretFile: `workspace:${host.workspaceId}/openai-api-key` },
       { name: 'gemini', secretFile: `workspace:${host.workspaceId}/gemini-api-key` },
+      { name: 'typesafe', secretFile: `workspace:${host.workspaceId}/typesafe-api-key` },
     ]);
   });
 });

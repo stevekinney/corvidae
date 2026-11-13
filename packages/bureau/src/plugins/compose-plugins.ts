@@ -50,7 +50,7 @@ import {
   type Tool,
 } from 'armorer';
 
-import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
+import type { AgentDefinitions, CodeAgentDetails, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
 import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
 import type { AgentSource } from '../sources/definition-source';
@@ -114,6 +114,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
    * See {@link agentsOfDisabledPlugin} for how they are read without the plugin running.
    */
   readonly unavailableAgents: readonly UnavailableCodeAgent[];
+  /**
+   * COR-2233 — what each running plugin's code agent says beyond the agent itself, by the
+   * `plugin:name` the catalog holds it under: the version a run pins (its own `version`, else the
+   * plugin's), its `title` and its `visibility`.
+   */
+  readonly agentDetails: Readonly<Record<string, CodeAgentDetails>>;
   /**
    * Starts following the host's `watch` for every running plugin's declared secrets, so a saved or
    * removed secret changes what its contributions do with no restart. Returns the function that
@@ -363,8 +369,6 @@ function planOf(
   for (const interceptor of contributions.interceptors ?? []) {
     contribute('interceptor', interceptor.name);
   }
-  for (const model of contributions.decisionRouters ?? [])
-    contribute('decision-router', model.name);
   for (const kind of contributions.reactions ?? []) contribute('reaction', kind.name);
   for (const provider of contributions.providers ?? []) {
     contribute('provider', provider.name);
@@ -491,9 +495,6 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const id of options.agentContributions?.interceptors.keys() ?? []) {
     claims.hold({ space: 'interceptor', name: id }, HOST_PARTY);
   }
-  for (const name of Object.keys(options.decisions?.models ?? {})) {
-    claims.hold({ space: 'decision-router', name }, HOST_PARTY);
-  }
   for (const { plugin, kind } of options.hooks?.actionKinds ?? []) {
     claims.hold(
       { space: 'reaction', name: formatToolId({ namespace: plugin, name: kind.name }) },
@@ -532,7 +533,6 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'validator',
   'guardrail',
   'interceptor',
-  'decision-router',
   'reaction',
   'formatter',
   'agent',
@@ -564,15 +564,12 @@ class Contributed {
   readonly activities: { plugin: string; version: string; result: PluginSetupResult }[] = [];
   readonly agentSources: { plugin: string; result: PluginSetupResult }[] = [];
   readonly validators: NonNullable<BureauOptions['validators']>[number][] = [];
-  readonly decisionModels: Record<
-    string,
-    NonNullable<PluginContributions['decisionRouters']>[number]
-  > = {};
   readonly actionKinds: NonNullable<NonNullable<BureauOptions['hooks']>['actionKinds']>[number][] =
     [];
   readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
   readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
   readonly agents: Record<string, unknown> = {};
+  readonly agentDetails: Record<string, CodeAgentDetails> = {};
   readonly memory: {
     admission: PluginMemoryContributions['guardrails']['admission'][number][];
     recall: PluginMemoryContributions['guardrails']['recall'][number][];
@@ -603,7 +600,6 @@ class Contributed {
         validate: (input, signal) => validator.validate(input, signal),
       });
     }
-    for (const model of result.decisionRouters ?? []) this.decisionModels[id(model.name)] = model;
     for (const kind of result.reactions ?? []) {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
       this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
@@ -612,7 +608,16 @@ class Contributed {
     for (const judge of result.scorers ?? []) {
       this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
-    for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
+    for (const item of result.agents ?? []) {
+      this.agents[id(item.name)] = item.agent;
+      // A run pins the agent's own version, else its plugin's (COR-2233), as a delivery does.
+      this.agentDetails[id(item.name)] = {
+        plugin,
+        version: item.version ?? version,
+        title: item.title,
+        visibility: item.visibility,
+      };
+    }
     this.providers.push(...providers);
     for (const detector of result.guardrails?.memory ?? []) {
       // The detector itself, not a copy of its fields: it may be an instance whose methods live on
@@ -652,6 +657,23 @@ function providersOf(
       provider.rows ??
       createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
   }));
+}
+
+/**
+ * The `provider-empty` problems of the providers that gave no `rows` under a name Operative's
+ * static catalog holds none for: they would contribute no model, which is never what a plugin
+ * meant by a provider (COR-2145). The plugin keeps running with its other contributions.
+ */
+function providerEmptyProblems(
+  result: PluginSetupResult,
+  providers: readonly PluginProviderContribution[],
+): PluginProblem[] {
+  // `providers` is `providersOf(result)`, one contribution per provider, in the same order.
+  return (result.providers ?? []).flatMap((provider, index) =>
+    provider.rows === undefined && providers[index]?.rows.length === 0
+      ? [{ code: 'provider-empty' as const, provider: provider.name }]
+      : [],
+  );
 }
 
 function catalogWith(
@@ -753,14 +775,6 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     ...(contributed.validators.length === 0
       ? {}
       : { validators: [...(options.validators ?? []), ...contributed.validators] }),
-    ...(Object.keys(contributed.decisionModels).length === 0
-      ? {}
-      : {
-          decisions: {
-            ...options.decisions,
-            models: { ...options.decisions?.models, ...contributed.decisionModels },
-          },
-        }),
     ...(options.hooks === undefined || contributed.actionKinds.length === 0
       ? {}
       : {
@@ -962,6 +976,28 @@ function formatterUnknownKinds(contributions: PluginContributions): PluginProble
   return problems;
 }
 
+/**
+ * The `activity-field-missing` problems of a plugin whose activity has no title or no input schema
+ * (D7), the two fields the workflow editor lists an activity by.
+ */
+function activityFieldProblems(contributions: PluginContributions): PluginProblem[] {
+  const problems: PluginProblem[] = [];
+  for (const activity of contributions.activities ?? []) {
+    const title: unknown = activity.title;
+    if (typeof title !== 'string' || title.trim() === '') {
+      problems.push({ code: 'activity-field-missing', activity: activity.name, field: 'title' });
+    }
+    if ((activity.inputSchema as unknown) === undefined) {
+      problems.push({
+        code: 'activity-field-missing',
+        activity: activity.name,
+        field: 'inputSchema',
+      });
+    }
+  }
+  return problems;
+}
+
 /** `given` with every caller-owned collection composition reads after an await copied now. */
 function snapshotOf<O extends ComposableOptions>(given: O): O {
   const {
@@ -1037,6 +1073,7 @@ export async function composePlugins<O extends ComposableOptions>(
       continue;
     }
     const refusals = [
+      ...activityFieldProblems(outcome.result),
       ...formatterUnknownKinds(outcome.result),
       ...providerSecretProblems(entry, outcome.result),
     ];
@@ -1075,7 +1112,7 @@ export async function composePlugins<O extends ComposableOptions>(
       plan.tools,
       outcome.gate,
     );
-    record('running', [], {
+    record('running', providerEmptyProblems(outcome.result, providers), {
       contributions: plan.listings.filter(({ kind }) => registersKind(kind, options)),
       setup: {
         result: outcome.result,
@@ -1093,6 +1130,7 @@ export async function composePlugins<O extends ComposableOptions>(
     records,
     shippedContent: shippedContentOf(records),
     unavailableAgents,
+    agentDetails: contributed.agentDetails,
     watchSecrets: () => {
       const stops = gates.map((gate) => gate.watch());
       return () => {

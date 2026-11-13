@@ -200,6 +200,7 @@ export function discoverWorkspaceReferences(root: string): WorkspaceReference[] 
   const patterns = [
     `${directoryGlob(workspaceParentDirectories)}/*/package.json`,
     'scripts/browser-fixtures/package.json',
+    'scripts/groom/package.json',
   ];
   const found: WorkspaceReference[] = [];
   for (const pattern of patterns) {

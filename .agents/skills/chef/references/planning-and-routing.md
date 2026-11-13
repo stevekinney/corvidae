@@ -6,7 +6,7 @@ Read this when writing the package table, sizing or batching work, choosing a mo
 
 Each package has a stable identifier, a binary outcome, the files or interfaces it may change, its dependencies with the evidence that releases each one, its batch, its model and effort with a reason, and its verification commands. Build an acyclic dependency graph and name the critical path. An implementation merge does not satisfy a publication edge: the published artifact releases adoption. Close each issue as its own gates pass, even while another batch is unfinished.
 
-For a new Linear issue, use the `create-task` shape, write it with `bun scripts/chef/linear.ts create --team <KEY> --title <t> --file <md> --label <name>`, which refuses a duplicate title, and run `bun scripts/chef/groom.ts --issue <ID>` to check it against the Definition of Ready in [the Linear policy](linear-policy.md). Reuse an existing issue instead of cloning it into a worker ticket.
+For a new Linear issue, use the `create-task` shape, write it with `bun scripts/chef/linear.ts create --team <KEY> --title <t> --file <md> --label <name>`, which refuses a duplicate title, and run `bun scripts/groom/groom.ts --issue <ID>` to check it against the Definition of Ready in [the Linear policy](linear-policy.md). Reuse an existing issue instead of cloning it into a worker ticket.
 
 ## Design programmes
 

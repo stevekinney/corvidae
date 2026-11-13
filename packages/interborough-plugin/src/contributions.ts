@@ -3,7 +3,6 @@ import type {
   AfterToolExecutionHook,
   BeforeGenerateHook,
   BeforeToolExecutionHook,
-  DecisionModel,
   GuardrailEntry,
   HookErrorHandler,
   HookReplayPolicy,
@@ -357,6 +356,12 @@ export type PluginProvider<Configuration = unknown> = ProviderDefinition<
    * `apiKey`), and a plugin that declares several is refused (`provider-secret-ambiguous`).
    */
   readonly secretKey?: string;
+  /**
+   * The provider's own version, recorded in the plugin's identities beside the native decision kinds
+   * of its rows (COR-2158); the plugin's version without one. Change it when the provider's native
+   * decision behavior changes.
+   */
+  readonly version?: string;
 };
 
 /** An embedder the `memory.embedder` setting can name. */
@@ -427,10 +432,31 @@ export interface PluginFormatter {
   format(event: PluginEvent): PluginFormatting;
 }
 
+/**
+ * Where an agent is offered: `chat` agents are offered in Chat's agent list. A `hidden` agent is
+ * still listed by `bureau.agents.list`, which carries `visibility: "hidden"` for it, and a client
+ * that offers agents for a chat leaves it out (Chat does); a workflow's `agent` step, a child or a
+ * direct start can still run it by its `plugin:name`.
+ */
+export type PluginAgentVisibility = 'chat' | 'hidden';
+
 /** An agent defined in code. */
 export interface PluginAgent {
   /** The agent's name, unique within the plugin. */
   readonly name: string;
+  /** A label for the agent's listing; the listing falls back to the agent's own name without one. */
+  readonly title?: string;
+  /**
+   * Where the agent is offered. Without it the agent is `chat`. Use `hidden` for an agent only a
+   * workflow or a parent agent runs.
+   */
+  readonly visibility?: PluginAgentVisibility;
+  /**
+   * The agent's own version. A run of the agent pins it in place of the plugin's version, as an
+   * activity's `version` does, and a run recovered under a different version settles failed with
+   * `definition-drifted` instead of resuming under a definition it did not start with.
+   */
+  readonly version?: string;
   /** The agent itself. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the same two-member union Bureau's agent catalog accepts.
   readonly agent: RunnableAgent | RunnableAgent<any, true>;
@@ -447,6 +473,13 @@ export interface PluginAgent {
 export type PluginActivity = ActivityDefinition<any, any> & {
   /** The activity's own version; a record that pins it uses the plugin's version without one. */
   readonly version?: string;
+  /** What the workflow editor calls the activity. Required: setup fails without it. */
+  readonly title: string;
+  /**
+   * The schema of the input a step gives the activity. Required (D7): the editor derives the
+   * step's fields from it, so a plugin that names no schema fails setup.
+   */
+  readonly inputSchema: NonNullable<ActivityDefinition<any, any>['inputSchema']>;
 };
 
 /**
@@ -464,8 +497,6 @@ export interface PluginContributions {
   readonly guardrails?: PluginGuardrails;
   /** Interceptors an agent file chooses by name; they run for the agents that choose them. */
   readonly interceptors?: readonly PluginInterceptor[];
-  /** Decision models that answer decisions of the kinds they name. */
-  readonly decisionRouters?: readonly DecisionModel[];
   /** New kinds of trigger. */
   readonly triggers?: readonly PluginTrigger[];
   /** New kinds of hook action. */

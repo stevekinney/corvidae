@@ -42,6 +42,8 @@ export interface WorkflowCatalog {
   }[];
   readonly activities: readonly {
     readonly id: string;
+    /** What the editor calls the activity: a plugin activity's required `title`; fixed for `agent`. */
+    readonly title: string | null;
     readonly description: string | null;
     readonly inputSchema: Readonly<Record<string, unknown>> | null;
   }[];
@@ -119,6 +121,11 @@ export function workflowCatalogOf(
     const definition = typeof activity === 'function' ? undefined : activity;
     return {
       id,
+      title: Object.hasOwn(contributions.activityTitles, name)
+        ? contributions.activityTitles[name]!
+        : id === AGENT_STEP_HANDLER
+          ? 'Run an agent'
+          : null,
       description:
         definition?.description ?? (id === AGENT_STEP_HANDLER ? 'Run a Bureau agent.' : null),
       inputSchema:

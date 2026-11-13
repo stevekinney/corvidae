@@ -83,22 +83,19 @@ test.describe('Settings › Models, no provider connected', () => {
     await expect(empty.getByRole('button')).toHaveCount(0);
     await expect(empty.getByRole('link', { name: MODELS_COPY.models.empty.action })).toBeVisible();
 
-    // Decisions: TypeSafe lives here, and the rows that depend on it wait for it.
+    // Decisions: with no provider connected nothing can answer until TypeSafe is, yet every row stays editable.
     await expect(page.getByText(MODELS_COPY.decisions.description)).toBeVisible();
     const model = page.locator('[data-setting="decisions.model"]');
     await expect(model).toContainText('Decision model');
-    await expect(model).toContainText(MODELS_COPY.decisions.model.description);
+    await expect(model).toContainText(MODELS_COPY.decisions.model.waitingNothing);
+    await expect(model.getByRole('combobox')).toBeEnabled();
     await expect(model.getByRole('link', { name: 'Connect TypeSafe' })).toBeVisible();
     const fallback = page.locator('[data-setting="decisions.fallbackModel"]');
     await expect(fallback).toContainText('Fallback model');
-    await expect(fallback.getByRole('combobox')).toBeDisabled();
-    await expect(fallback.getByRole('combobox')).toContainText(
-      MODELS_COPY.decisions.fallbackModel.connectFirst,
-    );
+    await expect(fallback.getByRole('combobox')).toBeEnabled();
     const limit = page.locator('[data-setting="decisions.maximumPerTask"]');
     await expect(limit).toContainText('Maximum per task');
-    await expect(limit).toContainText(MODELS_COPY.decisions.maximumPerTask.connectFirst);
-    await expect(limit.getByRole('spinbutton')).toBeDisabled();
+    await expect(limit.getByRole('spinbutton')).toBeEnabled();
     await expect(limit.getByRole('spinbutton')).toHaveValue('10');
 
     await checkA11y('settings models, no provider, at 1280px');
@@ -155,6 +152,16 @@ test.describe('Settings › Models, provider connected', () => {
       await expect(row.locator('td').nth(3)).toHaveText('Allowed');
     }
     await expect(page.getByRole('switch')).toHaveCount(0);
+
+    // Decisions: a provider is connected, so something answers while TypeSafe, which has no key on
+    // this host, waits. `withSampleCatalog` stubs only the host's providers route, never the
+    // Bureau's own catalog, which holds no row the Bureau would pick as the fallback here: the page
+    // says a fallback model answers without naming one, and not that nothing can. The named
+    // sentence and the "(default)" option are covered by `models-page.test.ts`.
+    const model = page.locator('[data-setting="decisions.model"]');
+    await expect(model).toContainText(MODELS_COPY.decisions.model.waitingUnnamed);
+    await expect(model).not.toContainText(MODELS_COPY.decisions.model.waitingNothing);
+
     await checkA11y('settings models, provider connected, at 1280px');
     await captureAtEveryWidth(page, 'provider-connected');
   });

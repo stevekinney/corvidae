@@ -1,13 +1,14 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/bureau';
 import { agentFileDirectory } from '@lostgradient/bureau/sources';
 import { createPluginTestHost } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
-import type { DecisionModel } from '@lostgradient/operative';
-import { typesafeJev } from '@lostgradient/operative-typesafe';
+import type { BackendDescriptor, DecisionModel } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -21,7 +22,60 @@ import plugin, {
   TYPESAFE_API_KEY_SECRET,
 } from './plugin.ts';
 
-pluginContract(plugin, { createHost: createPluginTestHost });
+/** The responses recorded against the live TypeSafe API, which the decision scenarios replay (COR-2159). */
+const FIXTURE_DIRECTORY = join(
+  dirname(fileURLToPath(import.meta.resolve('@lostgradient/operative-typesafe'))),
+  '..',
+  'test',
+  'fixtures',
+  'decisions',
+);
+
+interface RecordedFixture {
+  readonly exchange: {
+    readonly path: string;
+    readonly requestBody: unknown;
+    readonly status: number;
+    readonly responseBody: unknown;
+  };
+}
+
+const recorded: readonly RecordedFixture[] = readdirSync(FIXTURE_DIRECTORY)
+  .filter((file) => file.endsWith('.json'))
+  .map(
+    (file) => JSON.parse(readFileSync(join(FIXTURE_DIRECTORY, file), 'utf8')) as RecordedFixture,
+  );
+
+/** Serves only recorded responses, so the conformance suite never reaches the network. */
+const replayFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+  const match = recorded.find(
+    ({ exchange }) =>
+      exchange.path === url.pathname && Bun.deepEquals(exchange.requestBody, body, true),
+  );
+  if (match === undefined) throw new Error(`No recorded fixture for ${url.pathname}`);
+  return new Response(JSON.stringify(match.exchange.responseBody), {
+    status: match.exchange.status,
+    headers: { 'content-type': 'application/json' },
+  });
+}) as typeof fetch;
+
+// The conformance suite also asks the plugin's own provider, through its own `decide`, every
+// decision scenario of the kinds its row declares, over the recorded responses.
+pluginContract(plugin, {
+  createHost: createPluginTestHost,
+  createDecisionModel: ({ provider, row }) =>
+    provider.decide!(
+      {
+        provider: row.provider,
+        model: row.model,
+        apiKey: 'replay-key-not-a-secret',
+        fetch: replayFetch,
+      } as never,
+      undefined,
+    ),
+});
 
 const FIRST_KEY = 'fixture-typesafe-key-first';
 const SECOND_KEY = 'fixture-typesafe-key-second';
@@ -59,6 +113,8 @@ function secretsStore() {
   const watchers = new Map<string, Set<() => void>>();
   return {
     get: async (key: string) => values.get(key),
+    /** The key as it is now, which the host's `models.decide` reads when it builds a decision model. */
+    current: (key: string) => values.get(key),
     watch(key: string, listener: () => void) {
       const set = watchers.get(key) ?? new Set();
       set.add(listener);
@@ -84,13 +140,37 @@ async function waitUntilStatus(bureau: Bureau<AgentDefinitions>, status: string)
   });
 }
 
+/** The provider the plugin contributes, as the host receives it. */
+async function providerOf() {
+  const result = await plugin.setup?.({ secrets: { get: async () => undefined } } as never);
+  const provider = result?.providers?.[0];
+  if (provider?.decide === undefined) throw new Error('the plugin contributes no provider');
+  return provider;
+}
+
 async function startBureau(secrets: ReturnType<typeof secretsStore>) {
+  const provider = await providerOf();
   const bureau = await createBureau<AgentDefinitions>({
     agents: {},
     plugins: [{ descriptor: plugin, source: 'package', location: '@lostgradient/plugin-typesafe' }],
     pluginSecrets: secrets,
-    // COR-1879 checks this name after composition, so the plugin's own model can be named.
-    decisions: { model: 'typesafe:jev' },
+    // The host builds a row's native model from its provider and the key it holds now; so does this.
+    models: {
+      // The host's catalog factory is handed the providers plugins contribute, and builds its rows.
+      catalog: (contributions: {
+        readonly providers: readonly { readonly rows: readonly BackendDescriptor[] }[];
+      }) => contributions.providers.flatMap((contributed) => contributed.rows),
+      decide: (row: BackendDescriptor) => {
+        const apiKey = secrets.current(TYPESAFE_API_KEY_SECRET);
+        return provider.decide!(
+          { provider: row.provider, model: row.model, ...(apiKey === undefined ? {} : { apiKey }) },
+          undefined,
+        );
+      },
+    },
+    // The row is a catalog row: it is named `<provider>/<model>` and found once composition has
+    // folded the plugin's provider into the catalog.
+    decisions: { model: 'typesafe/jev' },
   });
   bureaus.push(bureau);
   return bureau;
@@ -102,21 +182,40 @@ describe('the typesafe plugin', () => {
     expect(plugin.secrets).toEqual(['typesafe-api-key']);
   });
 
-  test('contributes the Jev model as `jev` serving the kinds Jev serves', async () => {
+  test('contributes the decision-only provider `typesafe` with one row, `typesafe/jev`, answering boolean, choice and scale natively', async () => {
     const result = await plugin.setup?.({ secrets: { get: async () => undefined } } as never);
-    expect(result?.decisionRouters?.map((model) => model.name)).toEqual(['jev']);
-    const jev = typesafeJev({ apiKey: FIRST_KEY });
-    expect([...(result?.decisionRouters?.[0]?.kinds ?? [])].toSorted()).toEqual(
-      [...jev.kinds].toSorted(),
+    expect(result?.providers?.map((provider) => provider.name)).toEqual(['typesafe']);
+    const provider = result?.providers?.[0];
+    // A decision-only provider has no `generate` or `stream`, so no agent can run on it.
+    expect(provider?.decide).toBeFunction();
+    expect(Object.hasOwn(provider ?? {}, 'generate')).toBe(false);
+    expect(Object.hasOwn(provider ?? {}, 'stream')).toBe(false);
+    expect(provider?.rows?.map((row) => `${row.provider}/${row.model}`)).toEqual(['typesafe/jev']);
+    const row = provider?.rows?.[0];
+    expect(row?.decisions).toEqual({ kinds: ['boolean', 'choice', 'scale'], only: true });
+    // No structured output and no price: the fallback chooser never picks it.
+    expect(row?.structuredOutput).toBe(false);
+    expect(row?.pricing).toBeUndefined();
+  });
+
+  test('contributes only the provider and the opt-in detector, and no decision router', async () => {
+    const result = await plugin.setup?.({ secrets: { get: async () => undefined } } as never);
+    expect(Object.keys(result ?? {}).toSorted()).toEqual(['guardrails', 'providers']);
+  });
+
+  test('builds Jev from the key the host holds, and refuses without one without naming a key', async () => {
+    const provider = await providerOf();
+    const jev = provider.decide!(
+      { provider: 'typesafe', model: 'jev', apiKey: FIRST_KEY },
+      undefined,
+    );
+    expect([...jev.kinds].toSorted()).toEqual(['boolean', 'choice', 'scale']);
+    expect(() => provider.decide!({ provider: 'typesafe', model: 'jev' }, undefined)).toThrow(
+      TYPESAFE_API_KEY_SECRET,
     );
   });
 
-  test('contributes only the model and the opt-in detector', async () => {
-    const result = await plugin.setup?.({ secrets: { get: async () => undefined } } as never);
-    expect(Object.keys(result ?? {}).toSorted()).toEqual(['decisionRouters', 'guardrails']);
-  });
-
-  test('starts needs-setup without the key, and decisions refuse without reaching TypeSafe', async () => {
+  test('starts needs-setup without the key, naming the guardrail and the provider the key unlocks', async () => {
     const bureau = await startBureau(secretsStore());
 
     // Every Bureau also lists its built-in `bureau` plugin first (COR-1890).
@@ -127,18 +226,13 @@ describe('the typesafe plugin', () => {
       {
         code: 'secret-missing',
         key: 'typesafe-api-key',
-        contributions: ['typesafe:prompt-injection', 'typesafe:jev'],
+        contributions: ['typesafe:prompt-injection', 'typesafe:typesafe'],
       },
     ]);
-    const failure = await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' }).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-    expect(failure).toMatchObject({ name: 'PluginNeedsSetupError', plugin: 'typesafe' });
     expect(authorizations).toEqual([]);
   });
 
-  test('answers with typesafe:jev as soon as the key is saved, with no restart, and follows a changed key', async () => {
+  test('answers with typesafe/jev as soon as the key is saved, with no restart, and follows a changed key', async () => {
     const secrets = secretsStore();
     const bureau = await startBureau(secrets);
     expect(await statusOf(bureau)).toBe('needs-setup');
@@ -195,7 +289,7 @@ function scriptedModel(value: boolean, probability: number | undefined) {
 
 async function detectorOf(model: DecisionModel) {
   const result = await createTypesafePlugin({ createModel: () => model }).setup?.({
-    secrets: { get: async () => undefined },
+    secrets: { get: async () => FIRST_KEY },
   } as never);
   const detector = result?.guardrails?.input?.[0];
   if (detector === undefined || !('detect' in detector)) throw new Error('no detector');

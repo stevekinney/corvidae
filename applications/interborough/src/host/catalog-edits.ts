@@ -67,6 +67,29 @@ export type CatalogDecisions = {
   readonly only: boolean;
 };
 
+/**
+ * A media limit an edit lowers: the row's limit for one modality, per part or in aggregate. Name
+ * only the limits to lower; each value may not exceed the row's own, so an edit never admits what
+ * the built-in row refuses.
+ */
+export type CatalogMediaLimit = {
+  /** Whether the limit is for each part of the modality or for all of them in a request. */
+  readonly scope: BackendDescriptor['mediaLimits'][number]['scope'];
+  /** The kind of attachment the limit is for, such as `image`. */
+  readonly modality: BackendDescriptor['mediaLimits'][number]['modality'];
+  /** The most bytes. */
+  readonly maxBytes?: number;
+  /** The longest audio or video, in seconds. */
+  readonly maxDurationSeconds?: number;
+  /** The most pixels of an image or video. */
+  readonly maxPixels?: number;
+  /** The most pages of a document. */
+  readonly maxPageCount?: number;
+};
+
+/** A cap on how many parts of one modality a request may carry; it may only be lowered. */
+export type CatalogMediaCount = BackendDescriptor['mediaCounts'][number];
+
 /** One edit to the catalog. `provider` and `model` identify the row; every other field is optional. */
 export type CatalogEdit = {
   /** The provider of the row: `anthropic`, `openai`, or `gemini`. */
@@ -85,6 +108,10 @@ export type CatalogEdit = {
   readonly basedOn?: string;
   /** The decision capabilities to replace on the model. */
   readonly decisions?: CatalogDecisions;
+  /** Lowers the row's media limits (bytes, duration, pixels, pages); a value above the row's is refused. */
+  readonly mediaLimits?: readonly CatalogMediaLimit[];
+  /** Lowers the row's per-request part counts; a value above the row's is refused. */
+  readonly mediaCounts?: readonly CatalogMediaCount[];
 };
 
 const EDIT_FIELDS = [
@@ -96,7 +123,12 @@ const EDIT_FIELDS = [
   'maxOutputTokens',
   'basedOn',
   'decisions',
+  'mediaLimits',
+  'mediaCounts',
 ] as const;
+const MEDIA_SCOPES = ['per-part', 'aggregate'] as const;
+const MEDIA_MODALITIES = ['text', 'image', 'audio', 'video', 'document', 'file'] as const;
+const MEDIA_LIMIT_FIELDS = ['maxBytes', 'maxDurationSeconds', 'maxPixels', 'maxPageCount'] as const;
 const DECISION_KINDS = [
   'boolean',
   'choice',
@@ -262,6 +294,90 @@ function parseDecisions(value: unknown, path: string, field: string): CatalogDec
   return { kinds, only: value['only'] };
 }
 
+function oneOf<Value extends string>(
+  options: readonly Value[],
+  value: unknown,
+  path: string,
+  field: string,
+): Value {
+  const found = options.find((option) => option === value);
+  if (found === undefined) throw problem(path, field, `expected one of ${options.join(', ')}.`);
+  return found;
+}
+
+function parseMediaLimits(
+  value: unknown,
+  path: string,
+  field: string,
+): readonly CatalogMediaLimit[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw problem(path, field, 'expected a non-empty list of media limits.');
+  }
+  const seen = new Set<string>();
+  return value.map((entry: unknown, index): CatalogMediaLimit => {
+    const entryField = `${field}[${index}]`;
+    if (!isPlainObject(entry)) throw problem(path, entryField, 'expected an object.');
+    for (const key of Object.keys(entry)) {
+      if (
+        key !== 'scope' &&
+        key !== 'modality' &&
+        !(MEDIA_LIMIT_FIELDS as readonly string[]).includes(key)
+      ) {
+        throw problem(path, `${entryField}.${key}`, 'not a known field.');
+      }
+    }
+    const scope = oneOf(MEDIA_SCOPES, entry['scope'], path, `${entryField}.scope`);
+    const modality = oneOf(MEDIA_MODALITIES, entry['modality'], path, `${entryField}.modality`);
+    const identity = JSON.stringify([scope, modality]);
+    if (seen.has(identity)) {
+      throw problem(path, entryField, 'a second limit for a scope and modality the list names.');
+    }
+    seen.add(identity);
+    const limits: { -readonly [Key in keyof CatalogMediaLimit]: CatalogMediaLimit[Key] } = {
+      scope,
+      modality,
+    };
+    for (const key of MEDIA_LIMIT_FIELDS) {
+      if (entry[key] !== undefined) {
+        limits[key] = positiveInteger(entry[key], path, `${entryField}.${key}`);
+      }
+    }
+    if (MEDIA_LIMIT_FIELDS.every((key) => limits[key] === undefined)) {
+      throw problem(path, entryField, 'names no limit to lower.');
+    }
+    return limits;
+  });
+}
+
+function parseMediaCounts(
+  value: unknown,
+  path: string,
+  field: string,
+): readonly CatalogMediaCount[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw problem(path, field, 'expected a non-empty list of media counts.');
+  }
+  const seen = new Set<string>();
+  return value.map((entry: unknown, index): CatalogMediaCount => {
+    const entryField = `${field}[${index}]`;
+    if (!isPlainObject(entry)) throw problem(path, entryField, 'expected an object.');
+    for (const key of Object.keys(entry)) {
+      if (key !== 'modality' && key !== 'maxPerRequest') {
+        throw problem(path, `${entryField}.${key}`, 'not a known field.');
+      }
+    }
+    const modality = oneOf(MEDIA_MODALITIES, entry['modality'], path, `${entryField}.modality`);
+    if (seen.has(modality)) {
+      throw problem(path, entryField, 'a second count for a modality the list names.');
+    }
+    seen.add(modality);
+    return {
+      modality,
+      maxPerRequest: positiveInteger(entry['maxPerRequest'], path, `${entryField}.maxPerRequest`),
+    };
+  });
+}
+
 /**
  * Parse the `catalog` list of `configuration.json`. `providerNames`, when given, are the providers an
  * edit may name. Two edits for one provider and model are refused, so the list says one thing about a row.
@@ -325,6 +441,12 @@ export function parseCatalogEdits(
     }
     if (entry['decisions'] !== undefined)
       edit.decisions = parseDecisions(entry['decisions'], path, `${field}.decisions`);
+    if (entry['mediaLimits'] !== undefined) {
+      edit.mediaLimits = parseMediaLimits(entry['mediaLimits'], path, `${field}.mediaLimits`);
+    }
+    if (entry['mediaCounts'] !== undefined) {
+      edit.mediaCounts = parseMediaCounts(entry['mediaCounts'], path, `${field}.mediaCounts`);
+    }
     return edit;
   });
 }
@@ -370,9 +492,82 @@ function patchedPricing(
   };
 }
 
+/** The row's media limits with the edit's lowered values over them, and the edit's other limits added. */
+function patchedMediaLimits(
+  row: BackendDescriptor,
+  edit: readonly CatalogMediaLimit[],
+): BackendDescriptor['mediaLimits'] {
+  const same = (left: CatalogMediaLimit, right: CatalogMediaLimit): boolean =>
+    left.scope === right.scope && left.modality === right.modality;
+  return [
+    ...row.mediaLimits.map((limit) => {
+      const lowered = edit.find((candidate) => same(candidate, limit));
+      return lowered === undefined ? limit : { ...limit, ...lowered };
+    }),
+    ...edit.filter((lowered) => !row.mediaLimits.some((limit) => same(limit, lowered))),
+  ];
+}
+
+/** The row's per-request part counts with the edit's lowered counts over them. */
+function patchedMediaCounts(
+  row: BackendDescriptor,
+  edit: readonly CatalogMediaCount[],
+): BackendDescriptor['mediaCounts'] {
+  return [
+    ...row.mediaCounts.map(
+      (count) => edit.find(({ modality }) => modality === count.modality) ?? count,
+    ),
+    ...edit.filter(({ modality }) => !row.mediaCounts.some((count) => count.modality === modality)),
+  ];
+}
+
+/**
+ * Refuses an edit whose media limit or count is larger than the row's own: an owner edit lowers
+ * what a row admits and never raises it. A limit the row does not state is not a limit to exceed.
+ */
+function assertMediaLowered(
+  row: BackendDescriptor,
+  edit: CatalogEdit,
+  path: string,
+  field: string,
+): void {
+  edit.mediaLimits?.forEach((lowered, index) => {
+    const current = row.mediaLimits.find(
+      (limit) => limit.scope === lowered.scope && limit.modality === lowered.modality,
+    );
+    for (const key of MEDIA_LIMIT_FIELDS) {
+      const wanted = lowered[key];
+      const held = current?.[key];
+      if (wanted !== undefined && held !== undefined && wanted > held) {
+        throw problem(
+          path,
+          `${field}.mediaLimits[${index}].${key}`,
+          'the limit is above the row’s own; an edit only lowers a media limit.',
+        );
+      }
+    }
+  });
+  edit.mediaCounts?.forEach((lowered, index) => {
+    const held = row.mediaCounts.find(({ modality }) => modality === lowered.modality);
+    if (held !== undefined && lowered.maxPerRequest > held.maxPerRequest) {
+      throw problem(
+        path,
+        `${field}.mediaCounts[${index}].maxPerRequest`,
+        'the count is above the row’s own; an edit only lowers a media count.',
+      );
+    }
+  });
+}
+
 function patched(row: BackendDescriptor, edit: CatalogEdit): BackendDescriptor {
   return {
     ...row,
+    ...(edit.mediaLimits === undefined
+      ? {}
+      : { mediaLimits: patchedMediaLimits(row, edit.mediaLimits) }),
+    ...(edit.mediaCounts === undefined
+      ? {}
+      : { mediaCounts: patchedMediaCounts(row, edit.mediaCounts) }),
     ...(edit.off === true ? { availability: 'unavailable' as const } : {}),
     ...(edit.pricing === undefined ? {} : { pricing: patchedPricing(row, edit.pricing) }),
     ...(edit.contextWindowTokens === undefined
@@ -422,6 +617,7 @@ export function applyCatalogEdits(input: CatalogEditInput): BackendDescriptor[] 
         );
       }
       edited.add(identity);
+      assertMediaLowered(builtIn, edit, input.path, field);
       const next = patched(builtIn, edit);
       assertLimits(next, input.path, `${field}.maxOutputTokens`);
       // Found by provider and model, because an earlier edit may have replaced the row. A row
@@ -447,6 +643,7 @@ export function applyCatalogEdits(input: CatalogEditInput): BackendDescriptor[] 
         `the entry matches no current ${edit.provider} model.`,
       );
     }
+    assertMediaLowered(base, edit, input.path, field);
     const added = patched(
       { ...base, model: edit.model, aliases: [], lifecycle: base.lifecycle },
       edit,

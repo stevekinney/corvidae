@@ -846,9 +846,15 @@ export function select(request: SelectionRequest, options: SelectOptions): Selec
   // narrow composePolicy down to. So this branch always enumerates the full
   // descriptor set: `exactOverride` is dropped here even when it names a
   // real provider/model, never merely sanitized of an effort-only value.
+  // A row that only decides (`decisions.only`) answers decision requests and runs no agent, so it
+  // is never a candidate: not selected, and not listed as an excluded one either (COR-2156).
+  const generationDescriptors = options.catalog.descriptors.filter(
+    (descriptor) => descriptor.decisions?.only !== true,
+  );
+
   if (options.catalog.stale) {
     const policyCandidates = composePolicy({
-      descriptors: options.catalog.descriptors,
+      descriptors: generationDescriptors,
       deployment: options.deployment,
       bureau: options.bureau,
       agent: options.agent,
@@ -863,7 +869,7 @@ export function select(request: SelectionRequest, options: SelectOptions): Selec
   }
 
   const policyCandidates = composePolicy({
-    descriptors: options.catalog.descriptors,
+    descriptors: generationDescriptors,
     deployment: options.deployment,
     bureau: options.bureau,
     agent: options.agent,

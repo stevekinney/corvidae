@@ -1,4 +1,5 @@
 import type { EventMap } from '@lostgradient/lifecycle';
+import type { AgentDefinitionDrift, AgentDefinitionPin } from './agent-definition-pin';
 import type { SecretAnswerStore } from './secret-answers';
 import { TypedEventTarget, HookRegistry } from '@lostgradient/lifecycle';
 import type { RunHookTiers } from './run-hook-tiers';
@@ -152,8 +153,24 @@ export type CatalogAgentRunOptionsResolution =
        * for a run that is starting.
        */
       agentBinding?: FileAgentBinding;
+      /**
+       * COR-2230 — what a durable run of this code agent pins about its definition now (plugin
+       * version and override hash), which a run that starts records. Absent for a file agent.
+       */
+      agentPin?: AgentDefinitionPin;
     }
   | { status: 'missing-agent' }
+  /**
+   * COR-2230 — a code agent the run recorded a pin for has moved since: its plugin's version (or
+   * its own) or its overrides differ from what the run started with. The run settles failed
+   * naming both values; it is never resumed under a definition it did not start with, and this is
+   * not `missing-agent`, because the agent is still there.
+   */
+  | {
+      status: 'definition-drifted';
+      agentName: string;
+      drift: readonly AgentDefinitionDrift[];
+    }
   /**
    * The named agent exists in the catalog but does not (or no longer)
    * expose AB-21's `OPERATIVE_RESOLVE_RUN_OPTIONS` — distinct from
@@ -197,6 +214,8 @@ export interface SessionAgentRun {
   /** COR-1524 — the file definition the run is built from, when the agent is file-based. */
   readonly agentBinding?: FileAgentBinding;
   readonly agentResolvesGuardrails: boolean;
+  /** COR-2230 — the plugin version and override hash a run of this code agent pins. */
+  readonly agentPin?: AgentDefinitionPin;
   /** COR-2385 — the `taintThreshold` the agent declares in its own guardrails, when it does. */
   readonly agentTaintThreshold?: number;
   /** COR-1996 — the agent's generation mode, which the model policy judges its steps by. */
@@ -214,7 +233,7 @@ export type SessionAgentRunResolution =
  * under the hash, and the rebuilt agent reports the revision, not the revision the file has
  * reached since: one snapshot is keyed by content, so it can have been several revisions.
  */
-export interface CatalogRunRecordedDefinition {
+export interface CatalogRunRecordedDefinition extends AgentDefinitionPin {
   readonly agentDefinitionHash: string | undefined;
   readonly definitionRevision?: number | undefined;
 }

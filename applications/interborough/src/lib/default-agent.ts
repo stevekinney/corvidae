@@ -6,6 +6,7 @@
  * run. Neither is a default: an agent whose plugin is not running is skipped, and with none left
  * the pages say so instead of naming an agent that is not there.
  */
+import { isOfferedInChat } from './agent-visibility.ts';
 import { listAgents, type AgentSummary, type Fetcher } from './bureau-client.ts';
 import { getPlugins, type PluginsSnapshot } from './host-plugins.ts';
 import { readPreferredAgent } from './preferred-agent.ts';
@@ -48,7 +49,8 @@ export async function listAgentsWithReadiness(
 
 /**
  * The agent a new chat starts with: the one the person chose in Settings when it can run, else the
- * first listed agent that can, or `null` when there is none.
+ * first listed agent that can and that Chat offers (a hidden agent is never chosen for the person),
+ * or `null` when there is none.
  */
 export async function findDefaultAgent(options: Options = {}): Promise<string | null> {
   const agents = await listAgentsWithReadiness(options);
@@ -56,7 +58,7 @@ export async function findDefaultAgent(options: Options = {}): Promise<string | 
   if (preferred !== undefined && agents.some((agent) => agent.name === preferred && agent.ready)) {
     return preferred;
   }
-  return agents.find((agent) => agent.ready)?.name ?? null;
+  return agents.find((agent) => agent.ready && isOfferedInChat(agent))?.name ?? null;
 }
 
 /** The Bureau's Create workflow tool, as an agent's `tools` names it. */
@@ -70,8 +72,12 @@ export const CREATE_WORKFLOW_TOOL = 'bureau:workflows-create';
 export async function findWorkflowAuthor(options: Options = {}): Promise<string | null> {
   const agents = await listAgentsWithReadiness(options);
   return (
-    agents.find((agent) => agent.ready && agent.tools?.includes(CREATE_WORKFLOW_TOOL) === true)
-      ?.name ?? null
+    agents.find(
+      (agent) =>
+        agent.ready &&
+        isOfferedInChat(agent) &&
+        agent.tools?.includes(CREATE_WORKFLOW_TOOL) === true,
+    )?.name ?? null
   );
 }
 

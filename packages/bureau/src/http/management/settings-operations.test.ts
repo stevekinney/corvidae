@@ -14,10 +14,14 @@ import {
   createMemoryVectorStore,
   HASHING_EMBEDDER_ID,
 } from '@lostgradient/memory';
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { encodeCursor } from '@lostgradient/weft';
 
-import { SETTING_KEYS, type SettingKey } from '../../settings/settings-schema.ts';
+import {
+  SETTING_KEYS,
+  SETTINGS_RECORD_KEY,
+  type SettingKey,
+} from '../../settings/settings-schema.ts';
 import type { BureauOptions } from '../../bureau-types/options.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import {
@@ -47,7 +51,7 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
   'tools.wakeup': false,
   'tools.decide': false,
   modelPolicy: { policyRevision: 2, deployment: { deniedProviders: ['openai'] } },
-  'decisions.model': 'catalog',
+  'decisions.model': 'anthropic/claude-haiku-5-5',
   'decisions.fallbackModel': 'anthropic/claude-haiku',
   'context.summarizerModel': 'anthropic/claude-haiku-5-5',
   'decisions.maximumPerTask': 3,
@@ -97,7 +101,13 @@ type Snapshot = {
   revision: number;
   keys: Record<
     string,
-    { apply: string; locked: boolean; lockReason?: string; pendingRestart: boolean }
+    {
+      apply: string;
+      locked: boolean;
+      lockReason?: string;
+      problem?: string;
+      pendingRestart: boolean;
+    }
   >;
 };
 
@@ -134,6 +144,29 @@ describe('bureau.settings operations', () => {
     expect(written.error?.data).toMatchObject({ httpStatus: 403 });
     const after = await snapshotOf(opened);
     expect(after.revision).toBe(0);
+  });
+
+  it('carries the problem of a dropped stored value across the wire, as it does in process', async () => {
+    // A stored `catalog` decision model no longer exists: Bureau drops it and says why on the key.
+    const storage = new MemoryStorage();
+    await textValueStore(storage, { disposeUnderlyingStorage: false }).set(
+      SETTINGS_RECORD_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 1,
+        values: { 'decisions.model': 'catalog' },
+        updatedAt: '2026-11-12T00:00:00.000Z',
+      }),
+    );
+    const opened = await openBureau({ storage, bureauOptions: {} });
+    cleanups.push(() => opened.dispose());
+
+    const snapshot = await snapshotOf(opened);
+
+    expect(snapshot.keys['decisions.model']?.problem).toContain(
+      '"catalog" decision model no longer exists',
+    );
+    expect(snapshot.keys['tools.wakeup']).not.toHaveProperty('problem');
   });
 
   it('round-trips every key through get and update', async () => {

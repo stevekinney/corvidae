@@ -49,7 +49,7 @@ function anthropicEffort(model: string): EffortSupport {
   const degradesTo = anthropicDegradesTo(model);
   return {
     portable: portableTiers(degradesTo),
-    nativeMapping: 'output_config.effort',
+    nativeMapping: 'native',
     degradesTo,
   };
 }
@@ -58,7 +58,7 @@ function openAIEffort(model: string): EffortSupport {
   const degradesTo = openAIDegradesTo(model);
   return {
     portable: portableTiers(degradesTo),
-    nativeMapping: OPENAI_REASONING_MODELS.has(model) ? 'reasoning_effort' : 'unsupported',
+    nativeMapping: OPENAI_REASONING_MODELS.has(model) ? 'native' : 'unsupported',
     degradesTo,
   };
 }
@@ -67,9 +67,7 @@ function geminiEffort(model: string): EffortSupport {
   const degradesTo = geminiDegradesTo(model);
   return {
     portable: portableTiers(degradesTo),
-    nativeMapping: GEMINI_THINKING_MODELS.has(model)
-      ? 'thinkingConfig.thinkingBudget'
-      : 'unsupported',
+    nativeMapping: GEMINI_THINKING_MODELS.has(model) ? 'native' : 'unsupported',
     degradesTo,
   };
 }

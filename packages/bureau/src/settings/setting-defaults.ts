@@ -27,7 +27,6 @@ import {
 
 import { COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS } from '../command-ledger.ts';
 import {
-  CATALOG_DECISION_MODEL,
   DEFAULT_DECISION_FALLBACK_MODEL,
   DEFAULT_DECISIONS_PER_TASK,
 } from '../decisions/create-decisions.ts';
@@ -54,12 +53,13 @@ export const DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS = 60 * 60 * 1000;
 /**
  * The keys that have no one value while nothing sets them, because leaving them unset is itself
  * the behavior: no model policy, no summarizer, the memory policy's own windows, log lines and hook
- * deliveries kept with what owns them, notifications kept up to a count, and no workflow version
+ * deliveries kept with what owns them, no decision model (the fallback model answers), notifications kept up to a count, and no workflow version
  * stamped, and no agent named for A2A (each follows its own file). Each key's description in the schema says what unset means. `effective` omits them.
  */
 export const SETTINGS_WITHOUT_DEFAULT = [
   'modelPolicy',
   'a2a.agents',
+  'decisions.model',
   'context.summarizerModel',
   'retention.memory',
   'retention.logs',
@@ -88,7 +88,6 @@ export function builtInSettingDefaults(context: BuiltInDefaultsContext): BuiltIn
     'tools.humanInput': {},
     'tools.wakeup': true,
     'tools.decide': true,
-    'decisions.model': CATALOG_DECISION_MODEL,
     'decisions.fallbackModel': DEFAULT_DECISION_FALLBACK_MODEL,
     'decisions.maximumPerTask': DEFAULT_DECISIONS_PER_TASK,
     'retention.audit': 'forever',

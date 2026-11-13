@@ -18,6 +18,12 @@ export interface SettingKeyState {
   readonly locked: boolean;
   /** Why the key is locked; present exactly when {@link SettingKeyState.locked} is `true`. */
   readonly lockReason?: SettingLockReason;
+  /**
+   * Why this build did not apply the key's stored value (it names a setting value this build
+   * refuses, such as the `catalog` decision model that no longer exists); the key then has its
+   * code default. Absent when nothing stored for the key was dropped.
+   */
+  readonly problem?: string;
   /** A `restart` key whose stored value differs from the value this process booted with. */
   readonly pendingRestart: boolean;
 }

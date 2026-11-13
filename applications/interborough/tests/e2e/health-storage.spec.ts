@@ -208,7 +208,12 @@ test.describe('Health › Storage on the sample world', () => {
     const main = page.locator('main');
     const footer = main.getByTestId('storage-count');
     await expect(footer).toContainText('Showing 100 of');
-    await footer.scrollIntoViewIfNeeded();
+    // The table loads more when its end marker, the footer cell's last pixel, scrolls into view;
+    // the footer text sits above the cell's padding, so bringing the text in can leave the marker
+    // just under the fold when the pane overhangs the page.
+    await main
+      .locator('.cinder-list-detail__rows .cinder-data-table__end')
+      .scrollIntoViewIfNeeded();
     await expect(footer).toContainText(/Showing (200|300) of/);
   });
 
@@ -909,7 +914,9 @@ test.describe('Health › Storage writes and states', () => {
     await page.route(nextPage, (route) =>
       route.fulfill({ status: 500, json: { error: 'The store is unavailable.' } }),
     );
-    await footer.scrollIntoViewIfNeeded();
+    await main
+      .locator('.cinder-list-detail__rows .cinder-data-table__end')
+      .scrollIntoViewIfNeeded();
     const loadMore = main.locator('.cinder-load-more');
     await loadMore.scrollIntoViewIfNeeded();
     await expect(loadMore).toBeVisible();

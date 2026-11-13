@@ -84,7 +84,7 @@ describe('bureau.settings on a Bureau', () => {
       expect(values['retention.tasks']).toBeUndefined();
       expect(effective['retention.tasks']).toEqual({ olderThan: 30 * 86_400_000 });
       expect(effective['memory.embedder']).toBe('hashing');
-      expect(effective['decisions.model']).toBe('catalog');
+      expect(Object.hasOwn(effective, 'decisions.model')).toBe(false);
       // `durable: false` is passed, and with no persistent storage it would be off anyway.
       expect(effective.durable).toBe(false);
       expect(Object.hasOwn(effective, 'workflowVersion')).toBe(false);

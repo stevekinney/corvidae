@@ -87,7 +87,6 @@ export const PLUGINS_COPY = {
     validator: 'Validators',
     guardrail: 'Guardrails',
     interceptor: 'Interceptors',
-    'decision-router': 'Decision routing',
     reaction: 'Hook actions',
     provider: 'Model provider',
     embedder: 'Embeddings',

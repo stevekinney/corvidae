@@ -34,4 +34,26 @@ describe('the agent picker', () => {
     expect(text('Tool runner')).toContain('Looks orders up.');
     expect(text('Nightly archiver')).toContain('no description');
   });
+
+  test('leaves out an agent a plugin hides from Chat, unless the chat is already with it (COR-2233)', async () => {
+    const agents = [
+      { ...AGENT, name: 'tool-runner', displayName: 'Tool runner', description: 'Looks.' },
+      { ...AGENT, name: 'bookkeeper', displayName: 'Bookkeeper', visibility: 'hidden' },
+    ] as unknown as AgentSummary[];
+    const names = async (value: string) => {
+      cleanup();
+      const { container } = render(AgentSelect, {
+        props: { agents, value, providerConnected: true, onChange: () => {} },
+      } as never);
+      const rows = await openListbox(container, 'weft-chat-agent');
+      return rows.map((row) => row.textContent?.replaceAll(/\s+/g, ' ') ?? '');
+    };
+
+    const fresh = await names('tool-runner');
+    expect(fresh.some((row) => row.includes('Tool runner'))).toBe(true);
+    expect(fresh.some((row) => row.includes('Bookkeeper'))).toBe(false);
+
+    const withHidden = await names('bookkeeper');
+    expect(withHidden.some((row) => row.includes('Bookkeeper'))).toBe(true);
+  });
 });

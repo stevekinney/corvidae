@@ -94,6 +94,13 @@
   });
 
   const tooltipId = $props.id();
+  /**
+   * A tooltip with no text has nothing to say: it renders no panel, links no
+   * `aria-describedby` to its trigger, and never shows. A caller that gates its
+   * hint (`text={reason ?? ''}`) otherwise leaves an empty `role="tooltip"` that
+   * fails the accessible-name rule and describes the trigger with nothing.
+   */
+  const hasText = $derived(text.trim() !== '');
   const FOCUSABLE_SELECTOR = [
     'button:not([disabled])',
     'a[href]',
@@ -147,7 +154,7 @@
     // A tooltip with no text has nothing to say: an empty panel is a `role="tooltip"` node with no
     // accessible name, so a trigger whose reason is sometimes absent (a gate with no reason once it
     // opens) never shows one.
-    if (text.trim() === '') return;
+    if (!hasText) return;
     registerPendingEscape();
     showTimer = setTimeout(() => {
       showTimer = undefined;
@@ -239,7 +246,7 @@
     const trigger = triggerRef;
     if (trigger == null) return;
     anchorElement = trigger;
-    const teardownAriaDescribedBy = describe ? syncAriaDescribedBy(trigger) : undefined;
+    const teardownAriaDescribedBy = describe && hasText ? syncAriaDescribedBy(trigger) : undefined;
     trigger.addEventListener('mouseenter', handleMouseEnter);
     trigger.addEventListener('mouseleave', handleMouseLeave);
     trigger.addEventListener('focusin', handleFocusIn);
@@ -288,7 +295,8 @@
     wrapperElement = element;
     const focusable = resolveAnchorElement(element);
     anchorElement = focusable;
-    const teardownAriaDescribedBy = describe ? syncAriaDescribedBy(focusable) : undefined;
+    const teardownAriaDescribedBy =
+      describe && hasText ? syncAriaDescribedBy(focusable) : undefined;
 
     return () => {
       teardownAriaDescribedBy?.();
@@ -428,7 +436,7 @@
   table cell). See `TooltipProps.triggerRef`.
 -->
 {#if isDetached}
-  {#if hydrated}
+  {#if hydrated && hasText}
     <!-- The panel is the component ROOT here, so it takes `class` — in the
          wrapping form below that lands on the wrapper instead. -->
     <span
@@ -459,7 +467,7 @@
     {@attach attachWrapper}
   >
     {@render children?.()}
-    {#if hydrated}
+    {#if hydrated && hasText}
       <span
         id={tooltipId}
         bind:this={tooltipElement}

@@ -189,6 +189,7 @@ describe('/host/paths', () => {
         { name: 'anthropic', secretFile: `workspace:${host.workspaceId}/anthropic-api-key` },
         { name: 'openai', secretFile: `workspace:${host.workspaceId}/openai-api-key` },
         { name: 'gemini', secretFile: `workspace:${host.workspaceId}/gemini-api-key` },
+        { name: 'typesafe', secretFile: `workspace:${host.workspaceId}/typesafe-api-key` },
       ],
       a2aDirectoryUrl: `http://127.0.0.1:${host.url.port}/bureau/a2a/.well-known/agent-card.json`,
     });

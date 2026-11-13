@@ -6,6 +6,7 @@
  */
 
 import type { SampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { E2E_SHOWCASE_EDITABLE_AGENT } from './e2e-constants.ts';
 
 /** The address of each route in `routes.ts`, by pattern, with the sample world's identifiers filled in. */
 export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<string, string>> {
@@ -25,7 +26,7 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/agents/new': '/agents/new',
     '/capabilities': '/capabilities',
     '/capabilities/connect': '/capabilities/connect',
-    '/agents/:agent/edit': `/agents/${agent}/edit`,
+    '/agents/:agent/edit': `/agents/${encodeURIComponent(E2E_SHOWCASE_EDITABLE_AGENT)}/edit`,
     '/agents/:agent': `/agents/${agent}`,
     '/agents/:agent/instructions': `/agents/${agent}/instructions`,
     '/agents/:agent/access': `/agents/${agent}/access`,

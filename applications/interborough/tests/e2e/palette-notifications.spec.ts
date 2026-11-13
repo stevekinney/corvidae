@@ -13,6 +13,7 @@ import { createAgentFile, readCatalog, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL, E2E_FLEET_WORKER_ID } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expectReviewsSettled } from './review-support.ts';
 import { bureauCall } from './task-support.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
@@ -133,7 +134,7 @@ test.describe('⌘K over every kind of record', () => {
     await openPalette(page);
     await search(page).fill('go to reviews');
     await palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).click();
-    await expect(page).toHaveURL(/\/reviews$/);
+    await expectReviewsSettled(page);
   });
 
   test('lists what is waiting on the person first, before anything is typed', async ({ page }) => {

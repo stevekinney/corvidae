@@ -17,7 +17,7 @@ afterEach(() => {
   restore = undefined;
 });
 
-function agent(name: string, tools?: readonly string[]) {
+function agent(name: string, tools?: readonly string[], hidden = false) {
   return {
     name,
     displayName: name,
@@ -26,6 +26,7 @@ function agent(name: string, tools?: readonly string[]) {
     kind: 'code',
     a2a: false,
     ...(tools === undefined ? {} : { tools }),
+    ...(hidden ? { visibility: 'hidden' } : {}),
   };
 }
 
@@ -60,7 +61,7 @@ function plugin(name: string, status: string, agents: readonly string[]) {
 
 /** A host that lists `agents` and reports `plugins`, or whose plugin route fails when `plugins` is null. */
 function host(
-  agents: readonly (string | { name: string; tools?: readonly string[] })[],
+  agents: readonly (string | { name: string; tools?: readonly string[]; hidden?: boolean })[],
   plugins: readonly unknown[] | null,
 ): void {
   restore = installFetchImplementation(async (input) => {
@@ -75,7 +76,9 @@ function host(
       id: 1,
       result: {
         agents: agents.map((entry) =>
-          typeof entry === 'string' ? agent(entry) : agent(entry.name, entry.tools),
+          typeof entry === 'string'
+            ? agent(entry)
+            : agent(entry.name, entry.tools, entry.hidden === true),
         ),
       },
     });
@@ -103,6 +106,23 @@ describe('the default agent', () => {
       { name: 'demo:assistant', ready: false },
       { name: 'notes', ready: true },
     ]);
+  });
+
+  test('is never an agent a plugin hides from Chat, even when it is listed first and can run (COR-2233)', async () => {
+    host(
+      [{ name: 'demo:internal', hidden: true }, 'demo:assistant'],
+      [plugin('demo', 'running', ['demo:internal', 'demo:assistant'])],
+    );
+    expect(await findDefaultAgent()).toBe('demo:assistant');
+    expect(await listAgentsWithReadiness()).toMatchObject([
+      { name: 'demo:internal', visibility: 'hidden', ready: true },
+      { name: 'demo:assistant', ready: true },
+    ]);
+  });
+
+  test('is none when the only agent that can run is hidden from Chat', async () => {
+    host([{ name: 'demo:internal', hidden: true }], []);
+    expect(await findDefaultAgent()).toBeNull();
   });
 
   test('is none when every listed agent belongs to a plugin that needs setup', async () => {
@@ -154,6 +174,17 @@ describe('the agent a chat started from Workflows begins with', () => {
         { name: 'tool-runner', tools: ['lookup-order'] },
         { name: 'workflow-author', tools: [CREATE_WORKFLOW_TOOL, 'bureau:discover-agents'] },
         { name: 'other-author', tools: [CREATE_WORKFLOW_TOOL] },
+      ],
+      [],
+    );
+    expect(await findWorkflowAuthor()).toBe('workflow-author');
+  });
+
+  test('is never an agent a plugin hides from Chat', async () => {
+    host(
+      [
+        { name: 'hidden-author', tools: [CREATE_WORKFLOW_TOOL], hidden: true },
+        { name: 'workflow-author', tools: [CREATE_WORKFLOW_TOOL] },
       ],
       [],
     );

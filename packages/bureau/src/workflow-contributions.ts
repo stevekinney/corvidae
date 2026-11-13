@@ -39,6 +39,8 @@ export interface WorkflowContributions {
   readonly activities: Readonly<Record<string, DocumentActivity>>;
   /** The version each contributed activity is loaded at, by the Weft name of its `plugin:name`. */
   readonly activityVersions: Readonly<Record<string, string>>;
+  /** The `title` each contributed activity declares, by the Weft name of its `plugin:name`. */
+  readonly activityTitles: Readonly<Record<string, string>>;
   /** A validator for each contributed trigger, by its `plugin:name`. */
   readonly triggerValidators: Readonly<Record<string, DocumentTriggerValidator>>;
   /** The contributed triggers, by their `plugin:name`. */
@@ -54,6 +56,7 @@ export interface WorkflowContributions {
 export const NO_WORKFLOW_CONTRIBUTIONS: WorkflowContributions = Object.freeze({
   activities: Object.freeze({}),
   activityVersions: Object.freeze({}),
+  activityTitles: Object.freeze({}),
   triggerValidators: Object.freeze({}),
   triggers: new Map(),
   resolveActivity: (id: string, version: string): VersionedCatalogResolution<PluginActivity> => ({
@@ -116,6 +119,14 @@ export function createWorkflowContributions(
     if (typeof entry.value?.execute !== 'function') {
       throw new TypeError(`The activity "${entry.name}" has no execute function.`);
     }
+    // D7: the editor lists an activity by its title and derives its step fields from its schema.
+    const { title, inputSchema } = entry.value as { title?: unknown; inputSchema?: unknown };
+    if (typeof title !== 'string' || title.trim() === '') {
+      throw new TypeError(`The activity "${entry.name}" has no title.`);
+    }
+    if (inputSchema === undefined) {
+      throw new TypeError(`The activity "${entry.name}" has no inputSchema.`);
+    }
   }
   for (const entry of triggerEntries) {
     const kind = entry.value;
@@ -127,16 +138,24 @@ export function createWorkflowContributions(
   }
   const activities: Record<string, DocumentActivity> = {};
   const activityVersions: Record<string, string> = {};
+  const activityTitles: Record<string, string> = {};
   for (const entry of activityEntries) {
     const weftName = toWeftName(entry.name);
     // Everything the definition declares but its identity: the name is the registered key and the
     // version is pinned by the document, so neither is Weft's to read from the activity.
-    const { name: _name, version: _version, execute: _execute, ...settings } = entry.value;
+    const {
+      name: _name,
+      version: _version,
+      title: _title,
+      execute: _execute,
+      ...settings
+    } = entry.value;
     activities[weftName] = {
       ...settings,
       execute: (argument, context) => entry.value.execute(argument, context),
     };
     activityVersions[weftName] = entry.version;
+    activityTitles[weftName] = entry.value.title;
   }
   const triggerValidators: Record<string, DocumentTriggerValidator> = {};
   const triggers = new Map<string, VersionedCatalogEntry<PluginTrigger>>();
@@ -147,6 +166,7 @@ export function createWorkflowContributions(
   return Object.freeze({
     activities: Object.freeze(activities),
     activityVersions: Object.freeze(activityVersions),
+    activityTitles: Object.freeze(activityTitles),
     triggerValidators: Object.freeze(triggerValidators),
     triggers,
     resolveActivity: (id: string, version: string) =>

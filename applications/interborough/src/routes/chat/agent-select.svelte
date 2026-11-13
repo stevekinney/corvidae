@@ -10,6 +10,7 @@
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
+  import { isOfferedInChat } from '../../lib/agent-visibility.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
   import { agentAvatarName, agentTone } from './session-groups.ts';
 
@@ -27,16 +28,20 @@
 
   let { agents, value, providerConnected, disabled = false, onChange }: AgentSelectProps = $props();
 
+  // A hidden agent (a plugin's `visibility: 'hidden'`) is not offered, unless the chat is already
+  // with it, so the select keeps showing the agent it is with.
   const options = $derived(
-    agents.map((agent) => ({
-      value: agent.name,
-      label: agentLabel(agent.name, agents),
-      // An agent with no description shows its name and, muted beside it, that it has none.
-      description: agent.description ?? CHAT_COPY.agentSelect.noDescription,
-      ...(providerConnected === false && agent.media !== null
-        ? { note: CHAT_COPY.agentSelect.needsProvider }
-        : {}),
-    })),
+    agents
+      .filter((agent) => isOfferedInChat(agent, value))
+      .map((agent) => ({
+        value: agent.name,
+        label: agentLabel(agent.name, agents),
+        // An agent with no description shows its name and, muted beside it, that it has none.
+        description: agent.description ?? CHAT_COPY.agentSelect.noDescription,
+        ...(providerConnected === false && agent.media !== null
+          ? { note: CHAT_COPY.agentSelect.needsProvider }
+          : {}),
+      })),
   );
   const listed = $derived(value !== undefined && agents.some((agent) => agent.name === value));
 </script>

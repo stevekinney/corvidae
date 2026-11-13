@@ -79,6 +79,7 @@ import {
   createAgentCatalog,
   type CreateAgentCatalogOptions,
 } from './agent-catalog';
+import { definitionDrift } from './agent-definition-pin';
 import { AgentSnapshotError, guardrailIdOf } from './agent-file';
 import { createTryAgents, isTryAgentName } from './agent-try';
 import {
@@ -163,7 +164,7 @@ import {
 import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
 import { builtInSettingDefaults } from './settings/setting-defaults';
-import { summarizerFailures } from './settings/settings-validation';
+import { decisionModelFailures, summarizerFailures } from './settings/settings-validation';
 import { createMemoryEmbedderSetting, type MemoryEmbedderSetting } from './memory-embedder-setting';
 import {
   bootSettings,
@@ -578,7 +579,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   });
   options = composedPlugins.options;
   options = withPluginContentLayers(options, given, composedPlugins.shippedContent);
-  // COR-1879: `decisions.model` may name a decision router a plugin contributed.
+  // `decisions.model` names a catalog row, or a decision model the host registered in code.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records, {
     guardrails: hostGuardrails,
@@ -2752,6 +2753,11 @@ async function constructBureau<const D extends AgentDefinitions>(
       // embedder one memory can switch to now (COR-1898).
       checkPatch: async (values) => [
         ...summarizerFailures(values, models.catalog().descriptors),
+        ...decisionModelFailures(
+          values,
+          models.catalog().descriptors,
+          decisionModelNames(options.decisions),
+        ),
         ...(await embedderSetting.failures(values)),
       ],
       afterUpdate: (keys) => embedderSetting.afterUpdate(keys),
@@ -2972,6 +2978,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       descriptors: () => models.catalog().descriptors,
       modelPolicy: () => modelPolicyOf(currentSettings()),
       unavailable: composedPlugins.unavailableAgents,
+      details: composedPlugins.agentDetails,
       overrides: createAgentOverrideStore({
         store: runtime.kv,
         nowISO: runtimeServices.clock.nowISO,
@@ -3130,6 +3137,14 @@ async function constructBureau<const D extends AgentDefinitions>(
       } else {
         // COR-1911 — a tried agent is held for its context's owner and is in no catalog, so no
         // schedule, goal, child or workflow can name it; a session run of it reaches it here.
+        // COR-2230 — a run pins the overrides in force where it started, which may be another
+        // Bureau on a shared store, and a run that starts here is compared later by whichever
+        // Bureau reclaims it. This Bureau's copy is the one it last read, so the store is read
+        // before the agent is built and pinned or compared: the agent and the pin then describe
+        // the same overrides, and only a change in the store is drift.
+        if (!isTryAgentName(name)) {
+          await agentCatalog.overrides.reload(name);
+        }
         agent = isTryAgentName(name)
           ? tryAgents.find(name, ownerOrLocal(context.principal))
           : agentCatalog.find(name);
@@ -3146,6 +3161,15 @@ async function constructBureau<const D extends AgentDefinitions>(
     // a misleading "is no longer in the catalog" reason for an agent that
     // genuinely is still there.
     if (!hasDefinitionResolver(agent)) return { status: 'not-durable-capable' };
+    // COR-2230 — a code agent's pin, read now from the same overrides the agent above was built
+    // from. A run being resumed that pinned the agent's plugin version or overrides is refused
+    // when either has moved, before the resolver or a signal port can run for it; a record from
+    // before the pin carries neither and recovers as it always did.
+    const agentPin = agentBinding === undefined ? agentCatalog.definitionPin(name) : undefined;
+    if (recorded !== undefined) {
+      const drift = definitionDrift(recorded, agentPin);
+      if (drift.length > 0) return { status: 'definition-drifted', agentName: name, drift };
+    }
     try {
       // COR-772 — a recovered child gets back its correlation and a freshly
       // opened signal port, bound to the same parent-child pair, before its
@@ -3170,6 +3194,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         generationMode: readGenerationProfile(agent).mode,
         recoveredChild: childContext !== undefined,
         ...(agentBinding === undefined ? {} : { agentBinding }),
+        ...(agentPin === undefined ? {} : { agentPin }),
       };
       return resolution;
     } catch (error) {

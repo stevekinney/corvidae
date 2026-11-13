@@ -169,6 +169,17 @@ export type PluginProblem =
     }
   | {
       /**
+       * An activity has no `title` or no `inputSchema` (D7), which the workflow editor needs to list
+       * it; the plugin is `skipped` and the host starts.
+       */
+      readonly code: 'activity-field-missing';
+      /** The activity's name within the plugin. */
+      readonly activity: string;
+      /** The field that is missing: `title` or `inputSchema`. */
+      readonly field: 'title' | 'inputSchema';
+    }
+  | {
+      /**
        * A formatter lists an event kind that is not in `BUREAU_EVENT_CATALOG`, so it would never
        * format anything; the plugin is `skipped` and the host starts.
        */
@@ -199,6 +210,16 @@ export type PluginProblem =
       readonly provider: string;
       /** The secrets the plugin declared, one of which is the provider's `secretKey`. */
       readonly secrets: readonly string[];
+    }
+  | {
+      /**
+       * A provider names no `rows` and its name is one Operative's static catalog has no rows
+       * for, so it contributes no model to the catalog. The plugin stays `running` with its other
+       * contributions; the host starts.
+       */
+      readonly code: 'provider-empty';
+      /** The provider's name within the plugin. */
+      readonly provider: string;
     }
   | {
       /**
@@ -285,7 +306,6 @@ export type PluginContributionKind =
   | 'validator'
   | 'guardrail'
   | 'interceptor'
-  | 'decision-router'
   | 'reaction'
   | 'provider'
   | 'embedder'

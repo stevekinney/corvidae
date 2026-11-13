@@ -18,8 +18,10 @@ import {
   SESSION_AGENT_PLACEHOLDER_INPUT,
   SESSION_AGENT_REVISION_METADATA_KEY,
   agentInstructionsFromRunOptions,
+  sessionRecordedPin,
   sessionRecordedRevision,
 } from '../session-agent-revision';
+import { describeDefinitionDrift } from '../agent-definition-pin';
 import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolver,
@@ -186,6 +188,7 @@ export function createSessionAgentRuns(core: CompositionCore, peers: SessionAgen
         definitionRevision: resolution.definitionRevision,
         ...(resolution.agentBinding === undefined ? {} : { agentBinding: resolution.agentBinding }),
         agentResolvesGuardrails: resolution.agentResolvesGuardrails === true,
+        ...(resolution.agentPin === undefined ? {} : { agentPin: resolution.agentPin }),
         ...(resolution.agentTaintThreshold === undefined
           ? {}
           : { agentTaintThreshold: resolution.agentTaintThreshold }),
@@ -456,6 +459,8 @@ export function createSessionAgentRuns(core: CompositionCore, peers: SessionAgen
       {
         agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined,
         definitionRevision: sessionRecordedRevision(session.metadata, recordedHash),
+        // COR-2230 — the pin this run wrote, when it is the session's latest pinning run.
+        ...sessionRecordedPin(session.metadata, runId),
       },
       { sessionId: session.id, metadata: session.metadata },
     );
@@ -466,6 +471,13 @@ export function createSessionAgentRuns(core: CompositionCore, peers: SessionAgen
       throw new Error(
         `${label}: catalog agent "${agentName}" no longer supports durable definition ` +
           `resolution (OPERATIVE_RESOLVE_RUN_OPTIONS)`,
+      );
+    }
+    if (resolution.status === 'definition-drifted') {
+      // The run settles failed, naming both values, instead of resuming under an agent it did not
+      // start with (COR-2230).
+      throw new Error(
+        `${label}: definition-drifted: ${describeDefinitionDrift(agentName, resolution.drift)}`,
       );
     }
     if (resolution.status === 'resolver-failed') {
