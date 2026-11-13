@@ -165,6 +165,34 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     releases[1]!();
   });
 
+  test('a run that ends while offline sends its follow-up once when the status goes straight online', async () => {
+    const { adapter, sent, releases } = recordingAdapter();
+    const rendered = render(Chat, {
+      id: 'queue-offline-direct',
+      conversation: workingConversation('queue-offline-direct'),
+      streaming: true,
+      adapter,
+    });
+    await submit(rendered.container, 'send me once');
+    await rendered.rerender({ composerStatus: { kind: 'offline' } });
+    await rendered.rerender({ streaming: false });
+    await settle();
+    expect(sent).toEqual([]);
+    expect(ghostTexts(rendered.container)).toEqual(['send me once']);
+
+    await rendered.rerender({ composerStatus: { kind: 'note', text: 'Back online' } });
+    await settle();
+    expect(sent).toEqual(['send me once']);
+
+    await rendered.rerender({ composerStatus: { kind: 'offline' } });
+    await rendered.rerender({ composerStatus: undefined });
+    await settle();
+    expect(sent).toEqual(['send me once']);
+    releases[0]!();
+    await settle();
+    expect(sent).toEqual(['send me once']);
+  });
+
   test('offline failure discards the queue for Restore instead of waiting to dispatch', async () => {
     const { adapter, sent } = recordingAdapter();
     let turnState: ChatTurnState = { kind: 'streaming' };

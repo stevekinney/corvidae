@@ -71,6 +71,10 @@ export function useChatFollowUpQueue(options: FollowUpQueueOptions) {
   // it wait for that turn in their turn.
   $effect(() => {
     if (options.isRunActive() || flight !== undefined || items.length === 0) return;
+    // Read here, tracked, so an idle transport coming back (offline straight to online, with no run
+    // in between) runs the drain again. A hand-off in flight or a run that has begun stops that
+    // second run above, so a follow-up is never sent twice.
+    const transportAvailable = options.isSendNowAvailable?.() ?? true;
     untrack(() => {
       const [head, ...rest] = items;
       if (head === undefined) return;
@@ -79,7 +83,7 @@ export function useChatFollowUpQueue(options: FollowUpQueueOptions) {
         discard(outcome);
         return;
       }
-      if (options.isSendNowAvailable !== undefined && !options.isSendNowAvailable()) return;
+      if (!transportAvailable) return;
       items = rest;
       dispatch(head);
     });
