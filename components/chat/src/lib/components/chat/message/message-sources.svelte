@@ -52,7 +52,7 @@
   class="chat-message-sources-citation"
   data-chat-sources-trigger
 >
-  <span class="chat-message-sources-text">{countText}</span>
+  <span class="chat-message-sources-text" dir="auto">{countText}</span>
   <ChevronDown class="chat-message-sources-chevron" aria-hidden="true" />
 </Citation>
 

@@ -1047,6 +1047,7 @@
       },
       {
         "name": "sources-review-reachable",
+        "profiles": ["1440-light", "768-dark"],
         "steps": [
           { "action": "click", "role": "button", "name": "1 source" },
           { "action": "expect-text", "text": "سياسة الاسترداد" },
