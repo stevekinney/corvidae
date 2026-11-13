@@ -2894,6 +2894,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               tools: agentToolCatalog,
               bureauToolNames,
               pluginToolNames,
+              unavailableTools: new Set(composedPlugins.unavailableTools),
               models,
               resolveGenerate: (row) => models.generate(row),
               // COR-1980: the settings are live, so a write is judged by the policy as it is now.
@@ -2978,6 +2979,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       descriptors: () => models.catalog().descriptors,
       modelPolicy: () => modelPolicyOf(currentSettings()),
       unavailable: composedPlugins.unavailableAgents,
+      unavailableTools: composedPlugins.unavailableTools,
       details: composedPlugins.agentDetails,
       overrides: createAgentOverrideStore({
         store: runtime.kv,
@@ -3131,6 +3133,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           name,
           recorded.agentDefinitionHash,
           recorded.definitionRevision,
+          runId,
         );
         agent = rebuilt.agent;
         agentBinding = rebuilt.binding;

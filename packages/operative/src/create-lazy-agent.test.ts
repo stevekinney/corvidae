@@ -1933,7 +1933,6 @@ describe('createLazyAgent — generationProfile (AB-64 AC2, AB-245)', () => {
   it('deep-freezes a hand-built descriptor carried in the supplied profile, not just the containing array (review)', () => {
     const mutableAliases = [{ alias: 'custom-alias', resolvesTo: 'custom-model' }];
     const customDescriptor: BackendDescriptor = {
-      descriptorVersion: 2,
       provider: 'anthropic',
       endpoint: 'messages',
       model: 'custom-model',

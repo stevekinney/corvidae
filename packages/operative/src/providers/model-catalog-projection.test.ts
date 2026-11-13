@@ -24,7 +24,6 @@ const fixedNow = () => FIXED_NOW;
  * rather than corrupting another test.
  */
 const FULL_DESCRIPTOR: BackendDescriptor = Object.freeze({
-  descriptorVersion: 2,
   provider: 'openai',
   endpoint: 'https://proxy.internal.example.com/v1/chat/completions',
   model: 'gpt-4.1',
@@ -130,7 +129,6 @@ describe('projectDescriptor: general projection redacts exactly AC8s four things
 
   it('retains every other field unchanged', () => {
     const general = projectDescriptor(FULL_DESCRIPTOR, 'general');
-    expect(general.descriptorVersion).toBe(FULL_DESCRIPTOR.descriptorVersion);
     expect(general.provider).toBe(FULL_DESCRIPTOR.provider);
     expect(general.model).toBe(FULL_DESCRIPTOR.model);
     expect(general.aliases).toEqual(FULL_DESCRIPTOR.aliases);

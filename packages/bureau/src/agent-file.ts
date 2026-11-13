@@ -92,6 +92,7 @@ export type AgentFileProblemCode =
   | 'invalid-frontmatter'
   | 'unknown-model'
   | 'unknown-tool'
+  | 'needs-setup'
   | 'unknown-approval-tool'
   | 'missing-reference'
   | 'reference-unresolved'
@@ -112,7 +113,8 @@ export interface AgentFileIssue {
   readonly path: string;
   readonly message: string;
   /**
-   * The id the definition names that nothing loaded holds: a tool for `unknown-tool`, a guardrail
+   * The id the definition names that nothing loaded holds: a tool for `unknown-tool` or
+   * `needs-setup` (a tool of a disabled plugin), a guardrail
    * or interceptor for `reference-unresolved` (COR-1879), a skill for `skill-not-grantable`
    * (COR-1975), a model for `model-policy-denied` (COR-1980) or the model an `effort` is refused on (COR-1961), as
    * `<provider>/<model-or-alias>` exactly as the file wrote it, or the guardrail whose configuration
@@ -127,6 +129,7 @@ export interface AgentFileProblem {
   readonly message: string;
   /**
    * Every schema failure, for `invalid-frontmatter`; the missing names, for `unknown-tool`; the
+   * the tools of a disabled plugin, for `needs-setup` (COR-2236);
    * names `approvals` gives a value that `tools` does not list, for `unknown-approval-tool`;
    * the skills a write could not grant, for `skill-not-grantable`; the models the model policy
    * forbids, for `model-policy-denied` (COR-1980); `effort` and the model that cannot do

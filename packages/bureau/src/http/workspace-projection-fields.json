@@ -92,7 +92,6 @@
     "$.models[].batchInference",
     "$.models[].caching",
     "$.models[].contextWindowTokens",
-    "$.models[].descriptorVersion",
     "$.models[].effort",
     "$.models[].effort.degradesTo",
     "$.models[].effort.degradesTo.*",
@@ -151,7 +150,7 @@
   ],
   "output:bureau.agents.definitions.create": ["$.hash", "$.id"],
   "output:bureau.agents.definitions.delete": ["$.hash", "$.id"],
-  "output:bureau.agents.definitions.duplicate": ["$.hash", "$.id"],
+  "output:bureau.agents.definitions.duplicate": ["$.dropped", "$.hash", "$.id"],
   "output:bureau.agents.definitions.get": [
     "$.a2a",
     "$.codeDefinition",

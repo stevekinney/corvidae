@@ -39,6 +39,12 @@ function setup() {
   return { backing, clock, store };
 }
 
+/** The model a run's reference pins, or undefined. */
+async function pinOf(store: ReturnType<typeof setup>['store'], runId: string) {
+  const reference = await store.reference(runId);
+  return reference?.resolvedModel;
+}
+
 describe('recordRun', () => {
   it('stores the definition under the identifier and hash and ties the run to it', async () => {
     const { backing, store } = setup();
@@ -309,6 +315,56 @@ describe('the revision a run started at (COR-1584)', () => {
 
     expect(reference).toMatchObject({ id: 'helper', hash: 'aa' });
     expect(reference?.definitionRevision).toBeUndefined();
+  });
+
+  it('keeps the resolved model on each run reference, never on the shared snapshot, and reads a missing or invalid one as unpinned (COR-2152)', async () => {
+    const { backing, store } = setup();
+    const helper = (hash: string, resolvedModel?: string) => ({
+      id: 'helper',
+      hash,
+      definition: definition(hash),
+      ...(resolvedModel === undefined ? {} : { resolvedModel }),
+    });
+    await store.recordRun(helper('aa', 'anthropic/claude-opus-5-5'), 'run-1');
+    expect(await pinOf(store, 'run-1')).toBe('anthropic/claude-opus-5-5');
+    expect(await store.load('helper', 'aa')).not.toHaveProperty('resolvedModel');
+    await store.recordRun(helper('bb'), 'run-2');
+    expect(await pinOf(store, 'run-2')).toBeUndefined();
+    const key = `${AGENT_RUN_REFERENCE_KEY_PREFIX}run-1`;
+    const stored = JSON.parse((await backing.get(key)) ?? '{}') as Record<string, unknown>;
+    await backing.set(key, JSON.stringify({ ...stored, resolvedModel: 7 }));
+    expect(await pinOf(store, 'run-1')).toBeUndefined();
+  });
+
+  it('keeps the model each run started on when two runs of one snapshot start on different ones, and when a run is held again (COR-2152)', async () => {
+    const { store } = setup();
+    const source = (resolvedModel: string) => ({
+      id: 'helper',
+      hash: 'aa',
+      definition: definition('one'),
+      resolvedModel,
+    });
+    await store.recordRun(source('anthropic/M1'), 'run-A');
+    await store.recordRun(source('anthropic/M2'), 'run-B');
+    expect(await pinOf(store, 'run-A')).toBe('anthropic/M1');
+    expect(await pinOf(store, 'run-B')).toBe('anthropic/M2');
+    // A recovered execution of run A holds it again, on the model the alias now names.
+    await store.recordRun(source('anthropic/M2'), 'run-A');
+    expect(await pinOf(store, 'run-A')).toBe('anthropic/M1');
+  });
+
+  it('gives a reference written before the pin its pin on a later hold, keeping its start and settlement (COR-2152)', async () => {
+    const { store } = setup();
+    await store.recordRun({ id: 'helper', hash: 'aa', definition: definition('one') }, 'run-1');
+    await store.settleRun('run-1', '2026-10-18T09:00:00.000Z');
+    await store.recordRun(
+      { id: 'helper', hash: 'aa', definition: definition('one'), resolvedModel: 'anthropic/M1' },
+      'run-1',
+    );
+    expect(await store.reference('run-1')).toMatchObject({
+      resolvedModel: 'anthropic/M1',
+      settledAt: '2026-10-18T09:00:00.000Z',
+    });
   });
 
   it('is filled by a hold of the same snapshot when the reference has none, keeping the start and the settlement', async () => {

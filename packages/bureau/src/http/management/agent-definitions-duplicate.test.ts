@@ -75,6 +75,8 @@ describe('bureau.agents.definitions.duplicate', () => {
     });
     expect(copied.error).toBeUndefined();
     expect(copied.result).toMatchObject({ id: 'triager' });
+    // COR-2231 — a copy of an agent file loses nothing.
+    expect(copied.result?.['dropped']).toEqual([]);
     const text = await readFile(join(owner, 'triager.md'), 'utf8');
     expect(text).toContain('linear:create-issue');
     expect(text).not.toContain('@');
@@ -125,9 +127,26 @@ describe('bureau.agents.definitions.duplicate', () => {
   });
 });
 
+const lookup = createTool({
+  name: 'lookup',
+  version: '1.0.0',
+  description: 'Looks an order up',
+  input: z.object({}),
+  metadata: { readOnly: true },
+  execute: async () => 'found',
+});
+
+const mystery = createTool({
+  name: 'mystery',
+  description: 'A tool no plugin contributes',
+  input: z.object({}),
+  execute: async () => 'unknown',
+});
+
 /**
  * A `demo` plugin, titled Demo, whose code agent `release-helper` answers from a script and names no
- * model. Its `setup` counts its runs, and its `start` records that it ran.
+ * model, and whose `order-helper` calls the plugin's own `lookup` tool. Its `setup` counts its
+ * runs, and its `start` records that it ran.
  */
 function demoPlugin(calls: { setup: number; start: number }) {
   return definePlugin({
@@ -139,7 +158,27 @@ function demoPlugin(calls: { setup: number; start: number }) {
     setup: () => {
       calls.setup += 1;
       return {
+        tools: [lookup],
         agents: [
+          {
+            // COR-2236 — a code agent that calls the plugin's own tool.
+            name: 'order-helper',
+            agent: createAgent({
+              name: 'order-helper',
+              instructions: 'Look the order up.',
+              generate: async () => ({ content: 'Found it.', toolCalls: [] }),
+              tools: { lookup },
+            }),
+          },
+          {
+            // A tool no plugin contributes: its copy is refused.
+            name: 'stray-helper',
+            agent: createAgent({
+              name: 'stray-helper',
+              generate: async () => ({ content: 'Done.', toolCalls: [] }),
+              tools: { mystery },
+            }),
+          },
           {
             name: 'release-helper',
             agent: createAgent({
@@ -158,8 +197,8 @@ function demoPlugin(calls: { setup: number; start: number }) {
   });
 }
 
-async function serveDemo(enabled?: boolean) {
-  const owner = await temporaryDirectory();
+async function serveDemo(enabled?: boolean, directory?: string) {
+  const owner = directory ?? (await temporaryDirectory());
   const calls = { setup: 0, start: 0 };
   const served = await serve({
     directory: owner,
@@ -231,7 +270,8 @@ describe('a disabled plugin’s agents (COR-2009)', () => {
       id: 'demo:release-helper',
     });
     expect(copied.error).toBeUndefined();
-    expect(copied.result).toMatchObject({ id: 'release-helper' });
+    // COR-2231 — the scripted `generate` is what the copy loses.
+    expect(copied.result).toMatchObject({ id: 'release-helper', dropped: ['generate'] });
     const text = await readFile(join(owner, 'release-helper.md'), 'utf8');
     // A scripted agent names no model, so the copy takes the first one the catalog offers, and a
     // file must name one.
@@ -259,6 +299,44 @@ describe('a disabled plugin’s agents (COR-2009)', () => {
       id: 'demo:release-helper',
     });
     expect(again.error?.data).toMatchObject({ reason: 'agent-file-exists' });
+  });
+
+  it('keeps the disabled plugin’s own tools in the copy, which is needs-setup until the plugin is enabled (COR-2236)', async () => {
+    const { served, owner } = await serveDemo();
+
+    const copied = await callAs(served.owner, 'bureau.agents.definitions.duplicate', {
+      id: 'demo:order-helper',
+    });
+    expect(copied.error).toBeUndefined();
+    expect(copied.result).toMatchObject({ id: 'order-helper' });
+    expect(await readFile(join(owner, 'order-helper.md'), 'utf8')).toContain('demo:lookup');
+
+    await served.bureau.agents.refresh();
+    expect(served.bureau.agents.list().find(({ id }) => id === 'order-helper')).toMatchObject({
+      source: 'file',
+      state: 'invalid',
+      problem: { code: 'needs-setup', issues: [{ reference: 'demo:lookup' }] },
+    });
+    expect(served.bureau.agents.find('order-helper')).toBeUndefined();
+
+    // The plugin is enabled in a Bureau over the same agents: the copy runs.
+    await disposeServed();
+    const enabled = await serveDemo(true, owner);
+    await enabled.served.bureau.agents.refresh();
+    expect(
+      enabled.served.bureau.agents.list().find(({ id }) => id === 'order-helper'),
+    ).toMatchObject({ source: 'file', state: 'ready' });
+    expect(enabled.served.bureau.agents.find('order-helper')).toBeDefined();
+  });
+
+  it('still refuses a copy that names a tool no plugin contributes, writing nothing (COR-2236)', async () => {
+    const { served, owner } = await serveDemo();
+    const refused = await callAs(served.owner, 'bureau.agents.definitions.duplicate', {
+      id: 'demo:stray-helper',
+    });
+    expect(refused.error?.data).toMatchObject({ reason: 'unknown-tool' });
+    expect(refused.result).toBeUndefined();
+    expect(await Bun.file(join(owner, 'stray-helper.md')).exists()).toBe(false);
   });
 
   it('are available again once the plugin is enabled', async () => {

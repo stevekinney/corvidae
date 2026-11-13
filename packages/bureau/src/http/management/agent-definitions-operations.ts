@@ -47,7 +47,7 @@ import {
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { AgentDefinitions } from '../../agent-catalog.ts';
+import { DROPPED_CODE_AGENT_BEHAVIORS, type AgentDefinitions } from '../../agent-catalog.ts';
 import type { BureauAgents } from '../../bureau-types/tasks.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
@@ -392,6 +392,11 @@ function definitionOf(input: z.infer<typeof definitionInputSchema>): AgentFileDe
 }
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
+
+/** COR-2231 — a duplicate also names what the copy loses; empty for a copy of a file agent. */
+const duplicateResultSchema = writeResultSchema.extend({
+  dropped: z.array(z.enum(DROPPED_CODE_AGENT_BEHAVIORS)),
+});
 
 /** The reason a file is not an agent, as a wire object. */
 function problemView(problem: NonNullable<AgentListing['problem']>) {
@@ -850,7 +855,7 @@ const duplicateInput = z.object({
 
 export const agentDefinitionsDuplicateOperation = defineOperation<
   typeof duplicateInput,
-  typeof writeResultSchema,
+  typeof duplicateResultSchema,
   BureauAgentDefinitionsOperationHost
 >({
   name: 'bureau.agents.definitions.duplicate',
@@ -858,11 +863,11 @@ export const agentDefinitionsDuplicateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Copy a plugin’s agent into the owner’s agents',
   description:
-    'Copies the read-only agent `id` (`plugin:name`) that a running plugin ships into the owner’s agents as `name`, an agent file the owner can edit, with every tool it names written without a pinned version so the copy follows whichever version is loaded. A plugin’s code agent, whether its plugin runs or is disabled (state `unavailable`), is copied from what it states about itself: its name, description, instructions, tools (its plugin’s own as `plugin:tool`), skills and model; one that names no model, such as a scripted agent, gets its first switchable model or else the first model of the deployment’s catalog the model policy allows, and with none the copy is `Unprocessable` (`unknown-model`), as is one that names a tool the catalog does not hold (`unknown-tool`). Answers the new agent’s `id` and `hash`. An `id` that is not a plugin’s agent is `InvalidParams`; a plugin agent that is not loaded is `NotFound`; an owner’s agent that already has the name is a `Conflict` and nothing is written; an agent whose `references` name documents beside the plugin’s files cannot be copied and is `Unprocessable`, as is one whose model the `modelPolicy` deployment or Bureau layer forbids (`model-policy-denied`) or whose model does not support its `effort` (`effort-not-supported`). Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
+    'Copies the read-only agent `id` (`plugin:name`) that a running plugin ships into the owner’s agents as `name`, an agent file the owner can edit, with every tool it names written without a pinned version so the copy follows whichever version is loaded. A plugin’s code agent, whether its plugin runs or is disabled (state `unavailable`), is copied from what it states about itself: its name, description, instructions, tools (its plugin’s own as `plugin:tool`), skills and model; one that names no model, such as a scripted agent, gets its first switchable model or else the first model of the deployment’s catalog the model policy allows, and with none the copy is `Unprocessable` (`unknown-model`), as is one that names a tool no plugin contributes (`unknown-tool`). A tool of a disabled plugin is kept as `plugin:tool`: the copy is written and listed `invalid` with the problem `needs-setup` until the plugin is enabled. Answers the new agent’s `id` and `hash`, and `dropped`: what a code agent has that a file cannot state, so the copy loses it, each present only when the agent has it (`generate` where it names no model, `stopWhen`, `approvals`, `outputSchema`, `guardrails`), and empty for a copy of a file agent. An `id` that is not a plugin’s agent is `InvalidParams`; a plugin agent that is not loaded is `NotFound`; an owner’s agent that already has the name is a `Conflict` and nothing is written; an agent whose `references` name documents beside the plugin’s files cannot be copied and is `Unprocessable`, as is one whose model the `modelPolicy` deployment or Bureau layer forbids (`model-policy-denied`) or whose model does not support its `effort` (`effort-not-supported`). Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: duplicateInput,
-  outputSchema: writeResultSchema,
+  outputSchema: duplicateResultSchema,
   producibleFaults: [
     'InvalidParams',
     'Forbidden',
@@ -1169,7 +1174,6 @@ const modalitySupportSchema = z.object({
  * withholds (`pricing`, `endpointAmbiguous`) cannot reach the wire even by a mistake upstream.
  */
 const modelSchema = z.object({
-  descriptorVersion: z.number(),
   provider: z.string(),
   endpoint: z.string(),
   model: z.string(),

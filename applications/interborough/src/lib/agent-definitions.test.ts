@@ -315,7 +315,6 @@ describe('the operations', () => {
   test('catalog keeps the abilities and standing of each model, and drops what it does not read', async () => {
     // A row as Bureau's `modelSchema` leaves it: the keys the editor reads, and others it does not.
     const row = {
-      descriptorVersion: 1,
       provider: 'anthropic',
       endpoint: 'https://api.anthropic.com',
       model: 'claude-sonnet-5',

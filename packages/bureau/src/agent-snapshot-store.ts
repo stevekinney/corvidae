@@ -98,6 +98,18 @@ export interface AgentRunReference {
    * stays at `schemaVersion` 1, as the field is additive.
    */
   readonly definitionRevision?: number;
+  /**
+   * COR-2152 — the model the run's definition resolved to when the run started, as
+   * `<provider>/<model>` (the resolved name only, not the catalog row). A resumed run builds its
+   * agent on it, so an alias that has moved since still runs the model the run started on. It
+   * lives here, not on the snapshot, for the reason `definitionRevision` does: a snapshot is keyed
+   * by the file's content, so every run of an unchanged file shares one, while an alias can move
+   * between two runs' starts. Filled when the reference is written, or by a later hold only if the
+   * field is absent (or was invalid and dropped on read), and never changed once recorded. Absent
+   * on a reference written before the field existed, which resumes by resolving the authored
+   * `definition.model` against today's catalog.
+   */
+  readonly resolvedModel?: string;
 }
 
 /** What a start stores: the file agent as it stood when the run started. */
@@ -105,6 +117,8 @@ export interface AgentSnapshotSource {
   readonly id: string;
   readonly hash: string;
   readonly definition: AgentFileDefinition;
+  /** See {@link AgentRunReference.resolvedModel}. Kept on the run's reference, not the snapshot. */
+  readonly resolvedModel?: string | undefined;
   /** See {@link AgentSnapshot.referenceDocuments}. */
   readonly referenceDocuments?: readonly AgentReferenceDocument[] | undefined;
   /** The definition revision the run starts at, kept on its reference. Not part of the snapshot. */
@@ -249,12 +263,17 @@ function parseReference(text: string | null): AgentRunReference | undefined {
       (value['settledAt'] === undefined || typeof value['settledAt'] === 'string')
     ) {
       // A revision that is not a positive safe integer is no revision: the reference still reads.
-      const { definitionRevision, ...rest } = value;
-      return (typeof definitionRevision === 'number' &&
-      Number.isSafeInteger(definitionRevision) &&
-      definitionRevision >= 1
-        ? { ...rest, definitionRevision }
-        : rest) as unknown as AgentRunReference;
+      // A pin that is not a non-empty string is no pin: the run still resumes, by the authored model.
+      const { definitionRevision, resolvedModel, ...rest } = value;
+      return {
+        ...rest,
+        ...(typeof definitionRevision === 'number' &&
+        Number.isSafeInteger(definitionRevision) &&
+        definitionRevision >= 1
+          ? { definitionRevision }
+          : {}),
+        ...(typeof resolvedModel === 'string' && resolvedModel !== '' ? { resolvedModel } : {}),
+      } as unknown as AgentRunReference;
     }
   } catch {
     // A record that is not JSON is not a reference.
@@ -343,19 +362,27 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
                   ...(source.definitionRevision === undefined
                     ? {}
                     : { definitionRevision: source.definitionRevision }),
+                  ...(source.resolvedModel === undefined
+                    ? {}
+                    : { resolvedModel: source.resolvedModel }),
                 } satisfies AgentRunReference),
               );
-            } else if (
-              source.definitionRevision !== undefined &&
-              existing.definitionRevision === undefined
-            ) {
-              // A reference written before revisions, or one whose value was invalid and dropped on
-              // read, gains the revision and keeps its start and its settlement. A revision that is
-              // recorded is the run's own and is never changed by a later hold.
-              await store.set(
-                referenceKey(runId),
-                JSON.stringify({ ...existing, definitionRevision: source.definitionRevision }),
-              );
+            } else {
+              // A reference written before revisions or pins, or one whose value was invalid and
+              // dropped on read, gains the field and keeps its start and its settlement. A revision
+              // or a pin that is recorded is the run's own and is never changed by a later hold.
+              const gains = {
+                ...(source.definitionRevision !== undefined &&
+                existing.definitionRevision === undefined
+                  ? { definitionRevision: source.definitionRevision }
+                  : {}),
+                ...(source.resolvedModel !== undefined && existing.resolvedModel === undefined
+                  ? { resolvedModel: source.resolvedModel }
+                  : {}),
+              };
+              if (Object.keys(gains).length > 0) {
+                await store.set(referenceKey(runId), JSON.stringify({ ...existing, ...gains }));
+              }
             }
             const current = parseSnapshot(await store.get(key));
             const snapshot: AgentSnapshot = {

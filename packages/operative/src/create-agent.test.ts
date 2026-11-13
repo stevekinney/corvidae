@@ -250,6 +250,31 @@ describe('createAgent: tool names', () => {
   });
 });
 
+describe('createAgent stopWhen and approvals (COR-2231)', () => {
+  it('reports the stop condition it was created with, and omits one it was not', () => {
+    const condition = () => true;
+    expect(createAgent({ generate: mockGenerate(), stopWhen: condition }).stopWhen).toBe(condition);
+    expect('stopWhen' in createAgent({ generate: mockGenerate() })).toBe(false);
+  });
+
+  it('reports approvals for a toolbox, toolbox options or permissions of its own, and omits them otherwise', () => {
+    const tool = createTool({
+      name: 'refund-order',
+      description: 'Refund an order',
+      input: z.object({}),
+      execute: async () => 'refunded',
+    });
+    expect(
+      createAgent({ generate: mockGenerate(), toolbox: createToolbox([tool]) }).approvals,
+    ).toBe(true);
+    expect(
+      createAgent({ generate: mockGenerate(), tools: { tool }, toolboxOptions: () => ({}) })
+        .approvals,
+    ).toBe(true);
+    expect('approvals' in createAgent({ generate: mockGenerate(), tools: { tool } })).toBe(false);
+  });
+});
+
 describe('createAgent instructions', () => {
   it('reports the instructions it was created with, exactly as given', () => {
     const agent = createAgent({

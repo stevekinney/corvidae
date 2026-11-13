@@ -209,7 +209,7 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
   'operative.runs.events':
     'The subscription response carries only its identifier and cursor; its separately inventoried event carries the private error (run event output schema).',
   'bureau.agents.definitions.duplicate':
-    'The duplicate response contains the shared definition identifier and hash, not invocation state (agent definitions duplicate output schema).',
+    'The duplicate response contains the shared definition identifier and hash and the names of what the copy loses, not invocation state (agent definitions duplicate output schema).',
 };
 
 export const WORKSPACE_PROJECTION_CONFORMANCE = (() => {

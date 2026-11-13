@@ -410,6 +410,11 @@ export interface FileAgentBinding {
    */
   readonly hash: string;
   readonly definition: AgentFileDefinition;
+  /**
+   * COR-2152 — the model the definition's `model` resolved to when the agent was built, as
+   * `<provider>/<model>`: what a snapshot of the run pins.
+   */
+  readonly resolvedModel: string;
   /** The documents the definition's `references` named, as the agent was given them. */
   readonly referenceDocuments?: readonly AgentReferenceDocument[];
   /**
@@ -490,6 +495,13 @@ export interface AgentFileCatalogOptions {
    * `bureau` plugin contributes (`plugin:name`, COR-1892). Omitted, none is.
    */
   readonly pluginToolNames?: ReadonlySet<string> | undefined;
+  /**
+   * COR-2236 — the tools (`plugin:name`) that disabled plugins contribute, which no tool catalog
+   * holds until the plugin is enabled. A file may name one: a write is accepted, and the file is
+   * `needs-setup` (an `invalid` listing whose problem is `needs-setup`) until the tool is in
+   * {@link AgentFileCatalogOptions.tools}. A name in neither is `unknown-tool`.
+   */
+  readonly unavailableTools?: ReadonlySet<string> | undefined;
   readonly models: Pick<Models, 'catalog' | 'summarizer'>;
   /** Turns a catalog model into the function a run calls. The host holds the credentials. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
@@ -621,9 +633,15 @@ export interface AgentFileCatalog extends AgentFileWriter {
    * Rebuild the agent a run recorded, from its snapshot, resolving the model and tools afresh. The
    * agent reports `revision`, the definition revision the run recorded (a snapshot is keyed by
    * content, so one snapshot can have been several revisions), or 1 when the caller has none, in
-   * which case its binding records none either.
+   * which case its binding records none either. `resolvedModel` is the run's own pin
+   * (`AgentRunReference.resolvedModel`, COR-2152): the agent is built on that `<provider>/<model>`,
+   * whatever the authored `model` now names. Without one, the authored string resolves today.
    */
-  agentFromSnapshot(snapshot: AgentSnapshot, revision?: number): AnyRunnableAgent;
+  agentFromSnapshot(
+    snapshot: AgentSnapshot,
+    revision?: number,
+    resolvedModel?: string,
+  ): AnyRunnableAgent;
   /** Stop watching and wait for a scan in flight. */
   close(): Promise<void>;
 }
@@ -650,6 +668,31 @@ interface FileEntry {
 }
 
 /** The catalog row a file's `<provider>/<model-or-alias>` names, or why none does. */
+/**
+ * COR-2152 — the catalog row a snapshot pinned (`<provider>/<model>`, the provider's own model
+ * name), matched by that name and never through an alias, or a problem naming the pin.
+ */
+function pinnedRow(
+  pinned: string,
+  descriptors: readonly BackendDescriptor[],
+): BackendDescriptor | AgentFileProblem {
+  const separator = pinned.indexOf('/');
+  const provider = pinned.slice(0, separator);
+  const name = pinned.slice(separator + 1);
+  const found =
+    separator <= 0
+      ? undefined
+      : descriptors.find(
+          (row) => row.provider === provider && row.model === name && isOfferedCatalogRow(row),
+        );
+  return (
+    found ?? {
+      code: 'unknown-model',
+      message: `The model "${pinned}" the run started on is no longer in the model catalog.`,
+    }
+  );
+}
+
 export function resolveModelDescriptor(
   model: string,
   descriptors: readonly BackendDescriptor[],
@@ -798,7 +841,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   }
 
   function missingTools(names: readonly string[]): string[] {
-    return names.filter((name) => !Object.hasOwn(options.tools, name));
+    return names.filter(
+      (name) => !Object.hasOwn(options.tools, name) && options.unavailableTools?.has(name) !== true,
+    );
+  }
+
+  /** COR-2236 — the tools of `names` that a disabled plugin contributes, so no catalog holds them yet. */
+  function unavailablePluginTools(names: readonly string[]): string[] {
+    return names.filter(
+      (name) => !Object.hasOwn(options.tools, name) && options.unavailableTools?.has(name) === true,
+    );
   }
 
   /**
@@ -931,8 +983,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   /** The model and the tools, which a snapshot is rebuilt against as much as a file is. */
   function checkResources(
     definition: AgentFileDefinition,
+    /** A write accepts a file that names the tools of a disabled plugin; a scan lists it `needs-setup`. */
+    acceptNeedsSetup = false,
+    /** COR-2152 — the `<provider>/<model>` a snapshot pinned: it replaces what `definition.model` resolves to. */
+    pinned?: string,
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
-    const resolved = resolveModelDescriptor(definition.model, options.models.catalog().descriptors);
+    const descriptors = options.models.catalog().descriptors;
+    const resolved =
+      pinned === undefined
+        ? resolveModelDescriptor(definition.model, descriptors)
+        : pinnedRow(pinned, descriptors);
     if (isProblem(resolved)) return { problem: resolved };
     if (definition.limits?.cost !== undefined && usdPricingOfRow(resolved) === undefined) {
       return {
@@ -957,6 +1017,20 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           issues: missing.map((name) => ({
             path: 'tools',
             message: `"${name}" is not a registered tool`,
+            reference: name,
+          })),
+        },
+      };
+    }
+    const waiting = acceptNeedsSetup ? [] : unavailablePluginTools(definition.tools);
+    if (waiting.length > 0) {
+      return {
+        problem: {
+          code: 'needs-setup',
+          message: `The tools ${waiting.map((name) => `"${name}"`).join(', ')} belong to a plugin that is disabled. Enable the plugin to run this agent.`,
+          issues: waiting.map((name) => ({
+            path: 'tools',
+            message: `"${name}" is a tool of a disabled plugin`,
             reference: name,
           })),
         },
@@ -1010,6 +1084,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   function checkDeployment(
     id: string,
     definition: AgentFileDefinition,
+    acceptNeedsSetup = false,
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
     if (options.reservedIdentifiers.has(id) || id === RESERVED_DEFAULT_AGENT_IDENTIFIER) {
       return {
@@ -1019,7 +1094,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         },
       };
     }
-    const resources = checkResources(definition);
+    const resources = checkResources(definition, acceptNeedsSetup);
     if ('problem' in resources) return resources;
     if (definition.compaction?.enabled === true && options.models.summarizer() === undefined) {
       const message =
@@ -1237,6 +1312,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         id,
         hash,
         definition,
+        resolvedModel: `${descriptor.provider}/${descriptor.model}`,
         ...(documents.length === 0 ? {} : { referenceDocuments: documents }),
         ...(revision === undefined ? {} : { definitionRevision: revision }),
       });
@@ -1672,7 +1748,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     source: options.source,
     read: readFresh,
     async validate(id, definition, before) {
-      const checked = checkDeployment(id, definition);
+      // A file may name the tools of a disabled plugin (COR-2236): it is written, and listed
+      // `needs-setup` until the plugin is enabled.
+      const checked = checkDeployment(id, definition, true);
       if ('problem' in checked) return checked.problem;
       const refused = checkSkillGrants(definition, before);
       if (refused !== undefined) return refused;
@@ -1872,10 +1950,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
     onChange: directoryWatcher.onChange,
 
-    agentFromSnapshot(snapshot, revision) {
+    agentFromSnapshot(snapshot, revision, resolvedModel) {
       // Not `checkDeployment`: a run resumes as the file it began as even if a code agent has
       // since taken the name. Only what the agent needs to run is checked.
-      const checked = checkResources(snapshot.definition);
+      // A run that pins a model (COR-2152) is rebuilt on it, whatever the authored `model` now
+      // names; one written before the pin resolves the authored string against today's catalog.
+      const checked = checkResources(snapshot.definition, false, resolvedModel);
       if ('problem' in checked) {
         throw new AgentSnapshotError(
           'snapshot-unresolvable',

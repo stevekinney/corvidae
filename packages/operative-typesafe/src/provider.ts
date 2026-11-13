@@ -46,7 +46,6 @@ const NO_MODALITY = { input: false, output: false, sourceForms: [] } as const;
  */
 export const typesafeRows: readonly BackendDescriptor[] = Object.freeze([
   Object.freeze<BackendDescriptor>({
-    descriptorVersion: 2,
     provider: 'typesafe',
     endpoint: 'decide',
     model: TYPESAFE_JEV_MODEL,

@@ -11,11 +11,16 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { AgentFileError } from './agent-file';
+import { createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
+
+import { AgentFileError, AgentSnapshotError } from './agent-file';
 import { readFileAgentBinding } from './agent-file-catalog';
+import { createFileAgentRuntime } from './agent-file-runtime';
+import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
 import { type AgentFileOperations, nodeAgentFileOperations } from './sources/agent-file-operations';
 import {
+  agentFileText,
   type AgentFileFixture,
   createAgentFileFixture,
   KNOWN_MODEL,
@@ -335,5 +340,100 @@ describe('a write whose model cannot be set up', () => {
     const unchanged = await fixture.catalog.read('one');
     expect(unchanged?.text).toBe(validAgentFile());
     expect(KNOWN_MODEL).toBeTruthy();
+  });
+});
+
+describe('a run resumed from its snapshot after a model alias moved (COR-2152)', () => {
+  const [first, second] = createModelCatalog().descriptors.filter(
+    (row) => row.provider === 'anthropic' && row.lifecycle !== 'retired',
+  );
+  const house = 'anthropic/house';
+  /** The model catalog with the alias `house` pointing at `target`. */
+  const catalogWith = (target: BackendDescriptor | undefined) =>
+    createModelCatalog().descriptors.map((row) => ({
+      ...row,
+      aliases: row.aliases.filter((alias) => alias.alias !== 'house'),
+      ...(target !== undefined && row.model === target.model && row.provider === target.provider
+        ? { aliases: [...row.aliases, { alias: 'house', resolvesTo: row.model }] }
+        : {}),
+    })) as BackendDescriptor[];
+  const named = (row: BackendDescriptor | undefined) => `${row?.provider}/${row?.model}`;
+  /** Starts a run on `house` while it names `first`, and returns the snapshot the store kept. */
+  async function snapshotOfRunOnFirst() {
+    const before = await start({ watch: false, descriptors: catalogWith(first) });
+    await before.put('housed.md', agentFileText({ name: 'Housed', model: house }));
+    await before.catalog.refresh();
+    const binding = readFileAgentBinding(before.catalog.find('housed')!)!;
+    const snapshots = createAgentSnapshotStore({ nowISO: () => '2026-11-13T00:00:00.000Z' });
+    await snapshots.recordRun(binding, 'run-1');
+    const snapshot = (await snapshots.load('housed', binding.hash))!;
+    const reference = await snapshots.reference('run-1');
+    return {
+      directory: before.directory,
+      binding,
+      snapshots,
+      snapshot,
+      pin: reference?.resolvedModel,
+    };
+  }
+
+  it("records the resolved model on the run's reference, beside the authored string", async () => {
+    const { binding, snapshot, pin } = await snapshotOfRunOnFirst();
+    expect(snapshot.definition.model).toBe(house);
+    expect(pin).toBe(named(first));
+    expect(binding.resolvedModel).toBe(named(first));
+  });
+
+  it('resumes on the pinned model, though the alias now names another', async () => {
+    const { directory, snapshot, pin } = await snapshotOfRunOnFirst();
+    const after = await start({ watch: false, directory, descriptors: catalogWith(second) });
+    const rebuilt = after.catalog.agentFromSnapshot(snapshot, 1, pin);
+    expect(readFileAgentBinding(rebuilt)?.resolvedModel).toBe(named(first));
+    // The model the host was asked to call is the pinned one, not the alias's new target.
+    expect(named(after.generated.at(-1))).toBe(named(first));
+  });
+
+  it('resumes a snapshot written before the pin by resolving the authored string today', async () => {
+    const { directory, snapshot } = await snapshotOfRunOnFirst();
+    const after = await start({ watch: false, directory, descriptors: catalogWith(second) });
+    const rebuilt = after.catalog.agentFromSnapshot(snapshot, 1);
+    expect(readFileAgentBinding(rebuilt)?.resolvedModel).toBe(named(second));
+  });
+
+  it('fails with snapshot-unresolvable, naming the pinned model, when its row is gone', async () => {
+    const { directory, snapshot, pin } = await snapshotOfRunOnFirst();
+    const without = catalogWith(second).filter((row) => row.model !== first?.model);
+    const after = await start({ watch: false, directory, descriptors: without });
+    let thrown: unknown;
+    try {
+      after.catalog.agentFromSnapshot(snapshot, 1, pin);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(AgentSnapshotError);
+    expect(thrown).toMatchObject({ code: 'snapshot-unresolvable' });
+    expect((thrown as Error).message).toContain(named(first));
+  });
+
+  it('keeps each run on its own model when two runs of one unchanged file started on different ones', async () => {
+    const { directory, binding, snapshots } = await snapshotOfRunOnFirst();
+    // Run A is parked; the alias moves; run B of the same file starts on the new target.
+    const after = await start({ watch: false, directory, descriptors: catalogWith(second) });
+    await after.catalog.refresh();
+    const bindingB = readFileAgentBinding(after.catalog.find('housed')!)!;
+    expect(bindingB.hash).toBe(binding.hash);
+    expect(bindingB.resolvedModel).toBe(named(second));
+    await snapshots.recordRun(bindingB, 'run-2');
+    const runtime = createFileAgentRuntime({
+      files: after.catalog,
+      snapshots,
+      diagnose: (message, cause) => {
+        throw new Error(`${message} ${String(cause)}`);
+      },
+    });
+    const resumedA = await runtime.agentForRecordedRun('housed', binding.hash, 1, 'run-1');
+    const resumedB = await runtime.agentForRecordedRun('housed', binding.hash, 1, 'run-2');
+    expect(resumedA.binding.resolvedModel).toBe(named(first));
+    expect(resumedB.binding.resolvedModel).toBe(named(second));
   });
 });

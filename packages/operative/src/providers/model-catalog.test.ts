@@ -421,7 +421,6 @@ describe('createModelCatalog: catalog invariants', () => {
   it('declares media counts and provider fetch behavior on every row, consistent with the modality matrix', () => {
     const catalog = createModelCatalog({ now: fixedNow });
     for (const row of catalog.descriptors) {
-      expect(row.descriptorVersion).toBe(2);
       expect(typeof row.providerFetchesRemoteUrls).toBe('boolean');
       expect(Object.isFrozen(row.mediaCounts)).toBe(true);
       // A cap on a modality the backend takes no input for would never apply.

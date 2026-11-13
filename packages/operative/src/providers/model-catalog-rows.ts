@@ -240,7 +240,6 @@ export function buildAnthropicRow(model: string, freshness: string): BackendDesc
   const limits = requireLimits('anthropic', model);
   const pricingRow = pricingFor(model);
   return {
-    descriptorVersion: 2,
     provider: 'anthropic',
     endpoint: 'messages',
     model,
@@ -284,7 +283,6 @@ export function buildOpenAIRow(
   const limits = requireLimits('openai', model);
   const pricingRow = pricingFor(model);
   return {
-    descriptorVersion: 2,
     provider: 'openai',
     endpoint: 'chat.completions',
     model,
@@ -327,7 +325,6 @@ export function buildGeminiRow(model: string, freshness: string): BackendDescrip
   const limits = requireLimits('gemini', model);
   const pricingRow = pricingFor(model);
   return {
-    descriptorVersion: 2,
     provider: 'gemini',
     endpoint: 'generateContent',
     model,

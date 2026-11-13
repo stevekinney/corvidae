@@ -88,7 +88,6 @@ describe('withBackendDescriptors', () => {
     // that starts out fully mutable.
     const modalityEntry = { input: false, output: false, sourceForms: [] };
     const custom: BackendDescriptor = {
-      descriptorVersion: 2,
       provider: 'anthropic',
       endpoint: 'messages',
       model: 'custom-model',

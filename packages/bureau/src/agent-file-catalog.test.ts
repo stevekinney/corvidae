@@ -2,7 +2,7 @@
  * COR-1524 — which files in the agent directory are agents, how they are identified, and what the
  * catalog reports about them.
  */
-import { mkdir, rm, symlink } from 'node:fs/promises';
+import { mkdir, readdir, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -13,6 +13,7 @@ import {
   agentFileText,
   createAgentFileFixture,
   KNOWN_MODEL,
+  lookupTool,
   validAgentFile,
 } from './testing/agent-file-fixtures.test-support';
 
@@ -166,5 +167,45 @@ describe('loading the agent directory', () => {
     expect(catalog.list().find((listing) => listing.id === 'planner')).toMatchObject({
       state: 'ready',
     });
+  });
+});
+
+describe('a file that names the tools of a disabled plugin (COR-2236)', () => {
+  const definition = { model: KNOWN_MODEL, tools: ['demo:lookup'], instructions: 'Look it up.' };
+
+  it('is written, listed needs-setup, and ready once the plugin’s tool is in the catalog', async () => {
+    const waiting = await start({ watch: false, unavailableTools: new Set(['demo:lookup']) });
+    await waiting.catalog.create('order-helper', definition);
+    await waiting.catalog.refresh();
+    expect(waiting.catalog.list().find(({ id }) => id === 'order-helper')).toMatchObject({
+      state: 'invalid',
+      problem: { code: 'needs-setup', issues: [{ reference: 'demo:lookup' }] },
+    });
+    expect(waiting.catalog.find('order-helper')).toBeUndefined();
+
+    // The plugin is enabled: its tool is in the catalog, over the same agent directory.
+    const enabled = await start({
+      watch: false,
+      directory: waiting.directory,
+      tools: { 'demo:lookup': lookupTool },
+    });
+    await enabled.catalog.refresh();
+    expect(enabled.catalog.list().find(({ id }) => id === 'order-helper')).toMatchObject({
+      state: 'ready',
+    });
+    expect(enabled.catalog.find('order-helper')).toBeDefined();
+  });
+
+  it('refuses a tool that no plugin has contributed, with unknown-tool', async () => {
+    const { catalog, directory } = await start({
+      watch: false,
+      unavailableTools: new Set(['demo:lookup']),
+    });
+    const refused = await catalog.create('stray', { ...definition, tools: ['demo:mystery'] }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refused).toMatchObject({ code: 'unknown-tool' });
+    expect(await readdir(directory)).toEqual([]);
   });
 });

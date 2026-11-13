@@ -75,8 +75,18 @@ describe('agentForRecordedRun', () => {
       'run-1',
     );
 
-    const { agent, binding } = await runtime.agentForRecordedRun('helper', 'aa');
-    expect(binding).toEqual({ id: 'helper', hash: 'aa', definition: DEFINITION });
+    const { agent, binding } = await runtime.agentForRecordedRun(
+      'helper',
+      'aa',
+      undefined,
+      'run-1',
+    );
+    expect(binding).toEqual({
+      id: 'helper',
+      hash: 'aa',
+      definition: DEFINITION,
+      resolvedModel: KNOWN_MODEL,
+    });
     expect(readFileAgentBinding(agent)?.definition.instructions).toBe('Recorded instructions.\n');
     expect(agent).not.toBe(fixture.catalog.find('helper'));
   });
@@ -95,7 +105,7 @@ describe('agentForRecordedRun', () => {
       'run-1',
     );
 
-    const { agent } = await runtime.agentForRecordedRun('helper', 'aa', 2);
+    const { agent } = await runtime.agentForRecordedRun('helper', 'aa', 2, 'run-1');
 
     expect(current && readGenerationProfile(current).revision).toBe(3);
     expect(readGenerationProfile(agent).revision).toBe(2);
@@ -108,7 +118,12 @@ describe('agentForRecordedRun', () => {
       'run-1',
     );
 
-    const { agent, binding } = await runtime.agentForRecordedRun('helper', 'aa');
+    const { agent, binding } = await runtime.agentForRecordedRun(
+      'helper',
+      'aa',
+      undefined,
+      'run-1',
+    );
 
     expect(readGenerationProfile(agent).revision).toBe(1);
     expect(binding.definitionRevision).toBeUndefined();
@@ -120,13 +135,13 @@ describe('agentForRecordedRun', () => {
   it('rebuilds a snapshot whose file is gone, and whose name a code agent has since taken', async () => {
     const { runtime } = await start();
     await runtime.snapshots.recordRun({ id: 'alpha', hash: 'aa', definition: DEFINITION }, 'run-1');
-    const { binding } = await runtime.agentForRecordedRun('alpha', 'aa');
+    const { binding } = await runtime.agentForRecordedRun('alpha', 'aa', undefined, 'run-1');
     expect(binding.id).toBe('alpha');
   });
 
   it('fails with snapshot-missing when the snapshot is not stored', async () => {
     const { runtime } = await start();
-    const error = await rejection(runtime.agentForRecordedRun('helper', 'ff'));
+    const error = await rejection(runtime.agentForRecordedRun('helper', 'ff', undefined, 'run-1'));
     expect(error).toBeInstanceOf(AgentSnapshotError);
     expect(error).toMatchObject({ code: 'snapshot-missing', agentId: 'helper', hash: 'ff' });
   });
@@ -141,11 +156,11 @@ describe('agentForRecordedRun', () => {
       { id: 'model', hash: 'bb', definition: { ...DEFINITION, model: 'anthropic/none' } },
       'run-2',
     );
-    for (const [id, hash] of [
-      ['tools', 'aa'],
-      ['model', 'bb'],
+    for (const [id, hash, runId] of [
+      ['tools', 'aa', 'run-1'],
+      ['model', 'bb', 'run-2'],
     ] as const) {
-      const error = await rejection(runtime.agentForRecordedRun(id, hash));
+      const error = await rejection(runtime.agentForRecordedRun(id, hash, undefined, runId));
       expect(error, id).toBeInstanceOf(AgentSnapshotError);
       expect(error, id).toMatchObject({ code: 'snapshot-unresolvable' });
     }

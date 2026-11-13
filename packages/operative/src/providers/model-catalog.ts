@@ -75,7 +75,6 @@ export interface BackendDecisions {
 }
 
 export interface BackendDescriptor {
-  readonly descriptorVersion: number;
   readonly provider: ProviderName;
   readonly endpoint: string;
   readonly model: string; // provider-native, post-alias

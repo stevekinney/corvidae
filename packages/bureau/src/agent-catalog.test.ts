@@ -3,11 +3,14 @@ import {
   createDefaultRuntimeServices,
   createMockGenerate,
   createModelCatalog,
+  stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
-import { createAgentCatalog } from './agent-catalog';
+import { type AnyRunnableAgent, createAgentCatalog } from './agent-catalog';
 import { AgentFileError, type AgentFileDefinitionInput } from './agent-file';
 import type { AgentFileCatalog } from './agent-file-catalog';
 
@@ -358,6 +361,86 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
         }),
       },
     ]);
+  });
+
+  it('keeps a tool of the disabled plugin as plugin:tool, and leaves one no plugin contributes as it is (COR-2236)', async () => {
+    const descriptors = createModelCatalog().descriptors;
+    const helper = Object.create(agent('tool-runner'), {
+      toolNames: { value: ['lookup-order', 'mystery'] },
+    }) as ReturnType<typeof agent>;
+    const { files, created } = recordingFiles([]);
+    const catalog = createAgentCatalog(
+      {},
+      {
+        files,
+        descriptors: () => descriptors,
+        unavailableTools: ['demo:lookup-order'],
+        unavailable: [{ id: 'demo:tool-runner', plugin: 'demo', agent: helper, unavailable }],
+      },
+    );
+    await catalog.duplicate('demo:tool-runner');
+    expect(created[0]?.definition.tools).toEqual(['demo:lookup-order', 'mystery']);
+  });
+
+  describe('what the copy loses (COR-2231)', () => {
+    const refund = createTool({
+      name: 'refund',
+      description: 'Refunds an order',
+      input: z.object({}),
+      execute: async () => 'refunded',
+    });
+    function duplicatorOf(plugin: AnyRunnableAgent) {
+      const { files } = recordingFiles(['demo:refund']);
+      const withDuplicate = {
+        ...files,
+        duplicate: async (id: string) => ({ id: id.slice(id.indexOf(':') + 1), hash: 'hash' }),
+      } as unknown as AgentFileCatalog;
+      return createAgentCatalog(
+        {},
+        {
+          files: withDuplicate,
+          descriptors: () => createModelCatalog().descriptors,
+          unavailable: [{ id: 'demo:tool-runner', plugin: 'demo', agent: plugin, unavailable }],
+        },
+      );
+    }
+
+    it('names stopWhen and approvals for an agent that stops on a pending approval over a toolbox of its own', async () => {
+      const runner = createAgent({
+        name: 'tool-runner',
+        generate: createMockGenerate([]),
+        toolbox: createToolbox([refund]),
+        stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
+      });
+      const result = await duplicatorOf(runner).duplicate('demo:tool-runner');
+      expect(result.dropped).toEqual(expect.arrayContaining(['stopWhen', 'approvals']));
+      expect(result.dropped).not.toContain('outputSchema');
+      expect(result.dropped).not.toContain('guardrails');
+    });
+
+    it('names an output schema and guardrails, and a generate of its own, each only when the agent has it', async () => {
+      const structured = createAgent({
+        name: 'tool-runner',
+        generate: createMockGenerate([]),
+        output: z.object({ answer: z.string() }),
+        guardrails: false,
+      });
+      const result = await duplicatorOf(structured).duplicate('demo:tool-runner');
+      expect(result.dropped).toEqual(['generate', 'outputSchema', 'guardrails']);
+    });
+
+    it('names nothing for a code agent with none of them, and for a copy of a file agent', async () => {
+      const plain = withBackendDescriptors(
+        createMockGenerate([]),
+        createModelCatalog().descriptors.slice(0, 1),
+      );
+      const result = await duplicatorOf(
+        createAgent({ name: 'tool-runner', generate: plain }),
+      ).duplicate('demo:tool-runner');
+      expect(result.dropped).toEqual([]);
+      const copied = await duplicatorOf(agent('x')).duplicate('demo:file-agent');
+      expect(copied).toEqual({ id: 'file-agent', hash: 'hash', dropped: [] });
+    });
   });
 
   it('copies one onto the first model whose provider can be called, passing over an unavailable row (COR-2143)', async () => {

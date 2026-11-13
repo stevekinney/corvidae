@@ -66,6 +66,7 @@ export function createApprovedToolScan<D extends AgentDefinitions>(
           agentName,
           recordedReference.hash,
           recordedReference.definitionRevision,
+          runId,
         );
         agent = rebuilt.agent;
       } catch {

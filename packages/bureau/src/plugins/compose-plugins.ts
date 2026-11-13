@@ -115,6 +115,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
    */
   readonly unavailableAgents: readonly UnavailableCodeAgent[];
   /**
+   * COR-2236 — the tools the disabled plugins contribute, by the `plugin:name` an agent file names
+   * them with, read with their agents. An agent file may name one before its plugin is enabled: the
+   * file is `needs-setup` until then.
+   */
+  readonly unavailableTools: readonly string[];
+  /**
    * COR-2233 — what each running plugin's code agent says beyond the agent itself, by the
    * `plugin:name` the catalog holds it under: the version a run pins (its own `version`, else the
    * plugin's), its `title` and its `visibility`.
@@ -893,21 +899,23 @@ async function setUp(
  * with nothing it could change or reveal: storage confined to `plugin:<name>:` of a scratch
  * `MemoryStorage` that is dropped after, no secret (every `get` answers `undefined`), and a host
  * API that is never bound, so a call to it rejects. Only `agents` is kept; no other
- * contribution is registered, `start` never runs, and none of the agents can start a run. A
- * plugin whose configuration does not parse, or whose `setup` throws, lists none: it is disabled
- * either way, and enabling it reports the failure where a running plugin's would be.
+ * contribution is registered, `start` never runs, and none of the agents can start a run. Only the
+ * names of its tools are kept besides (COR-2236), so a file can name one before the plugin is
+ * enabled. A plugin whose configuration does not parse, or whose `setup` throws, lists none: it is
+ * disabled either way, and enabling it reports the failure where a running plugin's would be.
  */
 async function agentsOfDisabledPlugin(
   entry: BureauPluginEntry,
   options: Pick<ComposableOptions, 'pluginConfiguration'>,
-): Promise<UnavailableCodeAgent[]> {
+): Promise<{ agents: UnavailableCodeAgent[]; tools: string[] }> {
   const { descriptor } = entry;
-  if (descriptor.setup === undefined) return [];
+  const none = { agents: [], tools: [] };
+  if (descriptor.setup === undefined) return none;
   const configuration = configurationProblems(
     entry,
     settingsOf(options.pluginConfiguration, descriptor.name),
   );
-  if ('problems' in configuration) return [];
+  if ('problems' in configuration) return none;
   try {
     const context: PluginSetupContext = {
       configuration: configuration.value,
@@ -918,14 +926,19 @@ async function agentsOfDisabledPlugin(
     };
     const returned: PluginSetupResult = (await descriptor.setup(context as never)) ?? {};
     const message = `Plugin ${descriptor.title ?? descriptor.name} is disabled`;
-    return (returned.agents ?? []).map(({ name, agent }) => ({
-      id: formatToolId({ namespace: descriptor.name, name }),
-      plugin: descriptor.name,
-      agent,
-      unavailable: { code: 'plugin-disabled', message },
-    }));
+    return {
+      agents: (returned.agents ?? []).map(({ name, agent }) => ({
+        id: formatToolId({ namespace: descriptor.name, name }),
+        plugin: descriptor.name,
+        agent,
+        unavailable: { code: 'plugin-disabled' as const, message },
+      })),
+      tools: (returned.tools ?? []).map(({ name }) =>
+        formatToolId({ namespace: descriptor.name, name }),
+      ),
+    };
   } catch {
-    return [];
+    return none;
   }
 }
 
@@ -1047,6 +1060,7 @@ export async function composePlugins<O extends ComposableOptions>(
   const contributed = new Contributed();
   const records: PluginRecord[] = [];
   const unavailableAgents: UnavailableCodeAgent[] = [];
+  const unavailableTools: string[] = [];
   const claims = heldByHost(options);
   const storage = options.storage ?? new MemoryStorage();
   for (const entry of pluginLoadOrder(options.plugins ?? [])) {
@@ -1066,7 +1080,9 @@ export async function composePlugins<O extends ComposableOptions>(
     claims.hold({ space: 'plugin', name: entry.descriptor.name }, party);
     const outcome = await setUp(entry, options, storage);
     if (outcome.status === 'disabled') {
-      unavailableAgents.push(...(await agentsOfDisabledPlugin(entry, options)));
+      const disabled = await agentsOfDisabledPlugin(entry, options);
+      unavailableAgents.push(...disabled.agents);
+      unavailableTools.push(...disabled.tools);
     }
     if (outcome.status !== 'set-up') {
       record(outcome.status, outcome.problems);
@@ -1130,6 +1146,7 @@ export async function composePlugins<O extends ComposableOptions>(
     records,
     shippedContent: shippedContentOf(records),
     unavailableAgents,
+    unavailableTools,
     agentDetails: contributed.agentDetails,
     watchSecrets: () => {
       const stops = gates.map((gate) => gate.watch());

@@ -84,7 +84,6 @@
     ". BackendDescriptor.batchInference",
     ". BackendDescriptor.caching",
     ". BackendDescriptor.contextWindowTokens",
-    ". BackendDescriptor.descriptorVersion",
     ". BackendDescriptor.effort",
     ". BackendDescriptor.endpoint",
     ". BackendDescriptor.explicitThinkingRequest",

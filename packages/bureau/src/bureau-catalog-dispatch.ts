@@ -1026,6 +1026,7 @@ export function createCatalogDispatcher({
               name,
               claimed.agentDefinitionHash,
               claimed.definitionRevision,
+              runId,
             );
             claimedAgent = recorded.agent as AnyRunnableAgent &
               DefinitionResolvingAgentWithResolver;

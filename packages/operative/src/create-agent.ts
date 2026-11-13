@@ -687,6 +687,22 @@ export interface StandaloneAgent<
   readonly skills?: AgentSkills | undefined;
 
   /**
+   * The stop condition this agent was created with (`options.stopWhen`), exactly as given. Omitted
+   * when it declared none, so a run stops on the default `stopWhen.noToolCalls()`. Read-only
+   * description for a host that copies the agent (COR-2231): a run reads the condition from the
+   * options, and changing this value changes nothing.
+   */
+  readonly stopWhen?: (StopCondition | StopCondition[]) | undefined;
+
+  /**
+   * `true` when this agent was created with a toolbox, `toolboxOptions` or `permissions` of its own,
+   * which is where its approval rules live; omitted otherwise. Read-only description for a host that
+   * copies the agent (COR-2231): an approval rule a toolbox carries cannot be read back, so this says
+   * only that the agent may hold a rule a copy does not carry.
+   */
+  readonly approvals?: true | undefined;
+
+  /**
    * The system instructions this agent was created with (`options.instructions`), exactly as
    * given. Omitted when the agent was created with none or with an empty string. Read-only
    * description for a host that shows or duplicates the agent (COR-1818): a run is given the same
@@ -1187,6 +1203,11 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // COR-1367 — omitted when not declared, matching `hooks` above.
     ...(declaredGuardrails === undefined ? {} : { guardrails: declaredGuardrails }),
     ...(skills === undefined ? {} : { skills }),
+    // COR-2231 — omitted when undeclared, matching `skills` above.
+    ...(options.stopWhen === undefined ? {} : { stopWhen: options.stopWhen }),
+    ...(providedToolbox !== undefined || toolboxOptions !== undefined || permissions !== undefined
+      ? { approvals: true as const }
+      : {}),
     // COR-1818 — omitted when undeclared or empty, matching `skills` above.
     ...(instructions === undefined || instructions === '' ? {} : { instructions }),
     toolNames,

@@ -129,6 +129,8 @@ export interface AgentFileFixtureOptions {
   readonly watch?: DirectorySourceOptions['watch'];
   /** Replaces the tool catalog, which holds {@link lookupTool} by default. */
   readonly tools?: AgentFileCatalogOptions['tools'];
+  /** The tools (`plugin:name`) that disabled plugins contribute (COR-2236); none by default. */
+  readonly unavailableTools?: AgentFileCatalogOptions['unavailableTools'];
   readonly operations?: AgentFileOperations;
   /** A source to run over instead of the fixture's directory; the directory options then do nothing. */
   readonly source?: AgentSource;
@@ -191,6 +193,9 @@ export async function createAgentFileFixture(
       }),
     reservedIdentifiers: new Set(options.reserved ?? ['alpha']),
     tools,
+    ...(options.unavailableTools === undefined
+      ? {}
+      : { unavailableTools: options.unavailableTools }),
     models,
     resolveGenerate: options.resolveGenerate ?? resolveGenerate,
     runtime,

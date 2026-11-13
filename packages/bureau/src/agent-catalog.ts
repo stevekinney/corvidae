@@ -39,7 +39,7 @@ import type {
   AgentToolDescription,
   AgentUnavailability,
 } from './agent-file-catalog';
-import type { AgentFileWriter } from './agent-file-writer';
+import type { AgentFileWriter, AgentFileWriteResult } from './agent-file-writer';
 import { isOfferedCatalogRow } from './models/create-models';
 import type { AgentVersionRecord } from './agent-version-store';
 import type { AgentDefinitionPin } from './agent-definition-pin';
@@ -316,9 +316,34 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    * scripted or routed agent names no model, so the copy gets its first switchable model, or else
    * the first model of the deployment's catalog the model policy allows; with none, it fails with
    * `AgentFileError` `unknown-model` and writes nothing. The copy is checked like any new file, so a
-   * tool the catalog does not hold (a disabled plugin's own) refuses it with `unknown-tool`.
+   * tool no plugin contributes refuses it with `unknown-tool`. COR-2236 — a tool of a disabled
+   * plugin is kept as `plugin:tool`: the copy is written, and listed `needs-setup` until the plugin
+   * is enabled.
+   *
+   * COR-2231 — the result names what the copy loses in `dropped`: for a code agent, each of
+   * `generate`, `stopWhen`, `approvals`, `outputSchema` and `guardrails` the agent has and a file
+   * cannot state. A copy of a file agent loses nothing, so its `dropped` is empty.
    */
-  duplicate: AgentFileWriter['duplicate'];
+  duplicate: (
+    id: string,
+    options?: Parameters<AgentFileWriter['duplicate']>[1],
+  ) => Promise<AgentDuplicateResult>;
+}
+
+/** A behavior of a code agent that an agent file cannot state, so a copy of the agent loses it (COR-2231). */
+export const DROPPED_CODE_AGENT_BEHAVIORS = [
+  'generate',
+  'stopWhen',
+  'approvals',
+  'outputSchema',
+  'guardrails',
+] as const;
+
+export type DroppedCodeAgentBehavior = (typeof DROPPED_CODE_AGENT_BEHAVIORS)[number];
+
+/** What `BureauAgentCatalog.duplicate` reports: the new file, and what its source had that the file does not (COR-2231). */
+export interface AgentDuplicateResult extends AgentFileWriteResult {
+  readonly dropped: DroppedCodeAgentBehavior[];
 }
 
 /**
@@ -402,6 +427,12 @@ export interface CreateAgentCatalogOptions {
    * which a restart forgets.
    */
   readonly overrides?: AgentOverrideStore | undefined;
+  /**
+   * COR-2236 — the tools (`plugin:name`) that disabled plugins contribute. `duplicate` names a
+   * disabled plugin's code agent's own tools by them, so its copy keeps them and is `needs-setup`
+   * until the plugin is enabled, instead of being refused with `unknown-tool`.
+   */
+  readonly unavailableTools?: readonly string[] | undefined;
   /**
    * COR-2009 — what applying a built-in agent's overrides to its runs needs from the deployment:
    * the model resolver, the tool catalog, the plugin guardrails, the approval secret and the
@@ -716,14 +747,21 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
     duplicate: async (id, writeOptions) => {
       const agent = pluginCodeAgent(id);
-      if (agent === undefined) return requireFiles().duplicate(id, writeOptions);
+      if (agent === undefined) {
+        // A file agent's copy is its file's bytes, so it loses nothing.
+        return { ...(await requireFiles().duplicate(id, writeOptions)), dropped: [] };
+      }
       const writer = requireFiles();
-      const copy = copyOfCodeAgent(id, agent, {
+      const { definition, dropped } = copyOfCodeAgent(id, agent, {
         descriptors: descriptors(),
         policy: modelPolicy(),
-        toolNames: new Set(writer.tools().map((tool) => tool.name)),
+        toolNames: new Set([
+          ...writer.tools().map((tool) => tool.name),
+          ...(options?.unavailableTools ?? []),
+        ]),
       });
-      return writer.create(id.slice(id.indexOf(':') + 1), copy, writeOptions);
+      const written = await writer.create(id.slice(id.indexOf(':') + 1), definition, writeOptions);
+      return { ...written, dropped };
     },
   };
 
@@ -772,7 +810,7 @@ function copyOfCodeAgent(
     readonly policy: BureauModelPolicyOptions | undefined;
     readonly toolNames: ReadonlySet<string>;
   },
-): AgentFileDefinitionInput {
+): { readonly definition: AgentFileDefinitionInput; readonly dropped: DroppedCodeAgentBehavior[] } {
   const { descriptors, policy, toolNames } = deployment;
   const plugin = id.slice(0, id.indexOf(':'));
   const stated = describeCodeAgent(agent, descriptors, policy);
@@ -799,7 +837,7 @@ function copyOfCodeAgent(
     );
   }
   const local = id.slice(plugin.length + 1);
-  return {
+  const definition: AgentFileDefinitionInput = {
     name: stated.name === '' || stated.name === '(agent)' ? local : stated.name,
     description: stated.description,
     model,
@@ -811,6 +849,31 @@ function copyOfCodeAgent(
     ...(stated.skills.length === 0 ? {} : { skills: stated.skills }),
     instructions: stated.instructions ?? '',
   };
+  return { definition, dropped: droppedBehaviorsOf(agent, models.default === null) };
+}
+
+/**
+ * COR-2231 — what a code agent has that a file cannot state: its own `generate` where it names no
+ * model (a scripted or routed agent), and the stop condition, approval rules, output schema and
+ * guardrails it declares. Each is listed only when the agent has it.
+ */
+function droppedBehaviorsOf(
+  agent: AnyRunnableAgent,
+  hasOwnGenerate: boolean,
+): DroppedCodeAgentBehavior[] {
+  const stated = agent as {
+    readonly stopWhen?: unknown;
+    readonly approvals?: unknown;
+    readonly guardrails?: unknown;
+  };
+  const has: Record<DroppedCodeAgentBehavior, boolean> = {
+    generate: hasOwnGenerate,
+    stopWhen: stated.stopWhen !== undefined,
+    approvals: stated.approvals === true,
+    outputSchema: agent.hasOutput,
+    guardrails: stated.guardrails !== undefined,
+  };
+  return DROPPED_CODE_AGENT_BEHAVIORS.filter((behavior) => has[behavior]);
 }
 
 /**
