@@ -69,7 +69,8 @@ const SPECIFICATIONS = {
  * (`chat-states.spec.ts`), and New chat with Assistant, with no provider and once Assistant is
  * chosen (`chat-new.spec.ts`), New chat loading, failing to load, with no agents and failing to start
  * (`chat-new-states.spec.ts`), and choosing an agent, typing, sending the first message, starting
- * from Workflows and the chat that came of it (`chat-new-workflows.spec.ts`).
+ * from Workflows and the chat that came of it (`chat-new-workflows.spec.ts`), and an open chat with
+ * no message yet and one deleted while open (`chat-availability.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/00-showcase.spec.ts',
@@ -105,6 +106,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-new.spec.ts',
   'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',
+  'tests/e2e/chat-availability.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';
