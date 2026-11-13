@@ -659,6 +659,23 @@ function providersOf(
   }));
 }
 
+/**
+ * The `provider-empty` problems of the providers that gave no `rows` under a name Operative's
+ * static catalog holds none for: they would contribute no model, which is never what a plugin
+ * meant by a provider (COR-2145). The plugin keeps running with its other contributions.
+ */
+function providerEmptyProblems(
+  result: PluginSetupResult,
+  providers: readonly PluginProviderContribution[],
+): PluginProblem[] {
+  // `providers` is `providersOf(result)`, one contribution per provider, in the same order.
+  return (result.providers ?? []).flatMap((provider, index) =>
+    provider.rows === undefined && providers[index]?.rows.length === 0
+      ? [{ code: 'provider-empty' as const, provider: provider.name }]
+      : [],
+  );
+}
+
 function catalogWith(
   host: VersionedCatalog | undefined,
   contributed: Contributed['activities'],
@@ -1095,7 +1112,7 @@ export async function composePlugins<O extends ComposableOptions>(
       plan.tools,
       outcome.gate,
     );
-    record('running', [], {
+    record('running', providerEmptyProblems(outcome.result, providers), {
       contributions: plan.listings.filter(({ kind }) => registersKind(kind, options)),
       setup: {
         result: outcome.result,

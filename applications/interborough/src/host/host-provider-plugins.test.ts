@@ -16,7 +16,7 @@ import {
   withBackendDescriptors,
   type BackendDescriptor,
 } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Conversation, type MediaContent } from 'conversationalist';
 import { existsSync } from 'node:fs';
@@ -299,7 +299,10 @@ describe('media admission reads the catalog row a generate was built from (COR-2
   const anthropicSeed = staticRows.find((row) => row.provider === 'anthropic');
 
   /** A plugin whose one row has `mediaLimits`, served by a vendor whose generate is stamped with the seed row. */
-  async function startWith(mediaLimits: BackendDescriptor['mediaLimits']) {
+  async function startWith(
+    mediaLimits: BackendDescriptor['mediaLimits'],
+    catalog?: readonly unknown[],
+  ) {
     if (anthropicSeed === undefined) throw new Error('The static catalog has no anthropic row.');
     const lender = definePlugin({
       name: 'lender',
@@ -321,7 +324,10 @@ describe('media admission reads the catalog row a generate was built from (COR-2
         ],
       }),
     });
-    const home = await prepareHome({ secrets: { 'lender-api-key': KEY } });
+    const home = await prepareHome({
+      secrets: { 'lender-api-key': KEY },
+      ...(catalog === undefined ? {} : { configuration: { catalog } }),
+    });
     return startAt(home, {
       plugins: [{ descriptor: lender, source: 'package', location: '@fixture/lender' }],
       // A vendor factory stamps its own static row, as the shipped providers do.
@@ -365,6 +371,31 @@ describe('media admission reads the catalog row a generate was built from (COR-2
     expect(result.error).toBeUndefined();
   });
 
+  test('an owner edit lowering an image limit refuses what the row would admit (COR-2413)', async () => {
+    const limits: BackendDescriptor['mediaLimits'] = [
+      { scope: 'per-part', modality: 'image', maxBytes: 10 * 1024 * 1024 },
+    ];
+    const admitted = await startWith(limits);
+    const admission = await runWithImage(admitted);
+    expect(admission.error).toBeUndefined();
+
+    const lowered = await startWith(limits, [
+      {
+        provider: 'lender',
+        model: 'lender-1',
+        mediaLimits: [{ scope: 'per-part', modality: 'image', maxBytes: 1024 }],
+      },
+    ]);
+    const [attached] = readBackendDescriptors(
+      lowered.generateFor({ provider: 'lender', model: 'lender-1' }),
+    );
+    expect(attached?.mediaLimits).toEqual([
+      { scope: 'per-part', modality: 'image', maxBytes: 1024 },
+    ]);
+    const refusal = await runWithImage(lowered);
+    expect(refusal.error).toBeInstanceOf(MediaAdmissionError);
+  });
+
   test('attaches the row with the owner’s catalog edits applied', async () => {
     const home = await prepareHome({
       configuration: {
@@ -378,6 +409,106 @@ describe('media admission reads the catalog row a generate was built from (COR-2
       host.generateFor({ provider: 'openai', model: 'gpt-4.1' }),
     );
     expect(attached?.contextWindowTokens).toBe(123_456);
+  });
+});
+
+describe('a provider that contributes no rows (COR-2145)', () => {
+  test('is listed with a provider-empty problem, and the plugin’s other contributions still load', async () => {
+    const lender = definePlugin({
+      name: 'lender',
+      version: '1.0.0',
+      description: 'Contributes a provider with no rows, and a tool.',
+      setup: () => ({
+        providers: [
+          {
+            name: 'nowhere',
+            generate: () => async () => ({ content: '', toolCalls: [] }),
+            stream: () => {
+              throw new Error('The fixture provider does not stream.');
+            },
+          },
+        ],
+        tools: [createTool({ name: 'lend', description: 'Lends.', execute: async () => 'ok' })],
+      }),
+    });
+    const host = await startAt(await prepareHome({}), {
+      plugins: [{ descriptor: lender, source: 'package', location: '@fixture/lender' }],
+    });
+
+    const snapshot = await host.plugins.snapshot();
+    const listed = snapshot.plugins.find((plugin) => plugin.descriptor.name === 'lender');
+    expect(listed?.status).toBe('running');
+    expect(listed?.problems).toEqual([{ code: 'provider-empty', provider: 'nowhere' }]);
+    expect(listed?.contributions.map(({ kind }) => kind)).toContain('tool');
+  });
+});
+
+describe('a plugin row with an effort mapping of its own (COR-2150)', () => {
+  test('receives the effort of the run’s agent file in the step’s steering', async () => {
+    const [seed] = staticRows;
+    if (seed === undefined) throw new Error('The static catalog is empty.');
+    const efforts: unknown[] = [];
+    const lender = definePlugin({
+      name: 'lender',
+      version: '1.0.0',
+      description: 'Contributes a model provider whose row takes an effort no vendor names.',
+      secrets: ['lender-api-key'],
+      setup: () => ({
+        providers: [
+          {
+            name: 'lender',
+            // The provider translates the level of the request to its own parameter.
+            generate: () => async (context) => {
+              efforts.push(context.steering?.effort);
+              return { content: 'lent', toolCalls: [] };
+            },
+            stream: () => {
+              throw new Error('The fixture provider does not stream.');
+            },
+            rows: [
+              {
+                ...seed,
+                provider: 'lender',
+                model: 'lender-1',
+                aliases: [],
+                effort: {
+                  portable: ['high'],
+                  nativeMapping: 'native',
+                  degradesTo: { high: 'high' },
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const home = await prepareHome({
+      secrets: { 'lender-api-key': KEY },
+      agents: {
+        'thinker.md': [
+          '---',
+          'name: thinker',
+          'description: An agent.',
+          'model: lender/lender-1',
+          'effort: high',
+          '---',
+          'Think.',
+          '',
+        ].join('\n'),
+      },
+    });
+    const host = await startAt(home, {
+      plugins: [{ descriptor: lender, source: 'package', location: '@fixture/lender' }],
+    });
+    expect(host.bureau.agents.list().find((entry) => entry.id === 'thinker')).toMatchObject({
+      state: 'ready',
+    });
+
+    const task = await host.bureau.tasks.start('thinker', 'Go');
+    const result = await task.result();
+
+    expect(result.content).toBe('lent');
+    expect(efforts).toEqual(['high']);
   });
 });
 

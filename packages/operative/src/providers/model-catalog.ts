@@ -38,8 +38,13 @@ export interface ModelAlias {
 
 export interface EffortSupport {
   readonly portable: readonly Effort[];
-  readonly nativeMapping:
-    'output_config.effort' | 'reasoning_effort' | 'thinkingConfig.thinkingBudget' | 'unsupported';
+  /**
+   * `'native'` when the model takes a reasoning effort of its own, `'unsupported'` when it takes
+   * none. How the level reaches the provider is the provider definition's business: it translates
+   * the `effort` of the request (the run's steering, never its configuration) to its own
+   * parameter, so a provider whose parameter no vendor uses can still describe its rows.
+   */
+  readonly nativeMapping: 'native' | 'unsupported';
   /**
    * Generated from `effort.ts`'s `ANTHROPIC_EFFORT_SUPPORT` /
    * `OPENAI_REASONING_MODELS` / `GEMINI_THINKING_MODELS` tables via the

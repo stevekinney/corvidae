@@ -17,6 +17,7 @@ export const PLUGIN_PROBLEM_CODES = {
   'formatter-unknown-kind': 'formatter',
   'provider-secret-unknown': 'provider',
   'provider-secret-ambiguous': 'provider',
+  'provider-empty': 'provider',
   'setup-failed': 'plugin',
   'development-source': 'plugin',
   'secret-refused': 'secret',

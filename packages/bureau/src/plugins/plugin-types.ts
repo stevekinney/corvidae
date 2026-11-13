@@ -213,6 +213,16 @@ export type PluginProblem =
     }
   | {
       /**
+       * A provider names no `rows` and its name is one Operative's static catalog has no rows
+       * for, so it contributes no model to the catalog. The plugin stays `running` with its other
+       * contributions; the host starts.
+       */
+      readonly code: 'provider-empty';
+      /** The provider's name within the plugin. */
+      readonly provider: string;
+    }
+  | {
+      /**
        * `setup` threw or rejected, or returned a contribution that cannot be registered (a name
        * outside the plugin name grammar, a tool that cannot be rebuilt, an embedder without a
        * positive integer dimension); the plugin is `skipped` and the host starts.

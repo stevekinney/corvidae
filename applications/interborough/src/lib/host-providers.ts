@@ -50,6 +50,26 @@ const catalogEditSchema = z.object({
       only: z.boolean(),
     })
     .optional(),
+  mediaLimits: z
+    .array(
+      z.object({
+        scope: z.enum(['per-part', 'aggregate']),
+        modality: z.enum(['text', 'image', 'audio', 'video', 'document', 'file']),
+        maxBytes: z.number().optional(),
+        maxDurationSeconds: z.number().optional(),
+        maxPixels: z.number().optional(),
+        maxPageCount: z.number().optional(),
+      }),
+    )
+    .optional(),
+  mediaCounts: z
+    .array(
+      z.object({
+        modality: z.enum(['text', 'image', 'audio', 'video', 'document', 'file']),
+        maxPerRequest: z.number(),
+      }),
+    )
+    .optional(),
 });
 
 const providerModelSchema = z.object({

@@ -333,7 +333,7 @@ describe('the operations', () => {
       structuredOutput: true,
       effort: {
         portable: ['low', 'medium', 'high'],
-        nativeMapping: 'thinking-budget',
+        nativeMapping: 'native',
         degradesTo: { xhigh: 'high' },
       },
       availability: 'unavailable',

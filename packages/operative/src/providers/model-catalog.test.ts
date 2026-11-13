@@ -151,24 +151,22 @@ describe('createModelCatalog: EffortSupport.degradesTo is derived, never a secon
 });
 
 describe('createModelCatalog: EffortSupport.nativeMapping', () => {
-  it('is output_config.effort for every Anthropic row', () => {
+  it('is native for every Anthropic row', () => {
     for (const row of descriptorsFor('anthropic')) {
-      expect(row.effort.nativeMapping).toBe('output_config.effort');
+      expect(row.effort.nativeMapping).toBe('native');
     }
   });
 
-  it('is reasoning_effort for OpenAI rows in OPENAI_REASONING_MODELS, unsupported otherwise', () => {
+  it('is native for OpenAI rows in OPENAI_REASONING_MODELS, unsupported otherwise', () => {
     for (const row of descriptorsFor('openai')) {
-      const expected = OPENAI_REASONING_MODELS.has(row.model) ? 'reasoning_effort' : 'unsupported';
+      const expected = OPENAI_REASONING_MODELS.has(row.model) ? 'native' : 'unsupported';
       expect(row.effort.nativeMapping).toBe(expected);
     }
   });
 
-  it('is thinkingConfig.thinkingBudget for Gemini rows in GEMINI_THINKING_MODELS, unsupported otherwise', () => {
+  it('is native for Gemini rows in GEMINI_THINKING_MODELS, unsupported otherwise', () => {
     for (const row of descriptorsFor('gemini')) {
-      const expected = GEMINI_THINKING_MODELS.has(row.model)
-        ? 'thinkingConfig.thinkingBudget'
-        : 'unsupported';
+      const expected = GEMINI_THINKING_MODELS.has(row.model) ? 'native' : 'unsupported';
       expect(row.effort.nativeMapping).toBe(expected);
     }
   });
