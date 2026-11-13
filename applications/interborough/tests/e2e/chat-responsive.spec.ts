@@ -291,7 +291,7 @@ test.describe('Keyboard hints on a phone', () => {
   }) => {
     await connectProvider(page);
     await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
-    await expect(page.getByRole('button', { name: /Staging/ })).toBeVisible();
+    await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
     await expect(page.getByText(CHAT_COPY.pickHint)).toBeVisible();
   });
 
@@ -303,7 +303,7 @@ test.describe('Keyboard hints on a phone', () => {
     }) => {
       await connectProvider(page);
       await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
-      await expect(page.getByRole('button', { name: /Staging/ })).toBeVisible();
+      await expect(page.getByRole('radio', { name: /^Staging\b/ })).toBeVisible();
       await expect(page.getByText(CHAT_COPY.pickHint)).toHaveCount(1);
       await expect(page.getByText(CHAT_COPY.pickHint)).toBeHidden();
 
