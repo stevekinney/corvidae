@@ -53,6 +53,18 @@ Animated placeholder shape that fills content areas while data is loading.
 <Skeleton variant="list" rows={3} dayBand label="Loading runs" />
 ```
 
+### Grouped variant
+
+`variant="grouped"` is the placeholder for a `GroupedList`: `rows` rows (default 3) of two text bars on the same rounded raised surface, with no border and separators that start at the text. `action` adds a block the height of a small button at the end of each row, for a list whose rows end in text actions; on a phone the block drops under the text at full width, where the buttons go. `label` and the loading rules work as they do for the list variant:
+
+```svelte
+<script lang="ts">
+  import { Skeleton } from '@lostgradient/cinder';
+</script>
+
+<Skeleton variant="grouped" rows={2} action label="Loading reviews" />
+```
+
 ### Loading rules
 
 Cinder's loading rules are timing rules, and Skeleton implements them so each view does not rebuild them:
@@ -102,6 +114,7 @@ Both timers start when the Skeleton mounts, so render it only while the request 
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `action` | `boolean` | no | `false` | Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`, for a grouped list whose rows end in text actions. On a phone (below 640px) the block drops under the text at full width, where the real buttons go. Ignored by other variants. |
 | `cancelLabel` | `string` | no | `"Cancel"` | Label of the Cancel button in the "Still loading" status. |
 | `class` | `string` | no | — | Additional class merged onto the root element: `.cinder-skeleton` for a single block, or `.cinder-skeleton-group` when `lines`, `variant`, or `stillLoadingAfter` render a group. |
 | `dayBand` | `boolean` | no | `false` | Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`, the placeholder for a list that groups its rows by day. Ignored by other variants. |
@@ -111,12 +124,12 @@ Both timers start when the Skeleton mounts, so render it only while the request 
 | `label` | `string` | no | — | Accessible name of the loading region, announced politely once the placeholder appears (for example `'Loading agents'`). The placeholder bars stay hidden from assistive technology and no spinner is drawn. Applies to the grouped variants; omit it when the surrounding region already says what is loading. |
 | `lines` | `number` | no | `1` | Number of text bars to stack. More than one renders a group, and the last bar is shorter unless `width` is set. Clamped to between 1 and 20. |
 | `radius` | `string` | no | — | CSS border-radius value applied as an inline style, overriding the default pill shape (e.g. `'4px'`, `'50%'`). |
-| `rows` | `number` | no | `3` | Number of fields to draw when `variant` is `'form'`, and of list rows when it is `'list'`. Each row keeps the 8rem status column reserved, then shows two text bars and a time bar, with no leading circle, so nothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants. |
+| `rows` | `number` | no | `3` | Number of fields to draw when `variant` is `'form'`, of list rows when it is `'list'`, and of grouped-list rows when it is `'grouped'`. A list row keeps the 8rem status column reserved, then shows two text bars and a time bar, with no leading circle, so nothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants. |
 | `statusColumn` | `boolean` | no | `true` | Keep the 8rem status column that every status-first list shares when `variant` is `'list'`. Turn it off for a list whose rows do not lead with a status word, such as a card of problems with a glyph and an action: the marker then sits right before the text, so the placeholder matches the row it stands for. Ignored by other variants. |
 | `statusMarker` | `"bar"` \| `"dot"` | no | `"bar"` | What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar where the status word reads; `'dot'` is a small circle where the status dot sits. The column keeps its width either way, so nothing shifts when data arrives. Ignored by other variants. |
 | `stillLoadingAfter` | `number` | no | — | Milliseconds after mounting at which a "Still loading" status replaces silence, with a Cancel button when `onCancel` is set. Counted from mount, not from the end of `delay`. Use `10000` for the Cinder loading rule. Omit to never show the status. |
 | `stillLoadingLabel` | `string` | no | `"Still loading. This is taking longer than usual."` | Text of the "Still loading" status. Pages replace the default with their own noun, for example `'Still loading runs. This is taking longer than usual.'`. |
-| `variant` | `"row"` \| `"card"` \| `"list"` \| `"form"` | no | `"row"` | Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws `rows` fields, a label bar over a control bar each. |
+| `variant` | `"row"` \| `"card"` \| `"list"` \| `"grouped"` \| `"form"` | no | `"row"` | Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'grouped'` draws `rows` grouped-list rows; `'form'` draws `rows` fields, a label bar over a control bar each. |
 | `width` | `string` | no | — | CSS width value applied as an inline style on the skeleton block (e.g. `'200px'`, `'100%'`). |
 | `children` | `(opaque)` | no | — | The page's own placeholder, drawn instead of the bars, for a loading state whose shape is a whole page (real labels and headings with placeholder values and rows). The group still owns the timing: nothing is drawn until `delay` has passed, and the "Still loading" status follows the content after `stillLoadingAfter`. The group is marked busy while it shows. Draw each placeholder block with a `Skeleton` of its own; the content is not hidden from assistive technology, so text in it is read as written. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCancel` | `(opaque)` | no | — | Called when the Cancel button in the "Still loading" status is pressed. The button renders only when this is set. Not expressible in JSON Schema; see the component types for the signature. |

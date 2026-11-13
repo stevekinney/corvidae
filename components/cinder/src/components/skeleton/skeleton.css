@@ -191,6 +191,67 @@
     justify-content: center;
   }
 
+  /* Grouped variant: the placeholder for a grouped list. The same rounded raised surface the
+   * list draws, no border, and rows whose separator is the bottom edge of their content, so it
+   * starts at the text as the real rows' does. Each row holds two text bars and, for a list whose
+   * rows end in text actions, a block the height of a small button where the button goes. */
+  .cinder-skeleton-grouped {
+    overflow: hidden;
+    border-radius: var(--cinder-radius-surface);
+    background: var(--cinder-surface-raised);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-skeleton-grouped {
+      border: 1px solid CanvasText;
+    }
+  }
+
+  .cinder-skeleton-grouped-row {
+    padding-inline-start: var(--cinder-space-4);
+  }
+
+  .cinder-skeleton-grouped-content {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    min-block-size: 2.75rem;
+    padding-block: var(--cinder-space-2-5);
+    padding-inline-end: var(--cinder-space-2);
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-skeleton-grouped-row:last-child > .cinder-skeleton-grouped-content {
+    border-block-end-color: transparent;
+  }
+
+  .cinder-skeleton-grouped-content > .cinder-skeleton-row-text {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  .cinder-skeleton-action-bar {
+    flex: none;
+    inline-size: 5.25rem;
+    block-size: var(--cinder-button-height-sm);
+    border-radius: var(--cinder-button-radius-sm);
+  }
+
+  /* On a phone the real buttons stack full width under the text, so the block does too. */
+  @media (width < 640px) {
+    .cinder-skeleton-grouped-row--action > .cinder-skeleton-grouped-content {
+      flex-wrap: wrap;
+    }
+
+    .cinder-skeleton-grouped-row--action .cinder-skeleton-action-bar {
+      flex-basis: 100%;
+    }
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='grouped'] > .cinder-skeleton-status {
+    justify-content: center;
+  }
+
   /* A page's own placeholder has its status line centred under it as well. */
   .cinder-skeleton-group[data-cinder-variant='custom'] > .cinder-skeleton-status {
     justify-content: center;

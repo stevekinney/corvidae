@@ -598,6 +598,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       lines: { optional: true, type_kind: 'TSNumberKeyword', default: L(1) },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('row') },
       rows: { optional: true, type_kind: 'TSNumberKeyword', default: L(3) },
+      // COR-2329: a button block at the end of each `grouped` row.
+      action: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       dayBand: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       framed: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },

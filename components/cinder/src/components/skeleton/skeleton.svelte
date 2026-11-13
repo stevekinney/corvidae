@@ -29,6 +29,7 @@
     lines = 1,
     variant = 'row',
     rows = 3,
+    action = false,
     statusMarker = 'bar',
     statusColumn = true,
     framed = true,
@@ -88,9 +89,8 @@
     const whole = Math.trunc(Number(lines));
     return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 1;
   });
-  const shape = $derived(
-    variant === 'card' ? 'card' : variant === 'list' ? 'list' : variant === 'form' ? 'form' : 'row',
-  );
+  const SHAPES = new Set(['card', 'list', 'grouped', 'form']);
+  const shape = $derived(SHAPES.has(variant) ? variant : 'row');
   const rowCount = $derived.by(() => {
     const whole = Math.trunc(Number(rows));
     return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 3;
@@ -128,18 +128,41 @@
   {/if}
 {/snippet}
 
-{#if shape === 'list'}
+{#if shape === 'list' || shape === 'grouped'}
   <!-- The region is in the DOM from the first pass so its name is announced when the rows
        appear at the end of `delay`, not inserted together with its text. -->
   <div
     class={classNames('cinder-skeleton-group', className)}
-    data-cinder-variant="list"
+    data-cinder-variant={shape}
     aria-busy={visible ? 'true' : undefined}
   >
     {#if label}
       <VisuallyHidden role="status">{visible ? label : ''}</VisuallyHidden>
     {/if}
-    {#if visible}
+    {#if visible && shape === 'grouped'}
+      <!-- A grouped list's rows: one rounded surface, separators inset at the text. -->
+      <div class="cinder-skeleton-grouped" aria-hidden="true">
+        {#each { length: rowCount } as _, index (index)}
+          <div
+            class={classNames(
+              'cinder-skeleton-grouped-row',
+              action && 'cinder-skeleton-grouped-row--action',
+            )}
+          >
+            <div class="cinder-skeleton-grouped-content">
+              <div class="cinder-skeleton-row-text">
+                <div class="cinder-skeleton cinder-skeleton-title-bar"></div>
+                <div class="cinder-skeleton cinder-skeleton-meta-bar"></div>
+              </div>
+              {#if action}
+                <div class="cinder-skeleton cinder-skeleton-action-bar"></div>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+      {@render stillLoadingStatus()}
+    {:else if visible}
       <div
         class="cinder-skeleton-list"
         data-cinder-framed={framed ? undefined : 'false'}

@@ -76,6 +76,30 @@ test.describe('GroupedList layout', () => {
     expect(overlay.inset).toBe('0px');
   });
 
+  test('the grouped skeleton draws the grouped list surface, and its button block stacks on a phone (COR-2329)', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
+    const surface = page.getByTestId('skeleton-grouped').locator('.cinder-skeleton-grouped');
+    await expect(surface).toHaveCSS('border-top-width', '0px');
+    await expect(surface).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const rows = surface.locator('.cinder-skeleton-grouped-row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first().locator('.cinder-skeleton-grouped-content')).toHaveCSS(
+      'border-bottom-style',
+      'solid',
+    );
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const wide = await rows.first().locator('.cinder-skeleton-action-bar').boundingBox();
+    expect(wide!.width).toBeCloseTo(84, 0);
+    await page.setViewportSize({ width: 375, height: 800 });
+    const row = await rows.first().boundingBox();
+    const text = await rows.first().locator('.cinder-skeleton-row-text').boundingBox();
+    const block = await rows.first().locator('.cinder-skeleton-action-bar').boundingBox();
+    expect(block!.y).toBeGreaterThanOrEqual(text!.y + text!.height - 1);
+    expect(block!.width).toBeGreaterThan(row!.width - 40);
+  });
+
   test('text actions trail their row on a wide screen (COR-2329)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 800 });
     const rows = page.getByTestId('grouped-list-actions').locator('.cinder-grouped-list-item');
