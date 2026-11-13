@@ -41,6 +41,15 @@ describe('a blocked composer', () => {
     expect(message.contains(actions)).toBe(false);
   });
 
+  test('on a tablet pane the reason shrinks to six rem before the action leaves its line', async () => {
+    const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
+    const message = /\.chat-input-blocked-message \{([^}]*)\}/u.exec(source)?.[1];
+
+    // A 307px pane holds the glyph, a reason and the 144px action on one line only when the reason
+    // may shrink to 6rem; a wider basis wrapped the action under the reason at 768px (row 06n).
+    expect(message).toContain('flex: 1 1 6rem;');
+  });
+
   test('on a phone-width composer the actions fill a line of their own, as touch targets', async () => {
     const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
     const narrow = /@media \(max-width: 639\.98px\) \{([\s\S]*?)\n  \}\n/u.exec(

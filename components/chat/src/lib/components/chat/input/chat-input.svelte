@@ -2588,7 +2588,7 @@
    * only the actions leave for a line of their own. */
   .chat-input-blocked-message {
     display: flex;
-    flex: 1 1 9rem;
+    flex: 1 1 6rem;
     align-items: flex-start;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
