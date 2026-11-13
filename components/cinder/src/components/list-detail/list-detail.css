@@ -46,6 +46,49 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
+  /* With `listCollapsible` the toggle sits at the end of the header, level with its first line; the
+   * host's header content keeps its own column beside it. */
+  .cinder-list-detail__header[data-cinder-list-toggle] {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .cinder-list-detail__header-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
+  }
+
+  /* The list hidden: a narrow rail at the start edge holds the toggle, set off from the detail by
+   * the same hairline the divider draws, and the detail takes the rest of the width. */
+  .cinder-list-detail__collapsed {
+    display: flex;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  .cinder-list-detail__rail {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--cinder-space-4) var(--cinder-space-2);
+    border-inline-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-list-detail__collapsed > .cinder-list-detail__detail {
+    flex: 1 1 auto;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-list-detail__rail {
+      border-inline-end-color: CanvasText;
+    }
+  }
+
   .cinder-list-detail__rows {
     flex: 1 1 auto;
     min-block-size: 0;

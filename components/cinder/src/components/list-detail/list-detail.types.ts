@@ -151,6 +151,31 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   maximumListWidth?: number;
   /**
+   * Draws a toggle that hides the list pane while the panes sit side by side or one above the
+   * other, so the detail takes the whole width. The toggle is the last control of the list header
+   * while the list shows, and the only control of a narrow rail at the start edge while it is
+   * hidden, so it is always on screen; focus moves to it each time it flips. Below `pushBelow`,
+   * where one pane shows at a time, there is nothing to hide and no toggle.
+   * @default false
+   */
+  listCollapsible?: boolean;
+  /**
+   * Whether the list pane is hidden, with `listCollapsible`. Bindable. With `storageKey`, the
+   * choice is remembered beside the divider width, and a remembered choice wins on mount.
+   * @default false
+   */
+  listCollapsed?: boolean;
+  /**
+   * Accessible name and tooltip of the toggle while the list shows: what pressing it does.
+   * @default 'Hide list'
+   */
+  collapseListLabel?: string;
+  /**
+   * Accessible name and tooltip of the toggle while the list is hidden.
+   * @default 'Show list'
+   */
+  expandListLabel?: string;
+  /**
    * Label of the Back button shown above the detail below `pushBelow`.
    * @default 'Back'
    */

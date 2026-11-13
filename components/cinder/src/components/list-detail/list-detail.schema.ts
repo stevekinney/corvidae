@@ -86,6 +86,29 @@ const schema = {
         'Widest width in pixels the divider can give the list pane, and the most a remembered or default\nwidth can be. Raise it for a list that is a table, whose columns need more than a list of rows.',
       default: 560,
     },
+    listCollapsible: {
+      type: 'boolean',
+      description:
+        'Draws a toggle that hides the list pane while the panes sit side by side or one above the\nother, so the detail takes the whole width. The toggle is the last control of the list header\nwhile the list shows, and the only control of a narrow rail at the start edge while it is\nhidden, so it is always on screen; focus moves to it each time it flips. Below `pushBelow`,\nwhere one pane shows at a time, there is nothing to hide and no toggle.',
+      default: false,
+    },
+    listCollapsed: {
+      type: 'boolean',
+      description:
+        'Whether the list pane is hidden, with `listCollapsible`. Bindable. With `storageKey`, the\nchoice is remembered beside the divider width, and a remembered choice wins on mount.',
+      default: false,
+    },
+    collapseListLabel: {
+      type: 'string',
+      description:
+        'Accessible name and tooltip of the toggle while the list shows: what pressing it does.',
+      default: 'Hide list',
+    },
+    expandListLabel: {
+      type: 'string',
+      description: 'Accessible name and tooltip of the toggle while the list is hidden.',
+      default: 'Show list',
+    },
     backLabel: {
       type: 'string',
       description: 'Label of the Back button shown above the detail below `pushBelow`.',

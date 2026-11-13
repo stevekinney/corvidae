@@ -432,6 +432,9 @@
     onSelectedKeyChange={openChat}
     selectionParameter={null}
     storageKey="interborough-chats"
+    listCollapsible
+    collapseListLabel={CHAT_COPY.list.hideList}
+    expandListLabel={CHAT_COPY.list.showList}
     flushDetail
     backVisible={!phone.current}
     {listBody}

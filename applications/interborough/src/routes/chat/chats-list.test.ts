@@ -104,7 +104,10 @@ describe('the pane header', () => {
     expect(plus.getAttribute('data-cinder-variant')).toBe('secondary');
     expect(plus.textContent?.trim()).toBe('');
     // The tooltip says the same words as the accessible name.
-    expect(within(header).getByRole('tooltip', { hidden: true }).textContent).toContain('New chat');
+    const tooltips = within(header).getAllByRole('tooltip', { hidden: true });
+    expect(tooltips.map((tooltip) => tooltip.textContent?.trim())).toContain('New chat');
+    // The header ends with the toggle that hides the list beside an open chat (COR-2327).
+    expect(within(header).getByRole('button', { name: 'Hide chats' })).not.toBeNull();
     // The field is below the title row, not beside it.
     const field = within(header).getByRole('searchbox', { name: 'Search chats' });
     expect(plus.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

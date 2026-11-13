@@ -30,6 +30,8 @@
 </script>
 
 <script lang="ts" generics="T">
+  import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
+  import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
   import { tick, untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -51,10 +53,13 @@
     LIST_PANE_MINIMUM_WIDTH,
     moveCursor,
     ownsTypedKeys,
+    readStoredListCollapsed,
     readStoredListWidth,
     resolveStorage,
+    writeStoredListCollapsed,
     writeStoredListWidth,
   } from './list-detail-state.ts';
+  import { Tooltip } from '../tooltip/index.ts';
   import { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
   import type { ListDetailProps } from './list-detail.types.ts';
 
@@ -88,6 +93,10 @@
     defaultListWidth = 280,
     maximumListWidth = 560,
     flushDetail = false,
+    listCollapsible = false,
+    listCollapsed = $bindable(false),
+    collapseListLabel = 'Hide list',
+    expandListLabel = 'Show list',
     backLabel = 'Back',
     backVisible = true,
     detailLabel = 'Details',
@@ -129,6 +138,31 @@
   const narrow = $derived(rootWidth > 0 && rootWidth < pushBelow);
   // Wide enough to show both panes, too narrow to put them side by side: the detail sits under the list.
   const below = $derived(!narrow && rootWidth > 0 && rootWidth < stackBelow);
+
+  // A hidden list is remembered beside the divider, and the remembered choice wins on mount.
+  untrack(() => {
+    if (!listCollapsible) return;
+    const stored = readStoredListCollapsed(resolveStorage(storage), storageKey);
+    if (stored !== null) listCollapsed = stored;
+  });
+  // The list is hidden only where both panes could show; one pane at a time has nothing to hide.
+  const collapsed = $derived(listCollapsible && listCollapsed && !narrow);
+  const toggleShown = $derived(listCollapsible && !narrow);
+
+  /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
+  async function setListCollapsed(next: boolean): Promise<void> {
+    // Shown again, the panels mount anew, so they start from where the divider was left.
+    if (!next) {
+      const width =
+        readStoredListWidth(resolveStorage(storage), storageKey, maximumListWidth) ??
+        draggedListWidth;
+      if (width !== null) initialListWidth = clampListWidth(width, maximumListWidth);
+    }
+    listCollapsed = next;
+    writeStoredListCollapsed(resolveStorage(storage), storageKey, next);
+    await tick();
+    rootElement?.querySelector<HTMLElement>('.cinder-list-detail__list-toggle')?.focus();
+  }
 
   // The divider starts where it was left. This is read when the panels mount, not on every render:
   // later drags are the person's, not a prop's, so a new `defaultListWidth` does not move a divider
@@ -321,7 +355,13 @@
     onclick={handleClick}
     onkeydown={handleKeydown}
   >
-    {#if header}
+    {#if toggleShown}
+      <!-- The toggle is the header's last control, beside the host's own header content. -->
+      <header class="cinder-list-detail__header" data-cinder-list-toggle="">
+        <div class="cinder-list-detail__header-content">{@render header?.()}</div>
+        {@render listToggle()}
+      </header>
+    {:else if header}
       <header class="cinder-list-detail__header">{@render header()}</header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
@@ -361,6 +401,26 @@
       {/if}
     </div>
   </section>
+{/snippet}
+
+{#snippet listToggle()}
+  {@const label = collapsed ? expandListLabel : collapseListLabel}
+  <Tooltip text={label} describe={false}>
+    <Button
+      variant="ghost"
+      size="sm"
+      iconOnly
+      aria-label={label}
+      class="cinder-list-detail__list-toggle"
+      onclick={() => void setListCollapsed(!collapsed)}
+    >
+      {#if collapsed}
+        <PanelLeftOpen class="cinder-icon-md" aria-hidden="true" />
+      {:else}
+        <PanelLeftClose class="cinder-icon-md" aria-hidden="true" />
+      {/if}
+    </Button>
+  </Tooltip>
 {/snippet}
 
 {#snippet detailPane()}
@@ -407,6 +467,7 @@
   data-cinder-layout={narrow ? 'stacked' : below ? 'below' : 'split'}
   data-cinder-flush-detail={flushDetail ? '' : undefined}
   data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
+  data-cinder-list-collapsed={collapsed ? '' : undefined}
 >
   {#if narrow}
     {#if selectedEntry}
@@ -414,6 +475,12 @@
     {:else}
       {@render listPane()}
     {/if}
+  {:else if collapsed}
+    <!-- The list is not drawn at all, so nothing in it can take focus; the rail keeps the way back. -->
+    <div class="cinder-list-detail__collapsed">
+      <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+      {@render detailPane()}
+    </div>
   {:else if below}
     <div class="cinder-list-detail__below">
       {@render listPane()}

@@ -76,6 +76,9 @@ export const CHAT_COPY = {
   list: {
     /** The accessible name of the pane that holds the open chat. */
     detailLabel: 'Open chat',
+    /** The toggle that hides the list beside the open chat, and shows it again (COR-2327). */
+    hideList: 'Hide chats',
+    showList: 'Show chats',
     /** The day bands: today and yesterday by their names, any other day by its date. */
     today: 'Today',
     yesterday: 'Yesterday',
