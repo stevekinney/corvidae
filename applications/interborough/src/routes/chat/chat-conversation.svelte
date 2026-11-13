@@ -130,6 +130,7 @@
     hasExportableText,
   } from './chat-export.ts';
   import ChatDetails from './chat-details.svelte';
+  import { approvalHoldsChat } from './chat-waiting.ts';
   import ChatMoreMenu from './chat-more-menu.svelte';
   import { takeFirstMessage } from './new-chat-handoff.ts';
   import AgentSelect from './agent-select.svelte';
@@ -1264,8 +1265,9 @@
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
     if (endedByRestart) return CHAT_COPY.status.ended;
-    const hasPendingApproval = [...activity.groups.values()].some((group) =>
-      group.entries.some((entry) => entry.state === 'needs-you'),
+    const hasPendingApproval = approvalHoldsChat(
+      [...activity.groups.values()].flatMap((group) => group.entries),
+      context.data?.activity,
     );
     if (hasPendingApproval || shownRequests.length > 0) return CHAT_COPY.status.waiting;
     if (runGoing) return CHAT_COPY.status.running;
