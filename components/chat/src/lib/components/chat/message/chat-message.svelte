@@ -2118,11 +2118,11 @@
     line-height: 1.2;
   }
 
-  /* The glyph is sized to the 12px time beside it (14px, not the 16px of body controls); the
-   * action keeps its full coarse-pointer hit cell. */
+  /* The glyph is the size of the 12px time beside it, so its drawn height (about 10px) sits within
+   * a pixel of the digits' height; the action keeps its full coarse-pointer hit cell. */
   .chat-message-line :global(.chat-message-action-button svg) {
-    inline-size: 0.875rem;
-    block-size: 0.875rem;
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
   }
 
   .chat-message-wrapper[data-role='user'] .chat-message-line {
@@ -2130,9 +2130,9 @@
   }
 
   /* The trailing Copy glyph meets the bubble's edge: its 24px box overhangs by its own inset
-   * (the 14px glyph sits 5px inside it), and its hit area extends outward with it. */
+   * (the 12px glyph sits 6px inside it), and its hit area extends outward with it. */
   .chat-message-wrapper[data-role='user'] .chat-message-line-actions {
-    margin-inline-end: calc((0.875rem - 1.5rem) / 2);
+    margin-inline-end: calc((0.75rem - 1.5rem) / 2);
   }
 
   /* The time sits the same distance under an assistant's last text line as under a user's bubble
@@ -2178,7 +2178,7 @@
     flex-wrap: wrap;
     align-items: center;
     direction: ltr;
-    /* 24px boxes 8px apart: the 14px glyphs pitch at 32px, with 18px of air between them. */
+    /* 24px boxes 8px apart: the 12px glyphs pitch at 32px, with 20px of air between them. */
     gap: var(--cinder-space-2);
   }
 
