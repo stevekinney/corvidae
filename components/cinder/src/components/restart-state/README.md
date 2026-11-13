@@ -2,13 +2,15 @@
 
 <!-- generated:a11y-record:required -->
 
+The screen people see while the Interborough host restarts.
+
 `RestartState` takes over the page while its host restarts, and cannot be dismissed. The host is not answering, so the page behind the scrim would show nothing true. The page confirms first with [`ConfirmDialog`](../confirm-dialog/README.md), then shows this, and closes it when the host is back with a success banner that says what applied.
 
 It has three phases, one card each:
 
 - **`restarting`**: the heading, a sentence that names what is happening and says that running work picks up where it stopped, and the steps as a status list ([`Steps`](../steps/README.md) with `variant="status"`). `currentStep` is how many steps are done; the next one spins.
 - **`reconnecting`**: the host stopped and has not answered. The sentence counts the attempts ("Trying again in 4 s. Attempt 3 of 8.") and a meter of one segment per attempt fills as they pass. Retry now tries at once. [`restartRetryDelaySeconds`](#choosing-the-wait) gives the wait before each attempt: 1, 2, 4, then 8 seconds.
-- **`failed`**: the host never answered. The card turns red, says what was saved before the host stopped, what to check, the error behind a disclosure, and the exact command to start the host again with a Copy button. Keep waiting is the one primary action. There is no restart-again action, because the route that restarts lives on the host that is not answering.
+- **`failed`**: the host never answered. The card turns red, says what was saved before the host stopped, what to check, the error behind a disclosure, and the exact command to start the host again, with a copy icon button at the end of its row. Keep waiting is the one primary action. There is no restart-again action, because the route that restarts lives on the host that is not answering.
 
 The card is drawn inside a chromeless [`Modal`](../modal/README.md), so it gets the scrim, the focus trap and the scroll lock for free, with Escape, the backdrop and a close button all switched off.
 
@@ -44,9 +46,9 @@ The card is drawn inside a chromeless [`Modal`](../modal/README.md), so it gets 
 | `check` | `string` | no | — | What to check in `failed`, in plain words: that the host is still running and that its address is reachable from this browser. Left out, the box does not show. |
 | `checkTitle` | `string` | no | `"What to check"` | Heading of the checklist in `failed`. |
 | `class` | `string` | no | — | Optional extra class on the underlying `<Modal>`. |
-| `command` | `string` | no | — | The exact command the host was launched with, in `failed`, with a Copy button: the way back when the host that would restart itself is the one that is not answering. Left out, the line does not show. |
+| `command` | `string` | no | — | The exact command the host was launched with, in `failed`, with a copy icon button: the way back when the host that would restart itself is the one that is not answering. Left out, the line does not show. |
 | `commandLabel` | `string` | no | `"Start it again from the terminal:"` | The words before `command`. |
-| `copyLabel` | `string` | no | `"Copy"` | Label of the button that copies `command`. |
+| `copyLabel` | `string` | no | `"Copy the command"` | Accessible name of the copy icon button that copies `command`. |
 | `currentStep` | `number` | no | `0` | How many of `steps` are done in `restarting`: the step at that index is in progress, and the ones after it are waiting. |
 | `description` | `string` | no | — | The sentence under the heading. `restarting` and `failed` name what is happening and what was saved ("Unloading Web search. Running work picks up where it stopped; reviews stay waiting."), so the page supplies them. `reconnecting` builds its own from `retryInSeconds`, `attempt` and `maxAttempts` when this is left out. |
 | `detailsLabel` | `string` | no | `"Show the error details"` | Label of the disclosure for `details`. |

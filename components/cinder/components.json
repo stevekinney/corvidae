@@ -4617,7 +4617,7 @@
       "exportName": "RestartState",
       "category": "overlay",
       "status": "beta",
-      "purpose": "Modal state that takes over the page while its host restarts: progress by step, the reconnect attempt count with Retry now, and a failure that says what to check and how to start the host again.",
+      "purpose": "The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Retry now, and what to check and run if it fails.",
       "tags": ["overlay", "restart", "progress"],
       "useWhen": [
         "The person confirmed a restart and the page must say what is happening while the host stops answering.",

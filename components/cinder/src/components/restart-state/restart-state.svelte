@@ -3,7 +3,7 @@
    * @cinder
    * @category overlay
    * @status beta
-   * @purpose Modal state that takes over the page while its host restarts: progress by step, the reconnect attempt count with Retry now, and a failure that says what to check and how to start the host again.
+   * @purpose The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Retry now, and what to check and run if it fails.
    * @tag overlay
    * @tag restart
    * @tag progress
@@ -22,10 +22,10 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import WifiOff from '@lucide/svelte/icons/wifi-off';
 
-  import { copyToClipboard } from '../../utilities/clipboard.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { BANNER_MAX_ATTEMPTS } from '../banner/banner-presets.ts';
   import Button from '../button/button.svelte';
+  import CopyButton from '../copy-button/copy-button.svelte';
   import Modal from '../modal/modal.svelte';
   import Steps from '../steps/steps.svelte';
   import type { RestartStateProps } from './restart-state.types.ts';
@@ -62,7 +62,7 @@
     detailsLabel = 'Show the error details',
     command,
     commandLabel = 'Start it again from the terminal:',
-    copyLabel = 'Copy',
+    copyLabel = 'Copy the command',
     keepWaitingLabel = 'Keep waiting',
     onKeepWaiting,
     class: className,
@@ -95,19 +95,6 @@
   const stepItems = $derived(
     steps.map((label, index) => ({ id: `${index}`, label, done: index < currentStep })),
   );
-
-  // "Copied" is the button's own word for a moment, and a polite status says it too.
-  let copied = $state(false);
-  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
-  async function copyCommand() {
-    if (command === undefined) return;
-    if (!(await copyToClipboard(command))) return;
-    copied = true;
-    clearTimeout(copiedTimer);
-    // poll-reason: timer
-    copiedTimer = setTimeout(() => (copied = false), 2000);
-  }
-  $effect(() => () => clearTimeout(copiedTimer));
 </script>
 
 <!--
@@ -181,11 +168,17 @@
         {#if command !== undefined}
           <div class="cinder-restart-state__command">
             <span class="cinder-restart-state__command-label">{commandLabel}</span>
-            <code class="cinder-restart-state__command-text">{command}</code>
-            <Button variant="secondary" size="sm" onclick={copyCommand}>
-              {copied ? 'Copied' : copyLabel}
-            </Button>
-            <span class="cinder-sr-only" role="status">{copied ? 'Copied the command.' : ''}</span>
+            <!-- The command and its copy icon share one flat row; the copy sits at the inline end. -->
+            <div class="cinder-restart-state__command-row">
+              <code class="cinder-restart-state__command-text">{command}</code>
+              <CopyButton
+                value={command}
+                label={copyLabel}
+                copiedLabel="Copied the command."
+                iconOnly
+                class="cinder-restart-state__copy"
+              />
+            </div>
           </div>
         {/if}
         {#if onKeepWaiting}
