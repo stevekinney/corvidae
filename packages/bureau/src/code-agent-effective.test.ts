@@ -193,13 +193,16 @@ describe('a code agent whose overrides rebuild its toolbox', () => {
     });
     // An approvals override is one of the overrides that rebuilds the toolbox.
     const effective = effectiveCodeAgent(agent, { approvals: { refund: 'always' } }, dependencies);
-    const options = await effective[OPERATIVE_RESOLVE_RUN_OPTIONS]('Refund it.');
+    const resolve = (effective as unknown as Record<symbol, unknown>)[
+      OPERATIVE_RESOLVE_RUN_OPTIONS
+    ] as (input: string) => Promise<{ toolbox: Parameters<typeof getToolboxApprovalOptions>[0] }>;
+    const options = await resolve('Refund it.');
     return getToolboxApprovalOptions(options.toolbox);
   }
 
   it('keeps the binding lifetime, clock and approval policy the toolbox was built with', async () => {
     const approvalNow = () => 1_000;
-    const approvalPolicy = { readOnly: true } as const;
+    const approvalPolicy = { mode: 'on-mutation' } as const;
 
     const options = await rebuiltToolboxOptions({
       approvalBindingTtlMs: 86_400_000,

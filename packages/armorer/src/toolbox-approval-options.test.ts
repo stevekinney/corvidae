@@ -7,7 +7,7 @@ import { getToolboxApprovalOptions } from './toolbox-approval-options';
 describe('getToolboxApprovalOptions', () => {
   it('returns the binding lifetime, clock and approval policy the toolbox was built with', () => {
     const approvalNow = () => 42;
-    const approvalPolicy = { readOnly: true } as const;
+    const approvalPolicy = { mode: 'on-mutation' } as const;
     const toolbox = createToolbox([], {
       approvalBindingTtlMs: 86_400_000,
       approvalNow,
