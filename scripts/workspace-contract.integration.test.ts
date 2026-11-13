@@ -563,6 +563,7 @@ describe('internal workspace architecture', () => {
       'chef',
       'create-project',
       'create-task',
+      'groom',
       'validate-monorepo',
     ]) {
       const canonicalDirectory = join(root, '.agents/skills', name);

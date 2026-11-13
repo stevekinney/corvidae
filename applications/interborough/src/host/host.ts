@@ -1129,7 +1129,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       // The catalog is built once the plugins have been set up, from the providers they contribute.
       models: {
-        catalog: (contributions) => providers.adopt(contributedProviders(contributions, plugins)),
+        catalog: (contributions) => providers.adopt(contributedProviders(contributions)),
         // A stored allowlist the provider's rows do not match skips its plugin and starts the host.
         checkProviders: (check) => providers.checkProviders(check),
         generate: (row) => generateFor({ provider: row.provider, model: row.model }),
@@ -1207,7 +1207,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // plugin the host skipped before the Bureau composed the rest.
       attention: async () => [
         ...(await providerAttention({
-          modelCount: () => providers.current().rows.length,
+          rows: () => providers.current().rows,
           auditTrail: () => held.bureau?.internals.auditTrail,
         })),
         ...pluginAttention(await pluginManager.snapshot(), pluginsLoadedAt),

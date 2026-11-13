@@ -12,6 +12,7 @@ import {
   canonicalModel,
   choiceOf,
   firstAvailableModel,
+  keptModel,
   modelGroups,
   NO_RESTRICTIONS,
   restrictionsOf,
@@ -110,6 +111,29 @@ describe('the groups', () => {
     expect(groups[2]?.choices).toEqual([]);
   });
 
+  test('list a provider whose key is not saved as not connected, though the catalog keeps its unavailable rows (COR-2143)', () => {
+    const kept = catalogFixture({
+      models: [
+        { provider: 'anthropic', model: 'claude-sonnet-5' },
+        { provider: 'gemini', model: 'gemini-2.5-pro', availability: 'unavailable' },
+      ],
+    });
+    const groups = modelGroups(
+      kept,
+      [
+        { name: 'gemini', hasKey: false },
+        { name: 'anthropic', hasKey: true },
+      ],
+      NO_RESTRICTIONS,
+      undefined,
+    );
+    expect(groups.map((group) => [group.provider, group.connected])).toEqual([
+      ['anthropic', true],
+      ['gemini', false],
+    ]);
+    expect(groups[1]?.choices).toEqual([]);
+  });
+
   test('put a kept model the catalog lacks in its own provider’s group, connected or not', () => {
     const hostProviders = [
       { name: 'gemini', hasKey: false },
@@ -191,5 +215,50 @@ describe('the abilities', () => {
       modalities: {},
     });
     expect(abilitiesOf(row).has).toEqual([]);
+  });
+});
+
+describe('the model an agent file names (COR-2143)', () => {
+  const catalog = catalogFixture({
+    models: [
+      { provider: 'anthropic', model: 'claude-sonnet-5' },
+      {
+        provider: 'openai',
+        model: 'gpt-4.1',
+        aliases: [{ alias: 'gpt4', resolvesTo: 'gpt-4.1' }],
+        availability: 'unavailable',
+      },
+    ],
+  });
+  const hostProviders = [
+    { name: 'anthropic', hasKey: true },
+    { name: 'openai', hasKey: false },
+  ];
+
+  test('stays selected, with its reason, when its row is kept for a provider with no key', () => {
+    expect(keptModel('openai/gpt-4.1', catalog, hostProviders)).toBe('openai/gpt-4.1');
+    expect(keptModel('openai/gpt4', catalog, hostProviders)).toBe('openai/gpt-4.1');
+    const groups = modelGroups(
+      catalog,
+      hostProviders,
+      NO_RESTRICTIONS,
+      keptModel('openai/gpt-4.1', catalog, hostProviders),
+    );
+    expect(groups.map((group) => [group.provider, group.connected])).toEqual([
+      ['anthropic', true],
+      ['openai', false],
+    ]);
+    expect(choiceOf(groups, 'openai/gpt-4.1')?.unavailable).toBe('not-in-catalog');
+  });
+
+  test('is kept only when the field would not list it', () => {
+    expect(keptModel('anthropic/claude-sonnet-5', catalog, hostProviders)).toBeUndefined();
+    // With the provider reported keyed, or not reported at all, the row is a choice itself.
+    expect(keptModel('openai/gpt-4.1', catalog, undefined)).toBeUndefined();
+    expect(
+      keptModel('openai/gpt-4.1', catalog, [{ name: 'openai', hasKey: true }]),
+    ).toBeUndefined();
+    expect(keptModel('mistral/large', catalog, hostProviders)).toBe('mistral/large');
+    expect(keptModel('', catalog, hostProviders)).toBeUndefined();
   });
 });

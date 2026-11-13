@@ -14,8 +14,9 @@
  *   not a rule about an agent, and is not read.
  * - The row itself: one turned off in Settings › Models (`availability: 'unavailable'`) or retired
  *   (`lifecycle: 'retired'`, which the Bureau refuses in an agent file) is not offered.
- * - The provider. A provider with no API key has no row in the catalog, so it has no model to
- *   offer; the host knows its name, and the editor lists it, disabled, with where to connect it.
+ * - The provider. A provider with no API key keeps its rows in the catalog, `unavailable`
+ *   (COR-2143), so it has no model to offer; the host knows its name, and the editor lists it,
+ *   disabled, with where to connect it.
  *
  * A model that is not offered is still listed, disabled, with its reason, so the person sees why
  * it is missing. The model an agent file already names is kept as the selection even when it is
@@ -92,6 +93,37 @@ export function canonicalModel(written: string, catalog: AgentCatalog): string {
   return row === undefined ? '' : `${row.provider}/${row.model}`;
 }
 
+/** A row of a provider the host reports without a key, which the catalog keeps `unavailable` (COR-2143). */
+function isUnconnectedRow(
+  row: CatalogModel,
+  hostProviders: readonly { readonly name: string; readonly hasKey: boolean }[] | undefined,
+): boolean {
+  return (
+    row.availability === 'unavailable' &&
+    (hostProviders ?? []).some((provider) => provider.name === row.provider && !provider.hasKey)
+  );
+}
+
+/**
+ * The model an agent file names that the field cannot list as a choice, written `<provider>/<model>`
+ * (the `kept` argument of {@link modelGroups}), or `undefined`. That is a model the catalog lacks,
+ * under the name the file wrote, and a model whose row the catalog keeps for a provider with no key
+ * saved, under the catalog's name for it: either stays selected, with its reason.
+ */
+export function keptModel(
+  written: string,
+  catalog: AgentCatalog,
+  hostProviders: readonly { readonly name: string; readonly hasKey: boolean }[] | undefined,
+): string | undefined {
+  if (written === '') return undefined;
+  const listed = canonicalModel(written, catalog);
+  if (listed === '') return written;
+  const hidden = catalog.models.some(
+    (row) => `${row.provider}/${row.model}` === listed && isUnconnectedRow(row, hostProviders),
+  );
+  return hidden ? listed : undefined;
+}
+
 /** Why `row` cannot be chosen, or `undefined` when it can. The policy is checked first, as the selector does. */
 export function unavailableReason(
   row: CatalogModel,
@@ -124,6 +156,9 @@ export function modelGroups(
   const byProvider = new Map<string, ModelChoice[]>();
   const seen = new Set<string>();
   for (const row of catalog.models) {
+    // A provider whose key is not saved keeps its rows in the catalog, `unavailable` (COR-2143).
+    // They are not models to choose from: the field lists the provider as not connected instead.
+    if (isUnconnectedRow(row, hostProviders)) continue;
     const value = `${row.provider}/${row.model}`;
     if (seen.has(value)) continue;
     seen.add(value);

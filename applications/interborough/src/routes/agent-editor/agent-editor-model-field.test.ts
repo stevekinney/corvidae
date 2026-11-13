@@ -411,6 +411,29 @@ describe('a saved agent whose model is no longer offered', () => {
     expect(update?.params['definition']).toMatchObject({ model: 'anthropic/off' });
   });
 
+  test('keeps a model whose row the catalog holds unavailable for a provider with no key saved (COR-2143)', async () => {
+    bureau({
+      agent: written('openai/gpt-4.1'),
+      catalog: catalogFixture({
+        models: [
+          { provider: 'anthropic', model: 'claude-sonnet-5' },
+          { provider: 'openai', model: 'gpt-4.1', availability: 'unavailable' },
+        ],
+      }),
+      hostProviders: [
+        { name: 'anthropic', hasKey: true },
+        { name: 'openai', hasKey: false },
+      ],
+    });
+    const { findByTestId } = mountEditor('researcher');
+    const noticeElement = await findByTestId('agent-model-notice');
+    expect(noticeElement.textContent).toContain(
+      notices.replacementNotice('openai/gpt-4.1', copy.reasons['not-in-catalog']),
+    );
+    const savedElement = await findByTestId('agent-saved-model-value');
+    expect(savedElement.textContent).toContain('GPT 4.1');
+  });
+
   test('says the installation no longer offers a model the catalog lacks', async () => {
     bureau({
       agent: written('gemini/gemini-2.5-pro'),

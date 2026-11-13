@@ -25,7 +25,7 @@
 // Exit codes: 0 every step passed, 1 a step failed or the changed set could not be read,
 // 2 invalid usage.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ISOLATED_SUFFIXES } from '../affected-tests.ts';
 import { directoryGlob, workspaceParentDirectories } from '../workspace-directories.ts';
@@ -60,9 +60,18 @@ export interface PlannedStep {
   command: string[];
 }
 
+/**
+ * Whether prettier can check `path`: it still exists and is not a symbolic link, which prettier
+ * refuses when named explicitly (a skill linked into `.claude/skills` and `.codex/skills`).
+ */
+export function prettierReadable(root: string, path: string): boolean {
+  const full = join(root, path);
+  return existsSync(full) && !lstatSync(full).isSymbolicLink();
+}
+
 export interface PlanInput {
   changed: readonly string[];
-  /** The changed files that still exist, which prettier can read. */
+  /** The changed files that still exist and are not symbolic links, which prettier can read. */
   existing: readonly string[];
   workspaces: readonly WorkspaceReference[];
   base: string;
@@ -237,7 +246,7 @@ export function runChecks(
 ): FocusedResult {
   const runner = dependencies.runner ?? defaultRunner;
   const execute = dependencies.execute ?? defaultExecute;
-  const exists = dependencies.exists ?? ((path: string) => existsSync(join(root, path)));
+  const exists = dependencies.exists ?? ((path: string) => prettierReadable(root, path));
   const readText =
     dependencies.readText ??
     ((path: string) => {

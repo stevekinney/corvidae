@@ -350,6 +350,13 @@ export type PluginProvider<Configuration = unknown> = ProviderDefinition<
    * definition's `name`, which is what a provider package that ships its models there wants.
    */
   readonly rows?: readonly BackendDescriptor[];
+  /**
+   * The key of the plugin's declared secret that holds the provider's API key. Composition refuses
+   * a key the plugin does not declare (`provider-secret-unknown`). Absent, a plugin that declares
+   * exactly one secret uses it, a plugin that declares none has a keyless provider (called with no
+   * `apiKey`), and a plugin that declares several is refused (`provider-secret-ambiguous`).
+   */
+  readonly secretKey?: string;
 };
 
 /** An embedder the `memory.embedder` setting can name. */

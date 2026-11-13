@@ -13,6 +13,7 @@ import {
   deleteAgent,
   getAgentCatalog,
   getAgentDefinition,
+  hasAvailableModel,
   listAgentDefinitions,
   listAgentRevisions,
   updateAgent,
@@ -24,6 +25,7 @@ import {
   installBureauStub,
   readyAgent,
   revisionFixture,
+  unkeyedModelFixtures,
   type BureauStub,
 } from './bureau-stub.test-support.ts';
 
@@ -394,6 +396,27 @@ describe('the operations', () => {
         params: { id: 'researcher', expectedHash: 'hash-1' },
       },
     ]);
+  });
+});
+
+describe('hasAvailableModel', () => {
+  test('is false for a catalog with no row and for one whose every row is unavailable', () => {
+    expect(hasAvailableModel(catalogFixture({ models: [] }))).toBe(false);
+    expect(hasAvailableModel(catalogFixture({ models: unkeyedModelFixtures() }))).toBe(false);
+  });
+
+  test('is true when one row is not unavailable, whatever the others are', () => {
+    expect(
+      hasAvailableModel(
+        catalogFixture({
+          models: [
+            ...unkeyedModelFixtures(),
+            { provider: 'anthropic', model: 'claude-opus-5', availability: 'unknown' },
+          ],
+        }),
+      ),
+    ).toBe(true);
+    expect(hasAvailableModel(catalogFixture())).toBe(true);
   });
 });
 

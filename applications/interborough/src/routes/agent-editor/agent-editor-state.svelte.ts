@@ -14,6 +14,7 @@ import {
   EFFORTS,
   guardrailEntriesFor,
   guardrailEntryId,
+  hasAvailableModel,
   type AgentCatalog,
   type AgentDefinitionInput,
   type AgentDetail,
@@ -28,6 +29,7 @@ import {
   canonicalModel,
   choiceOf,
   firstAvailableModel,
+  keptModel,
   modelGroups,
   NO_RESTRICTIONS,
   type ModelChoice,
@@ -405,12 +407,12 @@ export class AgentEditorState {
     // name the file wrote, so a save does not change it for another.
     const listed = canonicalModel(this.#writtenModel, catalog);
     this.#writtenModelOption = listed === '' ? this.#writtenModel : listed;
-    this.#catalogHasModels = catalog.models.length > 0;
+    this.#catalogHasModels = hasAvailableModel(catalog);
     this.modelGroups = modelGroups(
       catalog,
       context.hostProviders,
       context.restrictions ?? NO_RESTRICTIONS,
-      listed === '' && this.#writtenModel !== '' ? this.#writtenModel : undefined,
+      keptModel(this.#writtenModel, catalog, context.hostProviders),
     );
     if (definition === null) {
       this.#model = firstAvailableModel(this.modelGroups);

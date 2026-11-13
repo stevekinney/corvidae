@@ -11,7 +11,12 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { MODELS_COPY } from '../../../app/copy/models.ts';
 import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
-import type { BureauStub } from '../../../lib/bureau-stub.test-support.ts';
+import {
+  catalogModelFixture,
+  unkeyedModelFixtures,
+  type BureauStub,
+  type CatalogModelFixture,
+} from '../../../lib/bureau-stub.test-support.ts';
 import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
@@ -52,6 +57,8 @@ function open(
   options: {
     keys?: Record<string, boolean>;
     catalog?: Parameters<typeof installFakeHost>[0]['catalog'];
+    /** The rows the Bureau's agent catalog holds, which the decision selects offer. */
+    agentCatalog?: readonly CatalogModelFixture[];
     lockReason?: 'deployment';
     served?: SettingsServed;
     plugins?: PluginFixture[];
@@ -67,7 +74,10 @@ function open(
 ) {
   const agents = options.agents ?? {};
   stub = installSettingsBureau(options.served ?? servedSettings(), {
-    'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+    'bureau.agents.catalog': () => ({
+      models: (options.agentCatalog ?? []).map(catalogModelFixture),
+      tools: [],
+    }),
     'bureau.agents.list': () => ({
       agents: Object.keys(agents).map((name) => ({
         name,
@@ -1132,6 +1142,25 @@ describe('the decisions', () => {
     expect(served.values['decisions.model']).toBe('typesafe:jev');
     // There is no page-level Save.
     expect(container.textContent).not.toContain(SETTINGS_COPY.saveAction);
+  });
+
+  test('offer a model for the fallback only when its row is not unavailable', async () => {
+    // The rows of a provider with no key stay in the catalog, marked unavailable (COR-2143).
+    const { container, findByRole } = open({
+      agentCatalog: [...unkeyedModelFixtures(), { provider: 'anthropic', model: 'claude-opus-5' }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    const select = row(container, 'decisions.fallbackModel')!.querySelector('select')!;
+    await waitFor(() =>
+      expect([...select.options].map((option) => option.value)).toContain(
+        'anthropic/claude-opus-5',
+      ),
+    );
+    const values = [...select.options].map((option) => option.value);
+    expect(values).not.toContain('openai/gpt-5');
+    expect(values).not.toContain('gemini/gemini-3-pro');
+    expect(values).not.toContain('anthropic/claude-sonnet-5');
   });
 
   test('keep the person’s own choice when it is the chat model fallback, whatever TypeSafe’s plugin says', async () => {

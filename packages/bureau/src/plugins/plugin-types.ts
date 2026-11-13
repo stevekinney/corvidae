@@ -64,6 +64,11 @@ export interface PluginProviderContribution {
   readonly configuration: unknown;
   /** The catalog rows of its models; each row's `provider` is `definition.name`. */
   readonly rows: readonly BackendDescriptor[];
+  /**
+   * The declared secret that holds its API key: the provider's `secretKey`, else the plugin's one
+   * declared secret. `undefined` when the plugin declares none, which makes the provider keyless.
+   */
+  readonly secretKey: string | undefined;
 }
 
 /** What plugins contribute to the model catalog, for a `models.catalog` factory to build rows from. */
@@ -172,6 +177,28 @@ export type PluginProblem =
       readonly formatter: string;
       /** The kind no event carries. */
       readonly kind: string;
+    }
+  | {
+      /**
+       * A provider's `secretKey` is not one of the secrets the plugin declared, so the key it names
+       * could never be saved; the plugin is `skipped` and the host starts.
+       */
+      readonly code: 'provider-secret-unknown';
+      /** The provider's name within the plugin. */
+      readonly provider: string;
+      /** The `secretKey` the plugin did not declare. */
+      readonly key: string;
+    }
+  | {
+      /**
+       * A provider names no `secretKey` and its plugin declares several secrets, so which one holds
+       * the API key is not said; the plugin is `skipped` and the host starts.
+       */
+      readonly code: 'provider-secret-ambiguous';
+      /** The provider's name within the plugin. */
+      readonly provider: string;
+      /** The secrets the plugin declared, one of which is the provider's `secretKey`. */
+      readonly secrets: readonly string[];
     }
   | {
       /**

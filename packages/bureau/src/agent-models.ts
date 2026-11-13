@@ -88,6 +88,15 @@ function isDescriptor(value: BackendDescriptor | AgentFileProblem): value is Bac
   return 'provider' in value;
 }
 
+/**
+ * Whether a session may be switched to `row`: a row the catalog marks `unavailable` (turned off, or
+ * its provider has no key saved) counts as absent from what an agent allows. A file that names it
+ * as its own model still resolves, so its refusal can say why (COR-2143).
+ */
+function isSwitchable(row: BackendDescriptor): boolean {
+  return row.availability !== 'unavailable';
+}
+
 function distinct(choices: readonly AgentModelChoice[]): AgentModelChoice[] {
   const seen = new Set<string>();
   return choices.filter((choice) => {
@@ -114,9 +123,9 @@ export function describeAgentModels(
       kind: 'selectable',
       selectable: true,
       models: distinct(
-        allowedDescriptorsOfFileAgent(binding.definition.models, descriptors).map((row) =>
-          choiceOf(row, policy, binding.definition.limits?.cost !== undefined),
-        ),
+        allowedDescriptorsOfFileAgent(binding.definition.models, descriptors)
+          .filter(isSwitchable)
+          .map((row) => choiceOf(row, policy, binding.definition.limits?.cost !== undefined)),
       ),
       default: isDescriptor(resolved) ? choiceOf(resolved, policy) : null,
     };
@@ -138,7 +147,7 @@ export function describeAgentModels(
     return {
       kind: 'selectable',
       selectable: true,
-      models: distinct(rows.map((row) => choiceOf(row, policy))),
+      models: distinct(rows.filter(isSwitchable).map((row) => choiceOf(row, policy))),
       default: attached,
     };
   }

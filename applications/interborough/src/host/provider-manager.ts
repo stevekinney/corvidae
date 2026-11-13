@@ -678,7 +678,16 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         catalog: (configuration.catalog ?? []).filter((edit) =>
           loaded.providers.some((provider) => provider.name === edit.provider),
         ),
-        models: loaded.rows.map(modelRowOf),
+        // A provider whose key is not saved keeps its rows in the catalog, `unavailable`, but it is
+        // not connected: the page lists models only for a provider the host can call (COR-2143).
+        models: loaded.rows
+          .filter((row) => {
+            const owner = loaded.providers.find((provider) => provider.name === row.provider);
+            return (
+              owner === undefined || owner.secretKey === undefined || loaded.apiKeys.has(owner.name)
+            );
+          })
+          .map(modelRowOf),
         ...(reason === undefined ? {} : { lockReason: reason }),
         ...(hostWriteLocks(bungalow).providerKeys === undefined
           ? {}
