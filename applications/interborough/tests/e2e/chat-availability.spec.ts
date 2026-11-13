@@ -8,7 +8,7 @@
  */
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { bureauCall } from './task-support.ts';
 
 const SOURCE = 'chat-availability.spec.ts';
@@ -66,7 +66,14 @@ for (const viewport of VIEWPORTS) {
       page,
       request,
       checkA11y,
+      pageErrors,
     }) => {
+      // Once the chat is gone, whatever the page reads of it again (its history, its run) answers
+      // not found, as many times as the page happens to ask.
+      pageErrors.expectEvery({
+        pattern: loggedFailedResponse(404, /\/bureau\//),
+        reason: 'the test deletes the chat the page has open, so its reads of it answer not found',
+      });
       const threadId = newThreadId('availability-deleted');
       await runToEnd(request, AGENT, threadId, 'Hello');
       await page.goto(`/chats/${threadId}`);

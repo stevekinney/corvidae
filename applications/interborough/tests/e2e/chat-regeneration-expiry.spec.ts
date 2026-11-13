@@ -268,14 +268,19 @@ test('a failed regeneration keeps the answer, says so on its row, and Regenerate
     if (body.method !== 'bureau.contexts.regenerate') return route.continue();
     attempts.push(body.params ?? {});
     if (attempts.length > 1) return route.continue();
-    // The first attempt is refused before it reaches the Bureau, as an unavailable service is.
+    // The first attempt is refused before it reaches the Bureau, as an unavailable service is. The
+    // fault travels in the JSON-RPC envelope, so the browser logs no failed response.
     return route.fulfill({
-      status: 503,
+      status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: body.method,
-        error: { code: -32000, message: 'Unavailable.', data: { weftCode: 'Unavailable' } },
+        error: {
+          code: -32000,
+          message: 'Unavailable.',
+          data: { weftCode: 'Unavailable', httpStatus: 503 },
+        },
       }),
     });
   });
