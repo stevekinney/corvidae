@@ -80,6 +80,7 @@ const CROSS_PRODUCER_NAMES: ReadonlySet<string> = new Set([
   'bureau.settings.get',
   'bureau.settings.schema',
   'bureau.settings.update',
+  'bureau.decisions.models',
   'bureau.schedules.list',
   'bureau.schedules.get',
   'bureau.schedules.create',

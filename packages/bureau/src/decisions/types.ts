@@ -61,10 +61,44 @@ export interface BureauDecideOptions {
 }
 
 /**
+ * One catalog row that can answer decisions, as {@link BureauDecisions.models} reports it: the
+ * rows a `decisions.model` or `decisions.fallbackModel` may name, with whether each can answer now.
+ */
+export interface BureauDecisionModel {
+  /** The row's provider. */
+  readonly provider: string;
+  /** The provider-native model name; the row is written `<provider>/<model>`. */
+  readonly model: string;
+  /**
+   * `available` when the row can be called now, `needs-setup` when it cannot yet: its provider has
+   * no key saved, or the model is turned off. A `needs-setup` row is still listed, so a choice of it
+   * is visible rather than missing.
+   */
+  readonly availability: 'available' | 'needs-setup';
+  /** Whether the row only decides and is no chat model (TypeSafe's rows). */
+  readonly decisionOnly: boolean;
+  /**
+   * Whether this is the row the language-model fallback answers with: `decisions.fallbackModel`
+   * when it is in the catalog and eligible (available, with structured output), otherwise the
+   * cheapest priced eligible row, never one the model policy forbids. At most one row is marked.
+   * A `decisions.model` that names an available row answers in its place; one that names no row,
+   * or a row that needs setup, leaves the answering to this row.
+   */
+  readonly answering: boolean;
+}
+
+/**
  * Bureau's decision namespace, exposed as `Bureau.decisions`: ask a model a question and get a
  * typed answer back.
  */
 export interface BureauDecisions {
+  /**
+   * The catalog rows that can answer decisions, natively (the row declares decision kinds) or
+   * through structured output, in catalog order, with their availability and which one answers as
+   * the fallback. A row the model policy forbids is left out: it cannot answer. Read again on every
+   * call, so it reflects the catalog and settings as they are now.
+   */
+  models(): readonly BureauDecisionModel[];
   /**
    * Answers `request`. A request whose kind the model named by the `decisions.model` setting
    * ({@link DecisionsOptions.model} by default) serves goes to it, and is looked up again on every

@@ -18,8 +18,8 @@ import { A2A_COPY } from '../../app/copy/a2a.ts';
 import { DATA_RETENTION_COPY } from '../../app/copy/settings.ts';
 import type { SchemaNode } from '../../lib/bureau-settings.ts';
 
-/** What a select of catalog rows offers: the models the catalog lists, or the decision models a host registers. */
-export type ChoiceSource = 'catalog-rows' | 'decision-models';
+/** What a select of rows offers: the agent catalog's models, or the rows that can answer decisions (the Bureau's list). */
+export type ChoiceSource = 'catalog-rows' | 'decision-rows';
 
 /** The control of one setting, by the shape of its schema node. */
 export type Control =
@@ -39,14 +39,17 @@ export type Control =
   | { readonly kind: 'switch-json' }
   | { readonly kind: 'json' };
 
-/** The keys that name a row of the model catalog, as `<provider>/<model>`. */
-const CATALOG_ROW_KEYS: ReadonlySet<string> = new Set([
-  'decisions.fallbackModel',
-  'context.summarizerModel',
-]);
+/** The keys that name a row of the agent catalog, as `<provider>/<model>`. */
+const CATALOG_ROW_KEYS: ReadonlySet<string> = new Set(['context.summarizerModel']);
 
-/** The key that names a decision model. */
-const DECISION_MODEL_KEY = 'decisions.model';
+/**
+ * The keys that name a row that can answer decisions, as `<provider>/<model>`: the rows
+ * `bureau.decisions.models` lists, each marked available or needs-setup, not the agent catalog.
+ */
+const DECISION_ROW_KEYS: ReadonlySet<string> = new Set([
+  'decisions.model',
+  'decisions.fallbackModel',
+]);
 
 function isNumeric(node: SchemaNode): boolean {
   return node.type === 'integer' || node.type === 'number';
@@ -110,7 +113,7 @@ export function controlFor(key: string, node: SchemaNode): Control {
       return { kind: 'select', options: node.enum };
     }
     if (CATALOG_ROW_KEYS.has(key)) return { kind: 'choice', source: 'catalog-rows' };
-    if (key === DECISION_MODEL_KEY) return { kind: 'choice', source: 'decision-models' };
+    if (DECISION_ROW_KEYS.has(key)) return { kind: 'choice', source: 'decision-rows' };
     return { kind: 'text', pattern: node.pattern };
   }
   if (isNumeric(node)) {
@@ -303,10 +306,3 @@ export function optionLabel(value: string): string {
 export function isDuration(name: string): boolean {
   return name === 'olderThan' || name.endsWith('Milliseconds');
 }
-
-/**
- * The decision models the picker offers for `decisions.model`, which names a catalog row as
- * `<provider>/<model>`: `typesafe/jev`, the row the typesafe plugin contributes (`plugins/typesafe`).
- * The `catalog` choice no longer exists. COR-2160 replaces this list with the catalog's own rows.
- */
-export const HOST_DECISION_MODELS = [{ value: 'typesafe/jev', label: 'TypeSafe' }] as const;

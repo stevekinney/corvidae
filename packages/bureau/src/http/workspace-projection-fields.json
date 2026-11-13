@@ -896,6 +896,14 @@
     "$.value",
     "$.value.*"
   ],
+  "output:bureau.decisions.models": [
+    "$.rows",
+    "$.rows[].answering",
+    "$.rows[].availability",
+    "$.rows[].decisionOnly",
+    "$.rows[].model",
+    "$.rows[].provider"
+  ],
   "output:bureau.deployment.get": [
     "$.agents",
     "$.id",

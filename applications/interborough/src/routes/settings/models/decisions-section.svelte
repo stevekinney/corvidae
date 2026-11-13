@@ -3,25 +3,31 @@
    * The Decisions part of Settings › Models (board SettingsShell, "Models, /settings/models"): the
    * model that answers yes-or-no and classification questions, its fallback, and the most decision
    * calls one task may make, as three setting rows that save as the person leaves them like the
-   * rest of Settings (`../setting-field.svelte`). TypeSafe is the decision model and its key is
-   * connected under Plugins. While its plugin waits for a key the fallback model answers, so all
-   * three rows stay editable and the decision model row says so, with a quiet link to Connect
-   * TypeSafe after its description.
+   * rest of Settings (`../setting-field.svelte`).
+   *
+   * Both model rows choose among the rows the Bureau reports (`bureau.decisions.models`): every
+   * catalog row that can decide, grouped by provider, a row that needs setup marked as such and still
+   * selectable. The page only draws that list: which rows can decide, which are available and which
+   * one answers while the chosen row cannot are the Bureau's rules, read from its fields. The
+   * decision model row says which row answers only when the chosen row is not the one (nothing chosen,
+   * a row the Bureau no longer lists, or one that needs setup), with a quiet link to Connect TypeSafe
+   * while its plugin waits for a key, and warns, as an advisory and not an error, when the Bureau set
+   * a stored value aside or the stored row is not in the list.
    */
-  import { FormSection, Link } from '@lostgradient/cinder';
+  import { FormSection, Link, type SelectOption } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
-  import {
-    decisionRowNamed,
-    getAgentCatalog,
-    hasDecisionModel,
-  } from '../../../lib/agent-definitions.ts';
+  import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
   import type { SchemaNode, SettingKeyState } from '../../../lib/bureau-settings.ts';
+  import {
+    decisionRowName,
+    listDecisionModels,
+    type DecisionModelRow,
+  } from '../../../lib/bureau-decisions.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import SettingField from '../setting-field.svelte';
-  import type { ModelPolicy } from '../model-policy-edit.ts';
   import type { SettingsAutosave } from '../settings-autosave.svelte.ts';
   import type { Control } from '../settings-controls.ts';
   import type { SettingsForm } from '../settings-form.svelte.ts';
@@ -40,8 +46,8 @@
     effective: Readonly<Record<string, unknown>>;
     /** Whether the TypeSafe plugin is waiting for its key. */
     typesafeNeedsKey: boolean;
-    /** The model policy, which the Bureau applies before it chooses the model that answers. */
-    policy: ModelPolicy;
+    /** The name a person knows a provider by, for the heading of its group of rows. */
+    providerTitle: (provider: string) => string;
   }
 
   let {
@@ -53,47 +59,78 @@
     stateOf,
     effective,
     typesafeNeedsKey,
-    policy,
+    providerTitle,
   }: Props = $props();
 
   const copy = MODELS_COPY.decisions;
   const TYPESAFE_PATH = '/settings/plugins?plugin=typesafe';
 
-  /** Whether the decision model is TypeSafe's, or unset (which the host defaults to TypeSafe when it loads). */
-  const usesTypesafe = $derived.by(() => {
-    const model = form.draft('decisions.model');
-    return model === undefined || (typeof model === 'string' && model.startsWith('typesafe/'));
-  });
-  /** TypeSafe is the decision model but has no key, so the fallback model answers. */
-  const waiting = $derived(typesafeNeedsKey && usesTypesafe);
-
-  // The fallback is the model answering while TypeSafe waits, so the catalog says which one it is.
-  const catalog = createQuery(
+  const rows = createQuery(
     () => ({
-      queryKey: queryKeys.agents.catalog(),
-      queryFn: ({ signal }) => getAgentCatalog({ signal }),
+      queryKey: queryKeys.decisionModels(),
+      queryFn: ({ signal }) => listDecisionModels({ signal }),
       retry: false,
     }),
     undefined,
   );
-  /** The fallback model in force: the one on the page, else the one the host applies by default. */
-  const fallbackInForce = $derived.by(() => {
-    const draft = form.draft('decisions.fallbackModel');
-    const applied = effective['decisions.fallbackModel'];
-    if (typeof draft === 'string' && draft !== '') return draft;
-    return typeof applied === 'string' ? applied : undefined;
+  const listed = $derived<readonly DecisionModelRow[] | undefined>(rows.data);
+  /** The row the Bureau says answers while the chosen row cannot. */
+  const answering = $derived(listed?.find((row) => row.answering));
+
+  /** The decision model the page holds: what the person chose, else nothing. */
+  const chosenName = $derived.by(() => {
+    const draft = form.draft('decisions.model');
+    return typeof draft === 'string' && draft !== '' ? draft : undefined;
   });
-  /** What the decision model row says while TypeSafe waits, naming the model that answers. */
-  const waitingWords = $derived.by(() => {
-    const models = catalog.data?.models;
-    if (models === undefined) return copy.model.waitingUnnamed;
-    if (!hasDecisionModel({ models }, policy)) return copy.model.waitingNothing;
-    const row =
-      fallbackInForce === undefined ? undefined : decisionRowNamed(models, fallbackInForce, policy);
-    return row === undefined
-      ? copy.model.waitingUnnamed
-      : copy.model.waiting(modelDisplayName(row.model));
+  const chosen = $derived(
+    chosenName === undefined
+      ? undefined
+      : listed?.find((row) => decisionRowName(row) === chosenName),
+  );
+  /** The fallback answers: no row is chosen, the one chosen is not listed, or it needs setup. */
+  const fallbackAnswers = $derived(listed !== undefined && chosen?.availability !== 'available');
+
+  /** What the decision model row says: which row answers while the chosen one cannot, or what it is. */
+  const modelDescription = $derived.by(() => {
+    if (!fallbackAnswers) return copy.model.description;
+    return answering === undefined
+      ? copy.model.nothingAnswers
+      : copy.model.fallbackAnswers(modelDisplayName(answering.model));
   });
+  /** An advisory in the page's words (never the Bureau's, which is written for a settings file). */
+  const modelWarning = $derived.by(() => {
+    if (stateOf('decisions.model').problem !== undefined) return copy.model.dropped;
+    return listed !== undefined && chosenName !== undefined && chosen === undefined
+      ? copy.model.missing(chosenName)
+      : undefined;
+  });
+
+  /** One option per row, grouped by its provider; a row that needs setup is marked and still chosen. */
+  function optionsFor(current: unknown): SelectOption[] {
+    const options = (listed ?? []).map((row): SelectOption => {
+      const provider = providerTitle(row.provider);
+      return {
+        value: decisionRowName(row),
+        label: modelDisplayName(row.model),
+        group: provider,
+        triggerSuffix: provider,
+        ...(row.availability === 'needs-setup' ? { note: copy.needsSetup } : {}),
+      };
+    });
+    // A stored row the list does not hold keeps its own name, unmarked, beside the warning.
+    return typeof current === 'string' &&
+      current !== '' &&
+      !options.some((option) => option.value === current)
+      ? [{ value: current, label: current }, ...options]
+      : options;
+  }
+
+  /** The empty option of the fallback: the row that answers while it is empty, as the Bureau says. */
+  const fallbackEmpty = $derived(
+    form.draft('decisions.fallbackModel') === undefined && answering !== undefined
+      ? SETTINGS_COPY.defaultOption(modelDisplayName(answering.model))
+      : SETTINGS_COPY.notSet,
+  );
 
   function openTypesafe(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -114,7 +151,12 @@
   key: string,
   label: string,
   description: string,
-  descriptionAction?: typeof connectTypesafe,
+  extra: {
+    descriptionAction?: typeof connectTypesafe | undefined;
+    rowChoices?: readonly SelectOption[];
+    emptyLabel?: string;
+    warning?: string | undefined;
+  } = {},
 )}
   {@const node = nodes[key]}
   {@const control = controls.get(key)}
@@ -130,25 +172,35 @@
       reverted={revert.isReverted(key)}
       descriptionOverride={description}
       labelOverride={label}
-      {descriptionAction}
-      {policy}
+      descriptionAction={extra.descriptionAction}
+      rowChoices={extra.rowChoices}
+      emptyLabel={extra.emptyLabel}
+      warning={extra.warning}
       onEdit={() => revert.forget(key)}
     />
   {/if}
 {/snippet}
 
-<div class="ib-decisions" data-section="decisions" data-waiting={waiting ? 'true' : undefined}>
+<div
+  class="ib-decisions"
+  data-section="decisions"
+  data-waiting={fallbackAnswers ? 'true' : undefined}
+>
   <FormSection grouped heading={copy.heading} description={copy.description}>
-    {@render field(
-      'decisions.model',
-      copy.model.label,
-      waiting ? waitingWords : copy.model.description,
-      waiting ? connectTypesafe : undefined,
-    )}
+    {@render field('decisions.model', copy.model.label, modelDescription, {
+      descriptionAction: fallbackAnswers && typesafeNeedsKey ? connectTypesafe : undefined,
+      rowChoices: optionsFor(form.draft('decisions.model')),
+      emptyLabel: copy.model.none,
+      warning: modelWarning,
+    })}
     {@render field(
       'decisions.fallbackModel',
       copy.fallbackModel.label,
       copy.fallbackModel.description,
+      {
+        rowChoices: optionsFor(form.draft('decisions.fallbackModel')),
+        emptyLabel: fallbackEmpty,
+      },
     )}
     {@render field(
       'decisions.maximumPerTask',

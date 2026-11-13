@@ -11,7 +11,7 @@ export const MODELS_COPY = {
   /** The notice shown when a page sent the person here to connect a provider, with the way back. */
   returnNotice: {
     title: 'Connect a provider to continue',
-    description: 'Save a key for one provider, then go back to the agent form.',
+    description: 'Connect one provider, then go back to the agent form.',
     connectedDescription: 'A provider is connected. Go back to the agent form.',
     action: 'Back to the agent form',
   },
@@ -38,7 +38,7 @@ export const MODELS_COPY = {
     /** The reason there is no provider banner: while none is connected this says why agents can't answer. */
     description:
       'Agents can’t answer until one is connected. Connect one to make its models available.',
-    connectedDescription: 'Connected providers show Manage.',
+    connectedDescription: 'Connected providers offer their models to your agents.',
     listLabel: 'Providers',
     connected: 'Connected',
     connect: 'Connect',
@@ -187,19 +187,27 @@ export const MODELS_COPY = {
     model: {
       label: 'Decision model',
       description:
-        'TypeSafe answers yes-or-no and classification questions for Interborough. It isn’t a chat provider.',
-      /** Said instead while TypeSafe has no key, and the fallback model, named, is the one answering. */
-      waiting: (model: string) => `${model} answers until TypeSafe is connected.`,
-      /** Said while the fallback model's row is not the one answering, or the catalog has not loaded. */
-      waitingUnnamed: 'A fallback model answers until TypeSafe is connected.',
-      /** Said while the catalog has no row that can answer. */
-      waitingNothing: 'Nothing can answer decisions until you connect a provider or TypeSafe.',
+        'Answers yes-or-no and classification questions for Interborough. Leave it empty to let the fallback model answer.',
+      /** Said instead while the chosen row is empty, missing or needs setup: the row that answers, named by the Bureau. */
+      fallbackAnswers: (model: string) => `${model} answers until a decision model is ready.`,
+      /** Said while the Bureau reports no row that can answer. */
+      nothingAnswers: 'Nothing can answer decisions until you connect a provider or TypeSafe.',
       connect: 'Connect TypeSafe',
+      /** The empty option of the select. */
+      none: 'The fallback model alone',
+      /** The Bureau dropped the stored value and records why; the row warns in these words, not the Bureau's. */
+      dropped:
+        'The saved decision model no longer exists, so the fallback answers. Choose another.',
+      /** The stored value names a row the Bureau does not list as able to answer. */
+      missing: (name: string) =>
+        `“${name}” can’t answer decisions, so the fallback answers. Choose another.`,
     },
     fallbackModel: {
       label: 'Fallback model',
       description: 'Used when the decision model can’t answer.',
     },
+    /** The mark beside a row whose provider has no key saved yet or whose model is off. */
+    needsSetup: 'Needs setup',
     maximumPerTask: {
       label: 'Maximum per task',
       description: 'The most decision calls one task may make.',

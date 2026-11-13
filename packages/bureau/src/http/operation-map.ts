@@ -224,6 +224,7 @@ export const OPERATION_MAP = {
   },
 
   'bureau.decisions.decide': { workspaceClass: 'deployment-operator', member: 'decisions.decide' },
+  'bureau.decisions.models': { workspaceClass: 'administrator-shared', member: 'decisions.models' },
 
   'bureau.settings.get': { workspaceClass: 'administrator-shared', member: 'settings.get' },
   'bureau.settings.schema': { workspaceClass: 'administrator-shared', member: 'settings.schema' },

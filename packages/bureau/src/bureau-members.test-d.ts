@@ -338,9 +338,10 @@ export type AgentsModelsDescribesOneAgent = AssertTrue<
   Equals<Bureau['agents']['models'], (name: string) => AgentModels | undefined>
 >;
 
-// COR-1709: `decisions` is declared, with the one operation, and a `boolean` request answers a `boolean`.
+// COR-1709: `decisions` is declared, with `decide`, and a `boolean` request answers a `boolean`.
+// COR-2160: it also lists the rows that can answer, with `models`.
 export type DecisionsAreDeclared = AssertTrue<Equals<Bureau['decisions'], BureauDecisions>>;
-export type DecisionsMembers = AssertNever<Exclude<keyof BureauDecisions, 'decide'>>;
+export type DecisionsMembers = AssertNever<Exclude<keyof BureauDecisions, 'decide' | 'models'>>;
 declare const decideBureau: Bureau;
 const booleanDecision = decideBureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });
 const choiceDecision = decideBureau.decisions.decide({
