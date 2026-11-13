@@ -842,7 +842,7 @@
    * card's text column, the edge "Expires in" and the title use. Its 44px hit area comes from the
    * Button's own pseudo-element, which takes no layout. */
   .cinder-approval-card
-    .cinder-approval-card__row-actions
+    :is(.cinder-approval-card__row-actions, .cinder-approval-card__action-row)
     .cinder-button.cinder-approval-card__note-toggle {
     align-self: center;
     flex: none;
@@ -858,7 +858,7 @@
   /* On a card 30rem or wider the words never squeeze, clip or wrap: one line at the label's own
    * width, in the batch row layout as well as the single card. */
   .cinder-approval-card
-    .cinder-approval-card__row-actions
+    :is(.cinder-approval-card__row-actions, .cinder-approval-card__action-row)
     .cinder-approval-card__note-toggle
     .cinder-button__label {
     flex: none;
@@ -875,7 +875,7 @@
    * inset. The words stay the accessible name and the tooltip says them. */
   @container (inline-size < 30rem) {
     .cinder-approval-card
-      .cinder-approval-card__row-actions
+      :is(.cinder-approval-card__row-actions, .cinder-approval-card__action-row)
       .cinder-button.cinder-approval-card__note-toggle {
       inline-size: var(--_cinder-painted-height-sm);
       min-inline-size: var(--_cinder-painted-height-sm);
@@ -888,7 +888,7 @@
     }
 
     .cinder-approval-card
-      .cinder-approval-card__row-actions
+      :is(.cinder-approval-card__row-actions, .cinder-approval-card__action-row)
       .cinder-approval-card__note-toggle
       .cinder-button__label {
       position: absolute;

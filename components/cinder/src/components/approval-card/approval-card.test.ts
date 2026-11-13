@@ -365,7 +365,8 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ editableArgs: false, onResolve }),
     });
 
-    await fireEvent.input(getByLabelText('Note (optional)'), {
+    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await fireEvent.input(getByLabelText('Note'), {
       target: { value: 'Outside the deployment window.' },
     });
     await fireEvent.click(
@@ -395,7 +396,8 @@ describe('ApprovalCard', () => {
       }),
     });
 
-    await fireEvent.input(view.getByLabelText('Note (optional)'), {
+    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Applies only to the first approval.' },
     });
     await fireEvent.click(
@@ -409,9 +411,10 @@ describe('ApprovalCard', () => {
       }),
     });
 
-    expect(
-      requiredInstance(view.getByLabelText('Note (optional)'), HTMLTextAreaElement).value,
-    ).toBe('');
+    // A new request starts with the note closed and empty.
+    expect(view.queryByLabelText('Note')).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe('');
     expect(
       requiredInstance(
         view.getByRole('checkbox', {
@@ -434,7 +437,8 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ onResolve, idempotencyKey: 'approval-one' }),
     });
 
-    await fireEvent.input(view.getByLabelText('Note (optional)'), {
+    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Still drafting this reason.' },
     });
     await fireEvent.click(
@@ -448,9 +452,9 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ onResolve, idempotencyKey: 'approval-one', snapshotId: 'snap-2' }),
     });
 
-    expect(
-      requiredInstance(view.getByLabelText('Note (optional)'), HTMLTextAreaElement).value,
-    ).toBe('Still drafting this reason.');
+    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+      'Still drafting this reason.',
+    );
     expect(
       requiredInstance(
         view.getByRole('checkbox', {
@@ -1235,15 +1239,16 @@ describe('ApprovalCard card layout anatomy', () => {
     );
   });
 
-  test('offers Deny as secondary, a Note (optional) field and no Allow checkbox for an Always tool', () => {
-    const { getByRole, getByLabelText, queryByRole } = render(ApprovalCard, {
+  test('offers Deny as secondary, a closed note behind Add a note and no Allow checkbox for an Always tool', () => {
+    const { getByRole, queryByLabelText, queryByRole } = render(ApprovalCard, {
       props: refundRow({ layout: 'card', rememberScope: undefined }),
     });
 
     expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
-    expect(getByLabelText('Note (optional)')).not.toBeNull();
+    expect(queryByLabelText('Note')).toBeNull();
+    expect(getByRole('group', { name: 'Approval actions' }).textContent).toContain('Add a note');
     expect(queryByRole('checkbox')).toBeNull();
   });
 
@@ -1547,16 +1552,45 @@ describe('ApprovalCard row layout', () => {
     expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: true });
   });
 
-  test('Add a note opens the Note (optional) field, and the note travels with Approve and Deny', async () => {
+  for (const layout of ['card', 'row', 'decision', 'detail'] as const) {
+    test(`the ${layout} layout keeps its note closed behind Add a note, beside Deny, and focuses it on open`, async () => {
+      const onResolve = mock((_resolution: unknown) => undefined);
+      const view = render(ApprovalCard, { props: refundRow({ layout, onResolve }) });
+
+      expect(view.queryByRole('textbox', { name: /note/i })).toBeNull();
+      expect(view.container.textContent).not.toContain('(optional)');
+      const actions = view.getByRole('group', { name: 'Approval actions' });
+      const toggle = view.getByRole('button', { name: 'Add a note' });
+      // The toggle sits in the actions row, before Deny.
+      expect(actions.contains(toggle)).toBe(true);
+      const deny = view.getByRole('button', { name: 'Deny' });
+      expect(toggle.compareDocumentPosition(deny) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      await fireEvent.click(toggle);
+      await tick();
+      const field = requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement);
+      expect(document.activeElement).toBe(field);
+      expect(view.queryByRole('button', { name: 'Add a note' })).toBeNull();
+
+      // A typed note keeps the field open through an unrelated re-render.
+      await fireEvent.input(field, { target: { value: 'Check the carrier first.' } });
+      await view.rerender({ ...refundRow({ layout, onResolve }), consequence: 'Sends it back' });
+      expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+        'Check the carrier first.',
+      );
+    });
+  }
+
+  test('Add a note opens the Note field, and the note travels with Approve and Deny', async () => {
     const onResolve = mock((_resolution: unknown) => undefined);
     const { getByLabelText, getByRole, getByText, queryByLabelText } = render(ApprovalCard, {
       props: refundRow({ onResolve }),
     });
-    expect(queryByLabelText('Note (optional)')).toBeNull();
+    expect(queryByLabelText('Note')).toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Add a note' }));
 
-    const field = requiredInstance(getByLabelText('Note (optional)'), HTMLTextAreaElement);
+    const field = requiredInstance(getByLabelText('Note'), HTMLTextAreaElement);
     expect(field.placeholder).toBe('Add a note for the agent or the record');
     expect(
       getByText('Saved with your decision. If you deny, the agent reads it as the reason.'),
@@ -1583,18 +1617,18 @@ describe('ApprovalCard row layout', () => {
     });
     const view = render(ApprovalCard, { props });
     await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
-    await fireEvent.input(view.getByLabelText('Note (optional)'), {
+    await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Draft for the first.' },
     });
     await fireEvent.click(view.getByRole('checkbox'));
 
     await view.rerender({ ...props, consequence: 'Sends it back' });
-    expect(
-      requiredInstance(view.getByLabelText('Note (optional)'), HTMLTextAreaElement).value,
-    ).toBe('Draft for the first.');
+    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+      'Draft for the first.',
+    );
 
     await view.rerender({ ...props, idempotencyKey: 'two' });
-    expect(view.queryByLabelText('Note (optional)')).toBeNull();
+    expect(view.queryByLabelText('Note')).toBeNull();
     expect(requiredInstance(view.getByRole('checkbox'), HTMLInputElement).checked).toBe(false);
   });
 
