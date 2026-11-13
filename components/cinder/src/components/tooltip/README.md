@@ -14,6 +14,8 @@ Hover-and-focus triggered hint for terse controls, anchored to a focusable child
 </Tooltip>
 ```
 
+A tooltip whose `text` is empty renders no panel, adds no `aria-describedby` to its trigger, and never shows.
+
 ## Props
 
 <!-- generated:props:start -->

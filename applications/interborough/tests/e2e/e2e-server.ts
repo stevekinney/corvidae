@@ -26,6 +26,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { seedDynamicSources } from '../../fixtures/dynamic-sources.ts';
+import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
@@ -62,6 +63,7 @@ import { seedCancellationRequest, seedLedgerEvidence } from './ledger-evidence-s
 import { createModelAgents } from './model-agents.ts';
 import { createQuestionAgents } from './question-agents.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
+import { createShowcaseEditableAgent } from './showcase-editable-agent.ts';
 import { seedSkills } from './skills-seed.ts';
 import { createTextEchoAgents } from './text-echo-agent.ts';
 import { seedToolSources, startToolSourceServers } from './tool-sources-seed.ts';
@@ -354,6 +356,7 @@ const barrier = createBarrier();
 const showcaseStartup = trackStartupPromise(
   seedSampleWorld(join(scratch, 'showcase-home', '.interborough'), {
     host: { port: E2E_SHOWCASE_PORT, buildDirectory },
+    beforeProviderKeyRemoved: createShowcaseEditableAgent,
   }).then(({ host: started }) => {
     startupCleanup.push(() => started.close());
     reportStartupPhase('showcase-ready');
@@ -377,6 +380,9 @@ const host = await startHost({
   // One setting the deployment holds to its code option, so the settings page's locked state is
   // exercised against the real Bureau (`settings.spec.ts`). It is a `restart` key nothing else reads.
   settings: { locked: { [E2E_LOCKED_SETTING]: 'deployment' } },
+  // The clean-up's nightly time is named in the host's zone, which defaults to the process's: on a
+  // UTC runner that reads "GMT+00:00", not a zone's name (COR-2412). The sample zone holds it still.
+  nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
   port: E2E_PORT,
   buildDirectory,
   createConsoleEngine: async () => {

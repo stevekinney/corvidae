@@ -23,9 +23,13 @@ import { END_TO_END_PORT_COUNT, endToEndPortOverride } from './environment-confi
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Ports below this are for well-known services, and the operating system hands ephemeral ports from 49152. */
+/**
+ * Ports below this are for well-known services. The search stays under 32768, where Linux starts
+ * handing out ephemeral ports (macOS starts at 49152): a block chosen above it can lose a port to an
+ * outgoing connection between the probe and the server's listen (COR-2412, EADDRINUSE on CI).
+ */
 const SEARCH_START = 20_000;
-const SEARCH_END = 45_000;
+const SEARCH_END = 32_000;
 const SEARCH_ATTEMPTS = 50;
 
 /** Whether `count` consecutive ports from `first` are all free. */

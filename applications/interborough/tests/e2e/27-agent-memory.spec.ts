@@ -290,7 +290,13 @@ test.describe('the memory page', () => {
     );
   });
 
-  test('shares a memory with another owner and stops sharing', async ({ page, request }) => {
+  // The end-to-end host is a single-owner workspace: it knows `local-owner` and nothing else, so
+  // the Bureau refuses a grantee it cannot resolve as a member. A successful share is covered by
+  // Bureau's own tests (`memory-operations.test.ts`).
+  test('refuses to share a memory with an owner the workspace does not know, and changes nothing', async ({
+    page,
+    request,
+  }) => {
     const label = uniqueLabel('Share me');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-share'), label);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -300,16 +306,25 @@ test.describe('the memory page', () => {
     await openMoreOptions(page);
     await detailOf(page).getByRole('button', { name: MEMORY_COPY.govern.share.action }).click();
     const dialog = page.getByRole('dialog', { name: MEMORY_COPY.govern.share.dialog.title });
-    await dialog.getByLabel(MEMORY_COPY.govern.share.dialog.label).fill('another-owner');
-    await dialog.getByRole('button', { name: MEMORY_COPY.govern.share.dialog.submit }).click();
-    await expect(page.getByText(MEMORY_COPY.govern.share.outcome.granted.title)).toBeVisible();
+    const owner = dialog.getByLabel(MEMORY_COPY.govern.share.dialog.label);
+    const submit = dialog.getByRole('button', { name: MEMORY_COPY.govern.share.dialog.submit });
+    await owner.fill('another-owner');
+    await submit.click();
 
-    await openMoreOptions(page);
-    await detailOf(page).getByRole('button', { name: MEMORY_COPY.govern.share.action }).click();
-    const again = page.getByRole('dialog', { name: MEMORY_COPY.govern.share.dialog.title });
-    await again.getByLabel(MEMORY_COPY.govern.share.dialog.label).fill('another-owner');
-    await again.getByRole('button', { name: MEMORY_COPY.govern.share.dialog.revoke }).click();
-    await expect(page.getByText(MEMORY_COPY.govern.share.outcome.revoked.title)).toBeVisible();
+    // The refusal is said inside the dialog, which stays open with what was typed still in it.
+    const refusal = dialog.locator('[data-governance-refusal="not-found"]');
+    await expect(refusal).toHaveText(MEMORY_COPY.govern.failed);
+    await expect(dialog).toContainText(MEMORY_COPY.correct.refusal['not-found'].description);
+    await expect(owner).toHaveValue('another-owner');
+
+    // Nothing was shared, nothing is left pending, and the control can be pressed again.
+    await expect(page.getByText(MEMORY_COPY.govern.share.outcome.granted.title)).toHaveCount(0);
+    await expect(page.locator('[data-governance-outcome]')).toHaveCount(0);
+    await expect(submit).toBeEnabled();
+
+    await dialog.getByRole('button', { name: MEMORY_COPY.govern.share.dialog.cancel }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(rowOf(page, label)).toHaveCount(1);
   });
 
   test('quarantines a memory after saying it cannot be undone, and no longer lists it', async ({

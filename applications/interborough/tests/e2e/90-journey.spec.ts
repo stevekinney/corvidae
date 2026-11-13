@@ -35,6 +35,7 @@ import {
   JOURNEY_WORKFLOW_ID,
   RECALL_AGENT_NAME,
 } from './journey-agent.ts';
+import { recordBureauTraffic, withReplyDiagnostics } from './journey-diagnostics.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
 import { expectEngineMissesForRuns, waitingReviewOf } from './task-support.ts';
 import { openJsonTab, removeWorkflow } from './workflow-support.ts';
@@ -413,6 +414,7 @@ test('attaches an image to the echo agent and sees the image it returns', async 
 
 test('corrects what an agent remembers, and a new chat recalls the correction and not the original', async ({
   page,
+  request,
 }) => {
   const original = `Original ${RUN} seat 12A`;
   const correction = `Corrected ${RUN} seat 14C`;
@@ -438,11 +440,19 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
   await expect(page.locator('.ib-memory__content', { hasText: original })).toHaveCount(0);
 
   // A new chat that names the label is answered with what the agent remembers now.
+  const traffic = recordBureauTraffic(page);
   await page.goto(`/chats/new?agent=${RECALL_AGENT_NAME}`);
   await send(page, `Recall ${RUN}`);
   await expect(page).toHaveURL(sessionAddress);
   const reply = page.locator(ASSISTANT_ROW).last();
-  await expect(reply).toContainText(correction);
+  await withReplyDiagnostics(
+    traffic,
+    page,
+    request,
+    test.info(),
+    () => sessionOf(page),
+    () => expect(reply).toContainText(correction),
+  );
   await expect(reply).not.toContainText(original);
 });
 

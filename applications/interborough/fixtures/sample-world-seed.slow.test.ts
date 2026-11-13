@@ -19,6 +19,8 @@ import {
 } from '../src/host/showcase-agents.ts';
 import { SHOWCASE_STORAGE_WARNING_BYTES } from '../src/host/showcase.ts';
 import { formatBytes } from '../src/lib/format/index.ts';
+import { E2E_SHOWCASE_EDITABLE_AGENT } from '../tests/e2e/e2e-constants.ts';
+import { createShowcaseEditableAgent } from '../tests/e2e/showcase-editable-agent.ts';
 import { GITHUB_SOURCE_ID, GITHUB_STUB_TOOLS } from './github-stub-mcp.ts';
 import {
   DAILY_SUMMARY_SCHEDULE,
@@ -53,7 +55,9 @@ let world: SampleWorld;
 
 beforeAll(async () => {
   home = await mkdtemp(join(tmpdir(), 'interborough-sample-world-'));
-  world = await seedSampleWorld(join(home, 'home'));
+  world = await seedSampleWorld(join(home, 'home'), {
+    beforeProviderKeyRemoved: createShowcaseEditableAgent,
+  });
 });
 
 afterAll(async () => {
@@ -92,6 +96,17 @@ type ContextRow = {
 };
 
 describe('the sample world, part A', () => {
+  test('holds the agent file the end-to-end showcase editor opens (COR-2412)', async () => {
+    // The end-to-end server writes it through `beforeProviderKeyRemoved`: once the story removes the
+    // Anthropic key the model catalog is empty, and a create that names a model is refused.
+    const detail = await call<{ source: string; definition: { model: string } | null }>(
+      'bureau.agents.definitions.get',
+      { id: E2E_SHOWCASE_EDITABLE_AGENT },
+    );
+    expect(detail.source).toBe('file');
+    expect(detail.definition?.model).toBe('anthropic/claude-sonnet-5-5');
+  });
+
   test('holds the five chats, each with its title, agent, time and state', async () => {
     // A person's chats only: the sessions goals and schedule fires ran in are not chats.
     const { contexts } = await call<{ contexts: ContextRow[] }>('bureau.contexts.list', {

@@ -13,6 +13,7 @@ import { PALETTE_COPY } from '../../src/app/copy/shell.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { expectReviewsSettled } from './review-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -300,7 +301,7 @@ test.describe('the keys', () => {
     // On: G then R goes to Reviews.
     await page.keyboard.press('g');
     await page.keyboard.press('r');
-    await expect(page).toHaveURL(/\/reviews$/);
+    await expectReviewsSettled(page);
 
     // Off: G then R and C do nothing, but ⌘K and ? still answer.
     await page.goto('/settings');
@@ -319,7 +320,7 @@ test.describe('the keys', () => {
       palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).locator('kbd'),
     ).toHaveCount(0);
     await palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).click();
-    await expect(page).toHaveURL(/\/reviews$/);
+    await expectReviewsSettled(page);
 
     // The choice survives a reload; back on, a key typed into a field still does nothing.
     await page.goto('/settings');

@@ -35,17 +35,19 @@ describe('the browser suites workflow', () => {
     expect(jobText('fixtures')).toContain('runs-on: ubuntu-24.04-arm\n');
   });
 
+  // COR-2412: Interborough's layout checks measure text in the system font, which only the image
+  // holds still; a bare runner's wider default sans cuts off text that fits elsewhere.
+  test("runs Interborough's end-to-end suite in the same image", () => {
+    const { playwrightVersion } = readRepositoryPins();
+    expect(jobText('interborough')).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
+  });
+
   test('compares screenshots in block mode', () => {
     expect(jobText('fixtures')).toContain('CINDER_VISUAL_DIFF: block\n');
   });
 
-  // The fixture suite gates; only Interborough's end-to-end suite is advisory (COR-2412).
-  test('gates on the fixture suite', () => {
-    // Job level only: the report upload step is allowed to fail without failing the job.
-    expect(jobText('fixtures')).not.toMatch(/\n {4}continue-on-error:/u);
-  });
-
-  test("keeps Interborough's end-to-end job advisory until COR-2412", () => {
-    expect(jobText('interborough')).toMatch(/\n {4}continue-on-error: true\n/u);
+  // Both suites gate (COR-2412). Job level only: a report upload step may fail without failing the job.
+  test.each(['fixtures', 'interborough'])('gates on the %s job', (job) => {
+    expect(jobText(job)).not.toMatch(/\n {4}continue-on-error:/u);
   });
 });
