@@ -3446,7 +3446,7 @@
   .chat-approval-group-rows {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-3);
     min-inline-size: 0;
   }
 
@@ -3464,6 +3464,19 @@
   }
 
   .chat-approval-group-rows :global(.chat-message-wrapper .chat-message-footer) {
+    display: none;
+  }
+
+  /* What stood between two cards besides the gap: each bubble's own block padding (8px above and
+   * below) and the message's empty actions line (a 24px minimum, drawn even when it holds nothing
+   * because a decision row has no time or actions). With both gone the cards sit exactly one
+   * group gap apart. */
+  .chat-approval-group-rows :global(.chat-message-wrapper .chat-message) {
+    padding-block: 0;
+  }
+
+  .chat-approval-group-rows :global(.chat-message-wrapper .chat-message-line),
+  .chat-approval-group-rows :global(.chat-message-wrapper .chat-message-notes) {
     display: none;
   }
 
