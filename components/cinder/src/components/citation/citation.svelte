@@ -117,13 +117,14 @@
     const panel = panelElement;
     const index = currentIndex;
     if (panel === null || index === undefined) return;
-    void tick().then(() => {
+    void (async () => {
+      await tick();
       const row = panel.querySelectorAll<HTMLElement>('.cinder-citation__item')[index];
       if (typeof row?.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
-    });
+    })();
   });
 
-  function panel(element: HTMLElement): () => void {
+  function trackPanel(element: HTMLElement): () => void {
     panelElement = element;
     return () => {
       if (panelElement === element) panelElement = null;
@@ -194,7 +195,7 @@
         id={panelId}
         class="cinder-citation__panel"
         aria-label={label}
-        {@attach panel}
+        {@attach trackPanel}
       >
         {@render sourceList()}
       </section>{/if}{:else}<Popover
@@ -207,7 +208,7 @@
       }}
     >
       {#snippet trigger()}{@render marker()}{/snippet}
-      <section class="cinder-citation__panel" aria-label={label} {@attach panel}>
+      <section class="cinder-citation__panel" aria-label={label} {@attach trackPanel}>
         {@render sourceList()}
       </section>
     </Popover>{/if}</span
