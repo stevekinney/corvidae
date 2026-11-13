@@ -20,6 +20,15 @@ describe('Banner layout', () => {
     expect(declarationsFor(css, '.cinder-banner__dismiss').get('grid-row')).toBe('1');
   });
 
+  test('the glyph is an inline box on the message baseline, centred on the capitals', () => {
+    expect(declarationsFor(css, '.cinder-banner__icon').get('display')).toBe('block');
+    expect(declarationsFor(css, '.cinder-banner__icon').get('block-size')).toBeUndefined();
+    const glyph = declarationsFor(css, '.cinder-banner__icon > :where(svg)');
+    expect(glyph.get('display')).toBe('inline-block');
+    expect(glyph.get('block-size')).toBe('1rem');
+    expect(glyph.get('vertical-align')).toBe('round(calc(0.5cap - 0.5rem), 1px)');
+  });
+
   test('the message is capped at 68ch', () => {
     expect(declarationsFor(css, '.cinder-banner__content').get('max-inline-size')).toBe('68ch');
   });

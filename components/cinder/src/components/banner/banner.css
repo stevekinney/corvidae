@@ -58,16 +58,30 @@
     max-inline-size: 68ch;
   }
 
-  /* A glyph at the start, as tall as the first line so it sits beside it, not centered on a
-   * two-line message. */
+  /* A glyph at the start, beside the first line of the message, not centred on a two-line message.
+   * The glyph is an inline box in a line of the message's own font and line height, so it shares
+   * the message's baseline, and it is centred on the capitals, not on the line box: a 13px line's
+   * box centre sits a third of a pixel below the capitals' centre, and a 16px glyph centred in a
+   * 19.5px line lands on a fractional pixel (x.75), which blurs its 2px stroke. Its offset from
+   * the baseline is rounded to a whole pixel, so the glyph sits on the pixel grid wherever the
+   * baseline does. */
   .cinder-banner__icon {
-    display: inline-flex;
+    display: block;
     grid-column: 1;
     grid-row: 1;
     margin-inline-end: var(--cinder-space-3);
-    align-items: center;
     align-self: start;
-    block-size: calc(var(--cinder-text-sm) * var(--cinder-leading-normal));
+  }
+
+  .cinder-banner__icon > :where(svg) {
+    display: inline-block;
+    inline-size: 1rem;
+    block-size: 1rem;
+    /* The glyph's centre on the capitals' centre: its bottom half a glyph minus half a cap height
+     * below the baseline. The first value is that offset for the default 13px type, for a browser
+     * without the `cap` unit or `round()`. */
+    vertical-align: -3px;
+    vertical-align: round(calc(0.5cap - 0.5rem), 1px);
   }
 
   /* The bold lead keeps the tone's colour; the sentence after it reads in the default text
