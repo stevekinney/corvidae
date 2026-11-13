@@ -76,7 +76,6 @@ export interface StressSetup {
   reasoning: Record<number, ReasoningInfo>;
   /** Sources by the assistant turn's position, from zero. */
   sources: Record<number, CitationSource[]>;
-  sourcePresentation?: 'compact' | 'list' | 'inline';
   /** Shows Regenerate, Copy and Quote under replies. */
   regenerate: boolean;
   /** A draft the host puts back in the composer when the page loads. */
@@ -318,6 +317,29 @@ const ENVIRONMENT_SCHEMA = {
     staging: 'Safe to break',
     production: 'Customers see it',
     canary: 'A tenth of customers',
+  },
+};
+
+/** More choices than a short viewport holds, so the docked list proves it shows every one. */
+const LEDGER_SCHEMA = {
+  enum: ['staging', 'production', 'canary', 'qa', 'preview', 'sandbox', 'demo'],
+  'x-labels': {
+    staging: 'Staging',
+    production: 'Production',
+    canary: 'Canary',
+    qa: 'QA',
+    preview: 'Preview',
+    sandbox: 'Sandbox',
+    demo: 'Demo',
+  },
+  'x-descriptions': {
+    staging: 'Safe to break',
+    production: 'Customers see it',
+    canary: 'A tenth of customers',
+    qa: 'The test team',
+    preview: 'One branch',
+    sandbox: 'Throwaway data',
+    demo: 'Sales calls',
   },
 };
 
@@ -718,7 +740,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
           url: 'https://docs.example.com/refunds',
         },
       ];
-      setup.sourcePresentation = 'list';
     } else {
       conversation = withApproval(
         conversation,
@@ -781,7 +802,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         conversation,
         'ask-1',
         `Which ledger should ${LONG_TOOL} export?`,
-        ENVIRONMENT_SCHEMA,
+        LEDGER_SCHEMA,
       );
     } else {
       conversation = withQuestion(conversation, 'ask-1', 'Which environment?', ENVIRONMENT_SCHEMA);
@@ -830,7 +851,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
   },
 
   citations: (stressCase) => {
-    const presentation = param<'inline' | 'compact' | 'list'>(stressCase, 'presentation', 'inline');
     const setup = baseSetup(
       plainTurn(
         'stress-citations',
@@ -842,7 +862,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       param<'contract' | undefined>(stressCase, 'sourceSet', undefined) === 'contract'
         ? SOURCE_LIST_CONTRACT_SOURCES
         : SAMPLE_SOURCES;
-    setup.sourcePresentation = presentation;
     setup.withdrawable = param(stressCase, 'withdrawable', false);
     return setup;
   },
@@ -855,7 +874,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         'The order was charged twice.',
       ),
     );
-    setup.sourcePresentation = 'list';
     setup.sources[0] = [];
     return setup;
   },
@@ -870,7 +888,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
     );
     setup.direction = 'rtl';
     setup.sources[0] = [{ label: 'سياسة الاسترداد', url: 'https://docs.example.com/refunds' }];
-    setup.sourcePresentation = 'inline';
     return setup;
   },
 

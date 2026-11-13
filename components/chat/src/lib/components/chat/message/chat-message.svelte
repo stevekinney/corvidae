@@ -162,22 +162,16 @@
     onSuggestionSelect?: ((label: string) => void) | undefined;
     /**
      * The sources behind this message, in the order to show them. Only an assistant message with
-     * at least one source shows the Sources control; the sources are presentation only and never
-     * written to the transcript.
+     * at least one source shows the Sources control, one small control with the count at the
+     * trailing end of the message line; the sources are presentation only and never written to the
+     * transcript.
      */
     sources?: readonly CitationSource[] | undefined;
     /**
-     * How the Sources control shows the sources: `'compact'` opens Cinder's Citation panel, `'list'`
-     * is a disclosure that lists them under the message, and `'inline'` draws one chip per source,
-     * each reading the source's host (or its label when it has no web address) and opening that
-     * source in Citation's panel. The chips flow like words and wrap with the line. Default
-     * `'compact'`.
-     */
-    sourcePresentation?: 'compact' | 'list' | 'inline' | undefined;
-    /**
-     * With `sourcePresentation="list"`, whether the list is open. Bindable, like `toolCallExpanded`:
-     * `Chat` drives it one-way through `onsourcestoggle`, and a standalone `ChatMessage` still gets
-     * a working disclosure.
+     * Whether the sources are open in place under the message line, on a layout wider than a phone
+     * (a phone opens them in a bottom sheet). Bindable, like `toolCallExpanded`: `Chat` drives it
+     * one-way through `onsourcestoggle`, and a standalone `ChatMessage` still gets a working
+     * disclosure.
      */
     sourcesExpanded?: boolean | undefined;
     /** Called when the source list's disclosure is toggled. */
@@ -241,7 +235,7 @@
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import RetryButton from './retry-button.svelte';
   import MessageSources from './message-sources.svelte';
-  import { sourceChipKeys } from './source-chip-label.ts';
+  import { sourceKeys } from './source-keys.ts';
   import { resolveTurnLabels } from './turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import { effectiveTurnState, presentTurnState } from './turn-state.ts';
@@ -301,7 +295,6 @@
     ontoolcalltoggle,
     onSuggestionSelect,
     sources,
-    sourcePresentation = 'compact',
     sourcesExpanded = $bindable(false),
     onsourcestoggle,
     turnState,
@@ -405,7 +398,7 @@
   );
   let sourcesElement = $state<HTMLElement | null>(null);
   let sourcesWereShown = false;
-  let previousChipKeys: string[] = [];
+  let previousKeys: string[] = [];
   let sourceAnnouncement = $state('');
   let pendingSourceFocus = $state<{ article: HTMLElement; preferAction: boolean }>();
 
@@ -451,63 +444,80 @@
   // mobile sheet makes the underlying message inert until the dialog is removed.
   $effect.pre(() => {
     const shown = shownSources !== undefined;
-    const inline = sourcePresentation === 'inline';
-    const currentKeys = shownSources !== undefined ? sourceChipKeys(shownSources) : [];
+    const currentKeys = shownSources !== undefined ? sourceKeys(shownSources) : [];
     const active = document.activeElement;
     const article = articleElement;
     if (article !== null && sourcesElement !== null && sourcesWereShown) {
-      const sourceChips = sourcesElement.querySelectorAll('[data-chat-source-index]');
-      const withdrawnOpenChip =
-        inline &&
-        Array.from(sourceChips).some((chip, index) => {
-          const key = previousChipKeys[index];
-          return (
-            key !== undefined &&
-            !currentKeys.includes(key) &&
-            chip.querySelector('[aria-expanded="true"]') !== null &&
-            sourceOwnsFocus(chip, active)
-          );
-        });
+      const anySourceWithdrawn = previousKeys.some((key) => !currentKeys.includes(key));
+      // Focus on a row of the list under the control: the row that was withdrawn hands focus to the
+      // next row that is a link, or to a message action when none is left. A row that stays keeps it.
+      const inPlace = sourcesElement.querySelector('.cinder-citation--in-place') !== null;
+      const focusedRow = active?.closest('.cinder-citation__item') ?? null;
+      const rowPosition =
+        inPlace && focusedRow !== null && sourcesElement.contains(focusedRow)
+          ? Array.from(focusedRow.parentElement?.children ?? []).indexOf(focusedRow)
+          : -1;
+      const rowWithdrawn =
+        rowPosition !== -1 &&
+        shown &&
+        previousKeys[rowPosition] !== undefined &&
+        !currentKeys.includes(previousKeys[rowPosition]!);
       const withdrawnSource =
+        !inPlace &&
+        rowPosition === -1 &&
         shown &&
-        previousChipKeys.some((key) => !currentKeys.includes(key)) &&
+        anySourceWithdrawn &&
         sourceOwnsFocus(sourcesElement, active);
-      const compactPanelOpen =
-        (active !== null && active.closest('dialog') !== null) ||
-        sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null;
-      // While another chip remains in this message (not the one compact marker), the sources control moves focus to the next
-      // chip and says so itself; the message action takes focus only when no chip is left.
-      const chipRemains =
-        inline &&
-        shown &&
-        currentKeys.length > 0 &&
-        sourcesElement.querySelector('.chat-message-sources-citation') === null;
-      if (
-        !chipRemains &&
-        (withdrawnOpenChip ||
-          withdrawnSource ||
-          (!shown && sourceOwnsFocus(sourcesElement, active)))
-      ) {
-        sourceAnnouncement = 'Sources were removed';
-        const preferAction = withdrawnOpenChip || withdrawnSource;
-        if (withdrawnSource && !withdrawnOpenChip && compactPanelOpen) {
-          pendingSourceFocus = { article, preferAction };
+      // The list under the line is not a sheet: only the phone's bottom sheet closes under a
+      // withdrawal and hands focus back once it has gone.
+      const sheetOpen =
+        !inPlace &&
+        ((active !== null && active.closest('dialog') !== null) ||
+          sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null);
+      if (rowWithdrawn || withdrawnSource || (!shown && sourceOwnsFocus(sourcesElement, active))) {
+        if (rowWithdrawn) {
+          // Said once, through the host's announcer outside the transcript's log when there is one.
+          if (onAnnounce !== undefined) onAnnounce('A source was withdrawn.');
+          else sourceAnnouncement = 'A source was withdrawn.';
+          void moveFocusToNextSourceRow(article, sourcesElement, rowPosition);
+        } else if (withdrawnSource && sheetOpen) {
+          sourceAnnouncement = 'Sources were removed';
+          pendingSourceFocus = { article, preferAction: true };
         } else {
-          returnSourceFocus(article, preferAction);
+          sourceAnnouncement = 'Sources were removed';
+          returnSourceFocus(article, withdrawnSource);
           void (async () => {
             await tick();
             if (article.isConnected && !article.parentElement?.contains(document.activeElement)) {
-              returnSourceFocus(article, preferAction);
+              returnSourceFocus(article, withdrawnSource);
             }
           })();
         }
-      } else if (shown && currentKeys.some((key) => !previousChipKeys.includes(key))) {
+      } else if (shown && currentKeys.some((key) => !previousKeys.includes(key))) {
         sourceAnnouncement = '';
       }
     }
     sourcesWereShown = shown;
-    previousChipKeys = currentKeys;
+    previousKeys = currentKeys;
   });
+
+  // After a withdrawn row leaves the list, focus goes to the row now at its place if that is a
+  // link, else to the next link below it, else a message action: never to the page behind.
+  async function moveFocusToNextSourceRow(
+    article: HTMLElement,
+    container: HTMLElement,
+    position: number,
+  ): Promise<void> {
+    await tick();
+    if (!article.isConnected) return;
+    const rows = Array.from(container.querySelectorAll<HTMLElement>('.cinder-citation__item'));
+    const next = rows
+      .slice(Math.min(position, rows.length))
+      .map((row) => row.querySelector<HTMLElement>('a.cinder-citation__row'))
+      .find((link) => link !== null && link !== undefined);
+    if (next) next.focus({ preventScroll: true });
+    else returnSourceFocus(article, true);
+  }
 
   // Edit state
   let isEditing = $state(false);
@@ -877,6 +887,18 @@
         {/if}
       </span>
     {/if}
+    {#if shownSources}
+      <!-- The one Sources control: its count at the trailing end of the line, the list under it. -->
+      <span class="chat-message-line-sources" bind:this={sourcesElement}>
+        <MessageSources
+          sources={shownSources}
+          expanded={sourcesExpanded}
+          ontoggle={toggleSourcesExpanded}
+          onCitationCloseComplete={completeSourceWithdrawal}
+          labels={messageLabels}
+        />
+      </span>
+    {/if}
   </div>
 {/snippet}
 
@@ -1159,11 +1181,8 @@
       <div class="chat-message-sources" dir={messageDirection} bind:this={sourcesElement}>
         <MessageSources
           sources={shownSources}
-          presentation={sourcePresentation}
           expanded={sourcesExpanded}
           ontoggle={toggleSourcesExpanded}
-          listId={`${messageId}-sources`}
-          announce={onAnnounce}
           onCitationCloseComplete={completeSourceWithdrawal}
           labels={messageLabels}
         />
@@ -1209,21 +1228,6 @@
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
          line again, and so does an empty one, which carries its time there. -->
     {#if !isEditing && !systemRow && turnPresentation.line}
-      <!-- The sources sit under the prose, on their own block; the line below keeps only the time
-           and the actions, on one row. -->
-      {#if shownSources}
-        <div class="chat-message-sources" dir={messageDirection} bind:this={sourcesElement}>
-          <MessageSources
-            sources={shownSources}
-            presentation={sourcePresentation}
-            expanded={sourcesExpanded}
-            ontoggle={toggleSourcesExpanded}
-            listId={`${messageId}-sources`}
-            onCitationCloseComplete={completeSourceWithdrawal}
-            labels={messageLabels}
-          />
-        </div>
-      {/if}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
@@ -1657,7 +1661,12 @@
     inset-inline: 0;
   }
 
-  /* The Sources control sits under the body, on its own line, and never widens the message. */
+  /* In the transcript the Sources control is part of the message line (its wrapper takes no box of
+     its own); in a bubble, which has no line, it sits under the body and never widens the message. */
+  .chat-message-line-sources {
+    display: contents;
+  }
+
   .chat-message-sources {
     display: flex;
     flex-direction: column;
@@ -1668,6 +1677,9 @@
 
   /* The Sources block takes the message's direction (`dir` on the block), so its control and list
      start at the message's inline start in either; no physical alignment is needed. */
+  .chat-message-sources :global(.chat-message-sources-citation .cinder-citation__marker) {
+    margin-inline-start: 0;
+  }
 
   .chat-message-expand:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
@@ -2082,25 +2094,6 @@
     border-radius: 0;
   }
 
-  /* Sources sit under the answer, on their own block above the time and actions line. The
-   * article's normal bottom padding is useful for boxed messages, but it creates a second full
-   * rhythm unit in the borderless transcript when sources are present. */
-  .chat-message-wrapper[data-presentation='transcript']:has(> .chat-message-sources)
-    > .chat-message {
-    padding-block-end: 0;
-  }
-
-  /* Markdown owns paragraph spacing in normal messages. In a transcript with a Sources control,
-     that last paragraph margin is a redundant third rhythm unit before the separate 44px target;
-     remove only the trailing margin while keeping the target rows disjoint. */
-  .chat-message-wrapper[data-presentation='transcript']:has(> .chat-message-sources)
-    > .chat-message
-    :global(
-      .message-content-preview :is(p, li, blockquote, h1, h2, h3, h4, h5, h6, dt, dd):last-child
-    ) {
-    margin-block-end: 0;
-  }
-
   .chat-message-wrapper[data-presentation='transcript'][data-pending][data-role='user']
     .chat-message {
     background: color-mix(in oklch, var(--cinder-accent-solid), transparent 94%);
@@ -2159,12 +2152,6 @@
     > .chat-message
     + .chat-message-line {
     margin-block-start: calc(var(--cinder-space-1) * -1.5);
-  }
-
-  /* Prose to Sources is one small step, not a blank line: the block's own margin cancels the
-   * wrapper's gap, and the text's trailing leading plus the control's own slack read as the step. */
-  .chat-message-wrapper[data-presentation='transcript'] > .chat-message-sources {
-    margin-block-start: calc(var(--cinder-space-1) * -1);
   }
 
   /* A bubble that ends in an attachment tile has the same inset below the tile as beside it. */

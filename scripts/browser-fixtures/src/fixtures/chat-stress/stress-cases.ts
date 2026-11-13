@@ -62,6 +62,8 @@ type StressStepAction =
   | { action: 'expect-source-contract' }
   | { action: 'expect-approval-review' }
   | { action: 'expect-question-layout' }
+  | { action: 'expect-question-dock'; choices: number }
+  | { action: 'expect-source-control' }
   | { action: 'expect-offscreen'; selector: string }
   | { action: 'expect-absent'; selector: string }
   | { action: 'expect-attachment-shelf'; total: number; reveal?: boolean }
@@ -211,6 +213,8 @@ const STEP_ACTIONS = [
   'expect-source-contract',
   'expect-approval-review',
   'expect-question-layout',
+  'expect-question-dock',
+  'expect-source-control',
   'expect-offscreen',
   'expect-absent',
   'expect-attachment-shelf',
@@ -269,6 +273,10 @@ function problemsInStep(step: unknown, where: string): string[] {
   if (action === 'expect-attachment-shelf') {
     if (!Number.isInteger(step['total']) || (step['total'] as number) < 1)
       problems.push(`${where}: attachment shelf total must be positive`);
+  }
+  if (action === 'expect-question-dock') {
+    if (!Number.isInteger(step['choices']) || (step['choices'] as number) < 1)
+      problems.push(`${where}: expect-question-dock needs a positive number of choices`);
   }
   if (action === 'measure-composer-top' && step['name'] !== 'before' && step['name'] !== 'after')
     problems.push(`${where}: measure-composer-top name must be before or after`);

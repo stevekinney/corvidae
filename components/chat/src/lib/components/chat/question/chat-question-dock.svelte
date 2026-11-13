@@ -22,8 +22,8 @@
   /**
    * A pending question that has choices, docked in place of the composer (COR-2278, row P3): a
    * warning that the run needs the person, a fieldset named for what the agent is asking, radio
-   * cards at least 52 px tall with the keys 1, 2 and 3 for the choices, and Something else, which
-   * opens a field. The answer is always explicit: a choice only selects, and Answer sends it.
+   * cards with the keys 1, 2 and 3 for the choices, and Something else, which opens a field. Every
+   * choice is shown. The answer is always explicit: a choice only selects, and Answer sends it.
    * Reply in chat instead (secondary, on the left) gives the composer back; Answer (primary, on the
    * right) stays off, with its reason in view, until there is something to send. The keys work only
    * while focus is inside the dock and never inside a field, so they cannot take over typing.
@@ -41,7 +41,6 @@
 
   import { DEFAULT_QUESTION_DOCK_LABELS, OTHER_CHOICE } from './question-dock-labels.ts';
   import { choicesOf, classifyQuestion, type QuestionChoice } from './question-kind.ts';
-  import { hiddenRowCounts, snapScrollTop, wholeRowsBlockSize } from '../whole-rows.ts';
 
   let {
     id,
@@ -72,85 +71,6 @@
   let optionsScroll = $state<HTMLDivElement | undefined>();
   let selected = $state<string | null>(null);
   let text = $state('');
-  let hiddenAbove = $state(0);
-  let hiddenBelow = $state(0);
-
-  /**
-   * Sizes the list's visible area to a whole number of rows, so no row is ever shown half cut, and
-   * counts the rows still out of sight on each side for the "N more" lines. The cap on the dock
-   * decides how much room there is; this takes the last whole row that fits inside it.
-   */
-  function wholeRows(node: HTMLElement): () => void {
-    const rows = (): HTMLElement[] => [...node.querySelectorAll<HTMLElement>('[role="radio"]')];
-    const rowEdges = (row: HTMLElement): { top: number; bottom: number } => {
-      const box = row.getBoundingClientRect();
-      const top = box.top - node.getBoundingClientRect().top + node.scrollTop;
-      return { top, bottom: top + box.height };
-    };
-
-    const count = (): void => {
-      const counts = hiddenRowCounts(rows().map(rowEdges), node.scrollTop, node.clientHeight);
-      hiddenAbove = counts.above;
-      hiddenBelow = counts.below;
-    };
-
-    const fit = (): void => {
-      node.style.removeProperty('max-block-size');
-      const edges = rows().map(rowEdges);
-      const blockSize = wholeRowsBlockSize(edges, node.clientHeight);
-      if (blockSize !== undefined) node.style.setProperty('max-block-size', `${blockSize}px`);
-      // The window now ends on a whole row; the offset rests on a row start too, so opening the
-      // own-answer field never leaves a row cut at the top of the window.
-      const maxScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
-      node.scrollTop = snapScrollTop(edges, node.scrollTop, maxScrollTop);
-      keepSelectedInView();
-      count();
-    };
-
-    // The room changes when the own-answer field opens or closes below the list: the selected row
-    // stays in view after the list re-snaps to whole rows.
-    const keepSelectedInView = (): void => {
-      const selectedRow = node.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]');
-      if (selectedRow === null) return;
-      const { top, bottom } = rowEdges(selectedRow);
-      if (top < node.scrollTop) node.scrollTop = top;
-      else if (bottom > node.scrollTop + node.clientHeight)
-        node.scrollTop = bottom - node.clientHeight;
-    };
-
-    let frame = 0;
-    const schedule = (): void => {
-      if (frame !== 0) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        fit();
-      });
-    };
-
-    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
-    resize?.observe(node);
-    if (node.parentElement) resize?.observe(node.parentElement);
-    // The own-answer field sits below the list, so its arrival shrinks the room without resizing
-    // the list's own box: watch the fieldset and the scrolling body that hold both.
-    const fieldset = node.closest('fieldset');
-    if (fieldset) resize?.observe(fieldset);
-    const body = node.closest('.chat-question-dock-body');
-    if (body) resize?.observe(body);
-    const mutations =
-      typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(schedule);
-    mutations?.observe(node, { childList: true, subtree: true });
-    node.addEventListener('scroll', count, { passive: true });
-    window.addEventListener('resize', schedule);
-    fit();
-
-    return () => {
-      cancelAnimationFrame(frame);
-      resize?.disconnect();
-      mutations?.disconnect();
-      node.removeEventListener('scroll', count);
-      window.removeEventListener('resize', schedule);
-    };
-  }
 
   const pickingOther = $derived(selected === OTHER_CHOICE);
   const ready = $derived(selected !== null && (!pickingOther || text.trim() !== ''));
@@ -243,16 +163,7 @@
         <p id={questionId} class="chat-question-dock-question" dir="auto">{question.message}</p>
       {/if}
       <div class="chat-question-dock-options">
-        {#if hiddenAbove > 0}
-          <p class="chat-question-dock-scroll-cue" aria-hidden="true">
-            {labels.moreChoices(hiddenAbove)}
-          </p>
-        {/if}
-        <div
-          bind:this={optionsScroll}
-          class="chat-question-dock-options-scroll"
-          {@attach wholeRows}
-        >
+        <div bind:this={optionsScroll} class="chat-question-dock-options-scroll">
           <ChoiceGrid
             variant="card"
             size="sm"
@@ -286,11 +197,6 @@
             {/if}
           </ChoiceGrid>
         </div>
-        {#if hiddenBelow > 0 && !pickingOther}
-          <p class="chat-question-dock-scroll-cue" aria-hidden="true">
-            {labels.moreChoices(hiddenBelow)}
-          </p>
-        {/if}
       </div>
       <div class="chat-question-dock-completion">
         {#if pickingOther}
@@ -333,6 +239,8 @@
 </form>
 
 <style>
+  /* The panel is as tall as its content up to about 80% of the viewport. Past that only the list of
+     choices scrolls: the header, the question, the own-answer field and the actions stay in view. */
   .chat-question-dock {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
@@ -344,7 +252,7 @@
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised, var(--cinder-surface));
-    max-block-size: min(100%, 50dvh);
+    max-block-size: min(100%, 80dvh);
   }
 
   .chat-question-dock-header {
@@ -382,16 +290,10 @@
     border: 0;
   }
 
-  /* The dock is capped at half the viewport: this body scrolls and the actions below stay pinned. */
+  /* The body does not scroll: the list of choices does, so the question above it and the field
+     below it stay where they are. */
   .chat-question-dock-body {
-    /* `overflow-y: auto` clips inline too: the padding keeps a field's focus ring (its width plus
-       the gap) inside the scroller, and the matching negative margin leaves the text column alone. */
-    --_dock-ring-room: calc(var(--cinder-ring-width, 2px) + 2px);
     min-block-size: 0;
-    padding-inline: var(--_dock-ring-room);
-    margin-inline: calc(var(--_dock-ring-room) * -1);
-    overflow-y: auto;
-    overscroll-behavior: contain;
   }
 
   .chat-question-dock-fieldset {
@@ -401,34 +303,27 @@
       'completion';
     grid-template-rows: auto minmax(0, 1fr) auto;
     block-size: 100%;
+    min-block-size: 0;
   }
 
   .chat-question-dock-options {
     grid-area: options;
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1);
     min-block-size: 0;
   }
 
-  /* `wholeRows` caps this at the last whole row that fits, so no row is ever shown half cut. */
+  /* `overflow-y: auto` clips inline too: the padding keeps a card's focus ring (its width plus the
+     gap) inside the scroller, and the matching negative margin leaves the text column alone. The
+     last visible row is cut by the list's edge, with no caption. */
   .chat-question-dock-options-scroll {
+    --_dock-ring-room: calc(var(--cinder-ring-width, 2px) + 2px);
     flex: 0 1 auto;
     min-block-size: 0;
+    padding: var(--_dock-ring-room);
+    margin: calc(var(--_dock-ring-room) * -1);
     overflow-y: auto;
     overscroll-behavior: contain;
-    scroll-snap-type: block mandatory;
-    scrollbar-gutter: stable;
-  }
-
-  /* The count of rows out of sight sits in the flow at the start edge, never over a row. */
-  .chat-question-dock-scroll-cue {
-    flex: none;
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    line-height: var(--cinder-leading-tight, 1.25);
-    text-align: start;
   }
 
   .chat-question-dock-completion {
@@ -442,8 +337,6 @@
   .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
     padding-block: var(--cinder-space-2);
     gap: var(--cinder-space-2);
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
   }
 
   .chat-question-dock-body
@@ -464,11 +357,12 @@
     row-gap: 0;
   }
 
+  /* The question and its choices read at 14px; the question stays semibold. */
   .chat-question-dock-question {
     grid-area: question;
     margin: 0 0 var(--cinder-space-1);
     line-height: var(--cinder-leading-snug);
-    font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     font-weight: var(--cinder-font-semibold);
     overflow-wrap: anywhere;
   }
@@ -477,6 +371,7 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
   .chat-question-dock-choice-label {
@@ -527,7 +422,7 @@
   @media (max-width: 479.98px), (any-pointer: coarse) {
     .chat-question-dock {
       block-size: auto;
-      max-block-size: min(50dvh, calc(100dvh - 2 * var(--cinder-space-3)));
+      max-block-size: min(80dvh, calc(100dvh - 2 * var(--cinder-space-3)));
       gap: var(--cinder-space-2);
     }
 

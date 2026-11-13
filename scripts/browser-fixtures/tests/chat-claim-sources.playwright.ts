@@ -91,9 +91,7 @@ for (const representation of ['structured', 'positional'] as const) {
       expect(selected).not.toContain('Annual report');
       expect(selected).not.toContain('Investor call');
       // The marker is a real control with a name, though its number is generated content.
-      await expect(
-        body.getByRole('button', { name: 'Annual report (1)', exact: true }),
-      ).toBeVisible();
+      await expect(body.getByRole('button', { name: 'Annual report', exact: true })).toBeVisible();
     });
 
     test('a marker and a footer entry open their source, and closing returns focus to the same control', async ({
@@ -111,27 +109,29 @@ for (const representation of ['structured', 'positional'] as const) {
       const footer = page.getByTestId('claim-source-footer');
       const controls = [
         {
-          control: body.getByRole('button', { name: 'Annual report (1)' }),
+          control: body.getByRole('button', { name: 'Annual report' }),
           label: 'Annual report',
         },
         {
-          control: body.getByRole('button', { name: 'Investor call (1)' }),
+          control: body.getByRole('button', { name: 'Investor call' }),
           label: 'Investor call',
         },
         {
-          control: footer.getByRole('button', { name: 'Annual report (1)' }),
+          control: footer.getByRole('button', { name: 'Annual report' }),
           label: 'Annual report',
         },
         {
-          control: footer.getByRole('button', { name: 'Investor call (1)' }),
+          control: footer.getByRole('button', { name: 'Investor call' }),
           label: 'Investor call',
         },
       ];
       for (const { control, label } of controls) {
         await control.click();
         const preview = page.locator('section[aria-label]');
-        await expect(preview).toHaveAttribute('aria-label', label);
-        await expect(preview.locator('strong')).toHaveText(label);
+        // Every marker opens the same list; the cited source's row is the current one.
+        await expect(preview).toHaveAttribute('aria-label', 'Sources');
+        await expect(preview.locator('li')).toHaveCount(2);
+        await expect(preview.locator('[aria-current="true"] strong')).toHaveText(label);
         await page.keyboard.press('Escape');
         await expect(preview).toHaveCount(0);
         await expect(control).toBeFocused();
