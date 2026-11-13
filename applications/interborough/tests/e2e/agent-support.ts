@@ -116,16 +116,24 @@ export async function addTools(page: Page, names: readonly string[]): Promise<vo
   await closeToolPicker(page);
 }
 
-/** The models and tools `bureau.agents.catalog` offers, which is all the editor may offer. */
+/** A catalog row as the Bureau lists it: a provider with no key saved keeps its rows, `unavailable` (COR-2143). */
+export type CatalogRow = {
+  provider: string;
+  model: string;
+  availability: 'available' | 'unavailable' | 'unknown';
+};
+
+/**
+ * The models and tools `bureau.agents.catalog` lists, which is all the editor may offer. A row in it
+ * is not a model that can be called: the rows of a provider with no key saved are listed
+ * `unavailable`, so a spec that means the callable models filters on `availability`.
+ */
 export async function readCatalog(
   request: APIRequestContext,
-): Promise<{ models: { provider: string; model: string }[]; tools: CatalogTool[] }> {
+): Promise<{ models: CatalogRow[]; tools: CatalogTool[] }> {
   const answer = await bureau(request, 'bureau.agents.catalog', {});
   expect(answer.fault, 'reading the catalog').toBeUndefined();
-  return answer.result as {
-    models: { provider: string; model: string }[];
-    tools: CatalogTool[];
-  };
+  return answer.result as { models: CatalogRow[]; tools: CatalogTool[] };
 }
 
 /** What `/host/paths` says about where the host keeps its configuration and its providers' keys. */

@@ -30,6 +30,7 @@ import { z } from 'zod';
 import { fromWeftName, isMappedWeftName, isNamespacedIdentifier } from './namespaced-identifier';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import { toScheduleSpec } from './schedule-spec';
+import { isHumanWaitRejection } from './human-wait-signal';
 import { toWeftDocumentInput } from './workflow-document-handlers';
 import { AGENT_STEP_HANDLER, scheduleTriggerExtensionIssue, TRIGGER_KEYS } from './workflow-file';
 import { checkWorkflowSchema, workflowInputOf } from './workflow-schema';
@@ -366,6 +367,34 @@ export function createWorkflowDocumentHost(
     checkSchema: checkWorkflowSchema,
     activityVersions: contributions.activityVersions,
   });
+}
+
+/**
+ * Which `await-signal` steps of a revision are reviews (`review: true`), by their canonical
+ * preorder index; `undefined` for a revision Bureau holds no file or saved version of.
+ */
+export type ReviewStepsOfRevision = (
+  name: string,
+  workflowVersion: string,
+) => ReadonlySet<number> | undefined;
+
+/**
+ * `host` with the rule that a rejected review ends the run (COR-2238). Weft never sees `review`,
+ * so it asks, with the step it is at, whether a payload is a rejection: it is one only at a step
+ * of `reviews`, whoever sent it (`bureau.reviews.resolve` or a hand-sent signal). A payload of the
+ * same shape on a plain `await-signal` is an ordinary payload that reaches the next step, as it did
+ * before. A denial continues either way. Register revisions through the result.
+ */
+export function withReviewRejection(
+  host: DocumentWorkflowHost,
+  reviews: ReviewStepsOfRevision,
+): DocumentWorkflowHost {
+  const guarded: DocumentWorkflowHost = {
+    ...host,
+    isRejection: (payload, { name, workflowVersion, step }) =>
+      isHumanWaitRejection(payload) && reviews(name, workflowVersion)?.has(step) === true,
+  };
+  return Object.freeze(guarded);
 }
 
 /** Registering workflow documents on an engine whose documents are bound to another host. */

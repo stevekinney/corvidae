@@ -22,6 +22,15 @@ export function humanWaitDenialPayload(
     : { __abDenied: true, ...(reason !== undefined ? { reason } : {}) };
 }
 
+/** Whether `payload` is what {@link humanWaitDenialPayload} builds for a rejection. */
+export function isHumanWaitRejection(payload: unknown): boolean {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    Object.getOwnPropertyDescriptor(payload, '__abRejected')?.value === true
+  );
+}
+
 /**
  * The id of the row the delivery that answers `review` appends to the run's
  * conversation, or `undefined` for an id that is not a park's. The park's ordinal is

@@ -836,6 +836,13 @@ export const workflowsRevisionsOperation = defineOperation<
 const runsListInput = z.object({
   workflow: workflowIdentifier.optional().describe('Only the instances of this workflow.'),
   status: runStatusSchema.optional().describe('Only the instances in this status.'),
+  errorCode: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Only the failed instances that recorded this error code: `review-rejected`, `input-invalid`, or `output-invalid`.',
+    ),
   ...pageFields,
 });
 const runsListOutput = z.object({
@@ -853,7 +860,7 @@ export const workflowsRunsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List the instances of workflows',
   description:
-    'Lists the instances (Weft runs) of the workflow files, newest first. `workflow` narrows to one workflow’s identifier and `status` to one status. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
+    'Lists the instances (Weft runs) of the workflow files, newest first. `workflow` narrows to one workflow’s identifier, `status` to one status, and `errorCode` to the failed instances that recorded that code (`review-rejected` for a run a person rejected at a review, `input-invalid` or `output-invalid` for a schema failure). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: runsListInput,
@@ -879,6 +886,7 @@ export const workflowsRunsListOperation = defineOperation<
           }),
       workflow: input.workflow,
       status: input.status,
+      errorCode: input.errorCode,
       limit: input.limit ?? DEFAULT_PAGE_LIMIT,
       offset: input.offset ?? 0,
     });

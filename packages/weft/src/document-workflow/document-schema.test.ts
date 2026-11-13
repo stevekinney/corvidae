@@ -4,8 +4,8 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 
 import { Engine } from '../core/engine/index.ts';
+import { WorkflowDocumentSchemaError } from './document-errors.ts';
 import {
-  WorkflowDocumentSchemaError,
   WorkflowDocumentValidationError,
   canonicalWorkflowDocumentJson,
   validateWorkflowDocument,
