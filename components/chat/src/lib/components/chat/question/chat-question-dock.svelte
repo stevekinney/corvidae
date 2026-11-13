@@ -362,7 +362,7 @@
     grid-area: question;
     margin: 0 0 var(--cinder-space-1);
     line-height: var(--cinder-leading-snug);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
     font-weight: var(--cinder-font-semibold);
     overflow-wrap: anywhere;
   }
@@ -371,7 +371,7 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
   }
 
   .chat-question-dock-choice-label {

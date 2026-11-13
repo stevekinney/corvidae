@@ -764,7 +764,7 @@
   .chat-question-choice-label {
     min-inline-size: 0;
     overflow-wrap: anywhere;
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
     font-weight: var(--cinder-font-semibold);
   }
 

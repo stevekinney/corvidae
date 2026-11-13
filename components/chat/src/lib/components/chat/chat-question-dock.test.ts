@@ -263,10 +263,12 @@ describe('a docked question', () => {
     expect(scroller).toContain('padding: var(--_dock-ring-room);');
     expect(scroller).toContain('margin: calc(var(--_dock-ring-room) * -1);');
     const question = /\.chat-question-dock-question \{[^}]*\}/.exec(source)?.[0] ?? '';
-    expect(question).toContain('font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));');
+    expect(question).toContain(
+      'font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));',
+    );
     expect(question).toContain('font-weight: var(--cinder-font-semibold);');
     const choice = /\.chat-question-dock-choice \{[^}]*\}/.exec(source)?.[0] ?? '';
-    expect(choice).toContain('font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));');
+    expect(choice).toContain('font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));');
   });
 
   test('keeps Answer off, with no helper line, until something is chosen', async () => {

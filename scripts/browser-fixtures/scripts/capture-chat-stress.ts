@@ -1516,8 +1516,8 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
             getComputedStyle(time).fontSize === markerStyle.fontSize,
           chevronFits:
             chevron !== null &&
-            chevron.getBoundingClientRect().height <=
-              Number.parseFloat(markerStyle.lineHeight || markerStyle.fontSize) + 1,
+            // The line is measured, not read from style: a `normal` line height has no number.
+            chevron.getBoundingClientRect().height <= marker.getBoundingClientRect().height + 1,
           trailing:
             lineBox === undefined
               ? false
