@@ -368,6 +368,32 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(send.getAttribute('aria-label')).toBe('Queue message');
     expect(send.querySelector('[data-chat-queue-icon]')).not.toBeNull();
   });
+
+  test('a draft makes the reminder and the Queue description say what a send does now', async () => {
+    const note = 'Messages you send now wait until you decide.';
+    const { container } = render(Chat, {
+      id: 'chat-drawer-queue-note',
+      conversation: approvalConversation('drawer-queue-note'),
+      adapter: { sendMessage: async () => undefined, sendRunInput: async () => undefined },
+    });
+    const reminder = () =>
+      drawerOf(container)?.querySelector('.chat-approval-drawer-text')?.textContent?.trim();
+
+    // An empty composer keeps the short form, and Queue's note does not exist yet.
+    expect(reminder()).toBe('Waiting for your approval.');
+    expect(container.querySelector('#chat-drawer-queue-note-input-queue-note')).toBeNull();
+
+    await fireEvent.input(composerOf(container), { target: { value: 'one more thing' } });
+    await tick();
+
+    expect(reminder()).toBe(`Waiting for your approval. ${note}`);
+    const describedBy = sendButton(container).getAttribute('aria-describedby') ?? '';
+    const noteElement = describedBy
+      .split(' ')
+      .map((described) => container.ownerDocument.getElementById(described))
+      .find((element) => element?.textContent === note);
+    expect(noteElement).not.toBeUndefined();
+  });
 });
 
 describe('Chat approval decision surface', () => {

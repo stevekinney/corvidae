@@ -293,6 +293,8 @@
 
   let viewport = $state<HTMLElement | null>(null);
   let containerRef = $state<HTMLElement | null>(null);
+  /** What the composer holds, so the approval reminder can say what sending it does now. */
+  let composerDraft = $state('');
   let inputRef:
     | {
         focus: () => void;
@@ -2778,7 +2780,11 @@
           </div>
         {/if}
         {#if approvalWaiting && !approvalFullyVisible}
-          <ChatApprovalDrawer labels={chatLabels} onreview={reviewPendingApproval} />
+          <ChatApprovalDrawer
+            labels={chatLabels}
+            draft={composerDraft.trim() !== ''}
+            onreview={reviewPendingApproval}
+          />
         {/if}
         {#if followUps.discarded !== undefined}
           <ChatFollowUpDiscardDrawer
@@ -2815,6 +2821,8 @@
           labels={chatLabels}
           id={inputId}
           bind:this={inputRef}
+          bind:value={composerDraft}
+          queueNote={approvalWaiting ? chatLabels.approvalQueueNote : undefined}
           onsubmit={handleComposerSubmit}
           placeholder={composerAnswerPlaceholder ?? composerPlaceholder}
           answering={questions.composerTarget !== undefined || composerAnswering}

@@ -81,6 +81,11 @@ export type ChatLabels = {
   attachmentBlockingReason: (count: number) => string;
   approvalWaiting: string;
   approvalWaitingText: string;
+  /**
+   * The sentence that follows the approval reminder, and the Queue button's description, while the
+   * composer holds a draft: it says what a send does now.
+   */
+  approvalQueueNote: string;
   reviewApproval: string;
   copy: string;
   copyMessage: string;
@@ -177,6 +182,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
     count === 1 ? 'Retry or remove 1 file to send' : `Retry or remove ${count} files to send`,
   approvalWaiting: 'Approval waiting',
   approvalWaitingText: 'Waiting for your approval.',
+  approvalQueueNote: 'Messages you send now wait until you decide.',
   reviewApproval: 'Review approval',
   copy: 'Copy',
   copyMessage: 'Copy message',

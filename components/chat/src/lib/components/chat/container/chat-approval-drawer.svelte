@@ -6,6 +6,8 @@
     /** Called when Review approval is activated: take the person to the approval that waits. */
     onreview: () => void;
     labels: ChatLabels;
+    /** The composer holds a draft: the reminder adds what sending it does now. */
+    draft?: boolean;
     /** Transcript navigation shares the action row when present. */
     navigation?: Snippet;
   };
@@ -13,7 +15,7 @@
 
 <script lang="ts">
   import { Button, Callout, Info } from '@lostgradient/cinder';
-  let { onreview, labels, navigation }: ChatApprovalDrawerProps = $props();
+  let { onreview, labels, draft = false, navigation }: ChatApprovalDrawerProps = $props();
 </script>
 
 <!-- One line above the composer while the approval card is out of view: the sentence names why the
@@ -28,7 +30,11 @@
   {#snippet icon()}
     <Info class="cinder-icon-sm" aria-hidden="true" />
   {/snippet}
-  <span class="chat-approval-drawer-text">{labels.approvalWaitingText}</span>
+  <span class="chat-approval-drawer-text"
+    >{draft
+      ? `${labels.approvalWaitingText} ${labels.approvalQueueNote}`
+      : labels.approvalWaitingText}</span
+  >
   {#snippet action()}
     <Button
       type="button"

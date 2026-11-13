@@ -70,6 +70,11 @@
      * finish. While a draft is present, Send reads Queue with the queue icon. Default `false`.
      */
     queueing?: boolean;
+    /**
+     * Why a send waits, while a tool approval holds the run: the Queue button's tooltip ends with
+     * it and its `aria-describedby` points at it.
+     */
+    queueNote?: string | undefined;
     /** Error message to display */
     error?: string;
     /** Additional CSS class */
@@ -400,6 +405,7 @@
     sending = false,
     allowFollowUp = false,
     queueing = false,
+    queueNote,
     error,
     class: className,
     action,
@@ -654,6 +660,7 @@
   // Derived state
   const errorId = $derived(`${id}-error`);
   const shortcutDescriptionId = $derived(`${id}-shortcut-description`);
+  const queueNoteId = $derived(`${id}-queue-note`);
   const pausedReasonId = $derived(`${id}-paused-reason`);
   const drawerId = $derived(`${id}-drawer`);
   const drawerReasonId = $derived(`${drawerId}-reason`);
@@ -726,9 +733,10 @@
       return answering ? labels.typeAnswer : labels.addMessageOrAttachment;
     }
     if (queued) {
-      return labels.queueShortcut(
+      const shortcut = labels.queueShortcut(
         submitOn === 'modifier-enter' ? 'Command or Control + Enter' : 'Enter',
       );
+      return queueNote === undefined ? shortcut : `${shortcut}. ${queueNote}`;
     }
     if (submitOn === 'modifier-enter') return labels.sendShortcut('Command or Control + Enter');
     if (submitOn === 'enter-if-single-line' && value.includes('\n')) return labels.sendMessage;
@@ -811,6 +819,7 @@
       : []),
     ...(attentionCount > 0 ? [attachmentReasonId] : []),
     ...(shownPausedReason === undefined ? [] : [pausedReasonId]),
+    ...(queued && queueNote !== undefined ? [queueNoteId] : []),
   ]);
 
   function discardRestoredDraft(): void {
@@ -1995,6 +2004,9 @@
 
           {#if shownPausedReason !== undefined}
             <span id={pausedReasonId} class="chat-input-paused-reason">{shownPausedReason}</span>
+          {/if}
+          {#if queued && queueNote !== undefined}
+            <span id={queueNoteId} class="cinder-sr-only">{queueNote}</span>
           {/if}
 
           <!-- One Send/Stop/Answer button stays mounted, so focus is never dropped as the run starts and ends. -->
