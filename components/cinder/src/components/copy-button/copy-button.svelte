@@ -23,7 +23,6 @@
   import { copyToClipboard } from '../../utilities/clipboard.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
-  import Button from '../button/button.svelte';
   import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
 
   let {
@@ -78,58 +77,39 @@
       if (resetTimer) clearTimeout(resetTimer);
     };
   });
-
-  // CopyButton's native attribute surface is narrower than Button's discriminated union, but the
-  // rendered element is always a button. Keep the forwarding cast at this composition boundary so
-  // Button's declaration does not expand the union to an unrepresentable type.
-  const buttonRest = $derived(rest as Record<string, unknown>);
 </script>
-
-{#snippet buttonContent()}
-  {#if copied && confirmation}{@render confirmation()}{:else if copied && iconOnly}<Check
-      class="cinder-icon-sm"
-      aria-hidden="true"
-    />{:else if copied}Copied{:else if children}{@render children()}{:else if iconOnly}<Copy
-      class="cinder-icon-sm"
-      aria-hidden="true"
-    />{:else}Copy{/if}
-{/snippet}
 
 <!-- The button keeps a STABLE accessible name (it remains a "copy" control even
      while showing the confirmation). Success feedback is announced by the
      separate live region below, not via aria-live on the button — putting a live
      region on the interactive control double-announces and conflicts with the
      button role. -->
-{#if iconOnly}
-  <Button
-    {...buttonRest}
-    type="button"
-    size="xs"
-    variant="ghost"
-    quiet={true}
-    iconOnly={true}
-    label={label ?? 'Copy to clipboard'}
-    data-cinder-copied={copied || undefined}
-    aria-label={label ?? 'Copy to clipboard'}
-    onclick={handleClick}
-    class={classNames('cinder-copy-button', className)}
-    children={copied || !children ? buttonContent : children}
-  />
-{:else}
-  <Button
-    {...buttonRest}
-    type="button"
-    size="xs"
-    variant="secondary"
-    iconOnly={false}
-    label={label ?? 'Copy to clipboard'}
-    data-cinder-copied={copied || undefined}
-    aria-label={label ?? 'Copy to clipboard'}
-    onclick={handleClick}
-    class={classNames('cinder-copy-button', className)}
-    children={copied || !children ? buttonContent : children}
-  />
-{/if}
+<button
+  {...rest}
+  type="button"
+  data-cinder-copied={copied || undefined}
+  aria-label={label ?? 'Copy to clipboard'}
+  data-cinder-icon-only={iconOnly || undefined}
+  onclick={handleClick}
+  class={classNames('cinder-copy-button', className)}
+>
+  <!-- Accessible name comes from `aria-label`. In iconOnly mode the icon is
+       decorative (`aria-hidden`). Visible "Copied" text is presentational only;
+       the announcement is owned by the live region. -->
+  {#if copied && confirmation}
+    {@render confirmation()}
+  {:else if copied && iconOnly}
+    <Check class="cinder-icon-sm" aria-hidden="true" />
+  {:else if copied}
+    Copied
+  {:else if children}
+    {@render children()}
+  {:else if iconOnly}
+    <Copy class="cinder-icon-sm" aria-hidden="true" />
+  {:else}
+    Copy
+  {/if}
+</button>
 
 <!-- Dedicated polite live region: announces the copy confirmation exactly once
      per successful copy, decoupled from the interactive button. -->

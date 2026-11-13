@@ -251,7 +251,7 @@ describe('CodeBlock — static structure', () => {
     );
   });
 
-  // The copy button keeps its 28px painted box on touch: Button draws the 44px hit area with a
+  // The copy button keeps its 28px painted box on touch: CopyButton draws the 44px hit area with a
   // pseudo-element, so the code block never grows or reserves more for a finger.
   test('the copy button is not resized on a coarse pointer, so its hit area adds no layout', async () => {
     const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();

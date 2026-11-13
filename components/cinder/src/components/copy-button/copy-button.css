@@ -5,10 +5,87 @@
  * Compact button preset that flashes a "copied" state on success.
  * ======================================== */
 
-  /* Button owns sizing, paint, hit targets, focus, disabled, and forced-colors behavior. */
   .cinder-copy-button {
+    appearance: none;
+    display: inline-flex;
     /* A copy button beside a value keeps its size; the value gives way first. */
     flex-shrink: 0;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    font-size: var(--cinder-text-xs);
+    font-family: inherit;
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-muted);
+    background: transparent;
+    border: 1px solid var(--cinder-border-control);
+    border-radius: var(--cinder-radius-sm);
+    cursor: pointer;
+    transition:
+      color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      background var(--cinder-duration-fast) var(--cinder-ease-standard),
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* An icon-only button is still a 24px target, however narrow the place it sits in. */
+  .cinder-copy-button[data-cinder-icon-only] {
+    justify-content: center;
+    min-inline-size: 1.5rem;
+    min-block-size: 1.5rem;
+  }
+
+  /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
+ * "stick" after tap on touch devices that emulate :hover. */
+  @media (hover: hover) {
+    .cinder-copy-button:hover {
+      color: var(--cinder-text-default);
+      background: var(--cinder-surface-hover);
+      border-color: var(--cinder-border-control);
+    }
+  }
+
+  .cinder-copy-button:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-copy-button:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+    }
+  }
+
+  /* A copy with nothing to copy yet, such as a payload still arriving, stays in place and is muted. */
+  .cinder-copy-button:disabled {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  @media (hover: hover) {
+    .cinder-copy-button:disabled:hover {
+      color: var(--cinder-text-disabled);
+      background: transparent;
+    }
+  }
+
+  /* On a coarse pointer the button keeps its painted box; the 44px hit region is a positioned
+     pseudo-element that takes no layout space, as Button's does. `min()` keeps a button already at
+     or above 44px from shrinking its own region. */
+  @media (any-pointer: coarse) {
+    .cinder-copy-button {
+      position: relative;
+    }
+
+    .cinder-copy-button::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
   }
 
   .cinder-copy-button[data-cinder-copied] {

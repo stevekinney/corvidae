@@ -78,11 +78,14 @@
     }
   }
 
-  /* Respect the user's reduced-motion preference */
+  /* Respect the user's reduced-motion preference. A still spinner dims its indicator to the track,
+     so the ring reads as a quiet, unmoving one. It takes no element `opacity` on top: the track is
+     a contrast tier (3:1 against the page), and a fade would compound with it and halve that. */
   @media (prefers-reduced-motion: reduce) {
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-spinner {
       animation: none;
+      --cinder-spinner-indicator: var(--cinder-spinner-track, var(--cinder-border-contrast));
     }
 
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
@@ -100,6 +103,7 @@
 
   :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on']) .cinder-spinner {
     animation: none;
+    --cinder-spinner-indicator: var(--cinder-spinner-track, var(--cinder-border-contrast));
   }
 
   :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on'])

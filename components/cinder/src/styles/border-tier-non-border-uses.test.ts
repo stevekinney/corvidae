@@ -217,6 +217,15 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       category: 'area',
       audit: 'spinner',
     },
+    {
+      // Under reduced motion the still indicator takes the track colour, undimmed, so the ring
+      // keeps the track's measured contrast (a media query and an explicit attribute).
+      declaration:
+        '--cinder-spinner-indicator: var(--cinder-spinner-track, var(--cinder-border-contrast));',
+      category: 'area',
+      audit: 'spinner',
+      occurrences: 2,
+    },
   ],
   'components/cinder/src/components/chip/chip.css': [
     { declaration: 'var(--cinder-border-strong) 65%', category: 'mix' },
