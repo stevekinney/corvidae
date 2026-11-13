@@ -1,8 +1,8 @@
 /** Host-overridable words used by the composer and approval drawer. */
 export type ChatLabels = {
   sources: string;
+  /** The Sources control's text and accessible name: the count and the word, "3 sources" or "1 source". */
   sourcesCount: (count: number) => string;
-  openSource: (host?: string) => string;
   internalDocument: string;
   unsafeLink: string;
   composerUnavailable: string;
@@ -110,8 +110,7 @@ export type ChatLabels = {
 
 export const DEFAULT_CHAT_LABELS: ChatLabels = {
   sources: 'Sources',
-  sourcesCount: (count) => `Sources (${count})`,
-  openSource: (host) => (host === undefined ? 'Open source' : `Open ${host}`),
+  sourcesCount: (count) => (count === 1 ? '1 source' : `${count} sources`),
   internalDocument: 'Internal document, no public link',
   unsafeLink: "Link hidden: the address isn't a safe web link",
   composerUnavailable: 'Composer unavailable',

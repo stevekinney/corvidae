@@ -592,19 +592,11 @@ const sourcesByMessageId = new Map<string, readonly CitationSource[]>([
 <Chat id="assistant-chat" {conversation} {sourcesByMessageId} />
 ```
 
-An assistant message with at least one source shows a Sources control with the count; an unknown id, an empty array and a user message show nothing, and a Chat given no map renders exactly as before. The control opens Cinder's `Citation`, which lists up to five sources together, links only a safe web address (any other address reads "Link hidden: the address isn't a safe web link"), and never fetches a source. Sources are presentation only: they are never written to the conversation or an export, and duplicates are kept as given. When the host removes a message's sources while focus is on its control or in its panel, focus moves to the message.
+An assistant message with at least one source shows one Sources control, at the trailing end of its message line: the count and the word ("3 sources", "1 source") in the small muted text of the time, with a small chevron. It looks the same for any count and at any width, and a message without sources has none. An unknown id, an empty array and a user message show nothing, and a Chat given no map renders exactly as before.
 
-Set `sourcePresentation="list"` to show them under the message instead of in a panel. The control is then a collapsed disclosure; opened, it lists every source with its excerpt and its link, through the same URL policy, and closing it leaves focus on the control. Opening a list in a message above the viewport, including in a virtualized transcript, keeps the message at the top of the viewport where it was.
+Activating the control opens Cinder's `Citation` list: under the message line on a layout wider than a phone, and as a bottom sheet on a phone. Each row is the source's title (two lines at most), its domain in small muted text, its excerpt in quotation marks when it has one, and an open-in-new glyph at the trailing end; the whole row is the link, and only a safe web address becomes one (a source with no address, or one whose address is refused, keeps its row without the glyph and says so, "Link hidden: the address isn't a safe web link"). Chat never fetches a source. Sources are presentation only: they are never written to the conversation or an export, and duplicates are kept as given. The expanded state, the keyboard and focus behaviour, and focus returning to the control are the disclosure's; opening the list in a message above the viewport, including in a virtualized transcript, keeps the message at the top of the viewport where it was.
 
-```svelte
-<Chat id="assistant-chat" {conversation} {sourcesByMessageId} sourcePresentation="list" />
-```
-
-Set `sourcePresentation="inline"` for one chip per source instead of a single Sources control. A chip reads the source's host (`example.com`) when its address is a safe web link with a host, and the source's label otherwise (an internal document, a relative path, or an address Citation will not link). Chips sit in the line like words and wrap with it; a long host is cut with an ellipsis. Each chip opens that source in Citation's panel, through the same URL policy, and Escape returns focus to the chip.
-
-```svelte
-<Chat id="assistant-chat" {conversation} {sourcesByMessageId} sourcePresentation="inline" />
-```
+When the host withdraws a source while focus is on its row, focus moves to the next row that is a link, or to a message action when none is left; when the host removes every source, focus moves to the message. The withdrawal is said once, through the transcript's announcer.
 
 ## Docked questions
 
@@ -717,7 +709,6 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `moreHistoryAvailable` | `boolean` | no | — | Whether the explicit "Load earlier messages" trigger is shown when a load handler exists. Default `true`. |
 | `newMessageIndicatorVisible` | `boolean` | no | — | Whether the "new messages" indicator is currently visible above the composer. Bindable; cleared automatically when the viewport reaches the bottom. Default `false`. |
 | `scrollFadeVisible` | `boolean` | no | — | Show a scroll-driven edge fade on the top and bottom of the message timeline as it overflows. Opt-in and presentation-only — never the sole signal that more messages exist; the jump-to-latest button and unread count remain the authoritative affordances. Only visible when `surfaceMode` is `'default'`: with `surfaceMode="transparent"` the timeline paints no background of its own, so there is no color the fade could correctly fade toward, and it stays inert rather than painting an incorrect opaque band. Default `false`. |
-| `sourcePresentation` | `"compact"` \| `"list"` \| `"inline"` | no | — | How a message's Sources control shows its `sourcesByMessageId` entries. `'compact'` (default) opens Cinder's Citation panel; `'list'` is a collapsed disclosure that, opened, lists every source under the message with its excerpt and its link when the address is safe; `'inline'` draws one chip per source that flows like words and reads the source's host, or its label when it has no web address, and opens that source in Citation's panel. Opening a list above the viewport keeps the message the reader is looking at in place. |
 | `streaming` | `boolean` | no | — | Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown, unless the `adapter` provides `sendRunInput`: then the composer stays enabled, Send and Stop sit side by side, and a submission goes to `adapter.sendRunInput` as a follow-up to the running turn. Default `false`. |
 | `streamingStatus` | `string` | no | — | Optional status label displayed in the typing indicator while `streaming` is `true` and no streaming content has arrived yet (e.g. `"Thinking…"` or `"Analyzing file…"`). When omitted, three animated dots are shown. |
 | `surfaceMode` | `"default"` \| `"transparent"` | no | — | Controls the background of the chat surface. Use `'transparent'` to inherit the host element's background when embedding chat inside a card or panel. Default `'default'`. |

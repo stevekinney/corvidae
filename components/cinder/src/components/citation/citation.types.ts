@@ -11,6 +11,8 @@ export type CitationProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   label?: string;
   /** The words Citation draws itself, for a host that translates them. Each one left out keeps its English default. */
   labels?: CitationLabels | undefined;
+  /** The marker's accessible name when it has sources, for a marker whose children already say how many ("3 sources"). Defaults to `label` and the count, such as "Sources (3)". */
+  markerLabel?: string | undefined;
   /** The index in `sources` of the source the reader followed a marker for. Its row is marked as the current one, and the list opens scrolled to it. */
   current?: number | undefined;
   /** Opens the sources under the marker instead of in a floating popover, on a viewport at least as wide as a phone. On a phone they still open in the bottom sheet. */

@@ -31,6 +31,7 @@
     sources = [],
     label = 'Sources',
     labels,
+    markerLabel,
     current,
     inPlace = false,
     expanded = $bindable(false),
@@ -71,6 +72,18 @@
   function sourceKey(entry: CitationSource): string {
     return `${entry.url ?? ''}\u0000${entry.label}\u0000${entry.detail ?? ''}`;
   }
+
+  // A row keeps its place in the DOM when an earlier source is withdrawn, so a reader's focus stays
+  // on the row it was on: its key is the source's own fields and which copy of a duplicate it is.
+  const rowKeys = $derived.by(() => {
+    const seen = new Map<string, number>();
+    return sources.map((entry) => {
+      const identity = sourceKey(entry);
+      const copy = seen.get(identity) ?? 0;
+      seen.set(identity, copy + 1);
+      return `${identity}\u0000${copy}`;
+    });
+  });
 
   function toggle(): void {
     if (sources.length === 0) return;
@@ -139,7 +152,7 @@
 
 {#snippet sourceList()}
   <ol class="cinder-citation__list">
-    {#each sources as entry, index (index)}
+    {#each sources as entry, index (rowKeys[index] ?? index)}
       {@const link = resolveCitationLink(entry.url)}
       {@const cited = index === currentIndex}
       <li class="cinder-citation__item" data-cinder-current={cited ? '' : undefined}>
@@ -172,7 +185,7 @@
     aria-expanded={placedHere ? isOpen : undefined}
     aria-controls={placedHere ? panelId : undefined}
     aria-label={sources.length > 0
-      ? `${label} (${sources.length})`
+      ? (markerLabel ?? `${label} (${sources.length})`)
       : `${label} (${labels?.noSources ?? 'no sources'})`}
     >{#if children}{@render children()}{:else}[{sources.length}]{/if}</button
   >

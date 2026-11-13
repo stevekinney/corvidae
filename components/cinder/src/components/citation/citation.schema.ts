@@ -13,6 +13,11 @@ const schema = {
       description:
         'Names the marker and the panel, such as `Sources`. The marker reads it with the source count.',
     },
+    markerLabel: {
+      type: 'string',
+      description:
+        'The marker\'s accessible name when it has sources, for a marker whose children already say how many ("3 sources"). Defaults to `label` and the count, such as "Sources (3)".',
+    },
     current: {
       type: 'number',
       description:

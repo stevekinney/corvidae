@@ -190,7 +190,6 @@
     typingParticipants,
     readReceipts,
     sourcesByMessageId,
-    sourcePresentation = 'compact',
     adapter,
     onAdapterError,
     onPushMessage,
@@ -341,7 +340,7 @@
     onRemeasureRow: remeasureRow,
     defaultExpanded: true,
   });
-  // The expandable source lists (`sourcePresentation="list"`), collapsed by default.
+  // The source lists opened in place under a message line, collapsed by default.
   const sourcesState = useChatDisclosureState({ onRemeasureRow: remeasureRow });
 
   /**
@@ -2510,7 +2509,6 @@
           toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}
           onSuggestionSelect={handleSuggestionSelect}
           sources={message.role === 'assistant' ? sourcesByMessageId?.get(message.id) : undefined}
-          {sourcePresentation}
           sourcesExpanded={sourcesState.isExpanded(message.id)}
           onsourcestoggle={() => void toggleSources(message.id)}
           turnState={resolveMessageTurnState(message, messageTurnState)}
