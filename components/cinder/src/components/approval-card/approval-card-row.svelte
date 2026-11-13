@@ -447,7 +447,6 @@
           {#if !noteOpen}
             <ApprovalCardNoteToggle disabled={isBusy} onOpen={() => (noteOpen = true)} />
           {/if}
-          <span class="cinder-approval-card__row-spacer"></span>
           <Button
             type="button"
             variant="secondary"

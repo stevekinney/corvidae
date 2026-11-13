@@ -337,6 +337,7 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
     margin-inline-start: auto;
   }
@@ -355,6 +356,7 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
   }
 
@@ -770,6 +772,9 @@
     display: flex;
     align-items: flex-start;
     flex-wrap: wrap;
+    /* The decision buttons end at the trailing content edge on every line they occupy, the
+     * primary last; the note toggle's auto margin keeps it at the leading end of the first line. */
+    justify-content: flex-end;
     gap: var(--cinder-space-1);
     /* When the actions wrap, the next line stands clear of the note toggle's hit-area overhang
      * (a 44px area on a 28px face), so the armed primary never covers its lower edge. */
@@ -818,10 +823,6 @@
     text-align: center;
   }
 
-  .cinder-approval-card__row-spacer {
-    flex: 1 1 0;
-  }
-
   /* The action row sits one token under the row's metadata: the body gap plus this margin. */
   .cinder-approval-card--row .cinder-approval-card__row-actions {
     margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-1));
@@ -833,7 +834,10 @@
   .cinder-approval-card__note-toggle-tip {
     flex: none;
     align-self: center;
-    margin-inline-end: var(--cinder-space-2);
+    /* The auto margin takes the row's free space, so the decision buttons are trailing-most; the
+     * padding keeps the old gap to Deny when they fit beside it. */
+    margin-inline-end: auto;
+    padding-inline-end: var(--cinder-space-2);
   }
 
   /* Under 30rem of card width the words give way to the icon; they stay the accessible name and
@@ -951,10 +955,14 @@
     font-weight: var(--cinder-font-semibold);
   }
 
+  /* The countdown first and "Ask again" last, at the trailing end of the title's line or of its
+   * own line when it wraps. */
   .cinder-approval-card__expiry-actions {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--cinder-space-3);
+    margin-inline-start: auto;
   }
 
   @container (inline-size < 24rem) {
@@ -1569,12 +1577,9 @@
       min-inline-size: 0;
     }
 
-    .cinder-approval-card__row-spacer {
-      display: none;
-    }
-
+    /* Compact intrinsic widths, never equal or full width; the 44px height is the target. */
     .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
-      flex: 1 1 0;
+      flex: 0 1 auto;
       min-height: var(--cinder-touch-target-min);
     }
 
@@ -1589,8 +1594,10 @@
       overflow-wrap: normal;
     }
 
+    /* The buttons take the row but stay at its trailing end, the primary last. */
     .cinder-approval-card__action-buttons {
       flex: 1 1 100%;
+      justify-content: flex-end;
       margin-inline-start: 0;
     }
   }

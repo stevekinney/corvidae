@@ -2669,11 +2669,32 @@ describe('ApprovalCard on a phone', () => {
     ).not.toBeNull();
   });
 
-  test('keeps Deny and the primary decision equal, full-width 44px targets in a narrow card', () => {
+  test('keeps Deny and the primary decision compact 44px targets at the trailing edge in a narrow card', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    // Intrinsic width, never equal or full width.
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \.cinder-button\[data-cinder-size\] \{\s*flex: 0 1 auto;\s*min-height: var\(--cinder-touch-target-min\);/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \{\s*flex: 1 1 100%;\s*justify-content: flex-end;/,
+    );
+  });
+
+  test('every approval action row ends at the trailing edge with the primary last and the note toggle leading', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
     expect(css).toMatch(
-      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \.cinder-button\[data-cinder-size\] \{\s*flex: 1 1 0;\s*min-height: var\(--cinder-touch-target-min\);/,
+      /\.cinder-approval-card__row-actions \{[\s\S]*?justify-content: flex-end;[\s\S]*?\}/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__note-toggle-tip \{[\s\S]*?margin-inline-end: auto;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__expiry-actions \{[\s\S]*?justify-content: flex-end;[\s\S]*?margin-inline-start: auto;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__editor-actions \{[\s\S]*?justify-content: flex-end;/,
     );
   });
 

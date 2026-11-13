@@ -237,13 +237,13 @@
     </svelte:element>
     {#if expiresAt !== undefined || onAskAgain !== undefined}
       <div class="cinder-approval-card__expiry-actions">
+        {#if expiresAt !== undefined}<span class="cinder-approval-card__countdown">{expiresAt}</span
+          >{/if}
         {#if onAskAgain !== undefined}<Button
             type="button"
             variant="secondary"
             size="sm"
             onclick={onAskAgain}>Ask again</Button
-          >{/if}
-        {#if expiresAt !== undefined}<span class="cinder-approval-card__countdown">{expiresAt}</span
           >{/if}
       </div>
     {/if}
@@ -483,7 +483,6 @@
         {#if !noteOpen}
           <ApprovalCardNoteToggle disabled={isBusy} onOpen={() => (noteOpen = true)} />
         {/if}
-        <span class="cinder-approval-card__row-spacer"></span>
         <Button
           type="button"
           variant="secondary"

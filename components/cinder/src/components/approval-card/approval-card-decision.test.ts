@@ -564,6 +564,11 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
     expect(container.textContent).toContain('10:15 AM');
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+    // The countdown comes first and "Ask again" last, so the action is trailing-most.
+    const expiryChildren = [
+      ...(container.querySelector('.cinder-approval-card__expiry-actions')?.children ?? []),
+    ];
+    expect(expiryChildren.map((child) => child.tagName)).toEqual(['SPAN', 'BUTTON']);
     await fireEvent.click(getByRole('button', { name: 'Ask again' }));
     expect(onAskAgain).toHaveBeenCalledTimes(1);
   });
@@ -733,7 +738,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
       ' ',
     );
     expect(css).toMatch(
-      /__note-toggle-tip \{[^}]*flex: none;[^}]*margin-inline-end: var\(--cinder-space-2\);/,
+      /__note-toggle-tip \{[^}]*flex: none;[^}]*margin-inline-end: auto;[^}]*padding-inline-end: var\(--cinder-space-2\);/,
     );
     expect(css).toMatch(
       /@container \(inline-size < 30rem\) \{[^@]*__note-toggle \.cinder-button__label \{[^}]*clip-path: inset\(50%\);/,
