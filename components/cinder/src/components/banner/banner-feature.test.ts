@@ -194,21 +194,13 @@ describe('Banner feature styles', () => {
     ).toBe('var(--cinder-text-muted)');
   });
 
-  test('is its own inline-size container, with the actions trailing on one line', () => {
-    expect(root.get('container-type')).toBe('inline-size');
-    expect(root.get('container-name')).toBe('cinder-banner');
-    const trailing = declarationsFor(
-      css,
-      ".cinder-banner[data-cinder-variant='feature'] > .cinder-banner__actions",
-    );
-    expect(trailing.get('grid-column')).toBe('3');
-    expect(trailing.get('grid-row')).toBe('1');
-    expect(trailing.get('flex-wrap')).toBe('nowrap');
-  });
-
-  test('below 560px of its own width the actions drop under the words in the body column', () => {
+  test('trails its actions and drops them below 560px through the layout every banner shares', () => {
+    // The container, the trailing track and the narrow rule live on `.cinder-banner` itself
+    // (`banner-layout.test.ts`); the feature variant adds no actions layout of its own.
+    expect(root.get('container-type')).toBeUndefined();
+    expect(declarationsFor(css, '.cinder-banner').get('container-name')).toBe('cinder-banner');
     expect(css).toMatch(
-      /@container cinder-banner \(max-width: 34\.99rem\)\s*\{\s*\.cinder-banner\[data-cinder-variant='feature'\] > \.cinder-banner__actions\s*\{[^}]*grid-column: 2;[^}]*grid-row: 2;/,
+      /@container cinder-banner \(max-width: 34\.99rem\)\s*\{\s*\.cinder-banner > \.cinder-banner__actions\s*\{[^}]*grid-column: 2;[^}]*grid-row: 2;/,
     );
   });
 
