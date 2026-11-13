@@ -2,7 +2,6 @@ import { chromium } from '@playwright/test';
 import { describe, expect, it } from 'bun:test';
 
 import {
-  attachmentTargetReached,
   locate,
   measureInPage,
   readActionRowProblems,
@@ -207,42 +206,6 @@ describe('chat stress visual measurement', () => {
       expect(await page.evaluate(revealScrollableControls, ['covered'])).toEqual([
         expect.objectContaining({ controlId: 'covered', revealed: true, samplesHitTarget: false }),
       ]);
-    } finally {
-      await browser.close();
-    }
-  });
-
-  it('holds a coarse attachment control to its hit area on all four sides, excusing a neighbouring control', async () => {
-    const browser = await chromium.launch();
-    try {
-      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
-      const row = (between: string, surround: string): string => `
-        <style>
-          *, *::before, *::after { box-sizing:border-box } body { margin:0 }
-          .row { display:flex; align-items:center; gap:4px; padding:40px; ${surround} }
-          .row button { width:28px; height:28px; padding:0; position:relative }
-          .row button.target::after { content:''; position:absolute; left:50%; top:50%; width:${between}; height:44px; transform:translate(-50%,-50%) }
-        </style>`;
-      const reached = async (markup: string): Promise<boolean> => {
-        await page.setContent(markup);
-        return page.locator('.target').evaluate(attachmentTargetReached);
-      };
-      // Reaches 44px in both axes, with other controls beside it: every probe lands on a control.
-      expect(
-        await reached(
-          `${row('44px', '')}<div class="row"><button>A</button><button class="target">B</button><button>C</button></div>`,
-        ),
-      ).toBe(true);
-      // The hit area stops short horizontally and plain space lies beside it: a tap there reaches nothing.
-      expect(
-        await reached(`${row('28px', '')}<div class="row"><button class="target">B</button></div>`),
-      ).toBe(false);
-      // A neighbour overlapping the horizontal reach is excused only because it is another control.
-      expect(
-        await reached(
-          `${row('28px', '')}<div class="row"><button>A</button><button class="target">B</button><span style="display:block;width:28px;height:28px"></span></div>`,
-        ),
-      ).toBe(false);
     } finally {
       await browser.close();
     }
@@ -1180,6 +1143,19 @@ describe('chat stress visual measurement', () => {
     it('allows half a pixel and no more', async () => {
       expect(await problemsFor(row(2.5))).toEqual([]);
       expect(await problemsFor(row(3))).toHaveLength(1);
+    });
+
+    it('reads text that is a flex item itself by its line box, not the 0.75px its letters ride above it', async () => {
+      const bare = (align: string, offset: number): string => `
+        <style>
+          body { margin: 0; font: 13px/19.5px sans-serif; }
+          button { display: flex; align-items: ${align}; gap: 8px; font: inherit; padding: 0; border: 0; }
+          svg { flex: none; inline-size: 16px; block-size: 16px; margin-block-start: ${offset}px; }
+        </style>
+        <button><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg>Read the October ledger</button>`;
+      expect(await problemsFor(bare('center', 0))).toEqual([]);
+      expect(await problemsFor(bare('flex-start', 1.75))).toEqual([]);
+      expect(await problemsFor(bare('flex-start', 0))).toHaveLength(1);
     });
 
     it('measures a glyph in a labelled row that is not a control', async () => {

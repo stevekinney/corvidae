@@ -159,7 +159,7 @@ describe('icons/index', () => {
   it('exports the file-type glyphs a file chip picks from, each its own Lucide glyph', async () => {
     const root = await import('@lostgradient/cinder');
     const expected = {
-      File: 'lucide-file',
+      FileIcon: 'lucide-file',
       FileArchive: 'lucide-file-archive',
       FileAudio: 'lucide-file-headphone',
       FileImage: 'lucide-file-image',

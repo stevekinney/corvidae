@@ -335,7 +335,6 @@ describe('attachments', () => {
         retryAttachmentAccessible: (name: string) => `Erneut versuchen: ${name}`,
         removeAttachment: 'Entfernen',
         removeAttachmentAccessible: (name: string) => `Entfernen: ${name}`,
-        attachmentBlockingReason: () => 'Bitte Dateien erneut versuchen oder entfernen',
         attachmentFailureTooLarge: (name: string, limit: string | undefined) =>
           `${name} ist größer als ${limit ?? 'das Limit'}.`,
         attachmentFailureMany: (count: number) => `${count} Dateien nicht hochgeladen`,
@@ -423,15 +422,14 @@ describe('attachments', () => {
     const send = target.querySelector<HTMLButtonElement>('[data-chat-send]')!;
     expect(send.disabled).toBe(true);
     const reason = target.querySelector<HTMLElement>('.chat-input-attachment-reason')!;
-    expect(reason.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
-      'photo.png is over the 100 B limit.',
-    );
-    expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(reason.id);
+    const words = reason.querySelector<HTMLElement>('.chat-input-attachment-reason-text')!;
+    expect(words.textContent).toBe('photo.png is over the 100 B limit.');
+    // Send is described by the words alone, not by the line's action as well.
+    expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(words.id);
+    expect(reason.contains(words)).toBe(true);
     expect(target.querySelector('.chat-input-attachment-strip')?.contains(reason)).toBe(true);
-    // No separate visible line says "Retry or remove N files to send": that stays Send's tooltip.
-    expect(target.querySelector('.chat-input-attachment-strip')?.textContent).not.toContain(
-      'Retry or remove',
-    );
+    // The line is the only failure text: nothing says "Retry or remove N files to send" any more.
+    expect(target.textContent).not.toContain('Retry or remove');
 
     await fireEvent.keyDown(editor, { key: 'Enter' });
     await tick();

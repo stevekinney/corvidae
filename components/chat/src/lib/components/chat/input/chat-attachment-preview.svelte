@@ -23,7 +23,7 @@
 
 <script lang="ts">
   import {
-    File,
+    FileIcon,
     FileArchive,
     FileAudio,
     FileCode,
@@ -60,7 +60,7 @@
     audio: FileAudio,
     video: FileVideo,
     code: FileCode,
-    file: File,
+    file: FileIcon,
   } as const;
   const FileGlyph = $derived(GLYPHS[glyph]);
   const parts = $derived(splitFileName(attachment.file.name));

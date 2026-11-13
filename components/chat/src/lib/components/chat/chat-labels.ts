@@ -93,7 +93,6 @@ export type ChatLabels = {
   uploadingFile: string;
   readingFile: string;
   uploadFailed: string;
-  attachmentBlockingReason: (count: number) => string;
   approvalWaiting: string;
   approvalWaitingText: string;
   /**
@@ -203,8 +202,6 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   uploadingFile: 'Uploading file',
   readingFile: 'Reading file',
   uploadFailed: 'Upload failed. Try again, or remove it.',
-  attachmentBlockingReason: (count) =>
-    count === 1 ? 'Retry or remove 1 file to send' : `Retry or remove ${count} files to send`,
   approvalWaiting: 'Approval waiting',
   approvalWaitingText: 'Waiting for your approval.',
   approvalQueueNote: 'Messages you send now wait until you decide.',

@@ -21,7 +21,7 @@ export { default as Clock } from '@lucide/svelte/icons/clock';
 export { default as Code } from '@lucide/svelte/icons/code';
 export { default as Copy } from '@lucide/svelte/icons/copy';
 export { default as MoreHorizontal } from '@lucide/svelte/icons/ellipsis';
-export { default as File } from '@lucide/svelte/icons/file';
+export { default as FileIcon } from '@lucide/svelte/icons/file';
 export { default as FileArchive } from '@lucide/svelte/icons/file-archive';
 export { default as FileCode } from '@lucide/svelte/icons/file-code';
 export { default as FileAudio } from '@lucide/svelte/icons/file-headphone';

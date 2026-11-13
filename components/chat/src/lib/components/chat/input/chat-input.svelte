@@ -685,7 +685,7 @@
     if (starting !== undefined) return starting;
     if (offline) return labels.sendOffline;
     if (hasPendingAttachments) return labels.waitForAttachments;
-    if (attentionCount > 0) return labels.attachmentBlockingReason(attentionCount);
+    if (attentionCount > 0 && failureLineText !== undefined) return failureLineText;
     if (showStopButton) return labels.stopGenerating;
     if (isWhitespaceOnly && !hasReadyAttachments && !hasReadyPromotedPaste) {
       return answering ? labels.typeAnswer : labels.addMessageOrAttachment;
@@ -1906,8 +1906,10 @@
             {/each}
           </ul>
           {#if failureLine !== undefined}
-            <p id={attachmentReasonId} class="chat-input-attachment-reason">
-              <span class="chat-input-attachment-reason-text" dir="auto">{failureLineText}</span>
+            <p class="chat-input-attachment-reason">
+              <span id={attachmentReasonId} class="chat-input-attachment-reason-text" dir="auto"
+                >{failureLineText}</span
+              >
               <Button
                 type="button"
                 variant="ghost-accent"

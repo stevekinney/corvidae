@@ -23,14 +23,7 @@
  * Playwright is used as a library from this process, so the run has no child test runner. The
  * design review that follows reads `gallery.html` and `manifest.jsonl`; it is not part of this tool.
  */
-import {
-  chromium,
-  expect,
-  type Browser,
-  type BrowserContext,
-  type Locator,
-  type Page,
-} from '@playwright/test';
+import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -85,73 +78,6 @@ import { prepareManifest } from './prepare-manifest.ts';
 /** The one deadline every wait of the run shares. */
 const DEADLINE = HANG_GUARD_MILLISECONDS;
 const expectAttachment = expect.configure({ timeout: DEADLINE });
-
-/**
- * A fine pointer's control is at least `minimumTarget` painted. A coarse control paints compact (an
- * icon-only Retry or Remove is 28px) and reaches 44px through a positioned hit area, so its target
- * is what a tap above and below its centre reaches, not the painted box.
- */
-async function expectAttachmentTarget(
-  button: Locator,
-  coarse: boolean,
-  minimumTarget: number,
-): Promise<void> {
-  if (!coarse) {
-    const box = await button.boundingBox();
-    expectAttachment(box?.width).toBeGreaterThanOrEqual(minimumTarget);
-    expectAttachment(box?.height).toBeGreaterThanOrEqual(minimumTarget);
-    return;
-  }
-  if (await button.evaluate(attachmentTargetReached)) return;
-  // A miss names what the taps landed on, so a failure that does not repeat still says why.
-  const detail = await button.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const centreX = rect.left + rect.width / 2;
-    const centreY = rect.top + rect.height / 2;
-    const describe = (x: number, y: number): string => {
-      const hit = document.elementFromPoint(x, y);
-      return hit === null ? 'nothing' : `${hit.tagName.toLowerCase()}.${hit.className}`;
-    };
-    const list = element.closest('.chat-input-attachments');
-    const listRect = list?.getBoundingClientRect();
-    return JSON.stringify({
-      button: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
-      list: listRect === undefined ? null : { top: listRect.top, bottom: listRect.bottom },
-      scrollTop: list?.scrollTop ?? null,
-      above: describe(centreX, centreY - 21),
-      below: describe(centreX, centreY + 21),
-      left: describe(centreX - 21, centreY),
-      right: describe(centreX + 21, centreY),
-    });
-  });
-  throw new Error(`attachment control's hit area is not reached: ${detail}`);
-}
-
-/**
- * Runs in the page: a coarse control's 44px hit area is reached 21px above, below, left and right
- * of its centre. Above and below must land on the control. Left and right may land on a
- * neighbouring control when the point is outside this control's own box (the main touch-target
- * guard's neighbour rule), and must otherwise land on this one.
- */
-export function attachmentTargetReached(element: Element): boolean {
-  const rect = element.getBoundingClientRect();
-  const centreX = rect.left + rect.width / 2;
-  const centreY = rect.top + rect.height / 2;
-  const interactive =
-    'button, a[href], input, select, textarea, summary, [role="button"], [tabindex]';
-  const vertical = [-21, 21].every(
-    (offset) => document.elementFromPoint(centreX, centreY + offset)?.closest('button') === element,
-  );
-  const horizontal = [-21, 21].every((offset) => {
-    const x = centreX + offset;
-    const hit = document.elementFromPoint(x, centreY);
-    if (hit?.closest('button') === element) return true;
-    const outside = x < rect.left || x > rect.right;
-    const neighbour = hit?.closest(interactive);
-    return outside && neighbour != null && neighbour !== element && !element.contains(neighbour);
-  });
-  return vertical && horizontal;
-}
 
 const fixtureRoot = resolve(import.meta.dirname, '..');
 const repositoryRoot = resolve(fixtureRoot, '..', '..');
@@ -1615,19 +1541,18 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       // remove controls apart. A chip cut by the trailing edge is scrolled out and not measured.
       const coarse = await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches);
       if (!coarse) {
-        const visible = await strip.locator('.chat-input-attachment-remove').evaluateAll((nodes) =>
-          nodes.flatMap((node, index) => {
+        const painted = await strip.locator('.chat-input-attachment-remove').evaluateAll((nodes) =>
+          nodes.flatMap((node) => {
             const box = node.getBoundingClientRect();
             const edge = node.closest('.chat-input-attachments')!.getBoundingClientRect();
-            return box.left >= edge.left && box.right <= edge.right ? [index] : [];
+            return box.left >= edge.left && box.right <= edge.right
+              ? [{ width: box.width, height: box.height }]
+              : [];
           }),
         );
-        for (const index of visible) {
-          await expectAttachmentTarget(
-            strip.locator('.chat-input-attachment-remove').nth(index),
-            false,
-            24,
-          );
+        for (const box of painted) {
+          expectAttachment(box.width).toBeGreaterThanOrEqual(24);
+          expectAttachment(box.height).toBeGreaterThanOrEqual(24);
         }
       }
       expectAttachment(await readAttachmentStripProblems(page)).toEqual([]);
@@ -2550,8 +2475,11 @@ export async function readAttachmentStripProblems(page: Page): Promise<string[]>
 /**
  * Measures that a glyph and the text it shares a row with are centred on one line (owner decision
  * of 2026-11-13): for an `svg` in a flex or grid row that holds visible text, inside a control or a
- * labelled row, the vertical centre of the glyph's box and of the text's first line differ by at
- * most half a pixel. The row is found as {@link readIconSizeProblems} finds it. A glyph that is the
+ * labelled row, the vertical centre of the glyph's box and of the text's first line box differ by
+ * at most half a pixel. The line box is the text's own (its block's content top plus half its line
+ * height), not the font's content area, because the browser floors a line's half-leading to a
+ * whole pixel and draws 13px text on a 19.5px line 0.75px above the line's centre however the
+ * row is aligned. The row is found as {@link readIconSizeProblems} finds it. A glyph that is the
  * only content of its control, a glyph stacked above its text, and tooltips are not measured.
  */
 export async function readIconCentreProblems(page: Page): Promise<string[]> {
@@ -2561,10 +2489,61 @@ export async function readIconCentreProblems(page: Page): Promise<string[]> {
     const inControlOrLabelledRow =
       'button, a[href], summary, [role="button"], [aria-label], [aria-labelledby], label, li';
     const textOf = (node: Node): string => (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+    /** The first line of the text itself: a range over an element also answers the boxes of its children. */
     const firstLine = (node: Node): DOMRect | undefined => {
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      return [...range.getClientRects()].find((rectangle) => rectangle.height > 0);
+      const texts: Node[] = [];
+      if (node.nodeType === Node.TEXT_NODE) texts.push(node);
+      else {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        for (let next = walker.nextNode(); next !== null; next = walker.nextNode())
+          texts.push(next);
+      }
+      for (const text of texts) {
+        if (textOf(text) === '' || text.parentElement?.closest(hidden) != null) continue;
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const line = [...range.getClientRects()].find((rectangle) => rectangle.height > 0);
+        if (line !== undefined) return line;
+      }
+      return undefined;
+    };
+    /**
+     * The vertical centre of the first line of the text beside a glyph: the first line box, not the
+     * font's content area. The browser floors a line's half-leading to a whole pixel, so a 13px text
+     * on a 19.5px line draws its letters 0.75px above the line's centre however the row is
+     * aligned, and a glyph centred on the line would read as off by that much. A text that is
+     * itself a flex or grid item has no line box of its own to read, and its client rectangle is
+     * used.
+     */
+    const lineBoxCentre = (beside: Node, container: Element, line: DOMRect): number => {
+      const walker = document.createTreeWalker(beside, NodeFilter.SHOW_TEXT);
+      let text: Node | null = beside.nodeType === Node.TEXT_NODE ? beside : walker.nextNode();
+      while (text !== null && textOf(text) === '') text = walker.nextNode();
+      let block = text?.parentElement ?? null;
+      while (
+        block !== null &&
+        block !== container &&
+        /^inline/.test(getComputedStyle(block).display) &&
+        !/^inline-(flex|grid)$/.test(getComputedStyle(block).display)
+      ) {
+        block = block.parentElement;
+      }
+      if (block === null || block === container) {
+        // Text that is a flex or grid item itself: its rectangle is the font's content area, placed
+        // a floored half-leading below the top of its line box.
+        const lineHeight = parseFloat(getComputedStyle(container).lineHeight);
+        if (!Number.isFinite(lineHeight)) return line.top + line.height / 2;
+        const lineTop = line.top - Math.floor((lineHeight - line.height) / 2);
+        return lineTop + lineHeight / 2;
+      }
+      const style = getComputedStyle(block);
+      const lineHeight = parseFloat(style.lineHeight);
+      if (!Number.isFinite(lineHeight)) return line.top + line.height / 2;
+      const top =
+        block.getBoundingClientRect().top +
+        parseFloat(style.borderTopWidth) +
+        parseFloat(style.paddingTop);
+      return top + lineHeight / 2;
     };
     for (const glyph of document.querySelectorAll<SVGElement>('svg')) {
       if (glyph.closest(hidden) !== null) continue;
@@ -2594,7 +2573,7 @@ export async function readIconCentreProblems(page: Page): Promise<string[]> {
             if (overlap > 0) {
               if (container.closest(inControlOrLabelledRow) !== null) {
                 const difference = Math.abs(
-                  box.top + box.height / 2 - (line.top + line.height / 2),
+                  box.top + box.height / 2 - lineBoxCentre(beside, container, line),
                 );
                 if (difference > tolerance) {
                   const name = (
