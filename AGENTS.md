@@ -58,9 +58,9 @@ Mechanics: [Turborepo stage mechanics](documentation/repository/turborepo-stage-
 
 ## Worktrees and agents
 
-- Treat each worktree as an isolated checkout; from a fresh one, run `bun install --frozen-lockfile` first. Claude Code uses `claude --worktree <name>`; Codex uses its managed Worktree mode with that install.
+- Each worktree is an isolated checkout; a fresh one runs `bun install --frozen-lockfile` first. Claude Code uses `claude --worktree <name>`; Codex its managed Worktree mode.
 - Never copy `.env`, credentials, `node_modules`, caches, or other ignored state between worktrees.
-- Preserve unrelated worktrees and branches; remove only a clean worktree the current task created, after its branch is merged or retired.
+- Preserve unrelated worktrees and branches; remove only a clean worktree this task created, once its branch is merged or retired. `bun run audit:processes` lists leftover processes; `--kill` stops orphans.
 - Agents never run a bare `git stash` or `git stash pop`: the stash stack is shared by every worktree (`scripts/chef/stash-guard.ts`).
 
 ### Parallel runs
