@@ -41,6 +41,7 @@
 
   import { DEFAULT_QUESTION_DOCK_LABELS, OTHER_CHOICE } from './question-dock-labels.ts';
   import { choicesOf, classifyQuestion, type QuestionChoice } from './question-kind.ts';
+  import { hiddenRowCounts, snapScrollTop, wholeRowsBlockSize } from '../whole-rows.ts';
 
   let {
     id,
@@ -88,26 +89,20 @@
     };
 
     const count = (): void => {
-      let above = 0;
-      let below = 0;
-      for (const row of rows()) {
-        const { top, bottom } = rowEdges(row);
-        if (top < node.scrollTop - 1) above += 1;
-        else if (bottom > node.scrollTop + node.clientHeight + 1) below += 1;
-      }
-      hiddenAbove = above;
-      hiddenBelow = below;
+      const counts = hiddenRowCounts(rows().map(rowEdges), node.scrollTop, node.clientHeight);
+      hiddenAbove = counts.above;
+      hiddenBelow = counts.below;
     };
 
     const fit = (): void => {
       node.style.removeProperty('max-block-size');
-      const room = node.clientHeight;
       const edges = rows().map(rowEdges);
-      const last = edges.at(-1);
-      if (last !== undefined && last.bottom > room + 1) {
-        const whole = edges.filter((edge) => edge.bottom <= room + 1).at(-1) ?? edges[0]!;
-        node.style.setProperty('max-block-size', `${whole.bottom}px`);
-      }
+      const blockSize = wholeRowsBlockSize(edges, node.clientHeight);
+      if (blockSize !== undefined) node.style.setProperty('max-block-size', `${blockSize}px`);
+      // The window now ends on a whole row; the offset rests on a row start too, so opening the
+      // own-answer field never leaves a row cut at the top of the window.
+      const maxScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
+      node.scrollTop = snapScrollTop(edges, node.scrollTop, maxScrollTop);
       keepSelectedInView();
       count();
     };

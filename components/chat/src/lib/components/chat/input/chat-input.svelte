@@ -215,7 +215,6 @@
 
   import { flushSync, tick, untrack } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
-  import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { createIdFactory, useStableId } from '../../../utilities/id-factory.ts';
@@ -264,38 +263,46 @@
     canRetry,
     needsAttention,
   } from './attachment-tile.ts';
-  import { wholeAttachmentRowsBlockSize } from './attachment-rows.ts';
+  import { hiddenRowCounts, wholeRowsBlockSize, type RowEdges } from '../whole-rows.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
 
-  const attachmentScrollFade = overflowFadeEdges();
+  /** The files still out of sight below an opened list, for the "N more" line under it. */
+  let hiddenListedAttachments = $state(0);
 
   /**
-   * Sizes an opened attachment list to whole rows plus their gaps, so no row is ever cut in half
-   * under the fade. The list's block padding is the room for its end rows' hit-area overhang; the
-   * matching negative margin keeps it out of the layout, so the header-to-first-row and
-   * last-row-to-hint distances equal the collapsed shelf's.
+   * Sizes an opened attachment list to whole rows plus their gaps, so it ends on a row and no part
+   * of the next one shows; the "N more" line under it says how many remain. The list's block
+   * padding is the room for its end rows' hit-area overhang; the matching negative margin keeps it
+   * out of the layout, so the header-to-first-row and last-row-to-hint distances equal the
+   * collapsed shelf's.
    */
   function wholeAttachmentRows(node: HTMLElement): () => void {
+    const edgesOf = (): RowEdges[] => {
+      const nodeTop = node.getBoundingClientRect().top;
+      return [...node.querySelectorAll<HTMLElement>(':scope > li')].map((row) => {
+        const box = row.getBoundingClientRect();
+        const top = box.top - nodeTop + node.scrollTop;
+        return { top, bottom: top + box.height };
+      });
+    };
+    const count = (): void => {
+      hiddenListedAttachments = node.hasAttribute('data-expanded')
+        ? hiddenRowCounts(edgesOf(), node.scrollTop, node.clientHeight).below
+        : 0;
+    };
     const fit = (): void => {
       // Growing the list to measure it and shrinking it again clamps its scroll offset twice, which
       // would move a list the person (or a focus move) has scrolled; the offset is put back.
       const scrollTop = node.scrollTop;
       measure();
       node.scrollTop = scrollTop;
+      count();
     };
     const measure = (): void => {
       node.style.removeProperty('max-block-size');
       if (!node.hasAttribute('data-expanded')) return;
-      const rows = [...node.querySelectorAll<HTMLElement>(':scope > li')];
-      const nodeTop = node.getBoundingClientRect().top;
-      const room = node.clientHeight;
-      const bottoms = rows.map(
-        (row) => row.getBoundingClientRect().bottom - nodeTop + node.scrollTop,
-      );
       const paddingEnd = Number.parseFloat(getComputedStyle(node).paddingBlockEnd) || 0;
-      const fade = Number.parseFloat(getComputedStyle(node, '::after').blockSize) || 0;
-      const heights = rows.map((row) => row.getBoundingClientRect().height);
-      const blockSize = wholeAttachmentRowsBlockSize({ bottoms, heights, room, fade, paddingEnd });
+      const blockSize = wholeRowsBlockSize(edgesOf(), node.clientHeight, paddingEnd);
       if (blockSize !== undefined) node.style.setProperty('max-block-size', `${blockSize}px`);
     };
 
@@ -318,11 +325,13 @@
       attributes: true,
       attributeFilter: ['data-expanded'],
     });
+    node.addEventListener('scroll', count, { passive: true });
     fit();
     return () => {
       cancelAnimationFrame(frame);
       resize?.disconnect();
       mutations?.disconnect();
+      node.removeEventListener('scroll', count);
     };
   }
 
@@ -1785,11 +1794,7 @@
           </p>
           <ul
             id={attachmentListId}
-            class={classNames(
-              'chat-input-attachments',
-              attachmentsExpanded && 'cinder-_scroll-fade',
-            )}
-            {@attach attachmentScrollFade}
+            class="chat-input-attachments"
             {@attach wholeAttachmentRows}
             aria-label={labels.attachedFiles}
             data-expanded={attachmentsExpanded || undefined}
@@ -1840,6 +1845,11 @@
               </li>
             {/each}
           </ul>
+          {#if attachmentsExpanded && hiddenListedAttachments > 0}
+            <p class="chat-input-attachment-scroll-cue" aria-hidden="true">
+              {labels.moreAttachments(hiddenListedAttachments)}
+            </p>
+          {/if}
           {#if attentionCount > 0}
             <p id={attachmentReasonId} class="chat-input-attachment-reason">
               {labels.attachmentBlockingReason(attentionCount)}
@@ -2239,17 +2249,20 @@
   }
 
   .chat-input-attachments[data-expanded] {
-    --_cinder-scroll-fade-color: var(--cinder-control-background);
     max-block-size: 12rem;
     overflow-y: auto;
-    scroll-padding-block-end: var(--cinder-space-6);
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: var(--cinder-scrollbar-thumb) var(--cinder-scrollbar-track);
   }
 
-  .chat-input-attachments[data-expanded]::after {
-    flex: none;
+  /* The count of files still below an opened list, at the start edge like the question dock's. */
+  .chat-input-attachment-scroll-cue {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-tight, 1.25);
+    color: var(--cinder-text-muted);
+    text-align: start;
   }
 
   /* A row's Remove or Retry reaches 44px by a hit area that overhangs its row. A later row paints

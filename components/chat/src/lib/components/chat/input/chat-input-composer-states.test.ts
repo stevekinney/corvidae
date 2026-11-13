@@ -74,15 +74,13 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).not.toContain('data-offline');
     expect(source).toMatch(/\.chat-input-editor\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
     expect(source).toMatch(/\.chat-input-markdown\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
-    expect(source).toContain('const attachmentScrollFade = overflowFadeEdges();');
-    expect(source).toContain('{@attach attachmentScrollFade}');
-    expect(source).toContain("'cinder-_scroll-fade'");
+    // The opened list ends on a whole row with no fade over a part row; a line under it counts
+    // the files still below.
+    expect(source).not.toContain('attachmentScrollFade');
+    expect(source).not.toContain('.chat-input-attachments[data-expanded]::after');
     expect(source).toContain('align-items: center;');
-    expect(source).toContain('--_cinder-scroll-fade-color: var(--cinder-control-background);');
-    expect(source).toMatch(
-      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*scroll-padding-block-end:\s*var\(--cinder-space-6\);/s,
-    );
-    expect(source).toContain('.chat-input-attachments[data-expanded]::after');
+    expect(source).toContain('class="chat-input-attachment-scroll-cue"');
+    expect(source).toContain('labels.moreAttachments(hiddenListedAttachments)');
   });
 
   test('an opened list shows whole rows and takes its hit-area room back from the layout', async () => {
