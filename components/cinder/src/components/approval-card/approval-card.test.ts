@@ -325,7 +325,8 @@ describe('ApprovalCard', () => {
       button.textContent?.trim(),
     );
 
-    expect(buttons).toEqual(['Deny', 'Approve with edits', 'Approve']);
+    // Add a note opens the row at its start; the decisions follow, the primary last.
+    expect(buttons).toEqual(['Add a note', 'Deny', 'Approve with edits', 'Approve']);
   });
 
   test('does not render a Remember action button', () => {
@@ -473,6 +474,7 @@ describe('ApprovalCard', () => {
       }),
     });
     expect(container.querySelector('.cinder-json-viewer')).toBeNull();
+    await fireEvent.click(getByRole('button', { name: /^deploy-cloud arguments/ }));
     await fireEvent.click(getByRole('radio', { name: 'JSON' }));
     expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
     expect(container.textContent).toContain('"1"');
@@ -770,6 +772,7 @@ describe('ApprovalCard', () => {
         }),
       });
 
+      await fireEvent.click(getByRole('button', { name: /^deploy-cloud arguments/ }));
       await fireEvent.click(getByRole('radio', { name: 'JSON' }));
       const viewer = container.querySelector('.cinder-json-viewer');
       expect(viewer?.textContent).toContain('"--force"');
@@ -1251,6 +1254,62 @@ function squash(text: string | null | undefined): string {
 }
 
 describe('ApprovalCard card layout anatomy', () => {
+  test('reads the title, the command, the files, then the decision, with arguments and Details closed', async () => {
+    const { container, getByRole } = render(ApprovalCard, { ...approvalCardProps() });
+
+    const body = requiredInstance(
+      container.querySelector('.cinder-approval-card__body'),
+      HTMLElement,
+    );
+    const argumentsToggle = getByRole('button', { name: /^deploy-cloud arguments/ });
+    const detailsToggle = getByRole('button', { name: 'Details' });
+    const order = [
+      body.querySelector('.cinder-approval-card__header'),
+      body.querySelector('.cinder-code-block'),
+      body.querySelector('.cinder-approval-card__file-list'),
+      argumentsToggle,
+      detailsToggle,
+      getByRole('group', { name: 'Approval actions' }),
+    ];
+    for (const [index, element] of order.entries()) {
+      expect(element).not.toBeNull();
+      const next = order[index + 1];
+      if (next) {
+        expect(element!.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+          Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      }
+    }
+
+    // Both disclosures start closed: the summary line shows, the inspector and the details wait.
+    expect(argumentsToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(squash(argumentsToggle.textContent)).toBe(
+      'deploy-cloud arguments Dry run No, Retries 1',
+    );
+    const argumentsRegion = requiredInstance(
+      document.getElementById(argumentsToggle.getAttribute('aria-controls') ?? ''),
+      HTMLElement,
+    );
+    expect(argumentsRegion.hidden).toBe(true);
+    expect(detailsToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.textContent).not.toContain('policy-2026-06');
+    // Flat lines in the card, not a bordered box inside it.
+    expect(container.querySelector('.cinder-collapsible')).toBeNull();
+
+    await fireEvent.click(argumentsToggle);
+    expect(argumentsToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(argumentsRegion.hidden).toBe(false);
+  });
+
+  test('gives arguments that only repeat the command no disclosure of their own', () => {
+    const { queryByRole } = render(ApprovalCard, {
+      ...approvalCardProps({
+        operation: { kind: 'command', command: 'bun test', argsPreview: { command: 'bun test' } },
+      }),
+    });
+    expect(queryByRole('button', { name: /arguments/ })).toBeNull();
+  });
+
   test('stacks who asked, the question, and one line with the tool and its risk', () => {
     const { container } = render(ApprovalCard, {
       props: refundRow({ layout: 'card', onResolve: undefined }),
