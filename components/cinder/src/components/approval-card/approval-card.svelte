@@ -38,6 +38,9 @@
 <script lang="ts">
   import Check from '@lucide/svelte/icons/check';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import File from '@lucide/svelte/icons/file';
+  import FileDiff from '@lucide/svelte/icons/file-diff';
+  import FilePen from '@lucide/svelte/icons/file-pen';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -63,6 +66,7 @@
     STATE_LABELS,
     dedupeFilePaths,
     describeCountdown,
+    describeFilesTouched,
     describeDecisionTime,
     describeExpiry,
     inputRepeatsShownFacts,
@@ -72,6 +76,7 @@
     prepareArgumentsPreview,
     resolveEffectiveApprovalState,
     sanitizeEnvironmentNames,
+    splitFilePath,
     summarizeInput,
   } from './approval-card-state.ts';
   import type {
@@ -311,8 +316,10 @@
   const inputPairs = $derived(hasArgumentsPreview ? summarizeInput(operation.argsPreview) : []);
   const canEditArguments = $derived(editableArgs && hasArgumentsPreview);
   const filesTouched = $derived(dedupeFilePaths(operation.filesTouched ?? []));
-  const filesTouchedLabel = $derived(
-    `${filesTouched.length} file${filesTouched.length === 1 ? '' : 's'}`,
+  const filesTouchedTitle = $derived(describeFilesTouched(filesTouched.length));
+  // A patch changes the lines a diff shows; a write replaces a file; anything else just names it.
+  const FileGlyph = $derived(
+    operation.kind === 'patch' ? FileDiff : operation.kind === 'file-write' ? FilePen : File,
   );
   const environmentNames = $derived(sanitizeEnvironmentNames(env));
   // The row's Input discloses only what the operation carries.
@@ -428,16 +435,27 @@
 {#snippet filesTouchedSection()}
   {#if filesTouched.length > 0}
     <div class="cinder-approval-card__section">
-      <div class="cinder-approval-card__section-heading">
-        <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
-          Files touched
-        </svelte:element>
-        <Badge size="sm">{filesTouchedLabel}</Badge>
-      </div>
+      <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
+        {filesTouchedTitle}
+      </svelte:element>
       <ul class="cinder-approval-card__file-list">
         {#each filesTouched as file (file)}
+          {@const path = splitFilePath(file)}
           <li class="cinder-approval-card__file">
-            <span class="cinder-approval-card__file-path">{file}</span>
+            <FileGlyph
+              class="cinder-approval-card__file-icon"
+              size={16}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <!-- The directory is muted and the name is not; a line breaks after a slash, so the
+                 name stays whole. Written with no space between, the text is the path exactly. -->
+            <span class="cinder-approval-card__file-path" dir="ltr"
+              >{#each path.directorySegments as segment, index (index)}<span
+                  class="cinder-approval-card__file-directory">{segment}</span
+                ><wbr />{/each}<span class="cinder-approval-card__file-name">{path.name}</span
+              ></span
+            >
             <CopyButton
               value={file}
               label={`Copy path ${file}`}

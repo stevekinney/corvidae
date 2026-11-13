@@ -813,7 +813,7 @@ describe('ApprovalCard', () => {
     });
 
     expect(container.textContent).toContain('Truncated');
-    expect(container.textContent).toContain('8 files');
+    expect(container.textContent).toContain('8 files touched');
     for (const file of filesTouched) {
       expect(container.textContent).toContain(file);
     }
@@ -834,8 +834,41 @@ describe('ApprovalCard', () => {
         item.textContent?.trim(),
       ),
     ).toEqual(['src/repeated.ts']);
-    expect(container.textContent).toContain('1 file');
-    expect(container.textContent).not.toContain('1 files');
+    expect(container.textContent).toContain('File touched');
+    expect(container.textContent).not.toContain('1 file');
+  });
+
+  test('marks each touched file with a glyph, mutes its directory and keeps the path whole', () => {
+    const files = ['packages/components/src/run-step-timeline.svelte', 'README.md'];
+    const { container } = render(ApprovalCard, {
+      ...approvalCardProps({ operation: { kind: 'patch', filesTouched: files, diff: '+a' } }),
+    });
+
+    const heading = container.querySelector('.cinder-approval-card__section-title');
+    expect(heading?.textContent?.trim()).toBe('2 files touched');
+    expect(container.querySelector('.cinder-approval-card__section .cinder-badge')).toBeNull();
+    const rows = Array.from(container.querySelectorAll('.cinder-approval-card__file'));
+    expect(rows).toHaveLength(2);
+    for (const [index, row] of rows.entries()) {
+      expect(row.querySelector('svg.cinder-approval-card__file-icon')).not.toBeNull();
+      // The path's text is the path exactly, with nothing between the directory and the name.
+      expect(row.querySelector('.cinder-approval-card__file-path')?.textContent).toBe(files[index]);
+    }
+    expect(
+      Array.from(rows[0]?.querySelectorAll('.cinder-approval-card__file-directory') ?? []).map(
+        (segment) => segment.textContent,
+      ),
+    ).toEqual(['packages/', 'components/', 'src/']);
+    expect(rows[0]?.querySelector('.cinder-approval-card__file-name')?.textContent).toBe(
+      'run-step-timeline.svelte',
+    );
+    expect(rows[1]?.querySelector('.cinder-approval-card__file-directory')).toBeNull();
+    // The glyph says what happens to the file: a patch, a write and anything else each draw their own.
+    const glyphFor = (kind: 'patch' | 'file-write' | 'other') =>
+      render(ApprovalCard, {
+        ...approvalCardProps({ operation: { kind, filesTouched: ['a.ts'], diff: '+a' } }),
+      }).container.querySelector('.cinder-approval-card__file-icon')?.innerHTML;
+    expect(new Set([glyphFor('patch'), glyphFor('file-write'), glyphFor('other')]).size).toBe(3);
   });
 
   test('renders a copy button for each touched file path', async () => {

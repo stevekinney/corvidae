@@ -205,22 +205,47 @@
     list-style: none;
   }
 
+  /* A flat row: the file glyph, the path, then the copy button at the inline end. No chip, no
+   * border; the glyph is what marks the line as a file. */
   .cinder-approval-card__file {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: flex-start;
     gap: var(--cinder-space-2);
+    padding-block: var(--cinder-space-0-5);
+  }
+
+  .cinder-approval-card__file-icon {
+    flex: none;
+    /* Centred on the first line of the path (xs text at the snug leading). */
+    margin-block-start: calc((var(--cinder-text-xs) * var(--cinder-leading-snug) - 16px) / 2 + 2px);
+    color: var(--cinder-accent-text);
   }
 
   .cinder-approval-card__file-path {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    padding-block-start: 2px;
     overflow-wrap: anywhere;
-    color: var(--cinder-text-default);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+  }
+
+  /* The directory recedes and the name carries the line. A line breaks after a slash first, so the
+   * name stays whole; only a name wider than the card itself breaks inside. */
+  .cinder-approval-card__file-directory {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-approval-card__file-name {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-medium);
   }
 
   .cinder-approval-card__file .cinder-approval-card__file-copy {
     flex: 0 0 auto;
+    margin-inline-start: auto;
     padding: var(--cinder-space-1);
     border: none;
   }
