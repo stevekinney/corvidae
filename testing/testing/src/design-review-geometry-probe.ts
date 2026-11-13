@@ -446,8 +446,13 @@ export function collectGeometryFacts(): GeometryFacts {
       return type === 'checkbox' || type === 'radio' ? 'other' : 'field';
     }
     if (tag === 'SELECT' || tag === 'TEXTAREA') return 'field';
-    // A button that opens a list of values is a select drawn by hand.
-    if (element.hasAttribute('aria-haspopup') || element.getAttribute('role') === 'combobox') {
+    // A button that opens a list of values is a select drawn by hand. One that opens a menu or a
+    // dialog (`aria-haspopup` of `menu`, `true` or `dialog`) is a button, and is held to a
+    // button's sizes.
+    if (
+      element.getAttribute('aria-haspopup') === 'listbox' ||
+      element.getAttribute('role') === 'combobox'
+    ) {
       return 'field';
     }
     if (tag === 'BUTTON' || element.getAttribute('role') === 'button') return 'button';
