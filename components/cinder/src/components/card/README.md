@@ -48,6 +48,10 @@ A card draws one edge, never two. `edge="none"` (the default) draws neither, and
 
 Pass an `actions` snippet to a card with a `title` to put controls at the end of the title row, aligned to the title's baseline. Buttons inside draw at the `xs` control height (24px) whatever size they ask for, and a custom `header` snippet gets the same treatment, so a header is never taller than its title because of a button. On coarse pointers a button keeps a 44px hit area through invisible padding, not visual height. `actions` is ignored on an interactive card (`href` or `onclick`), because a control cannot nest inside the whole-card link or button.
 
+## Footer
+
+The `footer` is the last row of the card's content, not a band of its own: it draws no divider, its actions sit at the inline end, and the gap between the words and the actions is the body's own bottom padding, so the actions sit the card's padding in from its edges. `footerTone="muted"` is the one footer that separates itself, by an inset fill and never by a line. A footer under a `padding="none"` body, under the header with no body, or under a `variant="well"` body keeps its own top padding.
+
 ## Header divider
 
 The header is separated from the body by its surface alone. Pass `headerDivider` to draw a rule under it; the divider is opt-in, so a card that already has an edge is not ruled a second time.

@@ -124,7 +124,6 @@
   .cinder-card[data-cinder-variant='plain'] > .cinder-card__footer {
     background: transparent;
     padding-inline: 0;
-    border-top-color: transparent;
   }
 
   /* The shadow edge: no visible border, one soft shadow. After the danger rule above so it wins. */
@@ -309,25 +308,37 @@
  * Footer
  * ---------------------------------------- */
 
+  /* The footer is the last row of the card's content, not a band of its own: no divider, and no
+   * top padding, so the body's bottom padding is the one gap between the words and the actions,
+   * and the actions sit the card's own padding in from its inline and bottom edges. */
   .cinder-card__footer {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: var(--cinder-space-2);
-    padding: var(--cinder-space-3) var(--cinder-space-4);
-    border-top: 1px solid var(--cinder-border-muted);
-    background: transparent;
+    padding: 0 var(--cinder-density-pad-card) var(--cinder-density-pad-card);
+    /* The body's own fill, so the footer continues the content rather than starting a band. */
+    background: var(--cinder-surface);
   }
 
-  .cinder-card[data-cinder-tone='danger'] > .cinder-card__footer {
-    border-top-color: var(--cinder-status-danger-border);
+  /* With no body padding above it (a body that runs to its edges, or no body), the footer keeps its
+   * own top padding so the actions never touch the content. */
+  .cinder-card__body[data-cinder-padding='none'] + .cinder-card__footer,
+  .cinder-card__header + .cinder-card__footer {
+    padding-block-start: var(--cinder-density-pad-card);
   }
 
+  /* A tinted footer is the one footer that separates itself, by its fill and never by a line, so it
+   * keeps padding on every side. */
   .cinder-card__footer[data-cinder-tone='muted'] {
+    padding-block-start: var(--cinder-density-pad-card);
     background: var(--cinder-surface-inset);
   }
 
+  /* A well's body is an inset fill, so its footer is a band of the card's own fill under it and keeps
+   * its top padding. */
   .cinder-card[data-cinder-variant='well'] > .cinder-card__footer:not([data-cinder-tone='muted']) {
+    padding-block-start: var(--cinder-density-pad-card);
     background: var(--cinder-surface);
   }
 
