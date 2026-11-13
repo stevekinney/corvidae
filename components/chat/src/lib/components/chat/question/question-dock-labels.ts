@@ -16,8 +16,6 @@ export type ChatQuestionDockLabels = {
   progress: (position: number, total: number) => string;
   /** The choice that opens a field for an answer of the person's own. Default `Something else`. */
   somethingElse: string;
-  /** The count of choices out of sight, shown at the start edge above or below the list. Default `2 more`. */
-  moreChoices: (count: number) => string;
   /** The accessible name of that field. Default `Your own answer`. */
   ownAnswer: string;
   /** The placeholder of that field. Default `Type your answer`. */
@@ -41,7 +39,6 @@ export const DEFAULT_QUESTION_DOCK_LABELS: ChatQuestionDockLabels = {
   legend: 'Question',
   progress: (position, total) => `Question ${position} of ${total}`,
   somethingElse: 'Something else',
-  moreChoices: (count) => `${count} more`,
   ownAnswer: 'Your own answer',
   ownAnswerPlaceholder: 'Type your answer',
   replyInChat: 'Reply in chat instead',

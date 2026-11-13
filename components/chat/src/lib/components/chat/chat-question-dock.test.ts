@@ -223,12 +223,9 @@ describe('a docked question', () => {
     ).text();
 
     expect(source).not.toContain('--_cinder-choice-card-min-block-size');
-    expect(source).toContain('max-block-size: min(100%, 50dvh);');
+    expect(source).toContain('max-block-size: min(100%, 80dvh);');
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
-    expect(source).toContain('moreChoices(hiddenAbove)');
-    expect(source).toContain('moreChoices(hiddenBelow)');
-    expect(source).toContain('wholeRows');
     expect(source).toContain('--cinder-border-muted');
     expect(source).not.toContain('chat-question-dock-body cinder-_scroll-fade');
     expect(source).toContain('overflow-y: auto;');
@@ -236,25 +233,40 @@ describe('a docked question', () => {
     expect(source).toContain('display: none;');
   });
 
-  test('re-snaps the list when the own-answer field changes the room, and keeps its ring inside the body', async () => {
+  test('shows every choice: no "N more" count, no whole-row sizing, no scroll snap', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),
     ).text();
-    expect(source).toContain('padding-inline: var(--_dock-ring-room);');
-    expect(source).toContain('margin-inline: calc(var(--_dock-ring-room) * -1);');
-    expect(source).toContain('keepSelectedInView();');
+    expect(source).not.toContain('moreChoices');
+    expect(source).not.toContain('wholeRows');
+    expect(source).not.toContain('scroll-snap');
+    expect(source).not.toContain('50dvh');
+
+    const choices = Array.from({ length: 12 }, (_, index) => `Option ${index + 1}`);
+    const { container } = mountDocked('dock-many', { enum: choices });
+    await settle();
+    expect(radiosOf(container).map((radio) => radio.textContent?.match(/Option \d+/)?.[0])).toEqual(
+      choices,
+    );
+    expect(dockOf(container)!.textContent).not.toMatch(/\d+ more/);
   });
 
-  test('the whole-rows sizing watches the fieldset and the scrolling body, not only the list', async () => {
-    observedElements.length = 0;
-    const { container } = mountDocked('dock-observed', ENVIRONMENT);
-    await settle();
-    const fieldset = container.querySelector('fieldset');
-    const body = container.querySelector('.chat-question-dock-body');
-    expect(fieldset).not.toBeNull();
-    expect(body).not.toBeNull();
-    expect(observedElements.includes(fieldset!)).toBe(true);
-    expect(observedElements.includes(body!)).toBe(true);
+  test('only the list of choices scrolls, and the question and its choices read at 14px', async () => {
+    const source = await Bun.file(
+      new URL('./question/chat-question-dock.svelte', import.meta.url),
+    ).text();
+    const body = /\.chat-question-dock-body \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(body).not.toContain('overflow');
+    const scroller = /\.chat-question-dock-options-scroll \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(scroller).toContain('overflow-y: auto;');
+    // The ring stays inside the scroller, which clips on both axes.
+    expect(scroller).toContain('padding: var(--_dock-ring-room);');
+    expect(scroller).toContain('margin: calc(var(--_dock-ring-room) * -1);');
+    const question = /\.chat-question-dock-question \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(question).toContain('font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));');
+    expect(question).toContain('font-weight: var(--cinder-font-semibold);');
+    const choice = /\.chat-question-dock-choice \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(choice).toContain('font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));');
   });
 
   test('keeps Answer off, with no helper line, until something is chosen', async () => {
