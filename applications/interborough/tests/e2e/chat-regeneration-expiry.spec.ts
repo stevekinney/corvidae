@@ -250,6 +250,58 @@ async function assertInteractionProfile(page: Page, isCoarsePhone: boolean): Pro
   expect(profile.touchPoints > 0).toBe(isCoarsePhone);
 }
 
+test('a failed regeneration keeps the answer, says so on its row, and Regenerate retries the same command (COR-2281 M5)', async ({
+  page,
+  request,
+  checkA11y,
+}) => {
+  const original = 'The verified answer is retained after the real tool step.';
+  const regenerated = 'The regenerated answer is distinct after the real tool step.';
+  const threadId = newThreadId('regeneration-retry');
+  await runToEnd(request, REGENERATION_PROOF_AGENT, threadId, 'Verify the proof record');
+  const attempts: Array<Record<string, unknown>> = [];
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as {
+      method?: string;
+      params?: Record<string, unknown>;
+    };
+    if (body.method !== 'bureau.contexts.regenerate') return route.continue();
+    attempts.push(body.params ?? {});
+    if (attempts.length > 1) return route.continue();
+    // The first attempt is refused before it reaches the Bureau, as an unavailable service is.
+    return route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: body.method,
+        error: { code: -32000, message: 'Unavailable.', data: { weftCode: 'Unavailable' } },
+      }),
+    });
+  });
+
+  await page.goto(`/chats/${threadId}`);
+  const conversationRegion = page.getByRole('region', { name: 'Chat conversation', exact: true });
+  const answer = conversationRegion.getByText(original, { exact: true });
+  await expect(answer).toBeVisible();
+  await answer.hover();
+  await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+
+  const failure = page.getByRole('alert').filter({ hasText: 'Regeneration failed. Try again.' });
+  await expect(failure).toBeVisible();
+  await expect(answer).toBeVisible();
+  await checkA11y('a failed regeneration on its answer');
+
+  await failure.getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await expect(conversationRegion).toContainText(regenerated);
+  await expect(failure).toHaveCount(0);
+  await expect(conversationRegion.getByText(original, { exact: true })).toHaveCount(0);
+  expect(attempts).toHaveLength(2);
+  // The retry is the same command, so a first attempt that did land is not applied twice.
+  expect(attempts[1]).toEqual(attempts[0]);
+  expect(attempts[0]).toMatchObject({ contextId: threadId, commandId: expect.any(String) });
+});
+
 for (const viewport of VIEWPORTS) {
   test.describe(`real ${viewport.label} interaction profile`, () => {
     test.use({
