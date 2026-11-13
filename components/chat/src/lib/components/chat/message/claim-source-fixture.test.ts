@@ -326,7 +326,7 @@ describe.each(REPRESENTATIONS)('claim source references (%s)', (representation) 
     for (const marker of found) {
       const preview = await open(marker);
       previews.push(
-        preview.querySelector('[aria-current="true"] .cinder-citation__title')!.textContent!,
+        preview.querySelector('[aria-current="true"] .cinder-citation__title')!.textContent,
       );
       await pressEscape();
     }

@@ -268,7 +268,7 @@ describe('Chat — sourcesByMessageId', () => {
     expect(control.getAttribute('aria-expanded')).toBe('true');
     const rows = sourceRows(container, 'assistant-a');
     expect(control.getAttribute('aria-controls')).toBe(
-      rows[0]?.closest('.cinder-citation__panel')?.id,
+      rows[0]?.closest('.cinder-citation__panel')?.id ?? null,
     );
     expect(rows.map((row) => row.querySelector('.cinder-citation__title')?.textContent)).toEqual([
       'Annual report',
