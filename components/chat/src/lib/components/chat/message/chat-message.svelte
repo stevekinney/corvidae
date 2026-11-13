@@ -1089,6 +1089,7 @@
 
     <div
       class="chat-message-body"
+      data-empty={bodyParts.length === 0 && !isEditing ? '' : undefined}
       dir="auto"
       id={systemRow ? `${messageId}-body` : undefined}
       hidden={systemRow && !systemOpen}
@@ -1630,6 +1631,12 @@
     gap: var(--cinder-space-3);
     font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
     line-height: 1.6;
+  }
+
+  /* Tiles follow the text with a gap; with no text before them (an image-only message) they add no
+     margin, so the bubble's padding is the inset above and below. */
+  .chat-message-body:not([data-empty]) + :global(.message-attachments) {
+    margin-top: var(--cinder-space-2);
   }
 
   /* Tool-result body styling moved to tool-result-part.svelte alongside its

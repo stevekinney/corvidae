@@ -196,7 +196,8 @@
   .message-attachments {
     display: grid;
     gap: var(--cinder-space-2);
-    margin-top: var(--cinder-space-2);
+    /* The space above the tiles belongs to the message: it is added only after text, so an
+     * image-only bubble has the same inset above and below. */
   }
 
   /* Single images use their intrinsic ratio and stay within the message width. */

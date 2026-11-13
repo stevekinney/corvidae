@@ -203,4 +203,13 @@ describe('MessageAttachments image layout contract', () => {
     expect(source).toContain('.message-attachment-maximize');
     expect(source).toContain('transition: none');
   });
+
+  test('adds its top margin only after text, so an image-only bubble has even insets', () => {
+    expect(source).not.toMatch(/\.message-attachments\s*\{[^}]*margin-top/);
+    const message = readFileSync(resolve(import.meta.dir, 'chat-message.svelte'), 'utf8');
+    expect(message).toMatch(
+      /\.chat-message-body:not\(\[data-empty\]\) \+ :global\(\.message-attachments\)\s*\{\s*margin-top: var\(--cinder-space-2\);/,
+    );
+    expect(message).toContain("data-empty={bodyParts.length === 0 && !isEditing ? '' : undefined}");
+  });
 });
