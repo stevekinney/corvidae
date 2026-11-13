@@ -67,16 +67,17 @@ function approvalCardProps(overrides: Partial<ApprovalCardProps> = {}): Approval
 }
 
 describe('ApprovalCard', () => {
-  test('keeps a single owned padding layer inside Card', () => {
+  test('draws its heading as the first row of the body, on the card fill with no band', () => {
     const styles = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
-    const surfaceHeaderRule =
-      styles.match(
-        /\.cinder-approval-card__surface\s*>\s*\.cinder-card__header\s*\{[^}]*\}/,
-      )?.[0] ?? '';
     const ownedHeaderRule = styles.match(/\.cinder-approval-card__header\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(ownedHeaderRule).not.toContain('background');
+    expect(ownedHeaderRule).not.toContain('padding');
+    expect(ownedHeaderRule).not.toContain('border');
 
-    expect(surfaceHeaderRule).toContain('padding: 0');
-    expect(ownedHeaderRule).toContain('padding: var(--cinder-space-4)');
+    const { container } = render(ApprovalCard, { ...approvalCardProps() });
+    expect(container.querySelector('.cinder-card__header')).toBeNull();
+    const body = container.querySelector('.cinder-approval-card__body');
+    expect(body?.firstElementChild?.classList.contains('cinder-approval-card__header')).toBe(true);
   });
 
   test('imports JsonEditor through its public component subpath', () => {
@@ -1250,7 +1251,7 @@ function squash(text: string | null | undefined): string {
 }
 
 describe('ApprovalCard card layout anatomy', () => {
-  test('stacks who asked, the question, the tool and the risk line on a neutral header', () => {
+  test('stacks who asked, the question, and one line with the tool and its risk', () => {
     const { container } = render(ApprovalCard, {
       props: refundRow({ layout: 'card', onResolve: undefined }),
     });
@@ -1261,11 +1262,9 @@ describe('ApprovalCard card layout anatomy', () => {
     expect(container.querySelector('.cinder-approval-card__title')?.textContent?.trim()).toBe(
       'Refund order 4471 for $42.00?',
     );
-    expect(squash(container.querySelector('.cinder-approval-card__tool-line')?.textContent)).toBe(
-      'Issue refund issue-refund',
-    );
+    expect(container.querySelector('.cinder-approval-card__tool-line')).toBeNull();
     expect(squash(container.querySelector('.cinder-approval-card__risk-line')?.textContent)).toBe(
-      "Dangerous, Can't be undone",
+      "Issue refund issue-refund, Dangerous, Can't be undone",
     );
     expect(container.querySelector('.cinder-approval-card__consequence')?.textContent).toBe(
       'Sends $42.00 back to the original card',

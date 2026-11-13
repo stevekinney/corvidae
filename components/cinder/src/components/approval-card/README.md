@@ -109,7 +109,7 @@ An `unavailable` approval is a held approval nobody can answer now, such as one 
 
 - `tool.name` renders in monospace as the identifier; `tool.label` is the human name written before it.
 - `tool.risk` is read as a muted word (Reads, Changes things, Dangerous). One shield glyph carries the alert in amber while the approval is pending and goes quiet once it is decided; its `aria-label` names the risk level ("High risk").
-- In the `card` layout the header stacks who asked and when, the question, the tool line, the risk line and the consequence on a neutral surface. Without a `question` the title is "Approval required for `name`".
+- In the `card` layout the heading is the first row of the card, on the card's own fill with no band or divider: who asked and when, the question, one line with the tool and its risk word, and the consequence. Without a `question` the title is "Approval required for `name`".
 - `operation.kind: 'command'` renders the command as a syntax-highlighted shell `CodeBlock`.
 - `operation.kind: 'patch'` renders the supplied unified patch as a syntax-highlighted diff.
 - `operation.filesTouched` renders one row per unique path, each with a copy button. Duplicate paths are collapsed.

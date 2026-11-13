@@ -30,22 +30,17 @@
     overflow: hidden;
   }
 
-  .cinder-approval-card__surface > .cinder-card__header {
-    padding: 0;
-  }
-
   /* ----------------------------------------
    * Header: risk glyph, then source, question, tool and risk word
    * ---------------------------------------- */
 
+  /* The first row of the body, on the card's own fill: no band, no divider and no padding of its
+   * own. Neutral even for a dangerous tool; the glyph carries the alert. */
   .cinder-approval-card__header {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
     gap: var(--cinder-space-2) var(--cinder-space-3);
-    padding: var(--cinder-space-4);
-    /* Neutral: no warning fill, even for a dangerous tool. The glyph carries the alert. */
-    background: var(--cinder-surface-raised);
   }
 
   .cinder-approval-card__title-group {
@@ -57,7 +52,6 @@
   }
 
   .cinder-approval-card__eyebrow,
-  .cinder-approval-card__tool-line,
   .cinder-approval-card__risk-line,
   .cinder-approval-card__consequence {
     margin: 0;
@@ -158,11 +152,12 @@
    * Body sections
    * ---------------------------------------- */
 
+  /* The row layout's rhythm: one --cinder-space-3 inset, --cinder-space-2 between blocks. */
   .cinder-approval-card__body {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-3);
-    padding: var(--cinder-space-4);
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-3);
   }
 
   .cinder-approval-card__section {

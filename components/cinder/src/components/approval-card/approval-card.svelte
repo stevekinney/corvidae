@@ -807,7 +807,9 @@
   >
     <span class="cinder-sr-only" aria-hidden="true">{question}</span>
     <Card padding="none" class="cinder-approval-card__surface">
-      {#snippet header()}
+      <!-- The heading is the body's first row, on the card's own fill: Card's header slot is a
+           band above the content, and this is the top of the content. -->
+      <div class="cinder-approval-card__body">
         <div class="cinder-approval-card__header">
           <Tooltip text={riskLabel} describe={false} class="cinder-approval-card__risk-tip">
             <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
@@ -849,15 +851,15 @@
                 <span class="cinder-approval-card__title-tool">{tool.name}</span>
               {/if}
             </svelte:element>
-            {#if question !== undefined}
-              <p class="cinder-approval-card__tool-line">
-                {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
-                    >{tool.label}</span
-                  >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code>
-              </p>
-            {/if}
+            <!-- One line says what runs and how risky it is: "Issue refund issue-refund, Dangerous,
+                 Can't be undone". A title without a question already names the tool. -->
             <p class="cinder-approval-card__risk-line">
-              <span class="cinder-approval-card__risk-word">{riskWord}</span
+              {#if question !== undefined}<span class="cinder-approval-card__keep"
+                  >{#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
+                      >{tool.label}</span
+                    >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code
+                  ><span class="cinder-approval-card__separator" aria-hidden="true">,</span></span
+                >{' '}{/if}<span class="cinder-approval-card__risk-word">{riskWord}</span
               >{#if tool.irreversible}<span
                   class="cinder-approval-card__separator"
                   aria-hidden="true">,</span
@@ -880,9 +882,7 @@
             {/if}
           </div>
         </div>
-      {/snippet}
 
-      <div class="cinder-approval-card__body">
         {@render operationPreview()}
 
         {@render filesTouchedSection()}
