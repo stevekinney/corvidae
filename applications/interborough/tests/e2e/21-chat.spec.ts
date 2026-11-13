@@ -92,8 +92,18 @@ test.describe('a session', () => {
       'placeholder',
       'Message Assistant…',
     );
+    // The assistant's reply is scripted, so both turns answer with the same words: the seeded turn's
+    // reply is on the page before the send, and the answer to it is a second copy after the message
+    // that asked for it. A lone `toBeVisible()` matched the seeded reply until the new one rendered,
+    // then failed strict mode (COR-2412), so the counts are exact and the order is checked.
+    const reply = conversation(page).getByText('Hello from the assistant.');
+    await expect(reply).toHaveCount(1);
     await send(page, 'Hello again');
-    await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
+    await expect(reply).toHaveCount(2);
+    const content = (await transcript(page).textContent()) ?? '';
+    expect(content.lastIndexOf('Hello from the assistant.')).toBeGreaterThan(
+      content.indexOf('Hello again'),
+    );
   });
 });
 
