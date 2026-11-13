@@ -596,6 +596,22 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: {},
   },
 
+  'statistic-group': {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      columns: { optional: true, type_kind: 'TSTypeReference', default: L('auto') },
+      // `plain` (COR-2329): no frame, values a step smaller, for a stat under a Spotlight.
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      edge: { optional: true, type_kind: 'TSTypeReference', default: L('border') },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+    },
+    snippets: {
+      children: s0(false),
+    },
+  },
+
   textarea: {
     kind: 'intersection',
     html_attrs: 'HTMLTextareaAttributes',

@@ -205,6 +205,14 @@
     box-shadow: var(--cinder-shadow-sm);
   }
 
+  /* variant: plain — the stats sit in the page flow with no surface, border, padding or divider,
+   * and their values a step smaller than a statistic on its own, so a stat set under a Spotlight
+   * reads after it rather than beside it as a second focal value. */
+  .cinder-statistic-group[data-cinder-variant='plain'] > .cinder-statistic-group__grid {
+    /* @runtime-state */
+    --cinder-statistic-value-font-size: var(--cinder-text-2xl);
+  }
+
   /*
  * variant: shared-borders — outer border on the root; the 1px grid gap is filled by
  * the root's background and acts as the divider between cells (the grid element is

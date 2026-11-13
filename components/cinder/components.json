@@ -5847,11 +5847,12 @@
       "tags": ["data-display", "dashboard"],
       "useWhen": [
         "Showing a row of related statistic tiles such as the top metrics of a dashboard.",
-        "Giving a cluster of statistic entries a single accessible group label."
+        "Giving a cluster of statistic entries a single accessible group label.",
+        "Setting one quiet stat in the page flow under a spotlight, with variant plain."
       ],
       "avoidWhen": [
         {
-          "reason": "Rendering exactly one metric — use statistic on its own."
+          "reason": "Rendering exactly one metric at full size — use statistic on its own."
         },
         {
           "reason": "Building a freeform card grid unrelated to numeric metrics — compose surface or grid-list directly."
