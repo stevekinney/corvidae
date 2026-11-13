@@ -82,10 +82,13 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* The chevron is the size of the 12px text beside it, so it is never taller than its line. */
+  /* The chevron is the size of the 12px text beside it, so it is never taller than its line. Its
+   * drawn stroke stops a quarter of its box short of the box's edge, so the box overhangs by that
+   * much and the stroke itself ends on the message's trailing edge, where the prose ends. */
   :global(.chat-message-sources-citation .chat-message-sources-chevron) {
     inline-size: 0.75rem;
     block-size: 0.75rem;
+    margin-inline-end: calc(-0.25 * 0.75rem);
     flex: none;
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
