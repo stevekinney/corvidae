@@ -103,6 +103,7 @@ describe('the seed of a copy', () => {
       references: null,
       guardrails: null,
       approvals: null,
+      from: null,
       children: null,
       instructions: 'Help the person.',
     });

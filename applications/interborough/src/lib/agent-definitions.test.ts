@@ -136,6 +136,44 @@ describe('the reference document sizes (COR-2020)', () => {
   });
 });
 
+describe('what a copy loses and where a copy came from (COR-2232, COR-2234)', () => {
+  test('get keeps the dropped list, a name it has no words for included, and reads none as empty', async () => {
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent(),
+        dropped: ['stopWhen', 'somethingNew'],
+      }),
+    });
+    const stated = await getAgentDefinition('demo:helper');
+    expect(stated.dropped).toEqual(['stopWhen', 'somethingNew']);
+    stub.restore();
+    const { dropped: _dropped, ...older } = readyAgent();
+    stub = installBureauStub({ 'bureau.agents.definitions.get': () => older });
+    const unstated = await getAgentDefinition('researcher');
+    expect(unstated.dropped).toEqual([]);
+  });
+
+  test('get keeps from and the source’s version now, and reads a file that is not a copy as having neither', async () => {
+    const from = { agent: 'demo:helper', version: '1.0.0' };
+    const base = readyAgent();
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({
+        ...base,
+        definition: { ...base.definition, from },
+        fromNow: '1.1.0',
+      }),
+    });
+    const copy = await getAgentDefinition('helper');
+    expect(copy.definition?.from).toEqual(from);
+    expect(copy.fromNow).toBe('1.1.0');
+    stub.restore();
+    stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
+    const plain = await getAgentDefinition('researcher');
+    expect(plain.definition?.from).toBeNull();
+    expect(plain.fromNow).toBeNull();
+  });
+});
+
 describe('the default effort', () => {
   test('get reads the effort a file sets, and null for a file that sets none', async () => {
     stub = installBureauStub({

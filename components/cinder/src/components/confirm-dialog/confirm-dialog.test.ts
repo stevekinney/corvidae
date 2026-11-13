@@ -219,6 +219,21 @@ describe('ConfirmDialog', () => {
     expect(css).toContain("@import '../input/input.css';");
   });
 
+  test('options carry a plain list as flat rows and a note as the muted description (COR-2232)', async () => {
+    const css = await Bun.file(new URL('./confirm-dialog.css', import.meta.url)).text();
+    // A direct list is flat rows: no bullets, a hairline between rows, no box of its own.
+    const list = css.match(/\.cinder-confirm-dialog__options > ul \{[^}]*\}/u)?.[0] ?? '';
+    expect(list).toContain('list-style: none');
+    expect(list).not.toMatch(/background|box-shadow|border-radius/u);
+    const row = css.match(/\.cinder-confirm-dialog__options > ul > li \{[^}]*\}/u)?.[0] ?? '';
+    expect(row).toContain('border-block-start: 1px solid var(--cinder-border-muted)');
+    expect(row).toContain('overflow-wrap: anywhere');
+    // A direct note is the description's muted small treatment.
+    const note = css.match(/\.cinder-confirm-dialog__options > p \{[^}]*\}/u)?.[0] ?? '';
+    expect(note).toContain('var(--cinder-text-muted)');
+    expect(note).toContain('var(--cinder-text-sm)');
+  });
+
   test('cancel button carries autofocus; confirm button does not', () => {
     const { container } = render(ConfirmDialog, {
       props: {
