@@ -557,27 +557,35 @@ describe('internal workspace architecture', () => {
   });
 
   test('project skills have one canonical owner for both providers', async () => {
-    for (const name of [
-      'add-dependency',
-      'add-workspace',
-      'chef',
-      'claude-code-mods',
-      'create-project',
-      'create-task',
-      'design-review',
-      'groom',
-      'validate-monorepo',
-    ]) {
+    // Skills are discovered, not listed, so a new skill is checked without editing this test.
+    // Directories and links count; plain files such as `.DS_Store` do not.
+    const skillNames = async (directory: string) => {
+      const entries = await readdir(join(root, directory), { withFileTypes: true });
+      return entries
+        .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+        .map((entry) => entry.name)
+        .toSorted();
+    };
+    const canonicalNames = await skillNames('.agents/skills');
+    expect(canonicalNames).not.toEqual([]);
+    for (const provider of ['.claude', '.codex']) {
+      // Equal sets: no skill lacks a provider link, and no provider entry lacks a canonical owner.
+      expect(await skillNames(`${provider}/skills`), `${provider}/skills`).toEqual(canonicalNames);
+    }
+    for (const name of canonicalNames) {
       const canonicalDirectory = join(root, '.agents/skills', name);
       const canonicalStatus = await lstat(canonicalDirectory);
-      expect(canonicalStatus.isSymbolicLink()).toBe(false);
+      expect(canonicalStatus.isSymbolicLink(), `.agents/skills/${name}`).toBe(false);
       const canonicalFile = await realpath(join(canonicalDirectory, 'SKILL.md'));
       for (const provider of ['.claude', '.codex']) {
-        const providerDirectory = join(root, provider, 'skills', name);
+        const providerPath = `${provider}/skills/${name}`;
+        const providerDirectory = join(root, providerPath);
         const providerStatus = await lstat(providerDirectory);
-        expect(providerStatus.isSymbolicLink()).toBe(true);
-        expect(isAbsolute(await readlink(providerDirectory))).toBe(false);
-        expect(await realpath(join(providerDirectory, 'SKILL.md'))).toBe(canonicalFile);
+        expect(providerStatus.isSymbolicLink(), providerPath).toBe(true);
+        expect(isAbsolute(await readlink(providerDirectory)), providerPath).toBe(false);
+        expect(await realpath(join(providerDirectory, 'SKILL.md')), providerPath).toBe(
+          canonicalFile,
+        );
       }
     }
   });
