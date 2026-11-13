@@ -6,15 +6,15 @@ This record documents the design and accessibility review for the inline source 
 
 - Reviewer: Cinder maintainers
 - Review outcome: Approved.
-- Nearest neighbours: Popover and Pagination.
-- Why this component exists: It combines an inline source marker with paginated source disclosure, which neither neighbour provides alone.
-- Findings and resolutions: The marker is a keyboard-focusable native button; up to five sources are one ordered list, so a reader compares them without paging; each source keeps a native link only for a safe web address, and otherwise a text note says it has no public link or that its address was hidden; more than five sources are paged, and the pager exposes its current position and disables unavailable directions.
+- Nearest neighbours: Popover.
+- Why this component exists: It combines an inline source marker with one list of source references and their URL policy, which Popover alone does not provide.
+- Findings and resolutions: The marker is a keyboard-focusable native button; every source is one row of one ordered list, so a reader compares them without paging; a source with a safe web address is one native link covering its whole row, and otherwise a text note says it has no public link or that its address was hidden; the row a reader followed a marker for carries `aria-current` and a visible edge and tint, so it is not marked by colour alone.
 
 ## Novel interaction accessibility review
 
 A novel interaction model includes a new disclosure or keyboard pattern, entering or leaving the top layer, or making previously static content interactive.
 
-- Applies: Yes—the marker opens a rich Popover disclosure and the disclosure contains interactive source links and pagination controls.
+- Applies: Yes—the marker opens a rich Popover disclosure and the disclosure contains interactive source links.
 - Reviewer: Cinder maintainers
 - Review outcome: Approved.
 
@@ -24,13 +24,13 @@ Focus enters the marker through normal document order. Popover opens on activati
 
 ### Keyboard matrix
 
-| Key or gesture | Context            | Expected behavior                                       |
-| -------------- | ------------------ | ------------------------------------------------------- |
-| Enter or Space | Citation marker    | Open the source Popover.                                |
-| Tab            | Open card          | Reach source links, then pagination controls, in order. |
-| Escape         | Open card          | Dismiss the Popover and restore trigger context.        |
-| Shift+Tab      | Pagination control | Move backward through the normal focus order.           |
+| Key or gesture | Context         | Expected behavior                                |
+| -------------- | --------------- | ------------------------------------------------ |
+| Enter or Space | Citation marker | Open the source Popover.                         |
+| Tab            | Open card       | Reach each source link, in order.                |
+| Escape         | Open card       | Dismiss the Popover and restore trigger context. |
+| Shift+Tab      | Source link     | Move backward through the normal focus order.    |
 
 ### Assistive-technology announcements
 
-The marker is a button named “Sources (N)” and exposes the Popover through the existing Popover trigger semantics. Source details use a native ordered list for two to five sources, with strong titles, paragraphs and links; the arrow after a link's text is hidden from assistive technology. With more than five, the current-page text is polite live text (“N of M”); disabled previous/next buttons communicate pagination bounds. Verified against keyboard navigation and the browser accessibility tree in Chromium with the default light and dark themes.
+The marker is a button named “Sources (N)” and exposes the Popover through the existing Popover trigger semantics. Source details use a native ordered list, with a strong title, a domain or note, and an excerpt in each row; a linked row is one link whose accessible name is its text, and the open glyph is hidden from assistive technology. With `inPlace` on a wide viewport the marker reports `aria-expanded` and names the list in `aria-controls`. Verified against keyboard navigation and the browser accessibility tree in Chromium with the default light and dark themes.

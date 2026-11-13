@@ -13,6 +13,26 @@ const schema = {
       description:
         'Names the marker and the panel, such as `Sources`. The marker reads it with the source count.',
     },
+    current: {
+      type: 'number',
+      description:
+        'The index in `sources` of the source the reader followed a marker for. Its row is marked as the current one, and the list opens scrolled to it.',
+    },
+    inPlace: {
+      type: 'boolean',
+      description:
+        'Opens the sources under the marker instead of in a floating popover, on a viewport at least as wide as a phone. On a phone they still open in the bottom sheet.',
+    },
+    expanded: {
+      type: 'boolean',
+      description:
+        'With `inPlace`, whether the sources are open under the marker. Bindable; the marker toggles it.',
+    },
+    shownInPlace: {
+      type: 'boolean',
+      description:
+        'Reports whether the sources are shown under the marker (`inPlace` on a wide viewport) or in the sheet or popover. Bindable, read only.',
+    },
     closeOnSourceRemoval: {
       type: 'boolean',
       description:
@@ -38,11 +58,17 @@ const schema = {
         description: 'Called after an open source panel or sheet has fully closed.',
       },
       {
+        name: 'onExpandedChange',
+        reason: 'function-or-snippet',
+        description:
+          'With `inPlace`, called after the marker toggles `expanded`, with the new value.',
+      },
+      {
         name: 'sources',
         reason: 'unknown-shape',
         required: true,
         description:
-          'The sources behind the claim, in the order to show them. Up to five are listed together; more are paged one at a time.',
+          'The sources behind the claim, in the order to show them. Every source is one row of one list, however many there are.',
       },
     ],
   },
