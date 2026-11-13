@@ -16,7 +16,7 @@
 // acts on.
 //
 // Usage (LINEAR_API_KEY and TYPESAFE_API_KEY resolve through credentials.ts; neither is printed):
-//   bun scripts/chef/groom.ts [--issue COR-n ...] [--limit n] [--dry-run] [--json]
+//   bun scripts/groom/groom.ts [--issue COR-n ...] [--limit n] [--dry-run] [--json]
 //
 // `--dry-run` asks Jev and reports what it would write, writing nothing.
 //
@@ -31,18 +31,8 @@ import type {
 } from '@lostgradient/operative';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { stripShared } from './brief.ts';
-import { resolveCredential } from './credentials.ts';
-import {
-  noThreshold,
-  packageQuestion,
-  priorityOrder,
-  priorityQuestion,
-  readinessQuestions,
-  workTypeOptions,
-  workTypeQuestion,
-  yesThreshold,
-} from './groom-questions.ts';
+import { stripShared } from '../chef/brief.ts';
+import { resolveCredential } from '../chef/credentials.ts';
 import {
   addLabels,
   createClient,
@@ -59,8 +49,8 @@ import {
   type LinearDependencies,
   type Outcome,
   type PriorityName,
-} from './linear.ts';
-import { emitResult, parseOptions, UsageError } from './process-runner.ts';
+} from '../chef/linear.ts';
+import { emitResult, parseOptions, UsageError } from '../chef/process-runner.ts';
 import {
   citationFindings,
   citationsIn,
@@ -69,7 +59,17 @@ import {
   parseSections,
   readyFindings,
   type RepositoryView,
-} from './triage.ts';
+} from '../chef/triage.ts';
+import {
+  noThreshold,
+  packageQuestion,
+  priorityOrder,
+  priorityQuestion,
+  readinessQuestions,
+  workTypeOptions,
+  workTypeQuestion,
+  yesThreshold,
+} from './groom-questions.ts';
 
 const TEAM = 'COR';
 const BACKLOG = 'Backlog';

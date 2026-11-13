@@ -38,7 +38,8 @@ const minimumInvocations: Record<string, number> = {
   '.agents/skills/chef/references/review-and-deliver.md': 8,
   '.agents/skills/chef/SKILL.md': 9,
   '.agents/skills/create-project/SKILL.md': 3,
-  '.agents/skills/create-task/SKILL.md': 4,
+  // The `scripts/groom/groom.ts` invocation is outside `scripts/chef/`, so it no longer counts.
+  '.agents/skills/create-task/SKILL.md': 3,
 };
 
 describe('the spelling checker', () => {

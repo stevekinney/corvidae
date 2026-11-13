@@ -1,11 +1,11 @@
 import type { Decision, DecisionBatch, DecisionBatchResult } from '@lostgradient/operative';
 import { describe, expect, test } from 'bun:test';
 import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import type { FetchLike } from '../chef/linear.ts';
+import { UsageError } from '../chef/process-runner.ts';
+import type { RepositoryView } from '../chef/triage.ts';
 import { noThreshold, readinessQuestions, yesThreshold } from './groom-questions.ts';
 import { commentMarker, probabilityOfYes, read, run, type Workspace } from './groom.ts';
-import type { FetchLike } from './linear.ts';
-import { UsageError } from './process-runner.ts';
-import type { RepositoryView } from './triage.ts';
 
 const READY_BODY = [
   '## Brief',

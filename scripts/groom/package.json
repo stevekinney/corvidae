@@ -1,0 +1,12 @@
+{
+  "name": "@lostgradient/groom",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lostgradient/operative": "workspace:*",
+    "@lostgradient/operative-typesafe": "workspace:*"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*"
+  }
+}
