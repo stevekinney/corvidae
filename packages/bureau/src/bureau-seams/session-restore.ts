@@ -10,8 +10,10 @@ import type { AgentSession, JSONValue } from '@lostgradient/operative';
 import { BUREAU_AGENT_NAME } from '../bureau-construction-support';
 import type { BureauCore } from './core';
 import { BureauError } from '../bureau-errors';
+import { describeDefinitionDrift } from '../agent-definition-pin';
 import {
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
+  sessionRecordedPin,
   sessionRecordedRevision,
 } from '../session-agent-revision';
 import { isScheduledFireAuthority } from '../bureau-invariant-hooks';
@@ -212,6 +214,8 @@ export function createSessionRestore<D extends AgentDefinitions>(
         // references named one falls back to the session's metadata, which names its latest run's.
         definitionRevision:
           ownReference?.definitionRevision ?? sessionRecordedRevision(metadata, recordedHash),
+        // COR-2230 — the pin this run wrote, when it is the session's latest pinning run.
+        ...sessionRecordedPin(metadata, runId),
       },
       { sessionId, metadata },
     );
@@ -221,7 +225,11 @@ export function createSessionRestore<D extends AgentDefinitions>(
       scope: 'recovery',
       message:
         `[bureau] Run "${runId}" belongs to catalog agent "${agentName}", which could not be ` +
-        `resolved (${resolution.status}); its restored state stays unavailable.`,
+        `resolved (${
+          resolution.status === 'definition-drifted'
+            ? `definition-drifted: ${describeDefinitionDrift(agentName, resolution.drift)}`
+            : resolution.status
+        }); its restored state stays unavailable.`,
     });
     return 'unavailable';
   }

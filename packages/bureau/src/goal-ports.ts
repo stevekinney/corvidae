@@ -76,6 +76,7 @@ import {
 } from '@lostgradient/operative';
 
 import {
+  DefinitionDriftedError,
   GoalAttemptInvalidCostEstimationError,
   GoalAttemptNotDurableCapableError,
   type GoalAttemptRun,
@@ -463,7 +464,8 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       // fault to retry.
       if (
         error instanceof GoalAttemptNotDurableCapableError ||
-        error instanceof GoalAttemptInvalidCostEstimationError
+        error instanceof GoalAttemptInvalidCostEstimationError ||
+        error instanceof DefinitionDriftedError
       ) {
         return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(`${error.reason}: ${error.message}`));
       }

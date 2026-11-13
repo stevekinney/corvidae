@@ -376,6 +376,14 @@ export interface AgentListing {
   readonly plugin?: string;
   /** COR-2009 — why an `unavailable` agent cannot run. Absent for every other state. */
   readonly unavailable?: AgentUnavailability;
+  /** COR-2233 — the label a plugin gave its code agent (`PluginAgent.title`); absent without one. */
+  readonly title?: string;
+  /**
+   * COR-2233 — `hidden` for a plugin's code agent that only workflows, children and direct starts
+   * run (`PluginAgent.visibility`): `bureau.agents.list` still lists it, with this flag, and a
+   * client that offers agents for a chat (Chat does) leaves it out. Absent for every other agent.
+   */
+  readonly visibility?: 'hidden';
 }
 
 /** The plugin a listed file belongs to: the namespace of a `plugin:name` the identifier check accepted. */

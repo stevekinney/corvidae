@@ -11,6 +11,7 @@
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
+  import { isOfferedInChat } from '../../lib/agent-visibility.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { examplePrompts } from './new-chat.ts';
@@ -30,7 +31,10 @@
   let { agents, selected, blocked, onChoose, onExample }: NewChatChoicesProps = $props();
 
   const current = $derived(agents.find((agent) => agent.name === selected));
-  const others = $derived(agents.filter((agent) => agent.name !== selected));
+  // A hidden agent is not offered here either; the selected agent is left out because it is shown.
+  const others = $derived(
+    agents.filter((agent) => agent.name !== selected && isOfferedInChat(agent)),
+  );
   const prompts = $derived(
     keyedByOccurrence(
       blocked || current === undefined ? [] : examplePrompts(current),

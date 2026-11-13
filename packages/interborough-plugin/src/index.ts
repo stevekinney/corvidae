@@ -1,6 +1,7 @@
 export type {
   PluginActivity,
   PluginAgent,
+  PluginAgentVisibility,
   PluginContributions,
   PluginEmbedder,
   PluginEvent,

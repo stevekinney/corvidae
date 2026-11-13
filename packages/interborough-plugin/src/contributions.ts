@@ -432,10 +432,31 @@ export interface PluginFormatter {
   format(event: PluginEvent): PluginFormatting;
 }
 
+/**
+ * Where an agent is offered: `chat` agents are offered in Chat's agent list. A `hidden` agent is
+ * still listed by `bureau.agents.list`, which carries `visibility: "hidden"` for it, and a client
+ * that offers agents for a chat leaves it out (Chat does); a workflow's `agent` step, a child or a
+ * direct start can still run it by its `plugin:name`.
+ */
+export type PluginAgentVisibility = 'chat' | 'hidden';
+
 /** An agent defined in code. */
 export interface PluginAgent {
   /** The agent's name, unique within the plugin. */
   readonly name: string;
+  /** A label for the agent's listing; the listing falls back to the agent's own name without one. */
+  readonly title?: string;
+  /**
+   * Where the agent is offered. Without it the agent is `chat`. Use `hidden` for an agent only a
+   * workflow or a parent agent runs.
+   */
+  readonly visibility?: PluginAgentVisibility;
+  /**
+   * The agent's own version. A run of the agent pins it in place of the plugin's version, as an
+   * activity's `version` does, and a run recovered under a different version settles failed with
+   * `definition-drifted` instead of resuming under a definition it did not start with.
+   */
+  readonly version?: string;
   /** The agent itself. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the same two-member union Bureau's agent catalog accepts.
   readonly agent: RunnableAgent | RunnableAgent<any, true>;

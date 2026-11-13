@@ -42,7 +42,12 @@ import type {
 import type { AgentFileWriter } from './agent-file-writer';
 import { isOfferedCatalogRow } from './models/create-models';
 import type { AgentVersionRecord } from './agent-version-store';
-import { createAgentOverrideStore, type AgentOverrideStore } from './agent-override-store';
+import type { AgentDefinitionPin } from './agent-definition-pin';
+import {
+  createAgentOverrideStore,
+  hashAgentOverrides,
+  type AgentOverrideStore,
+} from './agent-override-store';
 import { type CodeAgentOverrides, createCodeAgentOverrides } from './code-agent-overrides';
 import { effectiveCodeAgent, type EffectiveCodeAgentDeployment } from './code-agent-effective';
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
@@ -206,6 +211,17 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    */
   generationProfile(name: string): AgentGenerationProfile | undefined;
   /**
+   * COR-2230 — what a durable run of the code agent `name` pins about its definition: the version
+   * of a plugin's agent (its own `version`, else its plugin's) and the hash of the overrides in
+   * force, which is the empty set's hash while none is saved. Read from the same overrides
+   * {@link find} builds the agent from, so the pin describes the agent a run is handed. Those are the
+   * overrides this Bureau last read from the store; a caller that compares a pin another Bureau
+   * recorded calls `overrides.reload(name)` first. A built-in
+   * agent has no version. `undefined` for a file agent, which pins its own definition hash, and for
+   * a name no code agent holds.
+   */
+  definitionPin(name: string): AgentDefinitionPin | undefined;
+  /**
    * Every agent the deployment has, code-defined and file-based together (COR-1524): code agents
    * first in definition order, then file agents by identifier. A file that cannot be used is
    * listed with `state: 'invalid'` and a typed `problem`. Unlike {@link names} and
@@ -321,6 +337,26 @@ export interface UnavailableCodeAgent {
 }
 
 /**
+ * COR-2233 — what a plugin says about one of its code agents beyond the agent itself: the version
+ * a run pins (its own `version`, else the plugin's), and the `title` and `visibility` its listing
+ * carries.
+ */
+export interface CodeAgentDetails {
+  /** The plugin that ships the agent. */
+  readonly plugin: string;
+  /** The version a run of the agent pins: the agent's own, else its plugin's. */
+  readonly version: string;
+  /** The listing's label, when the plugin gives one. */
+  readonly title?: string | undefined;
+  /**
+   * `hidden` marks the agent in its listing (`bureau.agents.list` still lists it, with
+   * `visibility: "hidden"`, and a client that offers agents for a chat leaves it out); any other
+   * value lists it unmarked.
+   */
+  readonly visibility?: 'chat' | 'hidden' | undefined;
+}
+
+/**
  * Options for {@link createAgentCatalog}. `selectorAvailable` defaults to
  * `false`: `createBureau` passes `false` today (no selector wired yet); a
  * future selector integration (AB-66) flips it to `true` so a `selectable`
@@ -356,6 +392,11 @@ export interface CreateAgentCatalogOptions {
    * identifier the code-defined map already holds is not listed again.
    */
   readonly unavailable?: readonly UnavailableCodeAgent[] | undefined;
+  /**
+   * COR-2233 — what the running plugins say about their code agents, by `plugin:name`. An agent
+   * with none is a built-in agent the host defines.
+   */
+  readonly details?: Readonly<Record<string, CodeAgentDetails>> | undefined;
   /**
    * COR-2009 — where the code agents' override versions live. Defaults to a memory store,
    * which a restart forgets.
@@ -453,16 +494,25 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     if (disabled !== undefined) return disabled.agent;
     return id.includes(':') ? byName.get(id)?.agent : undefined;
   };
-  const codeListing = (entry: AgentCatalogEntry<D>): AgentListing => ({
-    id: entry.name,
-    source: 'code',
-    state: 'ready',
-    name: entry.agent.name,
-    description: entry.agent.description ?? null,
-    a2a: false,
-    owner: ownerOrLocal(undefined),
-    definitionRevision: readGenerationProfile(entry.agent).revision,
-  });
+  // A Map, so a code agent named `constructor` or `__proto__` reads no inherited member.
+  const pluginDetails = new Map(Object.entries(options?.details ?? {}));
+  const codeListing = (entry: AgentCatalogEntry<D>): AgentListing => {
+    const details = pluginDetails.get(entry.name);
+    return {
+      id: entry.name,
+      source: 'code',
+      state: 'ready',
+      name: entry.agent.name,
+      description: entry.agent.description ?? null,
+      a2a: false,
+      owner: ownerOrLocal(undefined),
+      definitionRevision: readGenerationProfile(entry.agent).revision,
+      ...(details?.title === undefined ? {} : { title: details.title }),
+      // Anything but the one value `hidden` lists the agent, so a plugin that is not typed cannot
+      // hide an agent by a typo.
+      ...(details?.visibility === 'hidden' ? { visibility: 'hidden' as const } : {}),
+    };
+  };
   // Computed once, here, not lazily per call — "cached, side-effect-free
   // read" (AC9) means a `generationProfile(name)` call is a plain Map
   // lookup, never a recomputation, so repeated reads for the same name
@@ -575,6 +625,14 @@ export function createAgentCatalog<D extends AgentDefinitions>(
         fileAgentProfiles.set(fileAgent, profile);
       }
       return profile;
+    },
+    definitionPin(name) {
+      if (!byName.has(name)) return undefined;
+      const version = pluginDetails.get(name)?.version;
+      return {
+        ...(version === undefined ? {} : { agentPluginVersion: version }),
+        agentOverrideHash: hashAgentOverrides(overrides.inForce(name)),
+      };
     },
     list() {
       return [

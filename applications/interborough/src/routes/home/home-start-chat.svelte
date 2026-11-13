@@ -26,7 +26,7 @@
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
   import { useAgentList, useHostProviders } from './home-queries.svelte.ts';
-  import { newChatAddress, startingAgent } from './home-start-chat.ts';
+  import { newChatAddress, startChatAgents, startingAgent } from './home-start-chat.ts';
 
   const copy = HOME_COPY.startChat;
   const connection = getConnection();
@@ -67,7 +67,7 @@
       : undefined,
   );
   const options = $derived(
-    (agents.data ?? []).map((agent) => ({
+    startChatAgents(agents.data ?? [], selected).map((agent) => ({
       value: agent.name,
       label: agentLabel(agent.name, agents.data),
       ...(agent.description === null ? {} : { description: agent.description }),

@@ -137,6 +137,8 @@ export function createDemoAgents(
     },
     {
       name: 'internal',
+      // Only workflows and parent agents run it, so Chat's agent list leaves it out (COR-2233).
+      visibility: 'hidden',
       agent: createAgent({
         name: 'internal',
         description: 'Answers with a scripted bookkeeping reply.',

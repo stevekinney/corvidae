@@ -117,6 +117,20 @@ export interface CatalogRunRecoveryRecord {
    */
   readonly agentDefinitionHash?: string;
   /**
+   * COR-2230 — set only when the run is of a plugin's code agent: the version the agent had when
+   * the run started or its claim was written (the agent's own `version`, else its plugin's).
+   * Recovery and a second execution of the claim compare it with the agent now, and a difference
+   * settles the run failed with `definition-drifted`. Absent for a built-in or file agent and for
+   * a record written before it, which recovers as it always did. Additive at `schemaVersion` 1,
+   * as `agentDefinitionHash` was.
+   */
+  readonly agentPluginVersion?: string;
+  /**
+   * COR-2230 — set for a code agent: the hash of the overrides in force when the run started
+   * (the empty set's hash when none was saved), compared as {@link agentPluginVersion} is.
+   */
+  readonly agentOverrideHash?: string;
+  /**
    * COR-1481 — set only when the dispatch named a context (`bureau.run(..., { sessionId })`): the
    * task's `contextId`, so a task rebuilt from this record after a crash that lost its admission
    * write is in the context the live admission would have put it in. Absent for a dispatch that
@@ -182,6 +196,11 @@ export function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunR
   if (principal !== undefined && typeof principal !== 'string') return false;
   const agentDefinitionHash = value['agentDefinitionHash'];
   if (agentDefinitionHash !== undefined && typeof agentDefinitionHash !== 'string') return false;
+  // A mistyped pin invalidates the record, as a mistyped sibling field does.
+  const agentPluginVersion = value['agentPluginVersion'];
+  if (agentPluginVersion !== undefined && typeof agentPluginVersion !== 'string') return false;
+  const agentOverrideHash = value['agentOverrideHash'];
+  if (agentOverrideHash !== undefined && typeof agentOverrideHash !== 'string') return false;
   const contextId = value['contextId'];
   if (contextId !== undefined && typeof contextId !== 'string') return false;
   const taskOrigin = value['taskOrigin'];

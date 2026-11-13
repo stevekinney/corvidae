@@ -480,9 +480,11 @@ export function gatedContributions<T extends PluginContributions>(
     ...(result.agents === undefined
       ? {}
       : {
-          agents: result.agents.map(({ name, agent }) => ({
-            name,
-            agent: gatedAgent(gate, idOf(name), agent),
+          // The rest of the entry (`title`, `visibility`, `version`) goes through as it is, or a
+          // plugin that declares a secret would lose it (COR-2233).
+          agents: result.agents.map((entry) => ({
+            ...entry,
+            agent: gatedAgent(gate, idOf(entry.name), entry.agent),
           })),
         }),
   };

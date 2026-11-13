@@ -15,6 +15,7 @@ import {
   seed,
   serve,
 } from './agent-definitions-fixtures.test-support.ts';
+import { versionedPlugin } from '../../testing/versioned-plugin-agent.test-support.ts';
 import { rpc } from './management-fixtures.test-support.ts';
 
 afterEach(disposeServed);
@@ -102,5 +103,43 @@ describe('bureau.agents.list code-defined agents outside the A2A allowlist', () 
     const deployment = await callAs(served.local, 'bureau.deployment.get', {});
 
     expect(deployment.result?.['agents']).toEqual(['alpha', 'internal']);
+  });
+});
+
+describe('bureau.agents.list plugin agent metadata (COR-2233)', () => {
+  const answer = async () => ({ content: 'echoed', toolCalls: [] });
+
+  it('flags a hidden plugin agent, keeps it named by the deployment, and shows a title as its display name', async () => {
+    const served = await serve({
+      overrides: {
+        plugins: [
+          versionedPlugin({
+            version: '1.0.0',
+            visibility: 'hidden',
+            title: 'Echo',
+            generate: answer,
+          }),
+        ],
+      },
+    });
+
+    const listed = await callAs(served.local, 'bureau.agents.list', {});
+    const echo = listOf(listed, 'agents').find((entry) => entry['name'] === 'p:echo');
+
+    expect(echo).toMatchObject({ visibility: 'hidden', displayName: 'Echo' });
+    const deployment = await callAs(served.local, 'bureau.deployment.get', {});
+    expect(deployment.result?.['agents']).toContain('p:echo');
+  });
+
+  it('does not flag a plugin agent that sets no visibility', async () => {
+    const served = await serve({
+      overrides: { plugins: [versionedPlugin({ version: '1.0.0', generate: answer })] },
+    });
+
+    const listed = await callAs(served.local, 'bureau.agents.list', {});
+    const echo = listOf(listed, 'agents').find((entry) => entry['name'] === 'p:echo');
+
+    expect(echo).toBeDefined();
+    expect(echo).not.toHaveProperty('visibility');
   });
 });

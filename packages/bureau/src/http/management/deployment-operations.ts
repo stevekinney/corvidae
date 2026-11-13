@@ -58,6 +58,12 @@ export type ListedAgent = {
    * has none.
    */
   readonly examples?: readonly string[];
+  /**
+   * COR-2233 — `hidden` for a plugin's agent that only workflows, children and direct starts run:
+   * `bureau.agents.list` carries the flag, and Chat's agent list leaves the agent out. The name
+   * stays startable (`mayNameAgent`) and listed everywhere else.
+   */
+  readonly visibility?: 'hidden';
 };
 
 /** The scope that shows a caller every ready agent rather than only the A2A ones. */
@@ -224,6 +230,7 @@ const agentsListOutput = z.object({
         .nullable(),
       tools: z.array(z.string()).optional(),
       examples: agentExamplesSchema.optional(),
+      visibility: z.literal('hidden').optional(),
     }),
   ),
 });
@@ -238,7 +245,7 @@ export const agentsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List the agents the caller may see',
   description:
-    'Returns the agents the deployment has, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `a2a` (whether the agent opts into A2A: the `a2a.agents` setting says so where it names the agent; otherwise the handler’s `a2aAgents` allowlist names a code-defined agent, or a persisted agent’s file says `a2a: true`), and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes), and `tools` (the names of the tools the agent has, which a code-defined agent states and a persisted agent names in its file; omitted when the agent does not say, which differs from `[]`), and `examples` (prompts that show what a person might ask the agent, which a code-defined agent states and a persisted agent lists in its file; omitted when the agent has none). A caller holding `bureau.agents:read` sees every agent that is ready, code-defined or persisted (`bureau.agents.definitions.*`); any other authenticated caller, such as an A2A credential, sees only the ready agents that opt into A2A. An invalid agent file is not listed.',
+    'Returns the agents the deployment has, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `a2a` (whether the agent opts into A2A: the `a2a.agents` setting says so where it names the agent; otherwise the handler’s `a2aAgents` allowlist names a code-defined agent, or a persisted agent’s file says `a2a: true`), and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes), and `tools` (the names of the tools the agent has, which a code-defined agent states and a persisted agent names in its file; omitted when the agent does not say, which differs from `[]`), and `examples` (prompts that show what a person might ask the agent, which a code-defined agent states and a persisted agent lists in its file; omitted when the agent has none). A caller holding `bureau.agents:read` sees every agent that is ready, code-defined or persisted (`bureau.agents.definitions.*`); any other authenticated caller, such as an A2A credential, sees only the ready agents that opt into A2A. An invalid agent file is not listed. An agent a plugin declares with `visibility: hidden` is listed with `visibility: "hidden"`, and a client that offers agents for a chat leaves it out; workflows, children and a direct start run it by name.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -259,6 +266,7 @@ export const agentsListOperation = defineOperation<
       media: agent.media,
       ...(agent.tools === undefined ? {} : { tools: [...agent.tools] }),
       ...(agent.examples === undefined ? {} : { examples: [...agent.examples] }),
+      ...(agent.visibility === undefined ? {} : { visibility: agent.visibility }),
     })),
   }),
 });

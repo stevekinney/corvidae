@@ -536,6 +536,11 @@ export const agentSummarySchema = z.object({
    * Absent when the agent has none.
    */
   examples: z.array(z.string()).optional(),
+  /**
+   * `hidden` for an agent a plugin keeps out of Chat's agent list (COR-2233); every other surface
+   * still lists it. Absent for an agent a chat can start with.
+   */
+  visibility: z.literal('hidden').optional(),
 });
 
 /**

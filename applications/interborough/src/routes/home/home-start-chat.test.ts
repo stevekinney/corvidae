@@ -4,7 +4,12 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { findAssistant, newChatAddress, startingAgent } from './home-start-chat.ts';
+import {
+  findAssistant,
+  newChatAddress,
+  startChatAgents,
+  startingAgent,
+} from './home-start-chat.ts';
 
 describe('startingAgent', () => {
   test('is Assistant, or a plugin’s copy of it, wherever it is listed', () => {
@@ -15,6 +20,31 @@ describe('startingAgent', () => {
   test('is the first agent when there is no Assistant, and none when there are no agents', () => {
     expect(startingAgent([{ name: 'echo' }, { name: 'tool-runner' }])).toBe('echo');
     expect(startingAgent([])).toBeUndefined();
+  });
+});
+
+describe('a hidden agent (COR-2233)', () => {
+  test('is never the agent Home starts with, even listed first or as the only one', () => {
+    expect(startingAgent([{ name: 'demo:internal', visibility: 'hidden' }, { name: 'echo' }])).toBe(
+      'echo',
+    );
+    expect(startingAgent([{ name: 'demo:internal', visibility: 'hidden' }])).toBeUndefined();
+    expect(
+      startingAgent([
+        { name: 'demo:assistant', visibility: 'hidden' },
+        { name: 'assistant' },
+        { name: 'echo' },
+      ]),
+    ).toBe('assistant');
+  });
+
+  test('is left out of the select, unless the card is already with it', () => {
+    const agents = [{ name: 'echo' }, { name: 'demo:internal', visibility: 'hidden' as const }];
+    expect(startChatAgents(agents, 'echo').map((agent) => agent.name)).toEqual(['echo']);
+    expect(startChatAgents(agents, 'demo:internal').map((agent) => agent.name)).toEqual([
+      'echo',
+      'demo:internal',
+    ]);
   });
 });
 

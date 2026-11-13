@@ -996,13 +996,17 @@ function listedAgentsOf(
       {
         name: listing.id,
         kind: 'code',
-        displayName: agent.name === '' || agent.name === '(agent)' ? listing.id : agent.name,
+        // A plugin's `title` (COR-2233) is the label it gave the agent, ahead of the agent's own name.
+        displayName:
+          listing.title ??
+          (agent.name === '' || agent.name === '(agent)' ? listing.id : agent.name),
         description: agent.description ?? null,
         definitionRevision: readGenerationProfile(agent as never).revision,
         a2a: isOptedIntoA2A(overrides, listing.id, a2aAgents.includes(listing.id)),
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
         ...toolsOf(readCodeToolNames(agent)),
         ...examplesOf(readCodeExamples(agent)),
+        ...(listing.visibility === 'hidden' ? { visibility: 'hidden' as const } : {}),
       },
     ];
   });

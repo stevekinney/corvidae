@@ -331,7 +331,8 @@
     "$.agents[].media|anyOf[0].modalities.*.input",
     "$.agents[].media|anyOf[0].modalities.*.output",
     "$.agents[].name",
-    "$.agents[].tools"
+    "$.agents[].tools",
+    "$.agents[].visibility"
   ],
   "output:bureau.agents.models": [
     "$.default",

@@ -50,7 +50,7 @@ import {
   type Tool,
 } from 'armorer';
 
-import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
+import type { AgentDefinitions, CodeAgentDetails, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
 import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
 import type { AgentSource } from '../sources/definition-source';
@@ -114,6 +114,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
    * See {@link agentsOfDisabledPlugin} for how they are read without the plugin running.
    */
   readonly unavailableAgents: readonly UnavailableCodeAgent[];
+  /**
+   * COR-2233 — what each running plugin's code agent says beyond the agent itself, by the
+   * `plugin:name` the catalog holds it under: the version a run pins (its own `version`, else the
+   * plugin's), its `title` and its `visibility`.
+   */
+  readonly agentDetails: Readonly<Record<string, CodeAgentDetails>>;
   /**
    * Starts following the host's `watch` for every running plugin's declared secrets, so a saved or
    * removed secret changes what its contributions do with no restart. Returns the function that
@@ -563,6 +569,7 @@ class Contributed {
   readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
   readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
   readonly agents: Record<string, unknown> = {};
+  readonly agentDetails: Record<string, CodeAgentDetails> = {};
   readonly memory: {
     admission: PluginMemoryContributions['guardrails']['admission'][number][];
     recall: PluginMemoryContributions['guardrails']['recall'][number][];
@@ -601,7 +608,16 @@ class Contributed {
     for (const judge of result.scorers ?? []) {
       this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
-    for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
+    for (const item of result.agents ?? []) {
+      this.agents[id(item.name)] = item.agent;
+      // A run pins the agent's own version, else its plugin's (COR-2233), as a delivery does.
+      this.agentDetails[id(item.name)] = {
+        plugin,
+        version: item.version ?? version,
+        title: item.title,
+        visibility: item.visibility,
+      };
+    }
     this.providers.push(...providers);
     for (const detector of result.guardrails?.memory ?? []) {
       // The detector itself, not a copy of its fields: it may be an instance whose methods live on
@@ -1074,6 +1090,7 @@ export async function composePlugins<O extends ComposableOptions>(
     records,
     shippedContent: shippedContentOf(records),
     unavailableAgents,
+    agentDetails: contributed.agentDetails,
     watchSecrets: () => {
       const stops = gates.map((gate) => gate.watch());
       return () => {

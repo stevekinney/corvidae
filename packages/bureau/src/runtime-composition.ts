@@ -80,6 +80,7 @@ import {
   textValueStore,
 } from '@lostgradient/storage';
 import { createToolbox, type ToolRequestContext } from 'armorer';
+import { describeDefinitionDrift, pinOf } from './agent-definition-pin';
 import { isTryAgentName } from './agent-try';
 import { type GoalAttemptTarget, registerGoalAttemptFence } from './goal-attempt-fence';
 import { bufferMissedFires } from './bureau-event-forwarders';
@@ -880,12 +881,20 @@ async function buildRuntimeComposition(
       {
         agentDefinitionHash: record.agentDefinitionHash,
         definitionRevision: record.definitionRevision,
+        // COR-2230 — the pin the run started with; a record from before it holds neither.
+        ...pinOf(record.agentPluginVersion, record.agentOverrideHash),
       },
     );
     if (resolution.status === 'missing-agent') {
       return {
         status: 'unavailable',
         reason: `run ${runId}: catalog agent "${record.agentName}" is no longer in the catalog`,
+      };
+    }
+    if (resolution.status === 'definition-drifted') {
+      return {
+        status: 'unavailable',
+        reason: `run ${runId}: definition-drifted: ${describeDefinitionDrift(record.agentName, resolution.drift)}`,
       };
     }
     if (resolution.status === 'not-durable-capable') {

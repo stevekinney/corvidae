@@ -23,11 +23,13 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitionPin } from './agent-definition-pin';
 import { composeRunHooks, type RunHookTiers } from './run-hook-tiers';
 import {
   type CatalogRunEnded,
   createCatalogDispatcher,
   GoalAttemptInvalidCostEstimationError,
+  DefinitionDriftedError,
   GoalAttemptNotDurableCapableError,
   GoalAttemptTombstonedError,
 } from './bureau-catalog-dispatch';
@@ -45,6 +47,15 @@ function createDispatcher(
     readonly runtime?: RuntimeComposition;
     readonly runAttribution?: Map<string, RunAttribution>;
     readonly onCatalogRunEnded?: (ended: CatalogRunEnded) => void;
+    /** What the catalog says the worker pins now (COR-2230); absent says nothing, as a file agent's. */
+    readonly pin?: AgentDefinitionPin;
+    /**
+     * What the store holds, which the catalog's `pin` is until the dispatcher reloads the agent's
+     * overrides from it: a Bureau that never reloaded after another saved holds the older one.
+     */
+    readonly pinAfterReload?: AgentDefinitionPin;
+    /** Receives the name of each agent whose overrides the dispatcher reloaded. */
+    readonly reloads?: string[];
   } = {},
 ) {
   const worker = createAgent({
@@ -52,8 +63,18 @@ function createDispatcher(
     generate: async () => ({ content: 'done', toolCalls: [] }),
     stopWhen: stopWhen.noToolCalls(),
   });
+  let pin = options.pin;
   return createCatalogDispatcher({
-    agentCatalog: { find: (name: string) => (name === 'worker' ? worker : undefined) },
+    agentCatalog: {
+      find: (name: string) => (name === 'worker' ? worker : undefined),
+      definitionPin: (name: string) => (name === 'worker' ? pin : undefined),
+      overrides: {
+        reload: async (name: string) => {
+          options.reloads?.push(name);
+          if (options.pinAfterReload !== undefined) pin = options.pinAfterReload;
+        },
+      } as never,
+    },
     // The first two refusals never reach the runtime composition.
     runtime: options.runtime ?? ({} as RuntimeComposition),
     runtimeServices: createManualRuntimeServices(),
@@ -352,7 +373,11 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
 
   describe('a start whose first execution outlived its start timeout', () => {
     /** A resolver that never answers on its first call, as a hung one does, and resolves normally after. */
-    async function hungFirstResolver(runtimeOverrides: Record<string, unknown> = {}) {
+    async function hungFirstResolver(
+      runtimeOverrides: Record<string, unknown> = {},
+      /** What the catalog pins the worker as now (COR-2230). */
+      pin?: AgentDefinitionPin,
+    ) {
       const storage = new MemoryStorage();
       const checkpointStore = createCheckpointStore(
         textValueStore(storage, { disposeUnderlyingStorage: false }),
@@ -400,7 +425,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       } as unknown as RuntimeComposition;
       const runAttribution = new Map<string, RunAttribution>();
       const dispatcher = createCatalogDispatcher({
-        agentCatalog: { find: () => agent as never },
+        agentCatalog: { find: () => agent as never, definitionPin: () => pin },
         runtime,
         runtimeServices: createManualRuntimeServices(),
         getShutdownPromise: () => undefined,
@@ -413,6 +438,40 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       });
       return { dispatcher, engine, runAttribution, failFirst };
     }
+
+    it('D4 (COR-2230): refuses the retry as drifted when the claim it reaches recorded another version, and leaves the older hold', async () => {
+      const { dispatcher, runAttribution, failFirst } = await hungFirstResolver(
+        {
+          claimCatalogRunRecoveryRecord: async () => false,
+          loadCatalogRunRecoveryRecord: async () => ({
+            status: 'found',
+            record: {
+              schemaVersion: 1,
+              definitionRevision: 1,
+              input: 'work',
+              agentName: 'worker',
+              principal: 'alice',
+              goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+              agentPluginVersion: '1.0.0',
+              agentOverrideHash: 'hash-b',
+            },
+          }),
+        },
+        { agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-b' },
+      );
+      const older = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      const retry = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+
+      const error = await settle(retry);
+
+      expect(error).toBeInstanceOf(DefinitionDriftedError);
+      expect((error as Error).message).toMatch(/version was 1\.0\.0 and is now 1\.1\.0/);
+      // The retry let go of its share only: the older execution still holds the attribution.
+      expect(runAttribution.has(attempt.runId)).toBe(true);
+      failFirst(new Error('the older resolver failed late'));
+      await settle(older);
+      expect(runAttribution.has(attempt.runId)).toBe(false);
+    });
 
     it('lets the retry of the same attempt, agent, and principal reach the claim and start the workflow', async () => {
       const { dispatcher, engine, runAttribution } = await hungFirstResolver();
@@ -578,6 +637,319 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       expect(error).toBeInstanceOf(GoalAttemptTombstonedError);
       expect(persisted).toEqual([]);
       expect(runAttribution.has(attempt.runId)).toBe(false);
+    });
+
+    /**
+     * COR-2230 — a second execution of the attempt reaches its own claim after the code agent moved.
+     * The pin the claim recorded is compared with what the catalog pins now: refused on a
+     * difference in either value, adopted on none, and a claim from before the pin is adopted as it
+     * always was. The tombstone is checked first.
+     */
+    const NOW: AgentDefinitionPin = { agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-b' };
+    const OWN = { agentName: 'worker', goalAttempt: { goalRunId: 'g1', attemptIndex: 0 } };
+    it.each([
+      [
+        'the plugin version moved',
+        { ...OWN, agentPluginVersion: '1.0.0', agentOverrideHash: 'hash-b' },
+        /version was 1\.0\.0 and is now 1\.1\.0/,
+      ],
+      [
+        'the overrides moved',
+        { ...OWN, agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-a' },
+        /overrides hashed hash-a and now hash hash-b/,
+      ],
+      [
+        'the agent gained a version after a claim with none',
+        { ...OWN, agentOverrideHash: 'hash-b' },
+        /version was none and is now 1\.1\.0/,
+      ],
+    ])('refuses its own claim after %s, and starts nothing', async (_label, record, message) => {
+      const { runtime, persisted } = conflicting(record);
+      const runAttribution = new Map<string, RunAttribution>();
+
+      const error = await settle(
+        createDispatcher(false, { runtime, runAttribution, pin: NOW }).startGoalAttemptRun(attempt),
+      );
+
+      // Refused before the engine is asked for a workflow (the engine here has no `start`).
+      expect(error).toBeInstanceOf(DefinitionDriftedError);
+      expect((error as Error).message).toContain('definition-drifted');
+      expect((error as Error).message).toMatch(message);
+      expect(persisted).toEqual([]);
+      expect(runAttribution.has(attempt.runId)).toBe(false);
+    });
+
+    it.each([
+      [
+        'a claim that records the same pin',
+        { ...OWN, agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-b' },
+      ],
+      ['a claim written before the pin existed', OWN],
+    ])('does not refuse %s as drifted', async (_label, record) => {
+      const { runtime } = conflicting(record);
+
+      const error = await settle(
+        createDispatcher(false, { runtime, pin: NOW }).startGoalAttemptRun(attempt),
+      );
+
+      expect(error).not.toBeInstanceOf(DefinitionDriftedError);
+    });
+
+    /**
+     * COR-2230 — the claim may be another Bureau's. This catalog's pin is what it loaded at boot
+     * until the dispatcher reads the store, so the comparison is made against the store's.
+     */
+    it.each([
+      [
+        'a claim that records what the store now holds is adopted, though this catalog held the older overrides',
+        { ...OWN, agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-b' },
+        { agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-a' },
+        false,
+      ],
+      [
+        'a claim that records what this catalog held is refused when the store has moved on',
+        { ...OWN, agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-a' },
+        { agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-a' },
+        true,
+      ],
+    ])('compares %s', async (_label, record, stale, refused) => {
+      const { runtime } = conflicting(record);
+      const reloads: string[] = [];
+
+      const error = await settle(
+        createDispatcher(false, {
+          runtime,
+          pin: stale,
+          pinAfterReload: NOW,
+          reloads,
+        }).startGoalAttemptRun(attempt),
+      );
+
+      expect(reloads).toEqual(['worker']);
+      if (refused) expect(error).toBeInstanceOf(DefinitionDriftedError);
+      else expect(error).not.toBeInstanceOf(DefinitionDriftedError);
+    });
+
+    /**
+     * COR-2230 matrix rows D3 and D4: the drift refusal also holds when the engine already has a
+     * workflow for the run (a second execution of an attempt or step whose first got that far), and
+     * when the second execution is the retry of a start whose first outlived its start timeout.
+     * Either way the claim's own pin is what is compared, and nothing is started.
+     */
+    describe.each([
+      [
+        'a goal attempt',
+        (dispatcher: ReturnType<typeof createDispatcher>) =>
+          dispatcher.startGoalAttemptRun(attempt),
+        { goalAttempt: { goalRunId: 'g1', attemptIndex: 0 } },
+      ],
+      [
+        'a workflow step',
+        (dispatcher: ReturnType<typeof createDispatcher>) => {
+          const step = dispatcher.startWorkflowStepRun({
+            agentName: 'worker',
+            input: 'work',
+            runId: 'wf-w1-s0',
+            workflowStep: { workflowId: 'w1', step: 0 },
+          });
+          return {
+            durablyStarted: step.result().then((result) => {
+              if (result.error !== undefined) throw result.error;
+            }),
+          };
+        },
+        { workflowStep: { workflowId: 'w1', step: 0 } },
+      ],
+    ])('%s', (_kind, startOf, owner) => {
+      const claim = { agentName: 'worker', ...owner };
+      const drifted = { ...claim, agentPluginVersion: '1.0.0', agentOverrideHash: 'hash-b' };
+
+      it('D3: refuses a claim whose workflow the engine already holds, and asks the engine for nothing', async () => {
+        const asked: string[] = [];
+        const { runtime } = conflicting(drifted);
+        (runtime as unknown as { durable: unknown }).durable = {
+          engine: {
+            get: async () => {
+              asked.push('get');
+              return { id: 'goal-g1-a0', status: 'running' };
+            },
+            start: async () => {
+              asked.push('start');
+              throw new Error('the workflow already exists');
+            },
+          },
+          checkpointStore: {},
+        };
+
+        const error = await settle(startOf(createDispatcher(false, { runtime, pin: NOW })));
+
+        expect(String(error)).toContain('definition-drifted');
+        expect(String(error)).toMatch(/version was 1\.0\.0 and is now 1\.1\.0/);
+        expect(asked).toEqual([]);
+      });
+
+      it('D3: does not refuse the same claim as drifted when nothing moved', async () => {
+        const { runtime } = conflicting({ ...drifted, agentPluginVersion: '1.1.0' });
+
+        const error = await settle(startOf(createDispatcher(false, { runtime, pin: NOW })));
+
+        expect(String(error)).not.toContain('definition-drifted');
+      });
+    });
+
+    /**
+     * COR-2230 row A2: a start that writes a recovery record writes the pin the catalog holds. The
+     * `bureau.run` dispatch that wrote it with no run id of its own went with COR-1707 (it is
+     * `tasks.start`, a session run, whose pin is tested in `plugin-agent-drift.test.ts`), so the
+     * record is written by a child, a goal attempt or a workflow step.
+     */
+    it.each([
+      [
+        'a child run',
+        (dispatcher: ReturnType<typeof createDispatcher>) =>
+          dispatcher.startChildRun({ ...start, agentName: 'worker' }).result(),
+      ],
+      [
+        'a workflow step',
+        (dispatcher: ReturnType<typeof createDispatcher>) =>
+          dispatcher
+            .startWorkflowStepRun({
+              agentName: 'worker',
+              input: 'work',
+              runId: 'wf-w1-s0',
+              workflowStep: { workflowId: 'w1', step: 0 },
+            })
+            .result(),
+      ],
+    ])(
+      'A2: %s writes the plugin version and overrides hash into its record',
+      async (_kind, run) => {
+        const records: Record<string, unknown>[] = [];
+        const runtime = {
+          durable: { engine: {}, checkpointStore: {} },
+          createBureauInvariantHooks: () => undefined,
+          composeRunHooks: composeTestRunHooks,
+          mediaOptionsFor: () => ({}),
+          withChatPermission: (toolbox: unknown) => toolbox,
+          holdToModelPolicy: (options: unknown) => options,
+          claimCatalogRunRecoveryRecord: async (
+            _runId: string,
+            record: Record<string, unknown>,
+          ) => {
+            records.push(record);
+            throw new Error('stop after the record');
+          },
+        } as unknown as RuntimeComposition;
+
+        await run(createDispatcher(false, { runtime, pin: NOW }));
+
+        expect(records).toHaveLength(1);
+        expect(records[0]).toMatchObject({
+          agentPluginVersion: '1.1.0',
+          agentOverrideHash: 'hash-b',
+        });
+      },
+    );
+
+    it('takes the tombstone before the drift', async () => {
+      const { runtime } = conflicting({
+        agentName: 'worker',
+        agentPluginVersion: '1.0.0',
+        agentOverrideHash: 'hash-b',
+        goalAttempt: { goalRunId: 'g1', attemptIndex: 0, tombstonedAt: '2026-10-02T12:00:00.000Z' },
+      });
+
+      const error = await settle(
+        createDispatcher(false, { runtime, pin: NOW }).startGoalAttemptRun(attempt),
+      );
+
+      expect(error).toBeInstanceOf(GoalAttemptTombstonedError);
+    });
+
+    it('writes the pin into the claim it makes', async () => {
+      const claims: Record<string, unknown>[] = [];
+      const runtime = {
+        durable: { engine: {}, checkpointStore: {} },
+        createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
+        mediaOptionsFor: () => ({}),
+        withChatPermission: (toolbox: unknown) => toolbox,
+        holdToModelPolicy: (options: unknown) => options,
+        claimCatalogRunRecoveryRecord: async (_runId: string, record: Record<string, unknown>) => {
+          claims.push(record);
+          throw new Error('stop after the claim');
+        },
+      } as unknown as RuntimeComposition;
+
+      await settle(createDispatcher(false, { runtime, pin: NOW }).startGoalAttemptRun(attempt));
+
+      expect(claims).toHaveLength(1);
+      expect(claims[0]).toMatchObject({ agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-b' });
+    });
+
+    it('writes the pin of the overrides the store holds, though this catalog loaded older ones at boot', async () => {
+      const claims: Record<string, unknown>[] = [];
+      const runtime = {
+        durable: { engine: {}, checkpointStore: {} },
+        createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
+        mediaOptionsFor: () => ({}),
+        withChatPermission: (toolbox: unknown) => toolbox,
+        holdToModelPolicy: (options: unknown) => options,
+        claimCatalogRunRecoveryRecord: async (_runId: string, record: Record<string, unknown>) => {
+          claims.push(record);
+          throw new Error('stop after the claim');
+        },
+      } as unknown as RuntimeComposition;
+      const reloads: string[] = [];
+
+      await settle(
+        createDispatcher(false, {
+          runtime,
+          pin: { agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-a' },
+          pinAfterReload: NOW,
+          reloads,
+        }).startGoalAttemptRun(attempt),
+      );
+
+      expect(reloads).toEqual(['worker']);
+      expect(claims).toHaveLength(1);
+      expect(claims[0]).toMatchObject({ agentPluginVersion: '1.1.0', agentOverrideHash: 'hash-b' });
+    });
+
+    it('writes only the override hash for a built-in agent, and neither field for a file agent', async () => {
+      const claimsFor = async (pin: AgentDefinitionPin | undefined) => {
+        const claims: Record<string, unknown>[] = [];
+        const runtime = {
+          durable: { engine: {}, checkpointStore: {} },
+          createBureauInvariantHooks: () => undefined,
+          composeRunHooks: composeTestRunHooks,
+          mediaOptionsFor: () => ({}),
+          withChatPermission: (toolbox: unknown) => toolbox,
+          holdToModelPolicy: (options: unknown) => options,
+          claimCatalogRunRecoveryRecord: async (
+            _runId: string,
+            record: Record<string, unknown>,
+          ) => {
+            claims.push(record);
+            throw new Error('stop after the claim');
+          },
+        } as unknown as RuntimeComposition;
+        await settle(
+          createDispatcher(false, {
+            runtime,
+            ...(pin === undefined ? {} : { pin }),
+          }).startGoalAttemptRun(attempt),
+        );
+        return claims[0] ?? {};
+      };
+
+      const builtIn = await claimsFor({ agentOverrideHash: 'hash-b' });
+      expect(builtIn).toMatchObject({ agentOverrideHash: 'hash-b' });
+      expect(builtIn).not.toHaveProperty('agentPluginVersion');
+      const file = await claimsFor(undefined);
+      expect(file).not.toHaveProperty('agentPluginVersion');
+      expect(file).not.toHaveProperty('agentOverrideHash');
     });
 
     it('adopts its own claim as it stands and never rewrites it', async () => {

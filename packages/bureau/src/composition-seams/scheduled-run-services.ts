@@ -78,6 +78,8 @@ import {
   recordedAgentStep,
 } from '../skill-step-metadata';
 import { agentSkillsRun } from '../agent-skills';
+import { type AgentDefinitionPin, describeDefinitionDrift } from '../agent-definition-pin';
+import { sessionPinMetadata, sessionRecordedPin } from '../session-agent-revision';
 import { appendConversationMessages, sessionRunMediaOptions } from '../provider-resolution';
 import { committedFireApprovalIds } from '../scheduled-fire-review-state';
 import {
@@ -212,6 +214,7 @@ export function createScheduledRunServices(
     skillPolicyUnverified: () => boolean,
     owner: string,
     requestContext: ToolRequestContext,
+    agentPin: AgentDefinitionPin | undefined,
   ): OnStepHook {
     let bound = false;
     return async (context) => {
@@ -274,6 +277,10 @@ export function createScheduledRunServices(
           metadata: {
             ...next.metadata,
             lastScheduledFireRunId: runId,
+            // COR-2230 — what the fire's code agent was when it started, named by the fire, so a
+            // fire recovered after the agent moved is refused and no other run reads it. A fire
+            // beside a run another run owns leaves that run's pin alone, as it leaves its skills.
+            ...(sessionOwnedByAnotherRunningRun ? {} : sessionPinMetadata(agentPin, runId)),
             // COR-718 — the fire's run is owned by the schedule's owner, recorded
             // where a restart rehydrates run owners from, and a session this fire
             // creates takes the same owner. An existing session keeps its own.
@@ -655,12 +662,17 @@ export function createScheduledRunServices(
               agentName,
               runId,
               owner,
-              firePriorReference === undefined || firePriorReference.id !== agentName
-                ? undefined
-                : {
-                    agentDefinitionHash: firePriorReference.hash,
-                    definitionRevision: firePriorReference.definitionRevision,
-                  },
+              {
+                ...(firePriorReference === undefined || firePriorReference.id !== agentName
+                  ? { agentDefinitionHash: undefined }
+                  : {
+                      agentDefinitionHash: firePriorReference.hash,
+                      definitionRevision: firePriorReference.definitionRevision,
+                    }),
+                // COR-2230 — what this fire's first attempt pinned, when it got as far as writing
+                // it: a fire recovered after its code agent moved is refused.
+                ...sessionRecordedPin(taintSession?.metadata ?? {}, runId),
+              },
               { sessionId, metadata: taintSession?.metadata },
             );
       if (agentResolution?.status !== 'resolved') {
@@ -669,7 +681,9 @@ export function createScheduledRunServices(
           reason:
             agentResolution === undefined
               ? `scheduled fire ${info.workflowId} names the implicit agent "${agentName}", which no longer runs: schedule it under a catalog agent`
-              : `scheduled fire ${info.workflowId} cannot run agent "${agentName}": ${agentResolution.status}`,
+              : agentResolution.status === 'definition-drifted'
+                ? `scheduled fire ${info.workflowId} cannot run agent "${agentName}": definition-drifted: ${describeDefinitionDrift(agentName, agentResolution.drift)}`
+                : `scheduled fire ${info.workflowId} cannot run agent "${agentName}": ${agentResolution.status}`,
         };
       }
       fireAgent = agentResolution.run;
@@ -904,6 +918,7 @@ export function createScheduledRunServices(
               runRuntime.skillPolicyUnverified,
               owner,
               requestContext,
+              fireAgent?.agentPin,
             ),
           ),
           agent: fireAgent?.options.hooks,
