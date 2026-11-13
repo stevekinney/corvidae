@@ -68,6 +68,7 @@ import {
   type AnyToolbox,
   createToolbox,
   formatToolName,
+  getToolboxApprovalOptions,
   type Tool,
   type ToolConfiguration,
   type ToolSecretResolver,
@@ -299,6 +300,9 @@ export function effectiveCodeAgent(
       if (!ownConfigurations.has(configuration)) entries.push(configuration);
     }
     return createToolbox(entries, {
+      // The binding lifetime, clock and approval policy the host built the toolbox with carry
+      // over; without them armorer's 5-minute default would replace a longer configured lifetime.
+      ...getToolboxApprovalOptions(own),
       policy: createToolApprovalHooks(overrides.approvals, { tools: governed }),
       ...(overrides.limits?.tools === undefined
         ? {}

@@ -60,6 +60,8 @@ export type {
   ExecutionState,
 } from './execution-lifecycle';
 export { readToolShortDescription, readToolTitle, renderToolSummary } from './tool-summary';
+export { getToolboxApprovalOptions } from './toolbox-approval-options';
+export type { ToolboxApprovalOptions } from './toolbox-approval-options';
 // RuntimeServices is part of this package's public execution contract.
 // Its implementation and types have one source owner: @lostgradient/lifecycle.
 // Deterministic callers can use createManualRuntimeServices from that workspace.

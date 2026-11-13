@@ -15,6 +15,7 @@ import { createTool, createToolbox, createRegistry, defineTool } from 'armorer';
 - `createTool`: create an executable tool from a configuration object.
 - `createToolCall`: create a canonical tool call object with validated arguments.
 - `createToolbox`: create a toolbox instance or rehydrate one from serialized/imported definitions.
+- `getToolboxApprovalOptions`: read the approval binding lifetime, clock, and approval policy a toolbox was built with, to carry them into a rebuilt toolbox (`createToolbox(entries, { ...getToolboxApprovalOptions(original) })`). The approval secret and secret resolver are not returned.
 - `isSecretReference`: whether a value is a `{ secretRef }` reference (a plain object whose only key is a string `secretRef`).
 - `isTool`: runtime type guard for tools.
 - `isToolbox`: runtime type guard for toolboxes.
