@@ -218,6 +218,9 @@ describe('Callout neutral variant and action', () => {
     expect(action.get('grid-column')).toBe('2');
     expect(action.get('flex-wrap')).toBe('wrap');
     expect(action.get('margin-inline-start')).toBeUndefined();
+    // A stacked action row ends at the trailing edge, with the primary (last) trailing-most.
+    expect(action.get('justify-self')).toBe('end');
+    expect(action.get('justify-content')).toBe('flex-end');
     for (const control of ['button', 'a']) {
       expect(declarationsFor(css, `.cinder-callout__action ${control}`).get('white-space')).toBe(
         'nowrap',
@@ -258,15 +261,15 @@ describe('Callout neutral variant and action', () => {
     const bodyRule = declarationsFor(css, '.cinder-callout__body');
     expect(bodyRule.get('display')).toBe('flex');
     expect(bodyRule.get('flex-wrap')).toBe('wrap');
-    // The text's free space is a trailing auto margin, so a wrapped action starts at the leading
-    // edge instead of being pushed to the trailing one.
+    // The action carries a leading auto margin, so inline or wrapped onto its own row it ends at
+    // the trailing content edge (and mirrors in right-to-left); the text holds no auto margin.
     const contentRule = declarationsFor(css, '.cinder-callout__body > .cinder-callout__content');
-    expect(contentRule.get('margin-inline-end')).toBe('auto');
+    expect(contentRule.get('margin-inline-end')).toBeUndefined();
     expect(
       declarationsFor(css, '.cinder-callout__body > .cinder-callout__action').get(
         'margin-inline-start',
       ),
-    ).toBeUndefined();
+    ).toBe('auto');
   });
 });
 

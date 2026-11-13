@@ -110,7 +110,11 @@
     grid-column: 2;
     grid-row: 2;
     align-items: center;
-    justify-self: start;
+    /* The row ends at the trailing content edge and its buttons keep their intrinsic width; the
+     * primary action is the last child, so it is the trailing-most. Logical values mirror it in
+     * right-to-left. */
+    justify-self: end;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
   }
 
@@ -187,20 +191,20 @@
     row-gap: var(--cinder-space-2);
   }
 
-  /* The text takes its own width up to 68 characters and its free space goes to a trailing auto
+  /* The text takes its own width up to 68 characters and the action carries a leading auto
    * margin, so the action sits at the row's trailing end while both fit; when they cannot, the
-   * action wraps onto a line of its own, which starts at the leading edge (it has no auto margin
-   * to push it). */
+   * action wraps onto a line of its own and the same margin still pushes it to the trailing
+   * edge. */
   .cinder-callout__body > .cinder-callout__content {
     flex: 0 1 auto;
     max-inline-size: 68ch;
-    margin-inline-end: auto;
   }
 
   .cinder-callout__body > .cinder-callout__action {
     flex: 0 0 auto;
     grid-column: auto;
     grid-row: auto;
+    margin-inline-start: auto;
   }
 
   .cinder-callout--inline-action .cinder-callout__dismiss {
@@ -283,7 +287,7 @@
     }
 
     /* The message takes the whole row, so it uses its line before it wraps; the action drops
-     * under it at the start edge. */
+     * under it, ending at the trailing edge. */
     .cinder-callout__body > .cinder-callout__content {
       flex: 1 1 100%;
     }
