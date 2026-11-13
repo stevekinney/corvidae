@@ -117,8 +117,7 @@ describe('a chat that opens on an approval', () => {
       if (document.activeElement !== found) throw new Error('The approval has not taken focus.');
       return found;
     });
-    // Where the transcript rests is Chat's: the row never scrolls the page itself.
-    expect(scrolled).toEqual([]);
+    expect(scrolled.includes(row)).toBe(true);
     // Cinder's approval row is an article named by the question it asks.
     expect(row.tagName).toBe('ARTICLE');
     const titleId = row.getAttribute('aria-labelledby');

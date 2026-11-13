@@ -67,7 +67,6 @@
   import {
     approvalActionRow,
     approvalActionRowShift,
-    approvalArrivalShift,
     approvalReviewBox,
     approvalRowVisible,
     approvalVisibleBox,
@@ -1641,6 +1640,7 @@
       const card = pendingApprovalCard(containerRef, messageId);
       const actionRow = card === null ? null : approvalActionRow(card);
       if (card === null || actionRow === null) return;
+      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
       // The same box the reminder is judged against, so a row this puts in view is one the
       // reminder agrees is in view, with it on screen or not.
       const reminder = readApprovalReminder();
@@ -1651,22 +1651,6 @@
       );
       const cardBox = card.getBoundingClientRect();
       if (cardBox.height >= viewportBox.bottom - viewportBox.top) return;
-      // Arriving on an approval, the block that owns it (its step row and card) starts at the top
-      // of the transcript when it fits whole, so no line of the text above is left half cut. A
-      // host focuses the card as the chat opens, which is not a reason to leave it elsewhere; the
-      // person's own input releases this.
-      const block =
-        card.closest<HTMLElement>('.chat-tool-call-group') ??
-        card.closest<HTMLElement>('article[data-message-id]');
-      const arrival =
-        block === null || block === card
-          ? undefined
-          : approvalArrivalShift(block.getBoundingClientRect(), cardBox, viewportBox);
-      if (arrival !== undefined) {
-        if (arrival !== 0) scroller.scrollTop += arrival;
-        return;
-      }
-      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
       const shift = approvalActionRowShift(
         approvalReviewBox(
           actionRow.getBoundingClientRect(),

@@ -240,42 +240,6 @@ describe('Chat composer drawer for a waiting approval', () => {
     }
   });
 
-  test('arrives with the block that owns the approval at the top of the transcript when it fits whole', async () => {
-    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
-    let timeline: HTMLElement | undefined;
-    const lift = (): number => timeline?.scrollTop ?? 0;
-    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
-      if (this.matches('.chat-timeline')) return measuredBox(0, 600);
-      // The step row and the card sit 240 down the transcript, a card of 250 below it.
-      if (this.matches('.chat-tool-call-group')) return measuredBox(240 - lift(), 560 - lift());
-      if (this.matches('.cinder-approval-card')) {
-        return measuredBox(310 - lift(), 560 - lift(), 16, 304);
-      }
-      if (this.matches(ACTION_ROW)) {
-        return measuredBox(500 - lift(), 540 - lift(), 16, 304);
-      }
-      return originalGetBoundingClientRect.call(this);
-    };
-    try {
-      const { container } = render(Chat, {
-        id: 'chat-arrival-block-top',
-        conversation: approvalConversation('arrival-block-top'),
-        adapter: resolvingAdapter,
-      });
-      timeline = container.querySelector<HTMLElement>('.chat-timeline')!;
-      // The card holds focus, as a host leaves it on opening; that does not keep it where it was.
-      container.querySelector<HTMLElement>('.cinder-approval-card')?.focus();
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-
-      // The block's top is the transcript's top, and a further pass moves it no more.
-      expect(timeline.scrollTop).toBe(240);
-    } finally {
-      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    }
-  });
-
   test('renders host-provided approval drawer labels and accessible names', () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-labels',
