@@ -2291,9 +2291,9 @@
       box-sizing: border-box;
       padding-block: var(--cinder-space-2);
       margin-block: calc(var(--cinder-space-2) * -1);
-      /* A row scrolled to the top stops one padding short of the edge, so its Remove or Retry hit
+      /* A row scrolled to either edge stops one padding short of it, so its Remove or Retry hit
        * area is not clipped there either. */
-      scroll-padding-block-start: var(--cinder-space-2);
+      scroll-padding-block: var(--cinder-space-2);
     }
   }
 

@@ -90,6 +90,10 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).toMatch(
       /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
     );
+    // A row scrolled into view stops one padding short of either edge, so its hit area is not clipped.
+    expect(source).toMatch(
+      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*scroll-padding-block:\s*var\(--cinder-space-2\);/s,
+    );
   });
 });
 
