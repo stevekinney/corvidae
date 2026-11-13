@@ -110,6 +110,23 @@ export function approvalActionRowShift(
   return above > 0 ? -above : 0;
 }
 
+/**
+ * How far the transcript scrolls (positive scrolls down) so the block that owns a waiting approval,
+ * its step row and its card, starts at the top of the transcript's box, or `undefined` when the
+ * block with its card's clearance is taller than the box and cannot be shown whole. A whole block
+ * at the top never leaves a line of the text above it cut in half, and the card ends inside the box
+ * with the clearance the decision buttons need.
+ */
+export function approvalArrivalShift(
+  block: Pick<DOMRectReadOnly, 'top'>,
+  card: Pick<DOMRectReadOnly, 'bottom'>,
+  box: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+): number | undefined {
+  const needed = card.bottom + APPROVAL_BOTTOM_CLEARANCE - block.top;
+  if (needed > box.bottom - box.top) return undefined;
+  return block.top - box.top;
+}
+
 /** Returns the pending approval card rendered by the message that is waiting. */
 export function pendingApprovalCard(
   root: ParentNode | null | undefined,

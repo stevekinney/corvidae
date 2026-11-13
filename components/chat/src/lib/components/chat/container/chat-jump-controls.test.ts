@@ -51,6 +51,11 @@ describe('Jump to latest on a phone', () => {
     expect(controls).toMatch(
       /\.chat-jump-button::before\s*\{[^}]*position: absolute;[^}]*inset: calc\([^;]*- 1px\);/,
     );
+    // The trailing inset holds the hit area's overhang past the painted button, so a chat that
+    // clips or ends at its edge never cuts the 44 px area.
+    expect(controls).toMatch(
+      /\.chat-jump-dock\[data-jump-latest\]\s*\{[^}]*padding-inline-end: calc\(\(var\(--cinder-touch-target-min\) - 2rem\) \/ 2 \+ var\(--cinder-space-1\)\);/,
+    );
     // Nothing moves it back into the flow on a phone, where it would reserve a strip.
     expect(controls).not.toContain('@container (max-width: 30rem)');
   });

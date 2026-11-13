@@ -16,6 +16,7 @@ import {
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
   approvalActionRowShift,
+  approvalArrivalShift,
   approvalCardFitsViewport,
   approvalReviewBox,
   approvalRowVisible,
@@ -263,6 +264,27 @@ describe('approval action row shift', () => {
 
   test('does nothing when the row cannot fit the viewport with its inset', () => {
     expect(approvalActionRowShift({ top: 100, bottom: 500 }, viewport, 8)).toBe(0);
+  });
+});
+
+describe('approvalArrivalShift', () => {
+  const box = { top: 100, bottom: 500 };
+
+  test('scrolls the block that owns the approval to the top of the box when it fits whole', () => {
+    expect(approvalArrivalShift({ top: 320 }, { bottom: 560 }, box)).toBe(220);
+  });
+
+  test('scrolls up when the block starts above the box', () => {
+    expect(approvalArrivalShift({ top: 60 }, { bottom: 300 }, box)).toBe(-40);
+  });
+
+  test('has no answer when the block with the card clearance is taller than the box', () => {
+    expect(
+      approvalArrivalShift({ top: 100 }, { bottom: 500 - APPROVAL_BOTTOM_CLEARANCE + 1 }, box),
+    ).toBeUndefined();
+    expect(
+      approvalArrivalShift({ top: 100 }, { bottom: 500 - APPROVAL_BOTTOM_CLEARANCE }, box),
+    ).toBe(0);
   });
 });
 

@@ -97,8 +97,12 @@
     pointer-events: auto;
   }
 
+  /* The button's 44 px hit area reaches past its painted 32 px by half the difference on each side,
+   * so the trailing inset is that overhang plus a step of space: the whole area stays inside the
+   * chat, where a parent's clip or the page beside it would take a tap at its edge. */
   .chat-jump-dock[data-jump-latest] {
     justify-content: end;
+    padding-inline-end: calc((var(--cinder-touch-target-min) - 2rem) / 2 + var(--cinder-space-1));
   }
 
   .chat-jump-dock[data-inline] {
