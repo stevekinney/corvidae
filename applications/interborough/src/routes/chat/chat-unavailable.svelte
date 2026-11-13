@@ -35,9 +35,11 @@
 
   const conversation = createConversationHistory({ id: untrack(() => `${sessionId}-unavailable`) });
 
-  // A failed read is said at once; only the placeholders of a read wait.
+  // A failed read is said at once; only the placeholders of a read wait, so a quick read never
+  // flashes them, as Cinder's skeleton waits 300 ms.
   let waited = $state(false);
   $effect(() => {
+    // poll-reason: timer
     const timer = setTimeout(() => (waited = true), NO_FLASH_MILLISECONDS);
     return () => clearTimeout(timer);
   });
