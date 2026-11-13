@@ -38,6 +38,8 @@
     onSelect?: ((callId: string) => void) | undefined;
     /** The call whose panel is open: its row is tinted. Only with `onSelect`. */
     selectedId?: string | undefined;
+    /** The ids of the messages this turn's calls stand for, space separated, for Chat's `data-chat-approval-block`. */
+    approvalBlock?: string | undefined;
   }
 
   let {
@@ -50,6 +52,7 @@
     mcpApp,
     onSelect,
     selectedId,
+    approvalBlock,
   }: ToolCallsProps = $props();
 
   let openDetails = $state<ReadonlySet<string>>(new Set());
@@ -106,7 +109,9 @@
         : [['result', displayValue(entry.result)] as const];
 </script>
 
-<div class="ib-tools" data-tool-group={id}>
+<!-- Chat's contract for a host row: the block that owns a waiting approval names the messages it
+  stands for, so the transcript rests on the whole block and not on a part of it. -->
+<div class="ib-tools" data-tool-group={id} data-chat-approval-block={approvalBlock}>
   <ToolCallRail
     {calls}
     {running}
