@@ -1343,7 +1343,10 @@
    * edge, so the overhang below the last line would not be hit-testable; the row is laid out in
    * full instead (one receipt is a few lines, so nothing is saved by skipping it). */
   .chat-message:has(:global(.chat-question-receipt)),
-  .chat-message:has(:global(.chat-question-choices)) {
+  .chat-message:has(:global(.chat-question-choices)),
+  /* A step row is painted at its text line height and reaches 44px by a hit area that overhangs it
+   * by about 12px, which the message's own paint containment would cut off at its padding edge. */
+  .chat-message:has(:global(.chat-tool-call-timeline)) {
     content-visibility: visible;
   }
 

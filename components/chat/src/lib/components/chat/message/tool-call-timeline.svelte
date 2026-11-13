@@ -684,11 +684,16 @@
   }
 
   /* On a touch screen a row is still painted at its text line height; its 44px hit area is a
-   * pseudo-element that reaches past the row and adds no layout. */
+   * pseudo-element that reaches past the row and adds no layout. The row stands above the message
+   * line before it (a stacking position of its own), so the overhang is reachable there. Rows
+   * stacked at their text height would cover each other's faces if each overhung both ways, so the
+   * header overhangs on both sides, a step row ends at its own edges, and only the last row
+   * overhangs, below: a tap between two rows goes to the nearer one. */
   @media (any-pointer: coarse) {
     .chat-tool-call-toggle,
     .chat-tool-call-row {
       position: relative;
+      z-index: 1;
     }
 
     .chat-tool-call-toggle::before,
@@ -696,7 +701,15 @@
       content: '';
       position: absolute;
       inset-inline: 0;
+      inset-block: 0;
+    }
+
+    .chat-tool-call-toggle::before {
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
+    .chat-tool-call-item:last-child > .chat-tool-call-row::before {
+      inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 
@@ -938,7 +951,8 @@
     flex-direction: column;
     gap: 4px;
     margin: 0;
-    padding: 0 0 var(--cinder-space-2) var(--cinder-space-3);
+    padding-block: 0 var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3) 0;
   }
 
   /* A folded run opens to its calls, one block each, with a muted "2 of 20" heading. */
