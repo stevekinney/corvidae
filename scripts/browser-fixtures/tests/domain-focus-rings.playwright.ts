@@ -173,6 +173,23 @@ async function assertInsetRing(target: Locator, label: string): Promise<void> {
   expect(paint.boxShadow, `${label} should paint an inset focus shadow`).toContain('inset');
 }
 
+/**
+ * The scrollable timeline cannot show an outset ring (its overflow clips it) and paints no inset
+ * shadow either: focus shows a bounded label chip at its inline start, with a transparent outline
+ * keeping the forced-colors channel.
+ */
+async function assertBoundedFocusLabel(target: Locator, label: string): Promise<void> {
+  const paint = await waitForSettledFocusPaint(target, label);
+  expect(paint.matchesFocusVisible, `${label} should match :focus-visible`).toBe(true);
+  expect(paint.outlineStyle, `${label} should reserve an outline channel`).toBe('solid');
+  expect(parseFloat(paint.outlineWidth), `${label} outline width`).toBeGreaterThan(0);
+  expect(paint.outlineColorAlpha, `${label} outline is transparent`).toBe(0);
+  expect(paint.boxShadow, `${label} paints no shadow ring`).toBe('none');
+  const chip = target.locator('.chat-timeline-focus-label');
+  await expect(chip, `${label} focus chip is shown`).toHaveCSS('opacity', '1');
+  await expect(chip, `${label} focus chip has text`).toHaveAttribute('data-label', /\S/);
+}
+
 async function seedDenseChatSurface(harness: Locator): Promise<void> {
   await harness.locator('[data-testid="seed-thread"]').click();
   await expect(harness.locator('[data-role="assistant"]').first()).toBeVisible();
@@ -208,7 +225,7 @@ test.describe('domain focus rings -- chat harness', () => {
       await blurToBody(page);
       await tabUntilFocused(page, timeline, 'chat timeline', 120);
       await expect(timeline).toBeFocused();
-      await assertInsetRing(timeline, 'chat timeline');
+      await assertBoundedFocusLabel(timeline, 'chat timeline');
       await tabUntilFocused(page, messageCopy, 'message copy action', 8);
       await expect(messageCopy).toBeFocused();
       await assertSharedOuterRing(messageCopy, 'message copy action');

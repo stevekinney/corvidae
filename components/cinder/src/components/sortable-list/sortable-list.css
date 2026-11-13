@@ -106,14 +106,17 @@
     color: inherit;
   }
 
-  /* The 44px target is a hit area that takes no layout space. */
+  /* The 44px target is a hit area that takes no layout space. The handle is the row's last column,
+   * so the area grows toward the row (inline-start) only: a centred area would draw past the row's
+   * end edge and make a phone-width page scroll sideways. */
   .cinder-sortable-handle::after {
     content: '';
     position: absolute;
-    inset: 50% auto auto 50%;
+    inset-block-start: 50%;
+    inset-inline-end: 0;
     inline-size: var(--cinder-touch-target-min);
     block-size: var(--cinder-touch-target-min);
-    transform: translate(-50%, -50%);
+    transform: translateY(-50%);
   }
 
   .cinder-sortable-handle:focus-visible {

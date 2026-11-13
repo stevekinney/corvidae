@@ -3536,6 +3536,10 @@
     .chat-input-area {
       padding-inline: var(--cinder-chat-narrow-padding);
       padding-block-start: var(--cinder-chat-narrow-padding);
+      padding-block-end: calc(
+        var(--cinder-chat-narrow-padding) +
+          var(--_cinder-chat-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
+      );
     }
   }
 
