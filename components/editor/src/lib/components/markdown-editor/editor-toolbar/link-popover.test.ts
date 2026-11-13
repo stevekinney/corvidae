@@ -263,7 +263,7 @@ describe('LinkPopover — CSS contract', () => {
     expect(primaryRule).not.toMatch(/translateX/);
   });
 
-  test('close button is the small Button height on a fine pointer, with a 44px coarse-pointer override (COR-463)', async () => {
+  test('close button is the small Button height on a fine pointer, and a 2rem face with a 44px hit area on a coarse one (COR-463)', async () => {
     const source = await Bun.file(
       new URL('./link-popover.svelte', import.meta.url).pathname,
     ).text();
@@ -274,14 +274,17 @@ describe('LinkPopover — CSS contract', () => {
     expect(source).toMatch(
       /\.link-popover-close\s*\{[^}]*height:\s*var\(--cinder-button-height-sm\)/s,
     );
-    // The existing pointer-aware convention (number-input's stepper) bumps it
-    // to the 44px WCAG 2.2 AA target under `@media (pointer: coarse)`.
+    // That token rises to 44px on a coarse pointer, so the face is held at 2rem there.
     const coarseBlockMatch = source.match(
       /@media \(pointer: coarse\)\s*\{\s*\.link-popover-close\s*\{([^}]*)\}/,
     );
     expect(coarseBlockMatch).not.toBeNull();
-    expect(coarseBlockMatch![1]).toMatch(/width:\s*var\(--cinder-touch-target-min\)/);
-    expect(coarseBlockMatch![1]).toMatch(/height:\s*var\(--cinder-touch-target-min\)/);
+    expect(coarseBlockMatch![1]).toMatch(/width:\s*2rem/);
+    expect(coarseBlockMatch![1]).toMatch(/height:\s*2rem/);
+    // The 44px WCAG 2.2 AA target is a hit area that takes no layout.
+    expect(source).toMatch(
+      /@media \(any-pointer: coarse\)\s*\{[^@]*\.link-popover-close::after\s*\{[^}]*inset:\s*min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\)/s,
+    );
   });
 });
 
