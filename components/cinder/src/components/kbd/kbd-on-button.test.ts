@@ -22,24 +22,42 @@ const variants = [
 ];
 
 describe('Kbd inside a Button', () => {
-  test('one rule covers every variant and size: plain glyphs in the button color', () => {
+  test('one rule covers every variant and size: a quiet key chip in the button color', () => {
     const body = block(kbdCss, '.cinder-button .cinder-kbd,');
     for (const declaration of [
       'color: inherit;',
-      'background: transparent;',
+      'background: color-mix(in oklch, currentColor 14%, transparent);',
       'border: 0;',
+      'border-radius: var(--cinder-radius-sm);',
       'box-shadow: none;',
-      'padding: 0;',
+      'padding: 0 0.4em;',
+      'height: 1.6em;',
+      'font-size: var(--cinder-text-2xs);',
       'font-family: inherit;',
-      'opacity: 0.72;',
     ]) {
       expect(body).toContain(declaration);
     }
+    // The key's glyphs keep the button's text contrast: nothing dims them.
+    expect(body).not.toContain('opacity');
     expect(body).not.toContain('border-color');
   });
 
-  test('the rule outranks the size rules, so no size keeps a chip', () => {
+  test('the rule outranks the size rules, so every size gets the same chip', () => {
     expect(kbdCss).toContain('.cinder-button .cinder-kbd[data-cinder-size] {');
+  });
+
+  test('forced colours give each key a 1px edge in place of the wash', () => {
+    const media = kbdCss.lastIndexOf('@media (forced-colors: active)');
+    expect(media).not.toBe(-1);
+    expect(block(kbdCss.slice(media), '.cinder-button .cinder-kbd[data-cinder-size] {')).toContain(
+      'border: 1px solid currentColor;',
+    );
+  });
+
+  test('the chips sit a clear step after the label', () => {
+    expect(block(buttonCss, '.cinder-button__shortcut {')).toContain(
+      'margin-inline-start: var(--cinder-space-1);',
+    );
   });
 
   for (const variant of variants) {

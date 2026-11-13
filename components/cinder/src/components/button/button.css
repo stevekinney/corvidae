@@ -197,10 +197,12 @@
  * These slots are decorative-only; meaning lives in the button's accessible name.
  * ---------------------------------------- */
 
+  /* The key chips sit a clear step after the label: the button's own gap plus a little more. */
   .cinder-button__shortcut {
     display: inline-flex;
     align-items: center;
     flex-shrink: 0;
+    margin-inline-start: var(--cinder-space-1);
   }
 
   /* Touch devices have no keyboard to press the shortcut with, so the hint is hidden. It sits

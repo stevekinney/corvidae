@@ -12,6 +12,8 @@ A styled keyboard key element for displaying keyboard shortcuts in help text and
 <Kbd label="⌘K" />
 ```
 
+Inside a Button (its `shortcut` prop, or a `Kbd` nested by hand) a key is a quieter chip that takes the button's colors: a 14% wash of the button's text color, a small radius and no border, so it never draws a box inside the button's box. Under forced colors it keeps a 1px edge in the button's text color.
+
 ## Props
 
 <!-- generated:props:start -->

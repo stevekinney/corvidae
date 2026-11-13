@@ -32,7 +32,7 @@ A button that takes its words from `label` is never wider than its container. A 
 
 ## Shortcut hint
 
-`shortcut` takes a key (`"N"`) or an array of keys (`['Ctrl', 'K']`) and renders a ShortcutHint after the label. The hint is decorative and `aria-hidden`, so the button's accessible name stays its label, and it only displays the shortcut; registering the key is the application's job. The hint is plain glyphs in the button's own text color, on every variant: no border, fill, shadow, or key-cap chip, and slightly dimmed so the label stays dominant. It is hidden on touch devices (`pointer: coarse` or `hover: none`), which have no keyboard to press it with. A `Kbd` or `ShortcutHint` you nest in a button by hand gets the same treatment, so do not restyle it per page.
+`shortcut` takes a key (`"N"`) or an array of keys (`['Ctrl', 'K']`) and renders a ShortcutHint after the label. The hint is decorative and `aria-hidden`, so the button's accessible name stays its label, and it only displays the shortcut; registering the key is the application's job. Each key is a quiet chip, on every variant, so it reads as a key to press and not as part of the label: a 14% wash of the button's own text color behind the key, a small radius, tight padding and no border, a step smaller than the label and a clear gap after it. The key's glyphs keep the button's text color at full strength, and the chip never makes the button taller at any size; under forced colors each key gets a 1px edge instead of the wash. It is hidden on touch devices (`pointer: coarse` or `hover: none`), which have no keyboard to press it with. A `Kbd` or `ShortcutHint` you nest in a button by hand gets the same treatment, so do not restyle it per page.
 
 ## Disabled
 
