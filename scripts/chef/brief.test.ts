@@ -322,7 +322,7 @@ describe('charter rules', () => {
       agents,
       '`git diff --name-only origin/main...head`',
     ],
-    ['at 150k tokens of context', agents, '150k tokens of context'],
+    ['there is no context ceiling', agents, 'a worker has no context ceiling'],
     ['never poll', agents, 'never poll'],
     ['answer every thread before merge', agents, 'answer every thread before merge'],
     ['at most three rounds', agents, 'cap review at three rounds'],

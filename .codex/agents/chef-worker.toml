@@ -17,7 +17,7 @@ Rules:
 - Run `bun scripts/chef/focused-checks.ts` once, when the change is complete, and fix every failed step. Do not run `bun run check` or `bun run validate` unless the brief names a one-way door.
 - Update from `main` only by a real merge. Before every push, run `bun scripts/chef/revert-check.ts` and read `git diff --name-only origin/main...HEAD`.
 - Open no pull request unless the dispatch asks for one: push your branch and report. Never merge. With a pull request open, own its review threads under AGENTS.md "Review guidelines": answer every thread, at most three rounds, push once per round.
-- At 150K tokens of context, commit, push, and report needs-decision with what is done and what remains.
+- There is no context ceiling (owner decision, 2026-11-13): keep working until the change is complete and verified. Keep your context small anyway, by writing long output to a file and reading its tail.
 - End a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait on a completion; never poll, and never end a turn to say you are still waiting.
 - Your final message is the report the charter describes, at most 15 lines, with the head sha and the status of every acceptance criterion.
 '''
