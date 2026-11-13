@@ -137,7 +137,10 @@ test.describe('New chat while its agents load (24o)', () => {
     await expect(composer).toHaveAttribute('placeholder', 'Message…');
     await expect(composer).toBeDisabled();
     await expect(loading(page).locator('button[data-chat-send]')).toBeDisabled();
-    await expect(loading(page).locator('button[data-chat-send]')).toContainText('Send');
+    // Send is an icon-only button now, named by its aria-label.
+    await expect(loading(page).locator('button[data-chat-send]')).toHaveAccessibleName(
+      /^Send message/,
+    );
     expect(
       await loading(page).locator('.ib-new-chat-loading__controls .cinder-skeleton').count(),
     ).toBeGreaterThanOrEqual(2);
