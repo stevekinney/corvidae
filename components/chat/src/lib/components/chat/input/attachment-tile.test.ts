@@ -96,6 +96,15 @@ describe('failures', () => {
     expect(classifyUploadFailure(new ChatAttachmentUploadError('unsupported-type'))).toEqual({
       kind: 'unsupported-type',
     });
+    // Any error that names a kind says the same, without extending the class.
+    expect(
+      classifyUploadFailure(
+        Object.assign(new Error('host'), { failureKind: 'too-large', maxFileSize: 2048 }),
+      ),
+    ).toEqual({ kind: 'too-large', maxFileSize: 2048 });
+    expect(
+      classifyUploadFailure(Object.assign(new Error('host'), { failureKind: 'nope' })),
+    ).toEqual({ kind: 'unknown' });
     expect(classifyUploadFailure(new TypeError('Failed to fetch'))).toEqual({ kind: 'network' });
     expect(classifyUploadFailure(new Error('The service said no'))).toEqual({ kind: 'unknown' });
     expect(classifyUploadFailure('nope')).toEqual({ kind: 'unknown' });

@@ -1,6 +1,6 @@
 import type { AttachmentKind } from './attachment-kind.ts';
 import {
-  ChatAttachmentUploadError,
+  CHAT_ATTACHMENT_FAILURE_KINDS,
   type ChatAttachment,
   type ChatAttachmentFailureKind,
 } from './chat-attachment.ts';
@@ -117,7 +117,8 @@ export function failureKindOf(
 }
 
 /**
- * What a rejected upload was: the kind an upload hook named with a `ChatAttachmentUploadError`; a
+ * What a rejected upload was: the kind its host named (a `failureKind` on the error, as a
+ * `ChatAttachmentUploadError` carries, with a `maxFileSize` for a file that is too large); a
  * `TypeError`, which is what `fetch` rejects with when the request never completes, reads as
  * `network`; anything else is `unknown`.
  */
@@ -125,10 +126,17 @@ export function classifyUploadFailure(error: unknown): {
   kind: ChatAttachmentFailureKind;
   maxFileSize?: number;
 } {
-  if (error instanceof ChatAttachmentUploadError) {
-    return error.maxFileSize === undefined
-      ? { kind: error.kind }
-      : { kind: error.kind, maxFileSize: error.maxFileSize };
+  if (typeof error === 'object' && error !== null) {
+    const { failureKind, maxFileSize } = error as {
+      failureKind?: unknown;
+      maxFileSize?: unknown;
+    };
+    const named = CHAT_ATTACHMENT_FAILURE_KINDS.find((kind) => kind === failureKind);
+    if (named !== undefined) {
+      return typeof maxFileSize === 'number' && Number.isFinite(maxFileSize)
+        ? { kind: named, maxFileSize }
+        : { kind: named };
+    }
   }
   if (error instanceof TypeError) return { kind: 'network' };
   return { kind: 'unknown' };

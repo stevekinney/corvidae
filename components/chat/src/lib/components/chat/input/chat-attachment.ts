@@ -43,13 +43,23 @@ export type ChatAttachmentFailure =
  */
 export type ChatAttachmentFailureKind = 'network' | 'too-large' | 'unsupported-type' | 'unknown';
 
+/** The kinds a failure can be, to tell one from a host's own string. */
+export const CHAT_ATTACHMENT_FAILURE_KINDS: readonly ChatAttachmentFailureKind[] = [
+  'network',
+  'too-large',
+  'unsupported-type',
+  'unknown',
+];
+
 /**
- * What an upload hook rejects with when it knows why the upload failed. A rejection that is not
- * one reads as `network` when it is a `TypeError` (what `fetch` rejects with when the request
- * never completes) and as `unknown` otherwise.
+ * What an upload hook rejects with when it knows why the upload failed. Any error with a
+ * `failureKind` (and, for `too-large`, a `maxFileSize` in bytes) says the same, so a host's own
+ * error class need not extend this one. A rejection that says nothing reads as `network` when it
+ * is a `TypeError` (what `fetch` rejects with when the request never completes) and as `unknown`
+ * otherwise.
  */
 export class ChatAttachmentUploadError extends Error {
-  readonly kind: ChatAttachmentFailureKind;
+  readonly failureKind: ChatAttachmentFailureKind;
   /** The limit in bytes, for `too-large`. */
   readonly maxFileSize: number | undefined;
 
@@ -63,7 +73,7 @@ export class ChatAttachmentUploadError extends Error {
   ) {
     super(options.message ?? `Attachment upload failed: ${kind}`, { cause: options.cause });
     this.name = 'ChatAttachmentUploadError';
-    this.kind = kind;
+    this.failureKind = kind;
     this.maxFileSize = options.maxFileSize;
   }
 }
