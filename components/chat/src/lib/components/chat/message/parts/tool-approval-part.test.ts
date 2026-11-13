@@ -77,7 +77,7 @@ describe('ToolApprovalPart', () => {
     );
     expect(buttons).toEqual([
       'Input Environment production, Replicas 3',
-      'Add a note',
+      'Add note',
       'Deny',
       'Approve',
     ]);

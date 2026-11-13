@@ -44,8 +44,14 @@ describe('chat message action buttons', () => {
     // `content-visibility: auto` contains paint at the message's edge and would cut the 44px
     // area of the receipt's Change action where the message ends.
     expect(source).toMatch(
-      /\.chat-message:has\(:global\(\.chat-question-receipt\)\),\s*\.chat-message:has\(:global\(\.chat-question-choices\)\) \{\s*content-visibility: visible;/,
+      /\.chat-message:has\(:global\(\.chat-question-receipt\)\),\s*\.chat-message:has\(:global\(\.chat-question-choices\)\),[^{]*\.chat-message:has\(:global\(\.chat-tool-call-timeline\)\) \{\s*content-visibility: visible;/,
     );
+  });
+
+  test('a message that holds a step group is never content-skipped', () => {
+    // A step row is painted at its text height and its 44px hit area overhangs it by about 12px;
+    // paint containment at the message's padding edge would cut that overhang off.
+    expect(source).toContain(':has(:global(.chat-tool-call-timeline))');
   });
 
   test('a message that holds an open question is never content-skipped either', () => {

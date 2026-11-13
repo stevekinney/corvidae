@@ -659,11 +659,12 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
+  /* The chevron is 14px beside 13px text: a glyph follows its text (12 to 14px beside 12 to 13px). */
   .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
-    inline-size: 1rem;
-    block-size: 1rem;
+    inline-size: 14px;
+    block-size: 14px;
     flex: none;
-    margin-block: calc((1lh - 1rem) / 2);
+    margin-block: calc((1lh - 14px) / 2);
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
