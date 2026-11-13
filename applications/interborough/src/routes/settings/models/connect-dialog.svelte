@@ -14,10 +14,10 @@
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { maskedKey, providerDisplayName, providerKeyPage } from './format-model.ts';
+  import { maskedKey, providerKeyPage } from './format-model.ts';
   import { KeyFlow } from './key-flow.svelte.ts';
   import { markConnected, refreshAfterKeyChange } from './provider-cache.ts';
-  import type { ProviderConfigurationSource } from './provider-configuration.ts';
+  import { providerTitle, type ProviderConfigurationSource } from './provider-configuration.ts';
   import ProviderConfiguration from './provider-configuration.svelte';
   import { ProviderConfigurationDraft } from './provider-configuration.svelte.ts';
 
@@ -48,7 +48,7 @@
     beforeSave: () => configuration.save(),
   });
 
-  const displayName = $derived(provider === null ? '' : providerDisplayName(provider));
+  const displayName = $derived(provider === null ? '' : providerTitle(provider, configurations));
   const keyPage = $derived(provider === null ? undefined : providerKeyPage(provider));
   const open = $derived(provider !== null);
   const connected = $derived(flow.phase === 'connected');

@@ -175,7 +175,7 @@
       listed !== undefined &&
       listed.media !== null &&
       providers.data !== undefined &&
-      !providers.data.providers.some((provider) => provider.hasKey),
+      !providers.data.providers.some((provider) => provider.connected),
   );
 
   // The plugin's title, as Settings › Plugins shows it, for the words about a disabled one.

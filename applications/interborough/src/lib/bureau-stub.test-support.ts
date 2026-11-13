@@ -150,7 +150,12 @@ export function installBureauStub(
      * The providers `/host/providers` reports, each with whether it has an API key. Left out, the
      * route answers `Not found`, as a host that does not say would.
      */
-    readonly hostProviders?: readonly { readonly name: string; readonly hasKey: boolean }[];
+    readonly hostProviders?: readonly {
+      readonly name: string;
+      readonly hasKey: boolean;
+      /** Whether the provider can be called; its `hasKey` when left out, `true` for a keyless provider. */
+      readonly connected?: boolean;
+    }[];
     /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
     readonly hostMode?: 'local' | 'remote';
     /** The size `/host/storage` reports (`null` for a backend that cannot say). Left out, the route answers `Not found`. */
@@ -207,6 +212,8 @@ export function installBureauStub(
         providers: options.hostProviders.map((provider) => ({
           ...provider,
           configured: provider.hasKey,
+          // A keyed provider is connected by its key; a keyless one says so (`connected: true`).
+          connected: provider.connected ?? provider.hasKey,
         })),
         catalog: [],
         models: [],

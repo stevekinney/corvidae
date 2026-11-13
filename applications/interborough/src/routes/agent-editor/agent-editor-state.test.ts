@@ -474,7 +474,7 @@ describe('the model the form chooses', () => {
 
   test('stays the file’s model when the catalog no longer lists it, and is written back unchanged', () => {
     const form = AgentEditorState.edit(writing('gemini/gemini-2.5-pro'), catalog, {
-      hostProviders: [{ name: 'gemini', hasKey: false }],
+      hostProviders: [{ name: 'gemini', connected: false }],
     });
     expect(form.model).toBe('gemini/gemini-2.5-pro');
     expect(form.chosenModel?.unavailable).toBe('not-in-catalog');

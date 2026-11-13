@@ -65,6 +65,10 @@ function open(
     plugins?: PluginFixture[];
     /** What `bureau.plugins.contributions` reports for the providers. */
     providers?: { plugin: string; name: string; configuration: Record<string, unknown> | null }[];
+    /** The providers that declare no secret, which the host reports connected with no key saved. */
+    keyless?: string[];
+    /** The address the page is opened at; `/settings/models` unless given. */
+    at?: string;
   } = {},
 ) {
   order = [];
@@ -81,10 +85,12 @@ function open(
   });
   host = installFakeHost({
     keys: { anthropic: true, openai: false, gemini: false },
+    ...(options.keyless === undefined ? {} : { keyless: options.keyless }),
     offered: {
       anthropic: [model('anthropic', 'claude-sonnet-5')],
       openai: [model('openai', 'gpt-5')],
       gemini: [],
+      ollama: [model('ollama', 'llama-3')],
     },
   });
   pluginHost = installFakePluginHost(
@@ -108,7 +114,7 @@ function open(
     }
     return underneath(input, init);
   });
-  landAt('/settings/models');
+  landAt(options.at ?? '/settings/models');
   return render(RouteOutletHarness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
@@ -369,5 +375,109 @@ describe('managing a provider whose plugin has settings', () => {
     await waitFor(() => expect(dialog.textContent).toContain('baseURL must be a URL.'));
     expect(pluginHost!.stored['anthropic']).toBeUndefined();
     expect(within(dialog).getByRole('button', { name: copy.save })).toBeDefined();
+  });
+});
+
+describe('a keyless provider (COR-2414)', () => {
+  const copy = MODELS_COPY.manageDialog;
+  const OLLAMA_SCHEMA = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    properties: { baseURL: { type: 'string' } },
+    additionalProperties: false,
+  };
+  const ollamaPlugin: PluginFixture = {
+    name: 'ollama',
+    title: 'Ollama',
+    configurationSchema: OLLAMA_SCHEMA,
+    configuration: { baseURL: 'http://localhost:11434' },
+  };
+  const ollamaProvider = { plugin: 'ollama', name: 'ollama', configuration: OLLAMA_SCHEMA };
+
+  test('reads as connected with its plugin’s name, and offers no Connect and no key action', async () => {
+    const { container } = open({
+      keyless: ['ollama'],
+      providers: [ollamaProvider],
+      plugins: [ollamaPlugin],
+    });
+    await waitFor(() => expect(providerOf(container, 'ollama')).not.toBeNull());
+    const row = providerOf(container, 'ollama')!;
+
+    await waitFor(() => expect(row.textContent).toContain('Ollama'));
+    expect(row.textContent).toContain(MODELS_COPY.providers.connected);
+    expect(within(row).queryByRole('button', { name: /^Connect/ })).toBeNull();
+    expect(row.textContent).not.toContain(MODELS_COPY.providers.connect);
+    // The page says a provider is connected, so it asks for no provider to be connected.
+    expect(container.textContent).not.toContain(MODELS_COPY.providers.description);
+    expect(container.textContent).toContain(MODELS_COPY.providers.connectedDescription);
+  });
+
+  test('lists its models in the catalog, which only a connected provider’s models are', async () => {
+    const { container } = open({
+      keyless: ['ollama'],
+      providers: [ollamaProvider],
+      plugins: [ollamaPlugin],
+    });
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-model="ollama/llama-3"]')).not.toBeNull(),
+    );
+  });
+
+  test('has Manage for its settings, whose dialog holds them and no Remove key or Replace key', async () => {
+    const { container } = open({
+      keyless: ['ollama'],
+      providers: [ollamaProvider],
+      plugins: [ollamaPlugin],
+    });
+    await waitFor(() => expect(providerOf(container, 'ollama')).not.toBeNull());
+    const manage = await within(providerOf(container, 'ollama')!).findByRole('button', {
+      name: /^Manage/,
+    });
+
+    await fireEvent.click(manage);
+    const dialog = await dialogOf(container);
+
+    expect(within(dialog).getByRole('heading', { name: 'Ollama' })).toBeDefined();
+    await waitFor(() => expect(baseUrlField(dialog).value).toBe('http://localhost:11434'));
+    expect(within(dialog).queryByRole('button', { name: copy.removeKey })).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: copy.replaceKey })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: copy.done })).toBeDefined();
+
+    await fireEvent.input(baseUrlField(dialog), { target: { value: 'http://gpu-box:11434' } });
+    await fireEvent.click(await within(dialog).findByRole('button', { name: copy.save }));
+    await waitFor(() => expect(pluginWrites()).toHaveLength(1));
+    expect(pluginWrites()[0]?.path).toBe('/host/plugins/ollama');
+    expect(keyWrites()).toEqual([]);
+  });
+
+  test('shows only the Connected dot, with no button at all, when its plugin has no settings', async () => {
+    const { container } = open({
+      keyless: ['ollama'],
+      providers: [
+        { plugin: 'ollama', name: 'ollama', configuration: { type: 'object', properties: {} } },
+      ],
+      plugins: [{ name: 'ollama', title: 'Ollama' }],
+    });
+    await waitFor(() => expect(providerOf(container, 'ollama')).not.toBeNull());
+    const row = providerOf(container, 'ollama')!;
+    await waitFor(() => expect(row.textContent).toContain('Ollama'));
+
+    expect(row.textContent).toContain(MODELS_COPY.providers.connected);
+    expect(within(row).queryAllByRole('button')).toEqual([]);
+  });
+
+  test('counts as the connected provider that a page sent the person here to connect', async () => {
+    const { container } = open({
+      keyless: ['ollama'],
+      providers: [ollamaProvider],
+      plugins: [ollamaPlugin],
+      at: '/settings/models?return=%2Fagents%2Fnew',
+    });
+
+    const notice = await within(container).findByTestId('models-return');
+    await waitFor(() =>
+      expect(notice.textContent).toContain(MODELS_COPY.returnNotice.connectedDescription),
+    );
   });
 });

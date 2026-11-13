@@ -4,6 +4,7 @@
  * blocked row that replaces the text box when no provider is connected, when the host stopped the
  * chat, and when the agent's plugin is disabled.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -37,10 +38,10 @@ const TURNS = [
   { id: 'a1', role: 'assistant', content: 'Answer' },
 ];
 
-const provider = (hasKey: boolean) =>
+const provider = (hasKey: boolean, connected = hasKey) =>
   Response.json({
     configurationRevision: null,
-    providers: [{ name: 'anthropic', configured: true, hasKey }],
+    providers: [{ name: 'anthropic', configured: true, hasKey, connected }],
     catalog: [],
     models: [],
   } satisfies ProvidersSnapshot);
@@ -75,7 +76,13 @@ type Answers = Record<string, (params: Record<string, unknown>) => unknown>;
 
 function serve(
   answers: Answers = {},
-  options: { running?: boolean; hasKey?: boolean; agent?: typeof RUNNER } = {},
+  options: {
+    running?: boolean;
+    hasKey?: boolean;
+    /** Whether the provider can be called; its key when left out. A keyless provider is `true` with no key. */
+    connected?: boolean;
+    agent?: typeof RUNNER;
+  } = {},
 ) {
   const running = options.running ?? false;
   const handler = thread(running);
@@ -93,7 +100,10 @@ function serve(
       'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
       ...answers,
     },
-    (url) => (url.endsWith('/host/providers') ? provider(options.hasKey ?? true) : handler(url)),
+    (url) =>
+      url.endsWith('/host/providers')
+        ? provider(options.hasKey ?? true, options.connected)
+        : handler(url),
   );
   restore = served.restore;
   landAt('/chats/session-1');
@@ -147,7 +157,7 @@ describe('the live composer', () => {
 
 describe('a blocked composer', () => {
   test('replaces the text box with one row when no provider is connected for a model agent, with no Use Assistant in a chat whose agent is fixed', async () => {
-    serve({}, { hasKey: false });
+    serve({}, { hasKey: false, connected: false });
     const { container } = mount();
 
     await waitFor(() => expect(row(container)).not.toBeNull());
@@ -183,7 +193,7 @@ describe('a blocked composer', () => {
   });
 
   test('on a new chat also offers Use Assistant, which switches to the scripted agent and brings the composer back', async () => {
-    serve({}, { hasKey: false });
+    serve({}, { hasKey: false, connected: false });
     const { container, findByRole } = mount('tool-runner', true);
 
     await waitFor(() => expect(row(container)).not.toBeNull());
@@ -201,7 +211,7 @@ describe('a blocked composer', () => {
         'bureau.agents.list': () => ({ agents: [{ ...AGENT, media: null }] }),
         'bureau.contexts.get': () => ({ ...CONTEXT, configVersion: 1 }),
       },
-      { hasKey: false },
+      { hasKey: false, connected: false },
     );
     const { container } = mount('assistant');
 
@@ -212,11 +222,24 @@ describe('a blocked composer', () => {
   });
 
   test('is not drawn once a provider holds a key', async () => {
-    serve({}, { hasKey: true });
+    serve({}, { hasKey: true, connected: true });
     const { container } = mount();
 
     await waitFor(() => expect(composer(container)).not.toBeNull());
     expect(row(container)).toBeNull();
+  });
+
+  test('is not drawn when the only provider is keyless, which is connected with no key saved (COR-2414)', async () => {
+    serve({}, { hasKey: false, connected: true });
+    const { container } = mount();
+
+    await waitFor(() => expect(composer(container)).not.toBeNull());
+    // The provider answer is read in a later turn: a reader that took the keyless provider for
+    // none would have replaced the composer with the blocked row by now.
+    await quietFor(100);
+    expect(composer(container)).not.toBeNull();
+    expect(row(container)).toBeNull();
+    expect(container.textContent).not.toContain(COPY.noProvider);
   });
 
   test('says the host stopped a chat when it restarted, with a New chat link', async () => {

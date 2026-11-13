@@ -422,7 +422,7 @@ export interface ChecklistStep {
 
 /** What {@link checklistSteps} reads besides which steps are done. */
 export interface ChecklistContext {
-  readonly providers: readonly { readonly name: string; readonly hasKey: boolean }[];
+  readonly providers: readonly { readonly name: string; readonly connected: boolean }[];
   readonly agents: readonly Pick<AgentSummary, 'name' | 'displayName' | 'kind'>[] | undefined;
   /** Whether the person chose Assistant, which is how the second step is done without an agent made. */
   readonly assistantChosen: boolean;
@@ -447,7 +447,7 @@ export function checklistSteps(
       ? assistant
       : (fileAgent?.name ?? context.agents?.[0]?.name);
   const connected = context.providers
-    .filter((provider) => provider.hasKey)
+    .filter((provider) => provider.connected)
     .map((provider) => providerDisplayName(provider.name));
   const words: Record<FirstRunStepId, { title: string; open: string; done: string }> = {
     provider: {

@@ -50,10 +50,10 @@ export function isSameJson(left: unknown, right: unknown): boolean {
   const leftKeys = Object.keys(left);
   return (
     leftKeys.length === Object.keys(right).length &&
-    leftKeys.every(
-      (key) =>
-        Object.hasOwn(right, key) &&
-        isSameJson((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]),
-    )
+    leftKeys.every((key) => {
+      const leftValue: unknown = Reflect.get(left, key);
+      const rightValue: unknown = Reflect.get(right, key);
+      return Object.hasOwn(right, key) && isSameJson(leftValue, rightValue);
+    })
   );
 }

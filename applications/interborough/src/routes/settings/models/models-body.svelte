@@ -40,9 +40,8 @@
   import SettingsRestartNotice from '../settings-restart-notice.svelte';
   import { SettingsRevert } from '../settings-revert.svelte.ts';
   import DecisionsSection from './decisions-section.svelte';
-  import { providerDisplayName } from './format-model.ts';
   import ModelsSection, { type CatalogFailure } from './models-section.svelte';
-  import { providerConfigurationSources } from './provider-configuration.ts';
+  import { providerConfigurationSources, providerTitle } from './provider-configuration.ts';
   import ProvidersSection from './providers-section.svelte';
 
   interface Props {
@@ -96,7 +95,7 @@
   const returnPath = router.current.search.has('return')
     ? returnPathOf(router.current.search)
     : null;
-  const connected = $derived(providers.data?.providers.some((entry) => entry.hasKey) === true);
+  const connected = $derived(providers.data?.providers.some((entry) => entry.connected) === true);
 
   function goBack(event: MouseEvent): void {
     if (returnPath === null) return;
@@ -116,8 +115,8 @@
     const error = providers.error;
     return {
       providers: providers.data.providers
-        .filter((entry) => entry.hasKey)
-        .map((entry) => providerDisplayName(entry.name)),
+        .filter((entry) => entry.connected)
+        .map((entry) => providerTitle(entry.name, configurations)),
       status: error instanceof HostProviderError ? error.status : undefined,
     };
   });
@@ -263,7 +262,7 @@
     {stateOf}
     effective={snapshot.effective}
     {typesafeNeedsKey}
-    {policy}
+    providerTitle={(provider: string) => providerTitle(provider, configurations)}
   />
 </div>
 

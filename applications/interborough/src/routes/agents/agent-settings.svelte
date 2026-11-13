@@ -247,7 +247,7 @@
     const provider = providerOf(model);
     const known = providers.data?.providers;
     if (provider === '' || known === undefined) return undefined;
-    return known.some((entry) => entry.name === provider && entry.hasKey)
+    return known.some((entry) => entry.name === provider && entry.connected)
       ? undefined
       : providerDisplayName(provider);
   });

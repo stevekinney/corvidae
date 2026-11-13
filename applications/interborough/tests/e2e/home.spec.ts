@@ -270,9 +270,10 @@ test.describe('Home with nothing waiting and a provider connected', () => {
         response,
         json: {
           ...answer,
-          providers: [...(answer.providers ?? []), { name: 'anthropic', hasKey: true }].map(
-            (provider) => ({ ...provider, hasKey: true }),
-          ),
+          providers: [
+            ...(answer.providers ?? []),
+            { name: 'anthropic', hasKey: true, connected: true },
+          ].map((provider) => ({ ...provider, hasKey: true, connected: true })),
         },
       });
     });
@@ -431,7 +432,10 @@ test.describe('Home on a new installation that lists Assistant', () => {
       const answer = (await response.json()) as { providers?: Record<string, unknown>[] };
       await route.fulfill({
         response,
-        json: { ...answer, providers: [{ name: 'anthropic', configured: true, hasKey: true }] },
+        json: {
+          ...answer,
+          providers: [{ name: 'anthropic', configured: true, hasKey: true, connected: true }],
+        },
       });
     });
     await openFirstRun(page);

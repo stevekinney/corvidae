@@ -63,9 +63,11 @@ const chat = (id: string, activity: string, agentName = 'researcher') => ({
 /** The server for one test: the file agent with two chats, one waiting, and whatever a test overrides. */
 function serve(
   answers: Record<string, BureauHandler> = {},
-  providers: readonly { readonly name: string; readonly hasKey: boolean }[] = [
-    { name: 'anthropic', hasKey: true },
-  ],
+  providers: readonly {
+    readonly name: string;
+    readonly hasKey: boolean;
+    readonly connected?: boolean;
+  }[] = [{ name: 'anthropic', hasKey: true, connected: true }],
 ): BureauStub {
   stub = installBureauStub(
     {
@@ -117,7 +119,7 @@ describe('the header every tab of an agent’s page shares', () => {
 
   test('says an agent on a model cannot answer while no provider is connected, with the way to connect one', async () => {
     landAt('/agents/researcher');
-    serve({}, [{ name: 'anthropic', hasKey: false }]);
+    serve({}, [{ name: 'anthropic', hasKey: false, connected: false }]);
     const { findByTestId } = mount();
 
     const reason = await findByTestId('agent-provider-reason');
@@ -126,6 +128,15 @@ describe('the header every tab of an agent’s page shares', () => {
     expect(link.getAttribute('href')).toBe('/settings/models');
     await fireEvent.click(link);
     expect(router.pathname).toBe('/settings/models');
+  });
+
+  test('says nothing of providers while the only one is keyless (COR-2414)', async () => {
+    landAt('/agents/researcher');
+    serve({}, [{ name: 'ollama', hasKey: false, connected: true }]);
+    const { findByTestId, queryByTestId } = mount();
+
+    await findByTestId('agent-status');
+    expect(queryByTestId('agent-provider-reason')).toBeNull();
   });
 
   test('says nothing of providers while one holds a key', async () => {

@@ -16,8 +16,12 @@
   import ManageDialog from './manage-dialog.svelte';
   import RemoveKeyDialog from './remove-key-dialog.svelte';
   import ReplaceKeyDialog from './replace-key-dialog.svelte';
-  import { providerDisplayName, providerTagline, providersInOrder } from './format-model.ts';
-  import type { ProviderConfigurationSource } from './provider-configuration.ts';
+  import { providerTagline, providersInOrder } from './format-model.ts';
+  import {
+    hasSettingsToShow,
+    providerTitle,
+    type ProviderConfigurationSource,
+  } from './provider-configuration.ts';
 
   interface Props {
     snapshot: ProvidersSnapshot;
@@ -40,7 +44,11 @@
 
   const locked = $derived(snapshot.lockReason !== undefined);
   const entries = $derived(providersInOrder(snapshot.providers));
-  const anyConnected = $derived(entries.some((entry) => entry.hasKey));
+  const anyConnected = $derived(entries.some((entry) => entry.connected));
+  /** Whether the provider being managed holds a key the dialog can replace or remove: a keyless one has none. */
+  const managedHasKey = $derived(
+    snapshot.providers.some((entry) => entry.name === managing && entry.hasKey),
+  );
   const managedModelCount = $derived(
     snapshot.models.filter((entry) => entry.provider === managing && !entry.off).length,
   );
@@ -58,7 +66,7 @@
       </Alert>
     {/if}
     {#each entries as provider (provider.name)}
-      {@const name = providerDisplayName(provider.name)}
+      {@const name = providerTitle(provider.name, configurations)}
       {@const tagline = providerTagline(provider.name)}
       <div class="ib-providers__row" data-provider={provider.name}>
         <div class="ib-providers__identity">
@@ -67,15 +75,18 @@
             <span class="ib-providers__tagline">{tagline}</span>
           {/if}
         </div>
-        {#if provider.hasKey}
+        {#if provider.connected}
           <StatusDot status="success" label={copy.connected} labelVisible />
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={locked}
-            aria-label={copy.manageLabel(name)}
-            onclick={() => (managing = provider.name)}>{copy.manage}</Button
-          >
+          <!-- A keyless provider has no key to manage: Manage is there only for its settings. -->
+          {#if provider.hasKey || hasSettingsToShow(configurations.get(provider.name))}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={locked}
+              aria-label={copy.manageLabel(name)}
+              onclick={() => (managing = provider.name)}>{copy.manage}</Button
+            >
+          {/if}
         {:else}
           <Button
             variant="secondary"
@@ -94,6 +105,7 @@
 <ManageDialog
   bind:provider={managing}
   {configurations}
+  hasKey={managedHasKey}
   modelCount={managedModelCount}
   onReplace={(provider: string) => (replacing = provider)}
   onRemove={(provider: string) => (removing = provider)}

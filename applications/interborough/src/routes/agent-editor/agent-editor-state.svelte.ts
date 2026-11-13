@@ -172,7 +172,7 @@ export function slugify(name: string): string {
  */
 export type ModelContext = {
   readonly hostProviders?:
-    readonly { readonly name: string; readonly hasKey: boolean }[] | undefined;
+    readonly { readonly name: string; readonly connected: boolean }[] | undefined;
   readonly restrictions?: ModelRestrictions | undefined;
 };
 

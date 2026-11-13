@@ -179,7 +179,7 @@
     const snapshotOfProviders = providers.data;
     if (snapshotOfProviders === undefined) return [];
     return snapshotOfProviders.providers
-      .filter((provider) => provider.hasKey)
+      .filter((provider) => provider.connected)
       .map((provider) => ({
         provider: provider.name,
         models: snapshotOfProviders.models.filter((model) => model.provider === provider.name),

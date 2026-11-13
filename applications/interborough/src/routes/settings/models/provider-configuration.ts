@@ -5,7 +5,12 @@
  * two views of one fact.
  */
 import type { ContributedProvider } from '../../../lib/bureau-plugin-kinds.ts';
+import {
+  contributedFormHasFields,
+  contributedFormSchema,
+} from '../../../lib/contributed-configuration.ts';
 import type { PluginStanding } from '../../../lib/host-plugins.ts';
+import { providerDisplayName } from './format-model.ts';
 
 /** What the dialogs of one provider need to draw and save its plugin's configuration. */
 export type ProviderConfigurationSource = {
@@ -42,6 +47,26 @@ export function providerConfigurationSources(
     });
   }
   return sources;
+}
+
+/**
+ * The name a person knows a provider by: its plugin's title ("Ollama"), else the name the page has
+ * words for, else the identifier. A provider the page has no words for would read lowercase
+ * (`ollama`) from `providerDisplayName` alone.
+ */
+export function providerTitle(
+  provider: string,
+  sources: ReadonlyMap<string, ProviderConfigurationSource>,
+): string {
+  return sources.get(provider)?.title ?? providerDisplayName(provider);
+}
+
+/** Whether the provider's plugin has a configuration field to draw: a provider with none has no settings to manage. */
+export function hasSettingsToShow(source: ProviderConfigurationSource | undefined): boolean {
+  return (
+    source !== undefined &&
+    contributedFormHasFields(contributedFormSchema(`provider:${source.provider}`, source.schema))
+  );
 }
 
 /** A stored configuration as an object: anything else is `{}`, as the host reads it. */

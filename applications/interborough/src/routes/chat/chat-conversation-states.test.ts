@@ -46,10 +46,10 @@ const SONNET = {
   displayName: 'Claude Sonnet 5.5',
 };
 
-const provider = (hasKey: boolean) =>
+const provider = (hasKey: boolean, connected = hasKey) =>
   Response.json({
     configurationRevision: null,
-    providers: [{ name: 'anthropic', configured: true, hasKey }],
+    providers: [{ name: 'anthropic', configured: true, hasKey, connected }],
     catalog: [],
     models: [],
   } satisfies ProvidersSnapshot);
@@ -59,7 +59,13 @@ type Answers = Record<string, (params: Record<string, unknown>) => unknown>;
 /** Serves a chat whose thread is `messages`; a thread with no run to join answers the way a finished one does. */
 function serve(
   messages: readonly Record<string, unknown>[],
-  options: { hasKey?: boolean; context?: Record<string, unknown>; answers?: Answers } = {},
+  options: {
+    hasKey?: boolean;
+    /** Whether the provider can be called; its key when left out. */
+    connected?: boolean;
+    context?: Record<string, unknown>;
+    answers?: Answers;
+  } = {},
 ) {
   const served = bureau(
     {
@@ -82,7 +88,8 @@ function serve(
       ...options.answers,
     },
     (url) => {
-      if (url.endsWith('/host/providers')) return provider(options.hasKey ?? true);
+      if (url.endsWith('/host/providers'))
+        return provider(options.hasKey ?? true, options.connected);
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages });
       if (!url.includes('/threads/')) return undefined;
       return new Response(
@@ -166,7 +173,7 @@ describe('a chat waiting on an approval with no provider connected (19h)', () =>
   const messages = heldByPluginMessages();
 
   test('keeps Approve and Deny enabled and says the agent continues once a provider is connected', async () => {
-    serve(messages, { hasKey: false });
+    serve(messages, { hasKey: false, connected: false });
     const { container, findByRole } = mount();
 
     const approve = await findByRole('button', { name: 'Approve' });
@@ -182,7 +189,7 @@ describe('a chat waiting on an approval with no provider connected (19h)', () =>
   });
 
   test('says nothing about a provider when one is connected', async () => {
-    serve(messages, { hasKey: true });
+    serve(messages, { hasKey: true, connected: true });
     const { container, findByRole } = mount();
 
     await findByRole('button', { name: 'Approve' });
@@ -233,6 +240,7 @@ describe('an approval of an agent a disabled plugin holds back (19k, 20f)', () =
   test('says nothing of a provider under an approval nobody can answer', async () => {
     serve(heldByPluginMessages(), {
       hasKey: false,
+      connected: false,
       context: { agentName: 'demo:release-helper' },
       answers: unavailable,
     });

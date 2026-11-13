@@ -45,7 +45,7 @@
   const noProvider = $derived(
     usesModel &&
       providers.data !== undefined &&
-      !providers.data.providers.some((provider) => provider.hasKey),
+      !providers.data.providers.some((provider) => provider.connected),
   );
   const blocked = $derived(
     noProvider

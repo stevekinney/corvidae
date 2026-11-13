@@ -280,6 +280,7 @@ describe('connecting a provider', () => {
       name: 'anthropic',
       configured: true,
       hasKey: true,
+      connected: true,
     });
     const everything = JSON.stringify([change, snapshot, host.diagnostics().providers, warnings]);
     expect(everything.includes(KEY_A)).toBe(false);
@@ -929,6 +930,7 @@ describe('disconnecting a provider', () => {
     const snapshot = await host.providers.snapshot();
     expect(snapshot.providers.find((entry) => entry.name === 'anthropic')).toMatchObject({
       hasKey: false,
+      connected: false,
       models: ['sonnet'],
     });
 
@@ -1138,7 +1140,7 @@ describe('the provider routes', () => {
     expect(text.includes(KEY_A)).toBe(false);
     expect(JSON.parse(text)).toMatchObject({
       providers: expect.arrayContaining([
-        { name: 'anthropic', configured: true, hasKey: true, models: ['sonnet'] },
+        { name: 'anthropic', configured: true, hasKey: true, connected: true, models: ['sonnet'] },
       ]),
       catalog: [],
     });

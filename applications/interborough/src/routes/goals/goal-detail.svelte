@@ -159,7 +159,7 @@
       summary !== undefined &&
       summary.media !== null &&
       providers.data !== undefined &&
-      !providers.data.providers.some((provider) => provider.hasKey)
+      !providers.data.providers.some((provider) => provider.connected)
     );
   });
 

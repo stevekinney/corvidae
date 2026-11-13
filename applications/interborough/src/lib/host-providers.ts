@@ -116,7 +116,13 @@ const providersSchema = z.object({
     z.object({
       name: z.string().min(1),
       configured: z.boolean(),
+      /** Whether a key is saved. A provider that declares no secret has none and is still `connected`. */
       hasKey: z.boolean(),
+      /**
+       * Whether the provider can be called: it has a saved key, or declares no secret (a local
+       * Ollama or LM Studio). Every screen that asks whether a provider is connected reads this.
+       */
+      connected: z.boolean(),
       models: z.array(z.string()).optional(),
     }),
   ),

@@ -60,7 +60,7 @@
      * The model providers the host reports, each with whether it has a key, or `undefined` while the
      * host has not said. None with a key blocks the composer; one with a key is "Provider connected".
      */
-    providers: readonly { readonly hasKey: boolean }[] | undefined;
+    providers: readonly { readonly connected: boolean }[] | undefined;
   }
 
   let { editor, open = $bindable(), placement, providers }: Props = $props();
@@ -78,10 +78,10 @@
   // With no model provider connected nothing can be answered, so the shared blocked row stands in
   // the composer's place and says so.
   const noProvider = $derived(
-    providers !== undefined && !providers.some((provider) => provider.hasKey),
+    providers !== undefined && !providers.some((provider) => provider.connected),
   );
   const providerConnected = $derived(
-    providers !== undefined && providers.some((provider) => provider.hasKey),
+    providers !== undefined && providers.some((provider) => provider.connected),
   );
   const composerStatus = $derived(
     composerStatusOf({

@@ -69,10 +69,10 @@ afterEach(() => {
 const encoder = new TextEncoder();
 const frame = (event: unknown): Uint8Array => encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
-const provider = (hasKey: boolean) =>
+const provider = (hasKey: boolean, connected = hasKey) =>
   Response.json({
     configurationRevision: null,
-    providers: [{ name: 'anthropic', configured: true, hasKey }],
+    providers: [{ name: 'anthropic', configured: true, hasKey, connected }],
     catalog: [],
     models: [],
   } satisfies ProvidersSnapshot);
@@ -92,7 +92,12 @@ interface Served {
 
 /** A Bureau with the given agents, whose first run is held until the test lets it begin or fail. */
 function serve(
-  options: { agents?: readonly Record<string, unknown>[]; hasKey?: boolean } = {},
+  options: {
+    agents?: readonly Record<string, unknown>[];
+    hasKey?: boolean;
+    /** Whether the provider can be called; its key when left out. */
+    connected?: boolean;
+  } = {},
 ): Served {
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   let held: Run | undefined;
@@ -116,7 +121,8 @@ function serve(
       'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
     },
     (url, init) => {
-      if (url.endsWith('/host/providers')) return provider(options.hasKey ?? true);
+      if (url.endsWith('/host/providers'))
+        return provider(options.hasKey ?? true, options.connected);
       if (!url.includes('/ag-ui/agents/')) return undefined;
       count += 1;
       const input: { threadId: string; runId: string } = JSON.parse(
@@ -266,7 +272,7 @@ describe('a chat started from Workflows with an agent that can create workflows'
 
 describe('a chat started from Workflows with no model provider', () => {
   test('keeps the chip over the shared blocked row, draws no banner, and holds the prefill back (24g, 24h)', async () => {
-    serve({ hasKey: false });
+    serve({ hasKey: false, connected: false });
     landAt('/chats/new?from=workflows');
     const { container } = mount();
     const row = await waitFor(() => {
@@ -286,7 +292,7 @@ describe('a chat started from Workflows with no model provider', () => {
   });
 
   test('puts the prefill in the box once there is one, here when the person takes Assistant (24h)', async () => {
-    serve({ hasKey: false });
+    serve({ hasKey: false, connected: false });
     landAt('/chats/new?from=workflows');
     const { container, getByRole } = mount();
     await waitFor(() => expect(blocked(container)).not.toBeNull());

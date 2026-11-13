@@ -83,9 +83,11 @@ const VERSIONS = [
 /** The server for one test: the file agent with two chats, and whatever a test overrides. */
 function serve(
   answers: Record<string, BureauHandler> = {},
-  providers: readonly { readonly name: string; readonly hasKey: boolean }[] = [
-    { name: 'anthropic', hasKey: true },
-  ],
+  providers: readonly {
+    readonly name: string;
+    readonly hasKey: boolean;
+    readonly connected?: boolean;
+  }[] = [{ name: 'anthropic', hasKey: true, connected: true }],
 ): BureauStub {
   stub = installBureauStub(
     {
@@ -134,13 +136,22 @@ describe('the Settings form (rows 38u to 38w)', () => {
 
   test('says the provider is not connected, why the agent cannot answer, and where to connect one', async () => {
     landAt('/agents/researcher/settings');
-    serve({}, [{ name: 'anthropic', hasKey: false }]);
+    serve({}, [{ name: 'anthropic', hasKey: false, connected: false }]);
     const { findByTestId } = mount();
 
     const reason = await findByTestId('agent-settings-no-provider');
     expect(reason.textContent).toContain(copy.noProvider.title('Anthropic'));
     expect(reason.textContent).toContain(copy.noProvider.description('Researcher'));
     expect(within(reason).getByRole('link', { name: copy.noProvider.action })).not.toBeNull();
+  });
+
+  test('does not say the provider is not connected when it is keyless, which needs no key (COR-2414)', async () => {
+    landAt('/agents/researcher/settings');
+    serve({}, [{ name: 'anthropic', hasKey: false, connected: true }]);
+    const { findByLabelText, queryByTestId } = mount();
+
+    await findByLabelText('Effort');
+    expect(queryByTestId('agent-settings-no-provider')).toBeNull();
   });
 
   test('saves the effort and the step limit as one write over the hash it read, keeping the rest of the file', async () => {

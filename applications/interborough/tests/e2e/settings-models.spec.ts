@@ -87,7 +87,7 @@ test.describe('Settings › Models, no provider connected', () => {
     await expect(page.getByText(MODELS_COPY.decisions.description)).toBeVisible();
     const model = page.locator('[data-setting="decisions.model"]');
     await expect(model).toContainText('Decision model');
-    await expect(model).toContainText(MODELS_COPY.decisions.model.waitingNothing);
+    await expect(model).toContainText(MODELS_COPY.decisions.model.nothingAnswers);
     await expect(model.getByRole('combobox')).toBeEnabled();
     await expect(model.getByRole('link', { name: 'Connect TypeSafe' })).toBeVisible();
     const fallback = page.locator('[data-setting="decisions.fallbackModel"]');
@@ -122,6 +122,7 @@ test.describe('Settings › Models, provider connected', () => {
     checkA11y,
   }) => {
     await withSampleCatalog(page);
+    await withDecisionRows(page);
     await open(page, E2E_BASE_URL);
     await expect(page.getByText(MODELS_COPY.providers.connectedDescription)).toBeVisible();
     const anthropic = providerRow(page, 'anthropic');
@@ -155,12 +156,13 @@ test.describe('Settings › Models, provider connected', () => {
 
     // Decisions: a provider is connected, so something answers while TypeSafe, which has no key on
     // this host, waits. `withSampleCatalog` stubs only the host's providers route, never the
-    // Bureau's own catalog, which holds no row the Bureau would pick as the fallback here: the page
-    // says a fallback model answers without naming one, and not that nothing can. The named
-    // sentence and the "(default)" option are covered by `models-page.test.ts`.
+    // Bureau's own catalog, so the Bureau's list of the rows that can answer is stubbed too
+    // (`withDecisionRows`): the page names the row the Bureau marks as answering.
     const model = page.locator('[data-setting="decisions.model"]');
-    await expect(model).toContainText(MODELS_COPY.decisions.model.waitingUnnamed);
-    await expect(model).not.toContainText(MODELS_COPY.decisions.model.waitingNothing);
+    await expect(model).toContainText(
+      MODELS_COPY.decisions.model.fallbackAnswers('Claude Haiku 5.5'),
+    );
+    await expect(model).not.toContainText(MODELS_COPY.decisions.model.nothingAnswers);
 
     await checkA11y('settings models, provider connected, at 1280px');
     await captureAtEveryWidth(page, 'provider-connected');
@@ -212,6 +214,41 @@ test.describe('Settings › Models, provider connected', () => {
 /** A key shaped like Anthropic's, which only ever goes to a mocked route here. */
 const PASTED_KEY = 'sk-ant-api03-0000000000000000';
 
+/**
+ * Answers the Bureau's list of the rows that can answer decisions (`bureau.decisions.models`) as
+ * if Anthropic held a key: Haiku 5.5 is the row that answers, Sonnet 5.5 and Opus 5.5 are listed,
+ * and OpenAI's row needs setup. Every other Bureau call goes on to the host.
+ */
+async function withDecisionRows(page: Page) {
+  const row = (provider: string, model: string, extra: Record<string, unknown> = {}) => ({
+    provider,
+    model,
+    availability: 'available',
+    decisionOnly: false,
+    answering: false,
+    ...extra,
+  });
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { id?: unknown; method?: string } | null;
+    if (body?.method !== 'bureau.decisions.models') return route.fallback();
+    return route.fulfill({
+      json: {
+        jsonrpc: '2.0',
+        id: body.id ?? null,
+        result: {
+          rows: [
+            row('anthropic', 'claude-opus-5-5'),
+            row('anthropic', 'claude-sonnet-5-5'),
+            row('anthropic', 'claude-haiku-5-5', { answering: true }),
+            row('openai', 'gpt-5', { availability: 'needs-setup' }),
+            row('typesafe', 'jev', { availability: 'needs-setup', decisionOnly: true }),
+          ],
+        },
+      },
+    });
+  });
+}
+
 /** Answers every write to a provider's key and every test of one, so no capture changes the host. */
 async function mockKeyRoutes(
   page: Page,
@@ -238,7 +275,9 @@ async function withAnthropicConnected(page: Page) {
       json: {
         ...body,
         providers: body.providers.map((entry) =>
-          entry.name === 'anthropic' ? { ...entry, configured: true, hasKey: true } : entry,
+          entry.name === 'anthropic'
+            ? { ...entry, configured: true, hasKey: true, connected: true }
+            : entry,
         ),
         models: sampleCatalogModels(),
       },
@@ -398,7 +437,9 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     await expect(dialog).toContainText(MODELS_COPY.manageDialog.subtitle);
     await expect(dialog).toContainText(MODELS_COPY.manageDialog.connected);
     await expect(dialog).toContainText(MODELS_COPY.manageDialog.models(3));
-    await expect(dialog.locator('input')).toHaveCount(0);
+    // The saved key is never shown again: no key field. The plugin's own settings are fields here.
+    await expect(dialog.getByLabel(MODELS_COPY.connectDialog.keyLabel)).toHaveCount(0);
+    await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
     await checkA11y('settings models, manage, at 1280px');
     await captureAtEveryWidth(page, 'manage');
   });
@@ -453,5 +494,147 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     await expect(dialog).not.toContainText('Echo');
     await checkA11y('settings models, remove key confirm, at 1280px');
     await captureAtEveryWidth(page, 'remove-key-confirm');
+  });
+});
+
+const OLLAMA_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    baseURL: { type: 'string', description: 'Where the Ollama server listens.' },
+  },
+  additionalProperties: false,
+};
+
+/**
+ * Answers the host as if a local Ollama, which declares no secret, were loaded beside Anthropic: its
+ * provider is connected with no key saved, its plugin holds a `baseURL`, and the Bureau reports the
+ * provider with that schema. No bundled plugin is keyless, so the showcase host has none of its own.
+ */
+async function withKeylessOllama(page: Page) {
+  await page.route('**/host/providers', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      providers: { name: string }[];
+    };
+    return route.fulfill({
+      response,
+      json: {
+        ...body,
+        providers: [
+          ...body.providers.map((entry) =>
+            entry.name === 'anthropic'
+              ? { ...entry, configured: true, hasKey: true, connected: true }
+              : entry,
+          ),
+          { name: 'ollama', configured: false, hasKey: false, connected: true },
+        ],
+        models: [
+          ...sampleCatalogModels(),
+          {
+            provider: 'ollama',
+            model: 'llama-3-2',
+            aliases: [],
+            contextWindowTokens: 128_000,
+            maxOutputTokens: 8_000,
+            streaming: true,
+            tools: true,
+            structuredOutput: false,
+            images: false,
+            off: false,
+          },
+        ],
+      },
+    });
+  });
+  await page.route('**/host/plugins', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as { plugins: unknown[] };
+    const configuration = { baseURL: 'http://localhost:11434' };
+    return route.fulfill({
+      response,
+      json: {
+        ...body,
+        plugins: [
+          ...body.plugins,
+          {
+            descriptor: {
+              name: 'ollama',
+              title: 'Ollama',
+              version: '0.1.0',
+              description: 'Models served by a local Ollama.',
+              required: false,
+              enabledByDefault: true,
+            },
+            source: 'package',
+            location: '@lostgradient/plugin-ollama',
+            status: 'running',
+            problems: [],
+            contributions: [],
+            enabled: true,
+            configuration,
+            configurationSchema: OLLAMA_SCHEMA,
+            running: { enabled: true, configuration },
+            secrets: [],
+            restartRequired: false,
+          },
+        ],
+      },
+    });
+  });
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { method?: string } | null;
+    if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
+    const response = await route.fetch();
+    const reply = (await response.json()) as { result: { providers: unknown[] } };
+    return route.fulfill({
+      response,
+      json: {
+        ...reply,
+        result: {
+          ...reply.result,
+          providers: [
+            ...reply.result.providers,
+            { plugin: 'ollama', name: 'ollama', configuration: OLLAMA_SCHEMA },
+          ],
+        },
+      },
+    });
+  });
+}
+
+test.describe('Settings › Models, a keyless provider', () => {
+  test('is Connected with Manage and no Connect, and its Manage holds its settings and no key action', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withKeylessOllama(page);
+    await open(page, E2E_SHOWCASE_URL);
+    const ollama = providerRow(page, 'ollama');
+    await expect(ollama).toContainText('Ollama');
+    await expect(ollama).toContainText(MODELS_COPY.providers.connected);
+    await expect(ollama.getByRole('button', { name: /^Connect/ })).toHaveCount(0);
+    await expect(ollama.getByRole('button')).toHaveText(MODELS_COPY.providers.manage);
+    await expect(page.getByRole('table', { name: MODELS_COPY.models.tableLabel })).toContainText(
+      'llama-3-2',
+    );
+    await checkA11y('settings models, keyless provider, at 1280px');
+    await captureAtEveryWidth(page, 'keyless-provider');
+
+    await ollama.getByRole('button', { name: /Manage/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'Ollama' });
+    await expect(dialog).toContainText(MODELS_COPY.manageDialog.connected);
+    await expect(dialog.getByLabel(/base ?url/i)).toHaveValue('http://localhost:11434');
+    await expect(
+      dialog.getByRole('button', { name: MODELS_COPY.manageDialog.removeKey }),
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole('button', { name: MODELS_COPY.manageDialog.replaceKey }),
+    ).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: MODELS_COPY.manageDialog.done })).toBeVisible();
+    await checkA11y('settings models, keyless manage, at 1280px');
+    await captureAtEveryWidth(page, 'keyless-manage');
   });
 });

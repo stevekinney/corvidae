@@ -446,6 +446,32 @@ describe('configuration audit metadata', () => {
   });
 });
 
+describe('the provider snapshot of a keyless provider (COR-2414)', () => {
+  test('reports a provider that declares no secret as connected, apart from whether a key is saved', async () => {
+    const home = fakeHome('local');
+    const manager = createProviderManager({
+      bungalow: home,
+      warn: () => undefined,
+      resolveProviderGenerate,
+      audit: async () => undefined,
+    });
+    await manager.adopt([
+      ...contributedFixtures(['anthropic', 'openai']),
+      ...contributedFixtures(['gemini']).map((provider) => ({ ...provider, secretKey: undefined })),
+    ]);
+    manager.attach((rows) => Promise.resolve(rows.length));
+
+    const { providers } = await manager.snapshot();
+    const byName = Object.fromEntries(providers.map((provider) => [provider.name, provider]));
+
+    // The keyless provider has no saved key and is connected; the keyed one is connected by its key.
+    expect(byName['gemini']).toMatchObject({ hasKey: false, connected: true });
+    expect(byName['anthropic']).toMatchObject({ hasKey: true, connected: true });
+    // A provider that needs a key it lacks is not connected.
+    expect(byName['openai']).toMatchObject({ hasKey: false, connected: false });
+  });
+});
+
 describe('disconnecting a provider', () => {
   test('a remote home refuses it for the reason `deployment`, writing nothing', async () => {
     const home = fakeHome('remote');

@@ -7,7 +7,7 @@
  * installation (no chat yet) is the first-run checklist (rows 01y to 02b, 13c to 13j, 14c to 14j),
  * and a run that is going is the Running now card (rows 01w, 01x).
  */
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import {
   afterAll,
@@ -633,6 +633,28 @@ describe('Home’s checklist on a host with no Assistant', () => {
         .getByRole('link', { name: 'Start a chat' })
         .getAttribute('href'),
     ).toBe('/chats/new');
+  });
+});
+
+describe('Home with only a keyless provider (COR-2414)', () => {
+  test('completes the first step and shows no connect-a-provider notice, with a model agent able to start', async () => {
+    const { container, getByTestId } = await open(freshInstallation({ providerKeyless: true }));
+
+    const provider = stepOf(container, 'provider');
+    expect(provider.getAttribute('data-cinder-state')).toBe('complete');
+    expect(words(provider)).toContain('ollama is connected.');
+    expect(within(provider).queryByRole('link')).toBeNull();
+    expect(container.textContent).not.toContain('No model provider connected');
+    expect(container.textContent).not.toContain('Connect a model provider');
+
+    const card = getByTestId('home-start-chat');
+    await waitFor(() => expect(shownLabel(card)).toContain('Assistant'));
+    await chooseOption(card, 'Tool runner', 'home-start-chat-agent');
+    // The providers are read in a later turn than the agents: a reader that took the keyless
+    // provider for none would have drawn the blocked row by now.
+    await quietFor(100);
+    expect(card.querySelector('textarea')).not.toBeNull();
+    expect(card.querySelector('[data-chat-composer-status="blocked"]')).toBeNull();
   });
 });
 

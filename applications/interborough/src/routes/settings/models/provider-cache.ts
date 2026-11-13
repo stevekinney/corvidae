@@ -18,7 +18,9 @@ export function markConnected(queryClient: QueryClient, provider: string): void 
       : {
           ...current,
           providers: current.providers.map((entry) =>
-            entry.name === provider ? { ...entry, configured: true, hasKey: true } : entry,
+            entry.name === provider
+              ? { ...entry, configured: true, hasKey: true, connected: true }
+              : entry,
           ),
         },
   );

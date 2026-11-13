@@ -1,3 +1,4 @@
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
@@ -51,6 +52,49 @@ describe('the list of agents', () => {
   });
   // The clock of today, "Yesterday" or a day: the words a row says when an agent was last used.
   const WHEN = /^(\d{1,2}:\d{2} [AP]M|Yesterday|[A-Z][a-z]{2} \d{1,2})$/;
+
+  /** A model agent (its listing names a media profile) and the one provider the host reports. */
+  function serveWithProvider(provider: { hasKey: boolean; connected: boolean }) {
+    const answered = { providers: false };
+    const served = bureau(
+      {
+        'bureau.agents.list': () => ({
+          agents: [{ ...FILE_AGENT, media: { modalities: {}, mimeFamilies: [], mediaLimits: [] } }],
+        }),
+        'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+      },
+      (url) => {
+        if (!url.endsWith('/host/providers')) return undefined;
+        answered.providers = true;
+        return Response.json({
+          configurationRevision: null,
+          providers: [{ name: 'ollama', configured: provider.hasKey, ...provider }],
+          catalog: [],
+          models: [],
+        });
+      },
+    );
+    restore = served.restore;
+    landAt('/agents');
+    return { ...mount(AgentList), answered };
+  }
+
+  test('turns New chat off for a model agent while no provider is connected', async () => {
+    const { findByTestId } = serveWithProvider({ hasKey: false, connected: false });
+
+    const newChat = await findByTestId('agent-new-chat');
+    await waitFor(() => expect(newChat.getAttribute('aria-disabled')).toBe('true'));
+  });
+
+  test('keeps New chat on for a model agent while the only provider is keyless (COR-2414)', async () => {
+    const { findByTestId, answered } = serveWithProvider({ hasKey: false, connected: true });
+
+    await waitFor(() => expect(answered.providers).toBe(true));
+    // The answer is read in a later turn; a reader that said no provider would have blocked by now.
+    await quietFor(100);
+    const newChat = await findByTestId('agent-new-chat');
+    expect(newChat.getAttribute('aria-disabled')).toBeNull();
+  });
 
   test('shows each agent as a status-first row: its name, identifier and last use, its chats, what waits on the person, and a fixed slot of icon buttons', async () => {
     const recently = new Date(Date.now() - 3 * 60_000).toISOString();

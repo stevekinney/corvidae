@@ -10,8 +10,7 @@
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { providerDisplayName } from './format-model.ts';
-  import type { ProviderConfigurationSource } from './provider-configuration.ts';
+  import { providerTitle, type ProviderConfigurationSource } from './provider-configuration.ts';
   import ProviderConfiguration from './provider-configuration.svelte';
   import { ProviderConfigurationDraft } from './provider-configuration.svelte.ts';
 
@@ -26,6 +25,11 @@
     onRemove: (provider: string) => void;
     /** The configuration of each provider's plugin, by provider name, which the dialog edits and saves. */
     configurations?: ReadonlyMap<string, ProviderConfigurationSource>;
+    /**
+     * Whether the provider holds a saved key. A keyless provider (a local Ollama) is connected with
+     * none, so the dialog offers neither Remove key nor Replace key: only its settings.
+     */
+    hasKey?: boolean;
   }
 
   let {
@@ -34,6 +38,7 @@
     onReplace,
     onRemove,
     configurations = new Map(),
+    hasKey = true,
   }: Props = $props();
 
   const copy = MODELS_COPY.manageDialog;
@@ -44,7 +49,7 @@
     onSaved: () => queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() }),
   });
 
-  const displayName = $derived(provider === null ? '' : providerDisplayName(provider));
+  const displayName = $derived(provider === null ? '' : providerTitle(provider, configurations));
   const open = $derived(provider !== null);
 
   // Whatever closes the dialog, the settings start over from what is stored the next time it opens.
@@ -81,8 +86,10 @@
     </div>
   {/snippet}
   {#snippet footer()}
-    <Button variant="secondary" onclick={() => hand(onRemove)}>{copy.removeKey}</Button>
-    <Button variant="secondary" onclick={() => hand(onReplace)}>{copy.replaceKey}</Button>
+    {#if hasKey}
+      <Button variant="secondary" onclick={() => hand(onRemove)}>{copy.removeKey}</Button>
+      <Button variant="secondary" onclick={() => hand(onReplace)}>{copy.replaceKey}</Button>
+    {/if}
     {#if configuration.dirty || configuration.saving}
       <Button
         variant="primary"

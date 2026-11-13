@@ -59,7 +59,11 @@ function bureau(
     /** The saved versions, newest first. */
     readonly versions?: readonly unknown[];
     /** The providers `/host/providers` reports. Left out, the host does not answer. */
-    readonly hostProviders?: readonly { readonly name: string; readonly hasKey: boolean }[];
+    readonly hostProviders?: readonly {
+      readonly name: string;
+      readonly hasKey: boolean;
+      readonly connected?: boolean;
+    }[];
     /** The `modelPolicy` setting. Left out, the settings are not readable. */
     readonly modelPolicy?: unknown;
   } = {},

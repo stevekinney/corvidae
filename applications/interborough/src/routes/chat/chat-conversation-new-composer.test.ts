@@ -54,10 +54,10 @@ const sse = (events: readonly unknown[]) =>
     headers: { 'content-type': 'text/event-stream' },
   });
 
-const provider = (hasKey: boolean) =>
+const provider = (hasKey: boolean, connected = hasKey) =>
   Response.json({
     configurationRevision: null,
-    providers: [{ name: 'anthropic', configured: true, hasKey }],
+    providers: [{ name: 'anthropic', configured: true, hasKey, connected }],
     catalog: [],
     models: [],
   } satisfies ProvidersSnapshot);
@@ -71,6 +71,8 @@ interface Served {
 function serve(
   options: {
     hasKey?: boolean;
+    /** Whether the provider can be called; its key when left out. */
+    connected?: boolean;
     steer?: (params: Record<string, unknown>) => unknown;
   } = {},
 ): Served {
@@ -105,7 +107,8 @@ function serve(
       'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
     },
     (url, init) => {
-      if (url.endsWith('/host/providers')) return provider(options.hasKey ?? true);
+      if (url.endsWith('/host/providers'))
+        return provider(options.hasKey ?? true, options.connected);
       if (!url.includes('/ag-ui/agents/')) return undefined;
       runs.push(url);
       const input: { threadId: string; runId: string } = JSON.parse(
@@ -305,7 +308,7 @@ describe('a new chat with a scripted agent', () => {
   });
 
   test('says an agent that runs on a model needs a provider, while none is connected', async () => {
-    serve({ hasKey: false });
+    serve({ hasKey: false, connected: false });
     landAt('/chats/new?agent=assistant');
     const { container } = mount({ agentName: 'assistant' });
     await waitFor(() =>

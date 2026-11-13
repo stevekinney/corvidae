@@ -175,8 +175,14 @@ export type ProviderStatus = {
   readonly name: string;
   /** Whether the owner has set the provider up: it has a key, or its plugin has an allowlist. */
   readonly configured: boolean;
-  /** Whether the provider has a key. The key itself is never reported. */
+  /** Whether the provider has a saved key. The key itself is never reported. */
   readonly hasKey: boolean;
+  /**
+   * Whether the provider can be called: it has a saved key, or its plugin declares no secret (a
+   * local Ollama or LM Studio), so it needs none. A screen that asks whether a provider is
+   * connected reads this, never `hasKey`, which only says a key is saved.
+   */
+  readonly connected: boolean;
   /** The provider's allowlist, when it has one. */
   readonly models?: readonly string[];
 };
@@ -723,6 +729,8 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
               name: provider.name,
               configured: hasKey || models !== undefined,
               hasKey,
+              // A keyless provider serves its models with nothing saved (COR-2144): it is connected.
+              connected: hasKey || provider.secretKey === undefined,
               ...(models === undefined ? {} : { models }),
             };
           }),

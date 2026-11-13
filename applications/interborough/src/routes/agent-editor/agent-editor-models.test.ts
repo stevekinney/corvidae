@@ -96,9 +96,9 @@ describe('the groups', () => {
     const groups = modelGroups(
       catalog,
       [
-        { name: 'gemini', hasKey: false },
-        { name: 'openai', hasKey: false },
-        { name: 'anthropic', hasKey: true },
+        { name: 'gemini', connected: false },
+        { name: 'openai', connected: false },
+        { name: 'anthropic', connected: true },
       ],
       NO_RESTRICTIONS,
       undefined,
@@ -111,6 +111,23 @@ describe('the groups', () => {
     expect(groups[2]?.choices).toEqual([]);
   });
 
+  test('list a keyless provider as connected, with its models to choose from, though no key is saved (COR-2414)', () => {
+    const local = catalogFixture({
+      models: [{ provider: 'ollama', model: 'llama-3' }],
+    });
+    const groups = modelGroups(
+      local,
+      [{ name: 'ollama', connected: true }],
+      NO_RESTRICTIONS,
+      undefined,
+    );
+    expect(groups.map((group) => [group.provider, group.connected])).toEqual([['ollama', true]]);
+    expect(groups[0]?.choices.map((choice) => choice.value)).toEqual(['ollama/llama-3']);
+    expect(
+      keptModel('ollama/llama-3', local, [{ name: 'ollama', connected: true }]),
+    ).toBeUndefined();
+  });
+
   test('list a provider whose key is not saved as not connected, though the catalog keeps its unavailable rows (COR-2143)', () => {
     const kept = catalogFixture({
       models: [
@@ -121,8 +138,8 @@ describe('the groups', () => {
     const groups = modelGroups(
       kept,
       [
-        { name: 'gemini', hasKey: false },
-        { name: 'anthropic', hasKey: true },
+        { name: 'gemini', connected: false },
+        { name: 'anthropic', connected: true },
       ],
       NO_RESTRICTIONS,
       undefined,
@@ -136,8 +153,8 @@ describe('the groups', () => {
 
   test('put a kept model the catalog lacks in its own provider’s group, connected or not', () => {
     const hostProviders = [
-      { name: 'gemini', hasKey: false },
-      { name: 'openai', hasKey: true },
+      { name: 'gemini', connected: false },
+      { name: 'openai', connected: true },
     ];
     const inOpenai = modelGroups(catalog, hostProviders, NO_RESTRICTIONS, 'openai/gpt-3.5');
     expect(inOpenai.map((group) => [group.provider, group.connected])).toEqual([
@@ -231,8 +248,8 @@ describe('the model an agent file names (COR-2143)', () => {
     ],
   });
   const hostProviders = [
-    { name: 'anthropic', hasKey: true },
-    { name: 'openai', hasKey: false },
+    { name: 'anthropic', connected: true },
+    { name: 'openai', connected: false },
   ];
 
   test('stays selected, with its reason, when its row is kept for a provider with no key', () => {
@@ -256,7 +273,7 @@ describe('the model an agent file names (COR-2143)', () => {
     // With the provider reported keyed, or not reported at all, the row is a choice itself.
     expect(keptModel('openai/gpt-4.1', catalog, undefined)).toBeUndefined();
     expect(
-      keptModel('openai/gpt-4.1', catalog, [{ name: 'openai', hasKey: true }]),
+      keptModel('openai/gpt-4.1', catalog, [{ name: 'openai', connected: true }]),
     ).toBeUndefined();
     expect(keptModel('mistral/large', catalog, hostProviders)).toBe('mistral/large');
     expect(keptModel('', catalog, hostProviders)).toBeUndefined();

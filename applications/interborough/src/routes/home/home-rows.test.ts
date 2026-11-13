@@ -478,9 +478,9 @@ describe('checklistSteps', () => {
       { provider: true, agent: true, chat: false },
       {
         providers: [
-          { name: 'anthropic', hasKey: true },
-          { name: 'openai', hasKey: true },
-          { name: 'gemini', hasKey: false },
+          { name: 'anthropic', connected: true },
+          { name: 'openai', connected: true },
+          { name: 'gemini', connected: false },
         ],
         agents: [
           { name: 'assistant', displayName: 'assistant', kind: 'code' },
@@ -545,11 +545,27 @@ describe('checklistSteps', () => {
     expect(unnamed[1]?.description).toBe('An agent is ready to use.');
   });
 
+  test('names a keyless provider as connected beside the ones that hold a key (COR-2414)', () => {
+    const steps = checklistSteps(
+      { provider: true, agent: false, chat: false },
+      {
+        providers: [
+          { name: 'anthropic', connected: true },
+          { name: 'ollama', connected: true },
+          { name: 'gemini', connected: false },
+        ],
+        agents: [],
+        assistantChosen: false,
+      },
+    );
+    expect(steps[0]?.description).toBe('Anthropic and ollama are connected.');
+  });
+
   test('says Anthropic is connected for a single provider', () => {
     expect(
       checklistSteps(
         { provider: true, agent: false, chat: false },
-        { ...none, providers: [{ name: 'anthropic', hasKey: true }] },
+        { ...none, providers: [{ name: 'anthropic', connected: true }] },
       )[0]?.description,
     ).toBe('Anthropic is connected.');
   });

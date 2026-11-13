@@ -45,7 +45,11 @@ async function connectProvider(page: Page): Promise<void> {
       response,
       json: {
         ...body,
-        providers: body.providers.map((provider) => ({ ...provider, hasKey: true })),
+        providers: body.providers.map((provider) => ({
+          ...provider,
+          hasKey: true,
+          connected: true,
+        })),
       },
     });
   });
