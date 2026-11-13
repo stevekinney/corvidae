@@ -153,10 +153,22 @@ function normalizeTableRow(line: string): string {
   return cells.replace(/[ \t]*\|[ \t]*/g, '|');
 }
 
-/** Linear rewrites Markdown (escapes, list markers, table rules, spacing), so writes are compared in this form. */
+/** A link Linear made from bare text (`npmjs.com` becomes `[npmjs.com](<http://npmjs.com>)`), back to the text. */
+function unlinkAutolink(match: string, label: string, target: string): string {
+  const scheme = /^https?:\/\//;
+  return target.replace(scheme, '') === label.replace(scheme, '') ? label : match;
+}
+
+/**
+ * Linear rewrites Markdown (escapes, list markers, table rules, spacing, and links it makes from bare
+ * URLs, domains and code spans holding a URL), so writes are compared in this form.
+ */
 export function normalizeMarkdown(text: string): string {
   return (
     text
+      .replace(/\[([^\]\n]+)\]\(<?([^)>\s]+)>?\)/g, unlinkAutolink)
+      // A code span holding only a URL is stored as a link, without its backticks.
+      .replace(/`(https?:\/\/[^`\s]+)`/g, '$1')
       .replace(/ /g, ' ')
       .replace(/^(\s*)[*+] /gm, '$1- ')
       // Table normalization applies to table rows only; every other line is compared as written.

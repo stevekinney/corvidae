@@ -577,6 +577,26 @@ describe('normalizeMarkdown', () => {
   });
 });
 
+describe('normalizeMarkdown links', () => {
+  test('treats a link Linear made from a bare URL or domain as the bare text', () => {
+    expect(
+      normalizeMarkdown(
+        'on [npmjs.com](<http://npmjs.com>) and [https://a.example/x](<https://a.example/x>)',
+      ),
+    ).toBe(normalizeMarkdown('on npmjs.com and https://a.example/x'));
+  });
+
+  test('treats a code span holding only a URL as the link Linear stores', () => {
+    expect(normalizeMarkdown('Canvas: [https://a.example/x](<https://a.example/x>).')).toBe(
+      normalizeMarkdown('Canvas: `https://a.example/x`.'),
+    );
+  });
+
+  test('keeps a link whose text differs from its target', () => {
+    expect(normalizeMarkdown('[docs](https://a.example)')).not.toBe(normalizeMarkdown('docs'));
+  });
+});
+
 describe('normalizeMarkdown tables', () => {
   test("treats Linear's shortened table rules and starred bullets as equal", () => {
     expect(normalizeMarkdown('| a | b |\n| --- | --- |\n| 1 | 2 |\n\n- one\n- two')).toBe(
