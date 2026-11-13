@@ -96,6 +96,8 @@ export type ChatLabels = {
   followUpTitle: string;
   followUpSendNow: string;
   followUpSummary: (count: number) => string;
+  /** The count with its reason, used where the drawer header has room. Default `1 queued, sends after this run`. */
+  followUpSummaryExplained: (count: number) => string;
   /** The Send-now control's tooltip and accessible description. */
   followUpSendNowDescription: string;
   followUpEdit: (index: number) => string;
@@ -193,6 +195,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   followUpTitle: 'Up next',
   followUpSendNow: 'Send now instead',
   followUpSummary: (count) => `${count} queued`,
+  followUpSummaryExplained: (count) => `${count} queued, sends after this run`,
   followUpSendNowDescription: 'Otherwise it sends when this run finishes.',
   followUpEdit: (index) => `Edit queued follow-up ${index}`,
   followUpRemove: (index) => `Remove queued follow-up ${index}`,

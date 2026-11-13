@@ -37,13 +37,21 @@
 </script>
 
 <!-- The Up next drawer above the composer while follow-ups wait for the run. It pushes the
-     transcript up and leaves the composer's bottom edge where it was. Each follow-up is a dashed
-     ghost of the user message it will become, numbered in the order it will go. -->
+     transcript up and leaves the composer's bottom edge where it was. Each follow-up is a bordered,
+     numbered row holding the words of the message it will become, in the order it will go. The
+     header's count carries its explanation ("sends after this run") where the drawer is wide
+     enough, and falls back to the short count beside it; the Send now tooltip stays. -->
 <section class="chat-follow-up-drawer" aria-labelledby={titleId} data-chat-follow-up-drawer="">
   <div class="chat-follow-up-drawer-header">
     <h3 class="chat-follow-up-drawer-heading" id={titleId}>
       <span class="chat-follow-up-drawer-title">{words.followUpTitle}</span>
-      <span class="chat-follow-up-drawer-summary">{words.followUpSummary(items.length)}</span>
+      <span class="chat-follow-up-drawer-summary">
+        <span class="chat-follow-up-drawer-summary-short"
+          >{words.followUpSummary(items.length)}</span
+        ><span class="chat-follow-up-drawer-summary-long"
+          >{words.followUpSummaryExplained(items.length)}</span
+        >
+      </span>
     </h3>
     {#if canSendNow}
       <Tooltip text={words.followUpSendNowDescription} placement="top">
@@ -114,6 +122,23 @@
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-raised);
+    container-type: inline-size;
+  }
+
+  /* The count says why it waits where the drawer is 19rem or wider (a 320 phone's drawer is about
+   * 19.5rem inside the page padding), and falls back to the bare count below that. */
+  .chat-follow-up-drawer-summary-long {
+    display: none;
+  }
+
+  @container (min-inline-size: 19rem) {
+    .chat-follow-up-drawer-summary-short {
+      display: none;
+    }
+
+    .chat-follow-up-drawer-summary-long {
+      display: inline;
+    }
   }
 
   .chat-follow-up-drawer-header {
