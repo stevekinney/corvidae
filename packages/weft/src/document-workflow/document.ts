@@ -17,6 +17,8 @@ import type { ActivityContext, ActivityDefinition } from '../core/types/activity
 import { validateWorkflowOrActivityName } from '../core/types/name-grammar.ts';
 import { canonicalJsonStringify } from '../worker/manifest/canonical-json.ts';
 import { sha256Hex } from '../worker/manifest/content-digest.ts';
+import type { WorkflowDocumentIssue } from './document-errors.ts';
+import type { DocumentRejectionStep } from './document-rejection.ts';
 
 /**
  * The argument every document activity handler receives: the step's static
@@ -135,13 +137,25 @@ export interface DocumentWorkflowHost {
    * version of an activity.
    */
   readonly activityVersions?: Readonly<Record<string, string>> | undefined;
+  /**
+   * Whether the payload an `await-signal` step received is a rejection: when it is, the run ends
+   * without running a later step, as `failed` with {@link WorkflowDocumentReviewRejectedError}.
+   * What a rejection looks like, and at which steps, belongs to the host: the call names the step.
+   * Without this hook every payload continues. It must be pure: a replay asks it again.
+   */
+  readonly isRejection?: ((payload: unknown, step: DocumentRejectionStep) => boolean) | undefined;
 }
 
 /** One step of a {@link WorkflowDocument}. */
 export type WorkflowDocumentStep =
   | Readonly<{ kind: 'activity'; handler: string; input?: JSONValue | undefined }>
   | Readonly<{ kind: 'sleep'; duration: string | number }>
-  | Readonly<{ kind: 'await-signal'; signal: string }>
+  | Readonly<{
+      kind: 'await-signal';
+      signal: string;
+      /** How long to wait; on expiry the run continues with `{ timedOut: true }` as `previous`. */
+      timeout?: string | number | undefined;
+    }>
   | Readonly<{
       kind: 'branch';
       on: string;
@@ -153,6 +167,16 @@ export type WorkflowDocumentStep =
       over: string;
       steps: readonly WorkflowDocumentStep[];
       concurrency?: number | undefined;
+    }>
+  | Readonly<{
+      kind: 'parallel';
+      /**
+       * Step lists that run together, each from the step before the `parallel` step. The step's
+       * result is an object keyed by branch name, each value the result of that branch's last step.
+       * Rounds are cached whole: an activity finished beside an open wait runs again after a restart
+       * (at-least-once, as in `ctx.all`); the wait resumes once. A failing branch fails the step.
+       */
+      branches: Readonly<Record<string, readonly WorkflowDocumentStep[]>>;
     }>;
 
 /** A declarative workflow: a name, an opaque trigger, and ordered steps. */
@@ -228,7 +252,11 @@ export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.laz
       input: jsonValueSchema.optional(),
     }),
     z.strictObject({ kind: z.literal('sleep'), duration: durationSchema }),
-    z.strictObject({ kind: z.literal('await-signal'), signal: z.string().min(1) }),
+    z.strictObject({
+      kind: z.literal('await-signal'),
+      signal: z.string().min(1),
+      timeout: durationSchema.optional(),
+    }),
     z.strictObject({
       kind: z.literal('branch'),
       on: z.string().min(1),
@@ -246,6 +274,16 @@ export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.laz
       over: z.string().min(1),
       steps: z.array(workflowDocumentStepSchema).min(1),
       concurrency: mapConcurrencySchema,
+    }),
+    z.strictObject({
+      kind: z.literal('parallel'),
+      branches: z
+        .record(z.string().min(1), z.array(workflowDocumentStepSchema).min(1))
+        .superRefine((branches, context) => {
+          if (Object.keys(branches).length === 0) {
+            context.addIssue({ code: 'custom', message: 'must contain at least one branch' });
+          }
+        }),
     }),
   ]),
 );
@@ -268,9 +306,6 @@ export const workflowDocumentSchema = z.strictObject({
   activityVersions: z.record(z.string().min(1), z.string().min(1)).optional(),
 });
 
-/** One reason a document was rejected, located by a path such as `steps[2].handler`. */
-export type WorkflowDocumentIssue = Readonly<{ path: string; message: string }>;
-
 /** Thrown by {@link validateWorkflowDocument} with every reason the document was rejected. */
 export class WorkflowDocumentValidationError extends Error {
   readonly issues: readonly WorkflowDocumentIssue[];
@@ -281,45 +316,6 @@ export class WorkflowDocumentValidationError extends Error {
       .join('; ');
     super(`Invalid workflow document: ${summary}`);
     this.name = 'WorkflowDocumentValidationError';
-    this.issues = issues;
-  }
-}
-/** Thrown when a branch has no matching case and no `otherwise` steps. */
-export class WorkflowDocumentBranchError extends Error {
-  constructor(field: string, value: unknown) {
-    super(`Branch has no matching case for field "${field}" with value ${JSON.stringify(value)}`);
-    this.name = 'WorkflowDocumentBranchError';
-  }
-}
-/** Thrown when a map step cannot iterate its previous result. */
-export class WorkflowDocumentMapError extends Error {
-  /** Why the map source could not be iterated. */
-  readonly code: 'not-array' | 'too-many';
-
-  constructor(code: 'not-array' | 'too-many', message: string) {
-    super(message);
-    this.name = 'WorkflowDocumentMapError';
-    this.code = code;
-  }
-}
-/**
- * A run ended because its input or output did not satisfy the document's schema. The message
- * begins with `code`, then `: `, then each issue as `path: message` joined by `; `, so a host that
- * reads only a failed run's `error` text can tell the two apart.
- */
-export class WorkflowDocumentSchemaError extends Error {
-  /** Which schema the value broke. */
-  readonly code: 'input-invalid' | 'output-invalid';
-  /** Every way the value failed the schema. */
-  readonly issues: readonly WorkflowDocumentIssue[];
-
-  constructor(code: 'input-invalid' | 'output-invalid', issues: readonly WorkflowDocumentIssue[]) {
-    const summary = issues
-      .map((issue) => (issue.path === '' ? issue.message : `${issue.path}: ${issue.message}`))
-      .join('; ');
-    super(`${code}: ${summary}`);
-    this.name = 'WorkflowDocumentSchemaError';
-    this.code = code;
     this.issues = issues;
   }
 }
@@ -406,6 +402,10 @@ function visitSteps(
       if (step.otherwise !== undefined) visitSteps(step.otherwise, `${stepPath}.otherwise`, visit);
     } else if (step.kind === 'map') {
       visitSteps(step.steps, `${stepPath}.steps`, visit);
+    } else if (step.kind === 'parallel') {
+      for (const [name, nested] of Object.entries(step.branches)) {
+        visitSteps(nested, `${stepPath}.branches.${name}`, visit);
+      }
     }
   }
 }

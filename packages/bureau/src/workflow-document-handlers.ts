@@ -35,6 +35,17 @@ function renameSteps(
   return steps.map((step) => {
     if (step.kind === 'activity') return { ...step, handler: rename(step.handler) };
     if (step.kind === 'map') return { ...step, steps: renameSteps(step.steps, rename) };
+    if (step.kind === 'parallel') {
+      return {
+        ...step,
+        branches: Object.fromEntries(
+          Object.entries(step.branches).map(([name, nested]) => [
+            name,
+            renameSteps(nested, rename),
+          ]),
+        ),
+      };
+    }
     if (step.kind !== 'branch') return step;
     return {
       ...step,
@@ -113,6 +124,21 @@ function renameInputSteps(
         steps: Array.isArray(step['steps'])
           ? renameInputSteps(step['steps'], rename, onActivity, `${stepPath}.steps`)
           : step['steps'],
+      };
+    }
+    if (step['kind'] === 'parallel') {
+      return {
+        ...step,
+        branches: isRecord(step['branches'])
+          ? Object.fromEntries(
+              Object.entries(step['branches']).map(([name, nested]) => [
+                name,
+                Array.isArray(nested)
+                  ? renameInputSteps(nested, rename, onActivity, `${stepPath}.branches.${name}`)
+                  : nested,
+              ]),
+            )
+          : step['branches'],
       };
     }
     if (step['kind'] !== 'branch') return step;

@@ -202,6 +202,11 @@ export type WorkflowTimelineOperationDetail = {
   operationLabel: string;
   outcome: 'fulfilled' | 'rejected' | 'won' | 'lost';
   errorSummary?: string;
+  /**
+   * A keyed `ctx.raceKeyed` that ran as a branch of `ctx.all` and settled: its own branches, each
+   * `won` or `lost`. Absent for every other operation.
+   */
+  branches?: WorkflowTimelineOperationDetail[];
 };
 
 /**

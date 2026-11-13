@@ -11,7 +11,12 @@ export type { NormalizedScheduleSpec } from '../core/engine/validation/schedule.
 export {
   WorkflowDocumentBranchError,
   WorkflowDocumentMapError,
+  WorkflowDocumentReviewRejectedError,
   WorkflowDocumentSchemaError,
+} from './document-errors.ts';
+export type { WorkflowDocumentIssue } from './document-errors.ts';
+export type { DocumentRejectionStep } from './document-rejection.ts';
+export {
   WorkflowDocumentValidationError,
   canonicalWorkflowDocumentJson,
   documentStepAddress,
@@ -30,7 +35,6 @@ export type {
   DocumentTriggerValidator,
   DocumentWorkflowHost,
   WorkflowDocument,
-  WorkflowDocumentIssue,
   WorkflowDocumentStep,
 } from './document.ts';
 export { buildWorkflowDocumentManifest } from './manifest.ts';

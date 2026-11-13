@@ -35,6 +35,7 @@ import { checkHumanInputSchema, HumanInputSchemaError } from '@lostgradient/oper
 import {
   type DocumentSchemaChecker,
   type WorkflowDocumentIssue,
+  WorkflowDocumentReviewRejectedError,
   WorkflowDocumentSchemaError,
 } from '@lostgradient/weft';
 
@@ -209,4 +210,19 @@ export function finishReasonOf(stack: string | undefined): WorkflowFinishReason 
     if (stack.startsWith(`${SCHEMA_ERROR_NAME}: ${reason}: `)) return reason;
   }
   return null;
+}
+
+/** The class name of the error a rejected review ends a run with (COR-2238). */
+const REVIEW_REJECTED_ERROR_NAME = new WorkflowDocumentReviewRejectedError().name;
+
+/**
+ * The code a failed run recorded, when its error carries one Weft names: `input-invalid`,
+ * `output-invalid`, or `review-rejected`. `stack` is the `errorStack` the run kept; like
+ * {@link finishReasonOf} it reads the class the error was thrown with and never the message alone,
+ * which any activity can write. `null` for a run that kept no stack or failed for any other reason.
+ */
+export function errorCodeOf(stack: string | undefined): string | null {
+  if (stack === undefined) return null;
+  if (stack.startsWith(`${REVIEW_REJECTED_ERROR_NAME}: review-rejected`)) return 'review-rejected';
+  return finishReasonOf(stack);
 }

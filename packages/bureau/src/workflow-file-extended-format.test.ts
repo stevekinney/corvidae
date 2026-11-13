@@ -183,6 +183,104 @@ describe('reading the extended format', () => {
     ]);
   });
 
+  it('orders parallel-branch annotations by canonical preorder and strips extensions in each branch', () => {
+    const file = contentsOf({
+      ...MORNING_BRIEFING_PLAIN,
+      steps: [
+        {
+          kind: 'parallel',
+          title: 'Together',
+          branches: {
+            b: [{ kind: 'sleep', duration: '1s', title: 'Second' }],
+            a: [{ kind: 'await-signal', signal: 'first', title: 'First', review: true }],
+          },
+        },
+      ],
+    });
+    expect(file.stepAnnotations).toEqual([
+      { title: 'Together', review: false },
+      { title: 'First', review: true },
+      { title: 'Second', review: false },
+    ]);
+    expect(file.document.steps).toEqual([
+      {
+        kind: 'parallel',
+        branches: {
+          b: [{ kind: 'sleep', duration: '1s' }],
+          a: [{ kind: 'await-signal', signal: 'first' }],
+        },
+      },
+    ]);
+  });
+
+  it('refuses a bad agent step inside a parallel branch as it does at the top level and in a branch', () => {
+    const badAgent = { kind: 'activity', handler: 'agent', input: { agent: 'editor' } };
+    const manual = { ...MORNING_BRIEFING_PLAIN, trigger: { kind: 'manual' } };
+    const messages = (steps: unknown[]) =>
+      issuesOf({ ...manual, steps }).map((issue) => issue.message);
+    const expected = '"message" must be a string';
+    expect(messages([badAgent])).toContain(expected);
+    expect(messages([{ kind: 'branch', on: 'x', cases: { a: [badAgent] } }])).toContain(expected);
+    const inParallel = issuesOf({
+      ...manual,
+      steps: [{ kind: 'parallel', branches: { a: [badAgent] } }],
+    });
+    expect(inParallel).toContainEqual({
+      path: 'steps[0].branches.a[0].input',
+      message: expected,
+    });
+    const garbage = issuesOf({
+      ...manual,
+      steps: [
+        {
+          kind: 'parallel',
+          branches: {
+            a: [
+              {
+                kind: 'activity',
+                handler: 'agent',
+                input: { agent: 'Not An Id!', message: 'hi', extra: 1 },
+              },
+            ],
+          },
+        },
+      ],
+    }).map((issue) => issue.message);
+    expect(garbage).toContain('"agent" must be an agent identifier');
+    expect(garbage.some((message) => message.startsWith('unknown key'))).toBe(true);
+  });
+
+  it('reads a title and a plugin handler inside a parallel branch, and pins the handler version', () => {
+    const pinning: typeof host = {
+      ...host,
+      activities: { ...host.activities, x__y: async () => null },
+      activityVersions: { x__y: '1' },
+    };
+    const parsed = parseWorkflowFile(
+      'morning-briefing',
+      JSON.stringify({
+        ...MORNING_BRIEFING_PLAIN,
+        trigger: { kind: 'manual' },
+        steps: [
+          {
+            kind: 'parallel',
+            branches: { a: [{ kind: 'activity', handler: 'x:y', title: 'Do y' }] },
+          },
+        ],
+      }),
+      pinning,
+    );
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.problem));
+    expect(parsed.file.stepAnnotations).toEqual([
+      { title: null, review: false },
+      { title: 'Do y', review: false },
+    ]);
+    expect(parsed.file.document.activityVersions).toEqual({ 'x:y': '1' });
+    expect(parsed.file.document.steps).toEqual([
+      { kind: 'parallel', branches: { a: [{ kind: 'activity', handler: 'x:y' }] } },
+    ]);
+  });
+
   it('reads a file without any extended key as before, with no title and no annotations set', () => {
     const file = contentsOf(MORNING_BRIEFING_PLAIN);
     expect(file.title).toBeNull();
