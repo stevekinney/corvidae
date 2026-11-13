@@ -155,6 +155,9 @@ jobs:
       - run: bun --version
       - run: bun install --frozen-lockfile
       - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
+      # Integration tests that measure real layout launch Chromium (the chat stress measurement and
+      # the design-review geometry probe), as the isolated lane in `pull-request.yml` does.
+      - run: bunx playwright install --with-deps chromium
       # Bureau's event-history-run-ownership-recovery-lmdb integration test fails on `main` itself
       # (COR-2379); it is not marked advisory here.
       - run: bun run test:slow --continue --filter=!@lostgradient/ventriloquist
