@@ -26,6 +26,27 @@ describe('DonutChart', () => {
     expect(container.querySelectorAll('path')).toHaveLength(2);
     expect(container.textContent).toContain('5');
   });
+  test('each arc draws its own series colour, the one its legend swatch shows (COR-2403)', () => {
+    const { container } = render(DonutChart, {
+      label: 'Traffic',
+      data: [
+        { id: 'direct', label: 'Direct', value: 3 },
+        { id: 'search', label: 'Search', value: 2 },
+        { id: 'social', label: 'Social', value: 1, color: 'rebeccapurple' },
+      ],
+    });
+    const strokes = [...container.querySelectorAll<SVGPathElement>('.cinder-donut-chart__arc')].map(
+      (arc) => arc.style.getPropertyValue('stroke'),
+    );
+    expect(strokes).toEqual([
+      'var(--cinder-chart-series-1)',
+      'var(--cinder-chart-series-2)',
+      'rebeccapurple',
+    ]);
+    // An inline style outranks the stylesheet; the stylesheet sets no arc stroke of its own.
+    const css = readFileSync(new URL('./donut-chart.css', import.meta.url), 'utf8');
+    expect(css).not.toMatch(/\.cinder-donut-chart__arc\s*\{[^}]*\bstroke:/);
+  });
   test('renders a complete arc for a full-circle series', () => {
     const { container } = render(DonutChart, {
       label: 'Traffic',

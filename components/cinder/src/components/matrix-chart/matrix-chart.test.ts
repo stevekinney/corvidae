@@ -78,14 +78,21 @@ describe('MatrixChart', () => {
       cellLabelsVisible: true,
       theme: { palette: ['white'], background: '#0000' },
     });
-    const fills = [...container.querySelectorAll('.cinder-matrix-chart__cell-label')].map((label) =>
-      label.getAttribute('fill'),
-    );
+    const labels = [
+      ...container.querySelectorAll<SVGTextElement>('.cinder-matrix-chart__cell-label'),
+    ];
+    const cells = [...container.querySelectorAll('.cinder-matrix-chart__cell')];
     const cssText = await Bun.file(new URL('./matrix-chart.css', import.meta.url)).text();
 
-    expect(fills).toContain('var(--cinder-text-inverse)');
-    expect(fills).not.toContain('#0000');
-    expect(cssText).toMatch(/__cell-label\s*\{[^}]*mix-blend-mode: difference/s);
+    expect(labels.length).toBeGreaterThan(0);
+    for (const [index, label] of labels.entries()) {
+      // White or black from the luminance of the label's own cell, never a tinted colour.
+      const fill = label.style.getPropertyValue('fill');
+      expect(fill).toStartWith(`color(from ${cells[index]?.getAttribute('fill')} xyz-d65`);
+      expect(fill).not.toBe('#0000');
+    }
+    // No blend mode, which drew each number a different, clashing colour.
+    expect(cssText).not.toContain('mix-blend-mode');
   });
 
   test('routes cell boundaries through the custom grid theme channel', async () => {
@@ -323,11 +330,12 @@ describe('MatrixChart', () => {
     for (const cell of container.querySelectorAll<SVGRectElement>('.cinder-matrix-chart__cell')) {
       expect(cell.getAttribute('fill') ?? '').not.toContain('NaN');
     }
-    // The two non-finite cells render with the "missing" inset surface fill.
-    const fills = [...container.querySelectorAll('.cinder-matrix-chart__cell')].map((c) =>
-      c.getAttribute('fill'),
-    );
-    expect(fills.filter((f) => f === 'var(--cinder-surface-inset)').length).toBe(2);
+    // The two non-finite cells render as empty: the page canvas, marked for their hairline.
+    const cells = [...container.querySelectorAll('.cinder-matrix-chart__cell')];
+    const empty = cells.filter((c) => c.hasAttribute('data-cinder-empty'));
+    expect(empty.length).toBe(2);
+    for (const cell of empty)
+      expect(cell.getAttribute('fill')).toBe('var(--cinder-surface-canvas)');
   });
 
   test('a degenerate domain (all equal values) does not divide by zero', () => {

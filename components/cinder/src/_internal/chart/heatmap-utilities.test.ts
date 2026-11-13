@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  DEFAULT_HEATMAP_RAMP,
   finiteNumbers,
+  HEATMAP_EMPTY_FILL,
+  HEATMAP_LABEL_LUMINANCE_SWITCH,
   heatmapCellFill,
   heatmapDomain,
   heatmapDomainOfRows,
   heatmapLabelFill,
+  heatmapRamp,
   normalizeHeatmapValue,
   toFiniteOrNull,
 } from './heatmap-utilities.ts';
@@ -110,35 +114,73 @@ describe('normalizeHeatmapValue — diverging (zero-centered)', () => {
 });
 
 describe('heatmapCellFill', () => {
-  test('uses the cool side below the diverging midpoint', () => {
-    const fill = heatmapCellFill(-5, heatmapDomain([-10, 10]), 'diverging');
+  test('runs the sequential ramp from the low tint to the strong end of the ramp tokens', () => {
+    const domain = heatmapDomain([0, 10]);
+    expect(heatmapCellFill(0, domain, 'sequential')).toBe(
+      'color-mix(in oklch, var(--cinder-chart-ramp-high) 0%, var(--cinder-chart-ramp-low))',
+    );
+    expect(heatmapCellFill(10, domain, 'sequential')).toBe(
+      'color-mix(in oklch, var(--cinder-chart-ramp-high) 100%, var(--cinder-chart-ramp-low))',
+    );
+  });
 
-    expect(fill).toContain('var(--cinder-chart-series-5)');
-    expect(fill).toContain('50%');
+  test('runs the diverging ramp through the neutral middle to each end, in Oklab', () => {
+    const domain = heatmapDomain([-10, 10]);
+    expect(heatmapCellFill(-5, domain, 'diverging')).toBe(
+      'color-mix(in oklab, var(--cinder-chart-ramp-negative) 50%, var(--cinder-chart-ramp-neutral))',
+    );
+    expect(heatmapCellFill(10, domain, 'diverging')).toBe(
+      'color-mix(in oklab, var(--cinder-chart-ramp-positive) 100%, var(--cinder-chart-ramp-neutral))',
+    );
+  });
+
+  test('an empty cell is the page canvas, never the lowest value', () => {
+    expect(heatmapCellFill(null, heatmapDomain([0, 10]))).toBe(HEATMAP_EMPTY_FILL);
+    expect(HEATMAP_EMPTY_FILL).toBe('var(--cinder-surface-canvas)');
   });
 
   test('uses a chart-local palette for sequential and diverging scales', () => {
-    const palette = ['sequential', 'unused', 'warm', 'unused', 'cool'];
+    const ramp = heatmapRamp(['sequential', 'unused', 'warm', 'unused', 'cool']);
     const domain = heatmapDomain([-10, 10]);
 
-    expect(heatmapCellFill(10, domain, 'sequential', palette)).toContain('sequential');
-    expect(heatmapCellFill(-5, domain, 'diverging', palette)).toContain('cool');
-    expect(heatmapCellFill(5, domain, 'diverging', palette)).toContain('warm');
+    expect(heatmapCellFill(10, domain, 'sequential', ramp)).toContain('sequential');
+    expect(heatmapCellFill(-5, domain, 'diverging', ramp)).toContain('cool');
+    expect(heatmapCellFill(5, domain, 'diverging', ramp)).toContain('warm');
   });
 
   test('keeps diverging ends distinct for a two-color palette', () => {
-    const palette = ['cool', 'warm'];
+    const ramp = heatmapRamp(['cool', 'warm']);
     const domain = heatmapDomain([-10, 10]);
-    const cool = heatmapCellFill(-10, domain, 'diverging', palette);
-    const warm = heatmapCellFill(10, domain, 'diverging', palette);
+    const cool = heatmapCellFill(-10, domain, 'diverging', ramp);
+    const warm = heatmapCellFill(10, domain, 'diverging', ramp);
 
     expect(cool).toContain('cool');
     expect(warm).toContain('warm');
     expect(cool).not.toContain('warm');
   });
 
-  test('uses an opaque source token for rendered-color contrast blending', () => {
-    const fill = heatmapLabelFill(10, 'muted');
-    expect(fill).toBe('var(--cinder-text-inverse)');
+  test('without a palette the ramp is the shared ramp tokens', () => {
+    expect(heatmapRamp(undefined)).toBe(DEFAULT_HEATMAP_RAMP);
+    expect(heatmapRamp([])).toBe(DEFAULT_HEATMAP_RAMP);
+  });
+});
+
+describe('heatmapLabelFill', () => {
+  test("is white or black from the cell's own luminance, never a ramp colour", () => {
+    const fill = heatmapLabelFill('oklch(50% 0.2 265)', 'muted');
+    expect(fill).toBe(
+      `color(from oklch(50% 0.2 265) xyz-d65 calc(0.9505 * clamp(0, (${HEATMAP_LABEL_LUMINANCE_SWITCH} - y) * 100000, 1)) calc(clamp(0, (${HEATMAP_LABEL_LUMINANCE_SWITCH} - y) * 100000, 1)) calc(1.089 * clamp(0, (${HEATMAP_LABEL_LUMINANCE_SWITCH} - y) * 100000, 1)))`,
+    );
+    expect(fill).not.toContain('--cinder-chart');
+  });
+
+  test('switches where both white and black keep 4.5:1', () => {
+    const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    expect(contrast(1, HEATMAP_LABEL_LUMINANCE_SWITCH)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(0, HEATMAP_LABEL_LUMINANCE_SWITCH)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test('an empty cell takes the muted colour', () => {
+    expect(heatmapLabelFill(null, 'muted')).toBe('muted');
   });
 });

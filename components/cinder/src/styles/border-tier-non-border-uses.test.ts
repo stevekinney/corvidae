@@ -211,6 +211,10 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/button-group/button-group.css': [
     { declaration: 'background: var(--cinder-border-strong);', category: 'hairline' },
   ],
+  'components/cinder/src/components/matrix-chart/matrix-chart.css': [
+    // The 1px outline of a matrix cell with no value, drawn over the page canvas.
+    { declaration: 'stroke: var(--cinder-border);', category: 'hairline' },
+  ],
   'components/cinder/src/components/spinner/spinner.css': [
     {
       declaration: 'stroke: var(--cinder-spinner-track, var(--cinder-border-contrast));',

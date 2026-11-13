@@ -478,20 +478,36 @@ Shared checkerboard colors for color-domain components that need to show alpha o
 
 Categorical chart colors for LineChart, BarChart, AreaChart, and consumers that need to keep custom chart marks aligned with cinder's default series palette.
 
-Each `--cinder-chart-series-*` is a theme-aware design token: it wraps independently selected per-theme OKLCH values in `light-dark()`. Light-mode marks are generally darker for pale surfaces, while dark-mode marks are lighter for dark surfaces; hue and chroma both vary as needed for contrast and separation. The index keeps its position in the series sequence while the palette remaps it for the active theme.
+Each `--cinder-chart-series-*` is a theme-aware design token: it wraps per-theme OKLCH values in `light-dark()`, with the same hue at each index in both themes: blue (the indigo accent's family), pink, orange, green, violet, yellow, teal, red. Each is the lightest, most saturated step of its hue that keeps 3:1 against the surface, the canvas and the raised surface, and the dark arm is a lighter step of the same hue. Neighbouring series stay apart under simulated protanopia and deuteranopia. A series colour is a mark, never text: a legend or label beside a series reads in the default text colour, with a swatch of the series beside it.
 
 <!-- BEGIN GENERATED TOKEN TABLE: chart-series -->
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-chart-series-1` | `light-dark(oklch(33% 0.121 8), oklch(58% 0.089 205))` | Chart series 1. |
-| `--cinder-chart-series-2` | `light-dark(oklch(36% 0.069 80), oklch(67% 0.275 330))` | Chart series 2. |
-| `--cinder-chart-series-3` | `light-dark(oklch(40% 0.082 160), oklch(69% 0.182 44))` | Chart series 3. |
-| `--cinder-chart-series-4` | `light-dark(oklch(45% 0.087 235), oklch(70% 0.144 160))` | Chart series 4. |
-| `--cinder-chart-series-5` | `light-dark(oklch(53% 0.218 330), oklch(78% 0.12 8))` | Chart series 5. |
-| `--cinder-chart-series-6` | `light-dark(oklch(56% 0.148 44), oklch(81% 0.152 80))` | Chart series 6. |
-| `--cinder-chart-series-7` | `light-dark(oklch(59% 0.126 120), oklch(85% 0.078 235))` | Chart series 7. |
-| `--cinder-chart-series-8` | `light-dark(oklch(63% 0.098 205), oklch(89% 0.19 120))` | Chart series 8. |
+| `--cinder-chart-series-1` | `light-dark(oklch(63% 0.19 265), oklch(70.5% 0.138 265))` | Chart series 1. |
+| `--cinder-chart-series-2` | `light-dark(oklch(67.5% 0.247 350), oklch(73.5% 0.175 350))` | Chart series 2. |
+| `--cinder-chart-series-3` | `light-dark(oklch(65.5% 0.156 55), oklch(74% 0.164 55))` | Chart series 3. |
+| `--cinder-chart-series-4` | `light-dark(oklch(62.5% 0.136 160), oklch(67.5% 0.137 160))` | Chart series 4. |
+| `--cinder-chart-series-5` | `light-dark(oklch(66% 0.205 300), oklch(73% 0.148 300))` | Chart series 5. |
+| `--cinder-chart-series-6` | `light-dark(oklch(64.5% 0.127 85), oklch(79% 0.146 85))` | Chart series 6. |
+| `--cinder-chart-series-7` | `light-dark(oklch(60% 0.098 200), oklch(70% 0.107 200))` | Chart series 7. |
+| `--cinder-chart-series-8` | `light-dark(oklch(66.5% 0.213 25), oklch(73% 0.149 25))` | Chart series 8. |
+
+<!-- END GENERATED TOKEN TABLE -->
+
+## Chart ramp
+
+The value ramps every scale-coloured chart shares, MatrixChart and Spectrogram among them. The sequential ramp runs from `--cinder-chart-ramp-low`, a faint tint of the series-1 blue, to `--cinder-chart-ramp-high`, a vivid full step of the same hue. The diverging ramp runs from `--cinder-chart-ramp-negative` through `--cinder-chart-ramp-neutral`, where a value is zero, to `--cinder-chart-ramp-positive`. In the dark theme the low and middle steps sit near the surface and the strong steps are light, so strength always reads as distance from the page. A cell's number is never a ramp colour: it is black or white, whichever keeps 4.5:1 on its own cell.
+
+<!-- BEGIN GENERATED TOKEN TABLE: chart-ramp -->
+
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-chart-ramp-low` | `light-dark(oklch(96.5% 0.016 265), oklch(30% 0.06 265))` | The lowest value of the sequential chart ramp: a faint blue tint. |
+| `--cinder-chart-ramp-high` | `light-dark(oklch(48% 0.24 265), oklch(78% 0.11 265))` | The highest value of the sequential chart ramp: a vivid, saturated blue. |
+| `--cinder-chart-ramp-negative` | `light-dark(oklch(50% 0.22 265), oklch(74% 0.12 265))` | The negative end of the diverging chart ramp: a bright blue. |
+| `--cinder-chart-ramp-neutral` | `light-dark(oklch(97.5% 0.008 265), oklch(28% 0.01 265))` | The middle of the diverging chart ramp, where a value is zero: near white, or near the surface in the dark theme. |
+| `--cinder-chart-ramp-positive` | `light-dark(oklch(60% 0.18 40), oklch(78% 0.14 50))` | The positive end of the diverging chart ramp: a bright orange. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

@@ -21,10 +21,12 @@
     block-size: 12rem;
     flex: 0 0 auto;
   }
+  /* Each arc's stroke is its series colour, set inline: a stylesheet stroke here outranked the
+   * `stroke` presentation attribute, so every arc drew the accent while the legend showed each
+   * series' own colour (COR-2403). */
   .cinder-donut-chart__arc {
     fill: none;
     stroke-width: 24;
-    stroke: var(--cinder-accent-solid);
   }
   .cinder-donut-chart__focus-ring-layer {
     display: none;

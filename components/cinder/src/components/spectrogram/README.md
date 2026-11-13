@@ -31,7 +31,7 @@ Responsive SVG time × frequency heatmap for visualizing audio spectrogram data.
 
 ## Rendering and theming
 
-Spectrogram uses SVG and derives its plot margins from the time and frequency labels. The default foreground follows `currentColor`, the chart background remains transparent, and heatmap colors resolve through `--cinder-chart-series-*` against the semantic inset surface. Pass a partial `theme` to override the palette or chart colors. Rendering is bounded for dense inputs, while the semantic table preserves a readable sampled representation.
+Spectrogram uses SVG and derives its plot margins from the time and frequency labels. The default foreground follows `currentColor`, the chart background remains transparent, and heatmap colors take the shared sequential chart ramp, from `--cinder-chart-ramp-low` to `--cinder-chart-ramp-high`, as MatrixChart's do. Pass a partial `theme` to override the palette or chart colors. Rendering is bounded for dense inputs, while the semantic table preserves a readable sampled representation.
 
 ## Props
 

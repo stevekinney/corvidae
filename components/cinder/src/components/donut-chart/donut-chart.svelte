@@ -185,7 +185,7 @@
             class="cinder-donut-chart__arc"
             d={arcPath(arc.start, arc.end)}
             pathLength="1"
-            stroke={seriesColor(arc.datum.color, arc.index)}
+            style:stroke={seriesColor(arc.datum.color, arc.index)}
           ></path>{#if interactive}<g
               class="cinder-donut-chart__focus-ring-layer"
               aria-hidden="true"

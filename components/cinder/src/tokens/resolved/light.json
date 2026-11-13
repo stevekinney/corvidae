@@ -2041,7 +2041,7 @@
     }
   },
   "chart.series.1": {
-    "$value": { "colorSpace": "oklch", "components": [0.33, 0.121, 8] },
+    "$value": { "colorSpace": "oklch", "components": [0.63, 0.19, 265] },
     "$description": "Chart series 1.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2053,7 +2053,7 @@
     "$type": "color"
   },
   "chart.series.2": {
-    "$value": { "colorSpace": "oklch", "components": [0.36, 0.069, 80] },
+    "$value": { "colorSpace": "oklch", "components": [0.675, 0.247, 350] },
     "$description": "Chart series 2.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2065,7 +2065,7 @@
     "$type": "color"
   },
   "chart.series.3": {
-    "$value": { "colorSpace": "oklch", "components": [0.4, 0.082, 160] },
+    "$value": { "colorSpace": "oklch", "components": [0.655, 0.156, 55] },
     "$description": "Chart series 3.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2077,7 +2077,7 @@
     "$type": "color"
   },
   "chart.series.4": {
-    "$value": { "colorSpace": "oklch", "components": [0.45, 0.087, 235] },
+    "$value": { "colorSpace": "oklch", "components": [0.625, 0.136, 160] },
     "$description": "Chart series 4.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2089,7 +2089,7 @@
     "$type": "color"
   },
   "chart.series.5": {
-    "$value": { "colorSpace": "oklch", "components": [0.53, 0.218, 330] },
+    "$value": { "colorSpace": "oklch", "components": [0.66, 0.205, 300] },
     "$description": "Chart series 5.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2101,7 +2101,7 @@
     "$type": "color"
   },
   "chart.series.6": {
-    "$value": { "colorSpace": "oklch", "components": [0.56, 0.148, 44] },
+    "$value": { "colorSpace": "oklch", "components": [0.645, 0.127, 85] },
     "$description": "Chart series 6.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2113,7 +2113,7 @@
     "$type": "color"
   },
   "chart.series.7": {
-    "$value": { "colorSpace": "oklch", "components": [0.59, 0.126, 120] },
+    "$value": { "colorSpace": "oklch", "components": [0.6, 0.098, 200] },
     "$description": "Chart series 7.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2125,11 +2125,71 @@
     "$type": "color"
   },
   "chart.series.8": {
-    "$value": { "colorSpace": "oklch", "components": [0.63, 0.098, 205] },
+    "$value": { "colorSpace": "oklch", "components": [0.665, 0.213, 25] },
     "$description": "Chart series 8.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-chart-series-8",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$type": "color"
+  },
+  "chart.ramp.low": {
+    "$value": { "colorSpace": "oklch", "components": [0.965, 0.016, 265] },
+    "$description": "The lowest value of the sequential chart ramp: a faint blue tint.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-chart-ramp-low",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$type": "color"
+  },
+  "chart.ramp.high": {
+    "$value": { "colorSpace": "oklch", "components": [0.48, 0.24, 265] },
+    "$description": "The highest value of the sequential chart ramp: a vivid, saturated blue.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-chart-ramp-high",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$type": "color"
+  },
+  "chart.ramp.negative": {
+    "$value": { "colorSpace": "oklch", "components": [0.5, 0.22, 265] },
+    "$description": "The negative end of the diverging chart ramp: a bright blue.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-chart-ramp-negative",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$type": "color"
+  },
+  "chart.ramp.neutral": {
+    "$value": { "colorSpace": "oklch", "components": [0.975, 0.008, 265] },
+    "$description": "The middle of the diverging chart ramp, where a value is zero: near white, or near the surface in the dark theme.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-chart-ramp-neutral",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$type": "color"
+  },
+  "chart.ramp.positive": {
+    "$value": { "colorSpace": "oklch", "components": [0.6, 0.18, 40] },
+    "$description": "The positive end of the diverging chart ramp: a bright orange.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-chart-ramp-positive",
         "public": true,
         "category": "color"
       }
