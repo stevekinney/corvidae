@@ -92,7 +92,11 @@
   .cinder-citation__list {
     display: flex;
     flex-direction: column;
-    margin: 0;
+    /* A row's text starts on the edge of the heading above the list: the list is pulled out by the
+       row's own inset (its padding and its 2px current-row edge), so the hover face and the edge
+       overhang into the panel's padding while the words line up. */
+    margin-block: 0;
+    margin-inline: calc(-1 * (var(--cinder-space-2) + 2px));
     padding: 0;
     list-style: none;
   }
