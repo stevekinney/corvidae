@@ -480,7 +480,10 @@ for (const viewport of VIEWPORTS) {
       await expect(expiredToolRow).toContainText('Expired');
       await expect(expiredToolRow).not.toContainText('Waiting on you');
       await expect(expiredToolRow).not.toContainText('Needs you');
-      await expect.poll(() => chatHeaderStatus(page)).not.toBe('Waiting on you');
+      // The run is still parked on input until the person presses Ask again or denies, so the
+      // header keeps saying the chat waits on them (owner decision, 2026-11-13); the card and the
+      // row carry the expiry.
+      await expect.poll(() => chatHeaderStatus(page)).toBe('Waiting on you');
       const expiredReviewsCount =
         viewport.width >= 500 ? await reviewsNavigationCount(page) : undefined;
       if (initialReviewsCount !== undefined && expiredReviewsCount !== undefined) {
