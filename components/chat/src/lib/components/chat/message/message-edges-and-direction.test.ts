@@ -9,7 +9,7 @@ describe('glyphs meet their edges, spacing and direction', () => {
   test('the user message keeps its trailing Copy glyph on the bubble edge', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(
-      /\.chat-message-wrapper\[data-role='user'\] \.chat-message-line-actions \{\s*margin-inline-end: calc\(\(0\.75rem - 1\.5rem\) \/ 2\);/,
+      /\.chat-message-wrapper\[data-role='user'\] \.chat-message-line-actions \{\s*margin-inline-end: calc\(\(0\.625rem - 1\.5rem\) \/ 2\);/,
     );
   });
 
@@ -45,7 +45,7 @@ describe('glyphs meet their edges, spacing and direction', () => {
   test('message action glyphs are sized to the time beside them and sit 8px apart', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(
-      /\.chat-message-line :global\(\.chat-message-action-button svg\) \{\s*inline-size: 0\.75rem;\s*block-size: 0\.75rem;/,
+      /\.chat-message-line :global\(\.chat-message-action-button svg\) \{\s*inline-size: 0\.625rem;\s*block-size: 0\.625rem;/,
     );
     expect(source).toMatch(/\.chat-message-line-actions \{[^}]*gap: var\(--cinder-space-2\);/);
   });
