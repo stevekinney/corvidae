@@ -140,7 +140,12 @@ test.describe('a tool approval', () => {
     // The seeded turn already refunded the order once, so one reply is the one the session opened with.
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(1);
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
-    await expect(page.locator('[data-cinder-tool-approval]')).toHaveCount(0);
+    // Interborough's own row carries the same marker now (so a retry can find its card), so the
+    // check is that no card other than the one row exists.
+    await expect(page.locator('[data-cinder-tool-approval]')).toHaveCount(1);
+    await expect(
+      page.locator('[data-cinder-tool-approval]:not([data-approval-decision])'),
+    ).toHaveCount(0);
     await checkA11y('a session waiting on an approval');
     await alert.getByRole('button', { name: 'Approve' }).click();
 

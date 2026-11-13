@@ -351,6 +351,9 @@ test.describe('New chat when the first message cannot be sent (24c, 24r, 24s)', 
 });
 
 test.describe('New chat at 375 pixels (24v)', () => {
+  // The 44 pixel hit area of a compact control exists for a coarse pointer, so the phone is one.
+  test.use({ hasTouch: true, isMobile: true });
+
   test('scrolls the greeting, the stacked Try pills and the wrapping Or chat with row in one column', async ({
     page,
     checkA11y,
