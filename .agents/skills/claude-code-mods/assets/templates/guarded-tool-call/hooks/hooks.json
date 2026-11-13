@@ -1,0 +1,4 @@
+{
+  "description": "protected-paths: a fail-closed guard on file tools, a confirmation hold on risky Bash commands, and a fail-open audit observer",
+  "modules": ["./register.ts"]
+}

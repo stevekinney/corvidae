@@ -1,0 +1,4 @@
+{
+  "description": "attention-queue: polls a loopback companion service over $.http.fetch and draws its queue in a band and a pane",
+  "modules": ["./register.tsx"]
+}

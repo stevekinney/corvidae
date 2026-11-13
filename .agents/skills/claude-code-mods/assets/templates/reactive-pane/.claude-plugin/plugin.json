@@ -1,0 +1,7 @@
+{
+  "name": "agent-roster",
+  "version": "0.1.0",
+  "description": "Shows this session's subagents and teammates in a pane and a compact band above the prompt",
+  "author": { "name": "Template Author" },
+  "types": "./types/index.d.ts"
+}

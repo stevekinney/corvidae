@@ -1,0 +1,4 @@
+{
+  "description": "tool-tally: counts tool calls by outcome and answers /tool-tally",
+  "modules": ["./register.ts"]
+}

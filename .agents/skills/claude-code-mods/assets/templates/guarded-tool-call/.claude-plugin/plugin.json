@@ -1,0 +1,6 @@
+{
+  "name": "protected-paths",
+  "version": "0.1.0",
+  "description": "Refuses file edits to .env files and .git internals, asks before risky shell commands, and logs every tool call's outcome",
+  "author": { "name": "Template Author" }
+}

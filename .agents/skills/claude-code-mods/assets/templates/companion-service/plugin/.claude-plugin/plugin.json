@@ -1,0 +1,15 @@
+{
+  "name": "attention-queue",
+  "version": "0.1.0",
+  "description": "Shows approvals, failed checks, expired claims, and handoffs from a local companion service, with presence heartbeats",
+  "author": { "name": "Template Author" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "runtimeFile": {
+      "type": "string",
+      "title": "Runtime file",
+      "description": "Absolute path of the runtime file the attention-queue service writes. Leave empty for the default under your home directory.",
+      "default": ""
+    }
+  }
+}

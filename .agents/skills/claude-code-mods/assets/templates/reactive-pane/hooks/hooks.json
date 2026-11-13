@@ -1,0 +1,4 @@
+{
+  "description": "agent-roster: a pane and a band drawn from $.state, refreshed from $.agent.list() after turns, with the band preference kept in $.store",
+  "modules": ["./register.tsx"]
+}

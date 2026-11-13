@@ -561,8 +561,10 @@ describe('internal workspace architecture', () => {
       'add-dependency',
       'add-workspace',
       'chef',
+      'claude-code-mods',
       'create-project',
       'create-task',
+      'design-review',
       'groom',
       'validate-monorepo',
     ]) {

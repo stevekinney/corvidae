@@ -1,0 +1,6 @@
+{
+  "name": "tool-tally",
+  "version": "0.1.0",
+  "description": "Counts this session's tool calls by outcome and reports them with /tool-tally",
+  "author": { "name": "Template Author" }
+}
