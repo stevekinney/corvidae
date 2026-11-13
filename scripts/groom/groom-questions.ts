@@ -6,7 +6,7 @@
 // could answer at a glance from the issue alone, and refers to the issue as "this issue".
 
 import type { DecisionOption, DecisionQuestion } from '@lostgradient/operative';
-import type { PriorityName } from './linear.ts';
+import type { PriorityName } from '../chef/linear.ts';
 
 /** A yes above this reads as yes. */
 export const yesThreshold = 0.7;

@@ -236,6 +236,7 @@ describe('workspace imports', () => {
   test.each([
     './package.json',
     'scripts/browser-fixtures/package.json',
+    'scripts/groom/package.json',
     ...new Bun.Glob(`${directoryGlob(workspaceParentDirectories)}/*/package.json`).scanSync({
       cwd: root,
     }),
@@ -261,7 +262,8 @@ describe('workspace imports', () => {
         directory === '.' ? 'scripts' : directory,
       );
       for (const { file, source } of sources.filter(
-        ({ file }) => directory !== '.' || !file.startsWith('browser-fixtures/'),
+        ({ file }) =>
+          directory !== '.' || !(file.startsWith('browser-fixtures/') || file.startsWith('groom/')),
       )) {
         expect(source, `${directory}/${file} suppresses TypeScript checking`).not.toMatch(
           /^\s*\/\/\s*@ts-(?:nocheck|ignore)\b/m,
