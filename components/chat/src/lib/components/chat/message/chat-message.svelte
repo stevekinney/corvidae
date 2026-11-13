@@ -633,7 +633,11 @@
   const createdAtValue = $derived(
     typeof message.createdAt === 'string' && formattedCreatedAt ? message.createdAt : undefined,
   );
-  const hasMetadata = $derived(Boolean(formattedCreatedAt || metadata));
+  // An empty turn's time sits inside its notice, so the message draws no metadata line for it.
+  const timeInNotice = $derived(
+    turn.kind === 'empty' && createdAtValue !== undefined && Boolean(formattedCreatedAt),
+  );
+  const hasMetadata = $derived(Boolean((formattedCreatedAt && !timeInNotice) || metadata));
 
   // Role detection — kept for wrapper-level layout + a11y (data-tool-pair,
   // aria-label). The body branches that used to live here are now derived parts.
@@ -840,7 +844,7 @@
           {/if}
         </div>
       </Popover>
-      {#if createdAtValue && formattedCreatedAt && !approvalOnlyTurn}
+      {#if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice}
         <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
       {/if}
       <span class="chat-message-not-sent-label" role="status">Not sent</span>
@@ -857,7 +861,7 @@
           Remove
         </Button>
       {/if}
-    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn}
+    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice}
       <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
     {/if}
     {#if !isPending && !streaming}
@@ -1025,6 +1029,11 @@
       >
         {#snippet icon()}<Info aria-hidden="true" />{/snippet}
         <p class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</p>
+        {#if timeInNotice}
+          <time class="chat-turn-time" datetime={createdAtValue}
+            ><bdi>{formattedCreatedAt}</bdi></time
+          >
+        {/if}
       </Callout>
     </div>
   {/if}
@@ -1255,7 +1264,7 @@
 
   {#if hasMetadata && !transcript}
     <div class="chat-message-metadata">
-      {#if createdAtValue && formattedCreatedAt}
+      {#if createdAtValue && formattedCreatedAt && !timeInNotice}
         <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
       {/if}
       {#if metadata}
@@ -2503,6 +2512,12 @@
 
   .chat-turn-text {
     margin: 0;
+  }
+
+  .chat-turn-time {
+    display: block;
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
   }
 
   .chat-turn-failure-body {
