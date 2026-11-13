@@ -57,7 +57,8 @@
     width: var(--_cinder-callout-icon-size);
     height: var(--_cinder-callout-icon-size);
     margin-block-start: var(--cinder-space-0-5);
-    margin-inline-end: var(--cinder-space-3);
+    /* The glyph has 2px of its own inset, so 8px here reads as about 10px of air to the text. */
+    margin-inline-end: var(--cinder-space-2);
     color: inherit;
   }
 
@@ -290,7 +291,7 @@
     .cinder-callout--with-icon .cinder-callout__content::before {
       content: '';
       float: inline-start;
-      inline-size: calc(var(--_cinder-callout-icon-size) + var(--cinder-space-3));
+      inline-size: calc(var(--_cinder-callout-icon-size) + var(--cinder-space-2));
       block-size: 1px;
     }
   }
