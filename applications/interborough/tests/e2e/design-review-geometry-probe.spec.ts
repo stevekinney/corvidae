@@ -275,3 +275,54 @@ test('the probe asks the browser whether a tap reaches each hit area, and the au
   ).toEqual(['button.compact', 'button.compact', 'button.barred']);
   expect(found.some((finding) => finding.rule === 'occluded')).toBe(false);
 });
+
+const POPUP_PAGE = `
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; font: 14px/1.5 sans-serif; }
+    section { margin-bottom: 32px; }
+    button { font: inherit; display: block; height: 44px; padding: 0 16px; border: 1px solid #ccc; background: #fff; }
+  </style>
+  <section><button aria-haspopup="menu" aria-label="More actions">…</button></section>
+  <section><button aria-haspopup="true">Switch chat</button></section>
+  <section><button aria-haspopup="dialog">Pick a date</button></section>
+  <section><button aria-haspopup="listbox">Model</button></section>
+  <section><button role="combobox">Agent</button></section>
+`;
+
+test('a button that opens a menu or a dialog is a button; one that opens a list of values is a field', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await page.setContent(POPUP_PAGE);
+  const facts = await measureGeometry(page);
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+
+  const kinds = Object.fromEntries(
+    facts.controls.map((control) => [
+      control.text === '' ? control.accessibleLabel : control.text,
+      control.kind,
+    ]),
+  );
+  expect(kinds).toEqual({
+    '…': 'button',
+    'Switch chat': 'button',
+    'Pick a date': 'button',
+    Model: 'field',
+    Agent: 'field',
+  });
+  // Each is drawn 44 pixels tall on a touch screen: the three buttons are over the limit, and the
+  // two fields are not held to it.
+  const found = auditCapture(facts, { ...capture, width: 375 });
+  expect(
+    found
+      .filter((finding) => finding.rule === 'target-oversized')
+      .map((finding) => finding.measured),
+  ).toEqual([
+    expect.stringContaining('"…" is drawn 44px tall'),
+    expect.stringContaining('"Switch chat" is drawn 44px tall'),
+    expect.stringContaining('"Pick a date" is drawn 44px tall'),
+  ]);
+});
