@@ -753,6 +753,21 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
   });
 
+  test('Add a note never squeezes or wraps its words on a card 30rem or wider', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // The control: no shrinking, no wrapping, at least its content, at the sm height.
+    expect(css).toMatch(
+      /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*flex: none;[^}]*min-inline-size: max-content;[^}]*block-size: var\(--_cinder-painted-height-sm\);[^}]*white-space: nowrap;/,
+    );
+    // The label: the batch row's `white-space: normal` label rule must not reach it.
+    expect(css).toMatch(
+      /__note-toggle \.cinder-button__label \{[^}]*flex: none;[^}]*min-inline-size: max-content;[^}]*overflow: visible;[^}]*white-space: nowrap;/,
+    );
+  });
+
   test('the note toggle is sized by the painted height, so it never stretches the action row', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
@@ -783,18 +798,13 @@ describe('ApprovalCard decision layout stylesheet', () => {
       /\s+/g,
       ' ',
     );
-    expect(css).toMatch(/__row-question \{[^}]*flex: 1 1 auto;/);
-    expect(css).not.toMatch(/__row-question \{[^}]*flex: 1 1 12rem;/);
-  });
-
-  test('the title takes the width and the irreversible badge is the item that wraps', () => {
-    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
-      /\s+/g,
-      ' ',
-    );
+    // The title keeps its natural width (no growing), so the badge follows it, never the far edge.
+    expect(css).toMatch(/__row-question \{[^}]*flex: 0 1 auto;/);
     expect(css).toMatch(
-      /__decision-head \.cinder-approval-card__decision-title \{ flex: 1 1 auto; \}/,
+      /__decision-head \.cinder-approval-card__decision-title \{ flex: 0 1 auto;/,
     );
+    expect(css).not.toMatch(/__irreversible \{[^}]*margin-inline-start: auto/);
+    expect(css).not.toMatch(/__row-question \{[^}]*flex: 1 1 12rem;/);
   });
 
   test('the armed hint sits at the start edge', () => {

@@ -127,6 +127,22 @@
     margin-block-start: var(--cinder-space-2);
   }
 
+  /* The line is drawn in the callout's tone, not the accent. */
+  .cinder-callout[data-cinder-variant='neutral'] .cinder-callout__progress .cinder-progress__fill {
+    background: var(--cinder-text-subtle);
+  }
+
+  .cinder-callout:is(
+      [data-cinder-variant='info'],
+      [data-cinder-variant='success'],
+      [data-cinder-variant='warning'],
+      [data-cinder-variant='danger']
+    )
+    .cinder-callout__progress
+    .cinder-progress__fill {
+    background: var(--_cinder-status-base);
+  }
+
   .cinder-callout__dismiss {
     grid-column: 3;
     grid-row: 1;
@@ -151,6 +167,12 @@
   .cinder-callout--inline-action {
     align-items: center;
     row-gap: 0;
+  }
+
+  /* Only the action is centred against the text block; the icon stays on the first line, with
+   * the same offset every other layout gives it. */
+  .cinder-callout--inline-action .cinder-callout__icon {
+    align-self: start;
   }
 
   .cinder-callout__body {

@@ -516,7 +516,7 @@
     display: flex;
     align-items: flex-start;
     flex-wrap: wrap;
-    gap: var(--cinder-space-1);
+    gap: var(--cinder-space-1) var(--cinder-space-2);
     min-inline-size: 0;
   }
 
@@ -524,7 +524,7 @@
   .cinder-approval-card__row-question {
     /* The title takes the line at its natural size, so a trailing badge is what wraps (the
      * decision head does the same). */
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-inline-size: 0;
     margin: 0;
     overflow-wrap: anywhere;
@@ -845,8 +845,29 @@
     .cinder-approval-card__row-actions
     .cinder-button.cinder-approval-card__note-toggle {
     align-self: center;
-    min-inline-size: 0;
+    flex: none;
+    inline-size: auto;
+    max-inline-size: none;
+    min-inline-size: max-content;
+    block-size: var(--_cinder-painted-height-sm);
+    min-block-size: var(--_cinder-painted-height-sm);
+    white-space: nowrap;
     margin-inline-start: calc(-1 * var(--cinder-button-padding-x-sm));
+  }
+
+  /* On a card 30rem or wider the words never squeeze, clip or wrap: one line at the label's own
+   * width, in the batch row layout as well as the single card. */
+  .cinder-approval-card
+    .cinder-approval-card__row-actions
+    .cinder-approval-card__note-toggle
+    .cinder-button__label {
+    flex: none;
+    max-inline-size: none;
+    min-inline-size: max-content;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+    overflow-wrap: normal;
   }
 
   /* Under 30rem of card width the toggle takes Button's icon-only geometry: a square face the
@@ -872,6 +893,7 @@
       .cinder-button__label {
       position: absolute;
       inline-size: 1px;
+      min-inline-size: 0;
       block-size: 1px;
       margin: -1px;
       padding: 0;
@@ -970,7 +992,7 @@
   /* The title takes the available width at its natural size, so when the badge would force the
    * title to break, the badge is the item that wraps, onto the line directly under the title. */
   .cinder-approval-card__decision-head .cinder-approval-card__decision-title {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
   }
 
   .cinder-approval-card__receipt .cinder-approval-card__input-toggle {
