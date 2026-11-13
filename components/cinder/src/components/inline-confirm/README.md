@@ -51,6 +51,7 @@ Use `presentation="two-press"` for an irreversible action. It renders one named 
 | `hintId` | `string` | no | — | Id assigned to the two-press status hint. |
 | `loading` | `boolean` | no | — | Shows a loading state on the action button. |
 | `loadingLabel` | `string` | no | — | Accessible loading label for the action button. |
+| `mutating` | `boolean` | no | — | Marks the two-press action as one that changes something, so a stale `StaleRegion` makes it inert. |
 | `open` | `boolean` | no | `false` | Whether the confirmation is open. Bindable, and component-owned on close: confirming, clicking Cancel, and pressing Escape all set this to `false` before calling `onConfirm`/`onCancel`, so a bound parent observes the confirmation as already closed by the time either callback runs—neither callback can veto or delay that close. Defaults to `false`. |
 | `presentation` | `"strip"` \| `"two-press"` | no | — | The in-flow strip (default) or a single guarded action button. |
 | `prompt` | `string` | no | — |  |

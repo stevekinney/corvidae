@@ -471,6 +471,7 @@
             armedEscapeHint="Escape cancels."
             {requestKey}
             requiresSecondPress={irreversible}
+            mutating
             disabled={isBusy}
             blocked={disabledReason !== undefined}
             ariaDisabled={disabledReason !== undefined}

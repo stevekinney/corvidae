@@ -50,6 +50,10 @@
       "type": "boolean",
       "description": "Requires a second press; defaults to `true` in two-press presentation."
     },
+    "mutating": {
+      "type": "boolean",
+      "description": "Marks the two-press action as one that changes something, so a stale `StaleRegion` makes it inert."
+    },
     "ariaDisabled": {
       "type": "boolean",
       "description": "Explicit aria-disabled value for a blocked action."

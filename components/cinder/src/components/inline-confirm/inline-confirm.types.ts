@@ -35,6 +35,8 @@ type InlineConfirmSharedProps = {
   blocked?: boolean;
   /** Requires a second press; defaults to `true` in two-press presentation. */
   requiresSecondPress?: boolean;
+  /** Marks the two-press action as one that changes something, so a stale `StaleRegion` makes it inert. */
+  mutating?: boolean;
   /** Explicit aria-disabled value for a blocked action. */
   ariaDisabled?: boolean;
   /** Full accessible label shown after the first press. */

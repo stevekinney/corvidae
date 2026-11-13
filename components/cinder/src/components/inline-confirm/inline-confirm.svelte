@@ -36,6 +36,7 @@
     requestKey,
     disabled = false,
     blocked = false,
+    mutating = false,
     requiresSecondPress = true,
     ariaDisabled,
     armedLabel,
@@ -168,6 +169,7 @@
     <Button
       variant={armed ? 'danger' : 'primary'}
       size="sm"
+      {mutating}
       disabled={disabled || loading}
       {loading}
       {...ariaDisabled || blocked ? { 'aria-disabled': 'true' } : {}}
