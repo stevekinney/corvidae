@@ -2,6 +2,7 @@ import type {
   BarChartDatum,
   BarChartMode,
   BarChartOrientation,
+  BarChartPlacedBar,
   BarChartSeries,
   ChartAxisConfiguration,
 } from '../../components/chart.types.ts';
@@ -53,11 +54,18 @@ export function renderBarSeries(options: BarRenderingOptions) {
     if (!datum) continue;
     const offsets = { positive: 0, negative: 0 };
     const rowValues: BarChartModel['tableRows'][number]['values'] = [];
+    // The outermost visible segment on each side of the baseline, the only one with a rounded end.
+    const outermost: { positive?: BarChartPlacedBar; negative?: BarChartPlacedBar } = {};
     visibleSeries.forEach((item) => {
       const value = ownEntry(datum, item.valueKey);
       if (typeof value !== 'number') return;
       const bar = createBar(item, value, category, categoryIndex, offsets, options, scales);
       rowValues.push({ seriesId: item.id, seriesLabel: item.label, valueLabel: bar.valueLabel });
+      if (value !== 0) {
+        const side = value > 0 ? 'positive' : 'negative';
+        if (options.mode === 'stacked') outermost[side] = bar;
+        else bar.roundedEnd = roundedEndOf(side, orientation);
+      }
       bars.push(bar);
       targets.push({
         ...bar,
@@ -66,6 +74,8 @@ export function renderBarSeries(options: BarRenderingOptions) {
         xLabel: bar.categoryLabel,
       });
     });
+    if (outermost.positive) outermost.positive.roundedEnd = roundedEndOf('positive', orientation);
+    if (outermost.negative) outermost.negative.roundedEnd = roundedEndOf('negative', orientation);
     if (rowValues.length > 0) {
       tableRows.push({
         categoryKey: category.key,
@@ -76,6 +86,15 @@ export function renderBarSeries(options: BarRenderingOptions) {
   }
   targets.sort((a, b) => (orientation === 'vertical' ? a.x - b.x : a.y - b.y));
   return { categoryTicks, bars, targets, tableRows };
+}
+
+/** A bar's end away from the baseline: up or right for a positive value, down or left below it. */
+function roundedEndOf(
+  side: 'positive' | 'negative',
+  orientation: BarChartOrientation,
+): NonNullable<BarChartPlacedBar['roundedEnd']> {
+  if (orientation === 'vertical') return side === 'positive' ? 'top' : 'bottom';
+  return side === 'positive' ? 'right' : 'left';
 }
 
 function createBarScales(options: BarRenderingOptions): BarScales {

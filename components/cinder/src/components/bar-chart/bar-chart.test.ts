@@ -120,6 +120,51 @@ describe('BarChart', () => {
     expect(container.querySelector('[data-cinder-mode="stacked"]')).not.toBeNull();
   });
 
+  test('a stack rounds only its outer end; a grouped bar rounds its own', () => {
+    const roundedEnds = (mode: 'stacked' | 'grouped') => {
+      const { container, unmount } = render(BarChart, {
+        label: 'Revenue by month',
+        data,
+        categoryKey: 'month',
+        series,
+        mode,
+      });
+      const ends = [...container.querySelectorAll('rect.cinder-bar-chart__bar')].map(
+        (bar) =>
+          `${bar.getAttribute('data-cinder-series')}:${bar.getAttribute('data-cinder-rounded-end') ?? 'square'}`,
+      );
+      unmount();
+      return ends;
+    };
+    expect(roundedEnds('stacked')).toEqual([
+      'revenue:square',
+      'expansion:top',
+      'revenue:square',
+      'expansion:top',
+    ]);
+    expect(roundedEnds('grouped')).toEqual([
+      'revenue:top',
+      'expansion:top',
+      'revenue:top',
+      'expansion:top',
+    ]);
+  });
+
+  test('the rounding is a clip of the bar box on one end, never rx on every corner', async () => {
+    const css = await Bun.file(new URL('./bar-chart.css', import.meta.url)).text();
+    expect(css).not.toMatch(/\brx:/);
+    for (const [end, radii] of [
+      ['top', 'var(--_cinder-bar-radius) var(--_cinder-bar-radius) 0 0'],
+      ['right', '0 var(--_cinder-bar-radius) var(--_cinder-bar-radius) 0'],
+      ['bottom', '0 0 var(--_cinder-bar-radius) var(--_cinder-bar-radius)'],
+      ['left', 'var(--_cinder-bar-radius) 0 0 var(--_cinder-bar-radius)'],
+    ] as const) {
+      expect(css).toContain(
+        `.cinder-bar-chart__bar[data-cinder-rounded-end='${end}'] {\n    clip-path: inset(0 round ${radii});`,
+      );
+    }
+  });
+
   test('legend toggle hides rendered bars for that series', async () => {
     const { getByRole, container } = render(BarChart, {
       label: 'Revenue by month',
