@@ -395,11 +395,12 @@ export function measureInPage(options: {
       const reach = 21.5;
       // Chrome's `elementFromPoint` resolves a fractional point within about three quarters of a
       // pixel of a shared edge to the next box (two touching 44px buttons answer the neighbour at
-      // 43.25px, with or without a hit pseudo-element). A control whose own box is 44px or more
-      // therefore probes one pixel inside its face edge, still well past anything a tap needs.
+      // 43.25px, with or without a hit pseudo-element). A control whose own box is within a pixel
+      // of 44px or more (a two-line row painted at 43.4px touches the row below it) therefore
+      // probes one pixel inside its face edge, still well past anything a tap needs.
       const ownBox = element.getBoundingClientRect();
       const reachAlong = (halfExtent: number) =>
-        halfExtent >= 22 ? Math.min(reach, halfExtent - 1) : reach;
+        halfExtent >= 21 ? Math.min(reach, halfExtent - 1) : reach;
       const reachX = reachAlong(ownBox.width / 2);
       const reachY = reachAlong(ownBox.height / 2);
       const sides: ['left' | 'right' | 'above' | 'below', number, number][] = [
