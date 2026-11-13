@@ -150,9 +150,14 @@
             )}
           >
             <div class="cinder-skeleton-grouped-content">
-              <div class="cinder-skeleton-row-text">
-                <div class="cinder-skeleton cinder-skeleton-title-bar"></div>
-                <div class="cinder-skeleton cinder-skeleton-meta-bar"></div>
+              <!-- Each bar sits in a line box of the text it stands for, so the row is as tall. -->
+              <div class="cinder-skeleton-grouped-text">
+                <div class="cinder-skeleton-grouped-line cinder-skeleton-grouped-line--title">
+                  <div class="cinder-skeleton cinder-skeleton-title-bar"></div>
+                </div>
+                <div class="cinder-skeleton-grouped-line cinder-skeleton-grouped-line--subtitle">
+                  <div class="cinder-skeleton cinder-skeleton-meta-bar"></div>
+                </div>
               </div>
               {#if action}
                 <div class="cinder-skeleton cinder-skeleton-action-bar"></div>

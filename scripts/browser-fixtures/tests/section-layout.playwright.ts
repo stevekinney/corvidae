@@ -92,9 +92,19 @@ test.describe('GroupedList layout', () => {
     await page.setViewportSize({ width: 1024, height: 800 });
     const wide = await rows.first().locator('.cinder-skeleton-action-bar').boundingBox();
     expect(wide!.width).toBeCloseTo(84, 0);
+    // A placeholder row is as tall as a real row with a title, a subtitle and an action, so nothing
+    // moves when the rows arrive.
+    const placeholderHeight = (await rows.first().boundingBox())!.height;
+    await page.goto(fixtureRoute('grouped-list'), { waitUntil: 'load' });
+    const real = page
+      .getByTestId('grouped-list-actions')
+      .locator('.cinder-grouped-list-item')
+      .nth(1);
+    expect(Math.abs((await real.boundingBox())!.height - placeholderHeight)).toBeLessThanOrEqual(1);
+    await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
     await page.setViewportSize({ width: 375, height: 800 });
     const row = await rows.first().boundingBox();
-    const text = await rows.first().locator('.cinder-skeleton-row-text').boundingBox();
+    const text = await rows.first().locator('.cinder-skeleton-grouped-text').boundingBox();
     const block = await rows.first().locator('.cinder-skeleton-action-bar').boundingBox();
     expect(block!.y).toBeGreaterThanOrEqual(text!.y + text!.height - 1);
     expect(block!.width).toBeGreaterThan(row!.width - 40);

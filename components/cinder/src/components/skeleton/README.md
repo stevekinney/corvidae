@@ -55,7 +55,7 @@ Animated placeholder shape that fills content areas while data is loading.
 
 ### Grouped variant
 
-`variant="grouped"` is the placeholder for a `GroupedList`: `rows` rows (default 3) of two text bars on the same rounded raised surface, with no border and separators that start at the text. `action` adds a block the height of a small button at the end of each row, for a list whose rows end in text actions; on a phone the block drops under the text at full width, where the buttons go. `label` and the loading rules work as they do for the list variant:
+`variant="grouped"` is the placeholder for a `GroupedList`: `rows` rows (default 3) of two text bars on the same rounded raised surface, with no border and separators that start at the text. Each bar sits in a line box of the text it stands for, so a placeholder row is as tall as a row with a title and a subtitle. `action` adds a block the height of a small button at the end of each row, for a list whose rows end in text actions; in a row narrower than 26rem, as on a phone, the block drops under the text at full width, where the buttons go. `label` and the loading rules work as they do for the list variant:
 
 ```svelte
 <script lang="ts">
@@ -114,7 +114,7 @@ Both timers start when the Skeleton mounts, so render it only while the request 
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `action` | `boolean` | no | `false` | Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`, for a grouped list whose rows end in text actions. On a phone (below 640px) the block drops under the text at full width, where the real buttons go. Ignored by other variants. |
+| `action` | `boolean` | no | `false` | Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`, for a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone, the block drops under the text at full width, where the real buttons go. Ignored by other variants. |
 | `cancelLabel` | `string` | no | `"Cancel"` | Label of the Cancel button in the "Still loading" status. |
 | `class` | `string` | no | — | Additional class merged onto the root element: `.cinder-skeleton` for a single block, or `.cinder-skeleton-group` when `lines`, `variant`, or `stillLoadingAfter` render a group. |
 | `dayBand` | `boolean` | no | `false` | Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`, the placeholder for a list that groups its rows by day. Ignored by other variants. |

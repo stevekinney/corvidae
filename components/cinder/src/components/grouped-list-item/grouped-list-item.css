@@ -246,9 +246,14 @@
     gap: var(--cinder-space-2);
   }
 
-  /* On a phone the actions are never folded into a menu: they take a line of their own under the
-     text, one button per line, each the full width of the content. */
-  @media (width < 640px) {
+  /* A row with actions measures its own width: on a phone, or in any pane that narrow, the actions
+     are never folded into a menu. They take a line of their own under the text, one button per
+     line, each the full width of the content. */
+  .cinder-grouped-list-item--actions {
+    container: cinder-grouped-list-item / inline-size;
+  }
+
+  @container cinder-grouped-list-item (width < 26rem) {
     .cinder-grouped-list-item--actions > .cinder-grouped-list-item__content {
       flex-wrap: wrap;
     }

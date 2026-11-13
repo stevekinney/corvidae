@@ -169,12 +169,18 @@ describe('GroupedListItem', () => {
     expect(chosen).toBe(0);
   });
 
-  test('stylesheet lifts the actions over the row link and stacks them full width on a phone', () => {
+  test('stylesheet lifts the actions over the row link and stacks them full width in a narrow row', () => {
     const css = readFileSync(new URL('./grouped-list-item.css', import.meta.url), 'utf8')
       .replace(/\s+/g, ' ')
       .replace(/\/\*.*?\*\//g, '');
     expect(css).toMatch(/\.cinder-grouped-list-item__actions \{[^}]*z-index: 1/);
-    const phone = /@media \(width < 640px\) \{(.*?)\} \}/.exec(css)?.[1] ?? '';
+    // The row measures its own width (a container query), never the viewport's.
+    expect(css).toMatch(
+      /\.cinder-grouped-list-item--actions \{ container: cinder-grouped-list-item \/ inline-size; \}/,
+    );
+    expect(css).not.toMatch(/@media \(width/);
+    const phone =
+      /@container cinder-grouped-list-item \(width < 26rem\) \{(.*?)\} \}/.exec(css)?.[1] ?? '';
     expect(phone).toContain('flex-wrap: wrap');
     expect(phone).toMatch(/__actions \{[^}]*flex: 1 0 100%[^}]*flex-direction: column/);
     expect(phone).toMatch(/__actions > \.cinder-button \{ inline-size: 100%;/);

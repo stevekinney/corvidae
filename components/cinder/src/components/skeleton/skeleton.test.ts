@@ -426,7 +426,13 @@ describe('Skeleton grouped variant', () => {
     const rows = [...container.querySelectorAll('.cinder-skeleton-grouped-row')];
     expect(rows).toHaveLength(3);
     for (const row of rows) {
-      expect(row.querySelectorAll('.cinder-skeleton-row-text .cinder-skeleton')).toHaveLength(2);
+      // A title line and a subtitle line, each holding one bar.
+      const lines = [...row.querySelectorAll('.cinder-skeleton-grouped-text > *')];
+      expect(lines.map((line) => line.className)).toEqual([
+        'cinder-skeleton-grouped-line cinder-skeleton-grouped-line--title',
+        'cinder-skeleton-grouped-line cinder-skeleton-grouped-line--subtitle',
+      ]);
+      expect(lines.map((line) => line.querySelectorAll('.cinder-skeleton').length)).toEqual([1, 1]);
       expect(row.querySelector('.cinder-skeleton-action-bar')).toBeNull();
     }
     expect(container.querySelector('.cinder-skeleton-list')).toBeNull();
@@ -453,8 +459,16 @@ describe('Skeleton grouped variant', () => {
     expect(container.querySelector('.cinder-skeleton-action-bar')).toBeNull();
   });
 
-  test('the surface matches the grouped list, and a phone puts the button block under the text', () => {
+  test('the surface matches the grouped list, and a narrow row puts the button block under the text', () => {
     const css = skeletonCss.replace(/\s+/g, ' ');
+    // Each bar's line box is the real row's: the title at base size and snug leading.
+    expect(css).toMatch(/\.cinder-skeleton-grouped-line \{[^}]*block-size: 1lh;/);
+    expect(css).toMatch(
+      /\.cinder-skeleton-grouped-line--title \{ font-size: var\(--cinder-text-base\); line-height: var\(--cinder-leading-snug, 1\.35\); \}/,
+    );
+    expect(css).toMatch(
+      /\.cinder-skeleton-grouped-line--subtitle \{ font-size: var\(--cinder-text-sm\); \}/,
+    );
     expect(css).toMatch(
       /\.cinder-skeleton-grouped \{[^}]*border-radius: var\(--cinder-radius-surface\);[^}]*background: var\(--cinder-surface-raised\);/,
     );
@@ -466,9 +480,11 @@ describe('Skeleton grouped variant', () => {
     expect(css).toMatch(
       /\.cinder-skeleton-action-bar \{[^}]*block-size: var\(--cinder-button-height-sm\)/,
     );
+    // The row measures its own width at GroupedListItem's threshold, never the viewport's.
     expect(css).toMatch(
-      /@media \(width < 640px\) \{ \.cinder-skeleton-grouped-row--action > \.cinder-skeleton-grouped-content \{ flex-wrap: wrap; \}/,
+      /@container cinder-skeleton-grouped-row \(width < 26rem\) \{ \.cinder-skeleton-grouped-row--action > \.cinder-skeleton-grouped-content \{ flex-wrap: wrap; \}/,
     );
+    expect(css).not.toMatch(/@media \(width/);
   });
 });
 

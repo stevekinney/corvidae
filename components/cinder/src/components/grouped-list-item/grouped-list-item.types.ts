@@ -83,9 +83,9 @@ export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' |
   /**
    * Text actions at the end of the row, each a secondary small button (a link drawn as one when it
    * has `href`), for a row whose action is the point of the row, such as a review waiting on you.
-   * They sit above the row's own link. On a phone (below 640px) they leave the end of the row and
-   * stack full width under its text, never collapsing into a menu, each a 44px target under a
-   * coarse pointer.
+   * They sit above the row's own link. In a row narrower than 26rem, as on a phone, they leave the
+   * end of the row and stack full width under its text, never collapsing into a menu, each a 44px
+   * target under a coarse pointer.
    */
   actions?: GroupedListItemAction[];
   /** Draws a trailing chevron. Left unset, a row with `href` draws one. */
