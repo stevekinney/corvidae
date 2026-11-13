@@ -194,6 +194,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     // One row, in reading order, the primary decision last.
     expect(Math.abs(deny.y - approve.y)).toBeLessThan(1);
     expect(approve.x).toBeGreaterThanOrEqual(deny.x + deny.width - 1);
+    // The primary ends the row at the card's trailing content edge (its padding lies between).
+    expect(rowBox.x + rowBox.width - (approve.x + approve.width)).toBeLessThan(32);
     // Compact to the eye, never a full-width phone slab.
     expect(deny.height).toBeLessThanOrEqual(32);
     expect(approve.height).toBeLessThanOrEqual(32);
@@ -207,7 +209,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     }
   });
 
-  test('with no provider the composer is the blocked row: the reason wraps, and "Connect a provider" drops to its own full-width 44px line beneath (06m, 04y)', async ({
+  test('with no provider the composer is the blocked row: the reason wraps, and "Connect a provider" drops to its own compact 44px line beneath, ending at the trailing edge (06m, 04y)', async ({
     page,
   }) => {
     await openRefundFromList(page);
@@ -225,7 +227,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     // Beneath the text, never over it, and across the row.
     expect(actionBox.y).toBeGreaterThanOrEqual(reason.y + reason.height - 1);
     expect(await touchHeight(action)).toBeGreaterThanOrEqual(44);
-    expect(actionBox.width).toBeGreaterThan(rowBox.width * 0.85);
+    // Compact, never a full-width slab, and ending at the row's trailing content edge (the row's
+    // own padding lies between the action and its border).
+    expect(actionBox.width).toBeLessThan(rowBox.width * 0.7);
+    const trailingGap = rowBox.x + rowBox.width - (actionBox.x + actionBox.width);
+    expect(trailingGap).toBeGreaterThanOrEqual(0);
+    expect(trailingGap).toBeLessThan(24);
     // Nothing is queued and nothing pretends to be pending.
     await expect(page.getByText(/queued|sending|pending/i)).toHaveCount(0);
     expect(await scrollsSideways(page)).toBe(false);

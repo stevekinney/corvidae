@@ -2372,7 +2372,7 @@ export async function readActionRowProblems(
           : Math.max(...controls.map((control) => control.getBoundingClientRect().right));
         const distance = Math.abs(trailing - edge);
         if (distance > spec.tolerance) {
-          const label = (row.className.toString().split(/\s+/)[0] ?? row.tagName).trim();
+          const label = (row.className.split(/\s+/)[0] ?? row.tagName).trim();
           problems.push(
             `action row .${label} ends ${distance.toFixed(1)}px from the trailing content edge`,
           );
