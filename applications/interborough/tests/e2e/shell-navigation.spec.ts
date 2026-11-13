@@ -38,7 +38,9 @@ test('each g shortcut opens its destination, and the sidebar marks it current', 
   for (const shortcut of SHORTCUTS) {
     await page.keyboard.press('g');
     await page.keyboard.press(shortcut.letter);
-    await expect(page).toHaveURL(new RegExp(`${shortcut.path}$`));
+    // The path is what the shortcut opens. A page may name its first row in the query once it
+    // has loaded (Reviews adds `?review=`), so the query is not this test's subject.
+    await expect(page).toHaveURL((url) => url.pathname === shortcut.path);
     await expect(
       navigation.getByRole('link', { name: new RegExp(`^${shortcut.label}`) }),
     ).toHaveAttribute('aria-current', 'page');
