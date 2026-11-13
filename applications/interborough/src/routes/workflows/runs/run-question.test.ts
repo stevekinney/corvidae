@@ -13,6 +13,11 @@ import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.sve
 import { setAnswerUndoMilliseconds } from '../../../lib/answer-undo.ts';
 import { humanWaitFixture, taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import {
+  catalogModelFixture,
+  unkeyedModelFixtures,
+  type CatalogModelFixture,
+} from '../../../lib/bureau-stub.test-support.ts';
+import {
   emptyBureauWorld,
   installBureauWorld,
   type BureauWorldStub,
@@ -36,7 +41,12 @@ afterEach(() => {
 
 const REVIEW_ID = 'human-wait:run-1:environment:0';
 
-function open(models: readonly unknown[]) {
+/**
+ * Opens the run with the catalog `models` give. A home with no key saved keeps its rows, all
+ * `unavailable` (`unkeyedModelFixtures`), which is the no-provider state the blocked bar and the
+ * waiting note read; `[]` is a home with no provider plugin at all.
+ */
+function open(models: readonly CatalogModelFixture[]) {
   const task = taskFixture({
     id: 'run-1',
     agentName: 'request-human-input',
@@ -78,7 +88,11 @@ function open(models: readonly unknown[]) {
       },
     ],
   }));
-  stub.on('bureau.agents.catalog', () => ({ models, tools: [], skills: [] }));
+  stub.on('bureau.agents.catalog', () => ({
+    models: models.map(catalogModelFixture),
+    tools: [],
+    skills: [],
+  }));
   stub.on('bureau.tasks.respond', (params) => ({
     taskId: 'run-1',
     messageId: params['messageId'],
@@ -106,7 +120,7 @@ async function elapse(milliseconds: number): Promise<void> {
 describe('the question card on a run waiting for you', () => {
   test('leads the page under "What you can do", with who asked, how long ago, and the choices', async () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
-    const view = open([]);
+    const view = open(unkeyedModelFixtures());
 
     expect(await view.findByText('What you can do')).not.toBeNull();
     expect(view.getByText('This run is waiting on one question.')).not.toBeNull();
@@ -124,7 +138,7 @@ describe('the question card on a run waiting for you', () => {
   });
 
   test('with no provider the message bar is the blocked row with Cancel run beside it, and no text box', async () => {
-    const view = open([]);
+    const view = open(unkeyedModelFixtures());
     await view.findByText('Question from Request human input, 1 h ago');
 
     const bar = await view.findByTestId('run-message-blocked');
@@ -138,21 +152,30 @@ describe('the question card on a run waiting for you', () => {
     expect(buttons).toContain('Cancel run');
   });
 
+  test('a catalog with no row at all is the same no-provider state as one whose rows are all unavailable', async () => {
+    const view = open([]);
+    await view.findByText('Question from Request human input, 1 h ago');
+    expect(await view.findByTestId('run-message-blocked')).not.toBeNull();
+    expect(view.container.querySelector('.ib-run-wait__note')?.textContent).toContain(
+      'continues once a provider is connected',
+    );
+  });
+
   test('has no blocked message bar when a provider is connected', async () => {
-    const view = open([{ provider: 'anthropic', id: 'sonnet' }]);
+    const view = open([{ provider: 'anthropic', model: 'claude-sonnet-5' }]);
     await view.findByText('Question from Request human input, 1 h ago');
     expect(view.queryByTestId('run-message-blocked')).toBeNull();
   });
 
   test('says nothing about a provider when one is connected', async () => {
-    const view = open([{ provider: 'anthropic', id: 'sonnet' }]);
+    const view = open([{ provider: 'anthropic', model: 'claude-sonnet-5' }]);
     await view.findByText('Question from Request human input, 1 h ago');
     expect(view.container.textContent).not.toContain('continues once a provider is connected');
   });
 
   test('holds a picked choice with one inline line, the status line says so, and Undo takes it back', async () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
-    const view = open([]);
+    const view = open(unkeyedModelFixtures());
     const production = await view.findByRole('radio', { name: /Production/ });
     await view.findByText('Question from Request human input, 1 h ago');
     jest.useFakeTimers();
@@ -196,7 +219,7 @@ describe('the question card on a run waiting for you', () => {
 
   test('tells the run the answer when the five seconds end', async () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
-    const view = open([]);
+    const view = open(unkeyedModelFixtures());
     const staging = await view.findByRole('radio', { name: /Staging/ });
     await view.findByText('Question from Request human input, 1 h ago');
     jest.useFakeTimers();

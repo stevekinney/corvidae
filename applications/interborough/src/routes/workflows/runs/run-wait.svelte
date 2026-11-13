@@ -27,7 +27,7 @@
 
   import { REVIEWS_COPY } from '../../../app/copy/reviews.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
-  import { getAgentCatalog } from '../../../lib/agent-definitions.ts';
+  import { getAgentCatalog, hasAvailableModel } from '../../../lib/agent-definitions.ts';
   import { useAgentDisplayName } from '../../../lib/agent-display-name.svelte.ts';
   import { answerUndoMilliseconds } from '../../../lib/answer-undo.ts';
   import { uploadAsset } from '../../../lib/bureau-assets.ts';
@@ -97,7 +97,7 @@
     }),
     undefined,
   );
-  const noProvider = $derived(catalog.data !== undefined && catalog.data.models.length === 0);
+  const noProvider = $derived(catalog.data !== undefined && !hasAvailableModel(catalog.data));
   const undoSeconds = $derived(Math.round(answerUndoMilliseconds() / 1000));
 
   /** "1 h ago" for the card's kicker: the unit is set off from the number, as the page writes times. */

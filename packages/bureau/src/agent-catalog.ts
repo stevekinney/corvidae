@@ -722,7 +722,10 @@ function copyOfCodeAgent(
     `${choice.provider}/${choice.model}`;
   const allowed = models.models.filter((choice) => choice.denied !== true).map(named);
   const fallback = descriptors.find(
-    (row) => row.lifecycle !== 'retired' && modelPolicyDenialOf(row, policy) === undefined,
+    (row) =>
+      row.lifecycle !== 'retired' &&
+      row.availability !== 'unavailable' &&
+      modelPolicyDenialOf(row, policy) === undefined,
   );
   const model =
     (models.default !== null && models.default.denied !== true

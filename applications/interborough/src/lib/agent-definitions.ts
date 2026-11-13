@@ -513,6 +513,23 @@ export async function listAgentDefinitions(options?: Options): Promise<readonly 
   return listings;
 }
 
+/**
+ * Whether a catalog row is one an agent could run on now. The catalog keeps the rows of a provider
+ * with no key saved, and of a model turned off, marked `unavailable` (COR-2143), so a row in the
+ * catalog does not say a provider is connected: this is the one rule, the one the host's
+ * `no-provider` attention item applies, for every page that asks.
+ */
+export function isAvailableModel(row: Pick<CatalogModel, 'availability'>): boolean {
+  return row.availability !== 'unavailable';
+}
+
+/** Whether the catalog holds a model an agent could run on: false is the no-provider state. */
+export function hasAvailableModel(catalog: {
+  readonly models: readonly Pick<CatalogModel, 'availability'>[];
+}): boolean {
+  return catalog.models.some(isAvailableModel);
+}
+
 /** The models and tools an agent may name. */
 export async function getAgentCatalog(options?: Options): Promise<AgentCatalog> {
   return catalogSchema.parse(await callBureau('bureau.agents.catalog', {}, options));

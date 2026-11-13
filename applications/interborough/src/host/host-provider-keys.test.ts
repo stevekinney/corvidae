@@ -29,10 +29,14 @@ async function start(): Promise<Host> {
   return host;
 }
 
+function geminiRows(host: Host) {
+  return host.bureau.models.catalog().descriptors.filter((row) => row.provider === 'gemini');
+}
+
+/** The Gemini models a run can use now: rows kept for a missing key are `unavailable`. */
 function geminiModels(host: Host): string[] {
-  return host.bureau.models
-    .catalog()
-    .descriptors.filter((row) => row.provider === 'gemini')
+  return geminiRows(host)
+    .filter((row) => row.availability !== 'unavailable')
     .map((row) => row.model);
 }
 
@@ -70,6 +74,28 @@ describe('a provider’s key', () => {
       status: 'needs-setup',
       secrets: [{ key: 'gemini-api-key', set: false }],
     });
+  });
+
+  test('keeps its rows unavailable until the key is saved, then flips them with no restart (COR-2143)', async () => {
+    const host = await start();
+    const unset = geminiRows(host);
+    expect(unset.length).toBeGreaterThan(0);
+    expect(unset.every((row) => row.availability === 'unavailable')).toBe(true);
+    // A row that is kept names its key where a model the catalog lacks would say "no such model".
+    expect(() => host.generateFor({ provider: 'gemini', model: unset[0]!.model })).toThrow(
+      /needs its API key: save the secret "gemini-api-key"/,
+    );
+    expect(() => host.generateFor({ provider: 'gemini', model: 'no-such-model' })).toThrow(
+      /holds no "no-such-model" model/,
+    );
+
+    const response = await put(host, '/host/providers/gemini', { apiKey: KEY });
+    expect(response.status).toBe(200);
+
+    const saved = geminiRows(host);
+    expect(saved.map((row) => row.model)).toEqual(unset.map((row) => row.model));
+    expect(saved.every((row) => row.availability !== 'unavailable')).toBe(true);
+    expect(() => host.generateFor({ provider: 'gemini', model: saved[0]!.model })).not.toThrow();
   });
 
   test('is written by Connect as the Gemini plugin’s gemini-api-key, which runs it with no restart', async () => {

@@ -7,8 +7,18 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 import { openBungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate } from '@lostgradient/bureau';
 import { definePlugin } from '@lostgradient/interborough-plugin';
-import { createAgent, createModelCatalog } from '@lostgradient/operative';
+import {
+  createActiveRun,
+  createAgent,
+  createModelCatalog,
+  MediaAdmissionError,
+  readBackendDescriptors,
+  withBackendDescriptors,
+  type BackendDescriptor,
+} from '@lostgradient/operative';
+import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { Conversation, type MediaContent } from 'conversationalist';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -71,7 +81,8 @@ async function startAt(home: string, options: Parameters<typeof startHost>[0] = 
 function pairsOf(host: Host): string[] {
   return host.bureau.models
     .catalog()
-    .descriptors.map((row) => `${row.provider}/${row.model}`)
+    .descriptors.filter((row) => row.availability !== 'unavailable')
+    .map((row) => `${row.provider}/${row.model}`)
     .toSorted();
 }
 
@@ -122,6 +133,48 @@ describe('a plugin that contributes a provider', () => {
     expect(pairsOf(host)).toEqual(['lender/lender-1']);
     const generate = host.generateFor({ provider: 'lender', model: 'lender-1' });
     expect(await generate({ messages: [] } as never)).toMatchObject({ content: 'lent' });
+    expect(handed).toEqual([{ provider: 'lender', model: 'lender-1', apiKey: KEY }]);
+  });
+
+  test('sends the secret its secretKey names, not the first one the plugin declares (COR-2142)', async () => {
+    const [seed] = staticRows;
+    if (seed === undefined) throw new Error('The static catalog is empty.');
+    const handed: unknown[] = [];
+    const lender = definePlugin({
+      name: 'lender',
+      version: '1.0.0',
+      description: 'Contributes a model provider beside another secret.',
+      secrets: ['lender-signing-key', 'lender-api-key'],
+      setup: () => ({
+        providers: [
+          {
+            name: 'lender',
+            secretKey: 'lender-api-key',
+            generate: (configuration: unknown) => {
+              handed.push(configuration);
+              return async () => ({ content: 'lent', toolCalls: [] });
+            },
+            stream: () => {
+              throw new Error('The fixture provider does not stream.');
+            },
+            rows: [{ ...seed, provider: 'lender', model: 'lender-1', aliases: [] }],
+          },
+        ],
+      }),
+    });
+    const home = await prepareHome({
+      secrets: { 'lender-signing-key': 'the-signing-value', 'lender-api-key': KEY },
+    });
+    const host = await startAt(home, {
+      plugins: [{ descriptor: lender, source: 'package', location: '@fixture/lender' }],
+      resolveProviderGenerate: (definitions, provider) => {
+        const found = definitions.find((candidate) => candidate.name === provider.provider);
+        if (found?.generate === undefined) throw new Error('No such provider.');
+        return found.generate(provider, {});
+      },
+    });
+
+    await host.generateFor({ provider: 'lender', model: 'lender-1' })({ messages: [] } as never);
     expect(handed).toEqual([{ provider: 'lender', model: 'lender-1', apiKey: KEY }]);
   });
 
@@ -204,7 +257,7 @@ describe('a plugin that contributes a provider', () => {
     expect(failure).toBeInstanceOf(ProviderConfigurationError);
   });
 
-  test('offers nothing from a plugin whose secret is not set', async () => {
+  test('keeps the rows of a plugin whose secret is not set, unavailable', async () => {
     const [seed] = staticRows;
     const lender = definePlugin({
       name: 'lender',
@@ -228,6 +281,176 @@ describe('a plugin that contributes a provider', () => {
       plugins: [{ descriptor: lender, source: 'package', location: '@fixture/lender' }],
     });
     expect(pairsOf(host)).toEqual([]);
+    // The row stays, unavailable, so the catalog can tell "needs a key" from "no such model".
+    const kept = host.bureau.models
+      .catalog()
+      .descriptors.filter((row) => row.provider === 'lender');
+    expect(kept.map((row) => [row.model, row.availability])).toEqual([['lender-1', 'unavailable']]);
+  });
+});
+
+describe('media admission reads the catalog row a generate was built from (COR-2146)', () => {
+  /** A 3 KiB image: inside the seed row's per-part image limit, over the lowered one below. */
+  const image: MediaContent = {
+    type: 'image',
+    mimeType: 'image/png',
+    source: { kind: 'inline', data: 'QUJD'.repeat(1024), encoding: 'base64' },
+  };
+  const anthropicSeed = staticRows.find((row) => row.provider === 'anthropic');
+
+  /** A plugin whose one row has `mediaLimits`, served by a vendor whose generate is stamped with the seed row. */
+  async function startWith(mediaLimits: BackendDescriptor['mediaLimits']) {
+    if (anthropicSeed === undefined) throw new Error('The static catalog has no anthropic row.');
+    const lender = definePlugin({
+      name: 'lender',
+      version: '1.0.0',
+      description: 'Contributes a model provider whose row states its own media limits.',
+      secrets: ['lender-api-key'],
+      setup: () => ({
+        providers: [
+          {
+            name: 'lender',
+            generate: () => async () => ({ content: 'lent', toolCalls: [] }),
+            stream: () => {
+              throw new Error('The fixture provider does not stream.');
+            },
+            rows: [
+              { ...anthropicSeed, provider: 'lender', model: 'lender-1', aliases: [], mediaLimits },
+            ],
+          },
+        ],
+      }),
+    });
+    const home = await prepareHome({ secrets: { 'lender-api-key': KEY } });
+    return startAt(home, {
+      plugins: [{ descriptor: lender, source: 'package', location: '@fixture/lender' }],
+      // A vendor factory stamps its own static row, as the shipped providers do.
+      resolveProviderGenerate: (definitions, provider) => {
+        const found = definitions.find((candidate) => candidate.name === provider.provider);
+        if (found?.generate === undefined) throw new Error('No such provider.');
+        return withBackendDescriptors(found.generate(provider, {}), [anthropicSeed]);
+      },
+    });
+  }
+
+  async function runWithImage(host: Host) {
+    const conversation = new Conversation();
+    conversation.appendUserMessage([image]);
+    return createActiveRun({
+      generate: host.generateFor({ provider: 'lender', model: 'lender-1' }),
+      toolbox: createToolbox([]),
+      conversation,
+      stopWhen: () => true,
+    }).result;
+  }
+
+  test('attaches the row, so a plugin row’s own limit is the one admission reads', async () => {
+    const host = await startWith([{ scope: 'per-part', modality: 'image', maxBytes: 1024 }]);
+    const generate = host.generateFor({ provider: 'lender', model: 'lender-1' });
+
+    const [attached] = readBackendDescriptors(generate);
+    expect(attached).toMatchObject({ provider: 'lender', model: 'lender-1' });
+    expect(attached?.mediaLimits).toEqual([
+      { scope: 'per-part', modality: 'image', maxBytes: 1024 },
+    ]);
+    const refused = await runWithImage(host);
+    expect(refused.error).toBeInstanceOf(MediaAdmissionError);
+  });
+
+  test('admits the same image under a row whose limit is larger', async () => {
+    const host = await startWith([
+      { scope: 'per-part', modality: 'image', maxBytes: 10 * 1024 * 1024 },
+    ]);
+    const result = await runWithImage(host);
+    expect(result.error).toBeUndefined();
+  });
+
+  test('attaches the row with the owner’s catalog edits applied', async () => {
+    const home = await prepareHome({
+      configuration: {
+        plugins: { openai: { configuration: { models: ['gpt-4.1'] } } },
+        catalog: [{ provider: 'openai', model: 'gpt-4.1', contextWindowTokens: 123_456 }],
+      },
+      secrets: { 'openai-api-key': KEY },
+    });
+    const host = await startAt(home);
+    const [attached] = readBackendDescriptors(
+      host.generateFor({ provider: 'openai', model: 'gpt-4.1' }),
+    );
+    expect(attached?.contextWindowTokens).toBe(123_456);
+  });
+});
+
+describe('a keyless provider (COR-2144)', () => {
+  /** A provider fixture whose plugin declares `secrets`, recording every configuration it is handed. */
+  function lenderPlugin(name: string, secrets: readonly string[], handed: unknown[]) {
+    const [seed] = staticRows;
+    if (seed === undefined) throw new Error('The static catalog is empty.');
+    return definePlugin({
+      name,
+      version: '1.0.0',
+      description: 'Contributes a model provider.',
+      ...(secrets.length === 0 ? {} : { secrets }),
+      setup: () => ({
+        providers: [
+          {
+            name,
+            generate: (configuration: unknown) => {
+              handed.push(configuration);
+              return async () => ({ content: 'lent', toolCalls: [] });
+            },
+            stream: () => {
+              throw new Error('The fixture provider does not stream.');
+            },
+            rows: [{ ...seed, provider: name, model: `${name}-1`, aliases: [] }],
+          },
+        ],
+      }),
+    });
+  }
+
+  const passThrough: typeof resolveProviderGenerate = (definitions, provider) => {
+    const found = definitions.find((candidate) => candidate.name === provider.provider);
+    if (found?.generate === undefined) throw new Error('No such provider.');
+    return found.generate(provider, {});
+  };
+
+  test('offers its rows as available and calls its definition with apiKey omitted', async () => {
+    const handed: unknown[] = [];
+    const local = lenderPlugin('local-lender', [], handed);
+    const host = await startAt(await prepareHome({}), {
+      plugins: [{ descriptor: local, source: 'package', location: '@fixture/local-lender' }],
+      resolveProviderGenerate: passThrough,
+    });
+
+    expect(pairsOf(host)).toEqual(['local-lender/local-lender-1']);
+    const [row] = host.bureau.models.catalog().descriptors;
+    expect(row?.availability).not.toBe('unavailable');
+    const generate = host.generateFor({ provider: 'local-lender', model: 'local-lender-1' });
+    expect(await generate({ messages: [] } as never)).toMatchObject({ content: 'lent' });
+    expect(handed).toEqual([{ provider: 'local-lender', model: 'local-lender-1' }]);
+    expect(Object.hasOwn(handed[0] as object, 'apiKey')).toBe(false);
+  });
+
+  test('is not the case of a plugin that declares a secret and has none saved, which stays unavailable', async () => {
+    const handed: unknown[] = [];
+    const keyed = lenderPlugin('keyed-lender', ['keyed-lender-api-key'], handed);
+    const host = await startAt(await prepareHome({}), {
+      plugins: [{ descriptor: keyed, source: 'package', location: '@fixture/keyed-lender' }],
+      resolveProviderGenerate: passThrough,
+    });
+
+    expect(pairsOf(host)).toEqual([]);
+    expect(
+      host.bureau.models
+        .catalog()
+        .descriptors.filter((row) => row.provider === 'keyed-lender')
+        .map((row) => row.availability),
+    ).toEqual(['unavailable']);
+    expect(() => host.generateFor({ provider: 'keyed-lender', model: 'keyed-lender-1' })).toThrow(
+      /save the secret "keyed-lender-api-key"/,
+    );
+    expect(handed).toEqual([]);
   });
 });
 
@@ -317,6 +540,34 @@ describe('an agent on a model of a plugin that is not enabled', () => {
       state: 'invalid',
       problem: { code: 'unknown-model' },
     });
+  });
+});
+
+describe('an agent on a model of a provider whose key is not saved (COR-2143)', () => {
+  test('is invalid naming the secret to save, and is ready once the key is saved with no restart', async () => {
+    const home = await prepareHome({
+      agents: {
+        'needs-key.md': [
+          '---',
+          'name: needs-key',
+          'description: An agent.',
+          'model: openai/gpt-4.1',
+          '---',
+          'Help.',
+          '',
+        ].join('\n'),
+      },
+    });
+    const host = await startAt(home);
+    const listing = () => host.bureau.agents.list().find((entry) => entry.id === 'needs-key');
+
+    expect(listing()).toMatchObject({ state: 'invalid', problem: { code: 'unknown-model' } });
+    expect(JSON.stringify(listing())).toContain('openai-api-key');
+    expect(JSON.stringify(listing())).not.toContain('not in the deployment');
+
+    await host.plugins.saveSecret('openai', 'openai-api-key', KEY);
+
+    expect(listing()).toMatchObject({ state: 'ready' });
   });
 });
 

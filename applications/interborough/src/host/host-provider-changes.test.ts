@@ -118,7 +118,8 @@ async function mutationFor(host: Host) {
 function pairsOf(host: Host): string[] {
   return host.bureau.models
     .catalog()
-    .descriptors.map((row) => `${row.provider}/${row.model}`)
+    .descriptors.filter((row) => row.availability !== 'unavailable')
+    .map((row) => `${row.provider}/${row.model}`)
     .toSorted();
 }
 
@@ -443,7 +444,7 @@ describe('catalog edits', () => {
     check(await startAt(directory));
   });
 
-  test('the snapshot lists every model the catalog offers, with an off model marked off and no key', async () => {
+  test('the snapshot lists every model of a connected provider, with an off model marked off and no key', async () => {
     const { host } = await startWithAnthropic();
     await host.providers.editCatalog([
       { provider: 'anthropic', model: 'haiku', off: true },
@@ -458,10 +459,14 @@ describe('catalog edits', () => {
 
     const snapshot = await host.providers.snapshot();
 
+    // A provider with no key keeps its rows in the catalog, `unavailable`, but the page lists none
+    // of them: only the connected provider's models (COR-2143).
+    const descriptors = host.bureau.models.catalog().descriptors;
+    expect(descriptors.some((row) => row.provider !== 'anthropic')).toBe(true);
     expect(snapshot.models.map((row) => row.model).toSorted()).toEqual(
-      host.bureau.models
-        .catalog()
-        .descriptors.map((row) => row.model)
+      descriptors
+        .filter((row) => row.provider === 'anthropic')
+        .map((row) => row.model)
         .toSorted(),
     );
     const haiku = snapshot.models.find((row) => row.model === 'claude-haiku-4-5');
@@ -881,13 +886,14 @@ describe('a catalog save that names the edits it started from', () => {
 });
 
 describe('disconnecting a provider', () => {
-  async function startConnected() {
+  /** `turnedOff: false` leaves the model on, so disconnecting is what makes it unavailable. */
+  async function startConnected({ turnedOff = true } = {}) {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
       JSON.stringify({
         plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
-        catalog: [{ provider: 'anthropic', model: 'sonnet', off: true }],
+        catalog: turnedOff ? [{ provider: 'anthropic', model: 'sonnet', off: true }] : [],
       }),
     );
     await storeKey(directory, 'anthropic-api-key', KEY_A);
@@ -895,8 +901,8 @@ describe('disconnecting a provider', () => {
     return { directory, host: await startAt(directory) };
   }
 
-  test('removes the key, takes the models out at once, keeps the rest of the configuration, and survives a restart', async () => {
-    const { directory, host } = await startConnected();
+  test('removes the key, makes the models unavailable at once, keeps the rest of the configuration, and survives a restart', async () => {
+    const { directory, host } = await startConnected({ turnedOff: false });
     expect(pairsOf(host).some((pair) => pair.startsWith('anthropic/'))).toBe(true);
     const before = host.bureau.models.catalog().revision;
     const configuration = await readFile(join(directory, 'configuration.json'), 'utf8');
@@ -906,7 +912,11 @@ describe('disconnecting a provider', () => {
     expect(change.catalogRevision).toBe(before + 1);
     expect(pairsOf(host).some((pair) => pair.startsWith('anthropic/'))).toBe(false);
     expect(pairsOf(host).some((pair) => pair.startsWith('openai/'))).toBe(true);
-    expect(() => host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toThrow();
+    // The rows stay in the catalog, marked unavailable, so a file naming one says the key is missing.
+    expect(rowOf(host, 'claude-sonnet-5')?.availability).toBe('unavailable');
+    expect(() => host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toThrow(
+      /save the secret "anthropic-api-key"/,
+    );
     const cleared = await storedWorkspaceSecret(directory, 'anthropic-api-key');
     expect(cleared.value).toBe('');
     expect(await readFile(join(directory, 'secrets', 'openai-api-key'), 'utf8')).toBe(KEY_B);
@@ -951,7 +961,7 @@ describe('disconnecting a provider', () => {
   });
 
   test('lists no model provider connected under Needs attention once the last key is removed (COR-2009)', async () => {
-    const { host } = await startConnected();
+    const { host } = await startConnected({ turnedOff: false });
     const connected = await host.bureau.attention();
     expect(connected.items).toEqual([]);
 
@@ -1026,8 +1036,10 @@ describe('disconnecting a provider', () => {
 
     await host.providers.connect({ provider: 'anthropic', apiKey: KEY_B });
 
-    expect(pairsOf(host)).toContain('anthropic/claude-sonnet-5');
     expect(rowOf(host, 'claude-sonnet-5')?.availability).toBe('unavailable');
+    expect(() => host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toThrow(
+      /turned off in the model catalog/,
+    );
   });
 
   test('is harmless for a provider that has no key, and refuses a name that is not a provider', async () => {

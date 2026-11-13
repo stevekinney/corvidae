@@ -97,7 +97,7 @@ The descriptor's members:
 | `decisionRouters` | Decision models that answer decisions of the kinds they name. |
 | `triggers` | New external sources that start work. |
 | `reactions` | New things a hook can do when its event happens. |
-| `providers` | Model providers, each with the catalog rows of its models. |
+| `providers` | Model providers, each with the catalog rows of its models and, optionally, the `secretKey` of the declared secret that holds its API key (see [Provider keys](#provider-keys)). |
 | `embedders` | Embedders the `memory.embedder` setting can name. |
 | `scorers` | Scorers that score a sample of completed runs. |
 | `panels` | Interface panels. |
@@ -326,6 +326,17 @@ export default definePlugin({
 
 A plugin whose declared secret is missing still loads. Every contribution it registered is available but refuses to run, and the plugin is `needs-setup` with one `secret-missing` problem per key. Saving the secret (`PUT /host/plugins/<name>/secrets/<key>`) makes them available at once, and removing it makes them refuse again, with no restart. Because the check is per call, read the secret inside `execute`, not once in `setup`. The only contributions the gate does not cover are providers and panels, which the host handles itself. No listing, response or log line contains a secret's value.
 
+### Provider keys
+
+A provider's API key is one of the plugin's declared secrets. Name it with the provider's optional `secretKey`, which must be a key the plugin declares:
+
+```ts
+secrets: ['tracker-signing-key', 'acme-api-key'],
+setup: () => ({ providers: [{ ...acmeProvider, secretKey: 'acme-api-key' }] }),
+```
+
+Without `secretKey`, a plugin that declares exactly one secret uses it as the key, and a plugin that declares several is refused with `provider-secret-ambiguous`, because the order of the declarations is never read as a choice. A `secretKey` the plugin does not declare is refused with `provider-secret-unknown`. A plugin that declares no secret has a keyless provider, such as a local Ollama or LM Studio server: its models are available whenever the plugin runs, and its definition is called with `apiKey` omitted.
+
 `setup`'s `storage` is confined to the key prefix `plugin:<name>:`, so a plugin cannot read another's records.
 
 ## Do work after Bureau starts
@@ -375,6 +386,8 @@ export default definePlugin({
 | `start-failed` | `running` | `start` threw. `message`. |
 | `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
+| `provider-secret-unknown` | `skipped` | A provider's `secretKey` is not one of the plugin's declared `secrets`. `provider`, `key`. |
+| `provider-secret-ambiguous` | `skipped` | A provider has no `secretKey` and the plugin declares several secrets. `provider`, `secrets`. |
 | `load-failed` | not listed | A folder's code could not load, such as an import nothing provides. `message`. The folder appears in the `unloaded` array. |
 | `development-source` | as its own | Loaded with `--plugin`. `path`. |
 

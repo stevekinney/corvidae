@@ -15,7 +15,12 @@ import { join } from 'node:path';
 // mocked, and module mocks are process-wide, so the real module is restored after this file.
 const actual = { ...(await import('@lostgradient/bureau')) };
 const realCreateBureau = actual.createBureau;
-const seenWhenCreated: { revision: number; pairs: string[]; sources: string[] }[] = [];
+const seenWhenCreated: {
+  revision: number;
+  /** The rows a run can use: those of a provider without a key are kept, unavailable (COR-2143). */
+  pairs: string[];
+  sources: string[];
+}[] = [];
 
 afterAll(() => {
   void mock.module('@lostgradient/bureau', () => actual);
@@ -26,10 +31,13 @@ void mock.module('@lostgradient/bureau', () => ({
   createBureau: async (options: Parameters<typeof actual.createBureau>[0]) => {
     const bureau = await realCreateBureau(options);
     const catalog = bureau.models.catalog();
+    const callable = catalog.descriptors.filter(
+      (descriptor) => descriptor.availability !== 'unavailable',
+    );
     seenWhenCreated.push({
       revision: catalog.revision,
-      pairs: catalog.descriptors.map((descriptor) => `${descriptor.provider}/${descriptor.model}`),
-      sources: catalog.descriptors.map((descriptor) => descriptor.source),
+      pairs: callable.map((descriptor) => `${descriptor.provider}/${descriptor.model}`),
+      sources: callable.map((descriptor) => descriptor.source),
     });
     return bureau;
   },

@@ -202,6 +202,11 @@ test('each step completes from its own signal, from connecting a provider to say
   await expect(
     page.getByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title }),
   ).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/agents/new',
+    state: 'no provider, catalog rows all unavailable',
+    source: 'first-run.spec.ts',
+  });
   await page.getByRole('link', { name: AGENT_EDITOR_COPY.noProvider.connectAction }).click();
   await expect(page).toHaveURL(/\/settings\/models\?return=%2Fagents%2Fnew$/);
   await expect(page.getByTestId('models-return')).toContainText(MODELS_COPY.returnNotice.title);

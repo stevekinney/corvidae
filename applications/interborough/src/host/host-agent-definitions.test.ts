@@ -196,10 +196,13 @@ describe('the operations, against the real Bureau', () => {
   test('lists the models and tools the deployment offers, and nothing the catalog lacks', async () => {
     const { host, fetcher } = await startConfigured();
     const catalog = await getAgentCatalog({ fetch: fetcher });
-    expect(catalog.models.map((row) => `${row.provider}/${row.model}`)).toEqual([
+    // The catalog is unfiltered: a provider with no key keeps its rows, `unavailable` (COR-2143).
+    const callable = catalog.models.filter((row) => row.availability !== 'unavailable');
+    expect(callable.map((row) => `${row.provider}/${row.model}`)).toEqual([
       'anthropic/claude-sonnet-5',
     ]);
-    expect(catalog.models[0]?.aliases.map((entry) => entry.alias)).toContain('sonnet');
+    expect(catalog.models.length).toBeGreaterThan(callable.length);
+    expect(callable[0]?.aliases.map((entry) => entry.alias)).toContain('sonnet');
     // The tools are the Bureau's own tool catalog, which holds the host's tool and the workflow tools.
     const offered = host.bureau.agents.tools().map((tool) => tool.name);
     expect(catalog.tools.map((tool) => tool.name)).toEqual(offered);

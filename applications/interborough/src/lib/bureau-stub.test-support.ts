@@ -311,6 +311,20 @@ export function catalogModelFixture(fixture: CatalogModelFixture): CatalogModel 
   };
 }
 
+/**
+ * The rows of a home with the bundled providers and no key saved, as the host's catalog holds them
+ * now (COR-2143): every row is kept, marked `unavailable`, so no row says a provider is connected.
+ * A fixture with `models: []` models a home that has no provider plugin at all, not this one.
+ */
+export function unkeyedModelFixtures(): readonly CatalogModelFixture[] {
+  return [
+    { provider: 'anthropic', model: 'claude-sonnet-5', availability: 'unavailable' },
+    { provider: 'anthropic', model: 'claude-haiku-5', availability: 'unavailable' },
+    { provider: 'openai', model: 'gpt-5', availability: 'unavailable' },
+    { provider: 'gemini', model: 'gemini-3-pro', availability: 'unavailable' },
+  ];
+}
+
 /** The catalog a deployment with one provider offers: two models, one with an alias, and one tool. */
 export function catalogFixture(
   overrides: Omit<Partial<AgentCatalog>, 'tools' | 'models'> & {

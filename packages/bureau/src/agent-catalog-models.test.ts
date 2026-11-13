@@ -85,6 +85,24 @@ describe('agents.models', () => {
   });
 });
 
+describe('agents.models and an unavailable row (COR-2143)', () => {
+  it('counts a row the catalog marks unavailable as absent, so a session cannot be switched to it', async () => {
+    const bureau = await open();
+    const rows = bureau.models
+      .catalog()
+      .descriptors.filter((row) => row.provider === OPUS_5.provider);
+    bureau.models.replace(
+      rows.map((row) =>
+        row.model === OPUS_5.model ? { ...row, availability: 'unavailable' as const } : row,
+      ),
+    );
+
+    expect(bureau.agents.models('switchable')?.models.map((choice) => choice.model)).toEqual([
+      OPUS_5_5.model,
+    ]);
+  });
+});
+
 describe('agents.models under the model policy (COR-1996)', () => {
   it('reads the policy at the call: a model is marked denied once the policy forbids it, and unmarked when it lifts', () => {
     const agent = createAgent({

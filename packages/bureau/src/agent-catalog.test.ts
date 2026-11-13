@@ -360,6 +360,31 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
     ]);
   });
 
+  it('copies one onto the first model whose provider can be called, passing over an unavailable row (COR-2143)', async () => {
+    const all = createModelCatalog().descriptors;
+    const unusable = all.find((row) => row.lifecycle !== 'retired');
+    const usable = all.find(
+      (row) => row.lifecycle !== 'retired' && row.provider !== unusable?.provider,
+    );
+    expect(unusable).toBeDefined();
+    expect(usable).toBeDefined();
+    // The provider of the first row has no key saved: the host keeps its rows, marked unavailable.
+    const descriptors = all.map((row) =>
+      row.provider === unusable?.provider ? { ...row, availability: 'unavailable' as const } : row,
+    );
+    const { files, created } = recordingFiles([]);
+    const catalog = createAgentCatalog(
+      {},
+      {
+        files,
+        descriptors: () => descriptors,
+        unavailable: [{ id: 'demo:echo', plugin: 'demo', agent: agent('echo'), unavailable }],
+      },
+    );
+    await catalog.duplicate('demo:echo');
+    expect(created[0]?.definition.model).toBe(`${usable?.provider}/${usable?.model}`);
+  });
+
   it('refuses a copy, writing nothing, when the agent names no model and the catalog has none', async () => {
     const { files, created } = recordingFiles([]);
     const catalog = createAgentCatalog(

@@ -3,8 +3,8 @@
  * catalog rows that follow (COR-1884).
  *
  * A provider is contributed by a plugin (`plugins/anthropic`, `plugins/openai`, `plugins/gemini`),
- * together with the catalog rows of its models, and its API key is the first secret the plugin
- * declares. A plugin's choices live in Bungalow's `configuration.json`, and a provider's allowlist
+ * together with the catalog rows of its models, and its API key is the plugin's secret that the
+ * provider's `secretKey` names (the plugin's one secret when it names none). A plugin's choices live in Bungalow's `configuration.json`, and a provider's allowlist
  * is the `models` of its plugin's configuration:
  *
  * ```json
@@ -15,7 +15,7 @@
  * its price or limits, or add a row. A `providers` key is not read.
  *
  * An allowlist is matched on a row's `model` or one of its aliases. A provider whose secret is
- * missing is not offered; an environment variable is never read. A plugin that is disabled or
+ * missing keeps its rows, marked `unavailable`; an environment variable is never read. A plugin that is disabled or
  * skipped contributes no provider, so its allowlist and the catalog edits for its rows wait,
  * ignored, for it to load again.
  *
@@ -24,15 +24,12 @@
 
 import type { ConfigurationSnapshot } from '@lostgradient/bungalow';
 
-import type {
-  BureauPluginEntry,
-  PluginModelContributions,
-  resolveProviderGenerate,
-} from '@lostgradient/bureau';
-import type {
-  BackendDescriptor,
-  GenerateFunction,
-  ProviderDefinition,
+import type { PluginModelContributions, resolveProviderGenerate } from '@lostgradient/bureau';
+import {
+  withBackendDescriptors,
+  type BackendDescriptor,
+  type GenerateFunction,
+  type ProviderDefinition,
 } from '@lostgradient/operative/provider-kit';
 
 import { applyCatalogEdits, parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
@@ -50,27 +47,25 @@ export type ContributedProvider = {
   readonly configuration: unknown;
   /** The catalog rows of its models, before the allowlist and the catalog edits. */
   readonly rows: readonly BackendDescriptor[];
-  /** The Bungalow secret that holds its API key: the first the plugin declares. */
+  /** The Bungalow secret that holds its API key; `undefined` for a keyless provider. */
   readonly secretKey: string | undefined;
 };
 
-/** The providers the running plugins contributed, each with the secret its plugin declared first. */
+/**
+ * The providers the running plugins contributed, each with the secret composition resolved for it
+ * (`secretKey` of the provider, else the plugin's one declared secret, else none: keyless).
+ */
 export function contributedProviders(
   contributions: PluginModelContributions,
-  entries: readonly BureauPluginEntry[],
 ): readonly ContributedProvider[] {
-  return contributions.providers.map(({ plugin, definition, rows, configuration }) => {
-    const first = entries.find((entry) => entry.descriptor.name === plugin)?.descriptor
-      .secrets?.[0];
-    return {
-      plugin,
-      name: definition.name,
-      definition,
-      configuration,
-      rows,
-      secretKey: first === undefined ? undefined : typeof first === 'string' ? first : first.key,
-    };
-  });
+  return contributions.providers.map(({ plugin, definition, rows, configuration, secretKey }) => ({
+    plugin,
+    name: definition.name,
+    definition,
+    configuration,
+    rows,
+    secretKey,
+  }));
 }
 
 /** The shape of the part of `configuration.json` this module reads: the edits to the catalog's rows. */
@@ -216,19 +211,21 @@ export function unmatchedAllowlistEntries(
 }
 
 /**
- * The catalog rows for the contributed providers. A row is kept when its provider has a key
- * (`available`), it is not retired, and its plugin's allowlist, when it has one, names it. An
- * allowlist entry that names no non-retired row of the plugin fails, whether or not the provider
- * has a key, so a stale entry does not wait for the key to appear. The `catalog` edits apply last,
- * and a stale one fails the same way; an edit that names a provider no loaded plugin contributes
- * waits, ignored, for its plugin.
+ * The catalog rows for the contributed providers. A row is kept when it is not retired and its
+ * plugin's allowlist, when it has one, names it. The rows of a provider that is not `available`
+ * (it declares a secret and none is saved) are kept too, marked `availability: 'unavailable'`, so
+ * "needs a key" can be told from "no such model" and a call to one is refused by
+ * `createCatalogGenerate` (COR-2143). An allowlist entry that names no non-retired row of the
+ * plugin fails, whether or not the provider has a key, so a stale entry does not wait for the key
+ * to appear. The `catalog` edits apply before the marking, and a stale one fails the same way; an
+ * edit that names a provider no loaded plugin contributes waits, ignored, for its plugin.
  */
 export function selectCatalogRows(input: {
   readonly configuration: ProviderConfigurationFile;
   /** The allowlist of each plugin that has one, by plugin name. */
   readonly allowlists: ReadonlyMap<string, readonly string[]>;
   readonly path: string;
-  /** The providers that have a key, by name. */
+  /** The providers that can be called, by name: those with a key saved, and keyless ones. */
   readonly available: ReadonlySet<string>;
   readonly providers: readonly ContributedProvider[];
 }): BackendDescriptor[] {
@@ -256,20 +253,23 @@ export function selectCatalogRows(input: {
       }
     }
     for (const provider of owned) {
-      if (!input.available.has(provider.name)) continue;
       selected.push(
         ...(entry === undefined ? live(provider) : live(provider).filter((row) => named.has(row))),
       );
     }
   }
-  if (edits.length === 0) return selected;
+  // A row of a provider that cannot be called stays in the catalog, refused by its availability.
+  const marked = (rows: readonly BackendDescriptor[]): BackendDescriptor[] =>
+    rows.map((row) =>
+      input.available.has(row.provider) ? row : { ...row, availability: 'unavailable' as const },
+    );
+  if (edits.length === 0) return marked(selected);
   const providerOf = (name: string): ContributedProvider | undefined =>
     input.providers.find((provider) => provider.name === name);
-  return applyCatalogEdits({
+  const edited = applyCatalogEdits({
     edits,
     path: input.path,
     selected,
-    available: input.available,
     candidates: (name) => {
       const provider = providerOf(name);
       return provider === undefined ? [] : live(provider);
@@ -281,9 +281,13 @@ export function selectCatalogRows(input: {
       return models === undefined || models.includes(model);
     },
   });
+  return marked(edited);
 }
 
-/** What the host offers: the rows to install and the key each offered provider is called with. */
+/**
+ * What the host offers: the rows to install and the key each keyed provider is called with. A
+ * keyless provider has no entry in `apiKeys`.
+ */
 export type LoadedProviders = {
   /** Opaque revision whose exact secret bindings were loaded. */
   readonly configurationRevision: string | null;
@@ -296,9 +300,9 @@ export type LoadedProviders = {
 };
 
 /**
- * Read the configuration and each contributed provider's secret. A provider with no secret is
- * omitted; when its plugin has an allowlist, one warning names the provider and the secret it
- * expects, never a value. The warnings come after validation, so a start that fails reports the
+ * Read the configuration and each contributed provider's secret. A provider with no secret keeps
+ * its rows, marked `unavailable`; when its plugin has an allowlist, one warning names the provider
+ * and the secret it expects, never a value. The warnings come after validation, so a start that fails reports the
  * failure and nothing else.
  */
 export async function loadProviders(input: {
@@ -337,11 +341,15 @@ export async function loadProviders(input: {
   );
   const apiKeys = new Map<string, string>();
   const missing: ContributedProvider[] = [];
+  // A provider that declares no secret (a local Ollama or LM Studio server) needs no key: its rows
+  // are available and it is called without an `apiKey` (COR-2144).
+  const keyless = new Set<string>();
   for (const provider of input.providers) {
-    const stored =
-      provider.secretKey === undefined
-        ? undefined
-        : await input.readSecret(provider.secretKey, snapshot);
+    if (provider.secretKey === undefined) {
+      keyless.add(provider.name);
+      continue;
+    }
+    const stored = await input.readSecret(provider.secretKey, snapshot);
     const key = stored?.trim();
     if (key === undefined || key === '') missing.push(provider);
     else apiKeys.set(provider.name, key);
@@ -350,13 +358,13 @@ export async function loadProviders(input: {
     configuration,
     allowlists,
     path: input.configurationLocation,
-    available: new Set(apiKeys.keys()),
+    available: new Set([...apiKeys.keys(), ...keyless]),
     providers: input.providers,
   });
   for (const provider of missing) {
     if (!allowlists.has(provider.plugin) || provider.secretKey === undefined) continue;
     input.warn(
-      `The ${provider.name} provider has an allowlist in ${input.configurationLocation} but the secret "${provider.secretKey}" is not set, so it is not offered.`,
+      `The ${provider.name} provider has an allowlist in ${input.configurationLocation} but the secret "${provider.secretKey}" is not set, so its models are unavailable.`,
     );
   }
   return { providers: input.providers, allowlists, rows, apiKeys, configurationRevision: revision };
@@ -370,8 +378,9 @@ export type ModelSelection = {
 
 /**
  * The generate for an agent assigned a catalog model, resolved through Bureau's provider path with
- * the provider's key. A model the catalog does not hold is refused, which is how a provider
- * without a key stays unreachable.
+ * the provider's key, or none for a keyless provider. A model the catalog does not hold is refused;
+ * so is one of a provider whose key is not saved (the message names the secret to save) and one
+ * turned off in the catalog.
  */
 export function createCatalogGenerate(
   selection: ModelSelection,
@@ -386,10 +395,19 @@ export function createCatalogGenerate(
     (candidate) =>
       candidate.provider === selection.provider && matchesEntry(candidate, selection.model),
   );
-  const apiKey = dependencies.apiKeys.get(selection.provider);
-  if (row === undefined || apiKey === undefined) {
+  const contributed = dependencies.providers.find(
+    (provider) => provider.name === selection.provider,
+  );
+  if (row === undefined || contributed === undefined) {
     throw new Error(
       `The model catalog holds no "${selection.model}" model for the ${selection.provider} provider.`,
+    );
+  }
+  // A keyless provider declares no secret, and is called with `apiKey` left out.
+  const apiKey = dependencies.apiKeys.get(selection.provider);
+  if (apiKey === undefined && contributed.secretKey !== undefined) {
+    throw new Error(
+      `The "${selection.model}" model of the ${selection.provider} provider needs its API key: save the secret "${contributed.secretKey}".`,
     );
   }
   if (row.availability === 'unavailable') {
@@ -397,11 +415,19 @@ export function createCatalogGenerate(
       `The "${selection.model}" model of the ${selection.provider} provider is turned off in the model catalog.`,
     );
   }
-  return dependencies.resolveProviderGenerate(
+  const generate = dependencies.resolveProviderGenerate(
     dependencies.providers.map((provider) => provider.definition),
-    { provider: selection.provider, model: row.model, apiKey },
+    {
+      provider: selection.provider,
+      model: row.model,
+      ...(apiKey === undefined ? {} : { apiKey }),
+    },
     undefined,
     undefined,
-    dependencies.providers.find((provider) => provider.name === selection.provider)?.configuration,
+    contributed.configuration,
   );
+  // Media admission reads the descriptors attached to the generate. A vendor factory stamps its own
+  // static row, which knows neither the owner's edits nor a plugin's row, so the catalog row this
+  // generate was built from, edits applied, replaces it (COR-2146).
+  return withBackendDescriptors(generate, [row]);
 }
