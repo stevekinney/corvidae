@@ -130,7 +130,7 @@ Never report a check that did not run. Where a tool is unavailable, say which ch
 
 ## Distribution
 
-A mod ships as a plugin. Choose the route by audience ([create a mod](https://code.claude.com/docs/en/plugins/mods/create)):
+A mod ships as a plugin. [Publishing and marketplaces](publishing-and-marketplaces.md) covers the marketplace file, plugin sources, version schemes, private repositories, Anthropic's directory, and evals for any plugin; this section keeps what a mod adds. Choose the route by audience ([create a mod](https://code.claude.com/docs/en/plugins/mods/create)):
 
 - **A few people**: send the plugin folder or a zip of it
 - **A team**: a marketplace repository, optionally registered in a repository's settings so collaborators are offered it
