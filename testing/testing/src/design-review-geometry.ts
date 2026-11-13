@@ -23,8 +23,6 @@ export interface ControlFact {
    * it. Every rule about what a person sees (size, padding) reads this.
    */
   readonly rect: Box;
-  /** The face a person sees: `rect` less whatever a scrolling or clipping ancestor cuts off. */
-  readonly painted: Box;
   /** The box it takes in the layout, which is larger than `rect` when a transparent border pads it. */
   readonly layout: Box;
   /** The union of the visible text and icons inside, or `null` when it draws nothing of its own. */
@@ -437,7 +435,7 @@ function auditControls(facts: GeometryFacts, capture: GeometryCapture): Geometry
     if ((phone || facts.pointerCoarse) && control.kind !== 'field' && !control.inline) {
       const singleLine = control.content !== null && control.content.height <= control.fontSize * 2;
       // A button that draws no box shows only its label or glyph, whatever area takes the tap.
-      const drawn = control.kind === 'button' && !control.boxed ? 0 : control.painted.height;
+      const drawn = control.kind === 'button' && !control.boxed ? 0 : control.rect.height;
       const limit =
         control.kind === 'button'
           ? thresholds.touchButtonHeightMaximum
@@ -446,7 +444,7 @@ function auditControls(facts: GeometryFacts, capture: GeometryCapture): Geometry
         add(
           'target-oversized',
           control,
-          `"${label}" is drawn ${round(control.painted.height)}px tall, over the ${limit}px limit; its hit area is ${round(control.hit.height)}px`,
+          `"${label}" is drawn ${round(control.rect.height)}px tall, over the ${limit}px limit; its hit area is ${round(control.hit.height)}px`,
         );
       }
     }

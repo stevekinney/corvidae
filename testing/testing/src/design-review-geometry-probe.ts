@@ -509,7 +509,6 @@ export function collectGeometryFacts(): GeometryFacts {
           width: half(rect.width),
           height: half(rect.height),
         },
-        painted: boxOf(paintedBox(element, layout, style)),
         content:
           content === null
             ? null

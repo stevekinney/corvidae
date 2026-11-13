@@ -67,7 +67,6 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     inline: false,
     variant: '',
     rect: { x: 100, y: 100, width: labelWidth + inline * 2, height },
-    painted: overrides.painted ?? rect,
     content: { x: 100 + inline, y: 100 + block, width: labelWidth, height: height - block * 2 },
     fontSize: 13,
     extendedHitArea: false,

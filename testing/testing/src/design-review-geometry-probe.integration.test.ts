@@ -30,17 +30,7 @@ describe('design-review geometry probe', () => {
       );
       expect(control?.layout.height).toBe(44);
       expect(control?.rect.height).toBe(28);
-      expect(control?.painted.height).toBe(28);
       expect(control?.hit.height).toBe(44);
-
-      await page.locator('.scrollport').evaluate((element) => {
-        element.setAttribute('style', 'height: 20px; overflow: hidden; padding-top: 12px;');
-      });
-      const clippedFacts = await page.evaluate(collectGeometryFacts);
-      const clipped = clippedFacts.controls.find(
-        (candidate) => candidate.accessibleLabel === 'Padding face',
-      );
-      expect(clipped?.painted.height).toBe(12);
     } finally {
       await browser.close();
     }
