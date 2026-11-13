@@ -100,59 +100,133 @@
     line-height: 1.5;
   }
 
-  .cinder-carousel__controls {
-    display: flex;
-    gap: var(--cinder-space-2);
-    justify-content: space-between;
+  /* The slides with Previous in a gutter at their inline start and Next at their inline end,
+   * centred on the slides. Gutters, not an overlay, so a chevron never covers a slide's words or
+   * image, at a phone's width too; the grid's inline axis mirrors them in right to left. */
+  .cinder-carousel__stage {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'previous slides next';
     align-items: center;
-    flex-wrap: wrap;
+    column-gap: var(--cinder-space-2);
   }
 
+  .cinder-carousel__stage > .cinder-carousel__viewport {
+    grid-area: slides;
+  }
+
+  /* The navigation group adds no box: its two buttons (in their tooltip wrappers) are the grid's
+   * gutter items. */
   .cinder-carousel__nav {
+    display: contents;
+  }
+
+  .cinder-carousel__nav > :first-child {
+    grid-area: previous;
+  }
+
+  .cinder-carousel__nav > :last-child {
+    grid-area: next;
+  }
+
+  /* Previous and Next are round chevron buttons; each keeps a 44 by 44 hit area on a coarse
+   * pointer through a pseudo-element. */
+  .cinder-carousel__control {
+    appearance: none;
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-2);
-  }
-
-  .cinder-carousel__control,
-  .cinder-carousel__dot {
-    appearance: none;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
     border: 1px solid var(--cinder-border-control);
-    background: var(--cinder-surface);
-    color: inherit;
     border-radius: var(--cinder-radius-full);
+    background: var(--cinder-surface-raised);
+    color: inherit;
+    font: inherit;
     cursor: pointer;
   }
 
-  .cinder-carousel__control {
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border-radius: var(--cinder-radius-md);
-    font: inherit;
+  /* The pause control above the slides keeps its words. */
+  .cinder-carousel__control--pause {
+    justify-self: start;
+    inline-size: auto;
+    padding-inline: var(--cinder-space-3);
   }
 
+  /* At the first or last slide without looping, the way that goes nowhere is disabled. */
+  .cinder-carousel__control:disabled {
+    cursor: not-allowed;
+    border-color: var(--cinder-border-muted);
+    color: var(--cinder-text-disabled);
+  }
+
+  /* The chevrons point the way the slides move, so they turn around in right to left. */
+  .cinder-carousel__control:dir(rtl) > :where(svg) {
+    transform: scaleX(-1);
+  }
+
+  /* The page buttons: small dots centred under the slides, the current one a wider accent pill. */
+  .cinder-carousel__controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Wide enough apart that each dot's 24px hit area (44px on a coarse pointer) never overlaps its
+   * neighbour's: the gap is the hit area less the dot. */
   .cinder-carousel__dots {
+    --_cinder-carousel-dot-size: var(--cinder-carousel-dot-size, 0.5rem);
+    --_cinder-carousel-dot-target: 1.5rem;
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-2);
+    gap: calc(var(--_cinder-carousel-dot-target) - var(--_cinder-carousel-dot-size));
     flex-wrap: wrap;
+    justify-content: center;
     min-inline-size: 0;
     max-inline-size: 100%;
+    padding-block: calc(
+      (var(--_cinder-carousel-dot-target) - var(--_cinder-carousel-dot-size)) / 2
+    );
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-carousel__dots {
+      --_cinder-carousel-dot-target: var(--cinder-touch-target-min);
+    }
   }
 
   .cinder-carousel__dot {
-    width: var(--cinder-carousel-dot-size, 1.5rem);
-    height: var(--cinder-carousel-dot-size, 1.5rem);
-    padding: 0;
-    /* Anchors the hit area below. */
+    appearance: none;
     position: relative;
+    inline-size: var(--_cinder-carousel-dot-size);
+    block-size: var(--_cinder-carousel-dot-size);
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-full);
+    background: color-mix(in oklch, currentColor 30%, transparent);
+    color: inherit;
+    cursor: pointer;
   }
 
-  /* The painted dot is its layout box. A coarse pointer's 44 by 44 target is a pseudo-element, which
-     takes no layout space; a dot already past 44px keeps its own box (`min()`). */
+  .cinder-carousel__dot[aria-current='true'] {
+    inline-size: calc(var(--_cinder-carousel-dot-size) * 2.5);
+    background: var(--cinder-accent-solid);
+  }
+
+  /* The hit area is a pseudo-element centred on the dot, as tall and as wide as the target, so the
+   * painted dot stays small. */
+  .cinder-carousel__dot::after,
+  .cinder-carousel__control::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--_cinder-carousel-dot-target, 1.5rem)) / 2));
+    inset-inline: min(0px, calc((100% - var(--_cinder-carousel-dot-target, 1.5rem)) / 2));
+  }
+
   @media (any-pointer: coarse) {
-    .cinder-carousel__dot::after {
-      content: '';
-      position: absolute;
+    .cinder-carousel__control::after {
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
       inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
@@ -164,20 +238,12 @@
     white-space: nowrap;
   }
 
-  .cinder-carousel__dot::before {
-    content: '';
-    display: block;
-    width: 0.625rem;
-    height: 0.625rem;
-    margin: auto;
-    border-radius: var(--cinder-radius-full);
-    background: currentColor;
-    opacity: 0.55;
-  }
-
-  .cinder-carousel__dot[aria-current='true']::before {
-    background: var(--cinder-accent-solid);
-    opacity: 1;
+  @media (prefers-reduced-motion: no-preference) {
+    .cinder-carousel__dot {
+      transition:
+        inline-size var(--cinder-duration-fast) var(--cinder-ease-standard),
+        background-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -188,17 +254,23 @@
   }
 
   @media (hover: hover) {
-    .cinder-carousel__control:hover,
-    .cinder-carousel__dot:hover {
+    .cinder-carousel__control:hover:not(:disabled) {
       background: var(--cinder-surface-hover);
+    }
+
+    .cinder-carousel__dot:hover:not([aria-current='true']) {
+      background: color-mix(in oklch, currentColor 55%, transparent);
     }
   }
 
+  /* A visible ring a gap out from the dot or the button, so an 8px dot's focus still reads. */
   .cinder-carousel__control:focus-visible,
   .cinder-carousel__dot:focus-visible {
     /* cinder-focus-ring-owner: parent */
     outline: none;
-    box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
   }
 
   @media (forced-colors: active) {

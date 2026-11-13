@@ -2680,7 +2680,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "Pagination dot painted size; its 44px hit area is a pseudo-element."
+      "description": "Pagination dot painted size (the current dot is two and a half times as wide); its 24px hit area, 44px on a coarse pointer, is a pseudo-element."
     },
     {
       "path": "code-block.background",

@@ -759,10 +759,10 @@
     "dot-size": {
       "$type": "dimension",
       "$value": {
-        "value": 1.5,
+        "value": 0.5,
         "unit": "rem"
       },
-      "$description": "Pagination dot painted size; its 44px hit area is a pseudo-element.",
+      "$description": "Pagination dot painted size (the current dot is two and a half times as wide); its 24px hit area, 44px on a coarse pointer, is a pseudo-element.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-carousel-dot-size",

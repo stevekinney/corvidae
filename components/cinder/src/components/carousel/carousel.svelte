@@ -26,8 +26,11 @@
 </script>
 
 <script lang="ts" generics="TSlide extends CarouselSlide = CarouselSlide">
+  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { onDestroy, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
+  import Tooltip from '../tooltip/tooltip.svelte';
 
   import { observeTextDirection } from '../../_internal/text-direction.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -194,6 +197,9 @@
   const resolvedIndicators = $derived(
     indicators ?? (clampedLength > indicatorLimit ? 'counter' : 'dots'),
   );
+  // Previous and Next are chevrons; their words are each button's name and its tooltip.
+  const previousLabel = $derived(controlLabels?.previous ?? 'Previous');
+  const nextLabel = $derived(controlLabels?.next ?? 'Next');
 
   $effect(() => {
     if (!shouldAutoplay) return;
@@ -757,36 +763,59 @@
     </button>
   {/if}
 
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex (native scroll viewport must be keyboard reachable for carousel slide shortcuts) -->
-  <div
-    class="cinder-carousel__viewport"
-    role="group"
-    aria-label={`${label} slides`}
-    tabindex="0"
-    bind:this={viewportElement}
-    style:gap={isMultiView ? 'var(--cinder-carousel-gap, var(--cinder-space-3))' : undefined}
-    {@attach observeViewport}
-    {@attach dragScroll}
-    onscroll={onViewportScroll}
-    onpointerdown={onPointerDown}
-    onwheel={onWheel}
-  >
-    {#if slides.length > 0}
-      {#each slides as slide, index (slide.id)}
-        <article
-          class="cinder-carousel__slide"
-          role="group"
-          aria-roledescription="slide"
-          aria-label={`${index + 1} of ${slides.length}: ${slide.label}`}
-          aria-hidden={isSlideInRange(index) ? undefined : 'true'}
-          inert={!isSlideInRange(index)}
-          data-cinder-collapsed={!isInteractionLayoutSlide(index) ? '' : undefined}
-          style:order={initialSlideOrder(index)}
-        >
-          {#if slideSnippet}
-            {@render slideSnippet(slide, { index, active: isSlideInRange(index) })}
-          {:else if slide.href}
-            <a class="cinder-carousel__link" href={slide.href}>
+  <!-- The slides with Previous at their inline start and Next at their inline end, in gutters
+       beside the viewport so they never cover a slide. The buttons follow the viewport in the
+       document, so the tab order is slides, Previous, Next, then the page buttons. -->
+  <div class="cinder-carousel__stage">
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex (native scroll viewport must be keyboard reachable for carousel slide shortcuts) -->
+    <div
+      class="cinder-carousel__viewport"
+      role="group"
+      aria-label={`${label} slides`}
+      tabindex="0"
+      bind:this={viewportElement}
+      style:gap={isMultiView ? 'var(--cinder-carousel-gap, var(--cinder-space-3))' : undefined}
+      {@attach observeViewport}
+      {@attach dragScroll}
+      onscroll={onViewportScroll}
+      onpointerdown={onPointerDown}
+      onwheel={onWheel}
+    >
+      {#if slides.length > 0}
+        {#each slides as slide, index (slide.id)}
+          <article
+            class="cinder-carousel__slide"
+            role="group"
+            aria-roledescription="slide"
+            aria-label={`${index + 1} of ${slides.length}: ${slide.label}`}
+            aria-hidden={isSlideInRange(index) ? undefined : 'true'}
+            inert={!isSlideInRange(index)}
+            data-cinder-collapsed={!isInteractionLayoutSlide(index) ? '' : undefined}
+            style:order={initialSlideOrder(index)}
+          >
+            {#if slideSnippet}
+              {@render slideSnippet(slide, { index, active: isSlideInRange(index) })}
+            {:else if slide.href}
+              <a class="cinder-carousel__link" href={slide.href}>
+                {#if slide.imageSrc}
+                  <img
+                    class="cinder-carousel__image"
+                    src={slide.imageSrc}
+                    alt={slide.imageAlt ?? slide.title ?? slide.label}
+                    loading={isSlideInRange(index) ? 'eager' : 'lazy'}
+                  />
+                {/if}
+                {#if slide.title}
+                  <h3 class="cinder-carousel__title">{slide.title}</h3>
+                {/if}
+                {#if slide.description}
+                  <p class="cinder-carousel__description">{slide.description}</p>
+                {/if}
+                {#if !slide.imageSrc && !slide.title && !slide.description}
+                  <p class="cinder-carousel__description">{slide.label}</p>
+                {/if}
+              </a>
+            {:else}
               {#if slide.imageSrc}
                 <img
                   class="cinder-carousel__image"
@@ -804,71 +833,61 @@
               {#if !slide.imageSrc && !slide.title && !slide.description}
                 <p class="cinder-carousel__description">{slide.label}</p>
               {/if}
-            </a>
-          {:else}
-            {#if slide.imageSrc}
-              <img
-                class="cinder-carousel__image"
-                src={slide.imageSrc}
-                alt={slide.imageAlt ?? slide.title ?? slide.label}
-                loading={isSlideInRange(index) ? 'eager' : 'lazy'}
-              />
             {/if}
-            {#if slide.title}
-              <h3 class="cinder-carousel__title">{slide.title}</h3>
-            {/if}
-            {#if slide.description}
-              <p class="cinder-carousel__description">{slide.description}</p>
-            {/if}
-            {#if !slide.imageSrc && !slide.title && !slide.description}
-              <p class="cinder-carousel__description">{slide.label}</p>
-            {/if}
-          {/if}
-        </article>
-      {/each}
-    {/if}
-  </div>
-
-  <div class="cinder-carousel__controls" role="group" aria-label={`${label} controls`}>
-    <div class="cinder-carousel__nav" role="group" aria-label={`${label} navigation`}>
-      <button
-        type="button"
-        class="cinder-carousel__control"
-        onclick={() => goPrevious('control')}
-        disabled={slides.length < 2 || isAtStart}
-      >
-        {controlLabels?.previous ?? 'Previous'}
-      </button>
-      <button
-        type="button"
-        class="cinder-carousel__control"
-        onclick={() => goNext('control')}
-        disabled={slides.length < 2 || isAtEnd}
-      >
-        {controlLabels?.next ?? 'Next'}
-      </button>
+          </article>
+        {/each}
+      {/if}
     </div>
 
-    {#if resolvedIndicators === 'dots'}
-      <div
-        class="cinder-carousel__dots"
-        role="group"
-        aria-label={controlLabels?.picker ?? 'Choose slide'}
-      >
-        {#each slides as slide, index (slide.id)}
-          <button
-            type="button"
-            class="cinder-carousel__dot"
-            aria-label={`Go to ${slide.label}`}
-            aria-current={index === displayIndex ? 'true' : undefined}
-            onclick={() => goTo(index, undefined, 'control')}
-          ></button>
-        {/each}
-      </div>
-    {:else if resolvedIndicators === 'counter'}
-      <div class="cinder-carousel__counter" aria-hidden="true">
-        {displayIndex + 1} / {clampedLength}
-      </div>
-    {/if}
+    <div class="cinder-carousel__nav" role="group" aria-label={`${label} navigation`}>
+      <Tooltip text={previousLabel} describe={false}>
+        <button
+          type="button"
+          class="cinder-carousel__control cinder-carousel__control--previous"
+          aria-label={previousLabel}
+          onclick={() => goPrevious('control')}
+          disabled={slides.length < 2 || isAtStart}
+        >
+          <ChevronLeft size={18} aria-hidden="true" />
+        </button>
+      </Tooltip>
+      <Tooltip text={nextLabel} describe={false}>
+        <button
+          type="button"
+          class="cinder-carousel__control cinder-carousel__control--next"
+          aria-label={nextLabel}
+          onclick={() => goNext('control')}
+          disabled={slides.length < 2 || isAtEnd}
+        >
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      </Tooltip>
+    </div>
   </div>
+
+  {#if resolvedIndicators !== 'none'}
+    <div class="cinder-carousel__controls" role="group" aria-label={`${label} controls`}>
+      {#if resolvedIndicators === 'dots'}
+        <div
+          class="cinder-carousel__dots"
+          role="group"
+          aria-label={controlLabels?.picker ?? 'Choose slide'}
+        >
+          {#each slides as slide, index (slide.id)}
+            <button
+              type="button"
+              class="cinder-carousel__dot"
+              aria-label={`Go to ${slide.label}`}
+              aria-current={index === displayIndex ? 'true' : undefined}
+              onclick={() => goTo(index, undefined, 'control')}
+            ></button>
+          {/each}
+        </div>
+      {:else}
+        <div class="cinder-carousel__counter" aria-hidden="true">
+          {displayIndex + 1} / {clampedLength}
+        </div>
+      {/if}
+    </div>
+  {/if}
 </section>

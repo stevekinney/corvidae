@@ -65,4 +65,8 @@
     </Carousel>
   </div>
   <button id="after-keyboard-carousel" type="button">After keyboard carousel</button>
+  <!-- `lang` with `dir`: the fixture bundler keys right-to-left rules on the language. -->
+  <div id="example-mount-rtl" dir="rtl" lang="ar">
+    <Carousel slides={basicSlides} autoplay={false} label="Right to left" />
+  </div>
 </div>

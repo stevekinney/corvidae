@@ -18771,7 +18771,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-carousel-dot-size',
       category: 'size',
       component: 'carousel',
-      description: 'Pagination dot painted size; its 44px hit area is a pseudo-element.',
+      description:
+        'Pagination dot painted size (the current dot is two and a half times as wide); its 24px hit area, 44px on a coarse pointer, is a pseudo-element.',
       themeAware: false,
       deprecated: false,
       profile: 'size',
