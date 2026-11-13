@@ -2677,6 +2677,14 @@ describe('ApprovalCard on a phone', () => {
     );
   });
 
+  test('draws Deny and the primary decision of a row in equal faces in a narrow card', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^@]*__row-actions > \.cinder-button,\s*\.cinder-approval-card__row-actions \.cinder-inline-confirm__two-press \.cinder-button \{\s*flex: 1 1 0;\s*min-inline-size: fit-content;/,
+    );
+  });
+
   test('lets row actions wrap intrinsically while preserving the shared touch target minimum', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 

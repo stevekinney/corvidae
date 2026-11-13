@@ -1589,6 +1589,14 @@
       overflow-wrap: normal;
     }
 
+    /* Deny and the primary decision share the line in equal faces, each never narrower than its
+     * own word (the armed label is longer than the idle one, so the pair wraps before it clips). */
+    .cinder-approval-card .cinder-approval-card__row-actions > .cinder-button,
+    .cinder-approval-card__row-actions .cinder-inline-confirm__two-press .cinder-button {
+      flex: 1 1 0;
+      min-inline-size: fit-content;
+    }
+
     .cinder-approval-card__action-buttons {
       flex: 1 1 100%;
       margin-inline-start: 0;
