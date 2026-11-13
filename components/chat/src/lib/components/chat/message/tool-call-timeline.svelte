@@ -597,15 +597,15 @@
 </section>
 
 <style>
-  /* Contiguous steps share one bordered group on the page, with no fill: a header line with the
-   * step count and the time, then one row to a step. Text is muted 12.5px. */
+  /* Contiguous steps are one group on the page with no frame and no fill: a header line with the
+   * step count and the time, then one row to a step. The rows have no inline padding, so the
+   * chevron starts on the prose's left edge and the time ends on the column's right edge. Text is
+   * muted 12.5px. */
   .chat-tool-call-timeline {
     inline-size: 100%;
     max-inline-size: var(--cinder-chat-message-max-width, 48rem);
     box-sizing: border-box;
     min-inline-size: 0;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
     font-size: 12.5px;
     line-height: 1.4;
     color: var(--cinder-text-muted);
@@ -642,9 +642,7 @@
     gap: var(--cinder-space-2);
     inline-size: 100%;
     min-inline-size: 0;
-    min-block-size: 1.5rem;
-    padding-block: 0;
-    padding-inline: var(--cinder-space-3);
+    padding: 0;
     border: 0;
     background: transparent;
     color: var(--cinder-text-default);
@@ -685,11 +683,20 @@
     transform: scaleX(-1);
   }
 
+  /* On a touch screen a row is still painted at its text line height; its 44px hit area is a
+   * pseudo-element that reaches past the row and adds no layout. */
   @media (any-pointer: coarse) {
     .chat-tool-call-toggle,
     .chat-tool-call-row {
-      min-block-size: var(--cinder-touch-target-min);
-      padding-block: var(--cinder-space-2);
+      position: relative;
+    }
+
+    .chat-tool-call-toggle::before,
+    .chat-tool-call-row::before {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 
@@ -843,12 +850,7 @@
     flex-direction: column;
     margin: 0;
     padding: 0;
-    border-block-start: 1px solid var(--cinder-border-muted);
     list-style: none;
-  }
-
-  .chat-tool-call-item + .chat-tool-call-item {
-    border-block-start: 1px solid var(--cinder-border-muted);
   }
 
   .chat-tool-call-list[hidden],
@@ -936,7 +938,7 @@
     flex-direction: column;
     gap: 4px;
     margin: 0;
-    padding: 0 var(--cinder-space-3) var(--cinder-space-2);
+    padding: 0 0 var(--cinder-space-2) var(--cinder-space-3);
   }
 
   /* A folded run opens to its calls, one block each, with a muted "2 of 20" heading. */
@@ -1045,16 +1047,6 @@
     min-inline-size: 0;
     max-inline-size: none;
     padding-inline: var(--cinder-space-2);
-  }
-
-  /* On a touch screen the group's summary line and each step's row are full touch targets (C#3). A
-   * failed step's controls are Cinder Buttons: they keep their painted size and reach 44px by the
-   * button's own hit area, so no minimum is set on them here. */
-  @media (any-pointer: coarse) {
-    .chat-tool-call-toggle,
-    .chat-tool-call-row {
-      min-block-size: var(--cinder-touch-target-min);
-    }
   }
 
   .chat-tool-call-activity-icon {

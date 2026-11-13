@@ -54,7 +54,6 @@ export const ALLOWED_DECLARATIONS: Readonly<Record<string, number>> = {
   // Full-width disclosure rows, not compact controls.
   'components/chat/src/lib/components/chat/message/entry-frame.svelte': 1,
   'components/chat/src/lib/components/chat/message/message-sources.svelte': 1,
-  'components/chat/src/lib/components/chat/message/tool-call-timeline.svelte': 2,
   'components/chat/src/lib/components/chat/message/parts/reasoning-part.svelte': 1,
   // Overridden to 1.5rem inside a message line; the base rule serves the standalone action.
   'components/chat/src/lib/components/chat/message/chat-message.svelte': 2,
