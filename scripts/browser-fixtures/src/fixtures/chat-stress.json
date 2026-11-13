@@ -1034,13 +1034,13 @@
     },
     "steps": [
       { "action": "expect-text", "text": "هل توافق" },
-      { "action": "expect", "role": "button", "name": "Sources" }
+      { "action": "expect", "role": "button", "name": "1 source" }
     ],
     "variants": [
       {
         "name": "rtl-sources-open",
         "steps": [
-          { "action": "click", "role": "button", "name": "Sources" },
+          { "action": "click", "role": "button", "name": "1 source" },
           { "action": "expect-text", "text": "سياسة الاسترداد" },
           { "action": "expect-text", "text": "توضح السياسة" }
         ]
@@ -1048,7 +1048,7 @@
       {
         "name": "sources-review-reachable",
         "steps": [
-          { "action": "click", "role": "button", "name": "Sources" },
+          { "action": "click", "role": "button", "name": "1 source" },
           { "action": "expect-text", "text": "سياسة الاسترداد" },
           { "action": "scroll", "to": "top", "by": "wheel", "when": "transcript-overflows" },
           {
