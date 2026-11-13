@@ -2609,11 +2609,15 @@
     align-items: flex-start;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
+    /* The words' size is set on the row, so the glyph measures one line of the same text. */
+    font-size: var(--cinder-text-sm);
   }
 
+  /* The glyph is centred on the first line of the words beside it: its offset is half of what one
+   * line (of the words' own size, set on the row) has over the 16px glyph, never a tuned number. */
   .chat-input-blocked :global(.chat-input-blocked-glyph) {
     flex: none;
-    margin-block-start: 0.1875rem;
+    margin-block-start: calc((1lh - 1rem) / 2);
     color: var(--cinder-status-warning-text);
   }
 
@@ -2629,7 +2633,7 @@
    * colour, the words in the body colour and the secondary action before the primary one. */
   .chat-input-notice :global(.chat-input-notice-glyph) {
     flex: none;
-    margin-block-start: 0.1875rem;
+    margin-block-start: calc((1lh - 1rem) / 2);
     color: var(--cinder-text-muted);
   }
 
@@ -2648,7 +2652,6 @@
    * than its longest word, and the actions drop to their own line before it would. */
   .chat-input-notice .chat-input-blocked-message {
     flex: 1 1 0;
-    align-items: center;
   }
 
   .chat-input-notice .chat-input-blocked-reason {

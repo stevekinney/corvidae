@@ -1613,7 +1613,9 @@
     flex-direction: column;
     gap: var(--cinder-space-3);
     font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
-    line-height: 1.6;
+    /* 22px lines at the 14px base: a whole number of pixels, so what follows a message (its time
+     * and action glyphs) starts on a pixel boundary and is not drawn half a pixel off. */
+    line-height: calc(22 / 14);
   }
 
   /* Tiles follow the text with a gap; with no text before them (an image-only message) they add no
@@ -2127,7 +2129,10 @@
     min-block-size: 1.5rem;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    line-height: 1.2;
+    /* The font's own line height, so the time's letters sit in the middle of its box. A tighter
+     * value gives a negative half-leading, which the browser rounds down a whole pixel, and the
+     * time then rides above the glyphs centred beside it. */
+    line-height: normal;
   }
 
   /* The glyph is the size of the 12px time beside it, so its drawn height (about 10px) sits within
