@@ -175,7 +175,7 @@
     font-size: var(--cinder-button-font-size-sm);
   }
 
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     /* Painted at its own size; the 44px target is a hit area that takes no layout space, so a row
      * under 44px (a card or a compact cell alike) still reaches a finger without growing. */
     .cinder-choice-grid-item {

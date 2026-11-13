@@ -351,7 +351,7 @@ describe('Citation', () => {
     expect(marker).toContain('padding: 0;');
     expect(marker).toContain('vertical-align: baseline;');
     expect(stylesheet).toMatch(
-      /@media \(pointer: coarse\) \{\s*\.cinder-citation__marker::before \{[^}]*var\(--cinder-touch-target-min\)/s,
+      /@media \(any-pointer: coarse\) \{\s*\.cinder-citation__marker::before \{[^}]*var\(--cinder-touch-target-min\)/s,
     );
     expect(stylesheet).not.toMatch(/\.cinder-citation__marker \{[^}]*min-block-size/s);
     const hit = /\.cinder-citation__marker::before \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
@@ -365,7 +365,7 @@ describe('Citation', () => {
     expect(link).toContain('min-block-size: 1.5rem;');
     expect(link).toContain('align-items: center;');
     expect(stylesheet).toMatch(
-      /@media \(pointer: coarse\) \{[^@]*\.cinder-citation__link::before \{[^}]*var\(--cinder-touch-target-min\)/s,
+      /@media \(any-pointer: coarse\) \{[^@]*\.cinder-citation__link::before \{[^}]*var\(--cinder-touch-target-min\)/s,
     );
     expect(stylesheet).not.toMatch(/\.cinder-citation__link \{[^}]*touch-target-min/s);
   });
@@ -373,7 +373,7 @@ describe('Citation', () => {
   test('the pager buttons get their 44px coarse hit area from a pseudo-element', () => {
     const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
     expect(stylesheet).toMatch(
-      /@media \(pointer: coarse\) \{[^@]*\.cinder-citation__pagination button::before \{[^}]*position: absolute;[^}]*var\(--cinder-touch-target-min\)/s,
+      /@media \(any-pointer: coarse\) \{[^@]*\.cinder-citation__pagination button::before \{[^}]*position: absolute;[^}]*var\(--cinder-touch-target-min\)/s,
     );
   });
 

@@ -38,7 +38,7 @@ describe('button proportions', () => {
 });
 
 describe('coarse pointer hit area', () => {
-  const coarse = buttonCss.slice(buttonCss.indexOf('@media (pointer: coarse) {'));
+  const coarse = buttonCss.slice(buttonCss.indexOf('@media (any-pointer: coarse) {'));
 
   test('the hit region is a positioned pseudo-element of at least 44px', () => {
     const rule = /\[data-cinder-hit-target='44'\]::before\s*\{[^}]*\}/s.exec(coarse)?.[0] ?? '';

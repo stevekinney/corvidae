@@ -96,7 +96,7 @@
 
   /* A coarse pointer's 44 by 44 target is a pseudo-element, which takes no layout space, so the
      stepper keeps its painted width and the field's height. */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .cinder-number-input__stepper {
       position: relative;
     }

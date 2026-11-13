@@ -167,7 +167,7 @@
 
   /* On a coarse pointer the summary keeps its painted box; a pseudo-element, which takes no layout
      space, reaches 44 by 44. The action is a Button, which draws its own 44px hit area. */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .cinder-restart-state__details-summary {
       position: relative;
     }

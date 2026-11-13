@@ -2349,7 +2349,7 @@
   /* A textarea cannot carry a hit-area pseudo-element, so on a coarse pointer the editor row itself
    * is a touch target tall. Block padding keeps one line on the centre line Send and Stop share,
    * because the markdown overlay and the editor both derive their padding from this height. */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .chat-input-editor-container {
       --_chat-input-row-height: var(--cinder-touch-target-min, 44px);
     }
@@ -2637,7 +2637,7 @@
 
   /* The label paints 24px tall; on a coarse pointer a pseudo-element that takes no layout lifts its
    * hit area to 44px, so a tap that shows who granted access lands on it and not on the bar. */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .chat-input-notice-label {
       position: relative;
     }

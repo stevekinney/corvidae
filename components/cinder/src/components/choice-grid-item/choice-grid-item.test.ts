@@ -111,8 +111,8 @@ describe('ChoiceGridItem size CSS contract', () => {
   });
 
   test('coarse pointer: size="sm" keeps its painted height and reaches 44px by a hit area', () => {
-    const coarseBlock = styles.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n {2}\}/)?.[1];
-    expect(coarseBlock, 'expected an @media (pointer: coarse) block').toBeDefined();
+    const coarseBlock = styles.match(/@media \(any-pointer: coarse\)\s*\{([\s\S]*?)\n {2}\}/)?.[1];
+    expect(coarseBlock, 'expected an @media (any-pointer: coarse) block').toBeDefined();
     expect(coarseBlock).toContain('(100% - 44px) / 2');
     expect(coarseBlock).not.toMatch(/min-block-size:\s*44px;/);
   });

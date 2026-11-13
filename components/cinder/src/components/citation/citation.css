@@ -149,7 +149,7 @@
     inline-size: 1rem;
     block-size: 1rem;
   }
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .cinder-citation__marker::before {
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
       inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));

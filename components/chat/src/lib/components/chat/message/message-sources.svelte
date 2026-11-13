@@ -96,7 +96,7 @@
   let coarsePointer = $state(false);
   $effect(() => {
     const query =
-      typeof window === 'undefined' ? undefined : window.matchMedia('(pointer: coarse)');
+      typeof window === 'undefined' ? undefined : window.matchMedia('(any-pointer: coarse)');
     if (query === undefined) return;
     const update = (): void => {
       coarsePointer = query.matches;
@@ -363,7 +363,7 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .chat-message-source-chips :global(.chat-message-source-chip .cinder-citation__marker) {
       min-block-size: var(--cinder-touch-target-min);
       padding-block: calc((var(--cinder-touch-target-min) - 1lh) / 2);

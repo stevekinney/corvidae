@@ -24,7 +24,7 @@ const SIZES_THE_LAYOUT =
 describe('hit areas that take no layout space', () => {
   test('the number-input stepper is a positioned control with a pseudo-element hit area', async () => {
     const css = await read('number-input/number-input.css');
-    const coarse = css.slice(css.indexOf('@media (pointer: coarse)'));
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
     expect(coarse).not.toMatch(SIZES_THE_LAYOUT);
     expect(coarse).toContain('.cinder-number-input__stepper {\n      position: relative;');
     const rule = ruleBody(coarse, '.cinder-number-input__stepper::after');
@@ -35,7 +35,7 @@ describe('hit areas that take no layout space', () => {
   test('the carousel dot is its painted size, with the hit area a pseudo-element', async () => {
     const css = await read('carousel/carousel.css');
     expect(css).toContain('width: var(--cinder-carousel-dot-size, 1.5rem);');
-    const coarse = css.slice(css.indexOf('@media (pointer: coarse)'));
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
     const rule = ruleBody(coarse, '.cinder-carousel__dot::after');
     expect(rule).toContain('position: absolute;');
     expect(rule).toMatch(HIT_AREA_INSETS);
@@ -44,7 +44,7 @@ describe('hit areas that take no layout space', () => {
 
   test('the restart-state summary keeps its box, and its action is the Button with its own hit area', async () => {
     const css = await read('restart-state/restart-state.css');
-    const coarse = css.slice(css.indexOf('@media (pointer: coarse)'));
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
     expect(coarse).not.toMatch(SIZES_THE_LAYOUT);
     expect(css).not.toContain('.cinder-restart-state__actions .cinder-button');
     const rule = ruleBody(coarse, '.cinder-restart-state__details-summary::after');

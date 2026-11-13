@@ -211,7 +211,7 @@
   /* The drawer clips its corners and its list scrolls, so a control's 44px hit area (which takes no
    * layout) must fit inside the box: the header and each row give the last control the room its
    * overhang needs, and Edit and Remove are a hit area apart so neither covers the other. */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .chat-follow-up-drawer-header {
       min-block-size: 2.75rem;
       padding-inline-end: var(--cinder-space-2);

@@ -79,7 +79,7 @@ describe('coarse pointers get a real touch box without enlarging the painted con
         ? foundation.replace('@media (pointer: coarse) {', '@media all {')
         : foundation,
       pointer === 'coarse'
-        ? buttonCss.replace('@media (pointer: coarse) {', '@media all {')
+        ? buttonCss.replace('@media (any-pointer: coarse) {', '@media all {')
         : buttonCss,
     );
 

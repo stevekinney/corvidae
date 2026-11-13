@@ -539,7 +539,7 @@ describe('Chat — sourcePresentation="inline"', () => {
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: (query: string) => ({
-        matches: query === '(pointer: coarse)',
+        matches: query === '(any-pointer: coarse)',
         media: query,
         onchange: null,
         addEventListener: () => {},
@@ -582,7 +582,7 @@ describe('Chat — sourcePresentation="inline"', () => {
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: (query: string) => ({
-        matches: query === '(pointer: coarse)',
+        matches: query === '(any-pointer: coarse)',
         media: query,
         onchange: null,
         addEventListener: () => {},

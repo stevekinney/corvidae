@@ -230,7 +230,7 @@
     position: relative;
   }
 
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .cinder-toast__action {
       padding-inline: var(--cinder-space-2);
     }

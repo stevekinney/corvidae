@@ -680,7 +680,7 @@
      heights, so a button in a text row never makes the row taller than its line, and neighbours
      can pitch closer than 44px with their hit areas overlapping invisibly. `min()` keeps a
      control already at or above 44px from shrinking its own region. */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .cinder-button[data-cinder-hit-target='44'] {
       position: relative;
     }

@@ -149,7 +149,7 @@
 
   /* The painted dot is its layout box. A coarse pointer's 44 by 44 target is a pseudo-element, which
      takes no layout space; a dot already past 44px keeps its own box (`min()`). */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .cinder-carousel__dot::after {
       content: '';
       position: absolute;
