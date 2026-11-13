@@ -3311,9 +3311,11 @@
   .chat-typing-indicator {
     display: flex;
     align-items: center;
-    gap: var(--cinder-space-1);
+    /* The dots are as far apart as they are wide, so they read as three marks and not one
+     * smudge, and the row stands a full step clear of the text above it. */
+    gap: 0.375rem;
     /* Quiet and inline: no bubble, on the same edge as the assistant's text above it. */
-    padding: var(--cinder-space-1) 0;
+    padding: var(--cinder-space-2) 0 var(--cinder-space-1);
     max-width: max-content;
     animation: typing-indicator-enter var(--cinder-duration-base) var(--cinder-ease-decelerate);
   }
@@ -3335,10 +3337,12 @@
     font-style: italic;
   }
 
+  /* Drawn in the body text colour and never fainter than 55%: at rest a dot is then at least
+   * 4:1 against the page in both themes. The muted colour at 40% fell under 3:1 on dark. */
   .chat-typing-dot {
-    width: 0.5rem;
-    height: 0.5rem;
-    background: var(--cinder-text-muted);
+    width: 0.375rem;
+    height: 0.375rem;
+    background: var(--cinder-text-default);
     border-radius: var(--cinder-radius-full);
     animation: typing-bounce 1.4s ease-in-out infinite;
   }
@@ -3359,7 +3363,7 @@
     0%,
     60%,
     100% {
-      opacity: 0.4;
+      opacity: 0.55;
       transform: translateY(0);
     }
     30% {
@@ -3376,7 +3380,7 @@
     @keyframes typing-pulse {
       0%,
       100% {
-        opacity: 0.4;
+        opacity: 0.55;
       }
       50% {
         opacity: 1;
