@@ -13,6 +13,19 @@ describe('glyphs meet their edges, spacing and direction', () => {
     );
   });
 
+  test('a bubble that is only attachments insets its tile evenly, whatever sits around the tile', async () => {
+    const source = await read('chat-message.svelte');
+    // The body can hold an empty text part and a status row follows the tile, so the rule keys on
+    // the message's own marker, never on the tile being an only or last child.
+    expect(source).toContain("data-attachments-only={attachmentsOnly ? '' : undefined}");
+    expect(source).toMatch(
+      /\.chat-message-wrapper\[data-role='user'\] \.chat-message\[data-attachments-only\] \{\s*padding-block: var\(--cinder-space-3\);/,
+    );
+    expect(source).toMatch(
+      /\.chat-message\[data-attachments-only\] > :global\(\.message-attachments\) \{\s*margin-top: 0;/,
+    );
+  });
+
   test('message action glyphs are sized to the time beside them and sit 8px apart', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(

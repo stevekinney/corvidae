@@ -732,6 +732,14 @@
     shownParts.filter((part) => part.type !== 'image' && !(transcript && part.type === 'note')),
   );
   const imageParts = $derived(shownParts.filter((part) => part.type === 'image'));
+  // A message that is images and nothing to read: its body may still hold an empty markdown part,
+  // so the body element exists with no height. The bubble then insets the tile evenly.
+  const attachmentsOnly = $derived(
+    imageParts.length > 0 &&
+      !isEditing &&
+      textContent.trim() === '' &&
+      bodyParts.every((part) => part.type === 'markdown'),
+  );
   const copyHtml = $derived.by(() => {
     const body = `<div data-cinder-chat-message style="white-space: pre-wrap">${escapeHtml(textContent)}</div>`;
     const attachmentChips = imageParts
@@ -1036,6 +1044,7 @@
     dir="ltr"
     data-message-id={message.id}
     data-message-role={message.role}
+    data-attachments-only={attachmentsOnly ? '' : undefined}
     aria-labelledby={isToolCall && toolPair ? undefined : roleId}
     aria-label={isToolCall && toolPair ? `Tool call: ${toolPair.call.name}` : undefined}
     aria-busy={streaming ? 'true' : undefined}
@@ -2155,10 +2164,16 @@
     padding-block-end: var(--cinder-space-3);
   }
 
-  /* A bubble that holds only a tile has 12px on all four sides. */
-  .chat-message-wrapper[data-role='user']
-    .chat-message:has(:global(.message-attachments:only-child)) {
+  /* A bubble that holds only a tile has 12px on all four sides. The body and the status row are
+   * still in the DOM around the tile (a body can hold an empty text part), so the tile is neither
+   * an only child nor a last one: the message says so itself, and the tile drops the margin it
+   * takes after text. */
+  .chat-message-wrapper[data-role='user'] .chat-message[data-attachments-only] {
     padding-block: var(--cinder-space-3);
+  }
+
+  .chat-message[data-attachments-only] > :global(.message-attachments) {
+    margin-top: 0;
   }
 
   /* An RTL reply's line takes the message's direction: the time at inline start, the actions
