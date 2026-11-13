@@ -231,7 +231,12 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     const drawer = drawerOf(container)!;
     expect(drawer).not.toBeNull();
     expect(drawer.querySelector('.chat-follow-up-drawer-title')?.textContent).toBe('Up next');
-    expect(drawer.querySelector('.chat-follow-up-drawer-summary')?.textContent).toBe('1 queued');
+    expect(drawer.querySelector('.chat-follow-up-drawer-summary-short')?.textContent).toBe(
+      '1 queued',
+    );
+    expect(drawer.querySelector('.chat-follow-up-drawer-summary-long')?.textContent).toBe(
+      '1 queued, sends after this run',
+    );
     expect(drawer.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(ghostTexts(container)).toEqual(['then check the logs']);
     expect(drawer.querySelector('.chat-follow-up-ghost-index')?.textContent).toBe('1');
@@ -254,9 +259,9 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     await submit(rendered.container, 'first');
     await submit(rendered.container, 'second');
     expect(ghostTexts(rendered.container)).toEqual(['first', 'second']);
-    expect(rendered.container.querySelector('.chat-follow-up-drawer-summary')?.textContent).toBe(
-      '2 queued',
-    );
+    expect(
+      rendered.container.querySelector('.chat-follow-up-drawer-summary-short')?.textContent,
+    ).toBe('2 queued');
 
     await rendered.rerender({ streaming: false });
     await settle();
