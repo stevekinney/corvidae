@@ -294,66 +294,78 @@ test.describe('Settings › Allowed models, provider connected', () => {
 });
 
 test.describe('Settings at the three widths', () => {
-  test('phone: the section nav is a Section select above the content, and Restart now is a full-width 44px button', async ({
-    page,
-    checkA11y,
-  }) => {
-    await open(page, E2E_SHOWCASE_URL, 375, '/settings');
-    // The label shows, the select reads the open section, and it lists every section.
-    await expect(page.getByText('Section', { exact: true })).toBeVisible();
-    const select = page.getByRole('combobox', { name: 'Section' });
-    await expect(select).toHaveValue('/settings');
-    await expect(select.locator('option')).toHaveText([
-      'General',
-      'Models',
-      'Allowed models',
-      'A2A',
-      'Plugins',
-      'Data and retention',
-      'API reference',
-    ]);
-    await expect(page.getByRole('navigation', { name: 'Settings sections' })).toHaveCount(0);
-    // The General content lists Human input and Wakeup with their descriptions.
-    await expect(page.locator('[data-setting="tools.humanInput"]')).toContainText('Human input');
-    await expect(page.locator('[data-setting="tools.wakeup"]')).toContainText(
-      'Let agents schedule themselves to continue later.',
-    );
+  // A button's 44px hit area exists only under a coarse pointer, so the phone case runs as a touch phone.
+  test.describe('on a touch phone', () => {
+    test.use({ hasTouch: true, isMobile: true });
 
-    // The banner stacks its buttons under its words (COR-2314), each as wide as the words' column,
-    // beside the glyph, and 44px tall.
-    const banner = page.getByTestId('settings-restart-summary');
-    await expect(banner).toContainText('1 change waits for a restart');
-    const wordsBox = await banner.locator('.cinder-banner__content').boundingBox();
-    expect(wordsBox).not.toBeNull();
-    for (const name of ['Revert 1 change', 'Restart now']) {
-      const box = await banner.getByRole('button', { name }).boundingBox();
-      expect(Math.round(box?.height ?? 0), `${name} is 44px tall`).toBe(44);
-      expect(Math.round(box?.x ?? 0), `${name} starts under the words`).toBe(
-        Math.round(wordsBox?.x ?? -1),
+    test('phone: the section nav is a Section select above the content, and Restart now is a full-width 44px button', async ({
+      page,
+      checkA11y,
+    }) => {
+      await open(page, E2E_SHOWCASE_URL, 375, '/settings');
+      // The label shows, the select reads the open section, and it lists every section.
+      await expect(page.getByText('Section', { exact: true })).toBeVisible();
+      const select = page.getByRole('combobox', { name: 'Section' });
+      await expect(select).toHaveValue('/settings');
+      await expect(select.locator('option')).toHaveText([
+        'General',
+        'Models',
+        'Allowed models',
+        'A2A',
+        'Plugins',
+        'Data and retention',
+        'API reference',
+      ]);
+      await expect(page.getByRole('navigation', { name: 'Settings sections' })).toHaveCount(0);
+      // The General content lists Human input and Wakeup with their descriptions.
+      await expect(page.locator('[data-setting="tools.humanInput"]')).toContainText('Human input');
+      await expect(page.locator('[data-setting="tools.wakeup"]')).toContainText(
+        'Let agents schedule themselves to continue later.',
       );
-      expect(Math.round(box?.width ?? 0), `${name} is as wide as the words`).toBe(
-        Math.round(wordsBox?.width ?? -1),
-      );
-    }
 
-    // The question before a restart opens as a bottom sheet with the same sentence.
-    await banner.getByRole('button', { name: 'Restart now' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Restart Interborough now?' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText(
-      'Running work picks up where it stopped; reviews stay waiting.',
-    );
-    const sheet = await dialog.boundingBox();
-    expect(Math.round((sheet?.y ?? 0) + (sheet?.height ?? 0))).toBe(900);
-    expect(Math.round(sheet?.width ?? 0)).toBe(375);
-    await checkA11y('settings restart question as a sheet at 375px');
-    await captureForDesignReview(page, {
-      route: '/settings',
-      state: 'restart-sheet',
-      source: SOURCE,
+      // The banner stacks its buttons under its words (COR-2314), each as wide as the words' column,
+      // beside the glyph, and 44px tall.
+      const banner = page.getByTestId('settings-restart-summary');
+      await expect(banner).toContainText('1 change waits for a restart');
+      const wordsBox = await banner.locator('.cinder-banner__content').boundingBox();
+      expect(wordsBox).not.toBeNull();
+      for (const name of ['Revert 1 change', 'Restart now']) {
+        const box = await banner.getByRole('button', { name }).boundingBox();
+        // The buttons paint compact and carry an invisible 44px hit area, a positioned
+        // pseudo-element that takes no space; stacked buttons' hit areas overlap, so read the
+        // pseudo-element's own height rather than scanning for the points that reach the button.
+        const hitAreaHeight = await banner.getByRole('button', { name }).evaluate((element) => {
+          const hitArea = getComputedStyle(element, '::before');
+          return hitArea.position === 'absolute' ? Number.parseFloat(hitArea.height) : 0;
+        });
+        expect(hitAreaHeight, `${name} has a 44px tall hit area`).toBeGreaterThanOrEqual(44);
+        expect(Math.round(box?.x ?? 0), `${name} starts under the words`).toBe(
+          Math.round(wordsBox?.x ?? -1),
+        );
+        expect(Math.round(box?.width ?? 0), `${name} is as wide as the words`).toBe(
+          Math.round(wordsBox?.width ?? -1),
+        );
+      }
+
+      // The question before a restart opens as a bottom sheet with the same sentence.
+      await banner.getByRole('button', { name: 'Restart now' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Restart Interborough now?' });
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText(
+        'Running work picks up where it stopped; reviews stay waiting.',
+      );
+      const sheet = await dialog.boundingBox();
+      expect(Math.round((sheet?.y ?? 0) + (sheet?.height ?? 0))).toBe(900);
+      expect(Math.round(sheet?.width ?? 0)).toBe(375);
+      await checkA11y('settings restart question as a sheet at 375px');
+      await captureForDesignReview(page, {
+        route: '/settings',
+        state: 'restart-sheet',
+        source: SOURCE,
+      });
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).toHaveCount(0);
     });
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(dialog).toHaveCount(0);
   });
 
   test('tablet: a 170px section nav sits beside the content, and Restart now stays a secondary button', async ({
