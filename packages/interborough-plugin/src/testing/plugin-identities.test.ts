@@ -356,3 +356,42 @@ describe('pluginIdentities', () => {
     expect((error as TypeError).message).toMatch(/"example".*configuration/);
   });
 });
+
+describe('a contributed code workflow', () => {
+  const workflowPlugin = (input: z.ZodType, version?: string) =>
+    definePlugin({
+      ...base,
+      setup: () => ({
+        workflows: [
+          {
+            name: 'sync',
+            title: 'Sync',
+            inputSchema: input,
+            ...(version === undefined ? {} : { version }),
+          } as never,
+        ],
+      }),
+    });
+
+  test('is a workflow entry named plugin:name, at its own version or else the plugin version', async () => {
+    const plain = await pluginIdentities(workflowPlugin(z.object({ team: z.string() })));
+    expect(plain.entries.find(({ kind }) => kind === 'workflow')).toMatchObject({
+      kind: 'workflow',
+      id: 'example:sync',
+      version: '1.2.0',
+    });
+    const pinned = await pluginIdentities(workflowPlugin(z.object({ team: z.string() }), '4.0.0'));
+    expect(pinned.entries.find(({ kind }) => kind === 'workflow')?.version).toBe('4.0.0');
+  });
+
+  test('digests the input schema, so a changed input changes the digest', async () => {
+    const digestOf = async (input: z.ZodType) => {
+      const identities = await pluginIdentities(workflowPlugin(input));
+      return identities.entries.find(({ kind }) => kind === 'workflow')?.schema;
+    };
+    const before = await digestOf(z.object({ team: z.string() }));
+    expect(before).toStartWith('sha256:');
+    expect(await digestOf(z.object({ team: z.string() }))).toBe(before);
+    expect(await digestOf(z.object({ team: z.number() }))).not.toBe(before);
+  });
+});

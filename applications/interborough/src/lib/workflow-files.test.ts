@@ -284,6 +284,40 @@ describe('the listing of a file', () => {
     expect(stub.callsTo('bureau.workflows.list')[0]?.params).not.toHaveProperty('includeRuns');
   });
 
+  test('reads a plugin code workflow entry, which has no state or hash, and lists only the files (COR-2244)', async () => {
+    stub = installWorkflowWorld(emptyWorld({ files: [readyFile('one')] }));
+    stub.on('bureau.workflows.list', () => ({
+      workflows: [
+        {
+          id: 'one',
+          state: 'ready',
+          owner: 'o',
+          hash: 'h',
+          description: null,
+          agent: null,
+          paused: false,
+          inputSchema: null,
+          outputSchema: null,
+          version: null,
+          trigger: null,
+          problem: null,
+          runs: null,
+        },
+        {
+          kind: 'code',
+          id: 'kit:sync',
+          name: 'sync',
+          title: 'Sync issues',
+          plugin: 'kit',
+          version: '1.0.0',
+        },
+      ],
+      nextOffset: null,
+    }));
+    const listed = await listWorkflowFiles();
+    expect(listed.map((listing) => listing.id)).toEqual(['one']);
+  });
+
   test('refuses an answer without the counts the Bureau now sends, instead of showing a zero', async () => {
     stub = installWorkflowWorld(emptyWorld({ files: [readyFile('one')] }));
     stub.on('bureau.workflows.list', () => ({

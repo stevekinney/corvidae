@@ -455,6 +455,9 @@ function planOf(
     for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
   }
   for (const agent of contributions.agents ?? []) contribute('agent', agent.name);
+  for (const item of contributions.workflows ?? []) {
+    contribute('workflow', item.name, undefined, item.title);
+  }
   return { claims, listings, tools };
 }
 
@@ -482,6 +485,11 @@ function heldByHost(options: ComposableOptions): Claims {
   }
   for (const entry of options.contributionCatalog?.entries('trigger') ?? []) {
     claims.hold({ space: 'trigger', name: entry.name }, HOST_PARTY);
+  }
+  // A code workflow the host registered holds its name: a plugin's of the same `plugin:name` is
+  // skipped, first loaded wins (O1b).
+  for (const entry of options.contributionCatalog?.entries('workflow') ?? []) {
+    claims.hold({ space: 'workflow', name: entry.name }, HOST_PARTY);
   }
   for (const validator of options.validators ?? []) {
     claims.hold({ space: 'validator', name: validator.identity.name }, HOST_PARTY);
@@ -543,6 +551,7 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'formatter',
   'agent',
   'scorer',
+  'workflow',
 ]);
 
 /**
@@ -593,7 +602,12 @@ class Contributed {
   ): void {
     const id = (name: string) => formatToolId({ namespace: plugin, name });
     for (const [key, tool] of tools) this.tools[key] = tool;
-    if ((result.activities?.length ?? 0) + (result.triggers?.length ?? 0) > 0) {
+    if (
+      (result.activities?.length ?? 0) +
+        (result.triggers?.length ?? 0) +
+        (result.workflows?.length ?? 0) >
+      0
+    ) {
       this.activities.push({ plugin, version, result });
     }
     if (result.guardrails !== undefined || result.interceptors !== undefined) {
@@ -708,6 +722,15 @@ function catalogWith(
         name: formatToolId({ namespace: plugin, name: kind.name }),
         version: kind.version,
         value: kind,
+        source,
+      });
+    }
+    for (const item of result.workflows ?? []) {
+      catalog.register({
+        kind: 'workflow',
+        name: formatToolId({ namespace: plugin, name: item.name }),
+        version: item.version,
+        value: item,
         source,
       });
     }
@@ -1011,6 +1034,24 @@ function activityFieldProblems(contributions: PluginContributions): PluginProble
   return problems;
 }
 
+/**
+ * The `workflow-field-missing` problems of a plugin whose code workflow has no title or no input
+ * schema (D7), the two fields the workflow list and the start check need.
+ */
+function workflowFieldProblems(contributions: PluginContributions): PluginProblem[] {
+  const problems: PluginProblem[] = [];
+  for (const item of contributions.workflows ?? []) {
+    const title: unknown = item.title;
+    if (typeof title !== 'string' || title.trim() === '') {
+      problems.push({ code: 'workflow-field-missing', workflow: item.name, field: 'title' });
+    }
+    if ((item.inputSchema as unknown) === undefined) {
+      problems.push({ code: 'workflow-field-missing', workflow: item.name, field: 'inputSchema' });
+    }
+  }
+  return problems;
+}
+
 /** `given` with every caller-owned collection composition reads after an await copied now. */
 function snapshotOf<O extends ComposableOptions>(given: O): O {
   const {
@@ -1090,6 +1131,7 @@ export async function composePlugins<O extends ComposableOptions>(
     }
     const refusals = [
       ...activityFieldProblems(outcome.result),
+      ...workflowFieldProblems(outcome.result),
       ...formatterUnknownKinds(outcome.result),
       ...providerSecretProblems(entry, outcome.result),
     ];

@@ -83,6 +83,33 @@ const HOST_ENTRY: Record<
       activities: [{ name: 'x', title: 'X', inputSchema: z.object({}), execute: async () => 'x' }],
     },
   },
+  workflow: {
+    host: {
+      contributionCatalog: (() => {
+        const catalog = createVersionedCatalog();
+        catalog.register({
+          kind: 'workflow',
+          name: 'p:x',
+          version: '1',
+          value: {},
+          source: { name: 'host', version: '1' },
+        });
+        return catalog;
+      })(),
+    },
+    contribution: {
+      workflows: [
+        {
+          name: 'x',
+          title: 'X',
+          inputSchema: z.object({}),
+          handler: async function* () {
+            return 'x';
+          },
+        },
+      ],
+    },
+  },
   trigger: {
     host: {
       contributionCatalog: (() => {

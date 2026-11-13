@@ -30,7 +30,7 @@ import type {
   ProviderConfigurationBase,
   ProviderDefinition,
 } from '@lostgradient/operative/provider-kit';
-import type { ActivityDefinition } from '@lostgradient/weft';
+import type { ActivityDefinition, WorkflowDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
 
@@ -483,6 +483,28 @@ export type PluginActivity = ActivityDefinition<any, any> & {
 };
 
 /**
+ * A workflow defined in code, as Weft's `workflow({ name }).execute(...)` builds it. Its `name` is
+ * unique within the plugin; the host registers it as `plugin:name`, lists it beside the workflow
+ * files, and starts it with the envelope a workflow file's run starts with (`{ kind, input,
+ * origin, workspaceAuthority? }`), after checking `inputSchema` against the envelope's `input`. A
+ * workflow file of the same plugin cannot carry the same name, and a plugin that is disabled takes
+ * its workflows with it.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a workflow's input, output and services vary per workflow.
+export type PluginWorkflow = WorkflowDefinition<any, any, string, any> & {
+  /**
+   * The workflow's own version. A run pins it in place of the plugin's version, and it is the
+   * version the engine registers the workflow at.
+   */
+  readonly version?: string;
+  /** What the workflow list calls the workflow. Required: setup fails without it. */
+  readonly title: string;
+  /** The schema of the input a start gives the workflow. Required (D7): setup fails without it. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the input type varies per workflow.
+  readonly inputSchema: NonNullable<WorkflowDefinition<any, any, string, any>['inputSchema']>;
+};
+
+/**
  * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a
  * plugin names only the kinds it contributes.
  */
@@ -513,6 +535,8 @@ export interface PluginContributions {
   readonly formatters?: readonly PluginFormatter[];
   /** Agents defined in code. */
   readonly agents?: readonly PluginAgent[];
+  /** Workflows defined in code, registered as `plugin:name` beside the workflow files. */
+  readonly workflows?: readonly PluginWorkflow[];
 }
 
 /** What `setup` returns, with the hook the host calls once Bureau has started. */

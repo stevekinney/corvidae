@@ -28,6 +28,7 @@ export type {
   PluginToolGuardrailEntry,
   PluginTrigger,
   PluginTriggerContext,
+  PluginWorkflow,
 } from './contributions.ts';
 export { definePlugin } from './define-plugin.ts';
 export { guardrailId, isGuardrailFactory } from './guardrail-family.ts';

@@ -1,12 +1,13 @@
 import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/bureau';
 import { createPluginTestHost } from '@lostgradient/bureau/testing';
-import { pluginContract } from '@lostgradient/interborough-plugin/testing';
+import { pluginContract, pluginContributions } from '@lostgradient/interborough-plugin/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { CHANGELOG_WRITER_REPLY, DEMO_AGENT_NAMES, RELEASE_HELPER_REPLY } from './agents.ts';
 import plugin, { createDemoPlugin, DEMO_APPROVAL_SECRET } from './plugin.ts';
+import { echoInputSchema } from './workflows.ts';
 
 pluginContract(plugin, { createHost: createPluginTestHost });
 
@@ -82,6 +83,16 @@ describe('the demo plugin', () => {
       });
       expect(bureau.agents.find(agent.id)).toBeUndefined();
     }
+  });
+
+  test('contributes one code workflow with a title and an input schema (COR-2244)', async () => {
+    const contributions = await pluginContributions(plugin);
+    expect(contributions.workflows?.map(({ name, title }) => ({ name, title }))).toEqual([
+      { name: 'echo-input', title: 'Echo the input' },
+    ]);
+    expect(contributions.workflows?.[0]?.inputSchema).toBe(echoInputSchema);
+    expect(echoInputSchema.safeParse({ message: 'hi' }).success).toBe(true);
+    expect(echoInputSchema.safeParse({ message: 3 }).success).toBe(false);
   });
 
   test('declares one generated secret of its own, never the host’s approval secret', () => {

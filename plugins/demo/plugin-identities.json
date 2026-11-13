@@ -85,6 +85,12 @@
       "id": "demo:never-passes",
       "version": "1",
       "schema": null
+    },
+    {
+      "kind": "workflow",
+      "id": "demo:echo-input",
+      "version": "1.1.0",
+      "schema": "sha256:9590ede973896bf8e13474d28aa358872be05c7ec9451819dccb40e4cbe72fcf"
     }
   ]
 }

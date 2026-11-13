@@ -299,6 +299,15 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(
+      contributions.workflows,
+      (workflow) =>
+        named(workflow, 'workflow', {
+          input: describeSchema(workflow.inputSchema),
+          output: describeSchema(workflow.outputSchema, 'output'),
+        }),
+      descriptor,
+    ),
+    ...entriesOf(
       contributions.validators,
       (validator) => ({
         kind: 'validator',

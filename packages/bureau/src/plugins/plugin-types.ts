@@ -180,6 +180,17 @@ export type PluginProblem =
     }
   | {
       /**
+       * A code workflow has no `title` or no `inputSchema` (D7), which the workflow list and the
+       * start check need; the plugin is `skipped` and the host starts.
+       */
+      readonly code: 'workflow-field-missing';
+      /** The workflow's name within the plugin. */
+      readonly workflow: string;
+      /** The field that is missing: `title` or `inputSchema`. */
+      readonly field: 'title' | 'inputSchema';
+    }
+  | {
+      /**
        * A formatter lists an event kind that is not in `BUREAU_EVENT_CATALOG`, so it would never
        * format anything; the plugin is `skipped` and the host starts.
        */
@@ -313,7 +324,8 @@ export type PluginContributionKind =
   | 'scorer'
   | 'panel'
   | 'formatter'
-  | 'agent';
+  | 'agent'
+  | 'workflow';
 
 /** One contribution a running plugin registered, as composition records it. */
 export interface PluginContribution {

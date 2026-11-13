@@ -14,6 +14,7 @@ export const PLUGIN_PROBLEM_CODES = {
   'configuration-invalid': 'configuration',
   'name-clash': 'name',
   'activity-field-missing': 'activity',
+  'workflow-field-missing': 'workflow',
   'formatter-unknown-kind': 'formatter',
   'provider-secret-unknown': 'provider',
   'provider-secret-ambiguous': 'provider',

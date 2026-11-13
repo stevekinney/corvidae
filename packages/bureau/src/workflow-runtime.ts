@@ -30,6 +30,7 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   buildWorkflowDocumentManifest,
   checkWorkflowCompatibility,
+  definitionSchemaToJsonSchema,
   type DocumentWorkflowHost,
   encode,
   type Engine,
@@ -76,7 +77,7 @@ import type { ScheduleHookOrigins } from './hooks/schedule-hook-origins';
 import type { WorkflowRevisionSteps } from './workflow-review-waits';
 import { createWorkflowScheduleHolds, type WorkflowScheduleHolds } from './workflow-schedule-holds';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
-import { bureauNameOf, weftNameOf } from './namespaced-identifier';
+import { bureauNameOf, isMappedWeftName, weftNameOf } from './namespaced-identifier';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import {
   createWorkflowTriggerSupervisor,
@@ -108,6 +109,7 @@ import {
 } from './workflow-schema';
 import {
   createWorkflowSnapshotStore,
+  pinnedIdOf,
   WorkflowSnapshotError,
   type WorkflowRevision,
   type WorkflowRunPinProblem,
@@ -126,6 +128,42 @@ const QUIET_RUN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** The most runs of one workflow `runs.list` reads, so a long history cannot make one call unbounded. */
 const RUNS_READ_LIMIT_PER_WORKFLOW = 1000;
+
+/**
+ * A code workflow a plugin contributed, as `bureau.workflows.list` shows it beside the files (O5):
+ * an explicit `kind`, and none of a file's members (`hash`, `state`, `paused`, `trigger`).
+ */
+export interface CodeWorkflowListing {
+  /** Always `code`: the workflow is registered by a plugin's code, not by a file. */
+  readonly kind: 'code';
+  /** `plugin:name`, the identifier every read and start names it by. */
+  readonly id: string;
+  /** The name within the plugin. */
+  readonly name: string;
+  /** What the list calls the workflow. */
+  readonly title: string;
+  /** The contributing plugin. */
+  readonly plugin: string;
+  /** The version a run pins: the workflow's own, else its plugin's. */
+  readonly version: string;
+}
+
+/**
+ * Every way `input` breaks the `inputSchema` of a plugin's code workflow (O6): Bureau checks the
+ * input the start was given, never the envelope the engine starts the run with. A schema that
+ * cannot be written as JSON Schema is the engine's to check, so it yields no issue here.
+ */
+function codeInputIssues(schema: unknown, input: unknown): readonly WorkflowSchemaIssue[] {
+  let jsonSchema: Readonly<Record<string, unknown>>;
+  try {
+    jsonSchema = definitionSchemaToJsonSchema(
+      schema as Parameters<typeof definitionSchemaToJsonSchema>[0],
+    );
+  } catch {
+    return [];
+  }
+  return inputSchemaIssues(jsonSchema, input);
+}
 
 /** One workflow in {@link BureauWorkflows.get}. */
 export interface WorkflowDetail extends WorkflowListing {
@@ -169,6 +207,10 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
    * Present when Bureau cancelled the instance at startup because a contributed activity its
    * revision pins is not loaded: `missing` when no version of it is, `version-mismatch` when only
    * other versions are (COR-1874). The instance is never resumed on another version.
+   *
+   * It is also present, as `missing` with a `workflow` subject, on a waiting run of a plugin's code
+   * workflow whose plugin is not loaded: that run is not cancelled, and resumes when the plugin
+   * returns (O2).
    */
   readonly unresumable?: WorkflowRunPinProblem;
 }
@@ -390,6 +432,12 @@ export interface BureauWorkflows {
   /** The step, activity, and trigger kinds this runtime supports. */
   readonly catalog: () => WorkflowCatalog;
   readonly list: () => readonly WorkflowListing[];
+  /**
+   * The code workflows plugins contributed, in load order. They are not files, so {@link list}
+   * never holds them; the `bureau.workflows.list` operation and the `workflows-list` tool show
+   * both. A code workflow starts and reads back its runs through the same methods as a file.
+   */
+  readonly codeList: () => readonly CodeWorkflowListing[];
   readonly get: (id: string) => Promise<WorkflowDetail | undefined>;
   readonly create: (
     id: string,
@@ -752,6 +800,23 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   );
   const contributions = options.contributions ?? NO_WORKFLOW_CONTRIBUTIONS;
   const owner = ownerOrLocal(undefined);
+  /**
+   * The code workflows plugins contributed, by identifier. The engine knows each by its Weft name at
+   * its pinned version, registered below before anything scans or recovers. They stay out of
+   * {@link registeredTypes}: that set is the files', whose snapshots recovery plans against.
+   */
+  const codeWorkflows = contributions.workflows;
+  for (const code of codeWorkflows.values()) {
+    const weftName = weftNameOf(code.id);
+    if (engine.getWorkflowDefinition(weftName) !== undefined) {
+      throw new TypeError(
+        `The plugin workflow "${code.id}" cannot be registered: the engine already has a workflow named "${weftName}".`,
+      );
+    }
+    // The title is the list's; the name and the version are the identity the catalog pinned.
+    const { title: _title, ...definition } = code.definition;
+    engine.register({ ...definition, name: weftName, version: code.version } as never);
+  }
   /**
    * The workflows Bureau registered from a file in this process, by identifier. The engine knows
    * each by its Weft name ({@link weftNameOf}), which differs for a plugin's `plugin:name`.
@@ -1180,7 +1245,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             id,
             workflowVersion: version,
             runIds,
-            reason: `the stored revision ${version} of workflow "${id}" pins the activity ${pin.activity}, which is not loaded (${pin.reason}${pin.availableVersions.length === 0 ? '' : `; loaded: ${pin.availableVersions.join(', ')}`})`,
+            reason: `the stored revision ${version} of workflow "${id}" pins ${pin.activity === undefined ? 'the workflow' : 'the activity'} ${pinnedIdOf(pin)}, which is not loaded (${pin.reason}${pin.availableVersions.length === 0 ? '' : `; loaded: ${pin.availableVersions.join(', ')}`})`,
             pin,
           });
           continue;
@@ -1242,7 +1307,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             cancelledAt: options.runtime.clock.nowISO(),
           });
           await engine.cancel(runId);
-          if (entry.pin !== undefined) options.onPinnedUnavailable?.(entry.pin.activity, runId);
+          if (entry.pin !== undefined) options.onPinnedUnavailable?.(pinnedIdOf(entry.pin), runId);
           options.diagnose(
             `Cancelled instance "${runId}" of workflow "${entry.id}": ${entry.reason}.`,
             undefined,
@@ -1315,6 +1380,48 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     track(stamp, 'workflow-run-stamp');
   };
 
+  /**
+   * The pin of a run of a plugin's code workflow that is no longer loaded (its plugin is disabled
+   * or gone): `missing`, since no version of it is. A run of an unregistered type is left as it
+   * is, as it always was, so it resumes when the plugin returns at the version it began on; it is
+   * never resumed on another (O2). `undefined` for any type that is loaded or is a workflow file's.
+   */
+  async function missingCodePin(
+    type: string,
+    version: string,
+  ): Promise<WorkflowRunPinProblem | undefined> {
+    if (!isMappedWeftName(type) || engine.getWorkflowDefinition(type) !== undefined) {
+      return undefined;
+    }
+    const id = bureauNameOf(type);
+    if (registeredTypes.has(id)) return undefined;
+    const known = await snapshots.identifiers();
+    if (known.includes(id)) return undefined;
+    return { reason: 'missing', workflow: formatVersionedId(id, version), availableVersions: [] };
+  }
+
+  /** Reports each in-flight run of a code workflow that is not loaded, so its plugin lists it. */
+  async function reportMissingCodeRuns(): Promise<void> {
+    try {
+      for (let offset = 0; offset < 10_000;) {
+        const page = await engine.list({ status: [...IN_FLIGHT_STATUSES], limit: 100, offset });
+        for (const run of page.items) {
+          const pin = await missingCodePin(run.type, run.version);
+          if (pin === undefined) continue;
+          options.onPinnedUnavailable?.(pinnedIdOf(pin), run.id);
+          options.diagnose(
+            `Instance "${run.id}" of the code workflow "${bureauNameOf(run.type)}" is waiting: no version of it is loaded (its plugin is disabled or gone). It resumes when the plugin returns at version ${run.version}.`,
+            undefined,
+          );
+        }
+        offset += page.items.length;
+        if (page.items.length === 0 || offset >= page.total) break;
+      }
+    } catch (error) {
+      options.diagnose('Could not look for runs of code workflows that are not loaded.', error);
+    }
+  }
+
   async function start(): Promise<WorkflowStartReport> {
     if (started) return { retained: [] };
     started = true;
@@ -1332,6 +1439,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     };
     return exclusive(async () => {
       await catalog.refresh();
+      // A code workflow and a file of one identifier cannot both be started by that identifier: a
+      // startup error naming both. A file that comes to clash on a later rescan is listed
+      // `invalid` with `shadows-code-workflow` and the code workflow keeps running (O1).
+      for (const code of codeWorkflows.values()) {
+        if (catalog.list().some((listing) => listing.id === code.id)) {
+          throw new TypeError(
+            `The code workflow "${code.id}" of plugin "${code.plugin}" and the workflow file "${code.id}" share one identifier; rename or remove the file.`,
+          );
+        }
+      }
+      await reportMissingCodeRuns();
       const { retained, unrecoverable } = await planRecovery();
       await register(retained.map((entry) => entry.document));
       await cancelUnrecoverable(unrecoverable);
@@ -1457,14 +1575,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       ...new Set([
         ...catalog.list().map((listing) => listing.id),
         ...(await snapshots.identifiers()),
+        ...codeWorkflows.keys(),
       ]),
     ].toSorted();
   }
 
-  /** Whether `type`, an identifier or the engine's name for one, is a workflow file's. */
+  /**
+   * Whether `type`, an identifier or the engine's name for one, is a workflow file's or a plugin's
+   * code workflow, whose runs recovery leaves to the engine and the run readers show.
+   */
   async function isWorkflowType(type: string): Promise<boolean> {
     const id = bureauNameOf(type);
-    if (registeredTypes.has(id)) return true;
+    if (registeredTypes.has(id) || codeWorkflows.has(id)) return true;
     const stored = await snapshots.identifiers();
     return stored.includes(id);
   }
@@ -1837,6 +1959,15 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     owner,
     catalog: () => workflowCatalogOf(host, contributions),
     list: () => catalog.list(),
+    codeList: () =>
+      [...codeWorkflows.values()].map((code): CodeWorkflowListing => ({
+        kind: 'code',
+        id: code.id,
+        name: code.id.slice(code.id.indexOf(':') + 1),
+        title: code.title,
+        plugin: code.plugin,
+        version: code.version,
+      })),
 
     async get(id) {
       const snapshot = await catalog.readSnapshot(id);
@@ -2144,9 +2275,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
     async getRun(runId) {
       const state: WorkflowState | null | undefined = await engine.get(runId);
-      if (state === null || state === undefined || !(await isWorkflowType(state.type))) {
-        return undefined;
-      }
+      if (state === null || state === undefined) return undefined;
+      // A run of a code workflow whose plugin is not loaded reports `missing` while it waits.
+      const unloaded = IN_FLIGHT_STATUSES.includes(state.status)
+        ? await missingCodePin(state.type, state.versionTuple.workflowVersion)
+        : undefined;
+      if (unloaded === undefined && !(await isWorkflowType(state.type))) return undefined;
       // Weft's cancellation carries no reason; one Bureau cancelled at startup has its own.
       const cancellation =
         state.error === undefined && state.status === 'cancelled'
@@ -2167,7 +2301,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),
         finishReason: state.status === 'failed' ? finishReasonOf(state.errorStack) : null,
-        ...(cancellation?.pin === undefined ? {} : { unresumable: cancellation.pin }),
+        ...(cancellation?.pin === undefined && unloaded === undefined
+          ? {}
+          : { unresumable: cancellation?.pin ?? unloaded! }),
       };
     },
 
@@ -2285,15 +2421,24 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const input: unknown = structuredClone(requested);
       workflows.assertStartable(id);
-      if (applyPending) queueApply();
-      await settled();
-      if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
-      // The apply may have changed the file: judge the input against the revision that will run.
-      const file = catalog.find(id);
-      if (file === undefined || file.paused) {
-        throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
+      const code = codeWorkflows.get(id);
+      let file: ReturnType<typeof catalog.find>;
+      if (code === undefined) {
+        if (applyPending) queueApply();
+        await settled();
+        if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
+        // The apply may have changed the file: judge the input against the revision that will run.
+        file = catalog.find(id);
+        if (file === undefined || file.paused) {
+          throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
+        }
       }
-      const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
+      const issues =
+        code !== undefined
+          ? codeInputIssues(code.definition.inputSchema, input)
+          : file!.inputSchema === null
+            ? []
+            : inputSchemaIssues(file!.inputSchema, input);
       if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
       const origin: TaskOrigin = startOptions.origin ?? {
         kind: 'person',
@@ -2311,7 +2456,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           await options.audit({
             runId: auditTrailWorkflowOwnerId(id),
             type: 'workflow.started',
-            detail: { id, hash: file.hash, runId: handle.id },
+            // A code workflow has no file to hash: the entry names the version it pins instead.
+            detail: {
+              id,
+              hash: file?.hash ?? formatVersionedId(id, code!.version),
+              runId: handle.id,
+            },
             principal: `agent-run:${origin.runId}`,
           });
         } catch (error) {
@@ -2332,7 +2482,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           error,
         );
       }
-      return { runId: handle.id, workflow: id, workflowVersion: pinned ?? file.version };
+      return {
+        runId: handle.id,
+        workflow: id,
+        workflowVersion: pinned ?? file?.version ?? code!.version,
+      };
     },
 
     async findStart(idempotencyKey) {
@@ -2346,7 +2500,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     },
 
     getCode(id) {
-      return registeredTypes.has(id) ? undefined : describeCodeWorkflow(engine, id);
+      if (registeredTypes.has(id)) return undefined;
+      // The engine knows a plugin's `plugin:name` by its Weft name; the detail answers by the id.
+      const detail = describeCodeWorkflow(engine, weftNameOf(id));
+      return detail === undefined ? undefined : { ...detail, id };
     },
 
     onChange: (listener) =>
@@ -2356,6 +2513,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }),
 
     assertStartable(id) {
+      const code = codeWorkflows.get(id);
+      if (code !== undefined) {
+        // Listed, and refused while its plugin needs setup (O8).
+        code.assertAvailable();
+        return;
+      }
       const file = catalog.find(id);
       if (file === undefined || file.paused) {
         throw options.createError(`Workflow "${id}" does not exist`, 'NOT_FOUND');
@@ -2368,7 +2531,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     start,
 
     isWorkflowType,
-    isRegisteredType: (type) => registeredTypes.has(bureauNameOf(type)),
+    isRegisteredType: (type) =>
+      registeredTypes.has(bureauNameOf(type)) || codeWorkflows.has(bureauNameOf(type)),
 
     async revisionSteps(type, workflowVersion) {
       if (!(await isWorkflowType(type))) return undefined;

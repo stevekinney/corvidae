@@ -19,15 +19,36 @@
  * @module workflow-contributions
  */
 
-import type { PluginActivity, PluginTrigger } from '@lostgradient/interborough-plugin';
+import type {
+  PluginActivity,
+  PluginTrigger,
+  PluginWorkflow,
+} from '@lostgradient/interborough-plugin';
 import type { DocumentActivity, DocumentTriggerValidator } from '@lostgradient/weft';
 
 import { isNamespacedIdentifier, toWeftName } from './namespaced-identifier';
+import { assertWorkflowAvailable } from './plugins/plugin-secret-gate';
 import type {
   VersionedCatalog,
   VersionedCatalogEntry,
   VersionedCatalogResolution,
 } from './versioned-catalog';
+
+/** A code workflow a plugin contributed, ready for the engine and the workflow list. */
+export interface CodeWorkflow {
+  /** `plugin:name`. */
+  readonly id: string;
+  /** The plugin's name. */
+  readonly plugin: string;
+  /** The version the engine registers it at and a run pins: its own, else its plugin's (O4). */
+  readonly version: string;
+  /** What the workflow list calls it. */
+  readonly title: string;
+  /** The definition as contributed: its schema and handler are what the engine runs. */
+  readonly definition: PluginWorkflow;
+  /** Throws when the plugin needs setup, so a start is refused before the engine is asked. */
+  readonly assertAvailable: () => void;
+}
 
 /** What the workflow host takes from the catalog. */
 export interface WorkflowContributions {
@@ -41,6 +62,12 @@ export interface WorkflowContributions {
   readonly activityVersions: Readonly<Record<string, string>>;
   /** The `title` each contributed activity declares, by the Weft name of its `plugin:name`. */
   readonly activityTitles: Readonly<Record<string, string>>;
+  /**
+   * The contributed code workflows, by their `plugin:name`, each as the definition the engine
+   * registers it under the Weft name of its `plugin:name` at its pinned `version` (its own, else
+   * its plugin's).
+   */
+  readonly workflows: ReadonlyMap<string, CodeWorkflow>;
   /** A validator for each contributed trigger, by its `plugin:name`. */
   readonly triggerValidators: Readonly<Record<string, DocumentTriggerValidator>>;
   /** The contributed triggers, by their `plugin:name`. */
@@ -57,6 +84,7 @@ export const NO_WORKFLOW_CONTRIBUTIONS: WorkflowContributions = Object.freeze({
   activities: Object.freeze({}),
   activityVersions: Object.freeze({}),
   activityTitles: Object.freeze({}),
+  workflows: new Map(),
   triggerValidators: Object.freeze({}),
   triggers: new Map(),
   resolveActivity: (id: string, version: string): VersionedCatalogResolution<PluginActivity> => ({
@@ -115,6 +143,35 @@ export function createWorkflowContributions(
   if (catalog === undefined) return NO_WORKFLOW_CONTRIBUTIONS;
   const activityEntries = onePerName<PluginActivity>(catalog.entries('activity'), 'activity');
   const triggerEntries = onePerName<PluginTrigger>(catalog.entries('trigger'), 'trigger');
+  const workflowEntries = onePerName<PluginWorkflow>(catalog.entries('workflow'), 'workflow');
+  for (const entry of workflowEntries) {
+    // D7: the list shows a code workflow by its title, and a start checks input against its schema.
+    const { title, inputSchema, handler } = entry.value as {
+      title?: unknown;
+      inputSchema?: unknown;
+      handler?: unknown;
+    };
+    if (typeof handler !== 'function') {
+      throw new TypeError(`The workflow "${entry.name}" has no handler.`);
+    }
+    if (typeof title !== 'string' || title.trim() === '') {
+      throw new TypeError(`The workflow "${entry.name}" has no title.`);
+    }
+    if (inputSchema === undefined) {
+      throw new TypeError(`The workflow "${entry.name}" has no inputSchema.`);
+    }
+  }
+  const workflows = new Map<string, CodeWorkflow>();
+  for (const entry of workflowEntries) {
+    workflows.set(entry.name, {
+      id: entry.name,
+      plugin: entry.source.name,
+      version: entry.version,
+      title: entry.value.title,
+      definition: entry.value,
+      assertAvailable: () => assertWorkflowAvailable(entry.value),
+    });
+  }
   for (const entry of activityEntries) {
     if (typeof entry.value?.execute !== 'function') {
       throw new TypeError(`The activity "${entry.name}" has no execute function.`);
@@ -167,6 +224,7 @@ export function createWorkflowContributions(
     activities: Object.freeze(activities),
     activityVersions: Object.freeze(activityVersions),
     activityTitles: Object.freeze(activityTitles),
+    workflows,
     triggerValidators: Object.freeze(triggerValidators),
     triggers,
     resolveActivity: (id: string, version: string) =>

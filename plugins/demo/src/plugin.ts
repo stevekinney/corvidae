@@ -5,6 +5,7 @@ import { createAuditInterceptor } from './audit.ts';
 import { seedDemo } from './seed.ts';
 import { createIssueRefundTool, createLookupOrderTool } from './tools.ts';
 import { createDemoValidators } from './validators.ts';
+import { createDemoWorkflows } from './workflows.ts';
 
 export { DEMO_AGENT_NAMES, type DemoAgentName } from './agents.ts';
 export { AUDIT_INTERCEPTOR_NAME, auditStepKey, type AuditStepEntry } from './audit.ts';
@@ -67,6 +68,7 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
         tools: [createLookupOrderTool(), createIssueRefundTool()],
         validators: createDemoValidators(),
         interceptors: [createAuditInterceptor(storage)],
+        workflows: createDemoWorkflows(),
         ...(seedOnStart
           ? {
               start: (host, started) => seedDemo(host, started.storage),

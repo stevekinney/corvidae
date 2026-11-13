@@ -8,6 +8,7 @@ Everything it contributes answers from a script, so no model is called and no pr
 - **Tools**: `demo:lookup-order` (read-only) and `demo:issue-refund` (changes something, so an operator approves each call). An agent file lists them under `tools`.
 - **Validators**: `demo:accepts-any-answer` passes every answer, and `demo:never-passes` waits until its goal is cancelled.
 - **An interceptor set**: `demo:audit` applies to every agent, and its `onStep` hook (declared `replay: 'effectful'`) writes each step's usage, tool call ids and tool names to the plugin's storage under `run:<runId>:step:<n>`, so a step a recovered run replays overwrites its entry. The worked example in the [authoring README](../../packages/interborough-plugin/README.md) is this set.
+- **A code workflow**: `demo:echo-input` completes at once with the `message` it was started with (default `hello`). It lists beside the workflow files in `bureau.workflows.list` with `kind: 'code'`.
 - **A goal and a schedule**: the `seeded-goal` goal (it names `demo:accepts-any-answer`) and the `Daily summary` schedule (it runs `demo:assistant`), both created in `start`.
 
 ## The approval secret

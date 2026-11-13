@@ -66,13 +66,27 @@ export interface WorkflowRunCancellation {
  * Why a revision's pinned activity cannot be resolved: `missing` when no version of the activity is
  * loaded, `version-mismatch` when only other versions are. Never answered by another version.
  */
-export interface WorkflowRunPinProblem {
-  /** `missing` when no version of the activity is loaded, `version-mismatch` when only others are. */
+export type WorkflowRunPinProblem = {
+  /** `missing` when no version of the pinned item is loaded, `version-mismatch` when only others are. */
   readonly reason: 'missing' | 'version-mismatch';
-  /** The pinned activity, as `plugin:name@version`. */
-  readonly activity: string;
-  /** The versions of the activity that are loaded; empty for `missing`. */
+  /** The versions of the pinned item that are loaded; empty for `missing`. */
   readonly availableVersions: readonly string[];
+} & (
+  | {
+      /** The pinned activity, as `plugin:name@version`. */
+      readonly activity: string;
+      readonly workflow?: undefined;
+    }
+  | {
+      /** The pinned code workflow, as `plugin:name@version` (O3: beside `activity`, never with it). */
+      readonly workflow: string;
+      readonly activity?: undefined;
+    }
+);
+
+/** What a pin problem names, as `plugin:name@version`: its activity, or its code workflow. */
+export function pinnedIdOf(pin: WorkflowRunPinProblem): string {
+  return pin.activity ?? pin.workflow;
 }
 
 /** A document as Bureau registered it with the engine. */
@@ -233,16 +247,22 @@ function parseSnapshot(text: string | null, id: string, workflowVersion: string)
 /** The pin problem `value` holds, or `undefined` when it is not exactly one. */
 function parsePinProblem(value: unknown): WorkflowRunPinProblem | undefined {
   if (!isRecord(value)) return undefined;
-  const { reason, activity, availableVersions } = value;
+  const { reason, activity, workflow, availableVersions } = value;
   if (
     (reason !== 'missing' && reason !== 'version-mismatch') ||
-    typeof activity !== 'string' ||
     !Array.isArray(availableVersions) ||
     !availableVersions.every((version): version is string => typeof version === 'string')
   ) {
     return undefined;
   }
-  return { reason, activity, availableVersions };
+  // Exactly one subject: an activity, or a code workflow.
+  if (typeof activity === 'string' && workflow === undefined) {
+    return { reason, activity, availableVersions };
+  }
+  if (typeof workflow === 'string' && activity === undefined) {
+    return { reason, workflow, availableVersions };
+  }
+  return undefined;
 }
 
 function parseCancellation(text: string | null): WorkflowRunCancellation | undefined {

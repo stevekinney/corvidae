@@ -74,6 +74,20 @@ const listingSchema = fileSchema.extend({
 /** One entry of `bureau.workflows.list`: a file, with whether the Bureau could use it. */
 export type WorkflowFileListing = z.infer<typeof listingSchema>;
 
+/**
+ * A code workflow a plugin contributed, which the list shows after the files with an explicit
+ * `kind` and none of a file's members (no state, hash or trigger). The workflow pages show files,
+ * so {@link listWorkflowFiles} reads the entry and leaves it out rather than fail the page.
+ */
+const codeListingSchema = z.object({
+  kind: z.literal('code'),
+  id: z.string(),
+  name: z.string(),
+  title: z.string(),
+  plugin: z.string(),
+  version: z.string(),
+});
+
 const detailSchema = fileSchema.extend({
   text: z.string().nullable(),
   schedule: z
@@ -177,7 +191,7 @@ export async function listWorkflowFiles(
   const listings: WorkflowFileListing[] = [];
   let offset: number | null = 0;
   const pageSchema = z.object({
-    workflows: z.array(listingSchema),
+    workflows: z.array(z.union([codeListingSchema, listingSchema])),
     nextOffset: z.number().nullable(),
   });
   while (offset !== null) {
@@ -192,7 +206,7 @@ export async function listWorkflowFiles(
         options,
       ),
     );
-    listings.push(...page.workflows);
+    for (const entry of page.workflows) if (!('kind' in entry)) listings.push(entry);
     offset = page.nextOffset;
   }
   return listings;

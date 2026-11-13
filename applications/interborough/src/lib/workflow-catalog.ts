@@ -117,6 +117,12 @@ export type CatalogRow = {
   readonly failure: FailureCategory | null;
 };
 
+/**
+ * The engine's name for a plugin's workflow: `plugin:name` with the colon written `__`, each
+ * segment as the Bureau's `namespaced-identifier` grammar allows (a letter first, no underscore).
+ */
+const PLUGIN_WORKFLOW_NAME = /^[a-z](?:[a-z0-9-]*[a-z0-9])?__[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
+
 /** Joins the engine's definitions with the Bureau's files on the name. See the module's rules. */
 export function joinCatalog(
   definitions: readonly DefinitionSummary[],
@@ -148,6 +154,9 @@ export function joinCatalog(
     if (fileIds.has(definition.name)) continue;
     // A source with no file is a deleted file the engine has not yet forgotten.
     if (definition.origin === 'source') continue;
+    // A plugin's code workflow is the engine's `plugin__name`; the list shows files and the
+    // Bureau's own types until COR-2247 gives code workflows their own interface.
+    if (PLUGIN_WORKFLOW_NAME.test(definition.name)) continue;
     rows.push({
       name: definition.name,
       kind: 'code',

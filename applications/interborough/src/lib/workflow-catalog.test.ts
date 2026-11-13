@@ -57,6 +57,15 @@ describe('the list', () => {
     expect(rows).toHaveLength(2);
   });
 
+  test('leaves out the type of a code workflow a plugin contributed, which the engine holds as plugin__name', () => {
+    const rows = joinCatalog(
+      [codeDefinition('demo__echo-input'), codeDefinition('order-processing')],
+      [],
+    );
+    expect(rows.map((row) => row.name)).toEqual(['order-processing']);
+    expect(joinCatalog([codeDefinition('demo__echo-input')], [])).toEqual([]);
+  });
+
   test('leaves out a source with no Bureau file, so it reads the same before and after a restart', () => {
     const rows = joinCatalog(
       [codeDefinition('order-processing'), sourceDefinition('deleted-yesterday')],

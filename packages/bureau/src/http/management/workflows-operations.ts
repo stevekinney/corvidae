@@ -684,8 +684,26 @@ const listInput = z.object({
       'Counts each ready file’s instances. Off unless asked, because each count reads the engine.',
     ),
 });
+/**
+ * A code workflow a plugin contributed: an explicit `kind`, and none of a file's members (`hash`,
+ * `state`, `paused`, `trigger`). Its runs read back through `bureau.workflows.runs.*`.
+ */
+const codeWorkflowListingSchema = z.object({
+  kind: z.literal('code').describe('Always `code`: a plugin registered this workflow in code.'),
+  id: z.string().describe('`plugin:name`, which every read and start names the workflow by.'),
+  name: z.string().describe('The name within the plugin.'),
+  title: z.string(),
+  plugin: z.string().describe('The plugin that contributed the workflow.'),
+  version: z.string().describe('The version a run pins: the workflow’s own, else its plugin’s.'),
+});
+
 const listOutput = z.object({
-  workflows: z.array(workflowListingSchema.extend({ runs: runCountsSchema.nullable() })),
+  workflows: z.array(
+    z.union([
+      codeWorkflowListingSchema,
+      workflowListingSchema.extend({ runs: runCountsSchema.nullable() }),
+    ]),
+  ),
   nextOffset: z.number().int().nullable(),
 });
 
@@ -699,7 +717,7 @@ export const workflowsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List workflows',
   description:
-    'Lists every workflow file by identifier, `ready` and `invalid` alike, each with its `description`, its `trigger`, and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine, and `null` too for a file whose count the engine could not give, which never withholds the list). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
+    'Lists every workflow file by identifier, `ready` and `invalid` alike, then the code workflows plugins contributed, each with `kind: "code"`, its `id` (`plugin:name`), `name`, `title`, `plugin` and `version` and none of a file’s members (a code workflow starts and reads its runs back through the same operations as a file). Each file has its `description`, its `trigger`, and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine, and `null` too for a file whose count the engine could not give, which never withholds the list). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: listInput,
@@ -716,22 +734,29 @@ export const workflowsListOperation = defineOperation<
     const workflows = workflowsOf(host);
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
-    const all = workflows.list();
-    const page = all.slice(offset, offset + limit);
+    // The files, then the code workflows plugins contributed; the files' entries are unchanged.
+    const files = workflows.list();
+    const code = workflows.codeList();
+    const total = files.length + code.length;
+    const page = [...files, ...code].slice(offset, offset + limit);
     return {
       workflows: await Promise.all(
-        page.map(async (listing) => ({
-          ...listingView(listing),
-          // A file the Bureau cannot use is never registered, so it has had no instance to count.
-          runs:
-            authorizeWorkspaceClass('deployment-operator', principal).allowed &&
-            input.includeRuns === true &&
-            listing.state === 'ready'
-              ? await workflows.runCounts(listing.id)
-              : null,
-        })),
+        page.map(async (listing) =>
+          'kind' in listing
+            ? { ...listing }
+            : {
+                ...listingView(listing),
+                // A file the Bureau cannot use is never registered, so it has had no instance to count.
+                runs:
+                  authorizeWorkspaceClass('deployment-operator', principal).allowed &&
+                  input.includeRuns === true &&
+                  listing.state === 'ready'
+                    ? await workflows.runCounts(listing.id)
+                    : null,
+              },
+        ),
       ),
-      nextOffset: all.length > offset + limit ? offset + limit : null,
+      nextOffset: total > offset + limit ? offset + limit : null,
     };
   },
 });

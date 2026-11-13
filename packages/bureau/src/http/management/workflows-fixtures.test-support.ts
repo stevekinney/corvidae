@@ -20,6 +20,7 @@ import {
 import type { AgentDefinitions } from '../../agent-catalog.ts';
 import { createBureau } from '../../create-bureau.ts';
 import type { Bureau } from '../../bureau-types/facade.ts';
+import type { BureauOptions } from '../../bureau-types/options.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import {
   buildBureauHandlerHost,
@@ -57,6 +58,8 @@ export interface ServeOptions {
   /** Shared immutable workspace binding for the Bureau and both test handlers. */
   readonly workspace?: WorkspaceMembershipOptions;
   readonly authentication?: AuthConfig;
+  /** Plugins the Bureau loads, for a test that lists a plugin's code workflow. */
+  readonly plugins?: BureauOptions<AgentDefinitions>['plugins'];
 }
 
 export async function serveWorkflows(
@@ -74,6 +77,7 @@ export async function serveWorkflows(
       ? {}
       : { workflowSource: workflowFileDirectory(directory) }),
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
+    ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
     storage: new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),

@@ -130,6 +130,8 @@ export type WorkflowToolResult =
       }[];
       readonly activities: readonly {
         readonly id: string;
+        /** What the editor calls the activity: a plugin activity's required `title`; fixed for `agent`. */
+        readonly title: string | null;
         readonly description: string | null;
         readonly inputSchema: Readonly<Record<string, unknown>> | null;
       }[];
@@ -187,10 +189,24 @@ export interface WorkflowToolListing {
   readonly problem: string | null;
 }
 
+/**
+ * A code workflow a plugin contributed, as `workflows-list` shows it: an explicit `kind`, and none
+ * of a file's members. It starts through `workflows-start` like a file.
+ */
+export interface WorkflowToolCodeListing {
+  readonly kind: 'code';
+  /** `plugin:name`. */
+  readonly id: string;
+  readonly name: string;
+  readonly title: string;
+  readonly plugin: string;
+  readonly version: string;
+}
+
 /** What `workflows-list` answers: the same `status` as every tool, and the workflows. */
 export interface WorkflowToolListResult {
   readonly status: 'ok';
-  readonly workflows: readonly WorkflowToolListing[];
+  readonly workflows: readonly (WorkflowToolListing | WorkflowToolCodeListing)[];
 }
 
 /**
@@ -677,7 +693,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-list',
     version: '1.0.0',
     description:
-      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its title and description, and its `inputSchema` and `outputSchema` (pass them back to bureau__workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
+      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its title and description, and its `inputSchema` and `outputSchema` (pass them back to bureau__workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it. A workflow a plugin contributed in code is listed with `kind: "code"`, its `plugin` and `version`, and none of a file’s fields; start it with bureau__workflows-start.',
     input: z.object({}),
     metadata: {
       readOnly: true,
@@ -693,20 +709,26 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           ? { status: 'ok', workflows: [] }
           : calling.refusal;
       }
+      const code: readonly WorkflowToolCodeListing[] = calling.workflows
+        .codeList()
+        .map((listing) => ({ ...listing }));
       return {
         status: 'ok',
-        workflows: calling.workflows.list().map((listing): WorkflowToolListing => ({
-          id: listing.id,
-          hash: listing.hash ?? null,
-          state: listing.state,
-          paused: listing.paused,
-          triggerKind: listing.triggerKind,
-          title: listing.title,
-          description: listing.description,
-          inputSchema: listing.inputSchema,
-          outputSchema: listing.outputSchema,
-          problem: listing.problem?.code ?? null,
-        })),
+        workflows: [
+          ...calling.workflows.list().map((listing): WorkflowToolListing => ({
+            id: listing.id,
+            hash: listing.hash ?? null,
+            state: listing.state,
+            paused: listing.paused,
+            triggerKind: listing.triggerKind,
+            title: listing.title,
+            description: listing.description,
+            inputSchema: listing.inputSchema,
+            outputSchema: listing.outputSchema,
+            problem: listing.problem?.code ?? null,
+          })),
+          ...code,
+        ],
       };
     },
   });

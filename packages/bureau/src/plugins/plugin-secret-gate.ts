@@ -52,6 +52,7 @@ import {
   type PluginGuardrailFactory,
   type PluginInterceptor,
   type PluginTrigger,
+  type PluginWorkflow,
 } from '@lostgradient/interborough-plugin';
 import {
   type GuardrailEntry,
@@ -298,6 +299,34 @@ function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTrigger): PluginTr
   };
 }
 
+/** The check each gated workflow carries, so a start can be refused before the engine is asked. */
+const workflowRefusals = new WeakMap<object, () => void>();
+
+/**
+ * Throws {@link PluginNeedsSetupError} when `workflow` is a gated plugin workflow whose plugin
+ * still needs setup; does nothing for any other workflow. A start calls it before the engine
+ * does, so a workflow that needs setup is listed and refuses to start (O8).
+ */
+export function assertWorkflowAvailable(workflow: object): void {
+  workflowRefusals.get(workflow)?.();
+}
+
+/** `workflow` with a handler that refuses while the gate is shut, and the check a start makes. */
+function gatedWorkflow<W extends PluginWorkflow>(
+  gate: PluginSecretGate,
+  contribution: string,
+  workflow: W,
+): W {
+  const handler = workflow.handler.bind(workflow);
+  const gatedHandler = async function* (...args: Parameters<typeof handler>) {
+    gate.assertAvailable(contribution);
+    return yield* handler(...args);
+  };
+  const result = { ...workflow, handler: gatedHandler } as W;
+  workflowRefusals.set(result, () => gate.assertAvailable(contribution));
+  return result;
+}
+
 /**
  * `result` with every contribution's callable gated by `gate` (tools excepted: `pluginTool`
  * gates them as it rebuilds them). Identity, names and every other field are kept.
@@ -353,6 +382,11 @@ export function gatedContributions<T extends PluginContributions>(
       ? {}
       : {
           triggers: result.triggers.map((kind) => gatedTriggerKind(gate, kind)),
+        }),
+    ...(result.workflows === undefined
+      ? {}
+      : {
+          workflows: result.workflows.map((item) => gatedWorkflow(gate, idOf(item.name), item)),
         }),
     ...(result.validators === undefined
       ? {}

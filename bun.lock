@@ -802,6 +802,7 @@
         "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/storage": "workspace:*",
+        "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
         "zod": "catalog:",
       },

@@ -22,6 +22,7 @@ export const VERSIONED_CATALOG_KINDS = [
   'reaction',
   'trigger',
   'activity',
+  'workflow',
 ] as const;
 
 /** A kind of contribution the catalog holds. */

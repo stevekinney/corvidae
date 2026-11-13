@@ -9,7 +9,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
 | `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
-| `PluginContributions` | Tools, activities, validators, guardrails, interceptors, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, and agents. |
+| `PluginContributions` | Tools, activities, code workflows, validators, guardrails, interceptors, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
 ## Where a plugin lives
@@ -91,6 +91,7 @@ The descriptor's members:
 | --- | --- |
 | `tools` | Tools agents can call. |
 | `activities` | Activities a shipped workflow calls as `plugin:name`; each needs a `title` and an `inputSchema`. |
+| `workflows` | Workflows defined in code (`PluginWorkflow`), registered as `plugin:name` beside the workflow files. See [Code workflows](#code-workflows). |
 | `validators` | Goal validators, registered by name and version. |
 | `guardrails` | `input` detectors and `output` validators, added to the ones Operative applies to every agent, `tools` validators that judge each tool call before it runs (COR-2104), and `memory` detectors that guard governed memory (each may declare `gates`: `admission`, `recall`, or both by default). An `input` or `output` entry may be `{ guardrail, action }` to keep an action of its own whatever its group's, and a `tools` validator carries its own `action` (`block`, `warn` or `tripwire`). An agent file chooses an `input`, `output` or `tools` guardrail with `guardrails: [plugin:name]`. Every guardrail has a non-empty `description`. An `input`, `output` or `tools` guardrail may instead be a `PluginGuardrailFactory` (COR-2118): `{ name, description, configuration, create }`, where `configuration` is the Zod schema an agent's configuration is parsed with and `create` builds the guardrail from the parsed value. An agent file configures it as `{ id: plugin:name, configuration }` (a bare id is configured with `{}`), each agent gets its own guardrail, and a field the agent leaves out takes the schema's default, so a plugin-wide setting belongs in the schema as that field's `.default(...)`. A factory wrapped as `{ guardrail: factory, action }` gives every guardrail it builds that action. |
 | `interceptors` | Run hooks, at any of Operative's hook points, that an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them, or to every agent with `appliesTo: 'every-agent'`. |
@@ -102,6 +103,41 @@ The descriptor's members:
 | `panels` | Interface panels. |
 | `formatters` | Titles and bodies for the activity views. |
 | `agents` | Agents defined in code. Each may carry a `title` (its listing's label), a `visibility` (`'chat'` by default; `'hidden'` keeps it in `bureau.agents.list`, which marks it `visibility: "hidden"`, and Chat does not offer it, while workflows, children and a direct start still run it by `plugin:name`) and a `version` (a run pins it in place of the plugin's version; a run recovered under a different one settles failed with `definition-drifted`). |
+
+### Code workflows
+
+A `PluginWorkflow` is a Weft workflow built in code (`workflow({ name }).execute(...)`) with three more members: a required `title` (what the workflow list calls it), a required `inputSchema` (the schema a start's input must satisfy) and an optional `version`. A workflow without a `title` or an `inputSchema` skips the plugin with a `workflow-field-missing` problem.
+
+- **Id and listing.** The host registers it as `plugin:name`, and `bureau.workflows.list` and the `workflows-list` tool list it beside the workflow files as an entry with `kind: 'code'`, its name, title, plugin and version. A code entry has no hash, state, pause or trigger; a file entry is unchanged. A workflow of a plugin that needs setup is listed and refuses to start.
+- **Starting.** A run starts on the same envelope a workflow file's run does (`{ kind, input, origin, workspaceAuthority? }`), after Bureau checks `inputSchema` against the envelope's `input`. Its runs read back through the run operations in their ordinary shape.
+- **The pin.** A run pins the workflow's own `version`, or else the plugin's version, and that is the version the engine registers it at. A plugin that is disabled takes its workflow with it: the workflow is not listed, a start is refused, and a run of it reports `missing` and stays resumable when the plugin returns, never on another version. A waiting run pinned to a version that is not loaded counts in `pinned-version-unavailable`'s `waitingRuns`.
+- **Clashes.** A code workflow and a workflow file of one plugin with one name is a startup error from `createBureau` naming both. A file that starts to clash on a later rescan keeps its per-file `invalid` diagnostic, and the code workflow keeps running. A code workflow whose name a code workflow of the host already holds skips the plugin with `name-clash`; the first loaded wins.
+- **Identity.** Its identity kind is `workflow`, with the id `plugin:name`, the workflow's version and a digest of its input and output schemas, as for an activity.
+
+```ts
+import { definePlugin } from '@lostgradient/interborough-plugin';
+import { workflow } from '@lostgradient/weft';
+import { z } from 'zod';
+
+const echo = workflow({ name: 'echo-input' }).execute(async function* (
+  _context,
+  envelope: unknown,
+) {
+  yield* [];
+  return envelope;
+});
+
+export default definePlugin({
+  name: 'example',
+  version: '1.0.0',
+  description: 'Contributes one code workflow.',
+  setup: () => ({
+    workflows: [
+      { ...echo, title: 'Echo the input', inputSchema: z.object({ message: z.string() }) },
+    ],
+  }),
+});
+```
 
 Four kinds are worth seeing in code, because they take a schema or a callback whose shape is not obvious from the name. A trigger kind starts listening and resolves with the function that stops it; a hook action kind receives an `idempotencyKey` that is the same for every attempt of one delivery, because a delivery interrupted by a restart is attempted again.
 
@@ -388,6 +424,7 @@ export default definePlugin({
 | `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |
+| `workflow-field-missing` | `skipped` | A code workflow has no `title` or no `inputSchema`, which the workflow list and the start check need. `workflow`, `field`. |
 | `provider-secret-unknown` | `skipped` | A provider's `secretKey` is not one of the plugin's declared `secrets`. `provider`, `key`. |
 | `provider-secret-ambiguous` | `skipped` | A provider has no `secretKey` and the plugin declares several secrets. `provider`, `secrets`. |
 | `provider-empty` | `running` | A provider gave no `rows` under a name Operative's static catalog has no rows for, so it contributes no model. `provider`. |
