@@ -84,9 +84,6 @@ import { prepareManifest } from './prepare-manifest.ts';
 
 /** The one deadline every wait of the run shares. */
 const DEADLINE = HANG_GUARD_MILLISECONDS;
-// CSSOM scrollport edges are integer-rounded while getBoundingClientRect() preserves fractional
-// layout coordinates. Allow only that subpixel rounding at a row edge; controls must still fit.
-const ROW_EDGE_EPSILON = 0.5;
 const expectAttachment = expect.configure({ timeout: DEADLINE });
 
 /**
@@ -131,40 +128,6 @@ async function expectAttachmentTarget(
 }
 
 /**
- * Waits until an opened attachment list has stopped moving: its box, scroll offset and fitted
- * block size are the same on two animation frames in a row. The list refits on the frame after it
- * opens or its content changes, so a probe taken before that frame measures a layout that is about
- * to change.
- */
-async function waitForAttachmentShelfSettled(list: Locator): Promise<void> {
-  await list.evaluate(
-    (element) =>
-      new Promise<void>((_resolve) => {
-        const read = (): string => {
-          const rect = element.getBoundingClientRect();
-          return [
-            rect.top,
-            rect.height,
-            element.scrollTop,
-            element.scrollHeight,
-            (element as HTMLElement).style.maxBlockSize,
-          ].join('|');
-        };
-        let previous = read();
-        let steady = 0;
-        const frame = (): void => {
-          const current = read();
-          steady = current === previous ? steady + 1 : 0;
-          previous = current;
-          if (steady >= 2) _resolve();
-          else requestAnimationFrame(frame);
-        };
-        requestAnimationFrame(frame);
-      }),
-  );
-}
-
-/**
  * Runs in the page: a coarse control's 44px hit area is reached 21px above, below, left and right
  * of its centre. Above and below must land on the control. Left and right may land on a
  * neighbouring control when the point is outside this control's own box (the main touch-target
@@ -188,13 +151,6 @@ export function attachmentTargetReached(element: Element): boolean {
     return outside && neighbour != null && neighbour !== element && !element.contains(neighbour);
   });
   return vertical && horizontal;
-}
-
-/** The capture contract, kept here so it independently checks the responsive component contract. */
-function expectedAttachmentShelfCap(width: number, height: number): number {
-  if (width <= 480 && height <= 700) return 1;
-  if (width <= 480 && height <= 860) return 2;
-  return 2;
 }
 
 const fixtureRoot = resolve(import.meta.dirname, '..');
@@ -1619,137 +1575,62 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       }
       return;
     }
-    case 'expect-attachment-shelf': {
-      const list = page.locator('.chat-input-attachments');
-      const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-      const expectedVisible = Math.min(
-        step.total,
-        expectedAttachmentShelfCap(viewport.width, viewport.height),
+    case 'expect-attachment-strip': {
+      const strip = page.locator('.chat-input-attachments');
+      const chips = strip.locator(':scope > li .chat-attachment-preview');
+      await expectAttachment(chips).toHaveCount(step.total);
+      // One row: every chip's box starts on the same line, whatever the profile.
+      const tops = await chips.evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().top),
       );
-      await expectAttachment(page.locator('.chat-input-attachment-summary')).toContainText(
-        `${step.total} files`,
-      );
-      await expectAttachment(list.locator(':scope > li')).toHaveCount(expectedVisible);
-      const more = step.total - expectedVisible;
-      if (more > 0) {
-        await expectAttachment(
-          page.getByRole('button', { name: `${more} more below` }),
-        ).toBeVisible();
+      expectAttachment(new Set(tops).size).toBe(1);
+      if (step.uploading !== undefined) {
+        await expectAttachment(strip.locator('[data-state="uploading"]')).toHaveCount(
+          step.uploading,
+        );
       }
-      const rows = list.locator(':scope > li');
+      if (step.failed !== undefined) {
+        await expectAttachment(strip.locator('[data-error]')).toHaveCount(step.failed);
+      }
+      if (step.cut !== undefined) {
+        const overflows = await strip.evaluate(
+          (element) => element.scrollWidth > element.clientWidth,
+        );
+        expectAttachment(overflows).toBe(step.cut);
+      }
+      const line = page.locator('.chat-input-attachment-reason');
+      if (step.line === undefined) {
+        await expectAttachment(line).toHaveCount(0);
+      } else {
+        await expectAttachment(line.locator('.chat-input-attachment-reason-text')).toHaveText(
+          step.line,
+        );
+        if (step.lineAction !== undefined) {
+          await expectAttachment(line.getByRole('button')).toHaveText(step.lineAction);
+        }
+      }
+      // A fine pointer's remove control is 24px painted. A coarse pointer's is compact and reaches
+      // 44px by a hit area that may share an edge with the failure line's action, which the page's
+      // touch-target guard measures with every control; the strip guard keeps the hit areas of
+      // remove controls apart. A chip cut by the trailing edge is scrolled out and not measured.
       const coarse = await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches);
-      const minimumTarget = coarse ? 44 : 24;
-      for (let index = 0; index < expectedVisible; index += 1) {
-        const row = rows.nth(index);
-        const rowMain = row.locator('.chat-attachment-preview-main');
-        const actions = row.locator('.chat-attachment-preview-actions');
-        const filename = row.locator('.chat-attachment-preview-name');
-        const [mainBox, actionsBox] = await Promise.all([
-          rowMain.boundingBox(),
-          actions.boundingBox(),
-        ]);
-        expectAttachment(mainBox).not.toBeNull();
-        expectAttachment(actionsBox).not.toBeNull();
-        expectAttachment(Math.abs((mainBox?.y ?? 0) - (actionsBox?.y ?? 0))).toBeLessThanOrEqual(2);
-        const filenameBox = await filename.boundingBox();
-        expectAttachment(filenameBox).not.toBeNull();
-        const filenameRange = await filename.evaluate((element) => {
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          const rect = range.getBoundingClientRect();
-          return { width: rect.width, text: element.textContent ?? '' };
-        });
-        expectAttachment(filenameRange.width).toBeGreaterThan(0);
-        expectAttachment(filenameRange.width).toBeLessThanOrEqual(
-          (filenameBox?.width ?? 0) + ROW_EDGE_EPSILON,
+      if (!coarse) {
+        const visible = await strip.locator('.chat-input-attachment-remove').evaluateAll((nodes) =>
+          nodes.flatMap((node, index) => {
+            const box = node.getBoundingClientRect();
+            const edge = node.closest('.chat-input-attachments')!.getBoundingClientRect();
+            return box.left >= edge.left && box.right <= edge.right ? [index] : [];
+          }),
         );
-        const filenameText = filenameRange.text;
-        const fullFilename = (await filename.getAttribute('title')) ?? '';
-        expectAttachment(filenameText).toContain(
-          fullFilename.endsWith('.pdf') ? '.pdf' : fullFilename,
-        );
-        if (filenameText !== fullFilename) {
-          expectAttachment(filenameText.match(/…/g)?.length ?? 0).toBe(1);
-        }
-        for (const button of await row.locator('button').all()) {
-          const box = await button.boundingBox();
-          expectAttachment(box).not.toBeNull();
-          await expectAttachmentTarget(button, coarse, minimumTarget);
+        for (const index of visible) {
+          await expectAttachmentTarget(
+            strip.locator('.chat-input-attachment-remove').nth(index),
+            false,
+            24,
+          );
         }
       }
-      if (step.reveal === true && more > 0) {
-        await page.getByRole('button', { name: `${more} more below` }).click();
-        await expectAttachment(list.locator(':scope > li')).toHaveCount(step.total);
-        await expectAttachment
-          .poll(async () => list.evaluate((element) => getComputedStyle(element).overflowY))
-          .toBe('auto');
-        const hasOverflow = await list.evaluate(
-          (element) => element.scrollHeight > element.clientHeight,
-        );
-        if (hasOverflow) {
-          expectAttachment(await list.evaluate((element) => element.scrollHeight)).toBeGreaterThan(
-            await list.evaluate((element) => element.clientHeight),
-          );
-        }
-        await waitForAttachmentShelfSettled(list);
-        for (let index = 0; index < step.total; index += 1) {
-          const row = list.locator(':scope > li').nth(index);
-          await row.scrollIntoViewIfNeeded();
-          await waitForAttachmentShelfSettled(list);
-          const [listBox, rowBox] = await Promise.all([list.boundingBox(), row.boundingBox()]);
-          expectAttachment(listBox).not.toBeNull();
-          expectAttachment(rowBox).not.toBeNull();
-          expectAttachment(rowBox?.y ?? 0).toBeGreaterThanOrEqual(
-            (listBox?.y ?? 0) - ROW_EDGE_EPSILON,
-          );
-          expectAttachment((rowBox?.y ?? 0) + (rowBox?.height ?? 0)).toBeLessThanOrEqual(
-            (listBox?.y ?? 0) + (listBox?.height ?? 0) + ROW_EDGE_EPSILON,
-          );
-          const mainBox = await row.locator('.chat-attachment-preview-main').boundingBox();
-          const actionsBox = await row.locator('.chat-attachment-preview-actions').boundingBox();
-          const filename = row.locator('.chat-attachment-preview-name');
-          expectAttachment(mainBox).not.toBeNull();
-          expectAttachment(actionsBox).not.toBeNull();
-          expectAttachment(Math.abs((mainBox?.y ?? 0) - (actionsBox?.y ?? 0))).toBeLessThanOrEqual(
-            2,
-          );
-          const filenameBox = await filename.boundingBox();
-          expectAttachment(filenameBox).not.toBeNull();
-          const filenameRange = await filename.evaluate((element) => {
-            const range = document.createRange();
-            range.selectNodeContents(element);
-            const rect = range.getBoundingClientRect();
-            return { width: rect.width, text: element.textContent ?? '' };
-          });
-          expectAttachment(filenameRange.width).toBeGreaterThan(0);
-          expectAttachment(filenameRange.width).toBeLessThanOrEqual(
-            (filenameBox?.width ?? 0) + ROW_EDGE_EPSILON,
-          );
-          const filenameText = filenameRange.text;
-          const fullFilename = (await filename.getAttribute('title')) ?? '';
-          expectAttachment(filenameText).toContain(
-            fullFilename.endsWith('.pdf') ? '.pdf' : fullFilename,
-          );
-          if (filenameText !== fullFilename) {
-            expectAttachment(filenameText.match(/…/g)?.length ?? 0).toBe(1);
-          }
-          if ((await row.getAttribute('data-attachment-state')) === 'error') {
-            await expectAttachment(row.locator('[data-attachment-error]')).toBeVisible();
-          }
-          for (const button of await row.locator('button').all()) {
-            const box = await button.boundingBox();
-            await expectAttachmentTarget(button, coarse, minimumTarget);
-            expectAttachment(box?.y ?? 0).toBeGreaterThanOrEqual(listBox?.y ?? 0);
-            expectAttachment((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
-              (listBox?.y ?? 0) + (listBox?.height ?? 0),
-            );
-          }
-        }
-        await list.evaluate((element) => {
-          element.scrollTop = 0;
-        });
-        await expectAttachment.poll(() => list.evaluate((element) => element.scrollTop)).toBe(0);
-      }
+      expectAttachment(await readAttachmentStripProblems(page)).toEqual([]);
       return;
     }
     case 'measure-composer-top':
@@ -2147,12 +2028,23 @@ async function measure(
   if (stressCase.id === 19 || stressCase.id === 59) {
     problems.push(...(await readRepeatedSummaryProblems(opened.page)));
   }
+  if (stressCase.id === 19) {
+    const spacing = await readStepRowSpacing(opened.page);
+    if (spacing !== undefined) {
+      console.log(
+        `case 19 at ${profile.name}: step row text to answer ${spacing.stepToAnswer.toFixed(2)}px, a message's text to its time ${spacing.betweenParts.toFixed(2)}px`,
+      );
+    }
+    problems.push(...stepRowSpacingProblems(spacing));
+  }
   if (stressCase.id === 48 || stressCase.id === 78) {
     problems.push(...(await readFailureSummaryProblems(opened.page)));
   }
   problems.push(...(await readActionRowProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
   problems.push(...(await readIconSizeProblems(opened.page)));
+  problems.push(...(await readAttachmentStripProblems(opened.page)));
+  problems.push(...(await readIconCentreProblems(opened.page)));
   return { measurement, problems };
 }
 
@@ -2534,6 +2426,272 @@ export async function readIconSizeProblems(page: Page): Promise<string[]> {
     }
     return problems;
   }, ICON_SIZE_TOLERANCE);
+}
+
+/**
+ * The tolerance of the attachment strip guards: one layout unit, 1/64 of a pixel, which is how
+ * finely the browser places a box. A guard that compares two edges the same CSS puts on one line
+ * must see them equal to the unit; it must not carry the pixel of slack the old shelf's measurement
+ * did, which hid a real 1px miss and then failed intermittently.
+ */
+export const ATTACHMENT_STRIP_TOLERANCE = 1 / 64;
+
+/** The tolerance for a glyph's centre against its text's first line (owner decision of 2026-11-13). */
+export const ICON_CENTRE_TOLERANCE = 0.5;
+
+/**
+ * Measures the composer's attachment strip: every chip is one height; no chip's name is cut in the
+ * middle (the extension is whole, the stem is the only part that shortens, and it shortens at its
+ * end, so the text in the page is the file's whole name); no two remove controls' hit areas
+ * overlap, a coarse pointer's being 44px square about the control's centre; the strip does not clip
+ * a hit area; and the failure line's action ends at the line's trailing content edge (the left edge
+ * in a right-to-left line).
+ */
+export async function readAttachmentStripProblems(page: Page): Promise<string[]> {
+  return page.evaluate((tolerance) => {
+    const problems: string[] = [];
+    const coarse = matchMedia('(any-pointer: coarse)').matches;
+    for (const strip of document.querySelectorAll<HTMLElement>('.chat-input-attachments')) {
+      const chips = [...strip.querySelectorAll<HTMLElement>('.chat-attachment-preview')];
+      const heights = chips.map((chip) => chip.getBoundingClientRect().height);
+      if (heights.some((height) => Math.abs(height - (heights[0] ?? 0)) > tolerance)) {
+        problems.push(
+          `attachment chips are not one height (${[...new Set(heights)].join(', ')}px)`,
+        );
+      }
+      for (const chip of chips) {
+        const name = chip.querySelector<HTMLElement>('.chat-attachment-preview-name');
+        const stem = chip.querySelector<HTMLElement>('.chat-attachment-preview-stem');
+        const extension = chip.querySelector<HTMLElement>('.chat-attachment-preview-extension');
+        if (name === null || stem === null || extension === null) {
+          problems.push('an attachment chip has no name made of a stem and an extension');
+          continue;
+        }
+        const text = name.textContent ?? '';
+        const label = text.length > 24 ? `${text.slice(0, 24)}…` : text;
+        if (text.includes('…') || (chip.getAttribute('title') ?? '').indexOf(text) !== 0) {
+          problems.push(`attachment chip "${label}" shows a name that is not the file's own`);
+        }
+        const nameBox = name.getBoundingClientRect();
+        const extensionBox = extension.getBoundingClientRect();
+        const rtl = getComputedStyle(name).direction === 'rtl';
+        const insideInline = rtl
+          ? extensionBox.left >= nameBox.left - tolerance
+          : extensionBox.right <= nameBox.right + tolerance;
+        if ((extension.textContent ?? '') !== '' && (!insideInline || extensionBox.width === 0)) {
+          problems.push(`attachment chip "${label}" is cut inside its extension`);
+        }
+        if (stem.scrollWidth > stem.clientWidth) {
+          // The stem is cut: it must be cut at its end with an ellipsis and keep a visible part.
+          if (getComputedStyle(stem).textOverflow !== 'ellipsis') {
+            problems.push(`attachment chip "${label}" is cut with no ellipsis`);
+          }
+          if (stem.getBoundingClientRect().width < 1) {
+            problems.push(`attachment chip "${label}" shows none of its name before the extension`);
+          }
+        }
+      }
+      const stripBox = strip.getBoundingClientRect();
+      const hits = [...strip.querySelectorAll<HTMLElement>('.chat-input-attachment-remove')].map(
+        (button) => {
+          const box = button.getBoundingClientRect();
+          const width = coarse ? Math.max(box.width, 44) : box.width;
+          const height = coarse ? Math.max(box.height, 44) : box.height;
+          const centreX = box.left + box.width / 2;
+          const centreY = box.top + box.height / 2;
+          return {
+            left: centreX - width / 2,
+            right: centreX + width / 2,
+            top: centreY - height / 2,
+            bottom: centreY + height / 2,
+          };
+        },
+      );
+      hits.forEach((hit, index) => {
+        const other = hits[index + 1];
+        if (other !== undefined) {
+          const across = Math.min(hit.right, other.right) - Math.max(hit.left, other.left);
+          const down = Math.min(hit.bottom, other.bottom) - Math.max(hit.top, other.top);
+          if (across > tolerance && down > tolerance) {
+            problems.push(
+              `remove controls ${index + 1} and ${index + 2} have overlapping hit areas`,
+            );
+          }
+        }
+        if (hit.top < stripBox.top - tolerance || hit.bottom > stripBox.bottom + tolerance) {
+          problems.push(`remove control ${index + 1}'s hit area is clipped by the strip`);
+        }
+      });
+    }
+    for (const line of document.querySelectorAll<HTMLElement>('.chat-input-attachment-reason')) {
+      const action = line.querySelector<HTMLElement>('button');
+      if (action === null) {
+        problems.push('the attachment failure line has no action');
+        continue;
+      }
+      const style = getComputedStyle(line);
+      const box = line.getBoundingClientRect();
+      const rtl = style.direction === 'rtl';
+      const edge = rtl
+        ? box.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth)
+        : box.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
+      const actionBox = action.getBoundingClientRect();
+      const distance = Math.abs((rtl ? actionBox.left : actionBox.right) - edge);
+      if (distance > tolerance) {
+        problems.push(
+          `the attachment failure line's action ends ${distance.toFixed(2)}px from the trailing edge`,
+        );
+      }
+    }
+    return problems;
+  }, ATTACHMENT_STRIP_TOLERANCE);
+}
+
+/**
+ * Measures that a glyph and the text it shares a row with are centred on one line (owner decision
+ * of 2026-11-13): for an `svg` in a flex or grid row that holds visible text, inside a control or a
+ * labelled row, the vertical centre of the glyph's box and of the text's first line differ by at
+ * most half a pixel. The row is found as {@link readIconSizeProblems} finds it. A glyph that is the
+ * only content of its control, a glyph stacked above its text, and tooltips are not measured.
+ */
+export async function readIconCentreProblems(page: Page): Promise<string[]> {
+  return page.evaluate((tolerance) => {
+    const problems: string[] = [];
+    const hidden = '[role="tooltip"], .cinder-sr-only, [hidden], [aria-hidden="true"] svg *';
+    const inControlOrLabelledRow =
+      'button, a[href], summary, [role="button"], [aria-label], [aria-labelledby], label, li';
+    const textOf = (node: Node): string => (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const firstLine = (node: Node): DOMRect | undefined => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return [...range.getClientRects()].find((rectangle) => rectangle.height > 0);
+    };
+    for (const glyph of document.querySelectorAll<SVGElement>('svg')) {
+      if (glyph.closest(hidden) !== null) continue;
+      const box = glyph.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      let wrapper: Element = glyph;
+      for (let level = 0; level < 3; level += 1) {
+        if (wrapper.matches('button, a[href], summary, [role="button"]')) break;
+        const container = wrapper.parentElement;
+        if (container === null || container === document.body) break;
+        if (/^(inline-)?(flex|grid)$/.test(getComputedStyle(container).display)) {
+          const beside = [...container.childNodes].find((node) => {
+            if (node === wrapper || node.contains(glyph)) return false;
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as Element;
+              if (element.closest(hidden) !== null || getComputedStyle(element).display === 'none')
+                return false;
+              if (element.querySelector('svg') !== null && textOf(element) === '') return false;
+            } else if (node.nodeType !== Node.TEXT_NODE) {
+              return false;
+            }
+            return textOf(node) !== '' && (firstLine(node)?.width ?? 0) > 1;
+          });
+          const line = beside === undefined ? undefined : firstLine(beside);
+          if (beside !== undefined && line !== undefined) {
+            const overlap = Math.min(line.bottom, box.bottom) - Math.max(line.top, box.top);
+            if (overlap > 0) {
+              if (container.closest(inControlOrLabelledRow) !== null) {
+                const difference = Math.abs(
+                  box.top + box.height / 2 - (line.top + line.height / 2),
+                );
+                if (difference > tolerance) {
+                  const name = (
+                    (container.getAttribute('class') ?? '').split(/\s+/)[0] ?? ''
+                  ).trim();
+                  problems.push(
+                    `glyph centre is ${difference.toFixed(2)}px off its text's first line (in ${container.tagName.toLowerCase()}${name === '' ? '' : `.${name}`})`,
+                  );
+                }
+              }
+              break;
+            }
+          }
+        }
+        wrapper = container;
+      }
+    }
+    return problems;
+  }, ICON_CENTRE_TOLERANCE);
+}
+
+/** How far the two spacings of the step row may differ, in pixels (owner decision of 2026-11-13). */
+export const STEP_ROW_SPACING_TOLERANCE = 1;
+
+/** The two distances the step row's spacing is judged by, in pixels. */
+export interface StepRowSpacing {
+  /** From the bottom of the collapsed step row's last text line to the top of the answer's first. */
+  readonly stepToAnswer: number;
+  /** From the bottom of a message's last text line to the top of the time beneath it. */
+  readonly betweenParts: number;
+}
+
+/**
+ * Measures how far the answer stands under a collapsed step row, and how far two parts of one
+ * message stand from each other (the text of the message before the row, and its time). Both run
+ * from the letters' own extent (the text's client rectangle), so the leading of the line is part of
+ * what a person sees. `undefined` when the page has no collapsed step row, an answer after it and a
+ * message with a time before it.
+ */
+export async function readStepRowSpacing(page: Page): Promise<StepRowSpacing | undefined> {
+  return page.evaluate(() => {
+    const lines = (root: Element, which: 'first' | 'last'): DOMRect | undefined => {
+      const rectangles: DOMRect[] = [];
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if ((node.textContent ?? '').trim() === '') continue;
+        if (node.parentElement?.closest('.cinder-sr-only, [role="tooltip"], [hidden]') != null) {
+          continue;
+        }
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        rectangles.push(...[...range.getClientRects()].filter((rectangle) => rectangle.height > 0));
+      }
+      return which === 'first' ? rectangles[0] : rectangles.at(-1);
+    };
+    const toggle = document.querySelector<HTMLElement>(
+      '.chat-tool-call-toggle[aria-expanded="false"]',
+    );
+    if (toggle === null) return undefined;
+    const bodies = [...document.querySelectorAll<HTMLElement>('.chat-message-body')];
+    const answer = bodies.find(
+      (body) => (toggle.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+    );
+    const before = bodies.find(
+      (body) => (toggle.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_PRECEDING) !== 0,
+    );
+    const time = before?.closest('.chat-message-wrapper')?.querySelector('.chat-message-line time');
+    if (answer === undefined || before === undefined || time == null) return undefined;
+    const stepText = lines(toggle, 'last');
+    const answerText = lines(answer, 'first');
+    const messageText = lines(before, 'last');
+    const timeText = lines(time, 'first');
+    if (
+      stepText === undefined ||
+      answerText === undefined ||
+      messageText === undefined ||
+      timeText === undefined
+    ) {
+      return undefined;
+    }
+    return {
+      stepToAnswer: answerText.top - stepText.bottom,
+      betweenParts: timeText.top - messageText.bottom,
+    };
+  });
+}
+
+/** The step row's two spacings as problems: none when they are within {@link STEP_ROW_SPACING_TOLERANCE}. */
+export function stepRowSpacingProblems(spacing: StepRowSpacing | undefined): string[] {
+  if (spacing === undefined)
+    return ['the step row, its answer and a message with a time were not found'];
+  const difference = Math.abs(spacing.stepToAnswer - spacing.betweenParts);
+  return difference <= STEP_ROW_SPACING_TOLERANCE
+    ? []
+    : [
+        `the answer is ${spacing.stepToAnswer.toFixed(2)}px under the step row's text but a message's text is ${spacing.betweenParts.toFixed(2)}px above its time`,
+      ];
 }
 
 interface RunState {

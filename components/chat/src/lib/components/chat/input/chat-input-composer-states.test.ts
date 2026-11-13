@@ -80,10 +80,10 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).toContain('align-items: center;');
   });
 
-  test('the strip takes its hit-area room back from the layout, and a chip scrolled in stops short of the edge', async () => {
+  test('the strip takes its hit-area room above back from the layout, and a chip scrolled in stops short of the edge', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-input-attachments\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-input-attachments\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block-start:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
     );
     expect(source).toMatch(
       /\.chat-input-attachments\s*\{[^}]*scroll-padding-inline:\s*var\(--cinder-space-2\);/s,

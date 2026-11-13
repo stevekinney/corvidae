@@ -64,7 +64,21 @@ type StressStepAction =
   | { action: 'expect-question-layout' }
   | { action: 'expect-offscreen'; selector: string }
   | { action: 'expect-absent'; selector: string }
-  | { action: 'expect-attachment-shelf'; total: number; reveal?: boolean }
+  /**
+   * The composer's attachment strip: `total` chips in one row, `uploading` of them with a ring and
+   * `failed` of them failed. `cut` says whether the row scrolls (a chip cut by the trailing edge).
+   * `line` is the failure line's text, `lineAction` the label of its action; with neither, the line
+   * must not be there.
+   */
+  | {
+      action: 'expect-attachment-strip';
+      total: number;
+      uploading?: number;
+      failed?: number;
+      cut?: boolean;
+      line?: string;
+      lineAction?: string;
+    }
   | { action: 'measure-composer-top'; name: 'before' | 'after' }
   | { action: 'expect-empty-streaming-assistant' }
   | { action: 'expect-streaming-assistant-text'; text: string }
@@ -144,7 +158,7 @@ export const OWNER_AUDIT_SCENARIO_MAPPING = [
   [61, 79, 'discard-drawer'],
   [62, 9, undefined],
   [63, 63, 'empty-and-ready'],
-  [64, 51, 'long-middle-filename'],
+  [64, 51, 'long-name'],
   [65, 6, undefined],
   [66, 4, undefined],
   [67, 1, undefined],
@@ -213,7 +227,7 @@ const STEP_ACTIONS = [
   'expect-question-layout',
   'expect-offscreen',
   'expect-absent',
-  'expect-attachment-shelf',
+  'expect-attachment-strip',
   'measure-composer-top',
   'expect-empty-streaming-assistant',
   'expect-streaming-assistant-text',
@@ -266,9 +280,20 @@ function problemsInStep(step: unknown, where: string): string[] {
     problems.push(`${where}: expect-text needs text`);
   if (action === 'expect-tooltip' && typeof step['text'] !== 'string')
     problems.push(`${where}: expect-tooltip needs text`);
-  if (action === 'expect-attachment-shelf') {
+  if (action === 'expect-attachment-strip') {
     if (!Number.isInteger(step['total']) || (step['total'] as number) < 1)
-      problems.push(`${where}: attachment shelf total must be positive`);
+      problems.push(`${where}: attachment strip total must be positive`);
+    for (const key of ['uploading', 'failed'] as const) {
+      const count = step[key];
+      if (count !== undefined && (!Number.isInteger(count) || (count as number) < 0))
+        problems.push(`${where}: attachment strip ${key} must be a count`);
+    }
+    if (step['cut'] !== undefined && typeof step['cut'] !== 'boolean')
+      problems.push(`${where}: attachment strip cut must be true or false`);
+    for (const key of ['line', 'lineAction'] as const) {
+      if (step[key] !== undefined && typeof step[key] !== 'string')
+        problems.push(`${where}: attachment strip ${key} must be text`);
+    }
   }
   if (action === 'measure-composer-top' && step['name'] !== 'before' && step['name'] !== 'after')
     problems.push(`${where}: measure-composer-top name must be before or after`);

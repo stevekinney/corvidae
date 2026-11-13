@@ -2309,15 +2309,35 @@
     display: none;
   }
 
-  /* A scroller clips on both axes, and a coarse pointer's remove control reaches 44px by a hit
-   * area that overhangs its 28px chip. The strip pads by that overhang and takes it back with a
-   * negative margin, so the room costs no layout and the hit area is not clipped. */
+  /* A scroller clips on both axes, and a coarse pointer's remove control and chip reach 44px by a
+   * hit area that overhangs their 28px chip. The strip pads by that overhang so the hit area is not
+   * clipped. The room above is taken back with a negative margin, so it costs no layout; the room
+   * below stays, so no hit area lies over the editor's own 44px row. The padding answers no tap
+   * itself, only a chip does. */
   @media (any-pointer: coarse) {
     .chat-input-attachments {
       box-sizing: border-box;
       padding-block: var(--cinder-space-2);
-      margin-block: calc(var(--cinder-space-2) * -1);
+      margin-block-start: calc(var(--cinder-space-2) * -1);
       padding-inline-end: var(--cinder-space-2);
+      pointer-events: none;
+    }
+
+    .chat-input-attachment-wrapper {
+      pointer-events: auto;
+    }
+
+    /* The line's action reaches 44px by a hit area that overhangs it, over the chips above, so the
+     * line paints above them and the action keeps every tap on it. The line's words answer no tap,
+     * so the hit areas of the chips above reach under them. */
+    .chat-input-attachment-reason {
+      position: relative;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .chat-input-attachment-reason :global(.chat-input-attachment-reason-action) {
+      pointer-events: auto;
     }
   }
 

@@ -1324,7 +1324,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Add a note"
+        "name": "Add note"
       },
       {
         "action": "fill",
@@ -1351,15 +1351,13 @@
   },
   {
     "id": 50,
-    "slug": "attachments-ready-shelf",
-    "title": "Ready files sit in one horizontal row above the draft and Send stays visible.",
+    "slug": "attachments-ready-strip",
+    "title": "Ready files are one strip of chips above the draft, each a file-type glyph and its name, and Send stays visible.",
     "provenance": "issue-named",
-    "source": "COR-2277: case 50 verifies the ready-only horizontal shelf and keyboard reachability.",
+    "source": "COR-2277: case 50 verifies the ready-only strip, its remove controls and keyboard reachability; the owner rejected the shelf of rows on 2026-11-13.",
     "rows": ["C6"],
     "scenario": "attachments",
-    "params": {
-      "mode": "ready"
-    },
+    "params": { "mode": "ready" },
     "steps": [
       {
         "action": "upload",
@@ -1369,32 +1367,16 @@
             "mimeType": "application/pdf",
             "bytes": 2048
           },
-          {
-            "name": "ledger.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 4096
-          },
-          {
-            "name": "receipts.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 8192
-          },
-          {
-            "name": "notes.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 1024
-          }
+          { "name": "ledger.pdf", "mimeType": "application/pdf", "bytes": 4096 },
+          { "name": "receipts.pdf", "mimeType": "application/pdf", "bytes": 8192 },
+          { "name": "notes.pdf", "mimeType": "application/pdf", "bytes": 1024 }
         ]
       },
-      {
-        "action": "expect-text",
-        "text": "4 files"
-      },
-      { "action": "expect-attachment-shelf", "total": 4 }
+      { "action": "expect-attachment-strip", "total": 4, "failed": 0, "uploading": 0 }
     ],
     "variants": [
       {
-        "name": "revealed",
+        "name": "remove-controls",
         "steps": [
           {
             "action": "upload",
@@ -1409,8 +1391,7 @@
               { "name": "notes.pdf", "mimeType": "application/pdf", "bytes": 1024 }
             ]
           },
-          { "action": "expect-text", "text": "4 files" },
-          { "action": "expect-attachment-shelf", "total": 4, "reveal": true },
+          { "action": "expect-attachment-strip", "total": 4, "failed": 0 },
           {
             "action": "expect",
             "role": "button",
@@ -1420,6 +1401,40 @@
           { "action": "expect", "role": "button", "name": "Remove receipts.pdf" },
           { "action": "expect", "role": "button", "name": "Remove notes.pdf" }
         ]
+      },
+      {
+        "name": "file-kinds",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "brief.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "photo.png", "mimeType": "image/png", "bytes": 2048 },
+              {
+                "name": "numbers.xlsx",
+                "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "bytes": 2048
+              },
+              { "name": "bundle.zip", "mimeType": "application/zip", "bytes": 2048 },
+              { "name": "index.ts", "mimeType": "text/plain", "bytes": 2048 },
+              { "name": "thing.bin", "mimeType": "application/octet-stream", "bytes": 2048 }
+            ]
+          },
+          { "action": "expect-attachment-strip", "total": 6, "failed": 0, "uploading": 0 }
+        ]
+      },
+      {
+        "name": "uploading",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "ready-a.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "uploading-1.pdf", "mimeType": "application/pdf", "bytes": 4096 }
+            ]
+          },
+          { "action": "expect-attachment-strip", "total": 2, "uploading": 1, "failed": 0 }
+        ]
       }
     ],
     "focusSweep": false
@@ -1427,76 +1442,62 @@
   {
     "id": 51,
     "slug": "attachments-mixed",
-    "title": "A mixed upload shows the attention count and the first failed files with their reasons and Remove controls.",
+    "title": "A mixed upload keeps every file in one strip, with a ring on the one uploading and one line under it that counts the failures.",
     "provenance": "issue-named",
-    "source": "COR-2277: in a mixed upload the error count and the first two failed files, reasons and Remove controls are visible before scrolling.",
+    "source": "COR-2277: in a mixed upload the failed chips are outlined and the one line under the strip says how many failed, with Retry all.",
     "rows": ["C6", "P2"],
     "scenario": "attachments",
-    "params": {
-      "mode": "mixed"
-    },
+    "params": { "mode": "mixed" },
     "steps": [
       {
         "action": "upload",
         "files": [
-          {
-            "name": "ready-a.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "upload-fail-1.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "unsupported-1.exe",
-            "mimeType": "application/x-msdownload",
-            "bytes": 1024
-          },
-          {
-            "name": "uploading-1.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 4096
-          },
-          {
-            "name": "ready-b.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          }
+          { "name": "ready-a.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "upload-fail-1.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "unsupported-1.exe", "mimeType": "application/x-msdownload", "bytes": 1024 },
+          { "name": "uploading-1.pdf", "mimeType": "application/pdf", "bytes": 4096 },
+          { "name": "ready-b.pdf", "mimeType": "application/pdf", "bytes": 2048 }
         ]
       },
-      { "action": "expect-attachment-shelf", "total": 5 }
+      {
+        "action": "expect-attachment-strip",
+        "total": 5,
+        "uploading": 1,
+        "failed": 2,
+        "line": "2 files didn't upload",
+        "lineAction": "Retry all"
+      }
     ],
     "variants": [
       {
-        "name": "revealed",
+        "name": "picked-failure",
         "steps": [
           {
             "action": "upload",
             "files": [
-              { "name": "ready-a.pdf", "mimeType": "application/pdf", "bytes": 2048 },
               { "name": "upload-fail-1.pdf", "mimeType": "application/pdf", "bytes": 2048 },
-              {
-                "name": "unsupported-1.exe",
-                "mimeType": "application/x-msdownload",
-                "bytes": 1024
-              },
-              { "name": "uploading-1.pdf", "mimeType": "application/pdf", "bytes": 4096 },
-              { "name": "ready-b.pdf", "mimeType": "application/pdf", "bytes": 2048 }
+              { "name": "unsupported-1.exe", "mimeType": "application/x-msdownload", "bytes": 1024 }
             ]
           },
-          { "action": "expect-attachment-shelf", "total": 5, "reveal": true },
-          { "action": "expect", "role": "button", "name": "Retry upload-fail-1.pdf" },
-          { "action": "expect", "role": "button", "name": "Remove ready-a.pdf" },
-          { "action": "expect", "role": "button", "name": "Remove upload-fail-1.pdf" },
-          { "action": "expect", "role": "button", "name": "Remove unsupported-1.exe" },
-          { "action": "expect", "role": "button", "name": "Remove uploading-1.pdf" },
-          { "action": "expect", "role": "button", "name": "Remove ready-b.pdf" }
+          {
+            "action": "expect-attachment-strip",
+            "total": 2,
+            "failed": 2,
+            "line": "2 files didn't upload",
+            "lineAction": "Retry all"
+          },
+          { "action": "click", "role": "button", "name": "Why unsupported-1.exe failed" },
+          {
+            "action": "expect-attachment-strip",
+            "total": 2,
+            "failed": 2,
+            "line": "unsupported-1.exe can't be attached.",
+            "lineAction": "Remove"
+          }
         ]
       },
       {
-        "name": "long-middle-filename",
+        "name": "long-name",
         "steps": [
           {
             "action": "upload",
@@ -1509,8 +1510,7 @@
               { "name": "uploading-ledger.pdf", "mimeType": "application/pdf", "bytes": 4096 }
             ]
           },
-          { "action": "expect-attachment-shelf", "total": 2, "reveal": true },
-          { "action": "expect-text", "text": "42%" },
+          { "action": "expect-attachment-strip", "total": 2, "uploading": 1, "failed": 0 },
           { "action": "expect-text", "text": "quarterly" }
         ]
       }
@@ -1595,7 +1595,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Add a note"
+        "name": "Add note"
       },
       {
         "action": "fill",
@@ -1637,7 +1637,7 @@
       {
         "name": "expanded",
         "steps": [
-          { "action": "click", "role": "button", "name": "Add a note" },
+          { "action": "click", "role": "button", "name": "Add note" },
           {
             "action": "fill",
             "role": "textbox",
@@ -1876,100 +1876,38 @@
   },
   {
     "id": 61,
-    "slug": "attachments-bounded",
-    "title": "Fourteen ready files stay in a bounded list with N more below and a blocking reason under the composer.",
+    "slug": "attachments-many",
+    "title": "Fourteen ready files stay in one row that scrolls sideways, a chip cut by the edge is the only sign of more, and Send stays visible.",
     "provenance": "derived",
-    "source": "Derived from design row P2; the original definition of this number was lost.",
+    "source": "Derived from design row P2; the strip replaces the bounded list with a count and \"N more below\" (owner, 2026-11-13).",
     "rows": ["P2"],
     "scenario": "attachments",
-    "params": {
-      "mode": "ready"
-    },
+    "params": { "mode": "ready" },
     "steps": [
       {
         "action": "upload",
         "files": [
-          {
-            "name": "receipt-01.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-02.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-03.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-04.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-05.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-06.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-07.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-08.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-09.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-10.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-11.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-12.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-13.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          },
-          {
-            "name": "receipt-14.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          }
+          { "name": "receipt-01.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-02.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-03.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-04.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-05.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-06.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-07.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-08.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-09.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-10.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-11.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-12.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-13.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+          { "name": "receipt-14.pdf", "mimeType": "application/pdf", "bytes": 2048 }
         ]
       },
-      {
-        "action": "expect-text",
-        "text": "14 files"
-      },
-      { "action": "expect-attachment-shelf", "total": 14 }
+      { "action": "expect-attachment-strip", "total": 14, "failed": 0, "cut": true }
     ],
     "variants": [
       {
-        "name": "revealed",
+        "name": "remove-controls",
         "steps": [
           {
             "action": "upload",
@@ -1990,8 +1928,7 @@
               { "name": "receipt-14.pdf", "mimeType": "application/pdf", "bytes": 2048 }
             ]
           },
-          { "action": "expect-text", "text": "14 files" },
-          { "action": "expect-attachment-shelf", "total": 14, "reveal": true },
+          { "action": "expect-attachment-strip", "total": 14, "failed": 0, "cut": true },
           { "action": "expect", "role": "button", "name": "Remove receipt-01.pdf" },
           { "action": "expect", "role": "button", "name": "Remove receipt-02.pdf" },
           { "action": "expect", "role": "button", "name": "Remove receipt-03.pdf" },
@@ -2013,36 +1950,104 @@
   },
   {
     "id": 62,
-    "slug": "attachments-unsupported",
-    "title": "An unsupported file offers only its remove control, and a retryable failure also offers Retry.",
+    "slug": "attachments-failures",
+    "title": "A failure says what happened in one line under the strip, with the action that fits: Retry for a connection or unknown fault, Remove for a file that cannot be attached, and a count for several.",
     "provenance": "derived",
-    "source": "Derived from design row C6; the original definition of this number was lost.",
+    "source": "Derived from design row C6; the failure line replaces the per-row sentence and the separate blocking line (owner, 2026-11-13).",
     "rows": ["C6"],
     "scenario": "attachments",
-    "params": {
-      "mode": "mixed"
-    },
+    "params": { "mode": "mixed" },
     "steps": [
       {
         "action": "upload",
         "files": [
-          {
-            "name": "unsupported-1.exe",
-            "mimeType": "application/x-msdownload",
-            "bytes": 1024
-          },
-          {
-            "name": "upload-fail-2.pdf",
-            "mimeType": "application/pdf",
-            "bytes": 2048
-          }
+          { "name": "unsupported-1.exe", "mimeType": "application/x-msdownload", "bytes": 1024 },
+          { "name": "upload-fail-2.pdf", "mimeType": "application/pdf", "bytes": 2048 }
         ]
       },
-      { "action": "expect-attachment-shelf", "total": 2 }
+      {
+        "action": "expect-attachment-strip",
+        "total": 2,
+        "failed": 2,
+        "line": "2 files didn't upload",
+        "lineAction": "Retry all"
+      }
     ],
     "variants": [
       {
-        "name": "revealed",
+        "name": "network",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "network-fail-1.pdf", "mimeType": "application/pdf", "bytes": 2048 }
+            ]
+          },
+          {
+            "action": "expect-attachment-strip",
+            "total": 1,
+            "failed": 1,
+            "line": "network-fail-1.pdf didn't upload. Check your connection.",
+            "lineAction": "Retry"
+          },
+          { "action": "expect", "role": "button", "name": "Retry network-fail-1.pdf" }
+        ]
+      },
+      {
+        "name": "too-large",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "too-large-fail-1.pdf", "mimeType": "application/pdf", "bytes": 2048 }
+            ]
+          },
+          {
+            "action": "expect-attachment-strip",
+            "total": 1,
+            "failed": 1,
+            "line": "too-large-fail-1.pdf is over the 25 MB limit.",
+            "lineAction": "Remove"
+          }
+        ]
+      },
+      {
+        "name": "unsupported-type",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "unsupported-1.exe", "mimeType": "application/x-msdownload", "bytes": 1024 }
+            ]
+          },
+          {
+            "action": "expect-attachment-strip",
+            "total": 1,
+            "failed": 1,
+            "line": "unsupported-1.exe can't be attached.",
+            "lineAction": "Remove"
+          }
+        ]
+      },
+      {
+        "name": "unknown",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [{ "name": "upload-fail-1.pdf", "mimeType": "application/pdf", "bytes": 2048 }]
+          },
+          {
+            "action": "expect-attachment-strip",
+            "total": 1,
+            "failed": 1,
+            "line": "upload-fail-1.pdf didn't upload.",
+            "lineAction": "Retry"
+          },
+          { "action": "expect", "role": "button", "name": "Retry upload-fail-1.pdf" }
+        ]
+      },
+      {
+        "name": "none-can-retry",
         "steps": [
           {
             "action": "upload",
@@ -2052,18 +2057,15 @@
                 "mimeType": "application/x-msdownload",
                 "bytes": 1024
               },
-              {
-                "name": "upload-fail-2.pdf",
-                "mimeType": "application/pdf",
-                "bytes": 2048
-              }
+              { "name": "too-large-fail-1.pdf", "mimeType": "application/pdf", "bytes": 2048 }
             ]
           },
-          { "action": "expect-attachment-shelf", "total": 2, "reveal": true },
           {
-            "action": "expect",
-            "role": "button",
-            "name": "Retry upload-fail-2.pdf"
+            "action": "expect-attachment-strip",
+            "total": 2,
+            "failed": 2,
+            "line": "2 files didn't upload",
+            "lineAction": "Remove all failed"
           }
         ]
       }

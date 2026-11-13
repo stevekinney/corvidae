@@ -3046,7 +3046,9 @@
     padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-chat-message-gap);
+    /* The gap between rows, named so a row that adjusts its own spacing reads the width's value. */
+    --_cinder-chat-row-gap: var(--cinder-chat-message-gap);
+    gap: var(--_cinder-chat-row-gap);
   }
 
   /* The inner implementation is also rendered directly by package fixtures.
@@ -3468,6 +3470,16 @@
     min-inline-size: 0;
   }
 
+  /* The answer under a collapsed step row stands as far from the row's text as a message's own
+   * text stands from the time under it (about 20px of ink), at every width. The timeline's gap
+   * between rows is 8px on a phone and 12px beyond it, so the row takes that gap back and gives the
+   * answer one small step instead of a spacing that changes with the width. */
+  .chat-tool-call-group:has(+ :global(.chat-message-wrapper)) {
+    margin-block-end: calc(
+      var(--cinder-space-2) + var(--cinder-space-0-5, 0.125rem) - var(--_cinder-chat-row-gap)
+    );
+  }
+
   .chat-approval-group-rows {
     display: flex;
     flex-direction: column;
@@ -3555,7 +3567,7 @@
   @container (max-width: 480px) {
     .chat-timeline {
       padding: var(--cinder-chat-narrow-padding);
-      gap: var(--cinder-chat-narrow-gap);
+      --_cinder-chat-row-gap: var(--cinder-chat-narrow-gap);
     }
 
     .chat-input-area {

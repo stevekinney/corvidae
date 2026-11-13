@@ -176,6 +176,21 @@
     box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
 
+  /* On a touch screen the chip paints compact and its main area reaches 44px tall by a positioned
+   * pseudo-element that takes no layout. */
+  @media (any-pointer: coarse) {
+    button.chat-attachment-preview-main {
+      position: relative;
+    }
+
+    button.chat-attachment-preview-main::before {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min, 44px)) / 2));
+    }
+  }
+
   @media (forced-colors: active) {
     button.chat-attachment-preview-main:focus-visible {
       outline: var(--cinder-ring-width) solid ButtonText;

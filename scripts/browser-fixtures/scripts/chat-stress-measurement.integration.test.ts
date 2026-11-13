@@ -6,14 +6,18 @@ import {
   locate,
   measureInPage,
   readActionRowProblems,
+  readAttachmentStripProblems,
   readCalloutGaps,
   readCalloutSpacingProblems,
   readFailureSummaryProblems,
+  readIconCentreProblems,
   readIconSizeProblems,
   readRepeatedSummaryProblems,
+  readStepRowSpacing,
   readWithdrawal,
   revealScrollableControls,
   runStep,
+  stepRowSpacingProblems,
   waitForCaptureLayout,
 } from './capture-chat-stress.ts';
 
@@ -1080,6 +1084,254 @@ describe('chat stress visual measurement', () => {
       expect(await problemsFor(row(48, 'flex-direction: column;'))).toEqual([]);
       const alone = row(48).replace('<span>Read the October ledger</span>', '');
       expect(await problemsFor(alone)).toEqual([]);
+    });
+  });
+
+  describe('step row spacing guard', () => {
+    const transcript = (stepToAnswer: number): string => `
+      <style>
+        body { margin: 0; font: 14px/20px sans-serif; }
+        .chat-message-wrapper { display: block }
+        .chat-message-body p { margin: 0 }
+        .chat-message-line { margin-block-start: 12px; font: 12px/normal sans-serif }
+        .chat-tool-call-toggle { display: block; padding: 0; border: 0; font: inherit }
+        .answer { margin-block-start: ${stepToAnswer}px }
+      </style>
+      <div class="chat-message-wrapper">
+        <div class="chat-message-body"><p>Check the refund queue.</p></div>
+        <div class="chat-message-line"><time>8:00 AM</time></div>
+      </div>
+      <div><button class="chat-tool-call-toggle" aria-expanded="false">Compared 20 recent orders…</button></div>
+      <div class="chat-message-wrapper answer">
+        <div class="chat-message-body"><p>All of them match the ledger.</p></div>
+      </div>`;
+
+    const spacingFor = async (markup: string) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await readStepRowSpacing(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('measures the answer under the row and a message above its time, from the letters', async () => {
+      const spacing = await spacingFor(transcript(14));
+      expect(spacing).toBeDefined();
+      expect(spacing!.stepToAnswer).toBeGreaterThan(14);
+      expect(spacing!.betweenParts).toBeGreaterThan(12);
+    });
+
+    it('passes when the two distances are within a pixel and fails when they are not', async () => {
+      const equal = await spacingFor(transcript(14));
+      const gap = equal!.betweenParts - equal!.stepToAnswer;
+      const matched = await spacingFor(transcript(14 + gap));
+      expect(stepRowSpacingProblems(matched)).toEqual([]);
+      const tooFar = await spacingFor(transcript(14 + gap + 3));
+      expect(stepRowSpacingProblems(tooFar)).toEqual([
+        expect.stringContaining("under the step row's text but a message's text is"),
+      ]);
+      const tooNear = await spacingFor(transcript(14 + gap - 3));
+      expect(stepRowSpacingProblems(tooNear)).toHaveLength(1);
+    });
+
+    it('reports a page with no collapsed step row, and does not measure an open one', async () => {
+      expect(await spacingFor('<p>No steps.</p>')).toBeUndefined();
+      expect(stepRowSpacingProblems(undefined)).toHaveLength(1);
+      expect(
+        await spacingFor(transcript(14).replace('aria-expanded="false"', 'aria-expanded="true"')),
+      ).toBeUndefined();
+    });
+  });
+
+  describe('icon centre guard', () => {
+    const row = (offset: number): string => `
+      <style>
+        body { margin: 0; font: 14px/20px sans-serif; }
+        .row { display: flex; align-items: flex-start; gap: 8px; }
+        button { font: inherit; padding: 0; border: 0; }
+        svg { flex: none; inline-size: 16px; block-size: 16px; margin-block-start: ${offset}px; }
+      </style>
+      <button class="row"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg><span>Read the October ledger</span></button>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await readIconCentreProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a 16px glyph centred on a 20px line', async () => {
+      expect(await problemsFor(row(2))).toEqual([]);
+    });
+
+    it('fails a glyph hanging from the top of the line', async () => {
+      const problems = await problemsFor(row(0));
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain('glyph centre is 2.00px off its text');
+    });
+
+    it('allows half a pixel and no more', async () => {
+      expect(await problemsFor(row(2.5))).toEqual([]);
+      expect(await problemsFor(row(3))).toHaveLength(1);
+    });
+
+    it('measures a glyph in a labelled row that is not a control', async () => {
+      const labelled = row(0)
+        .replace('<button class="row">', '<li class="row" aria-label="Ledger">')
+        .replace('</button>', '</li>');
+      expect(await problemsFor(labelled)).toHaveLength(1);
+    });
+
+    it('does not measure a glyph in a plain row, or one with no text beside it', async () => {
+      const plain = row(0)
+        .replace('<button class="row">', '<div class="row">')
+        .replace('</button>', '</div>');
+      expect(await problemsFor(plain)).toEqual([]);
+      expect(await problemsFor(row(0).replace('<span>Read the October ledger</span>', ''))).toEqual(
+        [],
+      );
+    });
+  });
+
+  describe('attachment strip guard', () => {
+    interface StripOptions {
+      readonly chipHeights?: readonly number[];
+      readonly extension?: string;
+      readonly cutInMiddle?: boolean;
+      readonly gap?: number;
+      readonly actionInset?: number;
+      readonly direction?: 'ltr' | 'rtl';
+    }
+
+    /** The strip's real mechanism: chips in a scrolling row, each with a stem, an extension and Remove. */
+    const strip = (options: StripOptions = {}): string => {
+      const heights = options.chipHeights ?? [28, 28, 28];
+      const gap = options.gap ?? 8;
+      const chip = (height: number, index: number): string => `
+        <li class="item"><span class="chat-attachment-preview" title="report-${index}${options.extension ?? '.pdf'}" style="height:${height}px">
+          <span class="chat-attachment-preview-name"><span class="chat-attachment-preview-stem">${
+            options.cutInMiddle === true ? 'report…' : 'report'
+          }-${index}</span><span class="chat-attachment-preview-extension">${options.extension ?? '.pdf'}</span></span>
+          <button class="chat-input-attachment-remove" style="width:24px;height:24px;padding:0;border:0"></button>
+        </span></li>`;
+      return `
+        <style>
+          *, *::before, *::after { box-sizing: border-box }
+          body { margin: 0; font: 13px/20px sans-serif; direction: ${options.direction ?? 'ltr'} }
+          .chat-input-attachments { display: flex; gap: ${gap}px; list-style: none; margin: 0; padding: 8px; overflow-x: auto; width: 300px }
+          .item { flex: none; display: flex }
+          .chat-attachment-preview { display: flex; align-items: center; border: 1px solid #888; padding-inline-start: 8px }
+          .chat-attachment-preview-name { display: flex }
+          .chat-attachment-preview-stem { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+          .chat-input-attachment-reason { display: flex; align-items: center; justify-content: space-between; width: 300px; padding-inline: ${options.actionInset ?? 0}px 0; margin: 0 }
+          .chat-input-attachment-reason button { width: 60px; height: 24px; padding: 0 }
+        </style>
+        <ul class="chat-input-attachments">${heights.map(chip).join('')}</ul>
+        <p class="chat-input-attachment-reason"><span>report-0.pdf didn't upload.</span><button>Retry</button></p>`;
+    };
+
+    const problemsFor = async (markup: string, coarse = false): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const context = await browser.newContext({
+          viewport: { width: 400, height: 300 },
+          hasTouch: coarse,
+          isMobile: coarse,
+        });
+        const page = await context.newPage();
+        await page.setContent(markup);
+        return await readAttachmentStripProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes chips of one height with whole names, apart remove controls and a line ending at the edge', async () => {
+      expect(await problemsFor(strip())).toEqual([]);
+    });
+
+    it('fails chips of different heights, down to a fraction of a pixel', async () => {
+      expect(await problemsFor(strip({ chipHeights: [28, 28, 30] }))).toEqual([
+        expect.stringContaining('not one height'),
+      ]);
+      expect(await problemsFor(strip({ chipHeights: [28, 28, 28.25] }))).toEqual([
+        expect.stringContaining('not one height'),
+      ]);
+    });
+
+    it('fails a name with an ellipsis in the page: a cut in the middle with a detached fragment', async () => {
+      expect(await problemsFor(strip({ cutInMiddle: true }))).toContainEqual(
+        expect.stringContaining('shows a name that is not the file'),
+      );
+    });
+
+    it('fails an extension that is clipped inside its name', async () => {
+      // A name box narrower than its stem and extension together pushes the extension past its end.
+      const overflowing = strip().replace(
+        '.chat-attachment-preview-name { display: flex }',
+        '.chat-attachment-preview-name { display: block; width: 40px; white-space: nowrap }',
+      );
+      expect(await problemsFor(overflowing)).toContainEqual(
+        expect.stringContaining('is cut inside its extension'),
+      );
+    });
+
+    it('fails a stem cut with no ellipsis', async () => {
+      const plain = strip().replace('text-overflow: ellipsis', 'text-overflow: clip');
+      const narrow = plain.replace(
+        '.chat-attachment-preview-stem {',
+        '.chat-attachment-preview-stem { max-width: 20px;',
+      );
+      expect(await problemsFor(narrow)).toContainEqual(
+        expect.stringContaining('is cut with no ellipsis'),
+      );
+    });
+
+    it('fails coarse remove controls whose 44px hit areas overlap, and passes ones that stand apart', async () => {
+      // Chips this narrow put two 24px controls less than 44px apart.
+      const crowded = strip().replace(
+        '.item { flex: none; display: flex }',
+        '.item { flex: none; display: flex; width: 34px }',
+      );
+      expect(await problemsFor(crowded, true)).toContainEqual(
+        expect.stringContaining('have overlapping hit areas'),
+      );
+      expect(await problemsFor(strip(), true)).toEqual([]);
+    });
+
+    it('fails a coarse hit area a strip clips', async () => {
+      const clipped = strip().replace('padding: 8px; overflow-x', 'padding: 0; overflow-x');
+      expect(await problemsFor(clipped, true)).toContainEqual(
+        expect.stringContaining('is clipped by the strip'),
+      );
+    });
+
+    it('fails a failure line whose action stops short of the trailing edge', async () => {
+      const short = strip().replace(
+        '.chat-input-attachment-reason button { width: 60px;',
+        '.chat-input-attachment-reason button { margin-inline-end: 6px; width: 60px;',
+      );
+      expect(await problemsFor(short)).toContainEqual(
+        expect.stringContaining('ends 6.00px from the trailing edge'),
+      );
+    });
+
+    it('measures the line against the left edge when the text runs right to left', async () => {
+      expect(await problemsFor(strip({ direction: 'rtl' }))).toEqual([]);
+      const short = strip({ direction: 'rtl' }).replace(
+        '.chat-input-attachment-reason button { width: 60px;',
+        '.chat-input-attachment-reason button { margin-inline-end: 5px; width: 60px;',
+      );
+      expect(await problemsFor(short)).toContainEqual(
+        expect.stringContaining('ends 5.00px from the trailing edge'),
+      );
     });
   });
 });

@@ -164,66 +164,65 @@ describe('the committed Chat stress cases', () => {
     }
   });
 
-  it('keeps attachment shelf witnesses aligned with responsive caps and reveal', () => {
-    const readyShelf = findStressCase(cases, 50);
-    const boundedShelf = findStressCase(cases, 61);
-    const primaryUpload = readyShelf?.steps.find((step) => step.action === 'upload');
-    const reveal = readyShelf?.variants.find((variant) => variant.name === 'revealed');
-    const boundedUpload = boundedShelf?.steps.find((step) => step.action === 'upload');
-    const boundedCount = boundedShelf?.steps.find((step) => step.action === 'expect-text');
-    const primaryCount = readyShelf?.steps.find((step) => step.action === 'expect-text');
-    const revealCount = reveal?.steps.find((step) => step.action === 'expect-text');
-    const primaryShelf = readyShelf?.steps.find(
-      (step) => step.action === 'expect-attachment-shelf',
-    );
-    const revealedShelf = reveal?.steps.find((step) => step.action === 'expect-attachment-shelf');
-    expect(primaryUpload?.files).toBeDefined();
-    expect(reveal?.steps.find((step) => step.action === 'upload')?.files).toEqual(
-      primaryUpload?.files,
-    );
-    const uploadedFiles = primaryUpload?.files ?? [];
-    expect(primaryCount?.text).toBe(`${uploadedFiles.length} files`);
-    expect(revealCount?.text).toBe(`${uploadedFiles.length} files`);
-    expect(primaryShelf).toEqual({ action: 'expect-attachment-shelf', total: 4 });
-    expect(revealedShelf).toMatchObject({
-      action: 'expect-attachment-shelf',
-      total: 4,
-      reveal: true,
-    });
+  it('keeps the attachment strip witnesses to the files each case uploads', () => {
+    const uploadsOf = (steps: readonly { action: string; files?: readonly unknown[] }[] = []) =>
+      steps.find((step) => step.action === 'upload')?.files ?? [];
+    const stripOf = (steps: readonly { action: string }[] = []) =>
+      steps.find((step) => step.action === 'expect-attachment-strip');
 
-    const boundedFiles = boundedUpload?.files ?? [];
-    expect(boundedCount?.text).toBe(`${boundedFiles.length} files`);
-    expect(boundedShelf?.steps).toContainEqual({
-      action: 'expect-attachment-shelf',
-      total: 14,
+    const ready = findStressCase(cases, 50);
+    expect(stripOf(ready?.steps)).toEqual({
+      action: 'expect-attachment-strip',
+      total: uploadsOf(ready?.steps).length,
+      failed: 0,
+      uploading: 0,
     });
+    const uploading = ready?.variants.find((variant) => variant.name === 'uploading');
+    expect(stripOf(uploading?.steps)).toMatchObject({
+      total: uploadsOf(uploading?.steps).length,
+      uploading: 1,
+    });
+    const fileKinds = ready?.variants.find((variant) => variant.name === 'file-kinds');
+    expect(stripOf(fileKinds?.steps)).toMatchObject({ total: uploadsOf(fileKinds?.steps).length });
 
-    const unsupported = findStressCase(cases, 62);
-    const unsupportedPrimaryShelf = unsupported?.steps.find(
-      (step) => step.action === 'expect-attachment-shelf',
-    );
-    const unsupportedReveal = unsupported?.variants.find((variant) => variant.name === 'revealed');
-    const unsupportedRevealedShelf = unsupportedReveal?.steps.find(
-      (step) => step.action === 'expect-attachment-shelf',
-    );
-    expect(unsupportedPrimaryShelf).toEqual({ action: 'expect-attachment-shelf', total: 2 });
-    expect(unsupportedPrimaryShelf).not.toHaveProperty('reveal');
-    expect(unsupportedRevealedShelf).toEqual({
-      action: 'expect-attachment-shelf',
-      total: 2,
-      reveal: true,
+    // Many files overflow the row: a chip cut by the edge is the only sign that there are more.
+    const many = findStressCase(cases, 61);
+    expect(stripOf(many?.steps)).toEqual({
+      action: 'expect-attachment-strip',
+      total: uploadsOf(many?.steps).length,
+      failed: 0,
+      cut: true,
     });
-    expect(unsupportedReveal?.steps).toContainEqual({
-      action: 'expect',
-      role: 'button',
-      name: 'Retry upload-fail-2.pdf',
+    expect(uploadsOf(many?.steps).length).toBeGreaterThan(10);
+
+    // One failure of each kind has its own line and action; several are counted.
+    const failures = findStressCase(cases, 62);
+    expect(stripOf(failures?.steps)).toMatchObject({
+      failed: 2,
+      line: "2 files didn't upload",
+      lineAction: 'Retry all',
     });
+    const lines = Object.fromEntries(
+      (failures?.variants ?? []).map((variant) => {
+        const strip = stripOf(variant.steps) as { line?: string; lineAction?: string } | undefined;
+        return [variant.name, [strip?.line, strip?.lineAction]];
+      }),
+    );
+    expect(lines).toEqual({
+      network: ["network-fail-1.pdf didn't upload. Check your connection.", 'Retry'],
+      'too-large': ['too-large-fail-1.pdf is over the 25 MB limit.', 'Remove'],
+      'unsupported-type': ["unsupported-1.exe can't be attached.", 'Remove'],
+      unknown: ["upload-fail-1.pdf didn't upload.", 'Retry'],
+      'none-can-retry': ["2 files didn't upload", 'Remove all failed'],
+    });
+    const mixed = findStressCase(cases, 51);
+    expect(stripOf(mixed?.steps)).toMatchObject({ total: 5, uploading: 1, failed: 2 });
   });
 
   it('exercises the denied approval note through the visible controls', () => {
     const denied = findStressCase(cases, 49);
     expect(denied?.steps).toEqual([
-      { action: 'click', role: 'button', name: 'Add a note' },
+      { action: 'click', role: 'button', name: 'Add note' },
       {
         action: 'fill',
         role: 'textbox',
@@ -294,15 +293,21 @@ describe('the committed Chat stress cases', () => {
         '39-sources-review-reachable',
         '37-source-list-contract',
         '48-expanded',
-        '51-long-middle-filename',
+        '51-long-name',
+        '51-picked-failure',
         '54-expanded',
         '56-grantor-tooltip',
         '10-waiting-to-streaming',
         '18-stopped-to-failed',
-        '50-revealed',
-        '51-revealed',
-        '61-revealed',
-        '62-revealed',
+        '50-remove-controls',
+        '50-file-kinds',
+        '50-uploading',
+        '61-remove-controls',
+        '62-network',
+        '62-too-large',
+        '62-unsupported-type',
+        '62-unknown',
+        '62-none-can-retry',
         '57-reviewed',
         '59-collapsed',
         '68-option2',
@@ -349,16 +354,11 @@ describe('the committed Chat stress cases', () => {
     ]);
 
     const upload = findStressCase(cases, 51)?.variants.find(
-      (variant) => variant.name === 'long-middle-filename',
+      (variant) => variant.name === 'long-name',
     );
     expect(upload?.steps).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          action: 'expect-attachment-shelf',
-          total: 2,
-          reveal: true,
-        }),
-        expect.objectContaining({ action: 'expect-text', text: '42%' }),
+        expect.objectContaining({ action: 'expect-attachment-strip', total: 2, uploading: 1 }),
         expect.objectContaining({ action: 'expect-text', text: 'quarterly' }),
       ]),
     );

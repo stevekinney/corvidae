@@ -5,6 +5,7 @@
     appendAssistantMessage,
     appendStreamingMessage,
     appendUserMessage,
+    ChatAttachmentUploadError,
     createConversation,
     finalizeStreamingMessage,
     updateStreamingMessage,
@@ -59,7 +60,16 @@
   }
   const { setup, failure } = resolveSetup();
 
-  const ACCEPTED_TYPES = ['image/*', 'application/pdf', 'text/plain'];
+  const ACCEPTED_TYPES = [
+    'image/*',
+    'audio/*',
+    'video/*',
+    'application/pdf',
+    'application/zip',
+    'application/octet-stream',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+  ];
   let chat = $state<ReturnType<typeof Chat> | undefined>();
   let conversation = $state.raw<ConversationHistory>(setup.conversation);
   let secondConversation = $state.raw<ConversationHistory>(
@@ -185,6 +195,11 @@
     setup.uploads === 'none'
       ? undefined
       : async (file, { signal, onProgress }) => {
+          // A file's name says how its upload fails, so a case can show each kind of failure.
+          if (file.name.startsWith('network-fail')) throw new TypeError('Failed to fetch');
+          if (file.name.startsWith('too-large-fail')) {
+            throw new ChatAttachmentUploadError('too-large', { maxFileSize: 25 * 1024 * 1024 });
+          }
           if (file.name.startsWith('upload-fail'))
             throw new Error('The upload service refused the file.');
           if (file.name.startsWith('uploading')) {

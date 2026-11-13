@@ -268,9 +268,9 @@ describe('the controls snippet is told when the composer is narrow', () => {
     expect(source).not.toContain('data-expanded');
     expect(source).not.toContain('wholeAttachmentRows');
     // A scroller clips its hit-area overhang, so a coarse pointer pads the strip by it and takes the
-    // room back with a negative margin: it costs no layout.
+    // room above back with a negative margin: it costs no layout there, and none lies over the editor.
     expect(source).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-input-attachments\s*\{[^}]*padding-block: var\(--cinder-space-2\);[^}]*margin-block: calc\(var\(--cinder-space-2\) \* -1\);/,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-input-attachments\s*\{[^}]*padding-block: var\(--cinder-space-2\);[^}]*margin-block-start: calc\(var\(--cinder-space-2\) \* -1\);/,
     );
   });
 
