@@ -273,6 +273,22 @@ describe('Chat — typingParticipants prop', () => {
     unmount(instance);
   });
 
+  test('an idle empty streamingStatus does not hide the participant typing label', () => {
+    // A host that clears its status to '' between runs is idle, not busy.
+    const { container, instance } = mountChat({
+      id: 'chat-typing-empty-status',
+      conversation: createConversation(),
+      streamingStatus: '',
+      typingParticipants: [{ id: 'alice', name: 'Alice' }],
+    });
+
+    expect(container.querySelector('.chat-participant-typing-label')?.textContent).toBe(
+      'Alice is typing…',
+    );
+
+    unmount(instance);
+  });
+
   test('two participants: exact string "Alice and Bob are typing…"', () => {
     let conversation = createConversation();
     conversation = appendMessage(conversation, 'user', 'Hello');

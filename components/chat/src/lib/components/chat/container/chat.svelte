@@ -1021,7 +1021,7 @@
   const participantTypingCount = $derived(
     composerStatus?.kind === 'reconnecting' ||
       streaming ||
-      streamingStatus !== undefined ||
+      (streamingStatus !== undefined && streamingStatus !== '') ||
       transcript.reasoningStreaming ||
       transcript.toolActivity
       ? 0
