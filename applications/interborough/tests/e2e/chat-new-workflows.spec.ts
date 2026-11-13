@@ -165,7 +165,7 @@ test.describe('Sending the first message (24b)', () => {
 
     await send(page).click();
 
-    await expect(send(page)).toContainText('Starting chat…');
+    await expect(send(page)).toHaveAccessibleName('Starting chat…');
     await expect(send(page)).toBeDisabled();
     await expect(send(page).locator('.chat-input-spinner')).toBeVisible();
     await expect(field(page)).toHaveValue(REFUND_ASK);
@@ -184,7 +184,7 @@ test.describe('Sending the first message (24b)', () => {
 
     // A start that fails keeps the text and leaves New chat where it was.
     release();
-    await expect(send(page)).not.toContainText('Starting chat…');
+    await expect(send(page)).not.toHaveAccessibleName('Starting chat…');
     await expect(field(page)).toHaveValue(REFUND_ASK);
     expect(new URL(page.url()).pathname).toBe('/chats/new');
   });
@@ -205,7 +205,7 @@ test.describe('Sending the first message (24b)', () => {
 
     await send(page).click();
 
-    await expect(send(page)).toContainText('Starting chat…');
+    await expect(send(page)).toHaveAccessibleName('Starting chat…');
     await expect(field(page)).toHaveValue('Say hello');
     release();
     await expect(page).toHaveURL(/\/chats\/(?!new)[^/?]+$/);
@@ -216,7 +216,7 @@ test.describe('Sending the first message (24b)', () => {
         'Say hello',
       );
       await expect(field(page)).toHaveValue('');
-      await expect(send(page)).not.toContainText('Starting chat…');
+      await expect(send(page)).not.toHaveAccessibleName('Starting chat…');
     } finally {
       await deleteChats([started], E2E_SHOWCASE_URL);
     }

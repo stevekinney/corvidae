@@ -139,7 +139,7 @@ test.describe('New chat while its agents load (24o)', () => {
     await expect(loading(page).locator('button[data-chat-send]')).toBeDisabled();
     // Send is an icon-only button now, named by its aria-label.
     await expect(loading(page).locator('button[data-chat-send]')).toHaveAccessibleName(
-      /^Send message/,
+      'Send message',
     );
     expect(
       await loading(page).locator('.ib-new-chat-loading__controls .cinder-skeleton').count(),
@@ -292,7 +292,7 @@ test.describe('New chat when the first message cannot be sent (24c, 24r, 24s)', 
     expect(said.y).toBeGreaterThanOrEqual(composer.y + composer.height - 1);
     await expect(field(page)).toHaveValue(REFUND_ASK);
     await expect(send(page)).toBeEnabled();
-    await expect(send(page)).not.toContainText('Starting chat…');
+    await expect(send(page)).not.toHaveAccessibleName('Starting chat…');
     // No chat page opened, the greeting is still the title, and the model selects are still there.
     expect(new URL(page.url()).pathname).toBe('/chats/new');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('What should Tool runner do?');
@@ -403,8 +403,20 @@ test.describe('New chat at 375 pixels (24v)', () => {
     // composer's controls.
     await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText('Tool runner');
     await expect(page.getByTestId('composer-settings')).toBeVisible();
-    const sendBox = await boxOf(send(page));
-    expect(sendBox.height).toBeGreaterThanOrEqual(44);
+    // Send is painted compact with an invisible hit area: ask the browser how tall the column of
+    // points that reach it is, rather than reading the painted box.
+    const reachedHeight = await send(page).evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const centerX = bounds.left + bounds.width / 2;
+      const centerY = bounds.top + bounds.height / 2;
+      let reached = 0;
+      for (let offset = -40; offset <= 40; offset += 1) {
+        const hit = document.elementFromPoint(centerX, centerY + offset);
+        if (hit !== null && element.contains(hit)) reached += 1;
+      }
+      return reached;
+    });
+    expect(reachedHeight).toBeGreaterThanOrEqual(44);
     await captureForDesignReview(page, {
       route: '/chats/new',
       state: 'phone, provider connected',
