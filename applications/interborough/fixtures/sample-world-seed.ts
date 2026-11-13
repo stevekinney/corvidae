@@ -95,6 +95,9 @@ export const SAMPLE_WORLD_TIMES = {
 /** How long after its run starts Issue refund asks to refund order 4471 (10:42:00 to 10:42:20). */
 export const REFUND_4471_ASK_DELAY_MILLISECONDS = 20_000;
 
+/** How long the story's signed approval binding lasts: a day, so no suite or capture outlives it. */
+export const SAMPLE_APPROVAL_BINDING_TTL_MILLISECONDS = 24 * 60 * 60_000;
+
 /** How long Lookup order takes to find order 4471 (0.4s, as the chat's row says). */
 export const LOOKUP_4471_MILLISECONDS = 400;
 
@@ -310,6 +313,9 @@ function samplePacing(
   director: Director,
 ): ShowcasePacing {
   return {
+    // The story leaves the 4471 refund waiting on you. Its approval's deadline is the binding's, five
+    // minutes by default, and a browser suite or a capture outlasts that (COR-2280 draws it Expired).
+    approvalBindingTtlMilliseconds: SAMPLE_APPROVAL_BINDING_TTL_MILLISECONDS,
     assistant: async (moment) => director.scene.assistant?.(moment),
     check: async (moment) => director.scene.check?.(moment),
     // The lookup's time is part of the twenty seconds before the ask, which stays at 10:42:20 AM.
