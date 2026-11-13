@@ -156,6 +156,28 @@ describe('icons/index', () => {
     expect(css).toMatch(/svg\.cinder-icon-lg\s*\{\s*stroke-width: 1\.5;/);
   });
 
+  it('exports the file-type glyphs a file chip picks from, each its own Lucide glyph', async () => {
+    const root = await import('@lostgradient/cinder');
+    const expected = {
+      File: 'lucide-file',
+      FileArchive: 'lucide-file-archive',
+      FileAudio: 'lucide-file-headphone',
+      FileImage: 'lucide-file-image',
+      FileSpreadsheet: 'lucide-file-spreadsheet',
+      FileVideo: 'lucide-file-video-camera',
+    } as const;
+    for (const [name, glyph] of Object.entries(expected)) {
+      const icon = icons[name as keyof typeof expected];
+      expect(root[name as keyof typeof expected], `${name} from the package root`).toBe(icon);
+      const result = render(icon, { 'aria-hidden': 'true' });
+      try {
+        expect(result.container.querySelector('svg')?.getAttribute('class')).toContain(glyph);
+      } finally {
+        cleanup();
+      }
+    }
+  });
+
   it('exports a non-empty set of distinct, function-shaped Svelte components', () => {
     const entries = Object.entries(icons);
 
