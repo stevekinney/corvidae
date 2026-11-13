@@ -15,18 +15,18 @@ import {
   type WorkflowContext,
   type WorkflowDefinition,
 } from '../core/types.ts';
+import {
+  WorkflowDocumentBranchError,
+  WorkflowDocumentMapError,
+  WorkflowDocumentReviewRejectedError,
+  WorkflowDocumentSchemaError,
+} from './document-errors.ts';
 import type {
   DocumentActivityArgument,
   DocumentWorkflowHost,
   WorkflowDocument,
 } from './document.ts';
-import {
-  documentStepAddress,
-  WorkflowDocumentBranchError,
-  WorkflowDocumentMapError,
-  WorkflowDocumentSchemaError,
-  workflowDocumentVersion,
-} from './document.ts';
+import { documentStepAddress, workflowDocumentVersion } from './document.ts';
 
 /** The distinct values `pick` selects from the document's steps, in first-seen order. */
 function distinctStepValues(
@@ -42,6 +42,8 @@ function distinctStepValues(
         branchCaseSteps(step).forEach(visit);
         if (step.otherwise !== undefined) visit(step.otherwise);
       } else if (step.kind === 'map') visit(step.steps);
+      else if (step.kind === 'parallel')
+        parallelBranches(step).forEach(([, nested]) => visit(nested));
     }
   };
   visit(document.steps);
@@ -57,6 +59,15 @@ function branchCaseSteps(
     .map((literal) => Object.getOwnPropertyDescriptor(step.cases, literal)?.value ?? []);
 }
 
+/** A parallel step's branches in the UTF-16 key order of canonical document JSON. */
+function parallelBranches(
+  step: Extract<WorkflowDocument['steps'][number], { kind: 'parallel' }>,
+): readonly (readonly [string, readonly WorkflowDocument['steps'][number][]])[] {
+  return Object.keys(step.branches)
+    .toSorted()
+    .map((name) => [name, Object.getOwnPropertyDescriptor(step.branches, name)?.value ?? []]);
+}
+
 function documentStepIndexes(
   document: WorkflowDocument,
 ): Map<WorkflowDocument['steps'][number], number> {
@@ -69,6 +80,8 @@ function documentStepIndexes(
         branchCaseSteps(step).forEach(visit);
         if (step.otherwise !== undefined) visit(step.otherwise);
       } else if (step.kind === 'map') visit(step.steps);
+      else if (step.kind === 'parallel')
+        parallelBranches(step).forEach(([, nested]) => visit(nested));
     }
   };
   visit(document.steps);
@@ -82,7 +95,8 @@ function containsWait(steps: readonly WorkflowDocument['steps'][number][]): bool
       (step.kind === 'branch' &&
         (Object.values(step.cases).some(containsWait) ||
           (step.otherwise !== undefined && containsWait(step.otherwise)))) ||
-      (step.kind === 'map' && containsWait(step.steps)),
+      (step.kind === 'map' && containsWait(step.steps)) ||
+      (step.kind === 'parallel' && Object.values(step.branches).some(containsWait)),
   );
 }
 
@@ -280,6 +294,8 @@ export async function buildDocumentWorkflowDefinition(
   const signalNames = distinctStepValues(document, (step) =>
     step.kind === 'await-signal' ? step.signal : undefined,
   );
+  const workflowVersion = await workflowDocumentVersion(document);
+  const revision = { name: document.name, workflowVersion };
 
   /** Throws when the host finds `value` outside the schema; a no-op for a document with none. */
   const checkSchema = (point: 'input' | 'output', value: unknown): void => {
@@ -342,6 +358,92 @@ export async function buildDocumentWorkflowDefinition(
       state.previous = results;
       state.pendingSignal = undefined;
     }
+    /** Lockstep `ctx.allSettled` rounds, cached whole: see `parallel` in document.ts for the limit. */
+    function* runParallel(
+      step: Extract<WorkflowDocument['steps'][number], { kind: 'parallel' }>,
+      iteration: readonly (string | number)[],
+      state: RunState,
+      runNested: RunSteps,
+    ): Generator<ContextOperationRequest, void, unknown> {
+      const branches = parallelBranches(step);
+      const generators = branches.map(([name, nested]) => {
+        const branchState: RunState = {
+          previous: state.previous,
+          pendingSignal: undefined,
+          lastStepWasSignal: false,
+        };
+        return (function* (): Generator<ContextOperationRequest, unknown, unknown> {
+          return yield* runNested(nested, [...iteration, name], branchState);
+        })();
+      });
+      const results = yield* runMapBatch(context, generators);
+      state.previous = Object.fromEntries(
+        branches.map(([name], offset) => [name, results[offset]]),
+      );
+      state.pendingSignal = undefined;
+    }
+    /** One `activity` step: the handler runs with the step before it as `previous`. */
+    function* runActivity(
+      step: Extract<WorkflowDocument['steps'][number], { kind: 'activity' }>,
+      index: number,
+      iteration: readonly (string | number)[],
+      address: string,
+      state: RunState,
+    ): Generator<ContextOperationRequest, void, unknown> {
+      state.previous = yield* documentActivityOperation(
+        context.run(activities.get(step.handler)!, {
+          input: step.input ?? null,
+          trigger: firedBy,
+          previous: state.previous,
+          ...(state.pendingSignal === undefined ? {} : { signal: state.pendingSignal }),
+          workflowId: context.workflowId,
+          step: index,
+          iteration,
+          stepAddress: address,
+        }),
+        index,
+        address,
+      );
+      state.pendingSignal = undefined;
+    }
+    /** One `await-signal` step: a plain wait, or one that races a sleep when it has a `timeout`. */
+    function* runAwaitSignal(
+      step: Extract<WorkflowDocument['steps'][number], { kind: 'await-signal' }>,
+      index: number,
+      address: string,
+      state: RunState,
+    ): Generator<ContextOperationRequest, void, unknown> {
+      if (step.timeout === undefined) {
+        state.pendingSignal = yield* documentOperation(
+          context.waitForSignal(step.signal),
+          index,
+          address,
+        );
+      } else {
+        // The wait races a sleep: whichever finishes first is the recorded winner, so a
+        // replay takes the same side without asking the clock again.
+        const outcome = yield* documentOperation(
+          context.raceKeyed({
+            signal: documentOperation(context.waitForSignal(step.signal), index, address),
+            timeout: context.sleep(step.timeout),
+          }),
+          index,
+          address,
+        );
+        if (outcome.key === 'timeout') {
+          // The marker takes the place of `previous`, exactly as an activity's result would.
+          state.previous = { timedOut: true };
+          state.pendingSignal = undefined;
+          state.lastStepWasSignal = false;
+          return;
+        }
+        state.pendingSignal = outcome.value;
+      }
+      // Pure and replayed from the recorded payload: a rejection ends the run before any later step.
+      if (host.isRejection?.(state.pendingSignal, { ...revision, step: index }) === true) {
+        throw new WorkflowDocumentReviewRejectedError();
+      }
+    }
     const runSteps = function* (
       steps: readonly WorkflowDocument['steps'][number][],
       iteration: readonly (string | number)[],
@@ -353,31 +455,13 @@ export async function buildDocumentWorkflowDefinition(
         state.lastStepWasSignal = step.kind === 'await-signal';
         switch (step.kind) {
           case 'activity':
-            state.previous = yield* documentActivityOperation(
-              context.run(activities.get(step.handler)!, {
-                input: step.input ?? null,
-                trigger: firedBy,
-                previous: state.previous,
-                ...(state.pendingSignal === undefined ? {} : { signal: state.pendingSignal }),
-                workflowId: context.workflowId,
-                step: index,
-                iteration,
-                stepAddress: address,
-              }),
-              index,
-              address,
-            );
-            state.pendingSignal = undefined;
+            yield* runActivity(step, index, iteration, address, state);
             break;
           case 'sleep':
             yield* documentOperation(context.sleep(step.duration), index, address);
             break;
           case 'await-signal':
-            state.pendingSignal = yield* documentOperation(
-              context.waitForSignal(step.signal),
-              index,
-              address,
-            );
+            yield* runAwaitSignal(step, index, address, state);
             break;
           case 'branch': {
             yield* runSteps(branchSteps(step, state.previous), iteration, state);
@@ -385,6 +469,11 @@ export async function buildDocumentWorkflowDefinition(
           }
           case 'map': {
             yield* runMap(step, index, iteration, state, runSteps);
+            break;
+          }
+          case 'parallel': {
+            yield* runParallel(step, iteration, state, runSteps);
+            state.lastStepWasSignal = false;
             break;
           }
         }
@@ -399,7 +488,7 @@ export async function buildDocumentWorkflowDefinition(
 
   const builder = workflow({
     name: document.name,
-    version: await workflowDocumentVersion(document),
+    version: workflowVersion,
     tags: ['file-workflow'],
   }).activities(Object.fromEntries(activities));
   // A document that awaits no signal declares none, so its contract carries no `signals` entry.

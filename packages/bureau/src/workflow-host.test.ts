@@ -11,6 +11,7 @@ import {
   composeAgentMessage,
   createWorkflowDocumentHost,
   registerBureauWorkflowDocuments,
+  withReviewRejection,
   workflowCatalogOf,
   WorkflowHostConflictError,
   type AgentStepRequest,
@@ -159,6 +160,57 @@ describe('the workflow host', () => {
         }),
       }),
     );
+  });
+});
+
+describe('the workflow editor catalog', () => {
+  const host = createWorkflowDocumentHost({ runAgentStep: async () => unreachable() });
+  const catalog = workflowCatalogOf(host, NO_WORKFLOW_CONTRIBUTIONS);
+  const fieldsOf = (kind: string) =>
+    Object.keys(catalog.stepKinds.find((entry) => entry.kind === kind)?.fields ?? {});
+
+  it('lists the timeout an await-signal step takes (COR-2240)', () => {
+    expect(fieldsOf('await-signal')).toEqual(['signal', 'timeout']);
+  });
+
+  it('lists the step kinds it always did', () => {
+    expect(catalog.stepKinds.map((entry) => entry.kind)).toEqual(
+      expect.arrayContaining(['activity', 'sleep', 'await-signal', 'branch', 'map']),
+    );
+  });
+});
+
+describe('the host asks whether a payload is a rejection (COR-2238)', () => {
+  // Step 1 of revision `flow@v1` is a review; step 0 is a plain wait.
+  const host = withReviewRejection(
+    createWorkflowDocumentHost({ runAgentStep: async () => unreachable() }),
+    (name, version) => (name === 'flow' && version === 'v1' ? new Set([1]) : undefined),
+  );
+  const at = (step: number, name = 'flow', workflowVersion = 'v1') => ({
+    name,
+    workflowVersion,
+    step,
+  });
+  const rows: readonly [string, unknown, boolean][] = [
+    ['a rejection', { __abRejected: true, reason: 'no' }, true],
+    ['a rejection with no reason', { __abRejected: true }, true],
+    ['a denial', { __abDenied: true, reason: 'change it' }, false],
+    ['a flag that is not true', { __abRejected: 'yes' }, false],
+    ['an approval answer', { note: 'ship it' }, false],
+    ['null', null, false],
+    ['a string', '__abRejected', false],
+  ];
+  for (const [name, payload, expected] of rows) {
+    it(`says ${String(expected)} at a review for ${name}`, () => {
+      expect(host.isRejection?.(payload, at(1))).toBe(expected);
+    });
+  }
+
+  it('says false at a plain wait, a step of another revision, and a revision it does not know, for a rejection', () => {
+    const rejection = { __abRejected: true, reason: 'no' };
+    expect(host.isRejection?.(rejection, at(0))).toBe(false);
+    expect(host.isRejection?.(rejection, at(1, 'flow', 'v2'))).toBe(false);
+    expect(host.isRejection?.(rejection, at(1, 'other'))).toBe(false);
   });
 });
 

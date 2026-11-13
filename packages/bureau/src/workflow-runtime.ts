@@ -52,6 +52,7 @@ import {
   parseWorkflowFile,
   serializeWorkflowFile,
   triggerHasUnrecognizedKeys,
+  workflowFileStepsInCanonicalOrder,
   type WorkflowFileDefinition,
   WorkflowFileError,
 } from './workflow-file';
@@ -86,6 +87,7 @@ import {
   acceptContributedTriggers,
   bridgeEngineActivities,
   registerBureauWorkflowDocuments,
+  withReviewRejection,
   workflowCatalogOf,
   type WorkflowCatalog,
   type ScheduleOverlapPolicy,
@@ -97,6 +99,7 @@ import {
   reconcileWorkflowSchedules,
 } from './workflow-schedule';
 import {
+  errorCodeOf,
   finishReasonOf,
   inputSchemaIssues,
   type WorkflowFinishReason,
@@ -310,6 +313,8 @@ export interface WorkflowRunFilter {
   readonly mayReadRun?: ((runId: string) => Promise<boolean>) | undefined;
   readonly workflow?: string | undefined;
   readonly status?: WorkflowStatus | undefined;
+  /** Only the failed instances that recorded this code (see `errorCodeOf`), e.g. `review-rejected`. */
+  readonly errorCode?: string | undefined;
   readonly limit: number;
   readonly offset: number;
 }
@@ -734,7 +739,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   /** The host a file is read against: a trigger kind a file names must be loaded. */
   const host = bridgeEngineActivities(engine, options.host);
   /** The host a revision is registered against, whether it is a file's or has instances (COR-1874). */
-  const registrationHost = acceptContributedTriggers(host);
+  /**
+   * The review steps (COR-2238) of every revision registered here, by Weft name and version, filled
+   * by {@link register} before the engine runs or recovers an instance of it. A review flag
+   * leaves the Weft version unchanged, so the newest saved version of a revision wins, as for the
+   * Reviews list.
+   */
+  const reviewStepsByRevision = new Map<string, ReadonlySet<number>>();
+  const reviewKey = (name: string, version: string): string => `${name}\u0000${version}`;
+  const registrationHost = withReviewRejection(acceptContributedTriggers(host), (name, version) =>
+    reviewStepsByRevision.get(reviewKey(name, version)),
+  );
   const contributions = options.contributions ?? NO_WORKFLOW_CONTRIBUTIONS;
   const owner = ownerOrLocal(undefined);
   /**
@@ -1014,6 +1029,25 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       : { origin: 'write', actor: writer.actor, surface: writer.surface };
   }
 
+  /**
+   * The steps as written of the revision of workflow `id` at `workflowVersion`: the file's, when
+   * it is the current one, else the newest saved version with that Weft version.
+   */
+  async function revisionOf(
+    id: string,
+    workflowVersion: string,
+  ): Promise<WorkflowRevisionSteps | undefined> {
+    const file = catalog.find(id);
+    if (file?.version === workflowVersion) {
+      return { workflow: id, title: file.title, steps: file.steps };
+    }
+    const records = await revisionLedger.list(id);
+    const saved = records.findLast((record) => record.workflowVersion === workflowVersion);
+    return saved === undefined
+      ? undefined
+      : { workflow: id, title: saved.content.title, steps: saved.content.steps };
+  }
+
   /** Register the files' documents, and the older revisions that still have an instance in flight. */
   async function register(retained: readonly WorkflowDocument[]): Promise<void> {
     const files = readyFiles();
@@ -1028,7 +1062,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             active: files.map((file) => file.document),
             retained,
           });
-        for (const entry of registered) registeredTypes.add(bureauNameOf(entry.name));
+        for (const entry of registered) {
+          registeredTypes.add(bureauNameOf(entry.name));
+          const written = await revisionOf(bureauNameOf(entry.name), entry.workflowVersion);
+          reviewStepsByRevision.set(
+            reviewKey(entry.name, entry.workflowVersion),
+            new Set(
+              workflowFileStepsInCanonicalOrder(written?.steps ?? []).flatMap(({ step, index }) =>
+                step['kind'] === 'await-signal' && step['review'] === true ? [index] : [],
+              ),
+            ),
+          );
+        }
         appliedFiles = new Map(files.map((file) => [file.id, file]));
         registrationFailure = undefined;
       } catch (error) {
@@ -2010,7 +2055,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
           const page = await engine.list({
             type: weftNameOf(type),
-            ...(filter.status === undefined ? {} : { status: filter.status }),
+            // A recorded code belongs to a failed run only, so it narrows the read when no status does.
+            ...(filter.status === undefined
+              ? filter.errorCode === undefined
+                ? {}
+                : { status: 'failed' as const }
+              : { status: filter.status }),
             limit: 100,
             offset,
           });
@@ -2026,8 +2076,15 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           const states = await Promise.all(
             readable.map(async (run) => ({ run, state: await engine.get(run.id) })),
           );
-          for (const { run, state } of states)
+          for (const { run, state } of states) {
+            if (
+              filter.errorCode !== undefined &&
+              errorCodeOf(state?.errorStack) !== filter.errorCode
+            ) {
+              continue;
+            }
             found.push(summarize({ ...run, input: state?.input }));
+          }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
         }
@@ -2315,16 +2372,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
     async revisionSteps(type, workflowVersion) {
       if (!(await isWorkflowType(type))) return undefined;
-      const id = bureauNameOf(type);
-      const file = catalog.find(id);
-      if (file?.version === workflowVersion) {
-        return { workflow: id, title: file.title, steps: file.steps };
-      }
-      const records = await revisionLedger.list(id);
-      const saved = records.findLast((record) => record.workflowVersion === workflowVersion);
-      return saved === undefined
-        ? undefined
-        : { workflow: id, title: saved.content.title, steps: saved.content.steps };
+      return revisionOf(bureauNameOf(type), workflowVersion);
     },
 
     async inFlightRunIds() {

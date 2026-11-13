@@ -4,13 +4,16 @@ import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { EventLog, type EventHeadRecord } from '../event-log.ts';
+import {
+  addressPayload,
+  pendingCompletionEvents,
+  type FileWorkflowEvent,
+} from './file-workflow-completion-events.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveWorkflowSourceForExecution } from './source-resolution.ts';
 import { loadWorkflowState } from './storage-io.ts';
 
 const FILE_WORKFLOW_TAG = 'file-workflow';
-
-type FileWorkflowEvent = Readonly<{ type: string; payload: Record<string, unknown> }>;
 
 export type FileWorkflowRunIdentity = Readonly<{
   type: string;
@@ -178,10 +181,6 @@ function stepAddress(operation: ContextOperationRequest, fallback: number): stri
   );
 }
 
-function addressPayload(address: string, step: number): Record<string, unknown> {
-  return address === String(step) ? {} : { stepAddress: address };
-}
-
 async function existingFileWorkflowEvents(
   internals: EngineInternals,
   workflowId: string,
@@ -221,111 +220,10 @@ function appendEvents(
   return head;
 }
 
-function completionEvents(
-  pending:
-    | {
-        operationType: string;
-        operationLabel: string;
-        stepIndex?: number;
-        documentStep?: number;
-        documentStepAddress?: string;
-        status: string;
-      }
-    | undefined,
-): FileWorkflowEvent[] {
-  if (pending?.status !== 'completed') return [];
-  if (pending.documentStep === undefined && pending.operationType !== 'activity') return [];
-  const step = pending.documentStep ?? pending.stepIndex ?? 0;
-  const addressFields = addressPayload(String(pending.documentStepAddress ?? step), step);
-  const events = new Map<string, FileWorkflowEvent[]>([
-    [
-      'activity',
-      [
-        {
-          type: 'file-workflow:activity-completed',
-          payload: {
-            step,
-            ...addressFields,
-            handler: pending.operationLabel,
-          },
-        },
-        {
-          type: 'file-workflow:step-completed',
-          payload: {
-            step,
-            ...addressFields,
-            kind: 'activity',
-          },
-        },
-      ],
-    ],
-    [
-      'wait-signal',
-      [
-        {
-          type: 'file-workflow:signal-received',
-          payload: {
-            step,
-            ...addressFields,
-            signal: pending.operationLabel,
-          },
-        },
-        {
-          type: 'file-workflow:step-completed',
-          payload: {
-            step,
-            ...addressFields,
-            kind: 'await-signal',
-          },
-        },
-      ],
-    ],
-    [
-      'sleep',
-      [
-        {
-          type: 'file-workflow:step-completed',
-          payload: {
-            step,
-            ...addressFields,
-            kind: 'sleep',
-          },
-        },
-      ],
-    ],
-  ]);
-  return events.get(pending.operationType) ?? [];
-}
-
-function parallelBranchCompletionEvents(pending: {
-  operationType: string;
-  status: string;
-  branches?: readonly {
-    operationType: string;
-    operationLabel: string;
-    outcome: string;
-    documentStep?: number;
-    documentStepAddress?: string;
-  }[];
-}): FileWorkflowEvent[] {
-  if (pending.operationType !== 'parallel' || pending.status !== 'completed') return [];
-  return (pending.branches ?? []).flatMap((branch) => {
-    if (branch.outcome !== 'fulfilled' || branch.operationType !== 'activity') return [];
-    return completionEvents({
-      operationType: branch.operationType,
-      operationLabel: branch.operationLabel,
-      ...(branch.documentStep === undefined ? {} : { documentStep: branch.documentStep }),
-      ...(branch.documentStepAddress === undefined
-        ? {}
-        : { documentStepAddress: branch.documentStepAddress }),
-      status: 'completed',
-    });
-  });
-}
-
 function startEvents(operation: ContextOperationRequest, step: number): FileWorkflowEvent[] {
-  if (operation.type === 'parallel') {
-    return operation.operations.flatMap((child) => startEvents(child, step));
+  if (operation.type === 'parallel' || operation.type === 'race') {
+    // Each child is its own document step: it carries its own index and address.
+    return operation.operations.flatMap((child) => startEvents(child, stepIndex(child, step)));
   }
   const documentStep = (operation as ContextOperationRequest & { documentStep?: number })
     .documentStep;
@@ -372,8 +270,7 @@ export async function appendFileWorkflowCheckpointEvents(
   const existing = await existingFileWorkflowEvents(internals, workflowId);
   const pending = internals.pendingTimelineEntries.get(workflowId)?.entry;
   const events = [
-    ...completionEvents(pending),
-    ...(pending === undefined ? [] : parallelBranchCompletionEvents(pending)),
+    ...pendingCompletionEvents(pending),
     ...startEvents(operation, stepIndex(operation, pendingStepIndex)),
   ];
   return appendEvents(internals, workflowId, operations, events, existing, initialHead);
@@ -409,7 +306,7 @@ export async function prepareFileWorkflowTerminalHistory(
       ...(status === 'timed-out' ? { message: 'Workflow run timed out.' } : {}),
     },
   };
-  const events = [...completionEvents(pending), terminal];
+  const events = [...pendingCompletionEvents(pending), terminal];
   let lastHead = initialHead;
   return {
     identity: run,

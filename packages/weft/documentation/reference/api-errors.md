@@ -202,7 +202,8 @@ These classes are exported from the package root but extend plain `Error`, so `i
 | `WeftWorkflowCheckpointConflictWarning` | `core/engine/checkpoint-conflict-error.ts` |
 | `WeftWorkflowClaimLostWarning`          | `core/engine/lease-deposition.ts`          |
 | `WeftWorkflowWakeDiscardedWarning`      | `core/engine/lease-deposition.ts`          |
-| `WorkflowDocumentBranchError`           | `document-workflow/document.ts`            |
-| `WorkflowDocumentMapError`              | `document-workflow/document.ts`            |
-| `WorkflowDocumentSchemaError`           | `document-workflow/document.ts`            |
+| `WorkflowDocumentBranchError`           | `document-workflow/document-errors.ts`     |
+| `WorkflowDocumentMapError`              | `document-workflow/document-errors.ts`     |
+| `WorkflowDocumentReviewRejectedError`   | `document-workflow/document-errors.ts`     |
+| `WorkflowDocumentSchemaError`           | `document-workflow/document-errors.ts`     |
 | `WorkflowDocumentValidationError`       | `document-workflow/document.ts`            |

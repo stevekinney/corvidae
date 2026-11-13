@@ -190,7 +190,7 @@ export function parallelTimelineDetails(
 ): WorkflowTimelineOperationDetail[] {
   return operations.map((operation, index) => {
     const slot = slots[index];
-    return operationTimelineDetail(
+    const detail = operationTimelineDetail(
       operation,
       index,
       slot?.status === 'fulfilled' ? 'fulfilled' : 'rejected',
@@ -199,7 +199,40 @@ export function parallelTimelineDetails(
         ...(slot?.status === 'rejected' ? { error: slot.reason } : {}),
       },
     );
+    const nested = keyedRaceBranchDetails(operation, slot);
+    return nested === undefined ? detail : { ...detail, branches: nested };
   });
+}
+
+/**
+ * The branches of a keyed `ctx.raceKeyed` that ran as a branch of `ctx.all`, with the winner the
+ * slot recorded, so file-workflow history can tell which side of the race settled a document step.
+ * Only a race with a document step in it records them: a code workflow's timeline is unchanged. A
+ * positional race records no winner key, and a rejected slot no winner, so neither has any.
+ */
+function keyedRaceBranchDetails(
+  operation: ContextOperationRequest,
+  slot: ParallelBranchSlot | undefined,
+): WorkflowTimelineOperationDetail[] | undefined {
+  if (
+    operation.type !== 'race' ||
+    operation.branchNames === undefined ||
+    !operation.operations.some(
+      (child) =>
+        (child as ContextOperationRequest & { documentStep?: number }).documentStep !== undefined,
+    ) ||
+    slot?.status !== 'fulfilled' ||
+    typeof slot.value !== 'object' ||
+    slot.value === null
+  ) {
+    return undefined;
+  }
+  const winnerIndex = operation.branchNames.indexOf(Reflect.get(slot.value, 'key') as string);
+  if (winnerIndex < 0) return undefined;
+  return raceTimelineDetails(operation.operations, winnerIndex, operation.branchNames).slice(
+    0,
+    MAX_TIMELINE_COORDINATOR_DETAILS,
+  );
 }
 
 export function raceTimelineDetails(

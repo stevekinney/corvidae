@@ -254,6 +254,13 @@ export function workflowFileStepsInCanonicalOrder<T extends WorkflowFileStep>(
         visit(step['steps'] as T[], `${path}.steps`);
         continue;
       }
+      if (step['kind'] === 'parallel' && isPlainObject(step['branches'])) {
+        for (const name of Object.keys(step['branches']).toSorted()) {
+          const branch = step['branches'][name];
+          if (Array.isArray(branch)) visit(branch as T[], `${path}.branches.${name}`);
+        }
+        continue;
+      }
       if (step['kind'] !== 'branch' || !isPlainObject(step['cases'])) continue;
       for (const literal of Object.keys(step['cases']).toSorted()) {
         const branch = step['cases'][literal];
@@ -542,6 +549,17 @@ function stripExtensions(
       } else if (rest['kind'] === 'map' && Array.isArray(rest['steps'])) {
         rest['steps'] = rest['steps'].map((child, index) =>
           stripStep(child, `${path}.steps[${String(index)}]`),
+        );
+      } else if (rest['kind'] === 'parallel' && isPlainObject(rest['branches'])) {
+        rest['branches'] = Object.fromEntries(
+          Object.entries(rest['branches']).map(([name, nested]) => [
+            name,
+            Array.isArray(nested)
+              ? nested.map((child, index) =>
+                  stripStep(child, `${path}.branches.${name}[${String(index)}]`),
+                )
+              : nested,
+          ]),
         );
       }
       return rest;

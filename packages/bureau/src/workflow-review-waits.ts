@@ -8,7 +8,10 @@
  * only that an instance waits for a signal. This module joins the two. The engine says which
  * instances wait, on which signal, and at which step (the timeline's `stepIndex` of the running
  * `wait-signal` entry's `documentStep`, which is the canonical preorder index of the document
- * step; the file says whether that step is a review. The file is the one the instance runs on, read through
+ * step); the file says whether that step is a review. A wait inside a race (an `await-signal` with
+ * a `timeout`) or a parallel round has a bare `race` or `parallel` timeline entry, so its step and
+ * address come from the history event that opened it, and a parallel round can hold several reviews
+ * at once. The file is the one the instance runs on, read through
  * {@link WorkflowReviewWaitsDependencies.revisionSteps}: the newest saved version whose Weft
  * revision is the instance's.
  *
@@ -28,6 +31,7 @@
 
 import type {
   RegistryAgnosticEngine,
+  WorkflowEvent,
   WorkflowState,
   WorkflowTimelineEntry,
 } from '@lostgradient/weft';
@@ -49,7 +53,7 @@ export interface WorkflowRevisionSteps {
 /** What the module reads of the engine. */
 export type WorkflowReviewEngine = Pick<
   RegistryAgnosticEngine,
-  'get' | 'getTimeline' | 'addEventListener' | 'removeEventListener'
+  'get' | 'getTimeline' | 'getEvents' | 'addEventListener' | 'removeEventListener'
 >;
 
 /** What {@link createWorkflowReviewWaits} reads from the Bureau around it. */
@@ -97,6 +101,8 @@ const LIVE_STATUSES: ReadonlySet<string> = new Set(['pending', 'running', 'suspe
 
 /** The engine events after which an instance's wait may have begun, ended, or settled. */
 const REFRESH_EVENTS = ['signal:waiting', 'signal:delivered'] as const;
+/** The events that show an instance that held a review has moved on to a step that is not a wait. */
+const MOVED_ON_EVENTS = ['activity:started'] as const;
 const TERMINAL_EVENTS = [
   'workflow:completed',
   'workflow:failed',
@@ -123,24 +129,58 @@ function awaits(step: WorkflowFileStep | undefined, signalName: string): boolean
   return step?.['kind'] === 'await-signal' && step['signal'] === signalName;
 }
 
+/** A step an instance waits at. */
+interface WaitingStep {
+  readonly stepIndex: number;
+  readonly signalName: string;
+  readonly since: number;
+  readonly stepAddress: string | undefined;
+}
+
 /**
- * The step an instance waits at, and since when: the running `wait-signal` entry of its timeline,
- * whose `stepIndex` is the step's index in the file, when that step awaits the entry's signal.
- * Otherwise, the one `await-signal` step on a signal the instance waits for, when exactly one
- * step names it. `undefined` when neither says.
+ * The `await-signal` step the latest `signal-waiting` event of `events` names for `signalName`, with
+ * the address of the wait in a race or a parallel round. The engine records that event as the wait
+ * starts, whatever operation it is nested in, so it is the one place a wait with a `timeout` or in
+ * a `parallel` branch says which document step and iteration it is. `undefined` when no event names
+ * a step of the file that awaits `signalName`.
  */
-function waitingStep(
+function openedWait(
+  events: readonly WorkflowEvent[],
+  signalName: string,
+  ordered: ReturnType<typeof workflowFileStepsInCanonicalOrder>,
+): WaitingStep | undefined {
+  const opened = events.findLast(
+    (event) => event.type === 'file-workflow:signal-waiting' && event.data['signal'] === signalName,
+  );
+  const stepIndex = opened?.data['step'];
+  if (typeof stepIndex !== 'number' || !awaits(ordered[stepIndex]?.step, signalName)) {
+    return undefined;
+  }
+  const address = opened?.data['stepAddress'];
+  return {
+    stepIndex,
+    signalName,
+    since: opened?.timestamp ?? 0,
+    stepAddress: typeof address === 'string' ? address : undefined,
+  };
+}
+
+/**
+ * The steps an instance waits at, and since when. A top-level wait is the running `wait-signal`
+ * entry of the timeline, whose `documentStep` is the step's index in the file, when that step
+ * awaits the entry's signal. A wait inside a race (a `timeout`) or a parallel round has a bare
+ * `race` or `parallel` entry, so each signal the instance waits for is read from the history
+ * event that opened its wait ({@link openedWait}): a parallel round can wait at several steps at
+ * once. Otherwise, the one `await-signal` step on a signal when exactly one step names it. A
+ * signal none of these places is left out.
+ */
+async function waitingSteps(
+  engine: WorkflowReviewEngine,
+  runId: string,
   state: WorkflowState,
   timeline: readonly WorkflowTimelineEntry[],
   steps: readonly WorkflowFileStep[],
-):
-  | {
-      readonly stepIndex: number;
-      readonly signalName: string;
-      readonly since: number;
-      readonly stepAddress: string | undefined;
-    }
-  | undefined {
+): Promise<readonly WaitingStep[]> {
   const waiting = state.waitingForSignals ?? [];
   const ordered = workflowFileStepsInCanonicalOrder(steps);
   const entry = timeline.findLast(
@@ -153,31 +193,40 @@ function waitingStep(
     entry?.documentStep !== undefined &&
     awaits(ordered[entry.documentStep]?.step, entry.operationLabel)
   ) {
-    return {
-      stepIndex: entry.documentStep,
-      signalName: entry.operationLabel,
-      since: entry.timestamp,
-      stepAddress: entry.documentStepAddress,
-    };
+    return [
+      {
+        stepIndex: entry.documentStep,
+        signalName: entry.operationLabel,
+        since: entry.timestamp,
+        stepAddress: entry.documentStepAddress,
+      },
+    ];
   }
+  const events = await engine.getEvents(runId);
+  const found: WaitingStep[] = [];
   for (const signalName of waiting) {
+    const opened = openedWait(events, signalName, ordered);
+    if (opened !== undefined) {
+      found.push(opened);
+      continue;
+    }
     const indices = ordered.flatMap(({ step, index }) => (awaits(step, signalName) ? [index] : []));
     if (indices.length === 1) {
-      return {
+      found.push({
         stepIndex: indices[0]!,
         signalName,
         since: entry?.timestamp ?? state.updatedAt,
         stepAddress: entry?.documentStepAddress,
-      };
+      });
     }
   }
-  return undefined;
+  return found;
 }
 
 /** Build the module. Call {@link WorkflowReviewWaits.start} once the workflow files are registered. */
 export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDependencies) {
-  /** The review each instance waits at, by run id. */
-  const waits = new Map<string, Wait>();
+  /** The reviews each instance waits at, by run id: one, or several when a parallel round waits at many. */
+  const waits = new Map<string, readonly Wait[]>();
   /** Reviews resolved here: the engine may not yet say so, and a refresh in flight must not revive them. */
   const resolved = new Set<string>();
   /** Reviews already announced, or found by the start sweep, which were announced before it. */
@@ -222,30 +271,40 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
     dependencies.released(runId);
   }
 
-  /** What the engine says `runId` waits at now, or `undefined` when it waits at no review. */
-  async function read(engine: WorkflowReviewEngine, runId: string): Promise<Wait | undefined> {
+  /** The reviews the engine says `runId` waits at now: none when it waits at no review. */
+  async function read(engine: WorkflowReviewEngine, runId: string): Promise<readonly Wait[]> {
     const state = await engine.get(runId);
-    if (state === null || !LIVE_STATUSES.has(state.status)) return undefined;
-    if ((state.waitingForSignals?.length ?? 0) === 0) return undefined;
+    if (state === null || !LIVE_STATUSES.has(state.status)) return [];
+    if ((state.waitingForSignals?.length ?? 0) === 0) return [];
     const revision = await dependencies.revisionSteps(
       state.type,
       state.versionTuple.workflowVersion,
     );
-    if (revision === undefined) return undefined;
-    const step = waitingStep(state, await engine.getTimeline(runId), revision.steps);
-    if (step === undefined) return undefined;
-    const written = workflowFileStepsInCanonicalOrder(revision.steps)[step.stepIndex]?.step;
-    if (written?.['review'] !== true) return undefined;
-    return {
+    if (revision === undefined) return [];
+    const ordered = workflowFileStepsInCanonicalOrder(revision.steps);
+    const found = await waitingSteps(
+      engine,
       runId,
-      workflow: revision.workflow,
-      title: revision.title,
-      stepIndex: step.stepIndex,
-      stepTitle: stringOf(written['title']),
-      signalName: step.signalName,
-      requestedAt: step.since,
-      stepAddress: step.stepAddress,
-    };
+      state,
+      await engine.getTimeline(runId),
+      revision.steps,
+    );
+    return found.flatMap((step): Wait[] => {
+      const written = ordered[step.stepIndex]?.step;
+      if (written?.['review'] !== true) return [];
+      return [
+        {
+          runId,
+          workflow: revision.workflow,
+          title: revision.title,
+          stepIndex: step.stepIndex,
+          stepTitle: stringOf(written['title']),
+          signalName: step.signalName,
+          requestedAt: step.since,
+          stepAddress: step.stepAddress,
+        },
+      ];
+    });
   }
 
   /**
@@ -262,16 +321,19 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
       await previous.catch(() => undefined);
       const engine = dependencies.engine();
       if (engine === undefined) return;
-      const wait = await read(engine, runId);
-      if (wait === undefined || resolved.has(idOf(wait))) {
+      const found = await read(engine, runId);
+      const held = found.filter((wait) => !resolved.has(idOf(wait)));
+      if (held.length === 0) {
         drop(runId);
         return;
       }
-      waits.set(runId, wait);
-      const id = idOf(wait);
-      if (mode === 'quiet' || announced.has(id)) return;
-      announced.add(id);
-      if (mode === 'announce') dependencies.announce(reviewOf(wait));
+      waits.set(runId, held);
+      for (const wait of held) {
+        const id = idOf(wait);
+        if (mode === 'quiet' || announced.has(id)) continue;
+        announced.add(id);
+        if (mode === 'announce') dependencies.announce(reviewOf(wait));
+      }
     })();
     const settled = next.finally(() => {
       if (refreshing.get(runId) === settled) refreshing.delete(runId);
@@ -308,14 +370,22 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
       if (typeof runId === 'string')
         refreshInBackground(runId, event.type === 'signal:waiting' ? 'announce' : 'quiet');
     };
+    // A wait that lost its race to the timeout ends with no signal event, but the instance goes on
+    // to its next step, which starts an activity or waits again: either tells a held review it ended.
+    const onMovedOn = (event: Event): void => {
+      const runId = (event as Event & { workflowId?: unknown }).workflowId;
+      if (typeof runId === 'string' && waits.has(runId)) refreshInBackground(runId, 'quiet');
+    };
     const onSettled = (event: Event): void => {
       const runId = (event as Event & { workflowId?: unknown }).workflowId;
       if (typeof runId === 'string') settle(runId);
     };
     for (const type of REFRESH_EVENTS) engine.addEventListener(type, onWaitChanged);
+    for (const type of MOVED_ON_EVENTS) engine.addEventListener(type, onMovedOn);
     for (const type of TERMINAL_EVENTS) engine.addEventListener(type, onSettled);
     stopListening = () => {
       for (const type of REFRESH_EVENTS) engine.removeEventListener(type, onWaitChanged);
+      for (const type of MOVED_ON_EVENTS) engine.removeEventListener(type, onMovedOn);
       for (const type of TERMINAL_EVENTS) engine.removeEventListener(type, onSettled);
     };
     let runIds: readonly string[];
@@ -349,6 +419,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
   /** Every review held, oldest first. */
   function list(): PendingHumanWaitReview[] {
     return [...waits.values()]
+      .flat()
       .filter((wait) => !resolved.has(idOf(wait)))
       .toSorted((left, right) => left.requestedAt - right.requestedAt)
       .map(reviewOf);
@@ -357,8 +428,9 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
   /** The review held under `id`, if any. */
   function find(id: string): PendingHumanWaitReview | undefined {
     if (resolved.has(id)) return undefined;
-    for (const wait of waits.values()) {
-      if (idOf(wait) === id) return reviewOf(wait);
+    for (const held of waits.values()) {
+      const wait = held.find((candidate) => idOf(candidate) === id);
+      if (wait !== undefined) return reviewOf(wait);
     }
     return undefined;
   }
@@ -382,7 +454,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
     list,
     find,
     lookup,
-    /** The reviews held for `runId`: none, or the one its instance waits at. */
+    /** The reviews held for `runId`: none, one, or several when a parallel round waits at many. */
     ofRun: (runId: string): PendingHumanWaitReview[] => list().filter((r) => r.runId === runId),
     /** Read `runId` from the engine again, as after a resolution that was refused. */
     refresh: (runId: string): Promise<void> => refresh(runId, 'quiet'),
@@ -392,7 +464,11 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
      */
     markResolved(id: string): void {
       resolved.add(id);
-      for (const [runId, wait] of waits) if (idOf(wait) === id) waits.delete(runId);
+      for (const [runId, held] of waits) {
+        const rest = held.filter((wait) => idOf(wait) !== id);
+        if (rest.length === 0) waits.delete(runId);
+        else if (rest.length !== held.length) waits.set(runId, rest);
+      }
     },
     /** Stop listening to the engine. */
     close(): void {

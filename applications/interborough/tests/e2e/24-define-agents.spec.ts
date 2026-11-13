@@ -73,16 +73,17 @@ async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> 
 
 const copy = AGENT_EDITOR_COPY;
 
-/** The option the model field lists for each provider the host can call and has no key for. */
-async function unconnectedProviderOptions(request: APIRequestContext): Promise<string[]> {
+/**
+ * The providers the host can call and has no key for. The field lists each once, as a disabled
+ * "<Provider> is not connected" option, and the catalog keeps their rows, `unavailable` (COR-2143).
+ */
+async function unkeyedProviders(request: APIRequestContext): Promise<string[]> {
   const response = await request.get('/host/providers');
   expect(response.ok()).toBe(true);
   const body = (await response.json()) as {
     providers: { name: string; hasKey: boolean }[];
   };
-  return body.providers
-    .filter((provider) => !provider.hasKey)
-    .map((provider) => copy.model.notConnected(providerDisplayName(provider.name)));
+  return body.providers.filter((provider) => !provider.hasKey).map((provider) => provider.name);
 }
 
 test.describe('a new agent', () => {
@@ -122,16 +123,31 @@ test.describe('a new agent', () => {
 
       // Only the models and tools `bureau.agents.catalog` returns.
       const catalog = await readCatalog(request);
-      const unconnectedOptions = await unconnectedProviderOptions(request);
+      const unkeyed = await unkeyedProviders(request);
+      // The host's providers without a key keep their rows in the catalog, `unavailable`.
+      const unavailable = catalog.models.filter((row) => row.availability === 'unavailable');
+      expect(unavailable.length).toBeGreaterThan(0);
+      expect(unkeyed.length).toBeGreaterThan(0);
       const model = page.getByRole('combobox', { name: 'Model' });
       // The field holds the chosen model, and opening it as it stands lists every option.
       await model.click();
       const options = page.locator('.cinder-combobox__option-label');
-      await expect(options).toHaveText([
-        ...catalog.models.map((row) => `${row.provider}/${row.model}`),
-        // A provider the host can call and has no key for is listed, disabled.
-        ...unconnectedOptions,
-      ]);
+      // What can be chosen is each catalog row that is not unavailable, in the catalog's order.
+      await expect(
+        page.locator('[role="option"]:not([aria-disabled="true"]) .cinder-combobox__option-label'),
+      ).toHaveText(
+        catalog.models
+          .filter((row) => row.availability !== 'unavailable')
+          .map((row) => `${row.provider}/${row.model}`),
+      );
+      // A provider the host can call and has no key for is listed once, disabled, not by its rows.
+      for (const provider of unkeyed) {
+        await expect(
+          page
+            .locator('[role="option"][aria-disabled="true"]')
+            .filter({ hasText: copy.model.notConnected(providerDisplayName(provider)) }),
+        ).toHaveCount(1);
+      }
       await expect(options.first()).toHaveText('anthropic/claude-sonnet-5');
       await expect(page.locator('.cinder-_option-group__label').first()).toHaveText('Anthropic');
       // The chosen model's abilities show under the field.
@@ -366,8 +382,9 @@ test.describe('a new agent', () => {
 });
 
 // The first-run host (`e2e-constants.ts`) is a fresh installation: a home with no `configuration.json`,
-// so its model catalog is empty. The second host's home names a provider (the chat-proof agents on
-// it need a model), so it no longer shows this state. These cases only read the host, and they run
+// so no provider has a key and every row of its model catalog is `unavailable` (COR-2143). The
+// second host's home names a provider (the chat-proof agents on it need a model), so it no longer
+// shows this state. These cases only read the host, and they run
 // before `first-run.spec.ts`, which connects a provider there.
 test.describe('a new agent on a host with no model provider', () => {
   test.use({ baseURL: E2E_FIRST_RUN_URL });
@@ -380,7 +397,8 @@ test.describe('a new agent on a host with no model provider', () => {
     }) => {
       await page.setViewportSize({ width, height: 900 });
       const catalog = await readCatalog(request);
-      expect(catalog.models).toEqual([]);
+      // No row is one an agent could run on: a provider with no key keeps its rows, `unavailable`.
+      expect(catalog.models.filter((row) => row.availability !== 'unavailable')).toEqual([]);
       const paths = await readProviderPaths(request);
 
       await page.goto('/agents/new');
