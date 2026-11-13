@@ -71,10 +71,6 @@
     text-align: start;
   }
 
-  .chat-connection-notice :global(.chat-connection-wait) {
-    margin-block-start: var(--cinder-space-2);
-  }
-
   .chat-connection-notice :global(.chat-turn-action) {
     inline-size: auto;
     min-inline-size: 0;

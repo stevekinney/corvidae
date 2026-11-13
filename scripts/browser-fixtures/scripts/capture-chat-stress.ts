@@ -2150,6 +2150,8 @@ async function measure(
     problems.push(...(await readFailureSummaryProblems(opened.page)));
   }
   problems.push(...(await readActionRowProblems(opened.page)));
+  problems.push(...(await readCalloutSpacingProblems(opened.page)));
+  problems.push(...(await readIconSizeProblems(opened.page)));
   return { measurement, problems };
 }
 
@@ -2394,6 +2396,139 @@ export async function readActionRowProblems(
     },
     { selectors: [...selectors], tolerance: ACTION_ROW_TOLERANCE },
   );
+}
+
+/** How far apart the two gaps around a notice's progress line may be, in pixels (owner decision of 2026-11-13). */
+export const CALLOUT_SPACING_TOLERANCE = 1;
+
+/** The two gaps around one notice's progress line, measured in the page. */
+export interface CalloutGaps {
+  /** From the bottom of the last text line's letters to the top of the progress line. */
+  readonly textToBar: number;
+  /** From the bottom of the progress line to the top of the action row. */
+  readonly barToAction: number;
+}
+
+/**
+ * Measures, for every visible notice that holds text, a progress line and an action row, the
+ * distance from the last text line's letters to the bar and from the bar to the action row's top.
+ * The letters' extent is the text's own client rectangle (the font's content area), not the line
+ * box, so the leading below the line is part of the distance a person sees.
+ */
+export async function readCalloutGaps(page: Page): Promise<CalloutGaps[]> {
+  return page.evaluate(() => {
+    const gaps: { textToBar: number; barToAction: number }[] = [];
+    for (const callout of document.querySelectorAll<HTMLElement>('.cinder-callout')) {
+      const progress = callout.querySelector<HTMLElement>('.cinder-callout__progress');
+      const action = callout.querySelector<HTMLElement>('.cinder-callout__action');
+      const content = callout.querySelector<HTMLElement>('.cinder-callout__content');
+      if (progress === null || action === null || content === null) continue;
+      if (getComputedStyle(action).display === 'none') continue;
+      const bar = progress.querySelector<HTMLElement>('[role="progressbar"]') ?? progress;
+      const barBox = bar.getBoundingClientRect();
+      const actionBox = action.getBoundingClientRect();
+      if (barBox.height === 0 || actionBox.height === 0) continue;
+      // An action beside the text, not under the bar, has no gap to compare.
+      if (actionBox.top < barBox.bottom) continue;
+      let lastLineBottom: number | undefined;
+      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if (node.textContent?.trim() === '' || progress.contains(node)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rectangles = [...range.getClientRects()].filter((rectangle) => rectangle.height > 0);
+        const last = rectangles[rectangles.length - 1];
+        if (last !== undefined) lastLineBottom = last.bottom;
+      }
+      if (lastLineBottom === undefined) continue;
+      gaps.push({
+        textToBar: barBox.top - lastLineBottom,
+        barToAction: actionBox.top - barBox.bottom,
+      });
+    }
+    return gaps;
+  });
+}
+
+/** A notice's progress line sits as far from the text above it as from the action row below it. */
+export async function readCalloutSpacingProblems(page: Page): Promise<string[]> {
+  return (await readCalloutGaps(page))
+    .filter((gap) => Math.abs(gap.textToBar - gap.barToAction) > CALLOUT_SPACING_TOLERANCE)
+    .map(
+      (gap) =>
+        `notice progress line is ${gap.textToBar.toFixed(1)}px under the text but ${gap.barToAction.toFixed(1)}px above the action row`,
+    );
+}
+
+/** How far a glyph may exceed the line height of the text beside it, in pixels. */
+export const ICON_SIZE_TOLERANCE = 0.5;
+
+/**
+ * Measures that an icon is never larger than the text beside it (owner decision of 2026-11-13): an
+ * `svg` that shares a row with text inside a flex or grid container is no taller than that text's
+ * line height. The row is the nearest flex or grid ancestor, within three levels, that holds visible
+ * text outside the glyph's own wrapper and whose first line overlaps the glyph vertically; a glyph
+ * stacked above its text, or a large illustration with no text beside it, is not a row. Tooltips and
+ * screen-reader-only text are not measured.
+ */
+export async function readIconSizeProblems(page: Page): Promise<string[]> {
+  return page.evaluate((tolerance) => {
+    const problems: string[] = [];
+    const hidden = '[role="tooltip"], .cinder-sr-only, [hidden], [aria-hidden="true"] svg *';
+    const textOf = (node: Node): string => (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const firstLine = (node: Node): DOMRect | undefined => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return [...range.getClientRects()].find((rectangle) => rectangle.height > 0);
+    };
+    for (const glyph of document.querySelectorAll<SVGElement>('svg')) {
+      if (glyph.closest(hidden) !== null) continue;
+      const box = glyph.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      let wrapper: Element = glyph;
+      for (let level = 0; level < 3; level += 1) {
+        const container = wrapper.parentElement;
+        if (container === null || container === document.body) break;
+        const display = getComputedStyle(container).display;
+        if (/^(inline-)?(flex|grid)$/.test(display)) {
+          const beside = [...container.childNodes].find((node) => {
+            if (node === wrapper || node.contains(glyph)) return false;
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as Element;
+              if (element.closest(hidden) !== null || getComputedStyle(element).display === 'none')
+                return false;
+              if (element.querySelector('svg') !== null && textOf(element) === '') return false;
+            } else if (node.nodeType !== Node.TEXT_NODE) {
+              return false;
+            }
+            // Text clipped to a pixel is a visually hidden label (an icon-only button's name).
+            return textOf(node) !== '' && (firstLine(node)?.width ?? 0) > 1;
+          });
+          const line = beside === undefined ? undefined : firstLine(beside);
+          if (beside !== undefined && line !== undefined) {
+            const overlap = Math.min(line.bottom, box.bottom) - Math.max(line.top, box.top);
+            if (overlap > 0) {
+              const source =
+                beside.nodeType === Node.ELEMENT_NODE ? (beside as Element) : container;
+              const style = getComputedStyle(source);
+              const size = parseFloat(style.fontSize);
+              const lineHeight =
+                style.lineHeight === 'normal' ? size * 1.2 : parseFloat(style.lineHeight);
+              if (box.height > lineHeight + tolerance) {
+                const name = (container.className.toString().split(/\s+/)[0] ?? '').trim();
+                problems.push(
+                  `icon is ${box.height.toFixed(1)}px tall beside ${size}px text with a ${lineHeight.toFixed(1)}px line (in ${container.tagName.toLowerCase()}${name === '' ? '' : `.${name}`})`,
+                );
+              }
+              break;
+            }
+          }
+        }
+        wrapper = container;
+      }
+    }
+    return problems;
+  }, ICON_SIZE_TOLERANCE);
 }
 
 interface RunState {

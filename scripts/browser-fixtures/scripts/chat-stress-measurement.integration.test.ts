@@ -6,7 +6,10 @@ import {
   locate,
   measureInPage,
   readActionRowProblems,
+  readCalloutGaps,
+  readCalloutSpacingProblems,
   readFailureSummaryProblems,
+  readIconSizeProblems,
   readRepeatedSummaryProblems,
   readWithdrawal,
   revealScrollableControls,
@@ -963,6 +966,105 @@ describe('chat stress visual measurement', () => {
         );
       expect(await problemsFor(dismissed('justify-content: flex-end;'))).toEqual([]);
       expect(await problemsFor(dismissed('justify-content: flex-start;'))).toHaveLength(1);
+    });
+  });
+
+  describe('notice progress spacing guard', () => {
+    // The real mechanism of a Callout: text, a progress line in a flex wrapper, and an action row,
+    // with the margin above the bar and the grid gap below it as the two inputs.
+    const notice = (barMargin: number, actionGap: number): string => `
+      <style>
+        body { margin: 0; font: 14px/21px sans-serif; }
+        .cinder-callout { display: grid; row-gap: ${actionGap}px; inline-size: 320px; padding: 12px; box-sizing: border-box; }
+        .cinder-callout__content p { margin: 0; }
+        .cinder-callout__progress { display: flex; flex-direction: column; margin-block-start: ${barMargin}px; }
+        .cinder-progress { block-size: 4px; background: #999; }
+        .cinder-callout__action { display: flex; justify-content: flex-end; }
+        button { font: 13px sans-serif; padding: 4px 12px; }
+      </style>
+      <div class="cinder-callout">
+        <div class="cinder-callout__content">
+          <p>Connection lost. Trying again in a moment.</p>
+          <div class="cinder-callout__progress"><div class="cinder-progress" role="progressbar"></div></div>
+        </div>
+        <div class="cinder-callout__action"><button>Retry now</button></div>
+      </div>`;
+
+    const withPage = async <T>(
+      markup: string,
+      read: (page: import('@playwright/test').Page) => Promise<T>,
+    ) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await read(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a bar as far under the letters as above the action row', async () => {
+      // 14px sans-serif on a 21px line leaves about 2px of leading under the letters.
+      const gaps = await withPage(notice(10, 12), readCalloutGaps);
+      expect(gaps).toHaveLength(1);
+      expect(Math.abs(gaps[0]!.textToBar - gaps[0]!.barToAction)).toBeLessThanOrEqual(1);
+      expect(await withPage(notice(10, 12), readCalloutSpacingProblems)).toEqual([]);
+    });
+
+    it('fails a bar that sits much nearer the action row than the text', async () => {
+      const problems = await withPage(notice(22, 8), readCalloutSpacingProblems);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain('under the text');
+    });
+
+    it('fails a bar that sits much nearer the text than the action row', async () => {
+      expect(await withPage(notice(2, 24), readCalloutSpacingProblems)).toHaveLength(1);
+    });
+  });
+
+  describe('icon size guard', () => {
+    const row = (iconSize: number, extra = ''): string => `
+      <style>
+        body { margin: 0; font: 14px/20px sans-serif; }
+        .row { display: flex; align-items: flex-start; gap: 8px; ${extra} }
+        button { font: inherit; padding: 0; border: 0; }
+        svg { flex: none; inline-size: ${iconSize}px; block-size: ${iconSize}px; }
+      </style>
+      <button class="row"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg><span>Read the October ledger</span></button>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await readIconSizeProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a 16px glyph beside 14px text on a 20px line', async () => {
+      expect(await problemsFor(row(16))).toEqual([]);
+    });
+
+    it('fails a glyph taller than the text line beside it', async () => {
+      const problems = await problemsFor(row(28));
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain('icon is 28.0px tall beside 14px text with a 20.0px line');
+    });
+
+    it('fails a glyph inside its own wrapper beside the text', async () => {
+      const wrapped = row(28)
+        .replace('<svg', '<span class="wrap"><svg')
+        .replace('</svg>', '</svg></span>');
+      expect(await problemsFor(wrapped)).toHaveLength(1);
+    });
+
+    it('does not measure a glyph stacked above its text or a decorative one with no text beside it', async () => {
+      expect(await problemsFor(row(48, 'flex-direction: column;'))).toEqual([]);
+      const alone = row(48).replace('<span>Read the October ledger</span>', '');
+      expect(await problemsFor(alone)).toEqual([]);
     });
   });
 });

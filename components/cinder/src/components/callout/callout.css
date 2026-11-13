@@ -22,7 +22,10 @@
     /* The third track holds the optional dismiss button and collapses to nothing without one. */
     grid-template-columns: auto minmax(0, 1fr) auto;
     column-gap: 0;
-    row-gap: var(--cinder-space-3);
+    /* The distance from the message to the action row. A progress line between them sits this far
+     * from the letters above it and this far from the action row below it. */
+    --_cinder-callout-gap: var(--cinder-space-3);
+    row-gap: var(--_cinder-callout-gap);
     align-items: start;
     inline-size: 100%;
     padding-block: var(--cinder-space-3);
@@ -135,8 +138,14 @@
     white-space: nowrap;
   }
 
+  /* The line is as far under the last line of letters as it is above the action row. The text's
+   * line box has leading below its letters (about a fifth of an em of the line's height beyond the
+   * font's own 1.2em), so the margin is the gap less that leading. The wrapper is a flex box so
+   * the bar is the whole of it and no line strut adds a band above or below. */
   .cinder-callout__progress {
-    margin-block-start: var(--cinder-space-2);
+    display: flex;
+    flex-direction: column;
+    margin-block-start: calc(var(--_cinder-callout-gap) - (1lh - 1.2em) / 2);
   }
 
   /* The line is drawn in the callout's tone, not the accent. */
@@ -195,7 +204,7 @@
     align-items: center;
     min-inline-size: 0;
     column-gap: var(--cinder-space-3);
-    row-gap: var(--cinder-space-2);
+    row-gap: var(--_cinder-callout-gap);
   }
 
   /* The text takes its own width up to 68 characters and the action carries a leading auto
