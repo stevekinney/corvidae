@@ -105,7 +105,10 @@
      * clamps keep labels and metadata legible when Chat is embedded in a
      * narrow side panel; rem units preserve browser text zoom. These scoped
      * aliases also scale nested Cinder controls rendered inside Chat. */
-    --cinder-chat-font-size: 1rem;
+    /* 14px, Cinder's own body size (owner decision, 2026-11-13): message text reads at the size of
+     * the pages around it, and the ramp below steps notices and controls to 13px and metadata to
+     * 12px. */
+    --cinder-chat-font-size: 0.875rem;
     --_cinder-chat-text-4xs: clamp(
       0.625rem,
       calc(var(--cinder-chat-font-size) - 0.375rem),

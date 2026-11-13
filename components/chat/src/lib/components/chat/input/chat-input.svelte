@@ -2388,6 +2388,13 @@
     .chat-input-editor-container {
       --_chat-input-row-height: var(--cinder-touch-target-min, 44px);
     }
+
+    /* iOS zooms the page when a focused field's text is under 16px, so on a touch screen the
+     * editor and the overlay that mirrors it never go below that, whatever the chat's base size. */
+    .chat-input-editor-container .chat-input-editor,
+    .chat-input-editor-container .chat-input-markdown {
+      font-size: max(1rem, var(--cinder-text-base));
+    }
   }
 
   /* The first line shares a centre with Send or Stop: the editor is as tall as that button and its
