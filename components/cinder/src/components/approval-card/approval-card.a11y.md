@@ -12,7 +12,7 @@ Repeatable approval unit rendered as an `<article>` with native button controls.
 | Header status | text + `StatusDot` | State label such as `Expired` or `Unavailable` | Shown for anything but an answerable pending approval |
 | Risk glyph | `img` (`tabindex="0"` in the `card` layout) | Risk label, e.g. `High risk` (via `aria-label`) | `Tooltip` shows the same label on hover/focus in the `card` layout; the muted risk word is also written in text |
 | Input toggle (`row`) | button | `Input` and the summary pairs | `aria-expanded`, `aria-controls` the disclosed region |
-| Arguments toggle (`card`) | button | `<tool> arguments` (or `inputLabel`) and the summary pairs | Collapsed by default; `aria-expanded`, `aria-controls` the disclosed region |
+| Arguments toggle (`card`) | button | `Arguments` (or `inputLabel`) and the summary pairs | Collapsed by default; `aria-expanded`, `aria-controls` the disclosed region |
 | Touched file | list item | The path, read whole | The file glyph is decorative (`aria-hidden`); the copy button is named `Copy path <path>` |
 | Add a note | button | `Add a note` | Opens the `Note` textarea and moves focus into it; the button leaves, and the field stays open until the request changes |
 | Allow checkbox | checkbox | `Allow <tool> for <scope>` | Rendered only when `rememberScope` is set |

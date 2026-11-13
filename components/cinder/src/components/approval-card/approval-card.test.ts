@@ -474,7 +474,7 @@ describe('ApprovalCard', () => {
       }),
     });
     expect(container.querySelector('.cinder-json-viewer')).toBeNull();
-    await fireEvent.click(getByRole('button', { name: /^deploy-cloud arguments/ }));
+    await fireEvent.click(getByRole('button', { name: /^Arguments/ }));
     await fireEvent.click(getByRole('radio', { name: 'JSON' }));
     expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
     expect(container.textContent).toContain('"1"');
@@ -772,7 +772,7 @@ describe('ApprovalCard', () => {
         }),
       });
 
-      await fireEvent.click(getByRole('button', { name: /^deploy-cloud arguments/ }));
+      await fireEvent.click(getByRole('button', { name: /^Arguments/ }));
       await fireEvent.click(getByRole('radio', { name: 'JSON' }));
       const viewer = container.querySelector('.cinder-json-viewer');
       expect(viewer?.textContent).toContain('"--force"');
@@ -1261,7 +1261,7 @@ describe('ApprovalCard card layout anatomy', () => {
       container.querySelector('.cinder-approval-card__body'),
       HTMLElement,
     );
-    const argumentsToggle = getByRole('button', { name: /^deploy-cloud arguments/ });
+    const argumentsToggle = getByRole('button', { name: /^Arguments/ });
     const detailsToggle = getByRole('button', { name: 'Details' });
     const order = [
       body.querySelector('.cinder-approval-card__header'),
@@ -1283,9 +1283,8 @@ describe('ApprovalCard card layout anatomy', () => {
 
     // Both disclosures start closed: the summary line shows, the inspector and the details wait.
     expect(argumentsToggle.getAttribute('aria-expanded')).toBe('false');
-    expect(squash(argumentsToggle.textContent)).toBe(
-      'deploy-cloud arguments Dry run No, Retries 1',
-    );
+    // The title already names the tool, so the closed line does not say it again.
+    expect(squash(argumentsToggle.textContent)).toBe('Arguments Dry run No, Retries 1');
     const argumentsRegion = requiredInstance(
       document.getElementById(argumentsToggle.getAttribute('aria-controls') ?? ''),
       HTMLElement,
@@ -1299,6 +1298,8 @@ describe('ApprovalCard card layout anatomy', () => {
     await fireEvent.click(argumentsToggle);
     expect(argumentsToggle.getAttribute('aria-expanded')).toBe('true');
     expect(argumentsRegion.hidden).toBe(false);
+    // The inspector it opens keeps the tool's name for its copy button.
+    expect(getByRole('button', { name: 'Copy deploy-cloud arguments' })).not.toBeNull();
   });
 
   test('gives arguments that only repeat the command no disclosure of their own', () => {
@@ -1307,7 +1308,7 @@ describe('ApprovalCard card layout anatomy', () => {
         operation: { kind: 'command', command: 'bun test', argsPreview: { command: 'bun test' } },
       }),
     });
-    expect(queryByRole('button', { name: /arguments/ })).toBeNull();
+    expect(queryByRole('button', { name: /arguments/i })).toBeNull();
   });
 
   test('stacks who asked, the question, and one line with the tool and its risk', () => {

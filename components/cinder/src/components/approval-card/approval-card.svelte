@@ -345,6 +345,9 @@
   const hasCardArguments = $derived(
     hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand]),
   );
+  // The title above already names the tool, so the closed line just says "Arguments"; the
+  // inspector it opens keeps the tool's name, which also names its copy button.
+  const cardArgumentsWord = $derived(inputLabel ?? 'Arguments');
   const argumentsId = $derived(`${rootId}-arguments`);
   const detailsId = $derived(`${rootId}-details`);
   let argumentsOpen = $state(false);
@@ -987,7 +990,7 @@
                     aria-hidden="true"
                     data-cinder-open={argumentsOpen || undefined}
                   />
-                  <span class="cinder-approval-card__input-word">{payloadLabel}</span>
+                  <span class="cinder-approval-card__input-word">{cardArgumentsWord}</span>
                   <span class="cinder-approval-card__input-pairs">
                     {#each rowInputPairs as pair, index (pair.key)}
                       {#if index > 0}<span

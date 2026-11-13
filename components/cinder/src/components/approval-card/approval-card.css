@@ -165,13 +165,6 @@
     gap: var(--cinder-space-2);
   }
 
-  .cinder-approval-card__section-heading {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-  }
-
   .cinder-approval-card__section-title {
     margin: 0;
     color: var(--cinder-text-default);
@@ -1564,7 +1557,8 @@
       padding-inline-start: calc(12px + var(--cinder-space-2));
     }
 
-    .cinder-approval-card__disclosures .cinder-approval-card__input-pairs:empty {
+    /* Svelte leaves whitespace text nodes in an empty pairs list, so `:empty` never matches. */
+    .cinder-approval-card__disclosures .cinder-approval-card__input-pairs:not(:has(*)) {
       display: none;
     }
 
