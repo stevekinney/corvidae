@@ -75,4 +75,30 @@ test.describe('GroupedList layout', () => {
     expect(overlay.position).toBe('absolute');
     expect(overlay.inset).toBe('0px');
   });
+
+  test('text actions trail their row on a wide screen (COR-2329)', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const rows = page.getByTestId('grouped-list-actions').locator('.cinder-grouped-list-item');
+    const row = await rows.nth(0).boundingBox();
+    const button = await rows.nth(0).getByRole('link', { name: 'Answer' }).boundingBox();
+    expect(button!.x + button!.width).toBeGreaterThan(row!.x + row!.width - 40);
+    expect(button!.width).toBeLessThan(row!.width / 3);
+  });
+
+  test('text actions stack full width under the text on a phone (COR-2329)', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    const rows = page.getByTestId('grouped-list-actions').locator('.cinder-grouped-list-item');
+    for (const [index, name] of [
+      [0, 'Answer'],
+      [1, 'View run'],
+    ] as const) {
+      const row = await rows.nth(index).boundingBox();
+      const text = await rows.nth(index).locator('.cinder-grouped-list-item__text').boundingBox();
+      const button = await rows.nth(index).getByRole('link', { name }).boundingBox();
+      expect(button!.y, `${name} is under its text`).toBeGreaterThanOrEqual(
+        text!.y + text!.height - 1,
+      );
+      expect(button!.width, `${name} is the row's width`).toBeGreaterThan(row!.width - 40);
+    }
+  });
 });

@@ -324,6 +324,37 @@ export const CONTRACT: Record<string, ComponentContract> = {
     },
   },
 
+  'grouped-list-item': {
+    kind: 'intersection',
+    html_attrs: 'HTMLLiAttributes',
+    props: {
+      leadingKind: { optional: true, type_kind: 'TSTypeReference', default: L('icon') },
+      leadValue: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      leadUnit: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      urgency: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      staleAge: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      // Text actions (COR-2329): buttons at the end of the row, full width under it on a phone.
+      actions: { optional: true, type_kind: 'TSArrayType', default: NO_DEFAULT },
+      chevron: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      selected: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      suggested: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      suggestedLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Suggested') },
+      href: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      target: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      rel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+    },
+    snippets: {
+      title: s0(false),
+      subtitle: s0(true),
+      leading: s0(true),
+      lead: s0(true),
+      photo: s0(true),
+      trailing: s0(true),
+      action: s0(true),
+    },
+  },
+
   input: {
     kind: 'intersection',
     html_attrs: 'HTMLInputAttributes',

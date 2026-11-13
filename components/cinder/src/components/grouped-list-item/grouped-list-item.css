@@ -233,6 +233,38 @@
   }
 
   /* ----------------------------------------
+ * Text actions: buttons at the end of the row, full width under the text on a phone
+ * ---------------------------------------- */
+
+  /* Above the row's link, so a row can be a link and still carry its own buttons. */
+  .cinder-grouped-list-item__actions {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  /* On a phone the actions are never folded into a menu: they take a line of their own under the
+     text, one button per line, each the full width of the content. */
+  @media (width < 640px) {
+    .cinder-grouped-list-item--actions > .cinder-grouped-list-item__content {
+      flex-wrap: wrap;
+    }
+
+    .cinder-grouped-list-item--actions .cinder-grouped-list-item__actions {
+      flex: 1 0 100%;
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .cinder-grouped-list-item--actions .cinder-grouped-list-item__actions > .cinder-button {
+      inline-size: 100%;
+    }
+  }
+
+  /* ----------------------------------------
  * The row is the link
  * ---------------------------------------- */
 
