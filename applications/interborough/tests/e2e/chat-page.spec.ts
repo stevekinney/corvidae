@@ -865,11 +865,12 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
         `You denied this refund and said: “${NOTE}” I haven’t issued it, and I’ll wait for the claim before trying again.`,
       ),
     ).toBeVisible();
-    // The reply's line reads the time, then the model the host adds (COR-2281); Copy and Quote are
-    // icon-only buttons named by their aria-label, so they add no text between the two.
+    // The reply's line reads the time, then the names of Copy, Quote message and Regenerate (the
+    // latest reply offers all three, each an icon-only button), then the model the host adds
+    // (COR-2281).
     const details = conversationArea(page)
       .getByRole('group', { name: 'Message details' })
-      .filter({ hasText: /^\s*10:40 AM\s*Claude Sonnet 5\.5/ });
+      .filter({ hasText: /^\s*10:40 AM\s*Copy\s*Quote message\s*Regenerate\s*Claude Sonnet 5\.5/ });
     await expect(details).toHaveCount(1);
     await expect(details.getByRole('button', { name: 'Copy' })).toBeVisible();
     await expect(details.getByRole('button', { name: 'Quote message' })).toBeVisible();
