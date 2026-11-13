@@ -201,9 +201,13 @@
     display: flex;
     align-items: center;
     min-block-size: 1.5rem;
+    /* As close under its card as a message's time is under its bubble (owner, 2026-11-13): the
+     * line's own slack above the letters plus the gap between a message's parts would otherwise
+     * leave it twice as far from the card as the step row above the card is. */
+    margin-block-start: calc(-1 * (var(--cinder-space-2) + var(--cinder-space-0-5)));
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    line-height: 1.2;
+    line-height: normal;
   }
 
   @media (forced-colors: active) {
