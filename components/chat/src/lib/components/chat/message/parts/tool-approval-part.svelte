@@ -90,13 +90,31 @@
    * When an expired approval lapsed, written as a message's time is: the time of day for today and
    * the date with it for another day. The card says that it expired; this says when, under it.
    */
+  // The card reads Expired the moment a pending approval's deadline passes, whether or not the
+  // host has said so; the clock turns once at the deadline so this line follows it.
+  let now = $state(Date.now());
+  $effect(() => {
+    const expiresAt = part.action.expiresAt;
+    if (part.state !== 'pending' || expiresAt === undefined) return;
+    const remaining = Date.parse(expiresAt) - Date.now();
+    if (Number.isNaN(remaining)) return;
+    if (remaining <= 0) {
+      now = Date.now();
+      return;
+    }
+    const timer = setTimeout(() => (now = Date.now()), remaining);
+    return () => clearTimeout(timer);
+  });
   const expiredTime = $derived.by(() => {
-    if (part.state !== 'expired' || part.action.expiresAt === undefined) return undefined;
-    const lapsed = new Date(part.action.expiresAt);
+    const expiresAt = part.action.expiresAt;
+    if (expiresAt === undefined) return undefined;
+    const passed = Date.parse(expiresAt) <= now;
+    if (part.state !== 'expired' && !(part.state === 'pending' && passed)) return undefined;
+    const lapsed = new Date(expiresAt);
     if (Number.isNaN(lapsed.getTime())) return undefined;
     const today = lapsed.toDateString() === new Date().toDateString();
     return {
-      iso: part.action.expiresAt,
+      iso: expiresAt,
       text: (today ? timeFormatter : dateTimeFormatter).format(lapsed),
     };
   });

@@ -1061,6 +1061,21 @@ describe('chat stress visual measurement', () => {
       expect(await problemsFor(wrapped)).toHaveLength(1);
     });
 
+    it("does not measure an icon-only button against the next button's label", async () => {
+      const neighbours = `
+        <style>
+          body { margin: 0; font: 13px/13px sans-serif; }
+          .actions { display: flex; gap: 8px; align-items: center; }
+          button { display: inline-flex; align-items: center; font: inherit; }
+          svg { inline-size: 14px; block-size: 14px; }
+        </style>
+        <div class="actions">
+          <button aria-label="Copy"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg></button>
+          <button>Retry</button>
+        </div>`;
+      expect(await problemsFor(neighbours)).toEqual([]);
+    });
+
     it('does not measure a glyph stacked above its text or a decorative one with no text beside it', async () => {
       expect(await problemsFor(row(48, 'flex-direction: column;'))).toEqual([]);
       const alone = row(48).replace('<span>Read the October ledger</span>', '');

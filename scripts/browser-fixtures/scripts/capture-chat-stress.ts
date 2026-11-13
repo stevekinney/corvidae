@@ -2487,6 +2487,9 @@ export async function readIconSizeProblems(page: Page): Promise<string[]> {
       if (box.width === 0 || box.height === 0) continue;
       let wrapper: Element = glyph;
       for (let level = 0; level < 3; level += 1) {
+        // The text beside a glyph is its own control's text: a button's neighbour is another
+        // control, whose label says nothing about this glyph's size.
+        if (wrapper.matches('button, a[href], summary, [role="button"]')) break;
         const container = wrapper.parentElement;
         if (container === null || container === document.body) break;
         const display = getComputedStyle(container).display;
