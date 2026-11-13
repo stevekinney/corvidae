@@ -34,10 +34,18 @@
     display: inline-flex;
   }
 
+  /* A member wrapped in another element (a Tooltip's wrapper, a Dropdown) fills its place in the
+   * group like a bare Button does: the wrapper is a flex box and its button grows to fill it, so a
+   * vertical group stays one straight column and a horizontal one keeps one height. */
   .cinder-button-group
-    > .cinder-dropdown[data-cinder-button-group-item]
-    > .cinder-dropdown-trigger {
-    min-block-size: 100%;
+    > [data-cinder-button-group-item]:not(.cinder-button, button, .cinder-input-field) {
+    display: flex;
+  }
+
+  .cinder-button-group
+    > [data-cinder-button-group-item]:not(.cinder-button, button, .cinder-input-field)
+    > :is(.cinder-button, button) {
+    flex: 1 1 auto;
   }
 
   /* Elevate the highlighted participant so its focus ring paints over adjacent
@@ -302,17 +310,22 @@
     border-radius: 0;
   }
 
-  /* Vertical — first child: zero the block-end corners. */
+  /* Vertical — first child: zero the block-end corners, and cap the block-start ones at the
+   * control radius. A pill Button's radius is half its height, so a stack of them read as a column
+   * of lozenges with a huge round top; the group is one continuous shape whose outer corners are a
+   * control's, never a pill's. */
   .cinder-button-group[data-cinder-orientation='vertical']
     > [data-cinder-button-group-item]:first-child:not(:only-child)
     :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
   .cinder-button-group[data-cinder-orientation='vertical']
     > [data-cinder-button-group-item]:is(.cinder-button, button):first-child:not(:only-child) {
+    border-start-start-radius: min(var(--cinder-button-radius), var(--cinder-radius-control));
+    border-start-end-radius: min(var(--cinder-button-radius), var(--cinder-radius-control));
     border-end-start-radius: 0;
     border-end-end-radius: 0;
   }
 
-  /* Vertical — last child: zero the block-start corners. */
+  /* Vertical — last child: zero the block-start corners, and cap the block-end ones. */
   .cinder-button-group[data-cinder-orientation='vertical']
     > [data-cinder-button-group-item]:last-child:not(:only-child)
     :is(.cinder-button, button):not([role='menu'] *):not([role='menuitem']),
@@ -320,5 +333,7 @@
     > [data-cinder-button-group-item]:is(.cinder-button, button):last-child:not(:only-child) {
     border-start-start-radius: 0;
     border-start-end-radius: 0;
+    border-end-start-radius: min(var(--cinder-button-radius), var(--cinder-radius-control));
+    border-end-end-radius: min(var(--cinder-button-radius), var(--cinder-radius-control));
   }
 }

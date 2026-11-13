@@ -12,6 +12,25 @@ const schema = {
       type: 'boolean',
       description: 'Render the trailing disclosure caret. Defaults to true.',
     },
+    variant: {
+      enum: [
+        'primary',
+        'secondary',
+        'soft',
+        'danger',
+        'soft-danger',
+        'ghost',
+        'ghost-danger',
+        'ghost-accent',
+      ],
+      description:
+        "Draws the trigger as a Button of this variant. Inside a ButtonGroup (a split button) the\ntrigger is always drawn as a Button, and without this it takes the variant of the Button\nbeside it, so the two halves are one control with one seam; with neither it is `soft`,\nButton's default. Outside a group, without this, the trigger keeps its own bordered face.",
+    },
+    size: {
+      enum: ['xs', 'sm', 'md', 'lg'],
+      description:
+        'Draws the trigger at this Button size. Inside a ButtonGroup, without this, it takes the size\nof the Button beside it, or `md`.',
+    },
     mutating: {
       type: 'boolean',
       description:

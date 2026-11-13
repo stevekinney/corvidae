@@ -22,7 +22,9 @@
     isStaleInert,
     mergeDescribedBy,
   } from '../../_internal/stale-region-context.ts';
+  import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import type { ButtonSize, ButtonVariant } from '../button/button.types.ts';
   import {
     getDropdownContext,
     getDropdownRegisterTrigger,
@@ -32,6 +34,8 @@
   let {
     class: customClassName,
     caretVisible = true,
+    variant,
+    size,
     mutating = false,
     children,
     onclick,
@@ -65,8 +69,37 @@
       .join(' ') || undefined,
   );
 
+  // A split button: inside a ButtonGroup the trigger is drawn as a Button, and takes the variant
+  // and size of the Button beside it unless the page sets its own, so the two halves read as one
+  // control. Outside a group it keeps its own bordered face unless the page asks for a variant.
+  const buttonGroup = getButtonGroupContext();
+  type SiblingLook = { variant: ButtonVariant | undefined; size: ButtonSize | undefined };
+  let siblingLook = $state<SiblingLook>({ variant: undefined, size: undefined });
+  const drawsAsButton = $derived(
+    buttonGroup !== undefined || variant !== undefined || size !== undefined,
+  );
+  const resolvedVariant = $derived(variant ?? siblingLook.variant ?? 'soft');
+  const resolvedSize = $derived(size ?? siblingLook.size ?? 'md');
+
+  /** The variant and size of the Button next to this trigger's Dropdown in its group. */
+  function readSiblingLook(node: HTMLButtonElement): SiblingLook {
+    const item = node.closest('.cinder-dropdown') ?? node;
+    for (const neighbour of [item.previousElementSibling, item.nextElementSibling]) {
+      const button = neighbour?.matches('.cinder-button:not(.cinder-dropdown-trigger)')
+        ? neighbour
+        : neighbour?.querySelector('.cinder-button:not(.cinder-dropdown-trigger)');
+      if (!(button instanceof HTMLElement)) continue;
+      return {
+        variant: button.dataset['cinderVariant'] as ButtonVariant | undefined,
+        size: button.dataset['cinderSize'] as ButtonSize | undefined,
+      };
+    }
+    return { variant: undefined, size: undefined };
+  }
+
   function attachTrigger(node: HTMLButtonElement) {
     registerTrigger(node);
+    if (buttonGroup !== undefined) siblingLook = readSiblingLook(node);
     return () => registerTrigger(null);
   }
 
@@ -89,7 +122,9 @@
 <button
   {@attach attachTrigger}
   type="button"
-  class={classNames('cinder-dropdown-trigger', customClassName)}
+  class={classNames('cinder-dropdown-trigger', drawsAsButton && 'cinder-button', customClassName)}
+  data-cinder-variant={drawsAsButton ? resolvedVariant : undefined}
+  data-cinder-size={drawsAsButton ? resolvedSize : undefined}
   style={mergedStyle}
   aria-haspopup="menu"
   aria-expanded={context.isOpen}

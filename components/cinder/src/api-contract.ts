@@ -259,6 +259,21 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: {},
   },
 
+  // A split button: inside a ButtonGroup the trigger draws as a Button and takes its variant and
+  // size from the Button beside it, unless `variant` or `size` set them.
+  'dropdown-trigger': {
+    kind: 'intersection',
+    html_attrs: 'HTMLButtonAttributes',
+    props: {
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      caretVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      size: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+    },
+    snippets: { children: s0(true) },
+  },
+
   'empty-state': {
     kind: 'literal',
     props: {

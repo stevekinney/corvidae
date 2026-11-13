@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Split button composition';
   export const description =
-    'A primary action button paired with a dropdown for related secondary actions. This is composition — ButtonGroup does no split-button work itself.';
+    'An action button paired with a dropdown for related secondary actions. The trigger takes the variant and size of the Button beside it, so the two halves read as one control with one seam.';
 </script>
 
 <script lang="ts">
