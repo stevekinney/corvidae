@@ -7,11 +7,10 @@
  * test) keeps its own.
  */
 
-import { getContext, setContext, untrack } from 'svelte';
+import { getContext, setContext } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 import type { ChatQuestionIssue, QuestionAnswerRecord } from './question-answer.ts';
-
 /** The largest file a file question takes when the host sets no limit: the composer's own default. */
 export const DEFAULT_MAXIMUM_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -28,10 +27,16 @@ export interface ComposerQuestionTarget {
 /** Where a question that has choices is answered: in the transcript row, or docked in place of the composer. */
 export type QuestionPlacement = 'inline' | 'docked';
 
-/** A choice question the dock asks in place of the composer, until it is answered or the person replies in chat instead. */
+/**
+ * A choice question the dock asks in place of the composer. It stays in the dock's round after it
+ * is answered, so the person can step back to it and change the answer, until the run moves on or
+ * the person replies in chat instead.
+ */
 export interface DockedQuestionTarget {
   /** The tool call the question parked. */
   readonly toolCallId: string;
+  /** The answer that was sent, or `undefined` while the question is open. */
+  readonly answer: QuestionAnswerRecord | undefined;
   /** The answer schema, which says which choices to draw. */
   readonly schema: Readonly<Record<string, unknown>>;
   /** What the question asks. */
@@ -56,9 +61,9 @@ export class QuestionStore {
   readonly #composerTargets = new SvelteMap<string, ComposerQuestionTarget>();
   readonly #dockTargets = new SvelteMap<string, DockedQuestionTarget>();
   readonly #dismissedDocks = new SvelteSet<string>();
-  #dockedAnswered = $state(0);
-  // Defer round resets so a Svelte effect handoff can preserve multi-question progress.
-  #dockRoundResetToken = 0;
+  // The questions of rounds that ended: every one in them was answered and the dock closed.
+  readonly #retiredDocks = new SvelteSet<string>();
+  #viewedDock = $state<string | undefined>();
   readonly #placement: () => QuestionPlacement;
   readonly #answerInComposer: () => boolean;
   readonly #uploadFile: () => ((file: File, signal: AbortSignal) => Promise<string>) | undefined;
@@ -99,8 +104,8 @@ export class QuestionStore {
     this.#composerTargets.clear();
     this.#dockTargets.clear();
     this.#dismissedDocks.clear();
-    this.#dockedAnswered = 0;
-    this.#dockRoundResetToken += 1;
+    this.#retiredDocks.clear();
+    this.#viewedDock = undefined;
   }
 
   /** Whether free text is answered through the composer. */
@@ -141,39 +146,48 @@ export class QuestionStore {
     this.#dismissedDocks.add(toolCallId);
   }
 
+  /**
+   * The questions asked together, in the order they were asked: the open ones and the ones already
+   * answered that can still be changed. The dock's `Question 2 of 4` counts through this list.
+   */
+  get dockRound(): DockedQuestionTarget[] {
+    return [...this.#dockTargets.values()].filter(
+      (target) => !this.#retiredDocks.has(target.toolCallId),
+    );
+  }
+
   /** The docked questions that are still open, in the order they were asked. */
   get dockedQuestions(): DockedQuestionTarget[] {
-    return [...this.#dockTargets.values()];
+    return this.dockRound.filter((target) => target.answer === undefined);
   }
 
-  /** How many docked questions were answered since the dock last had none open. */
-  get dockedAnswered(): number {
-    return this.#dockedAnswered;
+  /** The question the dock was moved to with its previous and next buttons, or `undefined` to show the first open one. */
+  get viewedDock(): string | undefined {
+    return this.#viewedDock;
   }
 
-  /** Counts a docked question as answered, for the dock's `Question 2 of 3`. */
-  noteDockedAnswer(): void {
-    this.#dockedAnswered = untrack(() => this.#dockedAnswered) + 1;
+  /** Moves the dock to the question `toolCallId`, or back to the first open one with `undefined`. Nothing is sent. */
+  viewDock(toolCallId: string | undefined): void {
+    this.#viewedDock = toolCallId;
   }
 
-  /** Makes `target` an open docked question, until the returned function is called. */
+  /**
+   * Ends the round once nothing in it is open: its answered questions leave the dock, so a question
+   * asked later starts a new round and reads `Question 1 of 1`, not the next of an old one.
+   */
+  closeDockRound(): void {
+    if (this.dockedQuestions.length > 0) return;
+    for (const target of this.dockRound) this.#retiredDocks.add(target.toolCallId);
+    this.#viewedDock = undefined;
+  }
+
+  /** Makes `target` a question of the dock's round, until the returned function is called. */
   registerDockedQuestion(target: DockedQuestionTarget): () => void {
-    // A new round starts when the dock stays empty for a microtask. During a handoff, the old
-    // question unregisters before the next one registers, so resetting synchronously loses the
-    // `Question 2 of 2` progress label.
-    this.#dockRoundResetToken += 1;
     this.#dockTargets.set(target.toolCallId, target);
     return () => {
       if (this.#dockTargets.get(target.toolCallId) === target) {
         this.#dockTargets.delete(target.toolCallId);
-        if (this.#dockTargets.size === 0) {
-          const token = ++this.#dockRoundResetToken;
-          queueMicrotask(() => {
-            if (token === this.#dockRoundResetToken && this.#dockTargets.size === 0) {
-              this.#dockedAnswered = 0;
-            }
-          });
-        }
+        this.#retiredDocks.delete(target.toolCallId);
       }
     };
   }

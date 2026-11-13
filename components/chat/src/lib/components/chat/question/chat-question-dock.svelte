@@ -5,14 +5,19 @@
   export type ChatQuestionDockProps = {
     /** Stable prefix for the ids of the dock's parts. */
     id: string;
-    /** The open question to ask. */
+    /** The question to show: an open one, or one already answered, which shows its answer selected. */
     question: DockedQuestionTarget;
     /** Where this question falls among those asked together, counting from 1. */
     position: number;
-    /** How many questions were asked together; the progress shows only when it is more than 1. */
+    /**
+     * How many questions were asked together. The progress and the previous and next buttons show
+     * only when it is more than 1.
+     */
     total: number;
     /** Called when the person chooses to reply in chat instead. */
     onReply: () => void;
+    /** Called with `-1` for the previous question and `1` for the next; nothing is sent. */
+    onNavigate?: ((direction: -1 | 1) => void) | undefined;
     /** The words, any of which the host can replace. */
     labels?: Partial<ChatQuestionDockLabels> | undefined;
   };
@@ -27,9 +32,16 @@
    * Reply in chat (quiet, on the left) gives the composer back; Answer (primary, on the
    * right) stays off, with its reason in view, until there is something to send. The keys work only
    * while focus is inside the dock and never inside a field, so they cannot take over typing.
+   *
+   * With several questions asked together the header also reads `Question 2 of 4` and has a
+   * previous and a next button. They only move between the questions: nothing is sent. A question
+   * already answered shows its answer selected, and choosing another answer sends it again, the way
+   * Change does in the transcript.
    */
   import {
     Button,
+    ChevronLeft,
+    ChevronRight,
     ChoiceGrid,
     ChoiceGridItem,
     CircleAlert,
@@ -38,7 +50,7 @@
     MessageSquare,
     Tooltip,
   } from '@lostgradient/cinder';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import { DEFAULT_QUESTION_DOCK_LABELS, OTHER_CHOICE } from './question-dock-labels.ts';
   import { choicesOf, classifyQuestion, type QuestionChoice } from './question-kind.ts';
@@ -49,6 +61,7 @@
     position,
     total,
     onReply,
+    onNavigate,
     labels: labelOverrides,
   }: ChatQuestionDockProps = $props();
 
@@ -81,18 +94,71 @@
   let text = $state('');
 
   const pickingOther = $derived(selected === OTHER_CHOICE);
-  const ready = $derived(selected !== null && (!pickingOther || text.trim() !== ''));
-  const errorText = $derived(question.issues.map((issue) => issue.message).join(' '));
-
-  const questionId = $derived(`${id}-question`);
-  const legendId = $derived(`${id}-legend`);
-  const errorId = $derived(`${id}-error`);
+  const sentAnswer = $derived(question.answer);
 
   /** The answer the chosen card stands for, or the person's own words. */
   function chosenValue(): unknown {
     if (selected === OTHER_CHOICE) return text.trim();
     const choice = selected === null ? undefined : choices[Number(selected)];
     return choice?.value;
+  }
+
+  function sameValue(first: unknown, second: unknown): boolean {
+    return Object.is(first, second) || JSON.stringify(first) === JSON.stringify(second);
+  }
+
+  // An answered question has something to send only once the person chooses a different answer.
+  const unchanged = $derived(
+    sentAnswer !== undefined && selected !== null && sameValue(chosenValue(), sentAnswer.value),
+  );
+  const ready = $derived(selected !== null && (!pickingOther || text.trim() !== '') && !unchanged);
+  const errorText = $derived(question.issues.map((issue) => issue.message).join(' '));
+
+  const questionId = $derived(`${id}-question`);
+  const legendId = $derived(`${id}-legend`);
+  const errorId = $derived(`${id}-error`);
+  const hasMessage = $derived(question.message !== undefined && question.message !== '');
+
+  /** What a question shows selected when it opens: nothing, or the answer that was sent. */
+  function openingSelection(): { selected: string | null; text: string } {
+    const answer = question.answer;
+    if (answer === undefined) return { selected: null, text: '' };
+    const index = choices.findIndex((choice) => sameValue(choice.value, answer.value));
+    if (index >= 0) return { selected: String(index), text: '' };
+    if (allowsOther && typeof answer.value === 'string') {
+      return { selected: OTHER_CHOICE, text: answer.value };
+    }
+    return { selected: null, text: '' };
+  }
+
+  // The dock stays mounted from one question of the round to the next, so focus can stay on the
+  // button that was pressed; the choice starts again from what the new question has sent, if
+  // anything. Only a change of question resets it, never typing or an answer being sent.
+  let wasOther = false;
+  let shownQuestion: string | undefined;
+  $effect.pre(() => {
+    const shown = question.toolCallId;
+    if (shown === shownQuestion) return;
+    shownQuestion = shown;
+    const opening = untrack(openingSelection);
+    selected = opening.selected;
+    text = opening.text;
+    wasOther = opening.selected === OTHER_CHOICE;
+  });
+
+  /** Moves to the previous or next question, and keeps focus on a button that is still on. */
+  async function step(direction: -1 | 1): Promise<void> {
+    onNavigate?.(direction);
+    await tick();
+    const pressed = root?.querySelector<HTMLButtonElement>(
+      direction === -1 ? '[data-chat-question-previous]' : '[data-chat-question-next]',
+    );
+    if (pressed?.disabled !== true) return;
+    root
+      ?.querySelector<HTMLButtonElement>(
+        direction === -1 ? '[data-chat-question-next]' : '[data-chat-question-previous]',
+      )
+      ?.focus();
   }
 
   function send(event: SubmitEvent): void {
@@ -135,7 +201,6 @@
   }
 
   // Choosing Something else with the pointer or the arrow keys opens the field the same way.
-  let wasOther = false;
   $effect(() => {
     const now = pickingOther;
     if (now && !wasOther) void focusOwnAnswer();
@@ -153,32 +218,69 @@
   onsubmit={send}
   onkeydown={chooseByKey}
 >
-  <div class="chat-question-dock-header">
+  <!-- The tag comes first, so it is read before the question. With one question the tag and the
+       question share a row when the question fits on one line beside it (the question at the
+       leading end, the tag at the trailing end), and otherwise the tag takes the line above and the
+       question the full width. With several, the tag and the progress with its buttons share the
+       top line and the question has the line under them. -->
+  <div
+    class="chat-question-dock-heading"
+    data-chat-question-heading
+    data-chat-question-several={total > 1 ? '' : undefined}
+  >
     <span class="chat-question-dock-needs" data-chat-question-needs>
       <CircleAlert class="cinder-icon-sm" aria-hidden="true" />
       {labels.needsYou}
     </span>
     {#if total > 1}
-      <span class="chat-question-dock-progress" data-chat-question-progress>
-        {labels.progress(position, total)}
-      </span>
+      <div class="chat-question-dock-steps" data-chat-question-steps>
+        <span class="chat-question-dock-progress" data-chat-question-progress>
+          {labels.progress(position, total)}
+        </span>
+        <Tooltip text={labels.previous} placement="top" describe={false}>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            iconOnly
+            label={labels.previous}
+            data-chat-question-previous=""
+            disabled={position <= 1 || question.busy}
+            onclick={() => void step(-1)}
+          >
+            {#snippet leadingIcon()}<ChevronLeft aria-hidden="true" />{/snippet}
+          </Button>
+        </Tooltip>
+        <Tooltip text={labels.next} placement="top" describe={false}>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            iconOnly
+            label={labels.next}
+            data-chat-question-next=""
+            disabled={position >= total || question.busy}
+            onclick={() => void step(1)}
+          >
+            {#snippet leadingIcon()}<ChevronRight aria-hidden="true" />{/snippet}
+          </Button>
+        </Tooltip>
+      </div>
+    {/if}
+    {#if hasMessage}
+      <p id={questionId} class="chat-question-dock-question" dir="auto">{question.message}</p>
     {/if}
   </div>
   <div class="chat-question-dock-body">
     <fieldset class="chat-question-dock-fieldset">
       <legend id={legendId} class="cinder-sr-only" dir="auto">{labels.legend}</legend>
-      {#if question.message !== undefined && question.message !== ''}
-        <p id={questionId} class="chat-question-dock-question" dir="auto">{question.message}</p>
-      {/if}
       <div class="chat-question-dock-options">
         <div bind:this={optionsScroll} class="chat-question-dock-options-scroll">
           <ChoiceGrid
             variant="card"
             size="sm"
             columns={1}
-            ariaLabelledby={question.message !== undefined && question.message !== ''
-              ? questionId
-              : legendId}
+            ariaLabelledby={hasMessage ? questionId : legendId}
             bind:value={selected}
           >
             {#each choices as choice, index (index)}
@@ -282,13 +384,59 @@
     max-block-size: min(100%, 80dvh);
   }
 
-  .chat-question-dock-header {
+  /* One question: a wrapping row whose lines stack upwards. The question comes first on the row
+   * and grows, and the tag follows it, so a question that fits on one line beside the tag leaves the
+   * tag at the trailing end. A question that does not fit goes alone on its line, and the tag,
+   * wrapped onto the next line, is drawn above it (the lines stack from the bottom) at the leading
+   * end, never squeezed or wrapped. The tag stays first in the document, so it is read first. */
+  .chat-question-dock-heading {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: wrap-reverse;
     align-items: center;
-    justify-content: space-between;
     gap: var(--cinder-space-1) var(--cinder-space-3);
+    min-inline-size: 0;
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+  }
+
+  .chat-question-dock-heading > .chat-question-dock-needs {
+    order: 1;
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .chat-question-dock-heading > .chat-question-dock-question {
+    order: 0;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  /* Several questions: the tag and the progress with its two buttons share the top line, the
+   * progress at the trailing end, and the question has the full width under them. */
+  .chat-question-dock-heading[data-chat-question-several] {
+    flex-wrap: wrap;
+  }
+
+  .chat-question-dock-heading[data-chat-question-several] > .chat-question-dock-needs {
+    order: 0;
+  }
+
+  .chat-question-dock-steps {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    order: 1;
+    margin-inline-start: auto;
+  }
+
+  .chat-question-dock-heading[data-chat-question-several] > .chat-question-dock-question {
+    order: 2;
+    flex: 1 0 100%;
+  }
+
+  /* The chevrons point the way the questions run, so right-to-left mirrors them. */
+  .chat-question-dock-steps:dir(rtl) :global(svg) {
+    transform: scaleX(-1);
   }
 
   /* The step's warning: the run is waiting on the person, so it is named and not left to colour. */
@@ -305,7 +453,9 @@
 
   .chat-question-dock-progress {
     color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .chat-question-dock-fieldset {
@@ -325,10 +475,9 @@
 
   .chat-question-dock-fieldset {
     grid-template-areas:
-      'question'
       'options'
       'completion';
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto;
     block-size: 100%;
     min-block-size: 0;
   }
@@ -386,8 +535,7 @@
 
   /* The question and its choices read at 14px; the question stays semibold. */
   .chat-question-dock-question {
-    grid-area: question;
-    margin: 0 0 var(--cinder-space-1);
+    margin: 0;
     line-height: var(--cinder-leading-snug);
     font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
     font-weight: var(--cinder-font-semibold);
@@ -443,8 +591,22 @@
     margin-inline-end: auto;
   }
 
+  /* The words never squeeze, clip or wrap: they are one line at their own width, or the icon. */
   .chat-question-dock-actions :global(.chat-question-dock-reply-words) {
+    flex: none;
+    inline-size: auto;
+    max-inline-size: none;
+    min-inline-size: max-content;
     margin-inline-start: calc(-1 * var(--cinder-button-padding-x-sm));
+    white-space: nowrap;
+  }
+
+  .chat-question-dock-actions :global(.chat-question-dock-reply-words .cinder-button__label) {
+    flex: none;
+    max-inline-size: none;
+    min-inline-size: max-content;
+    overflow: visible;
+    text-overflow: clip;
     white-space: nowrap;
   }
 

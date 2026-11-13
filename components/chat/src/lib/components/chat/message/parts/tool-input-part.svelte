@@ -42,16 +42,17 @@
   // A question that has choices is drawn in the dock in place of the composer, when the host asks
   // for `questionPlacement="docked"`, until the person replies in chat instead. Its row then holds
   // only the question; once it is answered the row is the receipt, as for any question.
-  const docked = $derived(
+  // Whether the question belongs to the dock's round: open, or answered but not yet resolved, so
+  // the dock can step back to it and change the answer the way Change does.
+  const dockEligible = $derived(
     sharedStore !== undefined &&
       sharedStore.placement === 'docked' &&
       (kind === 'choice' || kind === 'choice-other' || kind === 'boolean') &&
       !resolved &&
-      !answered &&
-      !changing &&
       onInputSubmit !== undefined &&
       !sharedStore.isDockDismissed(part.toolCallId),
   );
+  const docked = $derived(dockEligible && !answered && !changing);
   const heading = $derived(
     part.message !== undefined && part.message !== ''
       ? part.message
@@ -66,7 +67,6 @@
     failed = false;
     issues = [];
     const generation = store.generation;
-    const wasDocked = docked;
     try {
       // The host is called only with an answer that meets the whole schema, whichever control
       // gave it, so the composer and the specialised controls are held to what SchemaForm is.
@@ -92,7 +92,6 @@
         }),
       );
       changing = false;
-      if (wasDocked) store.noteDockedAnswer();
       return true;
     } catch (error) {
       const found = issuesOfRejection(error);
@@ -119,20 +118,30 @@
 
   // The dock reads the question through getters, so it stays current as the part is derived again
   // (a new `part` object with the same content) and as the answer is sent, refused or fails. The
-  // effect depends only on whether the question is docked and on its call id, so a new part never
-  // unregisters and registers it again, which would move it behind the questions asked after it.
+  // effect depends only on whether the question belongs to the round and on its call id, so a new
+  // part, or an answer, never unregisters and registers it again, which would move it behind the
+  // questions asked after it.
   const toolCallId = $derived(part.toolCallId);
   $effect(() => {
-    if (!docked || sharedStore === undefined) return;
-    return sharedStore.registerDockedQuestion({
+    if (!dockEligible || sharedStore === undefined) return;
+    const shared = sharedStore;
+    return shared.registerDockedQuestion({
       toolCallId,
+      get answer() {
+        return answer;
+      },
       get schema() {
         return part.schema;
       },
       get message() {
         return part.message;
       },
-      submit: (value) => submitAnswer(value),
+      // A sent answer, a new one or a changed one, takes the dock back to the first open question.
+      submit: async (value) => {
+        const sent = await submitAnswer(value);
+        if (sent) shared.viewDock(undefined);
+        return sent;
+      },
       get busy() {
         return busy;
       },
@@ -152,14 +161,18 @@
        falls back to naming the tool. Pending docked questions render only in the shared dock, so
        the transcript never repeats the active or queued prompt. -->
   <section class="chat-tool-input" aria-labelledby={headingId} data-cinder-tool-input>
-    {#if !answered && !resolved && onInputSubmit !== undefined}
-      <!-- The same header as the dock's: the badge, then the question. -->
-      <span class="chat-tool-input-needs" data-chat-question-needs>
-        <CircleAlert class="cinder-icon-sm" aria-hidden="true" />
-        {resolveChatLabels(labels).needsYou}
-      </span>
-    {/if}
-    <h4 id={headingId} class="chat-tool-input-heading" dir="auto">{heading}</h4>
+    <!-- The same two parts as the dock's heading, under the same rule: the tag first in the
+         document, drawn beside the question when the question fits on one line there and above it
+         when it does not. -->
+    <div class="chat-tool-input-title">
+      {#if !answered && !resolved && onInputSubmit !== undefined}
+        <span class="chat-tool-input-needs" data-chat-question-needs>
+          <CircleAlert class="cinder-icon-sm" aria-hidden="true" />
+          {resolveChatLabels(labels).needsYou}
+        </span>
+      {/if}
+      <h4 id={headingId} class="chat-tool-input-heading" dir="auto">{heading}</h4>
+    </div>
     {#if answered || onInputSubmit !== undefined}
       <ChatQuestion
         schema={part.schema}
@@ -187,10 +200,32 @@
     inline-size: 100%;
   }
 
+  /* A wrapping row whose lines stack upwards: the question first and growing, the tag after it, so
+   * a question that fits on one line beside the tag leaves the tag at the trailing end, and one
+   * that does not takes its own line with the tag, wrapped, drawn above it at the leading end. */
+  .chat-tool-input-title {
+    display: flex;
+    flex-wrap: wrap-reverse;
+    align-items: center;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    min-inline-size: 0;
+  }
+
+  .chat-tool-input-title > .chat-tool-input-needs {
+    order: 1;
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .chat-tool-input-title > .chat-tool-input-heading {
+    order: 0;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
   .chat-tool-input-needs {
     display: inline-flex;
     align-items: center;
-    justify-self: start;
     gap: var(--cinder-space-1-5, 0.375rem);
     padding: var(--cinder-space-0-5, 0.125rem) var(--cinder-space-2);
     border-radius: var(--cinder-radius-full);

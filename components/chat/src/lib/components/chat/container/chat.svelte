@@ -490,13 +490,36 @@
 
   // The first open question that is docked takes the composer's place; Reply in chat puts
   // it back in its row and gives the composer back.
-  const dockedQuestion = $derived(questions.dockedQuestions[0]);
-  const dockedPosition = $derived(questions.dockedAnswered + 1);
-  const dockedTotal = $derived(questions.dockedAnswered + questions.dockedQuestions.length);
+  // The dock shows the first open question, or the one the previous and next buttons moved it to,
+  // which may be one already answered; it closes when none is open. `Question 2 of 4` counts through
+  // the round: the open questions and the answered ones that can still be changed.
+  const dockRound = $derived(questions.dockRound);
+  const firstOpenQuestion = $derived(dockRound.find((target) => target.answer === undefined));
+  const dockedQuestion = $derived(
+    firstOpenQuestion === undefined
+      ? undefined
+      : (dockRound.find((target) => target.toolCallId === questions.viewedDock) ??
+          firstOpenQuestion),
+  );
+  const dockedPosition = $derived(
+    dockedQuestion === undefined ? 1 : dockRound.indexOf(dockedQuestion) + 1,
+  );
+  const dockedTotal = $derived(dockRound.length);
+
+  // Once every question of the round is answered the dock has nothing to ask: the round ends, so a
+  // question asked later starts a new one.
+  $effect(() => {
+    if (dockRound.length > 0 && firstOpenQuestion === undefined) questions.closeDockRound();
+  });
 
   function replyInChatInstead(toolCallId: string): void {
     questions.dismissDock(toolCallId);
     void tick().then(() => inputRef?.focus());
+  }
+
+  function moveDock(direction: -1 | 1): void {
+    const target = dockRound[dockedPosition - 1 + direction];
+    if (target !== undefined) questions.viewDock(target.toolCallId);
   }
 
   const commandActions = useChatCommandActions({
@@ -2827,17 +2850,24 @@
             onremove={removeQueuedFollowUp}
           />
         {/if}
-        {#if dockedQuestion !== undefined}
-          {#key dockedQuestion.toolCallId}
-            <ChatQuestionDock
-              id={`${id}-question-dock`}
-              question={dockedQuestion}
-              position={dockedPosition}
-              total={dockedTotal}
-              onReply={() => replyInChatInstead(dockedQuestion.toolCallId)}
-              labels={questionDockLabels}
-            />
-          {/key}
+        {#if dockedQuestion !== undefined && firstOpenQuestion !== undefined}
+          <!-- One dock for the whole round, so focus stays on the previous or next button that was
+               pressed; the dock resets its own choice when the question changes. Reply in chat
+               gives back the composer, which only an open question can: on an answered one it
+               puts the first open question back in its row. -->
+          <ChatQuestionDock
+            id={`${id}-question-dock`}
+            question={dockedQuestion}
+            position={dockedPosition}
+            total={dockedTotal}
+            onReply={() =>
+              replyInChatInstead(
+                (dockedQuestion.answer === undefined ? dockedQuestion : firstOpenQuestion)
+                  .toolCallId,
+              )}
+            onNavigate={moveDock}
+            labels={questionDockLabels}
+          />
         {/if}
         <ChatInput
           labels={chatLabels}

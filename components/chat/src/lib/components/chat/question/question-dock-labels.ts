@@ -14,6 +14,10 @@ export type ChatQuestionDockLabels = {
   legend: string;
   /** Where the question falls among several asked together. Default `Question 2 of 3`. */
   progress: (position: number, total: number) => string;
+  /** The accessible name and tooltip of the button to the previous question, shown with several. Default `Previous question`. */
+  previous: string;
+  /** The accessible name and tooltip of the button to the next question, shown with several. Default `Next question`. */
+  next: string;
   /** The choice that opens a field for an answer of the person's own. Default `Something else`. */
   somethingElse: string;
   /** The accessible name of that field. Default `Your own answer`. */
@@ -38,6 +42,8 @@ export const DEFAULT_QUESTION_DOCK_LABELS: ChatQuestionDockLabels = {
   needsYou: 'Needs you',
   legend: 'Question',
   progress: (position, total) => `Question ${position} of ${total}`,
+  previous: 'Previous question',
+  next: 'Next question',
   somethingElse: 'Something else',
   ownAnswer: 'Your own answer',
   ownAnswerPlaceholder: 'Type your answer',
