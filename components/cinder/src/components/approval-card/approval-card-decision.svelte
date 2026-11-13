@@ -97,6 +97,7 @@
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardExpired from './approval-card-expired.svelte';
   import ApprovalCardFactsLine from './approval-card-facts-line.svelte';
+  import { fitNoteLabel } from './approval-card-note-fit.ts';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import { describeDecidedAction, STATE_LABELS, UNDECIDED_PREFIX } from './approval-card-state.ts';
@@ -462,7 +463,12 @@
       </div>
     {/if}
     {#if canAnswer}
-      <div class="cinder-approval-card__row-actions" role="group" aria-label="Approval actions">
+      <div
+        class="cinder-approval-card__row-actions"
+        role="group"
+        aria-label="Approval actions"
+        {@attach fitNoteLabel}
+      >
         {#if !noteOpen}
           <ApprovalCardNoteToggle disabled={isBusy} onOpen={() => (noteOpen = true)} />
         {/if}

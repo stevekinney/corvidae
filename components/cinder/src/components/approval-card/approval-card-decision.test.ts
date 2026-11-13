@@ -163,7 +163,7 @@ describe('ApprovalCard decision layout', () => {
       (button) => squash(button.textContent),
     );
 
-    expect(labels).toEqual(['Add a note', 'Deny', 'Refund $42.00']);
+    expect(labels).toEqual(['Add note', 'Deny', 'Refund $42.00']);
     expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
@@ -772,7 +772,9 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(toggle.closest('.cinder-approval-card__note-toggle-tip')).not.toBeNull();
     // The pencil is the glyph; the words are the label at the leading end of the action row.
     expect(toggle.querySelector('svg.lucide-pencil')).not.toBeNull();
-    expect(squash(toggle.textContent)).toContain('Add a note');
+    // The visible words are "Add note"; the accessible name stays "Add a note".
+    expect(squash(toggle.textContent)).toBe('Add note');
+    expect(toggle.getAttribute('aria-label')).toBe('Add a note');
     const group = container.querySelector('[aria-label="Approval actions"]');
     expect(group?.firstElementChild?.contains(toggle)).toBe(true);
   });
@@ -783,11 +785,23 @@ describe('ApprovalCard decision layout stylesheet', () => {
       ' ',
     );
     expect(css).toMatch(
-      /@container \(inline-size < 30rem\) \{ [^@]*\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*border-color: var\(--cinder-button-border\);[^}]*background: var\(--cinder-button-background\);/,
+      /\.cinder-button\.cinder-approval-card__note-toggle\[data-cinder-note-compact\] \{[^}]*border-color: var\(--cinder-button-border\);[^}]*background: var\(--cinder-button-background\);/,
     );
   });
 
-  test('Add a note keeps space-3 before Deny and hides only its words under 30rem', () => {
+  test('the note button is icon-only only when the row cannot fit its words, never by card width', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // No container query decides it: the row measures itself and sets the attribute.
+    expect(css).not.toMatch(/@container \(inline-size < 30rem\)/);
+    const { container } = render(ApprovalCard, { props: decisionCard() });
+    // Nothing is measured without layout, so the words stay.
+    expect(container.querySelector('[data-cinder-note-compact]')).toBeNull();
+  });
+
+  test('Add a note keeps space-3 before Deny and hides only its words when the row cannot fit them', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -796,11 +810,11 @@ describe('ApprovalCard decision layout stylesheet', () => {
       /__note-toggle-tip \{[^}]*flex: none;[^}]*margin-inline-end: auto;[^}]*padding-inline-end: var\(--cinder-space-2\);/,
     );
     expect(css).toMatch(
-      /@container \(inline-size < 30rem\) \{[^@]*__note-toggle \.cinder-button__label \{[^}]*clip-path: inset\(50%\);/,
+      /__note-toggle\[data-cinder-note-compact\] \.cinder-button__label \{[^}]*clip-path: inset\(50%\);/,
     );
   });
 
-  test('Add a note sits on the text column and is a square icon face under 30rem', () => {
+  test('Add a note sits on the text column and is a square icon face when it must be compact', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -809,7 +823,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
       /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*margin-inline-start: calc\(-1 \* var\(--cinder-button-padding-x-sm\)\);/,
     );
     expect(css).toMatch(
-      /@container \(inline-size < 30rem\) \{ [^@]*\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*inline-size: var\(--_cinder-painted-height-sm\);[^}]*block-size: var\(--_cinder-painted-height-sm\);[^}]*padding-inline: 0;/,
+      /\.cinder-button\.cinder-approval-card__note-toggle\[data-cinder-note-compact\] \{[^}]*inline-size: var\(--_cinder-painted-height-sm\);[^}]*block-size: var\(--_cinder-painted-height-sm\);[^}]*padding-inline: 0;/,
     );
   });
 

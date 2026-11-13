@@ -14,10 +14,10 @@
   let { disabled, onOpen }: ApprovalCardNoteToggleProps = $props();
 </script>
 
-<!-- A quiet ghost Button with a pencil and its words, at the leading end of the action row. Under
-     30rem of card width the stylesheet hides its words and paints it with Deny's outline, so a
-     lone glyph still reads as a button; the tooltip carries the words and the accessible name is
-     the same either way. -->
+<!-- A quiet ghost Button with a pencil and "Add note", at the leading end of the action row. Only
+     when the row cannot fit the words does `fitNoteLabel` hide them and the stylesheet paints it
+     with Deny's outline, so a lone glyph still reads as a button; the tooltip carries the words
+     and the accessible name, "Add a note", is the same either way. -->
 <Tooltip text="Add a note" describe={false} class="cinder-approval-card__note-toggle-tip">
   <Button
     type="button"
@@ -25,7 +25,8 @@
     size="sm"
     class="cinder-approval-card__note-toggle"
     aria-expanded={false}
-    label="Add a note"
+    label="Add note"
+    aria-label="Add a note"
     {disabled}
     onclick={onOpen}
   >

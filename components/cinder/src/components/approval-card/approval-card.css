@@ -874,50 +874,49 @@
     overflow-wrap: normal;
   }
 
-  /* Under 30rem of card width the toggle takes Button's icon-only geometry: a square face the
-   * height of a small button with the glyph centred, the pull-back reduced to the glyph's own
-   * inset. The words stay the accessible name and the tooltip says them. */
-  @container (inline-size < 30rem) {
-    .cinder-approval-card
-      .cinder-approval-card__row-actions
-      .cinder-button.cinder-approval-card__note-toggle {
-      inline-size: var(--_cinder-painted-height-sm);
-      min-inline-size: var(--_cinder-painted-height-sm);
-      block-size: var(--_cinder-painted-height-sm);
-      min-block-size: var(--_cinder-painted-height-sm);
-      padding-inline: 0;
-      aspect-ratio: 1;
-      justify-content: center;
-      /* A lone glyph must read as a button: it takes Deny's outline and fill, and sits on the
-       * card's leading content edge, not pulled back past it. */
-      margin-inline-start: 0;
-      border-color: var(--cinder-button-border);
-      background: var(--cinder-button-background);
-      color: var(--cinder-button-foreground);
-    }
+  /* Only when the row cannot hold the words on one line does the toggle take Button's icon-only
+   * geometry (`data-cinder-note-compact`, set by `fitNoteLabel` from what the row measures): a
+   * square face the height of a small button with the glyph centred, in Deny's outline. The words
+   * stay the accessible name and the tooltip says them. */
+  .cinder-approval-card
+    .cinder-approval-card__row-actions
+    .cinder-button.cinder-approval-card__note-toggle[data-cinder-note-compact] {
+    inline-size: var(--_cinder-painted-height-sm);
+    min-inline-size: var(--_cinder-painted-height-sm);
+    block-size: var(--_cinder-painted-height-sm);
+    min-block-size: var(--_cinder-painted-height-sm);
+    padding-inline: 0;
+    aspect-ratio: 1;
+    justify-content: center;
+    /* A lone glyph must read as a button: it takes Deny's outline and fill, and sits on the
+     * card's leading content edge, not pulled back past it. */
+    margin-inline-start: 0;
+    border-color: var(--cinder-button-border);
+    background: var(--cinder-button-background);
+    color: var(--cinder-button-foreground);
+  }
 
-    .cinder-approval-card
-      .cinder-approval-card__row-actions
-      .cinder-button.cinder-approval-card__note-toggle:hover:not(:disabled):not(
-        [aria-disabled='true']
-      ) {
-      background: var(--cinder-surface-raised-hover);
-    }
+  .cinder-approval-card
+    .cinder-approval-card__row-actions
+    .cinder-button.cinder-approval-card__note-toggle[data-cinder-note-compact]:hover:not(
+      :disabled
+    ):not([aria-disabled='true']) {
+    background: var(--cinder-surface-raised-hover);
+  }
 
-    .cinder-approval-card
-      .cinder-approval-card__row-actions
-      .cinder-approval-card__note-toggle
-      .cinder-button__label {
-      position: absolute;
-      inline-size: 1px;
-      min-inline-size: 0;
-      block-size: 1px;
-      margin: -1px;
-      padding: 0;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
+  .cinder-approval-card
+    .cinder-approval-card__row-actions
+    .cinder-approval-card__note-toggle[data-cinder-note-compact]
+    .cinder-button__label {
+    position: absolute;
+    inline-size: 1px;
+    min-inline-size: 0;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   /* ----------------------------------------
