@@ -9,8 +9,16 @@ describe('glyphs meet their edges, spacing and direction', () => {
   test('the user message keeps its trailing Copy glyph on the bubble edge', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(
-      /\.chat-message-wrapper\[data-role='user'\] \.chat-message-line-actions \{\s*margin-inline-end: calc\(\(1rem - 1\.5rem\) \/ 2\);/,
+      /\.chat-message-wrapper\[data-role='user'\] \.chat-message-line-actions \{\s*margin-inline-end: calc\(\(0\.875rem - 1\.5rem\) \/ 2\);/,
     );
+  });
+
+  test('message action glyphs are sized to the time beside them and sit 8px apart', async () => {
+    const source = await read('chat-message.svelte');
+    expect(source).toMatch(
+      /\.chat-message-line :global\(\.chat-message-action-button svg\) \{\s*inline-size: 0\.875rem;\s*block-size: 0\.875rem;/,
+    );
+    expect(source).toMatch(/\.chat-message-line-actions \{[^}]*gap: var\(--cinder-space-2\);/);
   });
 
   test('the time sits at one distance under both roles, and Sources follow the prose closely', async () => {

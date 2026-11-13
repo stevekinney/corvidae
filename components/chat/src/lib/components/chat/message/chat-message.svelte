@@ -2148,17 +2148,18 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--cinder-space-1);
+    gap: var(--cinder-space-2);
     min-block-size: 1.5rem;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     line-height: 1.2;
   }
 
-  /* Keep the glyph readable while the action retains its full coarse-pointer hit cell. */
+  /* The glyph is sized to the 12px time beside it (14px, not the 16px of body controls); the
+   * action keeps its full coarse-pointer hit cell. */
   .chat-message-line :global(.chat-message-action-button svg) {
-    inline-size: 1rem;
-    block-size: 1rem;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
   }
 
   .chat-message-wrapper[data-role='user'] .chat-message-line {
@@ -2166,9 +2167,9 @@
   }
 
   /* The trailing Copy glyph meets the bubble's edge: its 24px box overhangs by its own inset
-   * (the 16px glyph sits 4px inside it), and its hit area extends outward with it. */
+   * (the 14px glyph sits 5px inside it), and its hit area extends outward with it. */
   .chat-message-wrapper[data-role='user'] .chat-message-line-actions {
-    margin-inline-end: calc((1rem - 1.5rem) / 2);
+    margin-inline-end: calc((0.875rem - 1.5rem) / 2);
   }
 
   /* The time sits the same distance under an assistant's last text line as under a user's bubble
@@ -2214,7 +2215,8 @@
     flex-wrap: wrap;
     align-items: center;
     direction: ltr;
-    gap: var(--cinder-space-1);
+    /* 24px boxes 8px apart: the 14px glyphs pitch at 32px, with 18px of air between them. */
+    gap: var(--cinder-space-2);
   }
 
   /* Message actions stay visible beside the timestamp. */
