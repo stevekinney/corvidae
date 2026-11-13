@@ -67,7 +67,10 @@ export interface ContributionOptions {
    * The whole `x:y` activity, in place of the one that answers `y@<version>:<input>`. It is still
    * registered at `activityVersion`, which must be given.
    */
-  readonly activity?: PluginActivity | undefined;
+  readonly activity?:
+    | (Omit<PluginActivity, 'title' | 'inputSchema'> &
+        Partial<Pick<PluginActivity, 'title' | 'inputSchema'>>)
+    | undefined;
 }
 
 /** The text `x:y` at `version` answers for `input`. */
@@ -83,9 +86,14 @@ export function contributionCatalog(options: ContributionOptions): VersionedCata
       kind: 'activity',
       name: 'x:y',
       version: activityVersion,
-      value: activity ?? {
-        name: 'y',
-        execute: (argument: { input: unknown }) => activityAnswer(activityVersion, argument.input),
+      value: {
+        title: 'Y',
+        inputSchema: z.unknown(),
+        ...(activity ?? {
+          name: 'y',
+          execute: (argument: { input: unknown }) =>
+            activityAnswer(activityVersion, argument.input),
+        }),
       },
       source: { name: 'x', version: activityVersion },
     });

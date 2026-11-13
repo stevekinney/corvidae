@@ -273,6 +273,8 @@ describe('the secret-gating outcome matrix', () => {
         activities: [
           {
             name: 'fetch',
+            title: 'Fetch',
+            inputSchema: z.object({}),
             execute: note('activity', 'fetched'),
             verify: note('activity-verify', true),
             compensate: note('activity-compensate', undefined),

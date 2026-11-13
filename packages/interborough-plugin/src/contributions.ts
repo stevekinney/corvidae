@@ -473,6 +473,13 @@ export interface PluginAgent {
 export type PluginActivity = ActivityDefinition<any, any> & {
   /** The activity's own version; a record that pins it uses the plugin's version without one. */
   readonly version?: string;
+  /** What the workflow editor calls the activity. Required: setup fails without it. */
+  readonly title: string;
+  /**
+   * The schema of the input a step gives the activity. Required (D7): the editor derives the
+   * step's fields from it, so a plugin that names no schema fails setup.
+   */
+  readonly inputSchema: NonNullable<ActivityDefinition<any, any>['inputSchema']>;
 };
 
 /**

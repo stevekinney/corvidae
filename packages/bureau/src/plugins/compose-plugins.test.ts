@@ -79,7 +79,9 @@ const HOST_ENTRY: Record<
         return catalog;
       })(),
     },
-    contribution: { activities: [{ name: 'x', execute: async () => 'x' }] },
+    contribution: {
+      activities: [{ name: 'x', title: 'X', inputSchema: z.object({}), execute: async () => 'x' }],
+    },
   },
   trigger: {
     host: {
@@ -177,7 +179,14 @@ describe('composePlugins', () => {
       version: '1.2.0',
       description: 'Contributes one of each.',
       setup: () => ({
-        activities: [{ name: 'fetch', execute: async () => 'fetched' }],
+        activities: [
+          {
+            name: 'fetch',
+            title: 'Fetch',
+            inputSchema: z.object({}),
+            execute: async () => 'fetched',
+          },
+        ],
         triggers: [
           {
             name: 'inbox',

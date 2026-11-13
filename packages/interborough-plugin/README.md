@@ -90,7 +90,7 @@ The descriptor's members:
 | Member | What it adds |
 | --- | --- |
 | `tools` | Tools agents can call. |
-| `activities` | Activities a shipped workflow calls as `plugin:name`. |
+| `activities` | Activities a shipped workflow calls as `plugin:name`; each needs a `title` and an `inputSchema`. |
 | `validators` | Goal validators, registered by name and version. |
 | `guardrails` | `input` detectors and `output` validators, added to the ones Operative applies to every agent, `tools` validators that judge each tool call before it runs (COR-2104), and `memory` detectors that guard governed memory (each may declare `gates`: `admission`, `recall`, or both by default). An `input` or `output` entry may be `{ guardrail, action }` to keep an action of its own whatever its group's, and a `tools` validator carries its own `action` (`block`, `warn` or `tripwire`). An agent file chooses an `input`, `output` or `tools` guardrail with `guardrails: [plugin:name]`. Every guardrail has a non-empty `description`. An `input`, `output` or `tools` guardrail may instead be a `PluginGuardrailFactory` (COR-2118): `{ name, description, configuration, create }`, where `configuration` is the Zod schema an agent's configuration is parsed with and `create` builds the guardrail from the parsed value. An agent file configures it as `{ id: plugin:name, configuration }` (a bare id is configured with `{}`), each agent gets its own guardrail, and a field the agent leaves out takes the schema's default, so a plugin-wide setting belongs in the schema as that field's `.default(...)`. A factory wrapped as `{ guardrail: factory, action }` gives every guardrail it builds that action. |
 | `interceptors` | Run hooks, at any of Operative's hook points, that an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them, or to every agent with `appliesTo: 'every-agent'`. |
@@ -117,6 +117,8 @@ export default definePlugin({
     activities: [
       {
         name: 'lookup',
+        title: 'Look something up',
+        inputSchema: z.object({ query: z.string() }),
         execute: async (argument: { input: unknown }) => ({ found: argument.input }),
       },
     ],
@@ -385,6 +387,7 @@ export default definePlugin({
 | `start-failed` | `running` | `start` threw. `message`. |
 | `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
+| `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |
 | `provider-secret-unknown` | `skipped` | A provider's `secretKey` is not one of the plugin's declared `secrets`. `provider`, `key`. |
 | `provider-secret-ambiguous` | `skipped` | A provider has no `secretKey` and the plugin declares several secrets. `provider`, `secrets`. |
 | `load-failed` | not listed | A folder's code could not load, such as an import nothing provides. `message`. The folder appears in the `unloaded` array. |

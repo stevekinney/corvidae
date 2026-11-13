@@ -19,6 +19,8 @@ import {
   type TickerController,
 } from './testing/workflow-contributions.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
+import { z } from 'zod';
+
 import { createVersionedCatalog } from './versioned-catalog';
 import { createWorkflowContributions } from './workflow-contributions';
 import { WorkflowInputInvalidError } from './workflow-schema';
@@ -29,7 +31,11 @@ afterEach(async () => {
 });
 
 async function start(
-  options: { version?: string; ticker?: TickerController; activity?: PluginActivity } = {},
+  options: {
+    version?: string;
+    ticker?: TickerController;
+    activity?: Omit<PluginActivity, 'title' | 'inputSchema'>;
+  } = {},
 ) {
   const harness = await startWorkflowBureau({
     overrides: {
@@ -339,7 +345,7 @@ describe('the contributions a catalog holds', () => {
         kind: 'activity',
         name: 'x:y',
         version,
-        value: { name: 'y', execute: () => version },
+        value: { name: 'y', title: 'Y', inputSchema: z.unknown(), execute: () => version },
         source: { name: 'x', version },
       });
     }

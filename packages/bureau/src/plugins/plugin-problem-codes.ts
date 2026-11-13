@@ -13,6 +13,7 @@ export const PLUGIN_PROBLEM_CODES = {
   'pinned-version-unavailable': 'contribution',
   'configuration-invalid': 'configuration',
   'name-clash': 'name',
+  'activity-field-missing': 'activity',
   'formatter-unknown-kind': 'formatter',
   'provider-secret-unknown': 'provider',
   'provider-secret-ambiguous': 'provider',

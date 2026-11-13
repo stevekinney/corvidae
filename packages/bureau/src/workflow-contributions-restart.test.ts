@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { definePlugin } from '@lostgradient/interborough-plugin';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { z } from 'zod';
 
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import {
@@ -100,6 +101,8 @@ async function storeAndFiles() {
                       activities: (['y', 'z'] as const).map((name) => ({
                         name,
                         version: activityVersion,
+                        title: name.toUpperCase(),
+                        inputSchema: z.unknown(),
                         execute: (argument: { input: unknown }) =>
                           argument.input === 'status'
                             ? { status: 'ready' }

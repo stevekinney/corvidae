@@ -959,6 +959,28 @@ function formatterUnknownKinds(contributions: PluginContributions): PluginProble
   return problems;
 }
 
+/**
+ * The `activity-field-missing` problems of a plugin whose activity has no title or no input schema
+ * (D7), the two fields the workflow editor lists an activity by.
+ */
+function activityFieldProblems(contributions: PluginContributions): PluginProblem[] {
+  const problems: PluginProblem[] = [];
+  for (const activity of contributions.activities ?? []) {
+    const title: unknown = activity.title;
+    if (typeof title !== 'string' || title.trim() === '') {
+      problems.push({ code: 'activity-field-missing', activity: activity.name, field: 'title' });
+    }
+    if ((activity.inputSchema as unknown) === undefined) {
+      problems.push({
+        code: 'activity-field-missing',
+        activity: activity.name,
+        field: 'inputSchema',
+      });
+    }
+  }
+  return problems;
+}
+
 /** `given` with every caller-owned collection composition reads after an await copied now. */
 function snapshotOf<O extends ComposableOptions>(given: O): O {
   const {
@@ -1034,6 +1056,7 @@ export async function composePlugins<O extends ComposableOptions>(
       continue;
     }
     const refusals = [
+      ...activityFieldProblems(outcome.result),
       ...formatterUnknownKinds(outcome.result),
       ...providerSecretProblems(entry, outcome.result),
     ];
