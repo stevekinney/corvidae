@@ -20,6 +20,7 @@
 import type { BureauOwnTools } from '@lostgradient/bureau';
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
+import { exitWhenOrphaned } from '@lostgradient/testing/exit-when-orphaned';
 import { createWorkflowLogStore, Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -100,6 +101,10 @@ const handleStartupSignal = (): void => {
 };
 process.on('SIGINT', handleStartupSignal);
 process.on('SIGTERM', handleStartupSignal);
+// A Playwright run killed outright never sends SIGTERM, and ten of these hosts were found running
+// days later. Once an ancestor is gone this process sends itself SIGTERM, so the handler above, or
+// `shutDown` once startup is complete, stops every host and removes the scratch directory.
+exitWhenOrphaned();
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
 const startupStartedAt = performance.now();
@@ -109,6 +114,7 @@ const reportStartupPhase = (phase: string): void => {
   );
 };
 const buildDirectory = join(scratch, 'build');
+reportStartupPhase('building-application');
 await buildApplication({ outdir: buildDirectory });
 reportStartupPhase('application-built');
 
