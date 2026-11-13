@@ -88,8 +88,6 @@ jobs:
   interborough:
     name: Interborough end-to-end (${{ matrix.shard }}/4)
     if: ${{ inputs.interborough }}
-    # Advisory until COR-2412: sixteen tests fail on Linux. Remove this line when that issue closes.
-    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # The image ships the Chromium the lockfile's Playwright launches, so there is no browser install.
