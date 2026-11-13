@@ -22,7 +22,9 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'chat-responsive.spec.ts';
 const REFUND = 'Please refund order 4471, it arrived damaged.';
-const REASON = 'Connect a model provider to chat';
+/** Chat's blocked row with no model provider, beside a chat with messages (COR-2285 V4). */
+const REASON = 'Connect a model provider';
+const CONNECT = 'Connect provider';
 
 /** Opens `path` at `width` by 812 pixels on the sample clock. */
 async function open(page: Page, width: number, path: string): Promise<void> {
@@ -207,7 +209,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     }
   });
 
-  test('with no provider the composer is the blocked row: the reason wraps, and "Connect a provider" drops to its own full-width 44px line beneath (06m, 04y)', async ({
+  test('with no provider the composer is the blocked row: the reason wraps, and "Connect provider" drops to its own full-width 44px line beneath (06m, 04y)', async ({
     page,
   }) => {
     await openRefundFromList(page);
@@ -219,7 +221,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
 
     const reason = await boxOf(row.getByText(REASON));
-    const action = row.getByRole('link', { name: 'Connect a provider' });
+    const action = row.getByRole('button', { name: CONNECT });
     const actionBox = await boxOf(action);
     const rowBox = await boxOf(row);
     // Beneath the text, never over it, and across the row.
@@ -355,7 +357,7 @@ test.describe('Chat on a tablet (06n)', () => {
 
     const row = blockedRow(page);
     await expect(row.getByText(REASON)).toBeVisible();
-    await expect(row.getByRole('link', { name: 'Connect a provider' })).toBeVisible();
+    await expect(row.getByRole('button', { name: CONNECT })).toBeVisible();
     // The one row: no text box, no Send, no agent or model select.
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
@@ -364,7 +366,7 @@ test.describe('Chat on a tablet (06n)', () => {
     // The pane is as narrow as a phone's screen, but the screen is a tablet's: the reason wraps and
     // the action stays at its right, never under it (06n). Only a phone stacks them (06m).
     const reason = await boxOf(row.getByText(REASON));
-    const action = await boxOf(row.getByRole('link', { name: 'Connect a provider' }));
+    const action = await boxOf(row.getByRole('button', { name: CONNECT }));
     expect(action.x).toBeGreaterThanOrEqual(reason.x + reason.width - 1);
     expect(action.y).toBeLessThan(reason.y + reason.height);
     await captureForDesignReview(page, {
@@ -389,14 +391,18 @@ test.describe('Chat with no provider (14h)', () => {
       }
     });
     await open(page, 1280, '/chats/new?agent=tool-runner');
-    const row = blockedRow(page);
-    await expect(row).toBeVisible();
-    await expect(row.getByText(REASON)).toBeVisible();
-    await expect(row.getByRole('link', { name: 'Connect a provider' })).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Use Assistant' })).toBeVisible();
+    // An empty chat is Chat's Connect a model provider state, in place of the greeting and the
+    // composer (COR-2285 V4).
+    const state = page.locator('[data-chat-availability="unconfigured"]');
+    await expect(state).toBeVisible();
+    await expect(state.getByRole('heading', { level: 2 })).toHaveText(REASON);
+    await expect(state.getByRole('button', { name: CONNECT })).toHaveAttribute(
+      'data-cinder-variant',
+      'primary',
+    );
     // No text box to type into, so nothing can be sent and nothing waits to be.
-    await expect(page.getByRole('textbox', { name: 'Message' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeHidden();
     await expect(page.getByText(/queued|sending|pending/i)).toHaveCount(0);
     // The reason is not an app-wide banner or an alert.
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
@@ -411,18 +417,17 @@ test.describe('Chat with no provider (14h)', () => {
     });
   });
 
-  test('on a phone the blocked row wraps and stacks, with Use Assistant beside the reason', async ({
+  test('on a phone the Connect a model provider state fits the screen, with a 44px Connect provider', async ({
     page,
   }) => {
     await open(page, 375, '/chats/new?agent=tool-runner');
-    const row = blockedRow(page);
-    await expect(row).toBeVisible();
-    const reason = await boxOf(row.getByText(REASON));
-    const action = await boxOf(row.getByRole('link', { name: 'Connect a provider' }));
-    expect(action.y).toBeGreaterThanOrEqual(reason.y + reason.height - 1);
-    expect(
-      await touchHeight(row.getByRole('link', { name: 'Connect a provider' })),
-    ).toBeGreaterThanOrEqual(44);
+    const state = page.locator('[data-chat-availability="unconfigured"]');
+    await expect(state).toBeVisible();
+    const title = await boxOf(state.getByRole('heading', { level: 2 }));
+    const connect = state.getByRole('button', { name: CONNECT });
+    const action = await boxOf(connect);
+    expect(action.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+    expect(await touchHeight(connect)).toBeGreaterThanOrEqual(44);
     expect(await scrollsSideways(page)).toBe(false);
     await captureForDesignReview(page, {
       route: '/chats/new',

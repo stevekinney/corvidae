@@ -2,12 +2,17 @@
  * An open chat drawn by Chat's availability states on the real host (COR-2285): an existing chat
  * with no message yet is Chat's first-use state with the agent's description and its suggested
  * prompts, which send (row V1), and a chat deleted while its page is open is Chat's deleted state,
- * with All conversations and no composer (row V3). Loading, a canceled read and a read that failed
+ * with All conversations and no composer (row V3). With no model provider (row V4), on the sample
+ * world, an empty chat is Chat's Connect a model provider state, and a chat with history stays
+ * readable, its approval answerable, with only the composer replaced. Loading, a canceled read and a read that failed
  * are drawn in `chat-page.spec.ts`, so the copies cannot drift. Each state is captured for the
  * design review at a phone's width and a desktop's.
  */
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
+import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { bureauCall } from './task-support.ts';
 
@@ -101,3 +106,65 @@ for (const viewport of VIEWPORTS) {
     });
   });
 }
+
+// The sample world holds no provider key, and Tool runner needs a model (V4).
+test.describe('no model provider, on the sample world (V4)', () => {
+  test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
+
+  for (const viewport of VIEWPORTS) {
+    test(`an empty chat is Connect a model provider with a primary Connect provider, at ${viewport.width} pixels`, async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.clock.setFixedTime(SAMPLE_NOW);
+      await page.setViewportSize(viewport);
+      await page.goto('/chats/new?agent=tool-runner');
+
+      const state = page.locator('[data-chat-availability="unconfigured"]');
+      await expect(state.getByRole('heading', { level: 2 })).toHaveText('Connect a model provider');
+      const connect = state.getByRole('button', { name: 'Connect provider' });
+      await expect(connect).toHaveAttribute('data-cinder-variant', 'primary');
+      await expect(page.getByRole('textbox', { name: /^Message/ })).toBeHidden();
+      await checkA11y(`an empty chat with no provider at ${viewport.width}px`);
+      await captureForDesignReview(page, {
+        route: '/chats/new',
+        state: 'no model provider, empty',
+        source: SOURCE,
+      });
+
+      await connect.click();
+      await expect(page).toHaveURL(/\/settings\/models$/);
+    });
+
+    test(`a chat with history stays readable and answerable, and only the composer asks for a provider, at ${viewport.width} pixels`, async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.clock.setFixedTime(SAMPLE_NOW);
+      await page.setViewportSize(viewport);
+      await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+
+      // The conversation and its waiting approval are there, and nothing stands in their place.
+      const approval = page.locator('[data-approval-decision]');
+      await expect(approval).toBeVisible();
+      for (const name of ['Approve', 'Deny']) {
+        await expect(approval.getByRole('button', { name })).toBeEnabled();
+      }
+      await expect(page.locator('[data-chat-availability]')).toHaveCount(0);
+      // The composer is one blocked row with the same words and the primary action.
+      const row = page.locator('[data-chat-composer-status="blocked"]');
+      await expect(row).toContainText('Connect a model provider');
+      await expect(row.getByRole('button', { name: 'Connect provider' })).toHaveAttribute(
+        'data-cinder-variant',
+        'primary',
+      );
+      await expect(page.getByRole('textbox', { name: /^Message/ })).toHaveCount(0);
+      await checkA11y(`a chat with history and no provider at ${viewport.width}px`);
+      await captureForDesignReview(page, {
+        route: '/chats/:chat',
+        state: 'no model provider, with history',
+        source: SOURCE,
+      });
+    });
+  }
+});

@@ -300,14 +300,17 @@ describe('an existing chat with no message yet (COR-2285 V1)', () => {
     expect(container.querySelector('textarea')?.value).toBe('');
   });
 
-  test('offers no prompt while the composer cannot send one', async () => {
+  test('with no provider is Chat’s Connect a model provider state, and offers no prompt (V4)', async () => {
     serve([], { hasKey: false, answers: withExamples });
     const { container, findByRole } = mount();
 
-    await findByRole('heading', { level: 2, name: CHAT_COPY.emptyTranscript.title });
-    await waitFor(() =>
-      expect(container.querySelector('[data-chat-composer-status="blocked"]')).not.toBeNull(),
-    );
+    const state = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-chat-availability="unconfigured"]');
+      if (found === null) throw new Error('The unconfigured state is not drawn yet.');
+      return found;
+    });
+    expect(state.textContent).toContain('Connect a model provider');
+    expect(await findByRole('button', { name: 'Connect provider' })).not.toBeNull();
     expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
   });
 });

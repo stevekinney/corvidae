@@ -490,14 +490,6 @@
       : SETTINGS.applies.nextRun(name, value);
   }
 
-  // Assistant is the scripted agent a chat can fall back on without a provider: the host's own
-  // (`assistant`) or the Demo plugin's copy (`demo:assistant`).
-  const assistantName = $derived(
-    (
-      agents.data?.find((entry) => entry.name === 'assistant') ??
-      agents.data?.find((entry) => entry.name.endsWith(':assistant'))
-    )?.name,
-  );
   const composerStatus = $derived(
     composerStatusOf({
       unreachable: connection.unreachable,
@@ -510,14 +502,12 @@
           }
         : undefined,
       ended: endedByRestart,
-      noProvider,
+      // A missing model provider is Chat's `unconfigured` availability here (COR-2285 V4), not the
+      // blocked row the other composers draw.
+      noProvider: false,
       noWorkflowAgent: choosing && fromWorkflows && agent === '',
       agentsHref: router.href('/agents'),
       connectHref: router.href('/settings/models'),
-      useAssistant:
-        choosing && assistantName !== undefined && agent !== assistantName
-          ? () => chooseAgent(assistantName)
-          : undefined,
       newChatHref: router.href('/chats/new'),
       reconnectAttempt: session.reconnectAttempt,
       queuedFollowUps: session.queuedFollowUps,
@@ -527,24 +517,34 @@
   );
 
   /**
-   * What stands in for the conversation when it cannot be shown (COR-2285 V3): a chat deleted while
-   * its page is open has Chat's deleted state, with All conversations and no composer.
+   * What stands in for the conversation when it cannot be shown, by precedence (COR-2285): a chat
+   * deleted while its page is open has Chat's deleted state, with All conversations and no
+   * composer (V3); an agent that needs a model with no provider connected has Chat's unconfigured
+   * state (V4), Connect a model provider with a primary Connect provider. Chat draws that one in
+   * place of an empty chat, and beside a chat with messages replaces only the composer, so the
+   * history stays readable and a waiting approval answerable (ChatStates rows 19f and 19h). A
+   * blocked row the page draws (unreachable, restarting, a disabled plugin) says what is wrong
+   * first.
    */
-  const availability = $derived<ChatAvailability | undefined>(
-    gone
-      ? {
-          kind: 'deleted',
-          allConversations: {
-            label: CHAT_COPY.load.allConversations,
-            onclick: () => router.navigate('/chats'),
-          },
-          labels: {
-            deletedTitle: CHAT_COPY.gone.title,
-            deletedDescription: CHAT_COPY.gone.description,
-          },
-        }
-      : undefined,
-  );
+  const availability = $derived.by<ChatAvailability | undefined>(() => {
+    if (gone) {
+      return {
+        kind: 'deleted',
+        allConversations: {
+          label: CHAT_COPY.load.allConversations,
+          onclick: () => router.navigate('/chats'),
+        },
+        labels: {
+          deletedTitle: CHAT_COPY.gone.title,
+          deletedDescription: CHAT_COPY.gone.description,
+        },
+      };
+    }
+    if (noProvider && composerStatus?.kind !== 'blocked') {
+      return { kind: 'unconfigured', onConnect: () => router.navigate('/settings/models') };
+    }
+    return undefined;
+  });
 
   // An open chat with no message yet is Chat's first-use state (COR-2285 V1): the agent's own
   // description, and the prompts it suggests as buttons that send. None is offered while a prompt
@@ -556,6 +556,7 @@
   const emptyPrompts = $derived(
     listedAgent === undefined ||
       composerStatus?.kind === 'blocked' ||
+      noProvider ||
       session.disconnected ||
       connection.unreachable ||
       gone
@@ -798,7 +799,11 @@
   );
   $effect(() => {
     const text = prefill;
-    const live = chat !== undefined && agent !== '' && composerStatus?.kind !== 'blocked';
+    const live =
+      chat !== undefined &&
+      agent !== '' &&
+      composerStatus?.kind !== 'blocked' &&
+      availability === undefined;
     if (text === undefined || !live) return;
     untrack(() => void putPrefillInComposer(text));
   });
