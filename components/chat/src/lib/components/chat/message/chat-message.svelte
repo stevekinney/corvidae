@@ -2448,6 +2448,31 @@
     color: var(--cinder-text-muted);
   }
 
+  /* An answer that stopped short ends in a muted ellipsis, on the last line of its last text block,
+   * so the cut is visible where it happened and not only in the notice. It is drawn, not content:
+   * it is not read aloud (the notice says the answer is partial) and is not copied. It shows only
+   * when text is the last thing in the message; a turn that ended on a step has no cut-off prose. */
+  .chat-message-wrapper:is(
+      [data-turn-state='stopped'],
+      [data-turn-state='failed'],
+      [data-turn-state='reconnecting']
+    )
+    .chat-message-body
+    > :global(:last-child)
+    :global(.cinder-markdown-content > :is(p, h1, h2, h3, h4, h5, h6):last-child)::after,
+  .chat-message-wrapper:is(
+      [data-turn-state='stopped'],
+      [data-turn-state='failed'],
+      [data-turn-state='reconnecting']
+    )
+    .chat-message-body
+    > :global(:last-child)
+    :global(.cinder-markdown-content > :is(ul, ol):last-child > li:last-child)::after {
+    content: '\2026' / '';
+    margin-inline-start: 0.125em;
+    color: var(--cinder-text-muted);
+  }
+
   /* An empty answer has no text, so its turn takes no room above the row that says so. */
   .chat-message-wrapper[data-turn-state='empty'] .chat-message {
     padding-block: 0;

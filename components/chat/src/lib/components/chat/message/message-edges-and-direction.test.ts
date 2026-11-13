@@ -26,6 +26,22 @@ describe('glyphs meet their edges, spacing and direction', () => {
     );
   });
 
+  test('an answer that stopped short ends in a drawn, muted ellipsis that is not read or copied', async () => {
+    const source = await read('chat-message.svelte');
+    const rule = source.slice(source.indexOf('An answer that stopped short'));
+    // The prose is rendered by a child component, so both hops into it are global.
+    expect(rule).toContain('> :global(:last-child)');
+    expect(rule).toContain(
+      ':global(.cinder-markdown-content > :is(p, h1, h2, h3, h4, h5, h6):last-child)::after',
+    );
+    for (const state of ['stopped', 'failed', 'reconnecting']) {
+      expect(rule).toContain(`[data-turn-state='${state}']`);
+    }
+    // Empty alternative text keeps the glyph out of the accessibility tree.
+    expect(rule).toContain("content: '\\2026' / '';");
+    expect(rule).toContain('color: var(--cinder-text-muted);');
+  });
+
   test('message action glyphs are sized to the time beside them and sit 8px apart', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(
