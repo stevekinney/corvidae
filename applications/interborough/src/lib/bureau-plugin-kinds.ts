@@ -46,6 +46,31 @@ export async function listContributedKinds(options?: Options): Promise<Contribut
   return kindsSchema.parse(await callBureau('bureau.plugins.contributions', {}, options));
 }
 
+const providersSchema = z.object({
+  providers: z.array(
+    z.object({ plugin: z.string(), name: z.string(), configuration: configurationSchema }),
+  ),
+});
+
+/**
+ * A model provider a running plugin contributes: its `name` (what the host's providers list calls
+ * it), the `plugin` that holds its configuration, and that configuration as JSON Schema (`null`
+ * when it could not be written as one).
+ */
+export type ContributedProvider = z.infer<typeof providersSchema>['providers'][number];
+
+/**
+ * The model providers of the running plugins, each with its plugin's configuration schema
+ * (`bureau.plugins.contributions`), read apart from the trigger and hook kinds so a page that wants
+ * only providers does not depend on the rest of the listing.
+ */
+export async function listContributedProviders(
+  options?: Options,
+): Promise<readonly ContributedProvider[]> {
+  return providersSchema.parse(await callBureau('bureau.plugins.contributions', {}, options))
+    .providers;
+}
+
 /** The id a hook action kind is chosen by: `plugin:kind`. A plugin and a kind name hold no `:`. */
 export function hookActionKindId(kind: Pick<ContributedHookActionKind, 'plugin' | 'kind'>): string {
   return `${kind.plugin}:${kind.kind}`;

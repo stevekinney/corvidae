@@ -6,9 +6,14 @@
    * Replace key each close this dialog and open their own.
    */
   import { Button, Modal, StatusDot } from '@lostgradient/cinder';
+  import { useQueryClient } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
+  import { queryKeys } from '../../../lib/query.ts';
   import { providerDisplayName } from './format-model.ts';
+  import type { ProviderConfigurationSource } from './provider-configuration.ts';
+  import ProviderConfiguration from './provider-configuration.svelte';
+  import { ProviderConfigurationDraft } from './provider-configuration.svelte.ts';
 
   interface Props {
     /** The provider being managed, or `null` while the dialog is closed. */
@@ -19,16 +24,36 @@
     onReplace: (provider: string) => void;
     /** Opens the removal of the key; the dialog closes first. */
     onRemove: (provider: string) => void;
+    /** The configuration of each provider's plugin, by provider name, which the dialog edits and saves. */
+    configurations?: ReadonlyMap<string, ProviderConfigurationSource>;
   }
 
-  let { provider = $bindable(), modelCount, onReplace, onRemove }: Props = $props();
+  let {
+    provider = $bindable(),
+    modelCount,
+    onReplace,
+    onRemove,
+    configurations = new Map(),
+  }: Props = $props();
 
   const copy = MODELS_COPY.manageDialog;
+  const queryClient = useQueryClient();
+
+  const configuration = new ProviderConfigurationDraft({
+    source: () => (provider === null ? undefined : configurations.get(provider)),
+    onSaved: () => queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() }),
+  });
 
   const displayName = $derived(provider === null ? '' : providerDisplayName(provider));
   const open = $derived(provider !== null);
 
+  // Whatever closes the dialog, the settings start over from what is stored the next time it opens.
+  $effect(() => {
+    if (provider === null) configuration.reset();
+  });
+
   function close(): void {
+    configuration.reset();
     provider = null;
   }
 
@@ -47,20 +72,39 @@
   onDismiss={close}
 >
   {#snippet children()}
-    <div class="ib-manage" data-testid="provider-manage-body">
-      <StatusDot status="success" label={copy.connected} labelVisible />
-      <span class="ib-manage__models">{copy.models(modelCount)}</span>
+    <div class="ib-manage">
+      <div class="ib-manage__status" data-testid="provider-manage-body">
+        <StatusDot status="success" label={copy.connected} labelVisible />
+        <span class="ib-manage__models">{copy.models(modelCount)}</span>
+      </div>
+      <ProviderConfiguration {configuration} />
     </div>
   {/snippet}
   {#snippet footer()}
     <Button variant="secondary" onclick={() => hand(onRemove)}>{copy.removeKey}</Button>
     <Button variant="secondary" onclick={() => hand(onReplace)}>{copy.replaceKey}</Button>
-    <Button variant="primary" onclick={close}>{copy.done}</Button>
+    {#if configuration.dirty || configuration.saving}
+      <Button
+        variant="primary"
+        disabled={configuration.saving}
+        onclick={() => void configuration.save()}
+        >{configuration.saving ? copy.saving : copy.save}</Button
+      >
+    {:else}
+      <Button variant="primary" onclick={close}>{copy.done}</Button>
+    {/if}
   {/snippet}
 </Modal>
 
 <style>
   .ib-manage {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-width: 0;
+  }
+
+  .ib-manage__status {
     display: flex;
     align-items: center;
     justify-content: space-between;

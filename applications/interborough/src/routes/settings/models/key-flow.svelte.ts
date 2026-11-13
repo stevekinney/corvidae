@@ -39,6 +39,12 @@ export type KeyFlowOptions = {
   readonly provider: () => string | null;
   /** Called once the host has saved the key, with the provider and how many models its test counted. */
   readonly onSaved: (provider: string, models: number) => void;
+  /**
+   * Called once the provider has accepted the key and before the host is asked to save it, such as
+   * to store the provider's configuration first (as `interborough providers connect` does). It
+   * resolves `false` after showing why it could not, which stops the save and leaves the key unsaved.
+   */
+  readonly beforeSave?: () => Promise<boolean>;
 };
 
 /** The test-then-save sequence of one key field. Create one per dialog. */
@@ -136,6 +142,11 @@ export class KeyFlow {
     }
     this.phase = 'saving';
     try {
+      if (this.#options.beforeSave !== undefined && !(await this.#options.beforeSave())) {
+        if (generation === this.#generation) this.phase = 'idle';
+        return;
+      }
+      if (generation !== this.#generation) return;
       await connectProvider(provider, key);
     } catch (error) {
       if (generation !== this.#generation) return;

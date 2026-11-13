@@ -13,19 +13,31 @@
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
+  import { queryKeys } from '../../../lib/query.ts';
   import { maskedKey, providerDisplayName, providerKeyPage } from './format-model.ts';
   import { KeyFlow } from './key-flow.svelte.ts';
   import { markConnected, refreshAfterKeyChange } from './provider-cache.ts';
+  import type { ProviderConfigurationSource } from './provider-configuration.ts';
+  import ProviderConfiguration from './provider-configuration.svelte';
+  import { ProviderConfigurationDraft } from './provider-configuration.svelte.ts';
 
   interface Props {
     /** The provider the dialog is for, or `null` while it is closed. */
     provider: string | null;
+    /** The configuration of each provider's plugin, by provider name, which Connect saves with the key. */
+    configurations?: ReadonlyMap<string, ProviderConfigurationSource>;
   }
 
-  let { provider = $bindable() }: Props = $props();
+  let { provider = $bindable(), configurations = new Map() }: Props = $props();
 
   const copy = MODELS_COPY.connectDialog;
   const queryClient = useQueryClient();
+
+  /** The provider's plugin settings, saved before the key once the key has passed its test. */
+  const configuration = new ProviderConfigurationDraft({
+    source: () => (provider === null ? undefined : configurations.get(provider)),
+    onSaved: () => queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() }),
+  });
 
   const flow = new KeyFlow({
     provider: () => provider,
@@ -33,6 +45,7 @@
       markConnected(queryClient, name);
       refreshAfterKeyChange(queryClient);
     },
+    beforeSave: () => configuration.save(),
   });
 
   const displayName = $derived(provider === null ? '' : providerDisplayName(provider));
@@ -67,13 +80,17 @@
 
   // Whatever closes the dialog, the sequence starts over the next time it opens.
   $effect(() => {
-    if (provider === null) flow.reset();
+    if (provider === null) {
+      flow.reset();
+      configuration.reset();
+    }
   });
 
   function close(): void {
     // A key being written cannot be taken back half way; a test being waited for can.
     if (flow.saving) return;
     flow.reset();
+    configuration.reset();
     provider = null;
   }
 </script>
@@ -87,66 +104,72 @@
   dismissOnBackdropClick={!flow.saving}
 >
   {#snippet children()}
-    <form
-      class="ib-connect"
-      data-testid="provider-connect-form"
-      novalidate
-      onsubmit={(event) => {
-        event.preventDefault();
-        void flow.submit();
-      }}
-    >
-      {#if connected}
-        <Input
-          id="provider-api-key"
-          type="text"
-          variant="code"
-          label={copy.keyLabel}
-          required
-          disabled
-          description={copy.keyHelp}
-          value={provider === null ? '' : maskedKey(provider)}
-        >
-          {#snippet descriptionAction()}
-            {#if keyPage !== undefined}
-              <Link href={keyPage} external underline="always">{copy.getKey}</Link>
-            {/if}
-          {/snippet}
-        </Input>
-      {:else}
-        <Input
-          id="provider-api-key"
-          type={masked ? 'text' : 'password'}
-          autocomplete="off"
-          spellcheck={false}
-          variant="code"
-          label={copy.keyLabel}
-          placeholder={copy.keyPlaceholder}
-          required
-          description={copy.keyHelp}
-          bind:value={
-            () => shownKey,
-            (next) => {
-              if (!masked) flow.key = next;
+    <div class="ib-connect">
+      <form
+        class="ib-connect__key"
+        data-testid="provider-connect-form"
+        novalidate
+        onsubmit={(event) => {
+          event.preventDefault();
+          void flow.submit();
+        }}
+      >
+        {#if connected}
+          <Input
+            id="provider-api-key"
+            type="text"
+            variant="code"
+            label={copy.keyLabel}
+            required
+            disabled
+            description={copy.keyHelp}
+            value={provider === null ? '' : maskedKey(provider)}
+          >
+            {#snippet descriptionAction()}
+              {#if keyPage !== undefined}
+                <Link href={keyPage} external underline="always">{copy.getKey}</Link>
+              {/if}
+            {/snippet}
+          </Input>
+        {:else}
+          <Input
+            id="provider-api-key"
+            type={masked ? 'text' : 'password'}
+            autocomplete="off"
+            spellcheck={false}
+            variant="code"
+            label={copy.keyLabel}
+            placeholder={copy.keyPlaceholder}
+            required
+            description={copy.keyHelp}
+            bind:value={
+              () => shownKey,
+              (next) => {
+                if (!masked) flow.key = next;
+              }
             }
-          }
-          onValueChange={() => {
-            if (!masked) flow.edited();
-          }}
-          onfocus={() => (revealed = true)}
-          onblur={() => (revealed = false)}
-          error={flow.fieldError}
-          readonly={flow.busy}
-        >
-          {#snippet descriptionAction()}
-            {#if keyPage !== undefined}
-              <Link href={keyPage} external underline="always">{copy.getKey}</Link>
-            {/if}
-          {/snippet}
-        </Input>
-      {/if}
-      {#if flow.busy}
-        <InlineLoading status="active" description={copy.testing} />
+            onValueChange={() => {
+              if (!masked) flow.edited();
+            }}
+            onfocus={() => (revealed = true)}
+            onblur={() => (revealed = false)}
+            error={flow.fieldError}
+            readonly={flow.busy}
+          >
+            {#snippet descriptionAction()}
+              {#if keyPage !== undefined}
+                <Link href={keyPage} external underline="always">{copy.getKey}</Link>
+              {/if}
+            {/snippet}
+          </Input>
+        {/if}
+        {#if flow.busy}
+          <InlineLoading status="active" description={copy.testing} />
+        {/if}
+      </form>
+      <!-- The configuration draws its own form, so it sits beside the key's form, not inside it. -->
+      {#if !connected}
+        <ProviderConfiguration {configuration} heading />
       {/if}
       {#if connected || flow.phase === 'tested'}
         <div role="status" data-testid="provider-connect-result">
@@ -164,7 +187,7 @@
           <p class="ib-connect__result">{flow.failure}</p>
         </Callout>
       {/if}
-    </form>
+    </div>
   {/snippet}
   {#snippet footer()}
     {#if connected}
@@ -183,6 +206,13 @@
 
 <style>
   .ib-connect {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-width: 0;
+  }
+
+  .ib-connect__key {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-3);

@@ -17,14 +17,17 @@
   import RemoveKeyDialog from './remove-key-dialog.svelte';
   import ReplaceKeyDialog from './replace-key-dialog.svelte';
   import { providerDisplayName, providerTagline, providersInOrder } from './format-model.ts';
+  import type { ProviderConfigurationSource } from './provider-configuration.ts';
 
   interface Props {
     snapshot: ProvidersSnapshot;
     /** The provider whose dialog is open, or `null`. The page binds it so the empty Models list can open one too. */
     connecting: string | null;
+    /** The configuration of each provider's plugin, by provider name, which Connect and Manage draw and save. */
+    configurations?: ReadonlyMap<string, ProviderConfigurationSource>;
   }
 
-  let { snapshot, connecting = $bindable() }: Props = $props();
+  let { snapshot, connecting = $bindable(), configurations = new Map() }: Props = $props();
 
   const copy = MODELS_COPY.providers;
 
@@ -87,9 +90,10 @@
   </FormSection>
 </div>
 
-<ConnectDialog bind:provider={connecting} />
+<ConnectDialog bind:provider={connecting} {configurations} />
 <ManageDialog
   bind:provider={managing}
+  {configurations}
   modelCount={managedModelCount}
   onReplace={(provider: string) => (replacing = provider)}
   onRemove={(provider: string) => (removing = provider)}

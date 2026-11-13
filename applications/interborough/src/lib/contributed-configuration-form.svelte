@@ -12,7 +12,12 @@
   import { untrack } from 'svelte';
 
   import { PLUGIN_KINDS_COPY } from '../app/copy/plugins.ts';
-  import { formSchemaOf, numbersCommitted } from '../routes/settings/settings-form-schema.ts';
+  import { numbersCommitted } from '../routes/settings/settings-form-schema.ts';
+  import {
+    contributedFormHasFields,
+    contributedFormSchema,
+    isSameJson,
+  } from './contributed-configuration.ts';
 
   interface Props {
     /** Names the kind, so the form starts over when the kind is another. */
@@ -23,36 +28,17 @@
     value?: unknown;
     /** Takes the configuration after each edit. */
     onChange: (value: Record<string, unknown>) => void;
+    /**
+     * Problems the host found with a value this form saved, each shown on the field its `path`
+     * names (`SchemaForm`'s `issues`), and cleared when that field is edited.
+     */
+    issues?: readonly { path: readonly (string | number)[]; message: string }[] | undefined;
   }
 
-  let { kindId, schema, value, onChange }: Props = $props();
+  let { kindId, schema, value, onChange, issues }: Props = $props();
 
-  /** The schema as the form reads it, without the dialect marker Zod writes. */
-  const formSchema = $derived.by(() => {
-    if (schema === null) return undefined;
-    const { $schema: _dialect, ...rest } = schema;
-    return formSchemaOf(kindId, rest);
-  });
-
-  /**
-   * Whether the schema has anything to draw: named properties, or free keys (`additionalProperties`
-   * that describes a value, which Zod writes for a record). A closed object with no properties is a
-   * kind that takes no settings.
-   */
-  const hasFields = $derived.by(() => {
-    const properties = formSchema?.['properties'];
-    if (
-      typeof properties === 'object' &&
-      properties !== null &&
-      Object.keys(properties).length > 0
-    ) {
-      return true;
-    }
-    const additional = formSchema?.['additionalProperties'];
-    return (
-      typeof additional === 'object' && additional !== null && Object.keys(additional).length > 0
-    );
-  });
+  const formSchema = $derived(contributedFormSchema(kindId, schema));
+  const hasFields = $derived(contributedFormHasFields(formSchema));
 
   // The form emits no draft until an edit, so the one it shows at mount is reported here, once per
   // schema. `value` is read untracked: the report changes it, and must not run this again.
@@ -75,34 +61,6 @@
     untrack(() => onChange(shown as Record<string, unknown>));
   });
 
-  /** Whether two JSON values are equal, whatever order their keys came in. */
-  function isSameJson(left: unknown, right: unknown): boolean {
-    if (left === right) return true;
-    if (Array.isArray(left) || Array.isArray(right)) {
-      return (
-        Array.isArray(left) &&
-        Array.isArray(right) &&
-        left.length === right.length &&
-        left.every((item, index) => isSameJson(item, right[index]))
-      );
-    }
-    if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) {
-      return false;
-    }
-    const leftKeys = Object.keys(left);
-    return (
-      leftKeys.length === Object.keys(right).length &&
-      leftKeys.every(
-        (key) =>
-          Object.hasOwn(right, key) &&
-          isSameJson(
-            (left as Record<string, unknown>)[key],
-            (right as Record<string, unknown>)[key],
-          ),
-      )
-    );
-  }
-
   function draft(next: unknown): void {
     if (formSchema === undefined || !numbersCommitted(formSchema, next)) return;
     if (typeof next === 'object' && next !== null && !Array.isArray(next)) {
@@ -123,6 +81,8 @@
         name={`configuration-${kindId}`}
         {value}
         jsonEditable={false}
+        submitVisible={false}
+        {issues}
         onDraftChange={draft}
       />
     {/key}

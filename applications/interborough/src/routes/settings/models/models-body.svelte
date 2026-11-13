@@ -26,6 +26,7 @@
     type SettingsSchema,
     type SettingsSnapshot,
   } from '../../../lib/bureau-settings.ts';
+  import { listContributedProviders } from '../../../lib/bureau-plugin-kinds.ts';
   import { getPlugins } from '../../../lib/host-plugins.ts';
   import { getProviders, HostProviderError } from '../../../lib/host-providers.ts';
   import { returnPathOf } from '../../../lib/provider-return.ts';
@@ -41,6 +42,7 @@
   import DecisionsSection from './decisions-section.svelte';
   import { providerDisplayName } from './format-model.ts';
   import ModelsSection, { type CatalogFailure } from './models-section.svelte';
+  import { providerConfigurationSources } from './provider-configuration.ts';
   import ProvidersSection from './providers-section.svelte';
 
   interface Props {
@@ -69,6 +71,19 @@
       retry: false,
     }),
     undefined,
+  );
+  // A provider's plugin holds its configuration: the schema comes from the Bureau and the stored
+  // value from the host's plugins (the one Settings › Plugins edits).
+  const contributed = createQuery(
+    () => ({
+      queryKey: queryKeys.contributedProviders(),
+      queryFn: ({ signal }) => listContributedProviders({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const configurations = $derived(
+    providerConfigurationSources(contributed.data ?? [], plugins.data?.plugins ?? []),
   );
   const typesafeNeedsKey = $derived(
     (plugins.data?.plugins ?? []).some(
@@ -216,7 +231,7 @@
   {/if}
   {#if providers.data !== undefined}
     <div id="ib-models-providers" tabindex="-1" class="ib-models-page__anchor">
-      <ProvidersSection snapshot={providers.data} bind:connecting />
+      <ProvidersSection snapshot={providers.data} bind:connecting {configurations} />
     </div>
     <ModelsSection
       models={failure === undefined ? providers.data.models : []}

@@ -108,6 +108,16 @@ export const MODELS_COPY = {
     removeKey: 'Remove key',
     replaceKey: 'Replace key',
     done: 'Done',
+    /** The primary button while the provider's settings differ from what is stored, in place of Done. */
+    save: 'Save',
+    saving: 'Saving…',
+  },
+  /** A provider's plugin settings, drawn from the plugin's own schema in the Connect and Manage dialogs. */
+  configuration: {
+    /** Names the settings under the key field of the Connect dialog. */
+    heading: 'Settings',
+    /** Said when the plugin's settings could not be written as a schema the page can draw. */
+    unavailable: (plugin: string): string => `The settings of ${plugin} can’t be shown here.`,
   },
   /** Remove key (board SettingsShell, "Remove key, confirm"). */
   removeDialog: {
