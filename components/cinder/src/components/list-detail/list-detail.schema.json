@@ -76,7 +76,7 @@
     },
     "listCollapsible": {
       "type": "boolean",
-      "description": "Draws a toggle that hides the list pane while the panes sit side by side or one above the\nother, so the detail takes the whole width. The toggle is the last control of the list header\nwhile the list shows, and the only control of a narrow rail at the start edge while it is\nhidden, so it is always on screen; focus moves to it each time it flips. Below `pushBelow`,\nwhere one pane shows at a time, there is nothing to hide and no toggle.",
+      "description": "Offers a toggle that hides the list pane while an item is open and the panes sit side by side\nor one above the other, so the detail takes the whole width. While the list shows, `header`\nis given the toggle to place (a list with no `header` gets a header holding it alone); while\nthe list is hidden, the toggle is the only control of a narrow rail at the start edge, so it is\nalways on screen, and focus moves to it each time it flips. With no item open the list shows\nand there is no toggle, and below `pushBelow`, where one pane shows at a time, there is\nnothing to hide.",
       "default": false
     },
     "listCollapsed": {
@@ -147,7 +147,7 @@
       {
         "name": "header",
         "reason": "function-or-snippet",
-        "description": "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button."
+        "description": "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button. With `listCollapsible`, it is\ngiven the toggle that hides the list to place, usually at the end of the title row."
       },
       {
         "name": "items",

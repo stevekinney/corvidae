@@ -133,7 +133,7 @@ Pass `storageKey` and the divider width is remembered under that key in `localSt
 
 ## Hiding the list
 
-Set `listCollapsible` and a toggle ends the list header. Pressing it hides the list pane: the detail takes the whole width, and a narrow rail at the start edge holds the toggle, so the way back is always on screen. The hidden list is not drawn, so nothing in it takes focus, and focus moves to the toggle each time it flips. `listCollapsed` is bindable, and with `storageKey` the choice is remembered under `<storageKey>:list-collapsed`, beside the divider width; a remembered choice wins on mount. `collapseListLabel` and `expandListLabel` name the toggle in each state ("Hide chats", "Show chats"). Below `pushBelow`, where one pane shows at a time, there is nothing to hide and no toggle.
+Set `listCollapsible` and, while an item is open, `header` is given `listToggle` to place, usually at the end of the title row, so the search and the filter keep the header's full width (a list with no `header` gets one holding the toggle alone). Pressing it hides the list pane: the detail takes the whole width, and a narrow rail at the start edge holds the toggle, so the way back is always on screen. The hidden list is not drawn, so nothing in it takes focus, and focus moves to the toggle each time it flips. With no item open the list shows and there is no toggle, since the list is then all there is to choose from. `listCollapsed` is bindable, and with `storageKey` the choice is remembered under `<storageKey>:list-collapsed`, beside the divider width; a remembered choice wins on mount. `collapseListLabel` and `expandListLabel` name the toggle in each state ("Hide chats", "Show chats"). Below `pushBelow`, where one pane shows at a time, there is nothing to hide and no toggle.
 
 ```svelte
 <script lang="ts">
@@ -154,6 +154,12 @@ Set `listCollapsible` and a toggle ends the list header. Pressing it hides the l
   collapseListLabel="Hide chats"
   expandListLabel="Show chats"
 >
+  {#snippet header({ listToggle })}
+    <div class="title-row">
+      <h2>Chats</h2>
+      {@render listToggle?.()}
+    </div>
+  {/snippet}
   {#snippet list(chat, row)}
     <SelectableRow selected={row.selected} selectedState="current" onclick={row.open}>
       {#snippet title()}{chat.title}{/snippet}
@@ -209,7 +215,7 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | `flushDetail` | `boolean` | no | `false` | Removes the detail pane's inner padding, for a detail view that lays out its own header, body and footer edge to edge (an open chat, a table, a code frame). In the stacked layout the open detail also fills the height the component is given, so what it docks at its bottom edge, such as a composer, sits at the bottom of the screen instead of after its content. |
 | `label` | `string` | yes | — | Accessible name of the list region, for example "Chats". |
 | `listCollapsed` | `boolean` | no | `false` | Whether the list pane is hidden, with `listCollapsible`. Bindable. With `storageKey`, the choice is remembered beside the divider width, and a remembered choice wins on mount. |
-| `listCollapsible` | `boolean` | no | `false` | Draws a toggle that hides the list pane while the panes sit side by side or one above the other, so the detail takes the whole width. The toggle is the last control of the list header while the list shows, and the only control of a narrow rail at the start edge while it is hidden, so it is always on screen; focus moves to it each time it flips. Below `pushBelow`, where one pane shows at a time, there is nothing to hide and no toggle. |
+| `listCollapsible` | `boolean` | no | `false` | Offers a toggle that hides the list pane while an item is open and the panes sit side by side or one above the other, so the detail takes the whole width. While the list shows, `header` is given the toggle to place (a list with no `header` gets a header holding it alone); while the list is hidden, the toggle is the only control of a narrow rail at the start edge, so it is always on screen, and focus moves to it each time it flips. With no item open the list shows and there is no toggle, and below `pushBelow`, where one pane shows at a time, there is nothing to hide. |
 | `loading` | `boolean` | no | `false` | Shows a placeholder in place of the rows and the open item while the records load: five list rows in the list pane and a block in the detail pane. Nothing shows for the first 300 milliseconds, so a fast load never flickers, and a slow one adds a "still loading" line after ten seconds. |
 | `loadingLabel` | `string` | no | `"Loading"` | What the loading region announces, politely, once the placeholder appears: "Loading memories". |
 | `maximumListWidth` | `number` | no | `560` | Widest width in pixels the divider can give the list pane, and the most a remembered or default width can be. Raise it for a list that is a table, whose columns need more than a list of rows. |
@@ -222,7 +228,7 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | `detail` | `(opaque)` | yes | — | Detail renderer for the open item. Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | Rendered in the detail pane while no item is open. A default message is shown when omitted. Not expressible in JSON Schema; see the component types for the signature. |
 | `groupBy` | `(opaque)` | no | — | Groups consecutive items under a header band, such as a source or a day. Passed to the list's `DataList`, so a group is a nested list named by its header. Not expressible in JSON Schema; see the component types for the signature. |
-| `header` | `(opaque)` | no | — | List header, above the rows: the title, the count, the create action, the search and the filter. Put the title and the create action on their own row and the filter below at full width, so the action never reads as the filter's submit button. Not expressible in JSON Schema; see the component types for the signature. |
+| `header` | `(opaque)` | no | — | List header, above the rows: the title, the count, the create action, the search and the filter. Put the title and the create action on their own row and the filter below at full width, so the action never reads as the filter's submit button. With `listCollapsible`, it is given the toggle that hides the list to place, usually at the end of the title row. Not expressible in JSON Schema; see the component types for the signature. |
 | `items` | `(opaque)` | yes | — | The records to list. Each is passed to `list` and, when selected, to `detail`. Not expressible in JSON Schema; see the component types for the signature. |
 | `key` | `(opaque)` | yes | — | Key extractor. The key identifies an item in the keyboard cursor, the selection, and the URL. Not expressible in JSON Schema; see the component types for the signature. |
 | `list` | `(opaque)` | no | — | Row renderer, called once per item inside an `<li>` that ListDetail provides. Render a `SelectableRow` with `selected={row.selected}` and `selectedState="current"`; activating its primary action opens the item. Omit it when `listBody` draws the rows. Not expressible in JSON Schema; see the component types for the signature. |

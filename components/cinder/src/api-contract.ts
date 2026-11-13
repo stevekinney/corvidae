@@ -400,7 +400,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       detail: sp(1, false),
       empty: s0(true),
       listEmpty: s0(true),
-      header: s0(true),
+      header: sp(1, true),
     },
   },
 

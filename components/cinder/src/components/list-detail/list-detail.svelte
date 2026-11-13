@@ -21,6 +21,7 @@
    * @a11yNote J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken.
    */
   export type {
+    ListDetailHeaderContext,
     ListDetailListBodyContext,
     ListDetailProps,
     ListDetailRowContext,
@@ -145,9 +146,10 @@
     const stored = readStoredListCollapsed(resolveStorage(storage), storageKey);
     if (stored !== null) listCollapsed = stored;
   });
-  // The list is hidden only where both panes could show; one pane at a time has nothing to hide.
-  const collapsed = $derived(listCollapsible && listCollapsed && !narrow);
-  const toggleShown = $derived(listCollapsible && !narrow);
+  // The list is hidden only beside an open item, where both panes could show: one pane at a time
+  // has nothing to hide, and with nothing open the list is all there is to choose from.
+  const toggleShown = $derived(listCollapsible && !narrow && selectedEntry !== undefined);
+  const collapsed = $derived(toggleShown && listCollapsed);
 
   /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
   async function setListCollapsed(next: boolean): Promise<void> {
@@ -304,7 +306,14 @@
 
   async function open(rowKey: string): Promise<void> {
     setSelection(rowKey);
-    if (!narrow) return;
+    if (!narrow) {
+      // A list left hidden hides again once an item is open, taking the row that had focus with it,
+      // so focus moves to the toggle that brings the list back.
+      if (!collapsed) return;
+      await tick();
+      rootElement?.querySelector<HTMLElement>('.cinder-list-detail__list-toggle')?.focus();
+      return;
+    }
     // The list is gone below `pushBelow`, so focus moves to the first control of the detail.
     await tick();
     (
@@ -355,14 +364,15 @@
     onclick={handleClick}
     onkeydown={handleKeydown}
   >
-    {#if toggleShown}
-      <!-- The toggle is the header's last control, beside the host's own header content. -->
+    {#if header}
+      <!-- The host places the toggle, so the header keeps its width for the search and filter. -->
+      <header class="cinder-list-detail__header">
+        {@render header({ listToggle: toggleShown ? listToggle : undefined })}
+      </header>
+    {:else if toggleShown}
       <header class="cinder-list-detail__header" data-cinder-list-toggle="">
-        <div class="cinder-list-detail__header-content">{@render header?.()}</div>
         {@render listToggle()}
       </header>
-    {:else if header}
-      <header class="cinder-list-detail__header">{@render header()}</header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
       {#if loading}

@@ -46,19 +46,9 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
-  /* With `listCollapsible` the toggle sits at the end of the header, level with its first line; the
-   * host's header content keeps its own column beside it. */
+  /* A list with no header of its own holds the toggle alone, at the header's end. */
   .cinder-list-detail__header[data-cinder-list-toggle] {
-    flex-direction: row;
-    align-items: flex-start;
-  }
-
-  .cinder-list-detail__header-content {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    gap: var(--cinder-space-3);
-    min-inline-size: 0;
+    align-items: flex-end;
   }
 
   /* The list hidden: a narrow rail at the start edge holds the toggle, set off from the detail by

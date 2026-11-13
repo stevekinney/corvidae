@@ -19,8 +19,11 @@
 </script>
 
 <ListDetail {items} key={(chat) => chat.id} label="Chats" bind:selectedKey {...rest}>
-  {#snippet header()}
-    <h2>Chats</h2>
+  {#snippet header({ listToggle })}
+    <div class="list-detail-fixture-title-row">
+      <h2>Chats</h2>
+      {@render listToggle?.()}
+    </div>
     <input type="search" aria-label="Search chats" />
   {/snippet}
   {#snippet list(chat, row)}
@@ -36,3 +39,12 @@
     <h3>{chat.title} detail</h3>
   {/snippet}
 </ListDetail>
+
+<style>
+  .list-detail-fixture-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+  }
+</style>

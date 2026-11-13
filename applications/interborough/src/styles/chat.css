@@ -328,6 +328,12 @@
   justify-content: space-between;
 }
 
+.ib-chats__title-actions {
+  display: inline-flex;
+  gap: var(--cinder-space-1);
+  align-items: center;
+}
+
 .ib-chats__title {
   margin: 0;
   font-size: var(--cinder-text-lg);

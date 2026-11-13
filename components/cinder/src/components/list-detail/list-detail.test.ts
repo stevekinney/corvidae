@@ -605,9 +605,9 @@ describe('ListDetail', () => {
       await measure(container, 1000);
       const root = container.querySelector('.cinder-list-detail')!;
 
-      // The toggle is the list header's last control, beside the host's own header content.
+      // The header places the toggle it is given: here, at the end of its title row.
       const hide = getByRole('button', { name: 'Hide list' });
-      expect(hide.closest('.cinder-list-detail__header')).not.toBeNull();
+      expect(hide.closest('.list-detail-fixture-title-row')).not.toBeNull();
       await fireEvent.click(hide);
       await tick();
       await tick();
@@ -635,6 +635,7 @@ describe('ListDetail', () => {
       const first = render(ListDetailFixture, {
         props: {
           selectionLocation: memoryLocation(),
+          selectedKey: 'beta',
           storage,
           storageKey: 'chats',
           listCollapsible: true,
@@ -652,6 +653,7 @@ describe('ListDetail', () => {
       const second = render(ListDetailFixture, {
         props: {
           selectionLocation: memoryLocation(),
+          selectedKey: 'beta',
           storage,
           storageKey: 'chats',
           listCollapsible: true,
@@ -672,10 +674,42 @@ describe('ListDetail', () => {
       expect(listPane.getAttribute('style')).toContain('--_cinder-resizable-panel-size: 410px');
     });
 
+    test('shows the list, with no toggle, while no item is open', async () => {
+      const { container, getByRole, queryByRole } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), listCollapsible: true, listCollapsed: true },
+      });
+      await measure(container, 1000);
+
+      expect(getByRole('region', { name: 'Chats' })).toBeTruthy();
+      expect(container.querySelector('.cinder-list-detail__list-toggle')).toBeNull();
+      expect(queryByRole('button', { name: 'Show list' })).toBeNull();
+
+      // An item opens: the remembered choice applies, the list hides, and focus, which was on the
+      // row that went with it, moves to the toggle that brings the list back.
+      await fireEvent.click(primaryOf(container, 'beta'));
+      await tick();
+      await tick();
+      expect(queryByRole('region', { name: 'Chats' })).toBeNull();
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Show list' }));
+    });
+
+    test('a list with no header of its own gets one holding the toggle', async () => {
+      const { container, getByRole } = render(ListDetailTableFixture, {
+        props: { selectionLocation: memoryLocation(), selectedKey: 'beta', listCollapsible: true },
+      });
+      await measure(container, 1000);
+
+      const toggle = getByRole('button', { name: 'Hide list' });
+      expect(
+        toggle.closest('.cinder-list-detail__header')?.hasAttribute('data-cinder-list-toggle'),
+      ).toBe(true);
+    });
+
     test('takes its labels from the host, and has nothing to hide below pushBelow', async () => {
       const { container, getByRole, queryByRole } = render(ListDetailFixture, {
         props: {
           selectionLocation: memoryLocation(),
+          selectedKey: 'beta',
           listCollapsible: true,
           listCollapsed: true,
           collapseListLabel: 'Hide chats',
@@ -686,8 +720,9 @@ describe('ListDetail', () => {
       expect(getByRole('button', { name: 'Show chats' })).toBeTruthy();
 
       await measure(container, 599);
-      // One pane at a time: the list shows, and there is no toggle.
-      expect(getByRole('region', { name: 'Chats' })).toBeTruthy();
+      // One pane at a time: the open item shows with Back, and there is no toggle.
+      expect(detailText(container)).toBe('Beta chat detail');
+      expect(getByRole('button', { name: 'Back' })).toBeTruthy();
       expect(queryByRole('button', { name: 'Show chats' })).toBeNull();
       expect(queryByRole('button', { name: 'Hide chats' })).toBeNull();
     });
