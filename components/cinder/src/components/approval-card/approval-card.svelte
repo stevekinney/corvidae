@@ -549,6 +549,7 @@
       {requestedText}
       {requestedIso}
       {consequence}
+      countdown={expirationText}
       {rememberScope}
       decidedElsewhere={decidedIn !== undefined}
       {outcomeText}
@@ -560,7 +561,7 @@
       {unavailableReason}
       {resolving}
       {failure}
-      notice={resolvedNotice}
+      {notice}
       {result}
       {footnote}
       inputLabel={payloadLabel}
@@ -569,9 +570,6 @@
       inputPairs={rowInputPairs}
       inputBody={hasRowInput ? rowInputBody : undefined}
       {onAskAgain}
-      expiresAt={expirationTimestamp === undefined
-        ? undefined
-        : formatTimeOfDay(new Date(expirationTimestamp))}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
     />
   </article>
@@ -598,13 +596,14 @@
       command={decisionCommand}
       {why}
       countdown={expirationText}
+      {consequence}
       {rememberScope}
       {approveLabel}
       {disabledReason}
       {unavailableReason}
       {resolving}
       {failure}
-      notice={resolvedNotice}
+      {notice}
       {result}
       {footnote}
       outcomeWord={outcomeLabel ?? STATE_LABELS[effectiveState]}
@@ -614,9 +613,6 @@
       {decidedInHref}
       {outcomeTime}
       {onAskAgain}
-      expiresAt={expirationTimestamp === undefined
-        ? undefined
-        : formatTimeOfDay(new Date(expirationTimestamp))}
       {decisionNote}
       {context}
       requestKey={idempotencyKey}

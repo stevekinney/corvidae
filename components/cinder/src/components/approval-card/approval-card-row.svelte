@@ -34,6 +34,8 @@
     requestedIso: string | undefined;
     /** What approving does. */
     consequence: string | undefined;
+    /** The live countdown, such as "Expires in 30s". */
+    countdown: string | undefined;
     /** The checkbox's scope, or `undefined` when the tool never offers it. */
     rememberScope: string | undefined;
     /**
@@ -79,8 +81,6 @@
     resolve: ((resolution: ApprovalResolution) => void) | undefined;
     /** Requests a fresh approval after this one expired. */
     onAskAgain: (() => void) | undefined;
-    /** When the approval expired, formatted for the receipt. */
-    expiresAt: string | undefined;
   };
 </script>
 
@@ -91,11 +91,12 @@
   import { untrack } from 'svelte';
 
   import Button from '../button/button.svelte';
-  import Badge from '../badge/badge.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import ApprovalCardExpired from './approval-card-expired.svelte';
+  import ApprovalCardFactsLine from './approval-card-facts-line.svelte';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import ApprovalCardOutcome from './approval-card-outcome.svelte';
@@ -115,6 +116,7 @@
     requestedText,
     requestedIso,
     consequence,
+    countdown,
     rememberScope,
     decidedElsewhere,
     outcomeText,
@@ -136,7 +138,6 @@
     inputBody,
     resolve,
     onAskAgain,
-    expiresAt,
   }: ApprovalCardRowProps = $props();
 
   const inputId = $derived(`${rootId}-input`);
@@ -202,29 +203,13 @@
 
 <div class="cinder-approval-card__row" data-cinder-collapsed={collapsed || undefined}>
   {#if approvalState === 'expired'}
-    <div class="cinder-approval-card__expired-row">
-      <svelte:element
-        this={titleTag}
-        id={titleId}
-        class="cinder-approval-card__row-question cinder-approval-card__decision-title"
-        dir="auto"
-      >
-        <span class="cinder-approval-card__expired-label">Expired before a decision:</span>{' '}
-        <span class="cinder-approval-card__expired-subject">{question}</span>
-      </svelte:element>
-      {#if expiresAt !== undefined || onAskAgain !== undefined}
-        <div class="cinder-approval-card__expiry-actions">
-          {#if expiresAt !== undefined}<span class="cinder-approval-card__countdown"
-              >{expiresAt}</span
-            >{/if}
-          {#if onAskAgain !== undefined}
-            <Button type="button" variant="secondary" size="sm" onclick={onAskAgain}
-              >Ask again</Button
-            >
-          {/if}
-        </div>
-      {/if}
-    </div>
+    <ApprovalCardExpired
+      {titleTag}
+      {titleId}
+      {question}
+      {onAskAgain}
+      titleClass="cinder-approval-card__row-question"
+    />
   {:else}
     {#if collapsed}
       <span class="cinder-approval-card__decided-glyph" data-cinder-tone={outcomeTone}>
@@ -247,10 +232,12 @@
         >
           {question}
         </svelte:element>
-        {#if irreversible && !collapsed}
-          <Badge variant="danger" size="sm" class="cinder-approval-card__irreversible"
-            >Can't be undone</Badge
-          >
+        {#if !collapsed}
+          <ApprovalCardFactsLine
+            countdown={isPending ? countdown : undefined}
+            {irreversible}
+            undoneExplanation={consequence ?? "Can't be undone"}
+          />
         {/if}
       </div>
       {#if !collapsed && (tool.label !== undefined || !tool.irreversible || hasSourceLine)}

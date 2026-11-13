@@ -140,9 +140,10 @@ export type ApprovalResolution = {
  * `detail` is the approval's own page: an eyebrow, the question, who asked and how long it has
  * waited, the tool, the Input block, then a line carrying the risk glyph and what approving does,
  * and the decision below. It has no Details disclosure. `decision` is the explicit decision
- * surface for a transcript: no glyph gutter, the action as the title with a danger badge when it
- * cannot be undone, meaningful host facts and a readable Command with the command always visible
- * and monospaced, the countdown, Add a note, then Deny and a named primary
+ * surface for a transcript: no glyph gutter, the action as the title with one small facts line
+ * (when the approval expires, and "Can't be undone" in muted danger text), meaningful host facts
+ * and a readable Command with the command always visible and monospaced, Add a note, then Deny
+ * and a named primary
  * action. An irreversible primary arms on its first press. Once decided it stays as a receipt:
  * the action, who decided where and when beside a check, the reason a denial gave quoted, and
  * the note, the result and the command one disclosure away.

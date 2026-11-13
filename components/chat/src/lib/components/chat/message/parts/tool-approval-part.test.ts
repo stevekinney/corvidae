@@ -124,6 +124,28 @@ describe('ToolApprovalPart', () => {
     expect(calls).toEqual(['call-1']);
   });
 
+  test('an expired approval writes when it lapsed under the card, as a message time, not in it', () => {
+    const part = pendingPart({ state: 'expired' });
+    const { container } = render(ToolApprovalPart, {
+      props: {
+        part: { ...part, action: { ...part.action, expiresAt: '2026-11-02T10:15:00.000Z' } },
+      },
+    });
+
+    const time = container.querySelector('.chat-approval-time time');
+    expect(time?.getAttribute('datetime')).toBe('2026-11-02T10:15:00.000Z');
+    expect(time?.textContent).toMatch(/10:15/);
+    expect(container.querySelector('.chat-approval-time')?.previousElementSibling?.tagName).toBe(
+      'ARTICLE',
+    );
+    expect(container.querySelector('article')?.textContent).not.toMatch(/10:15/);
+  });
+
+  test('a pending approval writes no time line under its card', () => {
+    const { container } = render(ToolApprovalPart, { props: { part: pendingPart() } });
+    expect(container.querySelector('.chat-approval-time')).toBeNull();
+  });
+
   test('falls back to the tool name when the action has no message', () => {
     const part = pendingPart();
     const { message: _message, ...action } = part.action;

@@ -1253,9 +1253,15 @@ describe('ApprovalCard card layout anatomy', () => {
     expect(css).not.toMatch(/\[data-cinder-risk='high'\] \.cinder-approval-card__header/);
     expect(css).not.toMatch(/readonly-summary\[data-cinder-state='denied'\]/);
     // Only the inline failure message is red-toned; no surface or header ever is.
-    expect(css.replace(/\.cinder-approval-card__failure \{[^}]*\}/, '')).not.toContain(
-      '--cinder-status-danger',
-    );
+    // The facts line's "Can't be undone" is the one other danger text, never a fill.
+    expect(
+      css
+        .replace(/\.cinder-approval-card__failure \{[^}]*\}/, '')
+        .replace(
+          /\.cinder-approval-card__facts-line-fact\[data-cinder-tone='danger'\] \{[^}]*\}/,
+          '',
+        ),
+    ).not.toContain('--cinder-status-danger');
   });
 
   test('shows an unavailable card read-only with its reason', () => {
@@ -1343,8 +1349,10 @@ describe('ApprovalCard row layout', () => {
     ).toBeTruthy();
     expect(container.querySelectorAll('.cinder-approval-card__row-question')).toHaveLength(1);
     expect(container.querySelector('.cinder-approval-card__expired-row')).not.toBeNull();
-    expect(container.querySelector('.cinder-approval-card__countdown')?.textContent).toContain(
-      '10:15 AM',
+    // The time is not in the card: the host writes it under the card, as it writes a message's.
+    expect(container.textContent).not.toContain('10:15 AM');
+    expect(container.querySelector('.cinder-approval-card__expired-note')?.textContent).toBe(
+      'Expired before a decision',
     );
     expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__risk-icon')).toBeNull();
@@ -1964,7 +1972,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
       });
 
       test('an expired approval is read-only and says when it expired', () => {
-        const { getByText, queryByRole, getByRole } = render(ApprovalCard, {
+        const { getByText, queryByText, queryByRole, getByRole } = render(ApprovalCard, {
           props: refundRow({
             layout,
             expiresAt: '2026-11-02T10:15:00.000Z',
@@ -1975,9 +1983,16 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         expect(getByRole('article').getAttribute('data-cinder-state')).toBe('expired');
         expect(queryByRole('button', { name: 'Approve' })).toBeNull();
         expect(queryByRole('button', { name: 'Deny' })).toBeNull();
-        expect(
-          getByText('This approval expired at 10:15 AM UTC, the time its request set.'),
-        ).toBeTruthy();
+        // The row and the decision layouts say it in one small line and leave the time to the host,
+        // under the card; the card and the detail keep the sentence that carries the time.
+        if (layout === 'row') {
+          expect(getByText('Expired before a decision')).toBeTruthy();
+          expect(queryByText(/the time its request set/)).toBeNull();
+        } else {
+          expect(
+            getByText('This approval expired at 10:15 AM UTC, the time its request set.'),
+          ).toBeTruthy();
+        }
       });
 
       test('a notice from the host replaces the default expiry sentence', () => {

@@ -888,7 +888,20 @@
       padding-inline: 0;
       aspect-ratio: 1;
       justify-content: center;
-      margin-inline-start: calc((var(--_cinder-painted-height-sm) - 1em) / -2);
+      /* A lone glyph must read as a button: it takes Deny's outline and fill, and sits on the
+       * card's leading content edge, not pulled back past it. */
+      margin-inline-start: 0;
+      border-color: var(--cinder-button-border);
+      background: var(--cinder-button-background);
+      color: var(--cinder-button-foreground);
+    }
+
+    .cinder-approval-card
+      .cinder-approval-card__row-actions
+      .cinder-button.cinder-approval-card__note-toggle:hover:not(:disabled):not(
+        [aria-disabled='true']
+      ) {
+      background: var(--cinder-surface-raised-hover);
     }
 
     .cinder-approval-card
@@ -930,49 +943,48 @@
     background: var(--cinder-status-warning-background);
   }
 
-  .cinder-approval-card__expired-label {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-    font-weight: var(--cinder-font-medium);
-  }
-
-  .cinder-approval-card__expired-subject {
-    color: var(--cinder-text-default);
-    font-size: var(--cinder-text-base);
-    font-weight: var(--cinder-font-semibold);
-  }
-
+  /* An expired card is the question as the title on its own line, then one small muted line and
+   * "Ask again" at the trailing end of it. Two text sizes in all: the title's and the small one
+   * the note and the button share. The title uses the full width before it wraps. */
   .cinder-approval-card__expired-row {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    min-inline-size: 0;
   }
 
-  .cinder-approval-card__expired-row .cinder-approval-card__decision-title {
+  .cinder-approval-card__expired-title {
+    grid-column: 1 / -1;
+    min-inline-size: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+    text-wrap: wrap;
   }
 
-  /* The countdown first and "Ask again" last, at the trailing end of the title's line or of its
-   * own line when it wraps. */
+  .cinder-approval-card__expired-note {
+    grid-column: 1;
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+  }
+
+  /* "Ask again" is last, at the trailing end of the note's line. */
   .cinder-approval-card__expiry-actions {
     display: flex;
+    grid-column: 2;
     align-items: center;
     justify-content: flex-end;
     gap: var(--cinder-space-3);
     margin-inline-start: auto;
-  }
-
-  @container (inline-size < 24rem) {
-    .cinder-approval-card__expired-row .cinder-approval-card__decision-title {
-      flex-basis: 100%;
-    }
-
-    .cinder-approval-card__expiry-actions {
-      inline-size: 100%;
-    }
   }
 
   /* No glyph gutter: the action is the first thing on the row, and a badge beside it says when it
@@ -1013,8 +1025,7 @@
     font-size: var(--cinder-text-sm);
   }
 
-  .cinder-approval-card__receipt-meta .cinder-badge,
-  .cinder-approval-card__irreversible {
+  .cinder-approval-card__receipt-meta .cinder-badge {
     flex: none;
     white-space: nowrap;
   }
@@ -1172,29 +1183,62 @@
     --_cinder-approval-card-command-padding: var(--cinder-space-1);
   }
 
-  .cinder-approval-card__decision-tools {
+  /* The facts line is the two things an approver weighs before answering, in small text: a clock
+   * and when the approval lapses, a warning glyph and that it cannot be undone. Glyphs are 14px
+   * beside 12px text, so each glyph sits inside its line box. It is directly under the title; a
+   * card 30rem wide or wider moves it to the trailing end of the title's own row. */
+  .cinder-approval-card__facts-line {
     display: flex;
+    flex: 0 0 100%;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
-    margin-block-end: 0;
-  }
-
-  /* The countdown is the card's only caption row; with no countdown the row is not drawn. */
-  .cinder-approval-card__decision-tools:not(:has(*)) {
-    display: none;
-  }
-
-  .cinder-approval-card__decision-tools .cinder-approval-card__countdown {
+    gap: var(--cinder-space-0-5) var(--cinder-space-3);
+    min-inline-size: 0;
     margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
   }
 
-  /* The badge is never smaller than 12px, the smallest type on the card. It sits beside the title
-   * at the inline end; where the title's basis leaves it no room, the flex line wraps and it takes
-   * the line directly under the title, never above it. The extra class outranks the badge's own
-   * size rule. */
-  .cinder-approval-card .cinder-badge.cinder-approval-card__irreversible {
-    font-size: var(--cinder-text-sm);
+  .cinder-approval-card__facts-line-fact {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    white-space: nowrap;
+  }
+
+  .cinder-approval-card__facts-line-fact svg {
+    flex: none;
+    inline-size: 14px;
+    block-size: 14px;
+  }
+
+  .cinder-approval-card__facts-line-tip {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  /* The irreversible fact is muted danger text: the danger text colour, never a filled badge. */
+  .cinder-approval-card__facts-line-fact[data-cinder-tone='danger'] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  @container (inline-size >= 30rem) {
+    .cinder-approval-card__row-title-line,
+    .cinder-approval-card__decision-head {
+      flex-wrap: nowrap;
+    }
+
+    .cinder-approval-card__facts-line {
+      flex: none;
+      flex-wrap: nowrap;
+      align-self: flex-start;
+      margin-inline-start: auto;
+      /* The 12px line sits centred on the title's first line, which is a little taller. */
+      margin-block-start: 1px;
+    }
   }
 
   /* Disclosures and "Add a note" are painted at text height (their 44px hit area is a

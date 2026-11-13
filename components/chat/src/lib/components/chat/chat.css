@@ -192,6 +192,17 @@
     opacity: 1;
   }
 
+  /* When an expired approval lapsed is a line under its card in the size and colour of a message's
+   * time line (chat-message.svelte's .chat-message-line), not text inside the card. */
+  .cinder-chat .chat-approval-time {
+    display: flex;
+    align-items: center;
+    min-block-size: 1.5rem;
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    line-height: 1.2;
+  }
+
   @media (forced-colors: active) {
     .cinder-chat .chat-timeline-focus-label::after {
       color: CanvasText;

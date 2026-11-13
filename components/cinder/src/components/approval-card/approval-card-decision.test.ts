@@ -562,13 +562,19 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     // The title carries the state, so no second "Expired" word or Irreversible badge follows it.
     expect(container.querySelector('[data-cinder-state-word]')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
-    expect(container.textContent).toContain('10:15 AM');
+    // The time is the host's to write under the card, in the line any message's time uses.
+    expect(container.textContent).not.toContain('10:15 AM');
+    expect(container.querySelector('.cinder-approval-card__countdown')).toBeNull();
+    // One small muted line says why it is read-only; the title is the question alone.
+    expect(
+      squash(container.querySelector('.cinder-approval-card__expired-note')?.textContent),
+    ).toBe('Expired before a decision');
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
-    // The countdown comes first and "Ask again" last, so the action is trailing-most.
+    // "Ask again" is last, at the trailing end.
     const expiryChildren = [
       ...(container.querySelector('.cinder-approval-card__expiry-actions')?.children ?? []),
     ];
-    expect(expiryChildren.map((child) => child.tagName)).toEqual(['SPAN', 'BUTTON']);
+    expect(expiryChildren.map((child) => child.tagName)).toEqual(['BUTTON']);
     await fireEvent.click(getByRole('button', { name: 'Ask again' }));
     expect(onAskAgain).toHaveBeenCalledTimes(1);
   });
@@ -704,17 +710,54 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
   });
 
-  test('the irreversible badge is at least 12px and is never moved above the title', () => {
+  test('the facts line is 12px text with 14px glyphs, under the title and at its end from 30rem', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
-    // Outranks the badge's own 10px `sm` size, which has an attribute selector.
-    expect(css).toContain(
-      '.cinder-approval-card .cinder-badge.cinder-approval-card__irreversible { font-size: var(--cinder-text-sm); }',
+    expect(css).toMatch(
+      /__facts-line \{[^}]*flex: 0 0 100%;[^}]*font-size: var\(--cinder-text-xs\);/,
+    );
+    expect(css).toMatch(/__facts-line-fact svg \{[^}]*inline-size: 14px;[^}]*block-size: 14px;/);
+    // The irreversible fact is muted danger text, never a filled badge.
+    expect(css).toMatch(
+      /__facts-line-fact\[data-cinder-tone='danger'\] \{ color: var\(--cinder-status-danger-text\); \}/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size >= 30rem\) \{[^@]*__decision-head \{[^}]*flex-wrap: nowrap;[^}]*\}[^@]*__facts-line \{[^}]*margin-inline-start: auto;/,
     );
     expect(css).not.toMatch(/__decision-head \.cinder-approval-card__irreversible \{ order:/);
-    expect(css).not.toMatch(/__decision-head:has\(\.cinder-approval-card__irreversible\)/);
+    expect(css).not.toContain('decision-tools');
+  });
+
+  test('one facts line holds the countdown and the irreversible warning under the title', () => {
+    const { container } = render(ApprovalCard, {
+      props: decisionCard({ expiresAt: new Date(Date.now() + 30_000).toISOString() }),
+    });
+    const line = container.querySelector('.cinder-approval-card__facts-line');
+    expect(line).not.toBeNull();
+    expect(container.querySelectorAll('.cinder-approval-card__facts-line')).toHaveLength(1);
+    expect(container.querySelector('.cinder-badge')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__countdown')).toBeNull();
+    const facts = [...(line?.querySelectorAll('.cinder-approval-card__facts-line-fact') ?? [])];
+    // The last child is the visible words; the glyph's tooltip panel sits beside the glyph.
+    expect(facts.map((fact) => squash(fact.lastElementChild?.textContent))).toEqual([
+      expect.stringMatching(/^Expires in \d+s$/),
+      "Can't be undone",
+    ]);
+    expect(facts.map((fact) => fact.querySelectorAll('svg').length)).toEqual([1, 1]);
+    expect(line?.previousElementSibling?.className).toContain(
+      'cinder-approval-card__decision-title',
+    );
+  });
+
+  test('the warning glyph has a tooltip that says what cannot be undone', () => {
+    const { container } = render(ApprovalCard, {
+      props: decisionCard({ consequence: 'Sends $42.00 back to the original card' }),
+    });
+    const tip = container.querySelector('.cinder-approval-card__facts-line-tip');
+    expect(tip?.querySelector('svg')).not.toBeNull();
+    expect(container.textContent).toContain('Sends $42.00 back to the original card');
   });
 
   test('Add a note is a ghost small Cinder Button with an icon and a tooltip', () => {
@@ -727,8 +770,20 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.querySelector('.cinder-button__icon svg')).not.toBeNull();
     expect(toggle.closest('.cinder-approval-card__note-toggle-tip')).not.toBeNull();
-    expect(container.querySelector('[role="tooltip"]')?.textContent ?? 'Add a note').toContain(
-      'Add a note',
+    // The pencil is the glyph; the words are the label at the leading end of the action row.
+    expect(toggle.querySelector('svg.lucide-pencil')).not.toBeNull();
+    expect(squash(toggle.textContent)).toContain('Add a note');
+    const group = container.querySelector('[aria-label="Approval actions"]');
+    expect(group?.firstElementChild?.contains(toggle)).toBe(true);
+  });
+
+  test('the icon-only fallback of Add a note takes the outline of Deny', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{ [^@]*\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*border-color: var\(--cinder-button-border\);[^}]*background: var\(--cinder-button-background\);/,
     );
   });
 

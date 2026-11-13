@@ -75,6 +75,32 @@
     return props;
   });
 
+  const timeFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  /**
+   * When an expired approval lapsed, written as a message's time is: the time of day for today and
+   * the date with it for another day. The card says that it expired; this says when, under it.
+   */
+  const expiredTime = $derived.by(() => {
+    if (part.state !== 'expired' || part.action.expiresAt === undefined) return undefined;
+    const lapsed = new Date(part.action.expiresAt);
+    if (Number.isNaN(lapsed.getTime())) return undefined;
+    const today = lapsed.toDateString() === new Date().toDateString();
+    return {
+      iso: part.action.expiresAt,
+      text: (today ? timeFormatter : dateTimeFormatter).format(lapsed),
+    };
+  });
+
   function resolveApproval(resolution: ApprovalResolution): void {
     if (!canResolve) return;
     onApprovalResolve?.(part.toolCallId, resolution);
@@ -96,3 +122,10 @@
   onkeydown={handleKeydown}
   {...canResolve ? { onResolve: resolveApproval } : {}}
 />
+
+{#if expiredTime !== undefined}
+  <!-- The same element, size and colour as a message's time line, under the card and not in it. -->
+  <div class="chat-approval-time">
+    <time datetime={expiredTime.iso}><bdi>{expiredTime.text}</bdi></time>
+  </div>
+{/if}

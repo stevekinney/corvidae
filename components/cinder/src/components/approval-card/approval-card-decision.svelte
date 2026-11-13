@@ -31,6 +31,8 @@
     why: string | undefined;
     /** The live countdown, such as "Expires in 4m 10s". */
     countdown: string | undefined;
+    /** What approving does; the warning glyph's tooltip says it when the action cannot be undone. */
+    consequence: string | undefined;
     /** The checkbox's scope, or `undefined` when the tool never offers it. */
     rememberScope: string | undefined;
     /** The primary action's own words. */
@@ -61,8 +63,6 @@
     decidedInHref: string | undefined;
     /** When it was decided, such as "10:46 AM". */
     outcomeTime: string | undefined;
-    /** When this request expired, formatted as a time. */
-    expiresAt: string | undefined;
     /** Requests a fresh approval after expiration. */
     onAskAgain: (() => void) | undefined;
     /** The note the approver left with the decision. */
@@ -95,6 +95,8 @@
   import Link from '../link/link.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import ApprovalCardExpired from './approval-card-expired.svelte';
+  import ApprovalCardFactsLine from './approval-card-facts-line.svelte';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import { describeDecidedAction, STATE_LABELS, UNDECIDED_PREFIX } from './approval-card-state.ts';
@@ -111,6 +113,7 @@
     command,
     why,
     countdown,
+    consequence,
     rememberScope,
     approveLabel,
     disabledReason,
@@ -126,7 +129,6 @@
     decidedIn,
     decidedInHref,
     outcomeTime,
-    expiresAt,
     onAskAgain,
     decisionNote,
     context,
@@ -181,7 +183,7 @@
   );
   const factRows = $derived.by(() => {
     const rows: ApprovalFact[] = [...facts];
-    // The irreversible badge states reversibility once; a second "Reversible" row never joins it.
+    // The irreversible fact states reversibility once; a second "Reversible" row never joins it.
     if (tool.irreversible === false && !irreversible)
       rows.push({ label: 'Reversible', value: 'Yes' });
     return rows;
@@ -225,29 +227,13 @@
 {/if}
 
 {#if approvalState === 'expired'}
-  <div class="cinder-approval-card__expired-row">
-    <svelte:element
-      this={titleTag}
-      id={titleId}
-      class="cinder-approval-card__decision-title"
-      dir="auto"
-    >
-      <span class="cinder-approval-card__expired-label">Expired before a decision:</span>{' '}
-      <span class="cinder-approval-card__expired-subject">{question}</span>
-    </svelte:element>
-    {#if expiresAt !== undefined || onAskAgain !== undefined}
-      <div class="cinder-approval-card__expiry-actions">
-        {#if expiresAt !== undefined}<span class="cinder-approval-card__countdown">{expiresAt}</span
-          >{/if}
-        {#if onAskAgain !== undefined}<Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onclick={onAskAgain}>Ask again</Button
-          >{/if}
-      </div>
-    {/if}
-  </div>
+  <ApprovalCardExpired
+    {titleTag}
+    {titleId}
+    {question}
+    {onAskAgain}
+    titleClass="cinder-approval-card__decision-title"
+  />
 {:else if isReceipt}
   <div class="cinder-approval-card__receipt" data-cinder-tone={outcomeTone}>
     <div class="cinder-approval-card__receipt-head">
@@ -352,10 +338,12 @@
     >
       {#if undecidedPrefix !== undefined}{undecidedPrefix}: {decidedAction}{:else}{question}{/if}
     </svelte:element>
-    {#if irreversible && undecidedPrefix === undefined}
-      <Badge variant="danger" size="sm" class="cinder-approval-card__irreversible"
-        >Can't be undone</Badge
-      >
+    {#if undecidedPrefix === undefined}
+      <ApprovalCardFactsLine
+        countdown={isPending ? countdown : undefined}
+        {irreversible}
+        undoneExplanation={consequence ?? "Can't be undone"}
+      />
     {/if}
     {#if !isPending && undecidedPrefix === undefined}
       <span class="cinder-approval-card__state-word" data-cinder-state-word>
@@ -443,11 +431,6 @@
         </div>
       </div>
     {/if}
-    <div class="cinder-approval-card__decision-tools">
-      {#if countdown !== undefined}
-        <p class="cinder-approval-card__countdown" data-cinder-countdown>{countdown}</p>
-      {/if}
-    </div>
     {#if canAnswer && failure !== undefined}
       <ApprovalCardFailure {failure} />
     {/if}
