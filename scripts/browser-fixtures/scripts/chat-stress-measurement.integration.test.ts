@@ -5,6 +5,7 @@ import {
   attachmentTargetReached,
   locate,
   measureInPage,
+  readActionRowProblems,
   readFailureSummaryProblems,
   readRepeatedSummaryProblems,
   readWithdrawal,
@@ -878,6 +879,67 @@ describe('chat stress visual measurement', () => {
           `<button class="cinder-button" data-cinder-hit-target="44" aria-label="Copy"></button><button class="cinder-button" data-cinder-hit-target="44" aria-label="Retry" style="margin-inline-start:4px"></button>`,
         ),
       ).toEqual([]);
+    });
+  });
+
+  describe('action row guard', () => {
+    // The real mechanism of a notice's action row: a padded, bordered container holding the text
+    // and a flex row whose buttons are positioned by `justify-content` and `direction`.
+    const notice = (rowStyle: string, direction = 'ltr', extra = ''): string => `
+      <style>
+        body { margin: 0; }
+        .cinder-callout { box-sizing: border-box; inline-size: 320px; padding: 12px; border: 1px solid #999; direction: ${direction}; }
+        .cinder-callout__action { display: flex; flex-wrap: wrap; gap: 8px; ${rowStyle} }
+        button { font: 12px sans-serif; padding: 4px 12px; }
+      </style>
+      <div class="cinder-callout">
+        <p>Stopped. The answer above is partial.</p>
+        <div class="cinder-callout__action"><button>Discard</button><button>Continue</button></div>
+        ${extra}
+      </div>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await readActionRowProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a row that ends at the trailing content edge, primary last', async () => {
+      expect(await problemsFor(notice('justify-content: flex-end;'))).toEqual([]);
+    });
+
+    it('passes the mirrored row in right-to-left, ending at the left content edge', async () => {
+      expect(await problemsFor(notice('justify-content: flex-end;', 'rtl'))).toEqual([]);
+    });
+
+    it('fails a row that starts at the leading edge', async () => {
+      const problems = await problemsFor(notice('justify-content: flex-start;'));
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain('action row .cinder-callout__action ends');
+    });
+
+    it('fails a right-to-left row that starts at its leading (right) edge', async () => {
+      const problems = await problemsFor(notice('justify-content: flex-start;', 'rtl'));
+      expect(problems).toHaveLength(1);
+    });
+
+    it('stops short of a dismiss button that owns the callout trailing track', async () => {
+      const dismissed = (rowStyle: string): string =>
+        notice(
+          rowStyle,
+          'ltr',
+          '<button class="cinder-callout__dismiss" style="position:absolute;top:12px;left:263px;width:32px;margin-inline-start:12px">x</button>',
+        ).replace(
+          '.cinder-callout {',
+          '.cinder-callout { position: relative; padding: 12px 55px 12px 12px !important;',
+        );
+      expect(await problemsFor(dismissed('justify-content: flex-end;'))).toEqual([]);
+      expect(await problemsFor(dismissed('justify-content: flex-start;'))).toHaveLength(1);
     });
   });
 });

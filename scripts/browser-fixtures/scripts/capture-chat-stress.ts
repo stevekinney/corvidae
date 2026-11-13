@@ -2149,6 +2149,7 @@ async function measure(
   if (stressCase.id === 48 || stressCase.id === 78) {
     problems.push(...(await readFailureSummaryProblems(opened.page)));
   }
+  problems.push(...(await readActionRowProblems(opened.page)));
   return { measurement, problems };
 }
 
@@ -2303,6 +2304,84 @@ export async function readRepeatedSummaryProblems(page: Page): Promise<string[]>
 /** A failed step's tool name and duration must stay separate, painted facts. */
 export async function readFailureSummaryProblems(page: Page): Promise<string[]> {
   return readPaintProblems(page, failedStepGuard);
+}
+
+/**
+ * The containers of a card's or notice's action row. Each ends at the trailing content edge of its
+ * parent (the owner decision of 2026-11-13: trailing-edge actions everywhere), so the guard names
+ * them here, and a new kind of action row joins this list rather than escaping the guard.
+ */
+export const ACTION_ROW_SELECTORS: readonly string[] = [
+  '.cinder-callout__action',
+  '.cinder-approval-card__row-actions',
+  '.cinder-approval-card__action-buttons',
+  '.cinder-approval-card__editor-actions',
+  '.cinder-approval-card__expiry-actions',
+  '.chat-input-blocked-actions',
+  '.chat-question-dock-actions',
+  '.cinder-inline-confirm__actions',
+  '.chat-message-edit-actions',
+  '.chat-message-not-sent-actions',
+  '.chat-tool-call-failure-actions',
+];
+
+/** How far the last control of an action row may sit from the trailing content edge, in pixels. */
+export const ACTION_ROW_TOLERANCE = 1;
+
+/**
+ * Measures that every visible action row ends at its container's trailing content edge: the
+ * trailing-most control's outer edge is within one pixel of the edge of the parent's content box
+ * (the left edge in a right-to-left row). A Callout that carries a dismiss button ends before it,
+ * because the dismiss button owns the callout's trailing track. Rows with no visible control, and
+ * controls inside a tooltip, are not measured.
+ */
+export async function readActionRowProblems(
+  page: Page,
+  selectors: readonly string[] = ACTION_ROW_SELECTORS,
+): Promise<string[]> {
+  return page.evaluate(
+    (spec) => {
+      const problems: string[] = [];
+      for (const row of document.querySelectorAll<HTMLElement>(spec.selectors.join(','))) {
+        const parent = row.parentElement;
+        if (parent === null) continue;
+        const own = getComputedStyle(row);
+        if (own.display === 'none' || own.visibility === 'hidden') continue;
+        const controls = [...row.querySelectorAll<HTMLElement>('button, a[href]')].filter(
+          (control) => {
+            if (control.closest('[role="tooltip"], .cinder-sr-only') !== null) return false;
+            const rectangle = control.getBoundingClientRect();
+            return rectangle.width > 0 && rectangle.height > 0;
+          },
+        );
+        if (controls.length === 0) continue;
+        const style = getComputedStyle(parent);
+        const rtl = getComputedStyle(row).direction === 'rtl';
+        const box = parent.getBoundingClientRect();
+        let edge = rtl
+          ? box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft)
+          : box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+        const dismiss = parent.querySelector<HTMLElement>(':scope > .cinder-callout__dismiss');
+        if (dismiss !== null) {
+          const dismissBox = dismiss.getBoundingClientRect();
+          const gap = parseFloat(getComputedStyle(dismiss).marginInlineStart);
+          edge = rtl ? dismissBox.right + gap : dismissBox.left - gap;
+        }
+        const trailing = rtl
+          ? Math.min(...controls.map((control) => control.getBoundingClientRect().left))
+          : Math.max(...controls.map((control) => control.getBoundingClientRect().right));
+        const distance = Math.abs(trailing - edge);
+        if (distance > spec.tolerance) {
+          const label = (row.className.toString().split(/\s+/)[0] ?? row.tagName).trim();
+          problems.push(
+            `action row .${label} ends ${distance.toFixed(1)}px from the trailing content edge`,
+          );
+        }
+      }
+      return problems;
+    },
+    { selectors: [...selectors], tolerance: ACTION_ROW_TOLERANCE },
+  );
 }
 
 interface RunState {

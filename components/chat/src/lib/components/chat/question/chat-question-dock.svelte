@@ -512,7 +512,8 @@
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
-  /* Secondary on the left, primary on the right; on a phone both fill the row as touch targets. */
+  /* The icon-only "Reply in chat" stays at the leading end and Answer, the primary, ends at the
+   * trailing content edge, also when the row wraps; both keep their compact width. */
   .chat-question-dock-actions {
     display: flex;
     flex-wrap: wrap;
@@ -535,11 +536,11 @@
     }
 
     .chat-question-dock-actions :global(.cinder-button) {
-      flex: 1 1 auto;
-    }
-
-    .chat-question-dock-actions :global(.chat-question-dock-reply) {
       flex: 0 0 auto;
     }
+  }
+
+  .chat-question-dock-actions > :global(button[type='submit']) {
+    margin-inline-start: auto;
   }
 </style>

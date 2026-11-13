@@ -188,6 +188,12 @@
      * message goes to, such as an agent select.
      */
     header?: Snippet | undefined;
+    /**
+     * A notice about the connection, drawn directly above the composer's own drawers (offline, a
+     * restored draft) because the connection is what it affects. Only the composer box shows it;
+     * a blocked, archived or read-only bar has no text box to sit by.
+     */
+    connectionNotice?: Snippet | undefined;
     /** Custom actions area (e.g., additional buttons) beside Send, such as a context meter. */
     actions?: Snippet | undefined;
     /** Toolbar slot at the start of the footer, given a `format` command for the selection. */
@@ -450,6 +456,7 @@
     hint,
     controls,
     header,
+    connectionNotice,
     actions,
     toolbar,
     ...rest
@@ -1549,25 +1556,6 @@
       </div>
       {#if blocked.action !== undefined || blocked.link !== undefined}
         <div class="chat-input-blocked-actions">
-          {#if blocked.action !== undefined}
-            {#if blocked.action.href !== undefined}
-              <Button
-                variant={blocked.action.primary === true ? 'primary' : 'secondary'}
-                size="sm"
-                href={blocked.action.href}
-                label={blocked.action.label}
-                onclick={blocked.action.onclick}
-              />
-            {:else}
-              <Button
-                type="button"
-                variant={blocked.action.primary === true ? 'primary' : 'secondary'}
-                size="sm"
-                label={blocked.action.label}
-                onclick={blocked.action.onclick}
-              />
-            {/if}
-          {/if}
           {#if blocked.link !== undefined}
             {#if blocked.link.href !== undefined}
               <Button
@@ -1584,6 +1572,25 @@
                 size="sm"
                 label={blocked.link.label}
                 onclick={blocked.link.onclick}
+              />
+            {/if}
+          {/if}
+          {#if blocked.action !== undefined}
+            {#if blocked.action.href !== undefined}
+              <Button
+                variant={blocked.action.primary === true ? 'primary' : 'secondary'}
+                size="sm"
+                href={blocked.action.href}
+                label={blocked.action.label}
+                onclick={blocked.action.onclick}
+              />
+            {:else}
+              <Button
+                type="button"
+                variant={blocked.action.primary === true ? 'primary' : 'secondary'}
+                size="sm"
+                label={blocked.action.label}
+                onclick={blocked.action.onclick}
               />
             {/if}
           {/if}
@@ -1665,6 +1672,9 @@
       {/if}
     </div>
   {:else}
+    {#if connectionNotice}
+      {@render connectionNotice()}
+    {/if}
     {#if drawerStatus !== undefined}
       <!-- A drawer above the box: it pushes the transcript up and leaves the composer's bottom
            edge where it was. -->
@@ -2642,7 +2652,6 @@
 
   .chat-input-notice .chat-input-blocked-actions {
     flex: none;
-    margin-inline-start: 0;
   }
 
   .chat-input-notice-label {
@@ -2680,29 +2689,27 @@
     flex: none;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
     margin-inline-start: auto;
   }
 
-  /* On a phone the actions drop to a line of their own and fill it, from the left edge to the
-   * right, as touch targets (rows 05a, 06m, 24x), instead of overlapping the reason. A tablet's
-   * conversation pane is as narrow as a phone's screen, so it is the screen that decides, not the
-   * pane: there the reason wraps and the action stays at the right (row 06n). */
+  /* On a phone the actions drop to a line of their own that ends at the trailing edge, as compact
+   * touch targets (rows 05a, 06m, 24x), never equal or full width, instead of overlapping the
+   * reason. A tablet's conversation pane is as narrow as a phone's screen, so it is the screen
+   * that decides, not the pane: there the reason wraps and the action stays at the trailing end
+   * (row 06n). */
   @media (max-width: 639.98px) {
     .chat-input-blocked-actions {
       flex: 1 0 100%;
     }
 
     .chat-input-blocked-actions :global(.cinder-button) {
-      flex: 1 1 auto;
+      flex: 0 0 auto;
     }
 
     .chat-input-notice .chat-input-blocked-actions {
       flex: none;
-    }
-
-    .chat-input-notice .chat-input-blocked-actions :global(.cinder-button) {
-      flex: 0 0 auto;
     }
   }
 

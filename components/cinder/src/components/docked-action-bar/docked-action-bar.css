@@ -59,6 +59,7 @@
     display: flex;
     flex: 0 0 auto;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
   }
 
@@ -126,15 +127,17 @@
       flex: 1 1 100%;
     }
 
-    /* The actions wrap onto further lines before they would overflow the bar, each taking an even
-     * share of its line. An equal pair (Deny, Approve) keeps one line. */
+    /* The actions wrap onto further lines before they would overflow the bar, each at its own
+     * compact width and ending at the trailing edge, the primary last. An equal pair (Deny,
+     * Approve), asked for with `equalActions`, keeps one line. */
     .cinder-docked-action-bar__actions {
       flex: 1 1 100%;
       flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .cinder-docked-action-bar__actions > * {
-      flex: 1 1 8rem;
+      flex: 0 1 auto;
       min-inline-size: 0;
     }
 

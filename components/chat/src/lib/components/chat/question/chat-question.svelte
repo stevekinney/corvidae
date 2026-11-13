@@ -793,6 +793,20 @@
     justify-items: start;
   }
 
+  /* A submit button on its own line ends at the trailing content edge, compact; in a wrapping row
+   * it takes the trailing end whether it fits beside the field or drops under it. */
+  .chat-question-stack > :global(button[type='submit']) {
+    justify-self: end;
+  }
+
+  .chat-question-row > :global(button[type='submit']) {
+    margin-inline-start: auto;
+  }
+
+  .chat-question-receipt > :global(.cinder-button) {
+    margin-inline-start: auto;
+  }
+
   .chat-question-receipt {
     /* Change reaches 44px by a hit area that overhangs the receipt; the message line under the
      * card stacks at 1, so the receipt stacks above it. */

@@ -184,8 +184,8 @@
     onsourcestoggle?: (() => void) | undefined;
     /**
      * Where this assistant turn stands (COR-2283), as the host knows it. A `reconnecting` turn reads
-     * muted with no caret, under a warning Callout with Retry and a bar that drains until the next try;
-     * a `stopped` one carries one neutral Callout with Continue and Discard; a `failed` one a danger
+     * muted with no caret (its connection notice, with Retry and a bar that drains until the next
+     * try, stands by the composer and not here); a `stopped` one carries one neutral Callout with Continue and Discard; a `failed` one a danger
      * Callout that says the answer is incomplete, why, and what Retry keeps; an `empty` one a neutral
      * Callout in place of its line, with its time and Retry. Left out, the turn streams while text arrives
      * and is complete after. Ignored on a message that is not the assistant's.
@@ -195,8 +195,6 @@
     turnLabels?: Partial<ChatTurnLabels> | undefined;
     /** Host-overridable message action labels. */
     labels?: Partial<ChatLabels> | undefined;
-    /** Called with this message's id when the person chooses Retry now on a reconnecting turn. Retry now shows only when this is set. */
-    onRetryConnection?: ((messageId: string) => void) | undefined;
     /** Called with this message's id when the person chooses Continue on a stopped turn. Continue shows only when this is set. */
     onContinueTurn?: ((messageId: string) => void) | undefined;
     /** Called with this message's id when the person chooses Discard on a stopped turn. Discard shows only when this is set; the host removes the turn. */
@@ -220,7 +218,6 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
-  import { formatCountdown } from '../../../utilities/format-countdown.ts';
   import { isStreamingMessage, mediaDisplayUrl } from '../builders.ts';
   import {
     deriveMessageParts,
@@ -235,13 +232,11 @@
     Info,
     Pencil,
     Popover,
-    Progress,
     Quote,
     ChevronRight,
     RefreshCw,
     RotateCcw,
     Tooltip,
-    WifiOff,
   } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import RetryButton from './retry-button.svelte';
@@ -249,7 +244,7 @@
   import { sourceChipKeys } from './source-chip-label.ts';
   import { resolveTurnLabels } from './turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
-  import { effectiveTurnState, presentTurnState, reconnectWaitFraction } from './turn-state.ts';
+  import { effectiveTurnState, presentTurnState } from './turn-state.ts';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
 
@@ -312,7 +307,6 @@
     turnState,
     turnLabels,
     labels,
-    onRetryConnection,
     onContinueTurn,
     onDiscardTurn,
     onRetryTurn,
@@ -824,6 +818,9 @@
           </p>
           {#if onRetry}
             <div class="chat-message-not-sent-actions">
+              {#if notSent?.retryNote}
+                <span class="chat-message-not-sent-note" id={retryNoteId}>{notSent.retryNote}</span>
+              {/if}
               <Button
                 type="button"
                 class="chat-message-retry"
@@ -837,9 +834,6 @@
               >
                 Retry
               </Button>
-              {#if notSent?.retryNote}
-                <span class="chat-message-not-sent-note" id={retryNoteId}>{notSent.retryNote}</span>
-              {/if}
             </div>
           {/if}
         </div>
@@ -922,31 +916,10 @@
   {/if}
 {/snippet}
 
-{#snippet retryConnectionAction()}
-  <RetryButton
-    class="chat-turn-action"
-    label={turnWords.retryNow}
-    onclick={() => onRetryConnection?.(message.id)}
-  />
-{/snippet}
-
-<!-- Continue first, as the primary choice, and Discard beside it; each says in its accessible
-     description what it does to the partial answer above. -->
+<!-- Discard first and Continue, the primary choice, last so it is trailing-most; each says in its
+     accessible description what it does to the partial answer above. -->
 {#snippet stoppedTurnActions()}
   <span class="chat-turn-actions">
-    {#if onContinueTurn}
-      <Button
-        type="button"
-        class="chat-turn-action"
-        size="sm"
-        variant="primary"
-        aria-describedby={`${messageId}-continue-description`}
-        onclick={() => onContinueTurn(message.id)}>{turnWords.continue}</Button
-      >
-      <span id={`${messageId}-continue-description`} class="cinder-sr-only"
-        >{turnWords.continueDescription}</span
-      >
-    {/if}
     {#if onDiscardTurn}
       <Button
         type="button"
@@ -960,6 +933,19 @@
         >{turnWords.discardDescription}</span
       >
     {/if}
+    {#if onContinueTurn}
+      <Button
+        type="button"
+        class="chat-turn-action"
+        size="sm"
+        variant="primary"
+        aria-describedby={`${messageId}-continue-description`}
+        onclick={() => onContinueTurn(message.id)}>{turnWords.continue}</Button
+      >
+      <span id={`${messageId}-continue-description`} class="cinder-sr-only"
+        >{turnWords.continueDescription}</span
+      >
+    {/if}
   </span>
 {/snippet}
 
@@ -967,31 +953,7 @@
      recover it. Every notice is the one Cinder Callout: the tone icon, the text, and the action
      inline at the end. A streaming or complete turn draws nothing here. -->
 {#snippet turnOutcome()}
-  {#if turn.kind === 'reconnecting'}
-    <div class="chat-turn-outcome" data-kind="reconnecting">
-      <Callout
-        variant="warning"
-        semantic="note"
-        class="chat-turn-callout"
-        {...onRetryConnection ? { action: retryConnectionAction } : {}}
-      >
-        {#snippet icon()}<WifiOff aria-hidden="true" />{/snippet}
-        <p class="chat-turn-text" dir="auto">
-          {turnWords.reconnecting(turn.attempt, turn.attempts, turn.nextTryIn)}
-        </p>
-        {#snippet progress()}
-          <Progress
-            class="chat-turn-wait"
-            value={Math.round(reconnectWaitFraction(turn) * 100)}
-            max={100}
-            size="sm"
-            ariaLabel={turnWords.nextTry}
-            label={formatCountdown(turn.nextTryIn)}
-          />
-        {/snippet}
-      </Callout>
-    </div>
-  {:else if turn.kind === 'stopped'}
+  {#if turn.kind === 'stopped'}
     <div class="chat-turn-outcome" data-kind="stopped">
       <Callout
         variant="neutral"
@@ -1119,6 +1081,15 @@
           <div class="chat-message-edit-actions">
             <Button
               type="button"
+              class="chat-message-edit-cancel"
+              size="xs"
+              variant="secondary"
+              onclick={cancelEditing}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
               class="chat-message-edit-save"
               size="xs"
               variant="primary"
@@ -1126,15 +1097,6 @@
               onclick={saveEdit}
             >
               Save
-            </Button>
-            <Button
-              type="button"
-              class="chat-message-edit-cancel"
-              size="xs"
-              variant="secondary"
-              onclick={cancelEditing}
-            >
-              Cancel
             </Button>
           </div>
         </div>
@@ -2028,6 +1990,7 @@
 
   .chat-message-edit-actions {
     display: flex;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
     align-items: center;
   }
@@ -2324,6 +2287,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
   }
 
@@ -2497,12 +2461,9 @@
     display: inline-flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
     margin-inline-start: 0;
-  }
-
-  .chat-turn-outcome :global(.chat-turn-wait) {
-    margin-block-start: var(--cinder-space-2);
   }
 
   .chat-turn-outcome :global(.chat-turn-action) {

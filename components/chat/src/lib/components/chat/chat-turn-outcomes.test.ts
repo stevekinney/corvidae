@@ -129,8 +129,12 @@ describe('Chat — run outcomes on the turn', () => {
     });
     await view.rerender({ messageTurnState: () => state });
     await tick();
-    expect(kindOf()).toBe('reconnecting');
-    const reconnecting = view.container.querySelector('.chat-turn-callout')!;
+    // The partial turn carries no notice; the connection notice stands by the composer.
+    expect(kindOf()).toBeNull();
+    const notice = view.container.querySelector('.chat-connection-notice')!;
+    expect(notice.closest('.chat-input-shell')).not.toBeNull();
+    expect(turnOf(view.container, assistantId).querySelector('.chat-connection-notice')).toBeNull();
+    const reconnecting = notice.querySelector('.cinder-callout')!;
     expect(reconnecting.querySelector('.cinder-callout__icon')).not.toBeNull();
     expect(
       reconnecting.querySelector('.cinder-callout__icon svg')?.getAttribute('aria-hidden'),

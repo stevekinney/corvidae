@@ -76,6 +76,7 @@
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
+  import ChatConnectionNotice from './chat-connection-notice.svelte';
   import ChatQuestionDock from '../question/chat-question-dock.svelte';
   import ChatHistoryTrigger from './chat-history-trigger.svelte';
   import ChatStatusAnnouncer from './chat-status-announcer.svelte';
@@ -1473,6 +1474,17 @@
   // The line under the composer is the host's. A pending approval is shown in the transcript, so
   // the composer keeps its hint and stays live (a message sent now steers the run).
   const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(composerStatus);
+  // A dropped stream is about the connection, so its notice stands by the composer and not under
+  // the partial reply: the latest assistant turn the host reports as reconnecting supplies it.
+  const reconnectingTurn = $derived.by(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message === undefined || message.role !== 'assistant') continue;
+      const state = resolveMessageTurnState(message, messageTurnState);
+      if (state?.kind === 'reconnecting') return { messageId: message.id, state };
+    }
+    return undefined;
+  });
   // A conversation that is not available (loading, canceled, failed or deleted) stands in the
   // transcript's place; a failed or deleted one has nothing to send to, so it takes the composer's
   // place too, while a loading or canceled one keeps the editor and Send waits for the history.
@@ -2503,7 +2515,6 @@
           onsourcestoggle={() => void toggleSources(message.id)}
           turnState={resolveMessageTurnState(message, messageTurnState)}
           {turnLabels}
-          {onRetryConnection}
           {onContinueTurn}
           {onDiscardTurn}
           {onRetryTurn}
@@ -2620,6 +2631,19 @@
         {/if}
       {:else}
         {@render renderMessageRow(renderRow)}
+      {/if}
+    {/snippet}
+
+    {#snippet connectionNotice()}
+      {#if reconnectingTurn !== undefined}
+        {@const reconnecting = reconnectingTurn}
+        <ChatConnectionNotice
+          turn={reconnecting.state}
+          {turnLabels}
+          onRetry={onRetryConnection === undefined
+            ? undefined
+            : () => onRetryConnection(reconnecting.messageId)}
+        />
       {/if}
     {/snippet}
 
@@ -2829,6 +2853,7 @@
           hint={composerHint}
           controls={composerControls}
           header={composerHeader}
+          connectionNotice={reconnectingTurn === undefined ? undefined : connectionNotice}
           disabled={streaming && (!followUpsEnabled || composerCompact)}
           paused={disabled}
           {pausedReason}

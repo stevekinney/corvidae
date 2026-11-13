@@ -219,7 +219,7 @@
     }
 
     .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
-      justify-content: flex-start;
+      justify-content: flex-end;
       margin-block-start: var(--cinder-space-2);
     }
   }
