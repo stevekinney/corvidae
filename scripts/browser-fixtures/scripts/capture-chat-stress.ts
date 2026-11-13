@@ -2452,7 +2452,8 @@ export async function readCalloutGaps(page: Page): Promise<CalloutGaps[]> {
 
 /** A notice's progress line sits as far from the text above it as from the action row below it. */
 export async function readCalloutSpacingProblems(page: Page): Promise<string[]> {
-  return (await readCalloutGaps(page))
+  const gaps = await readCalloutGaps(page);
+  return gaps
     .filter((gap) => Math.abs(gap.textToBar - gap.barToAction) > CALLOUT_SPACING_TOLERANCE)
     .map(
       (gap) =>
@@ -2518,7 +2519,7 @@ export async function readIconSizeProblems(page: Page): Promise<string[]> {
               const lineHeight =
                 style.lineHeight === 'normal' ? size * 1.2 : parseFloat(style.lineHeight);
               if (box.height > lineHeight + tolerance) {
-                const name = (container.className.toString().split(/\s+/)[0] ?? '').trim();
+                const name = ((container.getAttribute('class') ?? '').split(/\s+/)[0] ?? '').trim();
                 problems.push(
                   `icon is ${box.height.toFixed(1)}px tall beside ${size}px text with a ${lineHeight.toFixed(1)}px line (in ${container.tagName.toLowerCase()}${name === '' ? '' : `.${name}`})`,
                 );
