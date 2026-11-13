@@ -5,7 +5,15 @@ import type { FetchLike } from '../chef/linear.ts';
 import { UsageError } from '../chef/process-runner.ts';
 import type { RepositoryView } from '../chef/triage.ts';
 import { noThreshold, readinessQuestions, yesThreshold } from './groom-questions.ts';
-import { commentMarker, probabilityOfYes, read, run, type Workspace } from './groom.ts';
+import {
+  commentMarker,
+  groomComment,
+  parseRecord,
+  probabilityOfYes,
+  read,
+  run,
+  type Workspace,
+} from './groom.ts';
 
 const READY_BODY = [
   '## Brief',
@@ -293,9 +301,11 @@ describe('groom', () => {
     expect(groomed!.priority).toBe(3);
     expect(groomed!.labelIds).toEqual(['l-feature', 'l-bureau']);
     expect(groomed!.stateId).toBe('s-ready');
-    expect(fake.comments.map((comment) => comment.body)).toEqual([
+    expect(fake.comments).toHaveLength(1);
+    expect(fake.comments[0]!.body).toStartWith(
       `${commentMarker} Ready. Every Definition of Ready predicate passed (references/linear-policy.md).`,
-    ]);
+    );
+    expect(fake.comments[0]!.body).toContain('Groom record: `text=');
     expect(result.output).toContain('unsettled labels: package:weft');
   });
 
@@ -374,13 +384,80 @@ describe('groom', () => {
     expect(fake.issues.every((entry) => entry.stateId === 's-backlog')).toBe(true);
   });
 
-  test('a later run updates its comment in place', async () => {
+  test('a later run on rewritten text asks again and updates its comment in place', async () => {
     const fake = fakeLinear([issue()]);
     await run([], dependencies(fake, fakeJev({ 'criteria-binary': no() })));
-    fake.issues[0]!.stateId = 's-backlog';
-    await run([], dependencies(fake, fakeJev()));
+    fake.issues[0]!.description = READY_BODY.replace('exits 0.', 'exits 0 on main.');
+    const jev = fakeJev();
+    await run([], dependencies(fake, jev));
+    expect([...jev.batches[0]!.questions.keys()]).toContain('criteria-binary');
     expect(fake.comments).toHaveLength(1);
     expect(fake.comments[0]!.body).toStartWith(`${commentMarker} Ready.`);
+  });
+
+  test('unchanged text reuses the last readings, so a reading near a threshold cannot flip', async () => {
+    const fake = fakeLinear([issue()]);
+    await run([], dependencies(fake, fakeJev({ 'no-open-choice': no(0.72) })));
+    expect(fake.issues[0]!.stateId).toBe('s-ready');
+    fake.issues[0]!.stateId = 's-backlog';
+    // The same words, and Jev would now answer the other way: it is not asked.
+    const jev = fakeJev({ 'no-open-choice': yes(0.95), 'criteria-binary': no() });
+    const result = await run(['--json'], dependencies(fake, jev));
+    const asked = [...jev.batches[0]!.questions.keys()];
+    expect(asked.every((name) => name.startsWith('package:'))).toBe(true);
+    const report = JSON.parse(result.output).issues[0];
+    expect(report.ready).toBe(true);
+    expect(report.reused).toEqual(readinessQuestions.map((question) => question.name));
+    expect(report.answers['no-open-choice']).toBe(0.28);
+  });
+
+  test('a groom verdict clears an unsettled open choice for this text only', async () => {
+    const fake = fakeLinear([issue({ priority: 3, labelIds: ['l-feature'] })]);
+    const unsettled = () => fakeJev({ 'no-open-choice': yes(0.45) });
+    const first = await run(['--json'], dependencies(fake, unsettled()));
+    expect(JSON.parse(first.output).issues[0].findings[0].code).toBe('no-open-choice-unsettled');
+
+    const today = () => '2026-11-13';
+    const reason = 'Both alternatives it lists are under Out of scope, owned by COR-9.';
+    const cleared = await run(['--clear-open-choice', 'COR-1', '--reason', reason, '--json'], {
+      ...dependencies(fake, unsettled()),
+      today,
+    });
+    expect(cleared.code).toBe(0);
+    expect(JSON.parse(cleared.output).issues[0].cleared).toEqual({ date: '2026-11-13', reason });
+    expect(fake.issues[0]!.stateId).toBe('s-ready');
+    expect(fake.comments[0]!.body).toContain(
+      `No owner choice (groom review, 2026-11-13): ${reason}`,
+    );
+
+    // The verdict holds on a later run of the same words, without being given again.
+    fake.issues[0]!.stateId = 's-backlog';
+    const again = await run(['--json'], dependencies(fake, unsettled()));
+    expect(JSON.parse(again.output).issues[0].ready).toBe(true);
+    expect(fake.comments[0]!.body).toContain('No owner choice (groom review');
+
+    // New words ask Jev again and drop the verdict.
+    fake.issues[0]!.stateId = 's-backlog';
+    fake.issues[0]!.description = `${READY_BODY}\n\nOne more line.`;
+    const changed = await run(['--json'], dependencies(fake, unsettled()));
+    expect(changed.output).toStartWith('{"ok":false,"dryRun"');
+    expect(JSON.parse(changed.output).issues[0].findings[0].code).toBe('no-open-choice-unsettled');
+    expect(fake.comments[0]!.body).not.toContain('No owner choice');
+  });
+
+  test('a groom verdict cannot clear a clear open choice, and writes nothing', async () => {
+    const fake = fakeLinear([issue({ priority: 3, labelIds: ['l-feature'] })]);
+    const jev = fakeJev({ 'no-open-choice': yes(0.9) });
+    await run([], dependencies(fake, jev));
+    const before = fake.operations.length;
+    const refusal = await throwingRejectionOf(
+      run(['--clear-open-choice', 'COR-1', '--reason', 'none'], dependencies(fake, jev)),
+    );
+    expect(refusal).toThrow(UsageError);
+    expect(refusal).toThrow('a clear yes goes to the owner');
+    expect(
+      fake.operations.slice(before).some((operation) => /Set|Add|Post|Update/.test(operation)),
+    ).toBe(false);
   });
 
   test('a named issue already in progress is checked but keeps its state', async () => {
@@ -418,11 +495,38 @@ describe('groom', () => {
 
   test('rejects bad arguments before any request', async () => {
     const fake = fakeLinear([issue()]);
-    for (const argv of [['--issue', 'nope'], ['--limit', '0'], ['extra']])
+    for (const argv of [
+      ['--issue', 'nope'],
+      ['--limit', '0'],
+      ['extra'],
+      ['--clear-open-choice', 'COR-1'],
+      ['--reason', 'why'],
+      ['--clear-open-choice', 'COR-1', '--reason', '  '],
+      ['--clear-open-choice', 'COR-1', '--reason', 'why', '--issue', 'COR-2'],
+    ])
       expect(await throwingRejectionOf(run(argv, dependencies(fake, fakeJev())))).toThrow(
         UsageError,
       );
     expect(fake.operations).toHaveLength(0);
+  });
+});
+
+describe('the record', () => {
+  test('a comment record reads back as written, and a foreign or malformed one reads as none', () => {
+    const record = {
+      text: '0123456789abcdef',
+      readings: new Map([
+        ['criteria-binary', 0.8],
+        ['no-open-choice', 0.42],
+      ]),
+      cleared: { date: '2026-11-13', reason: 'Settled by COR-9.' },
+    };
+    expect(parseRecord(groomComment({ ready: true, findings: [] }, record))).toEqual(record);
+    expect(parseRecord(`${commentMarker} Ready.`)).toBeUndefined();
+    expect(parseRecord('Groom record: `text=short no-open-choice=0.4`')).toBeUndefined();
+    expect(
+      parseRecord('Groom record: `text=0123456789abcdef toString=0.4 no-open-choice=2`')?.readings,
+    ).toEqual(new Map());
   });
 });
 
