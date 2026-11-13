@@ -40,6 +40,7 @@ import type {
   AgentUnavailability,
 } from './agent-file-catalog';
 import type { AgentFileWriter } from './agent-file-writer';
+import { isOfferedCatalogRow } from './models/create-models';
 import type { AgentVersionRecord } from './agent-version-store';
 import { createAgentOverrideStore, type AgentOverrideStore } from './agent-override-store';
 import { type CodeAgentOverrides, createCodeAgentOverrides } from './code-agent-overrides';
@@ -723,7 +724,7 @@ function copyOfCodeAgent(
   const allowed = models.models.filter((choice) => choice.denied !== true).map(named);
   const fallback = descriptors.find(
     (row) =>
-      row.lifecycle !== 'retired' &&
+      isOfferedCatalogRow(row) &&
       row.availability !== 'unavailable' &&
       modelPolicyDenialOf(row, policy) === undefined,
   );

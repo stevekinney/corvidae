@@ -87,7 +87,7 @@ const workspaceRoots = ['applications', 'components', 'packages', 'plugins', 'in
 export type Decide = (batch: DecisionBatch) => Promise<DecisionBatchResult>;
 
 export interface GroomDependencies extends LinearDependencies {
-  /** Jev; the default is `typesafeJev` with TYPESAFE_API_KEY. Tests pass recorded answers. */
+  /** Jev; the default is the `typesafe` provider's Jev with TYPESAFE_API_KEY. Tests pass recorded answers. */
   decide?: Decide;
   /** What `origin/main` holds, for citation checks; the default reads it with git. */
   repository?: () => RepositoryView;
@@ -500,8 +500,12 @@ async function defaultDecide(): Promise<Decide> {
     throw new UsageError(
       'TYPESAFE_API_KEY is unavailable: it is not in the environment, the macOS Keychain (service typesafe-api) or a .env file; see credentials.ts.',
     );
-  const { typesafeJev } = await import('@lostgradient/operative-typesafe');
-  const model = typesafeJev({ apiKey });
+  const { TYPESAFE_JEV_MODEL, typesafeProvider } = await import('@lostgradient/operative-typesafe');
+  const model = typesafeProvider.decide({
+    provider: typesafeProvider.name,
+    model: TYPESAFE_JEV_MODEL,
+    apiKey,
+  });
   if (model.decideBatch === undefined)
     throw new JevError('The Jev adapter has no batch decisions.');
   return async (batch) => {

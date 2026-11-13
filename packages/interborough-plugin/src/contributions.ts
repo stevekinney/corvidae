@@ -3,7 +3,6 @@ import type {
   AfterToolExecutionHook,
   BeforeGenerateHook,
   BeforeToolExecutionHook,
-  DecisionModel,
   GuardrailEntry,
   HookErrorHandler,
   HookReplayPolicy,
@@ -357,6 +356,12 @@ export type PluginProvider<Configuration = unknown> = ProviderDefinition<
    * `apiKey`), and a plugin that declares several is refused (`provider-secret-ambiguous`).
    */
   readonly secretKey?: string;
+  /**
+   * The provider's own version, recorded in the plugin's identities beside the native decision kinds
+   * of its rows (COR-2158); the plugin's version without one. Change it when the provider's native
+   * decision behavior changes.
+   */
+  readonly version?: string;
 };
 
 /** An embedder the `memory.embedder` setting can name. */
@@ -464,8 +469,6 @@ export interface PluginContributions {
   readonly guardrails?: PluginGuardrails;
   /** Interceptors an agent file chooses by name; they run for the agents that choose them. */
   readonly interceptors?: readonly PluginInterceptor[];
-  /** Decision models that answer decisions of the kinds they name. */
-  readonly decisionRouters?: readonly DecisionModel[];
   /** New kinds of trigger. */
   readonly triggers?: readonly PluginTrigger[];
   /** New kinds of hook action. */

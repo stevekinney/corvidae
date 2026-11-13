@@ -50,6 +50,31 @@ describe('the settings the Bureau shows', () => {
     expect(keys['tools.wakeup']).not.toHaveProperty('lockReason');
   });
 
+  test('read the problem Bureau reports for a stored value it did not apply, and none beside another key', async () => {
+    stub = installBureauStub({
+      'bureau.settings.get': () => ({
+        values: { 'decisions.model': 'typesafe/jev' },
+        effective: { 'decisions.model': 'typesafe/jev' },
+        running: {},
+        revision: 1,
+        persisted: true,
+        keys: {
+          'decisions.model': {
+            apply: 'live',
+            locked: false,
+            problem: 'The "catalog" decision model no longer exists',
+            pendingRestart: false,
+          },
+          'tools.wakeup': { apply: 'live', locked: false, pendingRestart: false },
+        },
+      }),
+    });
+
+    const { keys } = await getSettings();
+    expect(keys['decisions.model']?.problem).toBe('The "catalog" decision model no longer exists');
+    expect(keys['tools.wakeup']).not.toHaveProperty('problem');
+  });
+
   test('are read with their revision, what each key applies by, what the host runs, and how each key stands', async () => {
     stub = installBureauStub({
       'bureau.settings.get': () => ({

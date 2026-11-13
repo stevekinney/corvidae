@@ -1961,6 +1961,7 @@
     "$.keys.*.lockReason",
     "$.keys.*.locked",
     "$.keys.*.pendingRestart",
+    "$.keys.*.problem",
     "$.persisted",
     "$.revision",
     "$.running",

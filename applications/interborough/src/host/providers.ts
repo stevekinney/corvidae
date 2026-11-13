@@ -24,7 +24,12 @@
 
 import type { ConfigurationSnapshot } from '@lostgradient/bungalow';
 
-import type { PluginModelContributions, resolveProviderGenerate } from '@lostgradient/bureau';
+import type {
+  PluginModelContributions,
+  resolveProviderDecide,
+  resolveProviderGenerate,
+} from '@lostgradient/bureau';
+import type { DecisionModel } from '@lostgradient/operative';
 import {
   withBackendDescriptors,
   type BackendDescriptor,
@@ -430,4 +435,67 @@ export function createCatalogGenerate(
   // static row, which knows neither the owner's edits nor a plugin's row, so the catalog row this
   // generate was built from, edits applied, replaces it (COR-2146).
   return withBackendDescriptors(generate, [row]);
+}
+
+/**
+ * The native decision model of a catalog row (COR-2154): the provider's `decide` factory, built
+ * with the key held now and the plugin's validated configuration. Refused, naming the secret, while
+ * the provider's key is not saved, like {@link createCatalogGenerate}.
+ */
+export function createCatalogDecide(
+  selection: ModelSelection,
+  dependencies: {
+    readonly rows: readonly BackendDescriptor[];
+    readonly apiKeys: ReadonlyMap<string, string>;
+    readonly providers: readonly ContributedProvider[];
+    readonly resolveProviderDecide: typeof resolveProviderDecide;
+  },
+): DecisionModel {
+  const { row, contributed, apiKey } = catalogDecideTarget(selection, dependencies);
+  return dependencies.resolveProviderDecide(
+    dependencies.providers.map((provider) => provider.definition),
+    {
+      provider: selection.provider,
+      model: row.model,
+      ...(apiKey === undefined ? {} : { apiKey }),
+    },
+    contributed.configuration,
+  );
+}
+
+/**
+ * The row, provider and key a native decision of `selection` would be built with, refused as
+ * {@link createCatalogDecide} refuses it, without building the model.
+ */
+export function catalogDecideTarget(
+  selection: ModelSelection,
+  dependencies: {
+    readonly rows: readonly BackendDescriptor[];
+    readonly apiKeys: ReadonlyMap<string, string>;
+    readonly providers: readonly ContributedProvider[];
+  },
+): {
+  readonly row: BackendDescriptor;
+  readonly contributed: ContributedProvider;
+  readonly apiKey: string | undefined;
+} {
+  const row = dependencies.rows.find(
+    (candidate) =>
+      candidate.provider === selection.provider && matchesEntry(candidate, selection.model),
+  );
+  const contributed = dependencies.providers.find(
+    (provider) => provider.name === selection.provider,
+  );
+  if (row === undefined || contributed === undefined) {
+    throw new Error(
+      `The model catalog holds no "${selection.model}" model for the ${selection.provider} provider.`,
+    );
+  }
+  const apiKey = dependencies.apiKeys.get(selection.provider);
+  if (apiKey === undefined && contributed.secretKey !== undefined) {
+    throw new Error(
+      `The "${selection.model}" model of the ${selection.provider} provider needs its API key: save the secret "${contributed.secretKey}".`,
+    );
+  }
+  return { row, contributed, apiKey };
 }

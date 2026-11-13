@@ -42,15 +42,14 @@ export function workspacePlugins(): readonly BureauPluginEntry[] {
   ];
 }
 
-/** The decision model the `decisions.model` setting defaults to: the typesafe plugin's Jev model. */
-export const DEFAULT_DECISION_MODEL = 'typesafe:jev';
+/** The decision model the `decisions.model` setting defaults to: the typesafe plugin's catalog row. */
+export const DEFAULT_DECISION_MODEL = 'typesafe/jev';
 
 /**
  * The `decisions` option that makes {@link DEFAULT_DECISION_MODEL} the default of `decisions.model`,
- * or nothing when the typesafe plugin is not loaded or the owner disabled it, since Bureau refuses
- * a default that names a model no plugin contributed. The setting selects the model: the owner can
- * still choose `catalog`. Until the plugin's `typesafe-api-key` secret is saved a decision routed to
- * the model refuses, and saving it applies to the next decision.
+ * or nothing when the typesafe plugin is not loaded or the owner disabled it, since no row would
+ * answer then. Until the plugin's `typesafe-api-key` secret is saved the row is `unavailable` and
+ * the fallback model answers every decision; saving the key applies to the next decision.
  */
 export function defaultDecisionOptions(
   entries: readonly BureauPluginEntry[],

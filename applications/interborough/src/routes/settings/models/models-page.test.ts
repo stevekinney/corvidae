@@ -1084,33 +1084,203 @@ describe('the decisions', () => {
     expect(container.textContent).toContain(MODELS_COPY.decisions.description);
   });
 
-  test('wait for TypeSafe while its plugin has no key: Connect TypeSafe, a disabled fallback and a disabled limit', async () => {
+  const section = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-section="decisions"]');
+
+  const answering = MODELS_COPY.decisions.model.waiting('Claude Haiku 5.5');
+
+  test('name the fallback model that answers while TypeSafe has no key, and keep every row editable', async () => {
     const { container, findByRole } = open({
       plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+      agentCatalog: [{ provider: 'anthropic', model: 'claude-haiku-5-5', structuredOutput: true }],
     });
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
-    await waitFor(() => expect(row(container, 'decisions.model')?.dataset['waiting']).toBe('true'));
+    await waitFor(() => expect(section(container)?.dataset['waiting']).toBe('true'));
+    await waitFor(() =>
+      expect(row(container, 'decisions.model')?.textContent).toContain(answering),
+    );
 
     const model = row(container, 'decisions.model')!;
     expect(model.textContent).toContain('Decision model');
     expect(model.textContent).toContain('decisions.model');
-    expect(model.textContent).toContain(MODELS_COPY.decisions.model.description);
+    expect(model.textContent).not.toContain(MODELS_COPY.decisions.model.description);
+    // The picker is still there, with Connect TypeSafe as a quiet link in the description.
+    expect(model.querySelector('select')?.disabled).toBe(false);
     const connect = within(model).getByRole('link', { name: MODELS_COPY.decisions.model.connect });
     expect(connect.getAttribute('href')).toBe('/settings/plugins?plugin=typesafe');
+    expect(connect.closest('p')?.textContent).toContain(answering);
 
     const fallback = row(container, 'decisions.fallbackModel')!;
     expect(fallback.textContent).toContain(MODELS_COPY.decisions.fallbackModel.description);
-    const select = fallback.querySelector('select')!;
-    expect(select.disabled).toBe(true);
-    expect(select.selectedOptions[0]?.textContent).toBe(
-      MODELS_COPY.decisions.fallbackModel.connectFirst,
-    );
+    expect(fallback.querySelector('select')?.disabled).toBe(false);
 
     const limit = row(container, 'decisions.maximumPerTask')!;
-    expect(limit.textContent).toContain(MODELS_COPY.decisions.maximumPerTask.connectFirst);
+    expect(limit.textContent).toContain(MODELS_COPY.decisions.maximumPerTask.description);
     const field = limit.querySelector('input')!;
-    expect(field.disabled).toBe(true);
-    expect(field.value).toBe('20');
+    expect(field.disabled).toBe(false);
+    expect(container.textContent).not.toContain('Connect TypeSafe first');
+  });
+
+  test('say nothing can answer while TypeSafe has no key and no provider is connected, and keep the link', async () => {
+    const { container, findByRole } = open({
+      keys: { anthropic: false, openai: false, gemini: false },
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+      agentCatalog: unkeyedModelFixtures(),
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model')?.textContent).toContain(
+        MODELS_COPY.decisions.model.waitingNothing,
+      ),
+    );
+
+    const model = row(container, 'decisions.model')!;
+    expect(model.textContent).not.toContain('answers until');
+    const connect = within(model).getByRole('link', { name: MODELS_COPY.decisions.model.connect });
+    expect(connect.getAttribute('href')).toBe('/settings/plugins?plugin=typesafe');
+  });
+
+  test('label the empty fallback option with the default row it names, and keep it Not set otherwise', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.fallbackModel'];
+    served.effective = { 'decisions.fallbackModel': 'anthropic/claude-haiku-5-5' };
+    const { container, findByRole } = open({
+      served,
+      agentCatalog: [{ provider: 'anthropic', model: 'claude-haiku-5-5', structuredOutput: true }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    const select = row(container, 'decisions.fallbackModel')!.querySelector('select')!;
+    await waitFor(() =>
+      expect(select.selectedOptions[0]?.textContent).toBe(
+        SETTINGS_COPY.defaultOption('Claude Haiku 5.5'),
+      ),
+    );
+    expect(select.value).toBe('');
+  });
+
+  test('name the default row by an alias, as the Bureau matches the fallback model', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.fallbackModel'];
+    served.effective = { 'decisions.fallbackModel': 'anthropic/haiku' };
+    const { container, findByRole } = open({
+      served,
+      agentCatalog: [
+        {
+          provider: 'anthropic',
+          model: 'claude-haiku-5-5',
+          aliases: [{ alias: 'haiku', resolvesTo: 'claude-haiku-5-5' }],
+          structuredOutput: true,
+        },
+      ],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    const select = row(container, 'decisions.fallbackModel')!.querySelector('select')!;
+    await waitFor(() =>
+      expect(select.selectedOptions[0]?.textContent).toBe(
+        SETTINGS_COPY.defaultOption('Claude Haiku 5.5'),
+      ),
+    );
+  });
+
+  test('do not name a default row the Bureau would skip because it cannot return structured output', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.fallbackModel'];
+    served.effective = { 'decisions.fallbackModel': 'anthropic/claude-haiku-5-5' };
+    const { container, findByRole } = open({
+      served,
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+      // Available, but with no structured output: nothing can answer a decision.
+      agentCatalog: [{ provider: 'anthropic', model: 'claude-haiku-5-5', structuredOutput: false }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model')?.textContent).toContain(
+        MODELS_COPY.decisions.model.waitingNothing,
+      ),
+    );
+    const select = row(container, 'decisions.fallbackModel')!.querySelector('select')!;
+    expect(select.selectedOptions[0]?.textContent).toBe(SETTINGS_COPY.notSet);
+    expect(row(container, 'decisions.model')?.textContent).not.toContain('Claude Haiku 5.5');
+  });
+
+  test('keep the empty fallback option Not set while the default row is not available', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.fallbackModel'];
+    served.effective = { 'decisions.fallbackModel': 'anthropic/claude-haiku-5-5' };
+    const { container, findByRole } = open({
+      served,
+      agentCatalog: [
+        { provider: 'anthropic', model: 'claude-haiku-5-5', availability: 'unavailable' },
+        { provider: 'anthropic', model: 'claude-opus-5' },
+      ],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    const select = row(container, 'decisions.fallbackModel')!.querySelector('select')!;
+    await waitFor(() =>
+      expect([...select.options].map((option) => option.value)).toContain(
+        'anthropic/claude-opus-5',
+      ),
+    );
+    expect(select.selectedOptions[0]?.textContent).toBe(SETTINGS_COPY.notSet);
+  });
+
+  test('do not name a default row the model policy denies, as the Bureau skips it', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.fallbackModel'];
+    served.effective = { 'decisions.fallbackModel': 'anthropic/claude-haiku-5-5' };
+    served.values['modelPolicy'] = {
+      deployment: { deniedModels: ['claude-haiku-5-5'] },
+      policyRevision: 1,
+    };
+    const { container, findByRole } = open({
+      served,
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+      agentCatalog: [
+        { provider: 'anthropic', model: 'claude-haiku-5-5', structuredOutput: true },
+        { provider: 'anthropic', model: 'claude-opus-5', structuredOutput: true },
+      ],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    const select = row(container, 'decisions.fallbackModel')!.querySelector('select')!;
+    await waitFor(() =>
+      expect([...select.options].map((option) => option.value)).toContain(
+        'anthropic/claude-opus-5',
+      ),
+    );
+    expect(select.selectedOptions[0]?.textContent).toBe(SETTINGS_COPY.notSet);
+    expect(row(container, 'decisions.model')?.textContent).not.toContain('Claude Haiku 5.5');
+    expect(row(container, 'decisions.model')?.textContent).toContain(
+      MODELS_COPY.decisions.model.waitingUnnamed,
+    );
+  });
+
+  test('say nothing can answer decisions when the model policy denies every row', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.fallbackModel'];
+    served.effective = { 'decisions.fallbackModel': 'anthropic/claude-haiku-5-5' };
+    served.values['modelPolicy'] = {
+      deployment: { deniedProviders: ['anthropic'] },
+      policyRevision: 1,
+    };
+    const { container, findByRole } = open({
+      served,
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+      agentCatalog: [{ provider: 'anthropic', model: 'claude-haiku-5-5', structuredOutput: true }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model')?.textContent).toContain(
+        MODELS_COPY.decisions.model.waitingNothing,
+      ),
+    );
+    const select = row(container, 'decisions.fallbackModel')!.querySelector('select')!;
+    expect(select.selectedOptions[0]?.textContent).toBe(SETTINGS_COPY.notSet);
   });
 
   test('are ordinary settings that save as they are left once TypeSafe has its key', async () => {
@@ -1121,8 +1291,9 @@ describe('the decisions', () => {
     });
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const select = row(container, 'decisions.model')!.querySelector('select')!;
-    expect([...select.options].map((option) => option.value)).toContain('typesafe:jev');
-    expect(row(container, 'decisions.model')?.dataset['waiting']).toBeUndefined();
+    expect([...select.options].map((option) => option.value)).toContain('typesafe/jev');
+    expect([...select.options].map((option) => option.value)).not.toContain('catalog');
+    expect(section(container)?.dataset['waiting']).toBeUndefined();
     expect(row(container, 'decisions.model')?.textContent).toContain(
       MODELS_COPY.decisions.model.description,
     );
@@ -1133,13 +1304,13 @@ describe('the decisions', () => {
       MODELS_COPY.decisions.maximumPerTask.label,
     );
 
-    await fireEvent.change(select, { target: { value: 'typesafe:jev' } });
+    await fireEvent.change(select, { target: { value: 'typesafe/jev' } });
 
     await waitFor(() => expect(stub?.callsTo('bureau.settings.update')).toHaveLength(1));
     expect(stub?.callsTo('bureau.settings.update')[0]?.params['patch']).toEqual({
-      'decisions.model': 'typesafe:jev',
+      'decisions.model': 'typesafe/jev',
     });
-    expect(served.values['decisions.model']).toBe('typesafe:jev');
+    expect(served.values['decisions.model']).toBe('typesafe/jev');
     // There is no page-level Save.
     expect(container.textContent).not.toContain(SETTINGS_COPY.saveAction);
   });
@@ -1163,9 +1334,9 @@ describe('the decisions', () => {
     expect(values).not.toContain('anthropic/claude-sonnet-5');
   });
 
-  test('keep the person’s own choice when it is the chat model fallback, whatever TypeSafe’s plugin says', async () => {
+  test('keep the person’s own choice when it is a catalog row, whatever TypeSafe’s plugin says', async () => {
     const served = servedSettings();
-    served.values['decisions.model'] = 'catalog';
+    served.values['decisions.model'] = 'anthropic/claude-haiku-5-5';
     const { container, findByRole } = open({
       served,
       plugins: [{ name: 'typesafe', status: 'needs-setup' }],
@@ -1173,8 +1344,8 @@ describe('the decisions', () => {
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     const select = row(container, 'decisions.model')!.querySelector('select')!;
-    expect(select.value).toBe('catalog');
-    expect(row(container, 'decisions.model')?.dataset['waiting']).toBeUndefined();
+    expect(select.value).toBe('anthropic/claude-haiku-5-5');
+    expect(section(container)?.dataset['waiting']).toBeUndefined();
   });
 });
 

@@ -2,6 +2,7 @@ import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type BackendDescriptor,
   type Decision,
+  type DecisionKind,
   type DecisionModel,
   type DecisionRequest,
   assertValidDecisionRequest,
@@ -13,7 +14,7 @@ import { z } from 'zod';
 import { canonicalJson } from '../command-ledger.ts';
 import { ModelPolicyDeniedError } from '../file-agent-generate.ts';
 import { type BureauModelPolicyOptions, modelPolicyDenialOf } from '../model-policy.ts';
-import type { Models, ModelsOptions } from '../models/create-models.ts';
+import { findDecisionRow, type Models, type ModelsOptions } from '../models/create-models.ts';
 import type { SettingsValues } from '../settings/settings-schema.ts';
 import type {
   BureauDecideOptions,
@@ -25,8 +26,15 @@ import type {
 /** {@link DecisionsOptions.fallbackModel}'s default. */
 export const DEFAULT_DECISION_FALLBACK_MODEL = 'anthropic/claude-haiku-5-5';
 
-/** The name of the language-model fallback as a `decisions.model`: no registered model answers. */
+/**
+ * A name no decision model may register: it was the `decisions.model` that sent every kind to the
+ * language-model fallback, which an unset `decisions.model` does now (COR-2154). A stored
+ * `catalog` is dropped.
+ */
 export const CATALOG_DECISION_MODEL = 'catalog';
+
+/** How a decision was answered: by a row that declares its kind, through a row's `generate`, or by the fallback. */
+export type DecisionPath = 'native' | 'adapter' | 'fallback';
 
 /** {@link DecisionsOptions.maximumPerTask}'s default. */
 export const DEFAULT_DECISIONS_PER_TASK = 20;
@@ -46,7 +54,7 @@ export type DecisionsDependencies = {
     'decisions.model' | 'decisions.fallbackModel' | 'decisions.maximumPerTask'
   >;
   /** The catalog the fallback row is chosen from and the `generate` it runs with. */
-  readonly models: Pick<Models, 'catalog' | 'generate'>;
+  readonly models: Pick<Models, 'catalog' | 'generate' | 'decide'>;
   /**
    * The model policy in force, read for every decision (COR-1996): the language-model fallback
    * never uses a row the deployment or Bureau layer forbids. A model registered in
@@ -91,20 +99,20 @@ function isDecisionModel(value: unknown): value is DecisionModel {
   );
 }
 
-/** Whether `name` is `catalog` or a key `models` registers. */
-function isRegisteredDecisionModel(name: string, models: unknown): boolean {
+/** Whether `name` is a key `models` registers, or a catalog row written `<provider>/<model>`. */
+function isDecisionModelChoice(name: string, models: unknown): boolean {
   return (
-    name === CATALOG_DECISION_MODEL ||
-    (typeof models === 'object' && models !== null && Object.hasOwn(models, name))
+    (typeof models === 'object' && models !== null && Object.hasOwn(models, name)) ||
+    /^[^/\s]+\/\S+$/.test(name)
   );
 }
 
 /**
- * Every name a `decisions.model` may take with these options: `catalog`, and each model registered
- * in {@link DecisionsOptions.models}.
+ * The names in {@link DecisionsOptions.models}: the decision models a host registers, which a
+ * `decisions.model` may name besides a catalog row written `<provider>/<model>` (COR-2154).
  */
 export function decisionModelNames(options: DecisionsOptions | undefined): ReadonlySet<string> {
-  return new Set([CATALOG_DECISION_MODEL, ...Object.keys(options?.models ?? {})]);
+  return new Set(Object.keys(options?.models ?? {}));
 }
 
 /** Refuses a malformed `decisions` option, as `BAD_REQUEST`, before `createBureau` opens anything. */
@@ -165,9 +173,9 @@ export function validateDecisionsModelChoice(
   badRequest: (message: string) => never,
 ): void {
   const model = options?.model;
-  if (model === undefined || isRegisteredDecisionModel(model, options?.models)) return;
+  if (model === undefined || isDecisionModelChoice(model, options?.models)) return;
   badRequest(
-    `"options.decisions.model" must be \`${CATALOG_DECISION_MODEL}\` or a name in "options.decisions.models"`,
+    `"options.decisions.model" must be a catalog row written "<provider>/<model>" or a name in "options.decisions.models"`,
   );
 }
 
@@ -229,6 +237,37 @@ export function schemaDigest(request: DecisionRequest): string | undefined {
   return jsonSchema === undefined ? undefined : sha256HexSync(canonicalJson(jsonSchema));
 }
 
+/** The model chosen for one request, how it answers, and the catalog row behind it (none for a host-registered model). */
+type Answerer = {
+  readonly model: DecisionModel;
+  readonly path: DecisionPath;
+  readonly row?: BackendDescriptor;
+};
+
+/** What every `decision.made` record of one request holds, before its outcome is known. */
+type AuditBase = {
+  readonly entry: {
+    readonly runId: string;
+    readonly type: string;
+    readonly principal?: string;
+  };
+  readonly detail: Readonly<Record<string, string | number | boolean>>;
+};
+
+/** The `row` that answered (`<provider>/<model>`) and the `path` it answered by, for a record's detail. */
+function answererDetail(
+  answerer: Answerer,
+  decision?: Decision<unknown>,
+): { readonly row: string; readonly path: DecisionPath } {
+  const row =
+    answerer.row !== undefined
+      ? `${answerer.row.provider}/${answerer.row.model}`
+      : decision !== undefined
+        ? `${decision.provider}/${decision.model}`
+        : answerer.model.name;
+  return { row, path: answerer.path };
+}
+
 /** Builds Bureau's decision namespace. */
 export function createDecisions(dependencies: DecisionsDependencies): DecisionsComposition {
   const { options } = dependencies;
@@ -244,7 +283,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
   const maximumPerTask = (): number =>
     dependencies.settings()['decisions.maximumPerTask'] ?? DEFAULT_DECISIONS_PER_TASK;
 
-  function fallback(): DecisionModel {
+  function fallback(): Answerer {
     const descriptors = dependencies.models.catalog().descriptors;
     const policy = dependencies.modelPolicy?.();
     // A forbidden row is skipped when choosing, so the policy narrows the fallback and does not
@@ -264,12 +303,99 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       );
     }
     try {
-      return llmDecisionModel({ generate: dependencies.models.generate(row), descriptor: row });
+      return {
+        model: llmDecisionModel({ generate: dependencies.models.generate(row), descriptor: row }),
+        path: 'fallback',
+        row,
+      };
     } catch (cause) {
       throw dependencies.notConfigured(
         `No model can answer this decision: "${row.provider}/${row.model}" could not be set up`,
         cause,
       );
+    }
+  }
+
+  /**
+   * The catalog row `decisions.model` names, when it names one and the row can answer: a name no
+   * host model registers, a row that is in the catalog as it is now, and not `unavailable` (a
+   * provider whose key is not saved keeps its rows `unavailable`, and counts as absent here so the
+   * fallback answers). Read on every decision.
+   */
+  const chosenRowNow = (): BackendDescriptor | undefined => {
+    const name = dependencies.settings()['decisions.model'];
+    if (name === undefined || Object.hasOwn(registered, name)) return undefined;
+    const row = findDecisionRow(dependencies.models.catalog().descriptors, name);
+    return row === undefined || row.availability === 'unavailable' ? undefined : row;
+  };
+
+  /** The row's own models: native when it declares the kind, else through its `generate`. */
+  function modelOfRow(row: BackendDescriptor, kind: DecisionKind): Answerer | undefined {
+    const policy = dependencies.modelPolicy?.();
+    const denial = modelPolicyDenialOf(row, policy);
+    // A forbidden chosen row refuses the decision: the owner chose it, so the fallback must not
+    // quietly answer in its place.
+    if (denial !== undefined) throw new ModelPolicyDeniedError(row, denial);
+    try {
+      // A host that supplied no `models.decide` has nothing to answer natively with.
+      if (
+        row.decisions?.kinds.includes(kind) === true &&
+        dependencies.modelsOptions?.decide !== undefined
+      ) {
+        return { model: dependencies.models.decide(row), path: 'native', row };
+      }
+      if (row.structuredOutput) {
+        return {
+          model: llmDecisionModel({ generate: dependencies.models.generate(row), descriptor: row }),
+          path: 'adapter',
+          row,
+        };
+      }
+    } catch (cause) {
+      throw dependencies.notConfigured(
+        `No model can answer this decision: "${row.provider}/${row.model}" could not be set up`,
+        cause,
+      );
+    }
+    return undefined;
+  }
+
+  /** The model that answers a `kind` request: the registered one, the chosen row's, else the fallback. */
+  function modelFor(kind: DecisionKind): Answerer {
+    const hostModel = hostModelNow();
+    if (hostModel?.kinds.has(kind) === true) return { model: hostModel, path: 'native' };
+    const row = chosenRowNow();
+    return (row === undefined ? undefined : modelOfRow(row, kind)) ?? fallback();
+  }
+
+  /** Writes the record of a decision that was refused or failed; the failure itself is what is thrown. */
+  async function auditFailure(
+    error: unknown,
+    base: AuditBase,
+    answerer: Answerer | undefined,
+  ): Promise<void> {
+    const { code, name } = error as { code?: unknown; name?: unknown };
+    const refused =
+      error instanceof ModelPolicyDeniedError ||
+      (typeof code === 'string' && code === 'NOT_CONFIGURED');
+    const denied = error instanceof ModelPolicyDeniedError ? error : undefined;
+    try {
+      await dependencies.audit({
+        ...base.entry,
+        detail: {
+          ...base.detail,
+          outcome: refused ? 'refused' : 'error',
+          reason: typeof code === 'string' ? code : typeof name === 'string' ? name : 'Error',
+          ...(answerer === undefined
+            ? denied === undefined
+              ? {}
+              : { row: `${denied.provider}/${denied.model}` }
+            : answererDetail(answerer)),
+        },
+      });
+    } catch {
+      // The decision's own failure is what the caller must see; a trail that cannot take its record
+      // does not replace it.
     }
   }
 
@@ -287,22 +413,41 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       }
       const { kind } = request;
       const digest = schemaDigest(request);
-      const hostModel = hostModelNow();
-      const model = hostModel?.kinds.has(kind) === true ? hostModel : fallback();
-      const decision = await model.decide(request, {
-        ...(principal === undefined ? {} : { principal }),
-        ...(signal === undefined ? {} : { signal }),
-      });
+      const base: AuditBase = {
+        entry: {
+          runId: taskId ?? `decision:${crypto.randomUUID()}`,
+          type: DECISION_MADE_AUDIT_TYPE,
+          ...(principal === undefined ? {} : { principal }),
+        },
+        detail: { kind, ...(digest === undefined ? {} : { schemaSha256: digest }) },
+      };
+      let answerer: Answerer;
+      try {
+        answerer = modelFor(kind);
+      } catch (error) {
+        await auditFailure(error, base, undefined);
+        throw error;
+      }
+      let decision: Decision<unknown>;
+      try {
+        decision = await answerer.model.decide(request, {
+          ...(principal === undefined ? {} : { principal }),
+          ...(signal === undefined ? {} : { signal }),
+        });
+      } catch (error) {
+        await auditFailure(error, base, answerer);
+        throw error;
+      }
       await dependencies.audit({
-        runId: taskId ?? `decision:${crypto.randomUUID()}`,
-        type: DECISION_MADE_AUDIT_TYPE,
+        ...base.entry,
         detail: {
           kind,
           provider: decision.provider,
           model: decision.model,
+          outcome: 'answered',
+          ...answererDetail(answerer, decision),
           ...(digest === undefined ? {} : { schemaSha256: digest }),
         },
-        ...(principal === undefined ? {} : { principal }),
       });
       return decision as Decision<DecisionValue<Request>>;
     },

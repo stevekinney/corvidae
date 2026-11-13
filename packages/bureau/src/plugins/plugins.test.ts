@@ -466,28 +466,6 @@ describe('plugin composition', () => {
     });
   });
 
-  it('accepts a decisions.model that names a plugin’s decision router, and still refuses an unknown one', async () => {
-    const routing = definePlugin({
-      name: 'kit',
-      version: '1.0.0',
-      description: 'Contributes a decision router.',
-      setup: () => ({
-        decisionRouters: [{ name: 'router', kinds: new Set(), decide: async () => ({}) as never }],
-      }),
-    });
-    const bureau = await start({ plugins: [entry(routing)], decisions: { model: 'kit:router' } });
-    const [routingListing] = await listedPlugins(bureau);
-    expect(routingListing?.status).toBe('running');
-
-    const refused = await rejectionOf(
-      createBureau<AgentDefinitions>({
-        plugins: [entry(routing)],
-        decisions: { model: 'kit:nope' },
-      }),
-    );
-    expect(refused).toMatchObject({ code: 'BAD_REQUEST' });
-  });
-
   it('builds memory from a factory with the guardrails and embedders plugins contribute, split by gate', async () => {
     const received: unknown[] = [];
     const detect = async () => ({ detected: false }) as never;

@@ -25,11 +25,8 @@ const EXEMPT_TYPES: ReadonlySet<string> = new Set([
 const ROLE_SUFFIX =
   /(Context|Outcome|Listing|Declaration|Request|Definition|Error|Formatting|Score|Result)$/;
 
-/**
- * Members that are not yet one lowercase word, each awaiting the issue that removes it. COR-2157
- * deletes `decisionRouters`; delete the entry with it.
- */
-const PENDING_MEMBERS: ReadonlySet<string> = new Set(['decisionRouters']);
+/** Members that are not yet one lowercase word, each awaiting the issue that removes it. None now. */
+const PENDING_MEMBERS: ReadonlySet<string> = new Set();
 
 /** The types whose members are plugin-facing. */
 const MEMBER_TYPES = [

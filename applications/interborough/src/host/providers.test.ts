@@ -1,4 +1,8 @@
-import { createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
+import {
+  createModelCatalog,
+  type BackendDescriptor,
+  type DecisionModel,
+} from '@lostgradient/operative';
 import { anthropicProvider } from '@lostgradient/operative-anthropic';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -8,6 +12,7 @@ import { join } from 'node:path';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { contributedFixtures } from './provider-fixtures.test-support.ts';
 import {
+  createCatalogDecide,
   createCatalogGenerate,
   loadProviders,
   parseDocument,
@@ -716,5 +721,50 @@ describe('a model’s generate', () => {
         { rows, apiKeys, providers, resolveProviderGenerate },
       ),
     ).toThrow('openai');
+  });
+});
+
+describe('a model’s native decision model (COR-2154)', () => {
+  const providers = contributed(['anthropic']);
+  const rows = selectCatalogRows({
+    configuration: {},
+    allowlists: NONE,
+    path: PATH,
+    available: ALL,
+    providers,
+  });
+  const model: DecisionModel = {
+    name: 'anthropic/native',
+    kinds: new Set(['boolean']),
+    decide: async () => ({ value: true, provider: 'anthropic', model: 'native' }),
+  };
+
+  test('is built through the provider path with the model and the key', () => {
+    const seen: unknown[] = [];
+    const resolved = createCatalogDecide(
+      { provider: 'anthropic', model: 'sonnet' },
+      {
+        rows,
+        apiKeys: new Map([['anthropic', 'fixture-key'] as const]),
+        providers,
+        resolveProviderDecide: (_definitions, provider) => {
+          seen.push(provider);
+          return model;
+        },
+      },
+    );
+    expect(resolved).toBe(model);
+    expect(seen).toEqual([
+      { provider: 'anthropic', model: 'claude-sonnet-5', apiKey: 'fixture-key' },
+    ]);
+  });
+
+  test('is refused, naming the secret to save, while the provider has no key', () => {
+    expect(() =>
+      createCatalogDecide(
+        { provider: 'anthropic', model: 'sonnet' },
+        { rows, apiKeys: new Map(), providers, resolveProviderDecide: () => model },
+      ),
+    ).toThrow('save the secret "anthropic-api-key"');
   });
 });

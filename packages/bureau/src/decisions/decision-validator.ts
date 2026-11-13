@@ -18,6 +18,11 @@ export interface DecisionValidatorOptions {
   readonly request: (input: ValidatorInput) => DecisionRequest;
   /** Turns the model's answer into the verdict: `pass`, or `fail` with feedback for the retry. */
   readonly verdict: (decision: Decision<unknown>) => ValidatorOutcome;
+  /**
+   * Who the decision is made for, recorded as the actor on its audit record. The record is filed
+   * under the goal run the attempt belongs to.
+   */
+  readonly principal?: string;
 }
 
 const bindings = new WeakMap<Validator, DecisionValidatorOptions>();
@@ -31,7 +36,7 @@ const bindings = new WeakMap<Validator, DecisionValidatorOptions>();
  * validator used outside one is `indeterminate`.
  */
 export function decisionValidator(options: DecisionValidatorOptions): Validator {
-  const { name, version, request, verdict } = options;
+  const { name, version, request, verdict, principal } = options;
   const validator: Validator = {
     identity: { name, version },
     determinism: 'stochastic',
@@ -40,7 +45,13 @@ export function decisionValidator(options: DecisionValidatorOptions): Validator 
       reason: `Validator "${name}" must be registered with createBureau({ validators }) to ask a decision.`,
     }),
   };
-  bindings.set(validator, { name, version, request, verdict });
+  bindings.set(validator, {
+    name,
+    version,
+    request,
+    verdict,
+    ...(principal === undefined ? {} : { principal }),
+  });
   return validator;
 }
 
@@ -55,7 +66,11 @@ export function bindDecisionValidator(validator: Validator, decisions: DecisionS
     identity: validator.identity,
     determinism: 'stochastic',
     validate: async (input, signal) => {
-      const decision = await decisions.decide(binding.request(input), { signal });
+      const decision = await decisions.decide(binding.request(input), {
+        signal,
+        taskId: input.goalRunId,
+        ...(binding.principal === undefined ? {} : { principal: binding.principal }),
+      });
       return binding.verdict(decision);
     },
   };

@@ -41,6 +41,8 @@ const keyStateSchema = z.object({
   locked: z.boolean(),
   /** Why the key is locked; present exactly when `locked` is `true`. */
   lockReason: z.enum(SETTING_LOCK_REASONS).optional(),
+  /** Why Bureau did not apply the key's stored value, such as a decision model that no longer exists. */
+  problem: z.string().optional(),
   pendingRestart: z.boolean(),
 });
 

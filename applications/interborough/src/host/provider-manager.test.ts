@@ -10,7 +10,7 @@ import {
  */
 import { SecretProviderError, type Bungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate } from '@lostgradient/bureau';
-import { createAgent } from '@lostgradient/operative';
+import { createAgent, createModelCatalog } from '@lostgradient/operative';
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 
@@ -194,6 +194,125 @@ test('a missing committed version denies new provider calls without falling back
   const result = await createAgent({ name: 'denied', generate }).run('No fallback').result();
   expect(result.finishReason).not.toBe('stop-condition');
   expect(dispatched).toBe(0);
+});
+
+/** A host holding a decision-only provider, and `alongside` it, that records the key each decision model is built with. */
+async function decisionOnlyManager(
+  home: FakeHome,
+  builtWith: string[],
+  alongside: ReturnType<typeof contributedFixtures> = [],
+) {
+  const [seed] = createModelCatalog().descriptors;
+  if (seed === undefined) throw new Error('Expected the seed catalog to hold rows.');
+  const manager = createProviderManager({
+    bungalow: home,
+    warn: () => undefined,
+    resolveProviderGenerate: () => {
+      throw new Error('a decision-only provider has no generate');
+    },
+  });
+  await manager.adopt([
+    ...alongside,
+    {
+      plugin: 'typesafe',
+      name: 'typesafe',
+      definition: {
+        name: 'typesafe',
+        decide: (configuration) => {
+          builtWith.push(String(configuration.apiKey));
+          return {
+            name: 'jev',
+            kinds: new Set(['boolean']),
+            decide: async () => ({ value: true, provider: 'typesafe', model: 'jev' }),
+          };
+        },
+      },
+      configuration: {},
+      rows: [
+        {
+          ...seed,
+          provider: 'typesafe',
+          model: 'jev',
+          aliases: [],
+          decisions: { kinds: ['boolean'], only: true },
+        },
+      ],
+      secretKey: 'typesafe-api-key',
+    },
+  ]);
+  manager.attach((rows) => Promise.resolve(rows.length));
+  return manager;
+}
+
+const BOOLEAN_QUESTION = { kind: 'boolean', question: 'Is it so?' } as const;
+
+describe('the provider snapshot of a decision-only provider', () => {
+  test('lists neither the provider nor its rows, with or without its key, and still lists the others', async () => {
+    const home = fakeHome('local');
+    const manager = await decisionOnlyManager(home, [], contributedFixtures(['anthropic']));
+
+    const waiting = await manager.snapshot();
+    await manager.connect({ provider: 'typesafe', apiKey: KEY });
+    const keyed = await manager.snapshot();
+
+    for (const snapshot of [waiting, keyed]) {
+      expect(snapshot.providers.map((provider) => provider.name)).toEqual(['anthropic']);
+      expect(snapshot.models.some((model) => model.provider === 'typesafe')).toBe(false);
+      expect(snapshot.models.some((model) => model.provider === 'anthropic')).toBe(true);
+    }
+    // The host still holds the row, so the decisions it answers can be reached.
+    expect(manager.current().rows.some((row) => row.model === 'jev')).toBe(true);
+  });
+});
+
+describe('a native decision across hosts', () => {
+  test('is asked with the key another host committed, on every call', async () => {
+    const home = fakeHome('local');
+    const builtWith: string[] = [];
+    const writer = await decisionOnlyManager(home, builtWith);
+    await writer.connect({ provider: 'typesafe', apiKey: 'OLD-KEY' });
+    const observer = await decisionOnlyManager(home, builtWith);
+    builtWith.length = 0;
+    const model = observer.decideFor({ provider: 'typesafe', model: 'jev' });
+    // Nothing is built with the key this host holds.
+    expect(builtWith).toEqual([]);
+
+    await writer.connect({ provider: 'typesafe', apiKey: 'NEW-KEY' });
+    builtWith.length = 0;
+    await model.decide(BOOLEAN_QUESTION);
+    await model.decideBatch?.({ questions: new Map([['q', BOOLEAN_QUESTION]]) });
+
+    expect(builtWith).toEqual(['NEW-KEY', 'NEW-KEY']);
+  });
+
+  test('is refused once the committed version of its key is revoked, never asked with the held key', async () => {
+    const home = fakeHome('local');
+    const builtWith: string[] = [];
+    const writer = await decisionOnlyManager(home, builtWith);
+    await writer.connect({ provider: 'typesafe', apiKey: 'COMMITTED-KEY' });
+    let unavailable = false;
+    const observer = await decisionOnlyManager(
+      {
+        ...home,
+        secretProvider: {
+          ...home.secretProvider,
+          readVersion: async (reference: string) => {
+            if (unavailable)
+              throw new SecretProviderError('unavailable', 'Fixture version revoked');
+            return home.secretProvider.readVersion(reference);
+          },
+        },
+      },
+      builtWith,
+    );
+    builtWith.length = 0;
+    const model = observer.decideFor({ provider: 'typesafe', model: 'jev' });
+
+    unavailable = true;
+
+    expect(await failureOf(model.decide(BOOLEAN_QUESTION))).toBeInstanceOf(SecretProviderError);
+    expect(builtWith).toEqual([]);
+  });
 });
 
 describe('a remote home', () => {
@@ -876,6 +995,63 @@ describe('testing a key', () => {
       expect(accepted, provider).toMatchObject({ ok: true });
       expect(refused, provider).toEqual({ ok: false, status: 401 });
     }
+  });
+
+  test('tests the key of a decision-only provider with one decision, since it has no generate to probe with (COR-2157)', async () => {
+    const [seed] = createModelCatalog().descriptors;
+    if (seed === undefined) throw new Error('Expected the seed catalog to hold rows.');
+    const asked: { readonly apiKey: unknown; readonly kind: string }[] = [];
+    const home = fakeHome('local');
+    const manager = createProviderManager({
+      bungalow: home,
+      warn: () => undefined,
+      resolveProviderGenerate: () => {
+        throw new Error('a decision-only provider has no generate to reach');
+      },
+    });
+    await manager.adopt([
+      {
+        plugin: 'typesafe',
+        name: 'typesafe',
+        definition: {
+          name: 'typesafe',
+          decide: (configuration) => ({
+            name: 'jev',
+            kinds: new Set(['boolean']),
+            decide: async (request) => {
+              asked.push({ apiKey: configuration.apiKey, kind: request.kind });
+              if (configuration.apiKey === `${KEY}-refused`) throw new Error('refused');
+              return { value: true, provider: 'typesafe', model: 'jev' };
+            },
+          }),
+        },
+        configuration: {},
+        rows: [
+          {
+            ...seed,
+            provider: 'typesafe',
+            model: 'jev',
+            aliases: [],
+            decisions: { kinds: ['boolean'], only: true },
+          },
+        ],
+        secretKey: 'typesafe-api-key',
+      },
+    ]);
+    manager.attach((rows) => Promise.resolve(rows.length));
+
+    expect(await manager.testKey({ provider: 'typesafe', apiKey: KEY })).toEqual({
+      ok: true,
+      models: 1,
+    });
+    expect(await manager.testKey({ provider: 'typesafe', apiKey: `${KEY}-refused` })).toEqual({
+      ok: false,
+    });
+    expect(asked).toEqual([
+      { apiKey: KEY, kind: 'boolean' },
+      { apiKey: `${KEY}-refused`, kind: 'boolean' },
+    ]);
+    expect(home.writes).toEqual([]);
   });
 
   test('tests a key even when the host cannot save one, since testing writes nothing', async () => {

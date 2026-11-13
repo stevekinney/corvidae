@@ -161,7 +161,8 @@ describe('decisions.model', () => {
     await change(bureau, { 'decisions.model': 'second' });
     expect(await ask()).toMatchObject({ provider: 'second' });
 
-    await change(bureau, { 'decisions.model': 'catalog' });
+    // A catalog row with no native kinds answers through its own generate (COR-2154).
+    await change(bureau, { 'decisions.model': 'anthropic/fallback' });
     expect(await ask()).toMatchObject({ value: true });
     expect(generate.callCount).toBe(1);
   });
@@ -180,7 +181,7 @@ describe('decisions.model', () => {
       reason: 'invalid-value',
       keys: ['decisions.model'],
     });
-    expect(result.outcome === 'rejected' && result.message).toContain('catalog, first');
+    expect(result.outcome === 'rejected' && result.message).toContain('first');
   });
 
   it('ignores a stored name this process cannot serve and keeps the code default', async () => {

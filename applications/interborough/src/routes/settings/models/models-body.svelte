@@ -248,6 +248,7 @@
     {stateOf}
     effective={snapshot.effective}
     {typesafeNeedsKey}
+    {policy}
   />
 </div>
 

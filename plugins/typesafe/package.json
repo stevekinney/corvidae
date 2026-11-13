@@ -1,7 +1,7 @@
 {
   "name": "@lostgradient/plugin-typesafe",
   "private": true,
-  "description": "The typesafe plugin for Interborough: the TypeSafe Jev decision model, offered as typesafe:jev.",
+  "description": "The typesafe plugin for Interborough: the TypeSafe Jev decision-only provider, whose one model is typesafe/jev.",
   "type": "module",
   "exports": {
     ".": "./src/plugin.ts"

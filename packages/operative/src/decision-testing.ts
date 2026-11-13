@@ -6,7 +6,9 @@
  * probability is a probability, and reported usage is made of non-negative integers.
  * {@link runDecisionModelContract} registers one `bun:test` suite that checks all of it against a
  * single model, so a package that ships a decision model runs the suite against itself instead of
- * copying the cases. {@link runDecisionBatchContract} does the same for several questions about one
+ * copying the cases. {@link decisionContractFailure} asks the same of one case and returns the
+ * failure as a message, for a caller that reports problems rather than registering tests, such as
+ * a plugin's conformance suite. {@link runDecisionBatchContract} does the same for several questions about one
  * context, answered through `decideBatch`. {@link decisionScenarios} and
  * {@link decisionBatchScenarios} are the requests and batches, with their expected answers, that a
  * recorded-fixture suite replays.
@@ -18,6 +20,7 @@
  */
 
 export {
+  decisionContractFailure,
   runDecisionBatchContract,
   runDecisionModelContract,
   type DecisionBatchContractCase,

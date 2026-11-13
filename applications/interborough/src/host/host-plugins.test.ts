@@ -1003,7 +1003,7 @@ describe('/host/paths', () => {
     ]);
   });
 
-  test('reports the three provider plugins the workspace ships when no plugin list is given', async () => {
+  test('reports the provider plugins the workspace ships, the decision-only typesafe among them, when no plugin list is given', async () => {
     const home = await scratch();
     const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
     hosts.push(host);
@@ -1011,7 +1011,7 @@ describe('/host/paths', () => {
     const paths = await pathsOf(host);
 
     expect(paths.providers).toEqual(
-      ['anthropic', 'openai', 'gemini'].map((name) => ({
+      ['anthropic', 'openai', 'gemini', 'typesafe'].map((name) => ({
         name,
         secretFile: expect.stringContaining(`/${name}-api-key`),
       })),

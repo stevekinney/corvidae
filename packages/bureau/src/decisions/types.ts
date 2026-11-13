@@ -3,17 +3,20 @@ import type { Decision, DecisionModel, DecisionRequest } from '@lostgradient/ope
 /** The `decisions` option of `createBureau`. Every field is a code default a host may leave out. */
 export interface DecisionsOptions {
   /**
-   * The decision models a host offers, by name (Interborough registers `typesafe`, built with
-   * `typesafeJev` from `@lostgradient/operative-typesafe`). Which one answers is the
+   * The decision models a host registers in code, by name. Which one answers is the
    * `decisions.model` setting, read on every decision. A request whose kind the chosen model does
-   * not serve goes to the language-model fallback. `catalog` names the fallback alone and is
-   * reserved: it cannot be registered here.
+   * not serve goes to the language-model fallback. `catalog` is reserved: it cannot be
+   * registered here. A plugin does not register one: it contributes a provider whose catalog
+   * row declares `decisions` (COR-2157).
    */
   readonly models?: Readonly<Record<string, DecisionModel>>;
   /**
-   * The name in {@link DecisionsOptions.models} that answers by default, and the default of the
-   * `decisions.model` setting. Omit it, or name `catalog`, to send every kind to the
-   * language-model fallback until the setting names a model.
+   * What answers by default, and the default of the `decisions.model` setting: a catalog row
+   * written `<provider>/<model>`, or a name in {@link DecisionsOptions.models}. A request goes to
+   * the row natively when the row declares its kind (`decisions.kinds`), through the row's own
+   * `generate` when it has structured output, and otherwise to the language-model fallback. A row
+   * that is absent or `unavailable` (its provider has no key yet) answers nothing, so the fallback
+   * does. Omit it to send every kind to the fallback until the setting names a row.
    */
   readonly model?: string;
   /**
@@ -70,9 +73,12 @@ export interface BureauDecisions {
    * Rejects `BureauError` `BAD_REQUEST` for a malformed request, `NOT_CONFIGURED` when no model
    * can answer (no eligible fallback row, or `models.generate` absent or throwing), and with
    * `DecisionSchemaError` when the model's answer fails validation after its one retry. A provider
-   * error is not wrapped. Each answer is recorded as a `decision.made` audit record that names the
-   * kind, provider, model, and principal (and, for `structured`, the SHA-256 of the schema) and
-   * never the context or the value. No decision value is stored.
+   * error is not wrapped. Each decision is recorded as a `decision.made` audit record that names
+   * the kind, the `outcome` (`answered`, `refused` or `error`), the `row` that answered or was
+   * chosen (`<provider>/<model>`) and the `path` it answered by (`native`, `adapter` or
+   * `fallback`), the provider and model that answered, and the principal (and, for `structured`,
+   * the SHA-256 of the schema); a refusal or an error names its `reason` instead. It never holds
+   * the context or the value. No decision value is stored. A malformed request writes no record.
    */
   decide<Request extends DecisionRequest>(
     request: Request,

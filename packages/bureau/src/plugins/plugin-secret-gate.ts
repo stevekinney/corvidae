@@ -28,7 +28,6 @@
  * | interceptor, an observing point (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) | refuses; Operative settles these handlers and discards a failure, so the run's own outcome and error stand and the plugin's handler does not run | works | refuses |
  * | interceptor, `onError` | refuses; Operative catches a failing recovery hook and the original error propagates, so the handler does not run. One `try` wraps the loop over the recovery handlers, so the refusal also skips every lower-priority `onError` handler of the run, whatever any `onError` option says | works | refuses |
  * | interceptor with `appliesTo: 'every-agent'`, every point (COR-2127) | refuses, as any interceptor does; for an agent that lists it, the step or the run fails as above. The plugin tier every other agent's run holds turns the refusal into `undefined` without running the handler (`run-hook-tiers.ts`), which every point reads as "no answer", so those runs go on as if the set were absent | works | refuses for an agent that lists it, skipped for every other |
- * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
  * | memory guardrail, `guardrails.memory` (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
@@ -442,15 +441,6 @@ export function gatedContributions<T extends PluginContributions>(
           interceptors: result.interceptors.map((interceptor) =>
             gatedInterceptor(gate, idOf(interceptor.name), interceptor),
           ),
-        }),
-    ...(result.decisionRouters === undefined
-      ? {}
-      : {
-          decisionRouters: result.decisionRouters.map((model) => ({
-            name: model.name,
-            kinds: model.kinds,
-            decide: gated(gate, idOf(model.name), model.decide.bind(model)),
-          })),
         }),
     ...(result.reactions === undefined
       ? {}

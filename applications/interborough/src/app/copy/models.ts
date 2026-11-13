@@ -178,17 +178,21 @@ export const MODELS_COPY = {
       label: 'Decision model',
       description:
         'TypeSafe answers yes-or-no and classification questions for Interborough. It isn’t a chat provider.',
+      /** Said instead while TypeSafe has no key, and the fallback model, named, is the one answering. */
+      waiting: (model: string) => `${model} answers until TypeSafe is connected.`,
+      /** Said while the fallback model's row is not the one answering, or the catalog has not loaded. */
+      waitingUnnamed: 'A fallback model answers until TypeSafe is connected.',
+      /** Said while the catalog has no row that can answer. */
+      waitingNothing: 'Nothing can answer decisions until you connect a provider or TypeSafe.',
       connect: 'Connect TypeSafe',
     },
     fallbackModel: {
       label: 'Fallback model',
       description: 'Used when the decision model can’t answer.',
-      connectFirst: 'Connect TypeSafe first',
     },
     maximumPerTask: {
       label: 'Maximum per task',
       description: 'The most decision calls one task may make.',
-      connectFirst: 'The most decision calls one task may make. Connect TypeSafe first.',
     },
   },
 } as const;

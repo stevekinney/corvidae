@@ -69,10 +69,14 @@ function fixtures(): PluginFixture[] {
       name: 'typesafe',
       title: 'TypeSafe',
       status: 'needs-setup',
-      contributions: [contribution('decision-router', 'typesafe:jev')],
+      contributions: [contribution('guardrail', 'typesafe:input/prompt-injection')],
       secrets: [{ key: 'typesafe-api-key', set: false }],
       problems: [
-        { code: 'secret-missing', key: 'typesafe-api-key', contributions: ['typesafe:jev'] },
+        {
+          code: 'secret-missing',
+          key: 'typesafe-api-key',
+          contributions: ['typesafe:input/prompt-injection'],
+        },
       ],
     },
     {

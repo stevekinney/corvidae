@@ -330,9 +330,6 @@ describe('the secret-gating outcome matrix', () => {
             ),
           },
         ],
-        decisionRouters: [
-          { name: 'router', kinds: new Set(), decide: note('decision-router', {}) as never },
-        ],
         reactions: [
           {
             name: 'page',
@@ -397,7 +394,6 @@ describe('the secret-gating outcome matrix', () => {
             )?.({}, {}),
         ]),
       ),
-      'decision-router': () => gatedResult.decisionRouters?.[0]?.decide({} as never),
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
       'memory-detector': () => gatedResult.guardrails?.memory?.[0]?.detect('x', {} as never),

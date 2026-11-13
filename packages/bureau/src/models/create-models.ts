@@ -1,6 +1,7 @@
 import {
   createModelCatalog,
   type BackendDescriptor,
+  type DecisionModel,
   type GenerateFunction,
   type ModelCatalog,
   type SelectionPlan,
@@ -43,6 +44,13 @@ export interface ModelsOptions {
    * leaves that file `invalid` with `unknown-model`. Required with `agentSource`.
    */
   readonly generate?: (row: BackendDescriptor) => GenerateFunction;
+  /**
+   * How a catalog row that declares native decision kinds (`row.decisions`) becomes the
+   * `DecisionModel` that answers them. The host supplies it for the same reason as `generate`: it
+   * holds the credentials. It may throw to say the row cannot be set up, and the decision is then
+   * refused `NOT_CONFIGURED`. Absent, no row answers natively and the adapter or the fallback does.
+   */
+  readonly decide?: (row: BackendDescriptor) => DecisionModel;
 }
 
 /** What is wrong with a plugin's configuration, seen against the providers it contributes. */
@@ -86,6 +94,11 @@ export interface Models {
    */
   generate(row: BackendDescriptor): GenerateFunction;
   /**
+   * The native `DecisionModel` for a catalog row, from {@link ModelsOptions.decide}. Throws what
+   * that function throws, and throws `NOT_CONFIGURED` when the host supplied none.
+   */
+  decide(row: BackendDescriptor): DecisionModel;
+  /**
    * Builds the full `SelectionPlan` a request would be given against the current catalog and
    * `modelPolicy`. Synchronous and side-effect-free: it starts no run and dispatches no event.
    */
@@ -106,7 +119,7 @@ export interface Models {
  * new condition is added here once.
  */
 export function isOfferedCatalogRow(row: BackendDescriptor): boolean {
-  return row.lifecycle !== 'retired';
+  return row.lifecycle !== 'retired' && row.decisions?.only !== true;
 }
 
 /**
@@ -117,13 +130,33 @@ export function findCatalogRow(
   rows: readonly BackendDescriptor[],
   name: string,
 ): BackendDescriptor | undefined {
+  return findRowWhere(rows, name, isOfferedCatalogRow);
+}
+
+/**
+ * The row `decisions.model` names (COR-2154): found by the same `<provider>/<model>` rule as
+ * {@link findCatalogRow}, so it is separate from the agent resolvers and a row an agent cannot use
+ * can still decide. A retired row is not found.
+ */
+export function findDecisionRow(
+  rows: readonly BackendDescriptor[],
+  name: string,
+): BackendDescriptor | undefined {
+  return findRowWhere(rows, name, (row) => row.lifecycle !== 'retired');
+}
+
+function findRowWhere(
+  rows: readonly BackendDescriptor[],
+  name: string,
+  offered: (row: BackendDescriptor) => boolean,
+): BackendDescriptor | undefined {
   const slash = name.indexOf('/');
   if (slash < 1) return undefined;
   const provider = name.slice(0, slash);
   const model = name.slice(slash + 1);
   return rows.find(
     (row) =>
-      isOfferedCatalogRow(row) &&
+      offered(row) &&
       row.provider === provider &&
       (row.model === model || row.aliases.some((alias) => alias.alias === model)),
   );
@@ -202,12 +235,19 @@ export function validateModelsOptions(
   if (typeof options !== 'object' || options === null) {
     badRequest('"options.models" must be an object');
   }
-  const { catalog, generate } = options as { catalog?: unknown; generate?: unknown };
+  const { catalog, generate, decide } = options as {
+    catalog?: unknown;
+    generate?: unknown;
+    decide?: unknown;
+  };
   if (catalog !== undefined && typeof catalog !== 'function') {
     validateRows(catalog, '"options.models.catalog"', badRequest);
   }
   if (generate !== undefined && typeof generate !== 'function') {
     badRequest('"options.models.generate" must be a function');
+  }
+  if (decide !== undefined && typeof decide !== 'function') {
+    badRequest('"options.models.decide" must be a function');
   }
 }
 
@@ -233,6 +273,7 @@ export function createModels<D extends AgentDefinitions>(
     projection: 'privileged' as const,
   });
   const generateFor = options?.generate;
+  const decideFor = options?.decide;
   const settings =
     dependencies.settings ?? ((): Pick<SettingsValues, 'context.summarizerModel'> => ({}));
   const planner = createModelPolicyPlanner({
@@ -257,6 +298,10 @@ export function createModels<D extends AgentDefinitions>(
     generate(row) {
       if (generateFor === undefined) throw dependencies.notConfigured();
       return generateFor(row);
+    },
+    decide(row) {
+      if (decideFor === undefined) throw dependencies.notConfigured();
+      return decideFor(row);
     },
     plan: (request) => planner.plan(request),
     summarizer() {

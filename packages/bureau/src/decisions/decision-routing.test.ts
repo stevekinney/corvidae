@@ -58,6 +58,27 @@ describe('createDecisionRouting', () => {
     expect(asked[0]?.question).toContain('Check this draft');
   });
 
+  it('asks as its principal (COR-2155)', async () => {
+    const catalog = createAgentCatalog({ writer: agent('writer'), reviewer: agent('reviewer') });
+    const optionsSeen: unknown[] = [];
+    const source: DecisionSource = {
+      decide: async (_request, options) => {
+        optionsSeen.push(options);
+        return { value: 'writer', provider: 'scripted', model: 'model' };
+      },
+    };
+    const supervisor = createSupervisor({
+      agents: catalog,
+      routing: createDecisionRouting(source, { principal: 'api-key:alice' }),
+    });
+
+    await supervisor.delegate('Write it');
+
+    // No run exists while routing: the supervisor routes first and starts the runs after, so there
+    // is no run id to file the record under (COR-2155 AC3 reports this).
+    expect(optionsSeen).toEqual([{ principal: 'api-key:alice' }]);
+  });
+
   it('returns the only agent without asking anything', async () => {
     const catalog = createAgentCatalog({ solo: agent('solo') });
     const { source, asked } = scripted('unused');

@@ -55,27 +55,50 @@ export function runDecisionModelContract(
 
   for (const contractCase of cases) {
     it(`answers ${contractCase.name}`, async () => {
-      const model = await create(contractCase);
-
-      const decision = await model.decide(contractCase.request);
-
-      expect(decision.value).toEqual(contractCase.expected as never);
-      assertValueMatchesKind(contractCase.request, decision.value);
-      expect(decision.provider.length).toBeGreaterThan(0);
-      expect(decision.model.length).toBeGreaterThan(0);
-      if (decision.probability !== undefined) {
-        expect(decision.probability).toBeGreaterThanOrEqual(0);
-        expect(decision.probability).toBeLessThanOrEqual(1);
-      }
-      if (decision.usage !== undefined) {
-        const { prompt, completion, total } = decision.usage;
-        for (const count of [prompt, completion, total]) {
-          expect(Number.isInteger(count)).toBe(true);
-          expect(count).toBeGreaterThanOrEqual(0);
-        }
-        expect(total).toBeGreaterThanOrEqual(prompt + completion);
-      }
+      await assertDecisionAnswer(await create(contractCase), contractCase);
     });
+  }
+}
+
+/** Asks `model` the case's request and asserts the decision the contract requires. */
+async function assertDecisionAnswer(
+  model: DecisionModel,
+  contractCase: DecisionContractCase,
+): Promise<void> {
+  const decision = await model.decide(contractCase.request);
+
+  expect(decision.value).toEqual(contractCase.expected as never);
+  assertValueMatchesKind(contractCase.request, decision.value);
+  expect(decision.provider.length).toBeGreaterThan(0);
+  expect(decision.model.length).toBeGreaterThan(0);
+  if (decision.probability !== undefined) {
+    expect(decision.probability).toBeGreaterThanOrEqual(0);
+    expect(decision.probability).toBeLessThanOrEqual(1);
+  }
+  if (decision.usage !== undefined) {
+    const { prompt, completion, total } = decision.usage;
+    for (const count of [prompt, completion, total]) {
+      expect(Number.isInteger(count)).toBe(true);
+      expect(count).toBeGreaterThanOrEqual(0);
+    }
+    expect(total).toBeGreaterThanOrEqual(prompt + completion);
+  }
+}
+
+/**
+ * What {@link runDecisionModelContract} would fail on for one case, as a message, or `undefined`
+ * when `model` answers it as the contract requires. For a caller that reports problems itself, such
+ * as a plugin's conformance check, instead of registering tests.
+ */
+export async function decisionContractFailure(
+  model: DecisionModel,
+  contractCase: DecisionContractCase,
+): Promise<string | undefined> {
+  try {
+    await assertDecisionAnswer(model, contractCase);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 }
 

@@ -22,10 +22,16 @@
   import type { Snippet } from 'svelte';
 
   import { SETTINGS_COPY } from '../../app/copy/settings.ts';
-  import { getAgentCatalog, isAvailableModel } from '../../lib/agent-definitions.ts';
+  import {
+    decisionRowNamed,
+    getAgentCatalog,
+    isAvailableModel,
+  } from '../../lib/agent-definitions.ts';
   import type { SchemaNode, SettingKeyState } from '../../lib/bureau-settings.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { inlineSegments } from './inline-markdown.ts';
+  import { policyOf, type ModelPolicy } from './model-policy-edit.ts';
+  import { modelDisplayName } from './models/format-model.ts';
   import {
     DURATION_SETTINGS,
     HOST_DECISION_MODELS,
@@ -59,6 +65,8 @@
      * as the placeholder of an empty text or number field, so an empty field says what is in force.
      */
     inForce?: unknown;
+    /** The model policy, which keeps the empty option of a select of rows from naming a model it denies. */
+    policy?: ModelPolicy | undefined;
     /** Called when the person changes the value, which ends what Revert said about it. */
     onEdit?: (() => void) | undefined;
     /**
@@ -77,6 +85,8 @@
      * "Applies after restart", such as the words for a switch that is off.
      */
     statusNote?: string | undefined;
+    /** A quiet link after the description, such as "Connect TypeSafe"; it joins the row's `aria-describedby`. */
+    descriptionAction?: Snippet | undefined;
   }
 
   let {
@@ -91,11 +101,13 @@
     descriptionOverride,
     labelOverride,
     inForce,
+    policy,
     onEdit,
     custom,
     controlWidth,
     disabled = false,
     statusNote,
+    descriptionAction,
   }: Props = $props();
 
   const id = $derived(`weft-setting-${name.replaceAll('.', '-')}`);
@@ -192,6 +204,21 @@
       : [{ value: current, label: current }, ...options];
   });
 
+  /**
+   * What the empty option of a select of rows says: the row the setting applies by while it holds
+   * none, named as a person says it ("Claude Haiku 5.5 (default)"), else "Not set". A row the
+   * policy denies is not named, because the Bureau skips it.
+   */
+  const emptyOption = $derived.by(() => {
+    const row =
+      typeof inForce === 'string' && inForce !== ''
+        ? decisionRowNamed(catalog.data?.models ?? [], inForce, policy ?? policyOf(undefined))
+        : undefined;
+    return row === undefined
+      ? SETTINGS_COPY.notSet
+      : SETTINGS_COPY.defaultOption(modelDisplayName(row.model));
+  });
+
   /** Changes the draft, which clears what the last save said about the old one. */
   function change(next: unknown): void {
     autosave.clear(name);
@@ -226,6 +253,7 @@
     {label}
     identifier={name}
     {description}
+    {...descriptionAction === undefined ? {} : { descriptionAction }}
     {...status === undefined ? {} : { status }}
     {...statusLabel === undefined ? {} : { statusLabel }}
     {...error === undefined ? {} : { error }}
@@ -279,7 +307,7 @@
           {id}
           {label}
           labelVisible={false}
-          options={hasValue ? choices : [{ value: '', label: SETTINGS_COPY.notSet }, ...choices]}
+          options={hasValue ? choices : [{ value: '', label: emptyOption }, ...choices]}
           value={typeof draft === 'string' ? draft : ''}
           disabled={inert}
           onchange={(event) => {

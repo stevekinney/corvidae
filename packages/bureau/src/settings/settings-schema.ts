@@ -140,7 +140,7 @@ export const settingsSchema = z
       .string()
       .min(1)
       .describe(
-        'The model that answers yes-or-no and classification questions, apart from the models agents chat with. Choose the chat model fallback to have a chat model answer them instead.',
+        'The model that answers yes-or-no and classification questions, apart from the models agents chat with, written as a provider and a model with a slash between them. Leave it unset to have the fallback model answer them.',
       ),
     'decisions.fallbackModel': z
       .string()

@@ -1,11 +1,12 @@
 /**
- * The TypeSafe decision model for Operative — `@lostgradient/operative-typesafe`.
+ * The TypeSafe provider for Operative — `@lostgradient/operative-typesafe`.
  *
- * {@link typesafeJev} builds a `DecisionModel` backed by TypeSafe's Jev that serves `boolean`,
- * `choice`, and `scale` requests and reports the probability of its answer.
+ * {@link typesafeProvider} is a decision-only provider definition whose `decide` builds TypeSafe's
+ * Jev, which serves `boolean`, `choice`, and `scale` requests and reports the probability of its
+ * answer. {@link typesafeRows} is its one catalog row, `typesafe/jev`.
  *
  * @module operative-typesafe
  */
 
-export { typesafeJev } from './decisions/typesafe-jev';
-export type { TypesafeJevOptions } from './decisions/typesafe-jev';
+export { TYPESAFE_JEV_MODEL, typesafeProvider, typesafeRows } from './provider';
+export type { TypesafeProviderConfiguration } from './provider';

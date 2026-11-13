@@ -661,12 +661,23 @@ export function resolveModelDescriptor(
       isOfferedCatalogRow(descriptor) &&
       (descriptor.model === name || descriptor.aliases.some((alias) => alias.alias === name)),
   );
-  return (
-    found ?? {
-      code: 'unknown-model',
-      message: `The model "${model}" is not in the deployment's model catalog.`,
-    }
+  if (found !== undefined) return found;
+  // A row that only decides is in the catalog but is not one an agent can run on, which is a
+  // different answer from a model the catalog does not hold.
+  const decisionOnly = descriptors.find(
+    (descriptor) =>
+      descriptor.provider === provider &&
+      descriptor.lifecycle !== 'retired' &&
+      descriptor.decisions?.only === true &&
+      (descriptor.model === name || descriptor.aliases.some((alias) => alias.alias === name)),
   );
+  return {
+    code: 'unknown-model',
+    message:
+      decisionOnly === undefined
+        ? `The model "${model}" is not in the deployment's model catalog.`
+        : `The model "${model}" only decides: it answers decision requests and cannot run an agent.`,
+  };
 }
 
 /**

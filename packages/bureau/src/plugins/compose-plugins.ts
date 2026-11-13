@@ -363,8 +363,6 @@ function planOf(
   for (const interceptor of contributions.interceptors ?? []) {
     contribute('interceptor', interceptor.name);
   }
-  for (const model of contributions.decisionRouters ?? [])
-    contribute('decision-router', model.name);
   for (const kind of contributions.reactions ?? []) contribute('reaction', kind.name);
   for (const provider of contributions.providers ?? []) {
     contribute('provider', provider.name);
@@ -491,9 +489,6 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const id of options.agentContributions?.interceptors.keys() ?? []) {
     claims.hold({ space: 'interceptor', name: id }, HOST_PARTY);
   }
-  for (const name of Object.keys(options.decisions?.models ?? {})) {
-    claims.hold({ space: 'decision-router', name }, HOST_PARTY);
-  }
   for (const { plugin, kind } of options.hooks?.actionKinds ?? []) {
     claims.hold(
       { space: 'reaction', name: formatToolId({ namespace: plugin, name: kind.name }) },
@@ -532,7 +527,6 @@ export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'validator',
   'guardrail',
   'interceptor',
-  'decision-router',
   'reaction',
   'formatter',
   'agent',
@@ -564,10 +558,6 @@ class Contributed {
   readonly activities: { plugin: string; version: string; result: PluginSetupResult }[] = [];
   readonly agentSources: { plugin: string; result: PluginSetupResult }[] = [];
   readonly validators: NonNullable<BureauOptions['validators']>[number][] = [];
-  readonly decisionModels: Record<
-    string,
-    NonNullable<PluginContributions['decisionRouters']>[number]
-  > = {};
   readonly actionKinds: NonNullable<NonNullable<BureauOptions['hooks']>['actionKinds']>[number][] =
     [];
   readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
@@ -603,7 +593,6 @@ class Contributed {
         validate: (input, signal) => validator.validate(input, signal),
       });
     }
-    for (const model of result.decisionRouters ?? []) this.decisionModels[id(model.name)] = model;
     for (const kind of result.reactions ?? []) {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
       this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
@@ -753,14 +742,6 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     ...(contributed.validators.length === 0
       ? {}
       : { validators: [...(options.validators ?? []), ...contributed.validators] }),
-    ...(Object.keys(contributed.decisionModels).length === 0
-      ? {}
-      : {
-          decisions: {
-            ...options.decisions,
-            models: { ...options.decisions?.models, ...contributed.decisionModels },
-          },
-        }),
     ...(options.hooks === undefined || contributed.actionKinds.length === 0
       ? {}
       : {

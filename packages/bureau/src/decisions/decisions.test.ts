@@ -356,11 +356,14 @@ describe('the decision.made audit record', () => {
     expect(Object.keys(record!.detail as object).toSorted()).toEqual([
       'kind',
       'model',
+      'outcome',
+      'path',
       'provider',
+      'row',
       'schemaSha256',
     ]);
 
-    // The served, redacted view keeps the same four fields.
+    // The served, redacted view keeps the same fields.
     const served = await bureau.audit.query({ type: 'decision.made' });
     expect(served.records[0]?.detail).toMatchObject({
       kind: 'structured',
@@ -380,14 +383,37 @@ describe('the decision.made audit record', () => {
       kind: 'boolean',
       provider: 'anthropic',
       model: 'claude-haiku-5-5',
+      outcome: 'answered',
+      path: 'fallback',
+      row: 'anthropic/claude-haiku-5-5',
     });
   });
 
-  it('writes no record when the decision fails', async () => {
+  it('writes an error record naming the row and path when the answer fails validation, and still rejects', async () => {
     const { bureau } = await open({ replies: ['x', 'y'] });
 
     await rejection(bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' }));
 
-    expect(await bureau.internals.auditTrail?.query({ type: 'decision.made' })).toEqual([]);
+    const records = (await bureau.internals.auditTrail?.query({ type: 'decision.made' })) ?? [];
+    expect(records.map((record) => record.detail)).toEqual([
+      {
+        kind: 'boolean',
+        outcome: 'error',
+        reason: 'DecisionSchemaError',
+        row: 'anthropic/claude-haiku-5-5',
+        path: 'fallback',
+      },
+    ]);
+  });
+
+  it('writes a refusal record when no model can answer', async () => {
+    const { bureau } = await open({ catalog: [] });
+
+    await rejection(bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' }));
+
+    const records = (await bureau.internals.auditTrail?.query({ type: 'decision.made' })) ?? [];
+    expect(records.map((record) => record.detail)).toEqual([
+      { kind: 'boolean', outcome: 'refused', reason: 'NOT_CONFIGURED' },
+    ]);
   });
 });

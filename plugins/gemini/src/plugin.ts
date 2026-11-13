@@ -29,7 +29,7 @@ export const geminiConfiguration = z
 export default definePlugin({
   name: 'gemini',
   title: 'Gemini',
-  version: '0.1.0',
+  version: '0.1.1',
   description: 'Gemini models for agents, and an embedder for memory.',
   configuration: geminiConfiguration,
   secrets: [GEMINI_API_KEY_SECRET],

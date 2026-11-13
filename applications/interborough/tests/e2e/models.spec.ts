@@ -6,7 +6,7 @@
  *
  * The case that connects a provider starts by disconnecting it through the host, so it passes
  * whether or not an earlier run on a reused server left it connected. The last case changes the
- * decision model, which has no way back to unset, and `catalog` is what unset means. A restart is
+ * decision model, which has no way back to unset, and puts back the default, `typesafe/jev`. A restart is
  * not something this suite does; that a catalog edit and a connected provider survive one is
  * `src/host/host-provider-changes.test.ts`.
  */
@@ -251,37 +251,40 @@ async function setDecisionModel(request: APIRequestContext, model: string): Prom
 }
 
 test('switches the decision model, and the Bureau holds the choice', async ({ page, request }) => {
-  // The host's TypeSafe plugin has no key, so the decision model waits for it: Connect TypeSafe
-  // stands where the select does, and the two settings that depend on it are disabled.
+  // The host's TypeSafe plugin has no key, so the fallback model answers: the row says so and
+  // offers Connect TypeSafe beside its select, and the two settings after it stay editable.
   await openModels(page);
   const row = page.locator('[data-setting="decisions.model"]');
   await expect(row.getByRole('link', { name: MODELS_COPY.decisions.model.connect })).toBeVisible();
-  await expect(page.locator('[data-setting="decisions.fallbackModel"] select')).toBeDisabled();
+  await expect(row.getByRole('combobox')).toBeEnabled();
+  await expect(page.locator('[data-setting="decisions.fallbackModel"] select')).toBeEnabled();
   // The three decision settings are here, and are not on General.
   await expect(page.locator('[data-setting^="decisions."]')).toHaveCount(3);
   await page.goto('/settings');
   await expect(page.locator('[data-setting="tools.wakeup"]')).toBeVisible();
   await expect(page.locator('[data-setting^="decisions."]')).toHaveCount(0);
 
-  // A person who chose the chat model fallback keeps their select, whatever TypeSafe's plugin says.
-  // The decision model has no way back to unset, and `catalog` is what unset means.
-  await setDecisionModel(request, 'catalog');
+  // A person who chose a catalog row of their own keeps their select, whatever TypeSafe's plugin
+  // says. `catalog` is no longer a choice (COR-2154), and the default the host starts with is
+  // `typesafe/jev`, which is what the last step puts back.
+  await setDecisionModel(request, 'anthropic/claude-haiku-4-5');
   try {
     await openModels(page);
-    await expect(row.getByRole('combobox')).toHaveValue('catalog');
-    await row.getByRole('combobox').selectOption('typesafe:jev');
-    // It saves as the field is left, with no page-level Save; the row then waits for TypeSafe's key.
+    await expect(row.getByRole('combobox')).toHaveValue('anthropic/claude-haiku-4-5');
+    await row.getByRole('combobox').selectOption('typesafe/jev');
+    // It saves as the field is left, with no page-level Save; the row then says the fallback model
+    // answers until TypeSafe's key is saved.
     await expect(page.getByRole('button', { name: SETTINGS_COPY.saveAction })).toHaveCount(0);
     await expect
       .poll(async () => {
         const settings = (await bureauCall(request, 'bureau.settings.get', {})) as Settings;
         return settings.values['decisions.model'];
       })
-      .toBe('typesafe:jev');
+      .toBe('typesafe/jev');
     await expect(
       row.getByRole('link', { name: MODELS_COPY.decisions.model.connect }),
     ).toBeVisible();
   } finally {
-    await setDecisionModel(request, 'catalog');
+    await setDecisionModel(request, 'typesafe/jev');
   }
 });

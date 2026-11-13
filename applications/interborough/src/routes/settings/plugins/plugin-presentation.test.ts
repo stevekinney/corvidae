@@ -301,11 +301,15 @@ describe('problemView', () => {
     const typesafe = standing({
       name: 'typesafe',
       title: 'TypeSafe',
-      contributions: [contribution('decision-router', 'typesafe:jev', {}, 'Jev')],
+      contributions: [contribution('guardrail', 'typesafe:input/prompt-injection', {}, 'Jev')],
     });
     expect(
       problemView(
-        { code: 'secret-missing', key: 'typesafe-api-key', contributions: ['typesafe:jev'] },
+        {
+          code: 'secret-missing',
+          key: 'typesafe-api-key',
+          contributions: ['typesafe:input/prompt-injection'],
+        },
         typesafe,
       ).body,
     ).toBe(

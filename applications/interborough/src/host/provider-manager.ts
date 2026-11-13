@@ -34,14 +34,17 @@ import {
 
 import type { Bungalow, ConfigurationSnapshot } from '@lostgradient/bungalow';
 import {
+  resolveProviderDecide,
   type ProviderChecker,
   type resolveProviderGenerate,
   type SettingLockReason,
 } from '@lostgradient/bureau';
 import {
+  decideBatch,
   readBackendDescriptors,
   withBackendDescriptors,
   type BackendDescriptor,
+  type DecisionModel,
   type GenerateFunction,
 } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
@@ -55,6 +58,8 @@ import { hostWriteLocks } from './locations.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   allowlistMissMessage,
+  catalogDecideTarget,
+  createCatalogDecide,
   createCatalogGenerate,
   loadProviders,
   parseDocument,
@@ -249,6 +254,8 @@ export type ProviderManager = {
   current(): LoadedProviders;
   /** The generate for a catalog model, resolved with the key held now. Each call resolves current committed credentials; an admitted call keeps its credential. */
   generateFor(selection: ModelSelection): GenerateFunction;
+  /** The native decision model for a catalog model, built with the key held now (COR-2154). */
+  decideFor(selection: ModelSelection): DecisionModel;
   /** Why writes are refused, or `undefined` when they are allowed. */
   lockReason(): SettingLockReason | undefined;
   /** The configuration as it is on disk, without a key. */
@@ -498,6 +505,11 @@ function withAllowlist(
   return { ...document, plugins: { ...plugins, [plugin]: entry } };
 }
 
+/** Whether every row the provider contributes only answers decisions, so no agent can run on it. */
+function isDecisionOnlyProvider(provider: ContributedProvider): boolean {
+  return provider.rows.length > 0 && provider.rows.every((row) => row.decisions?.only === true);
+}
+
 /** Create the manager. It holds nothing until {@link ProviderManager.adopt} hands it the providers. */
 export function createProviderManager(options: ProviderManagerOptions): ProviderManager {
   const { bungalow } = options;
@@ -587,6 +599,22 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
     return text;
   }
 
+  /**
+   * Read the committed configuration and secrets again, hold them, and replace the catalog's rows
+   * when the configuration changed. Runs inside `serialized`.
+   */
+  const reload = async (): Promise<LoadedProviders> => {
+    const next = await load(loaded.providers);
+    const changed = next.configurationRevision !== loaded.configurationRevision;
+    // Catalog replacement rebuilds file agents synchronously against current().
+    loaded = next;
+    if (changed) {
+      if (replaceRows === undefined) throw new Error('The provider manager is not attached.');
+      await replaceRows(next.rows);
+    }
+    return next;
+  };
+
   let lastApplication: { revision: string | null; change: ProviderChange } | undefined;
   const apply = async (observed = false): Promise<ProviderChange> => {
     // Read back from disk, so the host serves what a restart would.
@@ -605,6 +633,31 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
     current: () => loaded,
     configurationQueue,
     lockReason,
+    decideFor(selection) {
+      const selected = { provider: selection.provider, model: selection.model };
+      // A row the catalog lacks or a key not yet saved is refused now, from what is held. Nothing is
+      // built with the held key: the model is built on each call.
+      const { row } = catalogDecideTarget(selected, loaded);
+      // Like `generateFor`, every call reads the committed credentials again: a key another host
+      // rotated is the one asked with, and a version that was revoked refuses the call.
+      const fresh = (): Promise<DecisionModel> =>
+        serialized(async () => {
+          const next = await reload();
+          return createCatalogDecide(selected, { ...next, resolveProviderDecide });
+        });
+      const model: DecisionModel = {
+        name: `${row.provider}/${row.model}`,
+        kinds: new Set(row.decisions?.kinds ?? []),
+        decide: async (request, decideOptions) => {
+          const answering = await fresh();
+          return answering.decide(request, decideOptions);
+        },
+        // One provider request where the provider answers a batch, one question at a time where not.
+        decideBatch: async (batch, decideOptions) =>
+          decideBatch(await fresh(), batch, decideOptions),
+      };
+      return model;
+    },
     generateFor(selection) {
       const selected = { provider: selection.provider, model: selection.model };
       let cached = loaded;
@@ -616,7 +669,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       const generate: GenerateFunction = async (context) => {
         const admitted = await serialized(async () => {
           const prior = loaded;
-          const next = await load(prior.providers);
+          const next = await reload();
           const sameKeys =
             next.apiKeys.size === cached.apiKeys.size &&
             [...next.apiKeys].every(([name, value]) => cached.apiKeys.get(name) === value);
@@ -624,13 +677,6 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
             prior === cached &&
             next.configurationRevision === cached.configurationRevision &&
             sameKeys;
-          const changed = next.configurationRevision !== loaded.configurationRevision;
-          // Catalog replacement rebuilds file agents synchronously against current().
-          loaded = next;
-          if (changed) {
-            if (replaceRows === undefined) throw new Error('The provider manager is not attached.');
-            await replaceRows(next.rows);
-          }
           if (!reuse)
             cachedGenerate = createCatalogGenerate(selected, {
               ...next,
@@ -665,22 +711,28 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       return {
         configurationRevision: revision,
         appliedConfigurationRevision: loaded.configurationRevision,
-        providers: loaded.providers.map((provider) => {
-          const models = allowlists.get(provider.plugin);
-          const hasKey = loaded.apiKeys.has(provider.name);
-          return {
-            name: provider.name,
-            configured: hasKey || models !== undefined,
-            hasKey,
-            ...(models === undefined ? {} : { models }),
-          };
-        }),
+        // A provider whose every row only decides (TypeSafe) is not a chat provider and has no
+        // model an agent can run on, so no page that lists providers or models for agents sees it.
+        // Its key is connected under Plugins, and Settings > Models shows the decisions it answers.
+        providers: loaded.providers
+          .filter((provider) => !isDecisionOnlyProvider(provider))
+          .map((provider) => {
+            const models = allowlists.get(provider.plugin);
+            const hasKey = loaded.apiKeys.has(provider.name);
+            return {
+              name: provider.name,
+              configured: hasKey || models !== undefined,
+              hasKey,
+              ...(models === undefined ? {} : { models }),
+            };
+          }),
         catalog: (configuration.catalog ?? []).filter((edit) =>
           loaded.providers.some((provider) => provider.name === edit.provider),
         ),
         // A provider whose key is not saved keeps its rows in the catalog, `unavailable`, but it is
         // not connected: the page lists models only for a provider the host can call (COR-2143).
         models: loaded.rows
+          .filter((row) => row.decisions?.only !== true)
           .filter((row) => {
             const owner = loaded.providers.find((provider) => provider.name === row.provider);
             return (
@@ -788,6 +840,20 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       conversation.appendUserMessage('Reply with one word: ok.');
       const timeout = AbortSignal.timeout(KEY_TEST_TIMEOUT_MILLISECONDS);
       try {
+        if (contributed.definition.generate === undefined) {
+          // A decision-only provider (COR-2157) has no `generate` to probe with: it is asked one
+          // yes-or-no question instead, which a key it does not accept refuses the same way.
+          const model = resolveProviderDecide(
+            loaded.providers.map((provider) => provider.definition),
+            { provider: contributed.name, model: probe.model, apiKey: key },
+            contributed.configuration,
+          );
+          await model.decide(
+            { kind: 'boolean', question: 'Is "ok" a word?' },
+            { signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]) },
+          );
+          return { ok: true, models: offered.length };
+        }
         const generate = options.resolveProviderGenerate(
           loaded.providers.map((provider) => provider.definition),
           { provider: contributed.name, model: probe.model, apiKey: key },

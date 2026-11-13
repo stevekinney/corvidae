@@ -163,7 +163,7 @@ import {
 import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
 import { builtInSettingDefaults } from './settings/setting-defaults';
-import { summarizerFailures } from './settings/settings-validation';
+import { decisionModelFailures, summarizerFailures } from './settings/settings-validation';
 import { createMemoryEmbedderSetting, type MemoryEmbedderSetting } from './memory-embedder-setting';
 import {
   bootSettings,
@@ -578,7 +578,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   });
   options = composedPlugins.options;
   options = withPluginContentLayers(options, given, composedPlugins.shippedContent);
-  // COR-1879: `decisions.model` may name a decision router a plugin contributed.
+  // `decisions.model` names a catalog row, or a decision model the host registered in code.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records, {
     guardrails: hostGuardrails,
@@ -2752,6 +2752,11 @@ async function constructBureau<const D extends AgentDefinitions>(
       // embedder one memory can switch to now (COR-1898).
       checkPatch: async (values) => [
         ...summarizerFailures(values, models.catalog().descriptors),
+        ...decisionModelFailures(
+          values,
+          models.catalog().descriptors,
+          decisionModelNames(options.decisions),
+        ),
         ...(await embedderSetting.failures(values)),
       ],
       afterUpdate: (keys) => embedderSetting.afterUpdate(keys),

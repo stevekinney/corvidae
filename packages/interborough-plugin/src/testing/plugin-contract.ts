@@ -1,14 +1,25 @@
+import {
+  createModelCatalog,
+  type BackendDescriptor,
+  type DecisionModel,
+} from '@lostgradient/operative';
+import {
+  decisionContractFailure,
+  decisionScenarios,
+  type DecisionScenario,
+} from '@lostgradient/operative/decision-testing';
 import { afterAll, describe, expect, test } from 'bun:test';
 import type { z } from 'zod';
 
+import type { PluginProvider } from '../contributions.ts';
 import { definePlugin } from '../define-plugin.ts';
 import type { PluginDescriptor } from '../plugin-descriptor.ts';
 import {
-  type HookObservations,
-  type PluginHookPoint,
   observationKey,
   observePlugin,
   scenarioOf,
+  type HookObservations,
+  type PluginHookPoint,
 } from './hook-observation.ts';
 import { pluginContributions, pluginIdentities } from './plugin-identities.ts';
 
@@ -103,10 +114,32 @@ export type CreatePluginTestHost = (
   plugin: PluginDescriptor<z.ZodType<any>>,
 ) => Promise<PluginTestHost>;
 
+/** What {@link PluginContractOptions.createDecisionModel} is asked to build. */
+export interface PluginDecisionModelRequest {
+  /** The provider whose native `decide` the model comes from. */
+  readonly provider: PluginProvider;
+  /** The catalog row the model answers for. */
+  readonly row: BackendDescriptor;
+  /**
+   * The scenario about to be asked, so a scripted or replayed model can queue its answer; absent
+   * when the model is only read for the kinds it declares.
+   */
+  readonly scenario?: DecisionScenario;
+}
+
 /** What {@link pluginContract} and {@link checkPluginContract} need beside the plugin. */
 export interface PluginContractOptions {
   /** Starts the host the plugin is loaded into. */
   readonly createHost: CreatePluginTestHost;
+  /**
+   * Builds the native decision model of a catalog row that declares `decisions`, through the
+   * provider's own `decide`, with the scenario's answer scripted or replayed so nothing reaches the
+   * network (COR-2159). Required by a plugin with such a row: the contract refuses to guess a key
+   * and call a real provider.
+   */
+  readonly createDecisionModel?: (
+    request: PluginDecisionModelRequest,
+  ) => DecisionModel | Promise<DecisionModel>;
 }
 
 /** What the contract reads once the host is up: the plugin's listing and the agents the host lists. */
@@ -123,6 +156,57 @@ interface ContractCheck {
 
 function problemText(problem: { readonly code: string }): string {
   return JSON.stringify(problem);
+}
+
+/**
+ * The problems of one catalog row that declares native decision kinds: its provider has to decide,
+ * the model it builds serves exactly the kinds the row declares, and it answers every
+ * {@link decisionScenarios} case of those kinds as the decision-model contract requires.
+ */
+async function nativeDecisionProblems(
+  provider: PluginProvider,
+  row: BackendDescriptor,
+  options: PluginContractOptions,
+): Promise<string[]> {
+  const declared = row.decisions?.kinds ?? [];
+  const label = `${row.provider}/${row.model}`;
+  if (declared.length === 0) return [];
+  if (provider.decide === undefined) {
+    return [`The row "${label}" declares native decision kinds, but its provider has no decide.`];
+  }
+  const { createDecisionModel } = options;
+  if (createDecisionModel === undefined) {
+    return [
+      `The row "${label}" answers decisions natively, so the contract needs the createDecisionModel option to build it with each scenario's answer scripted.`,
+    ];
+  }
+  const problems: string[] = [];
+  const model = await createDecisionModel({ provider, row });
+  for (const kind of model.kinds) {
+    if (!declared.includes(kind)) {
+      problems.push(
+        `The native model of "${label}" serves "${kind}", which its row does not declare (${declared.join(', ')}).`,
+      );
+    }
+  }
+  for (const kind of declared) {
+    if (!model.kinds.has(kind)) {
+      problems.push(
+        `The native model of "${label}" does not serve "${kind}", which its row declares.`,
+      );
+    }
+  }
+  for (const scenario of decisionScenarios) {
+    if (!declared.includes(scenario.request.kind)) continue;
+    const failure = await decisionContractFailure(
+      await createDecisionModel({ provider, row, scenario }),
+      scenario,
+    );
+    if (failure !== undefined) {
+      problems.push(`"${label}" did not answer the scenario "${scenario.name}": ${failure}`);
+    }
+  }
+  return problems;
 }
 
 function contractRun(
@@ -174,6 +258,22 @@ function contractRun(
         } catch (error) {
           return error instanceof Error ? error.message : String(error);
         }
+      },
+    },
+    {
+      name: 'answers the decision scenarios of every row with native decision kinds',
+      run: async () => {
+        const contributions = await pluginContributions(plugin);
+        const problems: string[] = [];
+        for (const provider of contributions.providers ?? []) {
+          const rows =
+            provider.rows ??
+            createModelCatalog().descriptors.filter((row) => row.provider === provider.name);
+          for (const row of rows) {
+            problems.push(...(await nativeDecisionProblems(provider, row, options)));
+          }
+        }
+        return problems.length === 0 ? undefined : problems.join(' ');
       },
     },
     {

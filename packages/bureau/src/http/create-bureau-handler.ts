@@ -1335,7 +1335,10 @@ export function buildBureauHandlerHost(
       agents: bureau.agents,
       optsCodeAgentIntoA2A: (id) => a2aAgents.includes(id),
       a2aOverride: (id) => a2aOptInOverridesOf(bureau.settings).of(id),
-      models: () => bureau.models.catalog().descriptors,
+      // The rows an agent can choose from: a row that only decides is not one (COR-2156). A retired
+      // row stays listed, so the agent editor can say why a file's model cannot be chosen.
+      models: () =>
+        bureau.models.catalog().descriptors.filter((row) => row.decisions?.only !== true),
       audit: async (entry) => {
         await bureau.internals.auditTrail?.record(entry);
       },

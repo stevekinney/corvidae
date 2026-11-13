@@ -285,7 +285,6 @@ export type PluginContributionKind =
   | 'validator'
   | 'guardrail'
   | 'interceptor'
-  | 'decision-router'
   | 'reaction'
   | 'provider'
   | 'embedder'

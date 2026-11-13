@@ -138,16 +138,6 @@ const HOST_ENTRY: Record<
     },
     contribution: { interceptors: [{ name: 'x' }] },
   },
-  'decision-router': {
-    host: {
-      decisions: {
-        models: { 'p:x': { name: 'p:x', kinds: new Set(), decide: async () => ({}) as never } },
-      },
-    },
-    contribution: {
-      decisionRouters: [{ name: 'x', kinds: new Set(), decide: async () => ({}) as never }],
-    },
-  },
   reaction: {
     host: { hooks: { actionKinds: [{ plugin: 'p', kind: actionKind('x') }] } },
     contribution: { reactions: [actionKind('x')] },
@@ -209,7 +199,6 @@ describe('composePlugins', () => {
           ],
         },
         interceptors: [{ name: 'audit' }],
-        decisionRouters: [{ name: 'router', kinds: new Set(), decide: async () => ({}) as never }],
         reactions: [
           {
             name: 'page',
@@ -244,7 +233,6 @@ describe('composePlugins', () => {
     ]);
     expect([...(options.agentContributions?.guardrails.keys() ?? [])]).toEqual(['kit:scan']);
     expect([...(options.agentContributions?.interceptors.keys() ?? [])]).toEqual(['kit:audit']);
-    expect(Object.keys(options.decisions?.models ?? {})).toEqual(['kit:router']);
     // A delivery of the kind pins the plugin's version, since the kind declares none.
     expect(
       options.hooks?.actionKinds?.map(

@@ -808,6 +808,30 @@ describe('faults', () => {
     );
   });
 
+  it('Unprocessable for a definition naming a row that only decides, saying so, and writes nothing (COR-2156)', async () => {
+    const [first] = createModelCatalog().descriptors;
+    if (first === undefined) throw new Error('Expected the seed catalog to hold rows.');
+    const decisionOnly: BackendDescriptor = {
+      ...first,
+      provider: 'typesafe',
+      model: 'jev',
+      aliases: [],
+      decisions: { kinds: ['boolean', 'choice', 'scale'], only: true },
+    };
+    const served = await serve({ overrides: { models: { catalog: [first, decisionOnly] } } });
+    expect(served.bureau.models.catalog().descriptors.map((row) => row.model)).toContain('jev');
+
+    const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'decider',
+      definition: { ...DEFINITION, model: 'typesafe/jev' },
+    });
+
+    expect(created.error?.data?.httpStatus).toBe(422);
+    expect(created.error?.data).toMatchObject({ reason: 'unknown-model' });
+    expect(JSON.stringify(created.error)).toContain('only decides');
+    expect(await Bun.file(ownerPath(served, 'decider')).exists()).toBe(false);
+  });
+
   it('Unprocessable for a definition that would not load, with the problem, and writes nothing', async () => {
     const served = await serve();
     const unknownModel = await callAs(served.owner, 'bureau.agents.definitions.create', {
@@ -1054,6 +1078,41 @@ describe('bureau.agents.catalog', () => {
     expect(JSON.stringify(response)).not.toContain('proxy.internal.example.com');
     expect(JSON.stringify(response)).not.toContain('pricing');
     expect(JSON.stringify(response)).not.toContain('endpointAmbiguous');
+  });
+
+  it('leaves out a row that only decides, which an agent cannot choose, and keeps a retired row (COR-2156)', async () => {
+    const [first, second] = rows();
+    if (first === undefined || second === undefined) throw new Error('Expected rows.');
+    const decisionOnly: BackendDescriptor = {
+      ...first,
+      provider: 'typesafe',
+      model: 'jev',
+      aliases: [],
+      decisions: { kinds: ['boolean', 'choice', 'scale'], only: true },
+    };
+    const served = await serve({
+      overrides: {
+        models: { catalog: [first, { ...second, lifecycle: 'retired' }, decisionOnly] },
+      },
+    });
+    const held = served.bureau.models.catalog().descriptors;
+    expect(held.some((row) => row.provider === 'typesafe')).toBe(true);
+
+    const response = await rpc(served.keyed, 'bureau.agents.catalog', {}, 'agents-reader-key');
+
+    expect(response.error).toBeUndefined();
+    const listed = listOf(response, 'models').map(
+      (entry) => `${String(entry['provider'])}/${String(entry['model'])}`,
+    );
+    expect(listed).not.toContain('typesafe/jev');
+    // Every other row is served, a retired one included, so the editor can say why it cannot be chosen.
+    expect(listed.toSorted()).toEqual(
+      held
+        .filter((row) => row.provider !== 'typesafe')
+        .map((row) => `${row.provider}/${row.model}`)
+        .toSorted(),
+    );
+    expect(listed.length).toBe(2);
   });
 
   it('returns the same general projection to the owner and to an operator', async () => {

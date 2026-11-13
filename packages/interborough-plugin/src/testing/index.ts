@@ -12,6 +12,7 @@ export {
   type CreatePluginTestHost,
   type PluginContractFailure,
   type PluginContractOptions,
+  type PluginDecisionModelRequest,
   type PluginScriptedRunOutcome,
   type PluginScriptedRunRequest,
   type PluginScriptedScenario,

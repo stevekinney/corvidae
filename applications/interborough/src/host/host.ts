@@ -1133,6 +1133,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // A stored allowlist the provider's rows do not match skips its plugin and starts the host.
         checkProviders: (check) => providers.checkProviders(check),
         generate: (row) => generateFor({ provider: row.provider, model: row.model }),
+        // A row that declares decision kinds answers them natively with its provider's `decide`.
+        decide: (row) => providers.decideFor({ provider: row.provider, model: row.model }),
       },
       storage,
       // The plugins this host loads, the owner's choices for them, and the secrets they declare

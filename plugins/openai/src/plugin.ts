@@ -32,7 +32,7 @@ export const openaiConfiguration = z
 export default definePlugin({
   name: 'openai',
   title: 'OpenAI',
-  version: '0.1.1',
+  version: '0.1.2',
   description: 'OpenAI models for agents, and an embedder for memory.',
   configuration: openaiConfiguration,
   secrets: [OPENAI_API_KEY_SECRET],

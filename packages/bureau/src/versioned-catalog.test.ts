@@ -119,7 +119,7 @@ describe('createVersionedCatalog registration', () => {
     const catalog = createVersionedCatalog<string>();
     const other = { name: 'other', version: '1.0.0' };
     catalog.register({
-      kind: 'decision-router',
+      kind: 'reaction',
       name: 'x:route',
       version: '1',
       value: 'first',
@@ -127,7 +127,7 @@ describe('createVersionedCatalog registration', () => {
     });
 
     const clash = catalog.register({
-      kind: 'decision-router',
+      kind: 'reaction',
       name: 'x:route',
       version: '1',
       value: 'second',
@@ -137,16 +137,16 @@ describe('createVersionedCatalog registration', () => {
     expect(clash).toEqual({
       ok: false,
       reason: 'clash',
-      kind: 'decision-router',
+      kind: 'reaction',
       id: 'x:route@1',
       existing: linear,
       rejected: other,
     });
-    const resolution = catalog.resolve('decision-router', 'x:route@1');
+    const resolution = catalog.resolve('reaction', 'x:route@1');
     if (!resolution.ok) throw new Error('the first registration should stay');
     expect(resolution.entry.value).toBe('first');
     expect(resolution.entry.source).toEqual(linear);
-    expect(catalog.entries('decision-router')).toHaveLength(1);
+    expect(catalog.entries('reaction')).toHaveLength(1);
   });
 
   it('counts a versionless contribution at its plugin version when checking for a clash', () => {

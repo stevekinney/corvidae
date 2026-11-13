@@ -1,6 +1,6 @@
 # Operative TypeSafe
 
-`@lostgradient/operative-typesafe` is the TypeSafe decision model for [`@lostgradient/operative`](../operative/README.md). `typesafeJev({ apiKey, fetch? })` returns a `DecisionModel` that serves `boolean`, `choice`, and `scale` requests through TypeSafe's Jev model and reports Jev's probability for the answer it gives. Operative's `DecisionModel` types, errors, and `llmDecisionModel` stay in Operative; this package is the one place that knows about TypeSafe.
+`@lostgradient/operative-typesafe` is the TypeSafe provider for [`@lostgradient/operative`](../operative/README.md): a decision-only provider definition, `typesafeProvider`, whose `decide` returns a `DecisionModel` that serves `boolean`, `choice`, and `scale` requests through TypeSafe's Jev model and reports Jev's probability for the answer it gives. Operative's `DecisionModel` types, errors, and `llmDecisionModel` stay in Operative; this package is the one place that knows about TypeSafe.
 
 ## Workspace usage
 
@@ -14,15 +14,17 @@ The package needs `@tanstack/ai` and `@tanstack/ai-typesafe`, both declared as o
 
 ## What It Exports
 
-- `typesafeJev(options)` returns a `DecisionModel` backed by Jev. `options.apiKey` is the TypeSafe key, held in memory only and never logged, stored, or put in an error. `options.fetch` replaces the global `fetch`, which tests use to replay recorded responses.
-- `TypesafeJevOptions` is the options type.
+- `typesafeProvider` is the provider definition, named `typesafe`, with a `decide` and no `generate` or `stream`. `decide(configuration)` returns a `DecisionModel` backed by Jev and throws a `TypeError` without an `apiKey`. The key is held in memory only and never logged, stored, or put in an error. `configuration.fetch` replaces the global `fetch`, which tests use to replay recorded responses.
+- `typesafeRows` is the provider's catalog rows: one, `typesafe/jev`, which answers `boolean`, `choice`, and `scale` natively (`decisions: { kinds, only: true }`), has no structured output and no price, and is never a candidate to run an agent on.
+- `TYPESAFE_JEV_MODEL` is that row's model name, `jev`.
+- `TypesafeProviderConfiguration` is the configuration type.
 
 ## Using it
 
 ```ts
 import { llmDecisionModel } from '@lostgradient/operative';
 import type { DecisionModel, GenerateFunction } from '@lostgradient/operative';
-import { typesafeJev } from '@lostgradient/operative-typesafe';
+import { TYPESAFE_JEV_MODEL, typesafeProvider } from '@lostgradient/operative-typesafe';
 
 declare const generate: GenerateFunction;
 declare const apiKey: string;
@@ -31,7 +33,11 @@ const fallback: DecisionModel = llmDecisionModel({
   generate,
   descriptor: { provider: 'anthropic', model: 'claude-haiku-5-5' },
 });
-const jev: DecisionModel = typesafeJev({ apiKey });
+const jev: DecisionModel = typesafeProvider.decide({
+  provider: typesafeProvider.name,
+  model: TYPESAFE_JEV_MODEL,
+  apiKey,
+});
 
 // Route by kind: Jev for the questions it serves, the language model for the rest.
 const model = (kind: 'boolean' | 'choice' | 'scale' | 'structured') =>
@@ -52,11 +58,16 @@ The model also has a `decideBatch` method, which Operative's `decideBatch(model,
 
 ```ts
 import { decideBatch } from '@lostgradient/operative';
-import { typesafeJev } from '@lostgradient/operative-typesafe';
+import { TYPESAFE_JEV_MODEL, typesafeProvider } from '@lostgradient/operative-typesafe';
 
 declare const apiKey: string;
 
-const { decisions, usage } = await decideBatch(typesafeJev({ apiKey }), {
+const jev = typesafeProvider.decide({
+  provider: typesafeProvider.name,
+  model: TYPESAFE_JEV_MODEL,
+  apiKey,
+});
+const { decisions, usage } = await decideBatch(jev, {
   context: 'Your build failed on main.',
   questions: new Map([
     ['ci', { kind: 'boolean', question: 'Is this a failed build notification?' }],

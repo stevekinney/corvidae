@@ -10,6 +10,11 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import {
+  deniedProvidersOf,
+  isModelAllowed,
+  type ModelPolicy,
+} from '../routes/settings/model-policy-edit.ts';
 import { callBureau, type Fetcher } from './bureau-client.ts';
 
 /**
@@ -521,6 +526,60 @@ export async function listAgentDefinitions(options?: Options): Promise<readonly 
  */
 export function isAvailableModel(row: Pick<CatalogModel, 'availability'>): boolean {
   return row.availability !== 'unavailable';
+}
+
+/**
+ * Whether the Bureau may answer a decision with a catalog row: available, able to return
+ * structured output, and allowed by the model policy (the check the Models table's Allowed column
+ * makes). This is `eligible` in `packages/bureau/src/decisions/create-decisions.ts`, which drops
+ * a policy-denied row before it chooses a fallback; keep the two in step, so the page never names
+ * a row the Bureau would skip.
+ */
+export function canAnswerDecisions(
+  row: Pick<CatalogModel, 'availability' | 'structuredOutput' | 'provider' | 'model'>,
+  policy: ModelPolicy,
+): boolean {
+  return (
+    isAvailableModel(row) &&
+    row.structuredOutput &&
+    !deniedProvidersOf(policy).includes(row.provider) &&
+    isModelAllowed(policy, row.model)
+  );
+}
+
+/** Whether the catalog holds a row that can answer a decision: false is "nothing can answer". */
+export function hasDecisionModel(
+  catalog: {
+    readonly models: readonly Pick<
+      CatalogModel,
+      'availability' | 'structuredOutput' | 'provider' | 'model'
+    >[];
+  },
+  policy: ModelPolicy,
+): boolean {
+  return catalog.models.some((row) => canAnswerDecisions(row, policy));
+}
+
+/**
+ * The row that can answer decisions which a `<provider>/<model>` name picks out, or `undefined`
+ * when the name matches no row or the row it matches cannot answer. A name matches a row's model
+ * or one of its aliases, as `chooseFallbackRow` in the Bureau does.
+ */
+export function decisionRowNamed<
+  Row extends Pick<CatalogModel, 'availability' | 'structuredOutput' | 'provider' | 'model'> & {
+    readonly aliases: readonly Pick<CatalogModel['aliases'][number], 'alias'>[];
+  },
+>(models: readonly Row[], name: string, policy: ModelPolicy): Row | undefined {
+  const slash = name.indexOf('/');
+  if (slash < 0) return undefined;
+  const provider = name.slice(0, slash);
+  const model = name.slice(slash + 1);
+  const named = models.find(
+    (row) =>
+      row.provider === provider &&
+      (row.model === model || row.aliases.some((entry) => entry.alias === model)),
+  );
+  return named !== undefined && canAnswerDecisions(named, policy) ? named : undefined;
 }
 
 /** Whether the catalog holds a model an agent could run on: false is the no-provider state. */

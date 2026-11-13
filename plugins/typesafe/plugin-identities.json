@@ -1,18 +1,24 @@
 {
   "plugin": "typesafe",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "entries": [
     {
       "kind": "configuration",
       "id": "typesafe",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "schema": "sha256:93ab7499dc3c616f8db8780fed0d9f69270803cda913882ad2ef3943db8d7225"
     },
     {
       "kind": "guardrail",
       "id": "typesafe:input/prompt-injection",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "schema": null
+    },
+    {
+      "kind": "provider",
+      "id": "typesafe:typesafe",
+      "version": "0.3.0",
+      "schema": "sha256:0b65012585e9c9d1952c04c959b2a1bb1ee245afdd88b9ddb99253ac75acf04a"
     }
   ]
 }
