@@ -1910,6 +1910,47 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       );
       return;
     }
+    case 'scroll-list': {
+      const selector = LIST_SELECTORS[step.target];
+      const list = page.locator(selector).first();
+      await expectAttachment(list).toBeVisible();
+      const scrollTarget = await list.evaluate((element, to) => {
+        const inline = element.getAttribute('data-cinder-edge-fade') === 'inline';
+        const rtl = getComputedStyle(element).direction === 'rtl';
+        const room = inline
+          ? element.scrollWidth - element.clientWidth
+          : element.scrollHeight - element.clientHeight;
+        const distance = to === 'start' ? 0 : to === 'middle' ? room / 2 : room;
+        if (inline) element.scrollLeft = rtl ? -distance : distance;
+        else element.scrollTop = distance;
+        return { inline, distance };
+      }, step.to);
+      // Settled: the scroll has landed and the fades follow it, so the image shows the state named.
+      await page.waitForFunction(
+        ({ selector: scroller, ...wanted }) => {
+          const element = document.querySelector(scroller);
+          if (element === null) return false;
+          const position = Math.abs(wanted.inline ? element.scrollLeft : element.scrollTop);
+          if (Math.abs(position - wanted.distance) > 1) return false;
+          const room = wanted.inline
+            ? element.scrollWidth - element.clientWidth
+            : element.scrollHeight - element.clientHeight;
+          const before = wanted.inline
+            ? 'data-cinder-overflows-inline-start'
+            : 'data-cinder-overflows-start';
+          const after = wanted.inline
+            ? 'data-cinder-overflows-inline-end'
+            : 'data-cinder-overflows';
+          return (
+            element.hasAttribute(before) === (room > 1 && position > 1) &&
+            element.hasAttribute(after) === (room > 1 && room - position > 1)
+          );
+        },
+        { selector, ...scrollTarget },
+        { timeout: DEADLINE },
+      );
+      return;
+    }
     default: {
       const unreachable: never = step;
       throw new Error(`Unknown step ${JSON.stringify(unreachable)}.`);
@@ -2201,6 +2242,7 @@ async function measure(
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
   problems.push(...(await readIconSizeProblems(opened.page)));
   problems.push(...(await readAttachmentStripProblems(opened.page)));
+  problems.push(...(await readEdgeFadeProblems(opened.page)));
   problems.push(...(await readIconCentreProblems(opened.page)));
   return { measurement, problems };
 }
@@ -2368,7 +2410,7 @@ export const ACTION_ROW_SELECTORS: readonly string[] = [
   '.cinder-approval-card__row-actions',
   '.cinder-approval-card__action-buttons',
   '.cinder-approval-card__editor-actions',
-  '.cinder-approval-card__expiry-actions',
+  '.cinder-approval-card__settled-actions',
   '.chat-input-blocked-actions',
   '.chat-question-dock-actions',
   '.cinder-inline-confirm__actions',
@@ -2895,6 +2937,86 @@ export async function readAttachmentStripProblems(page: Page): Promise<string[]>
     }
     return problems;
   }, ATTACHMENT_STRIP_TOLERANCE);
+}
+
+/** The scroller each list a `scroll-list` step names. */
+const LIST_SELECTORS = {
+  'attachment-strip': '.chat-input-attachments',
+  'question-choices': '.chat-question-dock-options-scroll',
+} as const;
+
+/** The scrollers the edge-fade guard requires to carry Cinder's edge fade, with the axis each scrolls on. */
+export const EDGE_FADE_SCROLLERS = [
+  { selector: '.chat-input-attachments', axis: 'inline', name: 'the attachment strip' },
+  { selector: '.chat-question-dock-options-scroll', axis: 'block', name: 'the question choices' },
+] as const;
+
+/**
+ * Measures the edge fade (owner decision of 2026-11-13): a scroller that is cut off fades the edge
+ * past which content is hidden and only that edge. Each scroller the page holds (the strip and the
+ * docked choices, and any other that sets `data-cinder-edge-fade`) must paint a mask, fade its
+ * leading edge exactly while content is scrolled out of view before it, and its trailing edge
+ * exactly while content lies out of view after it. A scroller whose content fits fades neither.
+ * The fade of an edge is read from the length the mask gives it, so a mask that is set but has no
+ * length on an edge is no fade.
+ */
+export async function readEdgeFadeProblems(page: Page): Promise<string[]> {
+  return page.evaluate(
+    async ({ known }) => {
+      // The attachment measures on a frame, so a scroll or a resize is read one frame later.
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      const problems: string[] = [];
+      const scrollers = new Map<Element, { axis: string; name: string }>();
+      for (const entry of known) {
+        for (const element of document.querySelectorAll(entry.selector)) {
+          scrollers.set(element, { axis: entry.axis, name: entry.name });
+        }
+      }
+      for (const element of document.querySelectorAll('[data-cinder-edge-fade]')) {
+        if (scrollers.has(element)) continue;
+        scrollers.set(element, {
+          axis: element.getAttribute('data-cinder-edge-fade') ?? 'block',
+          name: 'a scroller with an edge fade',
+        });
+      }
+      for (const [element, { axis, name }] of scrollers) {
+        const style = getComputedStyle(element);
+        const inline = axis === 'inline';
+        const position = Math.abs(inline ? element.scrollLeft : element.scrollTop);
+        const extent = inline ? element.scrollWidth : element.scrollHeight;
+        const visible = inline ? element.clientWidth : element.clientHeight;
+        const hiddenBefore = position > 1;
+        const hiddenAfter = extent - visible - position > 1;
+        // The mask's stop lengths are custom properties: `0px` while nothing is hidden, a line
+        // length (`1.5lh`) while something is. Any positive number is a fade.
+        const lengthOf = (property: string): number => {
+          const length = Number.parseFloat(style.getPropertyValue(property));
+          return Number.isFinite(length) ? length : 0;
+        };
+        const fadesBefore = lengthOf('--_cinder-edge-fade-start') > 0;
+        const fadesAfter = lengthOf('--_cinder-edge-fade-end') > 0;
+        const masked = style.maskImage !== 'none' && style.maskImage !== '';
+        if (element.getAttribute('data-cinder-edge-fade') !== axis || !masked) {
+          if (hiddenBefore || hiddenAfter)
+            problems.push(`${name} is cut off and paints no edge fade`);
+          continue;
+        }
+        const edges = inline ? ['leading', 'trailing'] : ['top', 'bottom'];
+        if (hiddenBefore && !fadesBefore)
+          problems.push(`${name} hides content past its ${edges[0]} edge and does not fade it`);
+        if (!hiddenBefore && fadesBefore)
+          problems.push(`${name} fades its ${edges[0]} edge with nothing hidden past it`);
+        if (hiddenAfter && !fadesAfter)
+          problems.push(`${name} hides content past its ${edges[1]} edge and does not fade it`);
+        if (!hiddenAfter && fadesAfter)
+          problems.push(`${name} fades its ${edges[1]} edge with nothing hidden past it`);
+      }
+      return problems;
+    },
+    { known: EDGE_FADE_SCROLLERS },
+  );
 }
 
 /**

@@ -88,7 +88,17 @@ type StressStepAction =
   | { action: 'expect-streaming-assistant-text'; text: string }
   | { action: 'upload'; files: readonly StressUpload[] }
   /** `by: 'wheel'` scrolls with the mouse wheel over the transcript, so it is real user input. */
-  | { action: 'scroll'; to: 'top' | 'bottom'; by?: 'wheel' };
+  | { action: 'scroll'; to: 'top' | 'bottom'; by?: 'wheel' }
+  /**
+   * Scrolls a cut-off list to its start, its middle or its end, and waits for the edge fades to
+   * settle: the composer's attachment strip (sideways) or the docked question's choices.
+   */
+  | { action: 'scroll-list'; target: StressList; to: 'start' | 'middle' | 'end' };
+
+/** The cut-off lists a `scroll-list` step scrolls. */
+export const STRESS_LISTS = ['attachment-strip', 'question-choices'] as const;
+
+export type StressList = (typeof STRESS_LISTS)[number];
 
 /** A file the `upload` step hands to the composer's real file input. */
 export interface StressUpload {
@@ -243,6 +253,7 @@ const STEP_ACTIONS = [
   'expect-streaming-assistant-text',
   'upload',
   'scroll',
+  'scroll-list',
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -273,6 +284,12 @@ function problemsInStep(step: unknown, where: string): string[] {
   }
   if (action === 'scroll' && step['by'] !== undefined && step['by'] !== 'wheel') {
     problems.push(`${where}: scroll goes by wheel or not at all`);
+  }
+  if (action === 'scroll-list') {
+    if (!(STRESS_LISTS as readonly unknown[]).includes(step['target']))
+      problems.push(`${where}: scroll-list target is one of ${STRESS_LISTS.join(', ')}`);
+    if (step['to'] !== 'start' && step['to'] !== 'middle' && step['to'] !== 'end')
+      problems.push(`${where}: scroll-list goes to the start, the middle or the end`);
   }
   if (needsRole) {
     if (typeof step['role'] !== 'string' || step['role'] === '')

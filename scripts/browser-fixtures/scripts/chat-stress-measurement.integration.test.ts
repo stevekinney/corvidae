@@ -8,6 +8,7 @@ import {
   readAttachmentStripProblems,
   readCalloutGaps,
   readCalloutSpacingProblems,
+  readEdgeFadeProblems,
   readFailureSummaryProblems,
   readIconCentreProblems,
   readIconSizeProblems,
@@ -1456,6 +1457,92 @@ describe('chat stress visual measurement', () => {
     });
   });
 
+  describe('edge fade guard', () => {
+    const fadeCss = Bun.file(
+      `${import.meta.dir}/../../../components/cinder/src/styles/components/_scroll-edge-fade.css`,
+    ).text();
+
+    interface FadeOptions {
+      /** Where the strip is scrolled: its start, the middle of its overflow, or its end. */
+      readonly at?: 'start' | 'middle' | 'end' | 'fits';
+      /** The overflow attributes the attachment would have set, by edge; omitted is the right ones. */
+      readonly attributes?: readonly string[];
+      readonly marked?: boolean;
+    }
+
+    /** The real mask rules of Cinder over a strip of chips; the attributes are the attachment's. */
+    const fadePage = async (options: FadeOptions = {}): Promise<string[]> => {
+      const at = options.at ?? 'start';
+      const attributes =
+        options.attributes ??
+        {
+          start: ['data-cinder-overflows-inline-end'],
+          middle: ['data-cinder-overflows-inline-start', 'data-cinder-overflows-inline-end'],
+          end: ['data-cinder-overflows-inline-start'],
+          fits: [],
+        }[at];
+      const chips = at === 'fits' ? 2 : 12;
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 200 } });
+        await page.setContent(`
+          <style>${await fadeCss}
+            body { margin: 0; font: 13px/20px sans-serif }
+            .chat-input-attachments { display: flex; gap: 8px; list-style: none; margin: 0; padding: 0; overflow-x: auto; width: 300px }
+            .chat-input-attachments li { flex: none; width: 80px }
+          </style>
+          <ul class="chat-input-attachments" ${options.marked === false ? '' : 'data-cinder-edge-fade="inline"'} ${attributes.map((name) => `${name}=""`).join(' ')}>
+            ${Array.from({ length: chips }, (_, index) => `<li>chip ${index}</li>`).join('')}
+          </ul>`);
+        await page.evaluate((to) => {
+          const strip = document.querySelector('.chat-input-attachments')!;
+          const room = strip.scrollWidth - strip.clientWidth;
+          strip.scrollLeft = to === 'end' ? room : to === 'middle' ? room / 2 : 0;
+        }, at);
+        return await readEdgeFadeProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a strip that fades only the edge with content past it, at the start, middle and end', async () => {
+      expect(await fadePage({ at: 'start' })).toEqual([]);
+      expect(await fadePage({ at: 'middle' })).toEqual([]);
+      expect(await fadePage({ at: 'end' })).toEqual([]);
+    });
+
+    it('passes a strip whose chips all fit, which fades neither edge', async () => {
+      expect(await fadePage({ at: 'fits' })).toEqual([]);
+    });
+
+    it('fails a cut-off edge that has no fade', async () => {
+      expect(await fadePage({ at: 'start', attributes: [] })).toEqual([
+        'the attachment strip hides content past its trailing edge and does not fade it',
+      ]);
+      expect(
+        await fadePage({ at: 'middle', attributes: ['data-cinder-overflows-inline-end'] }),
+      ).toEqual(['the attachment strip hides content past its leading edge and does not fade it']);
+    });
+
+    it('fails an edge that fades with nothing hidden past it', async () => {
+      expect(
+        await fadePage({
+          at: 'end',
+          attributes: ['data-cinder-overflows-inline-start', 'data-cinder-overflows-inline-end'],
+        }),
+      ).toEqual(['the attachment strip fades its trailing edge with nothing hidden past it']);
+      expect(
+        await fadePage({ at: 'fits', attributes: ['data-cinder-overflows-inline-start'] }),
+      ).toEqual(['the attachment strip fades its leading edge with nothing hidden past it']);
+    });
+
+    it('fails a cut-off strip that never took the fade', async () => {
+      expect(await fadePage({ at: 'start', marked: false })).toEqual([
+        'the attachment strip is cut off and paints no edge fade',
+      ]);
+    });
+  });
+
   describe('attachment strip guard', () => {
     interface StripOptions {
       readonly chipHeights?: readonly number[];
@@ -1486,11 +1573,14 @@ describe('chat stress visual measurement', () => {
           .chat-attachment-preview { display: flex; align-items: center; border: 1px solid #888; padding-inline-start: 8px }
           .chat-attachment-preview-name { display: flex }
           .chat-attachment-preview-stem { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-          .chat-input-attachment-reason { display: flex; align-items: center; justify-content: space-between; width: 300px; padding-inline: ${options.actionInset ?? 0}px 0; margin: 0 }
+          /* The failure is Cinder's Callout: a bordered, padded box whose body puts the message and the action slot on one row. */
+          .chat-input-attachment-reason { box-sizing: border-box; width: 300px; margin: 0; padding: 12px; padding-inline-start: ${12 + (options.actionInset ?? 0)}px; border: 1px solid #c33 }
+          .cinder-callout__body { display: flex; align-items: center; justify-content: space-between }
+          .cinder-callout__action { display: flex; justify-content: flex-end }
           .chat-input-attachment-reason button { width: 60px; height: 24px; padding: 0 }
         </style>
         <ul class="chat-input-attachments">${heights.map(chip).join('')}</ul>
-        <p class="chat-input-attachment-reason"><span>report-0.pdf didn't upload.</span><button>Retry</button></p>`;
+        <div class="cinder-callout chat-input-attachment-reason" role="note"><div class="cinder-callout__body"><div class="cinder-callout__message"><span>report-0.pdf didn't upload.</span></div><div class="cinder-callout__action"><button>Retry</button></div></div></div>`;
     };
 
     const problemsFor = async (markup: string, coarse = false): Promise<string[]> => {
