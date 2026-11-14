@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import type { QueryClient } from '@tanstack/svelte-query';
 import {
   billingThreadWithPartialReply,
   ENDED_PARTIAL_REPLY,
@@ -22,7 +23,7 @@ import {
 } from '../../../fixtures/chat-states.ts';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
-import { createQueryClient } from '../../lib/query.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
@@ -367,10 +368,27 @@ describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
     return { ...served, release: () => release() };
   }
 
-  /** Waits until the page has read the agents and the providers, so every empty state could show. */
-  async function settledAround(calls: { method: string }[], container: HTMLElement) {
+  /** Mounts the chat with a query client the test can read. */
+  function mountWithClient() {
+    const client = createQueryClient();
+    const view = render(QueryPage, {
+      props: {
+        page: ChatConversation,
+        pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'tool-runner' },
+        client,
+      },
+    } as never);
+    return { ...view, client };
+  }
+
+  /**
+   * Waits until the page holds the agents (with their prompts) and the providers, so every empty
+   * state could show, and the transcript is drawn loading.
+   */
+  async function settledAround(client: QueryClient, container: HTMLElement) {
     await waitFor(() => {
-      expect(calls.some((call) => call.method === 'bureau.agents.list')).toBe(true);
+      expect(client.getQueryState(queryKeys.agents.list())?.status).toBe('success');
+      expect(client.getQueryState(queryKeys.hostProviders())?.status).toBe('success');
       expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull();
     });
   }
@@ -378,9 +396,9 @@ describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
   for (const hasKey of [true, false]) {
     test(`shows the transcript loading, with no empty state and no prompt, while it is read (provider ${hasKey ? 'connected' : 'missing'})`, async () => {
       const served = serveHeld(heldByPluginMessages(), hasKey);
-      const { container, queryByRole, findByRole } = mount();
+      const { container, queryByRole, findByRole, client } = mountWithClient();
 
-      await settledAround(served.calls, container);
+      await settledAround(client, container);
       expect(container.querySelector('.chat-empty')).toBeNull();
       expect(container.querySelector('[data-chat-availability="unconfigured"]')).toBeNull();
       expect(container.textContent).not.toContain(CHAT_COPY.emptyTranscript.title);
@@ -395,17 +413,18 @@ describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
       // The history arrives: the waiting approval is on screen, and the loading state is gone.
       expect(await findByRole('button', { name: 'Approve' })).not.toBeNull();
       await waitFor(() =>
-        expect(container.querySelector('[data-chat-availability="loading"]')).toBeNull(),
+        expect(container.querySelector('[data-chat-availability="loading"]') === null).toBe(true),
       );
       expect(container.querySelector('.chat-empty')).toBeNull();
+      expect(served.calls.length).toBeGreaterThan(0);
     });
   }
 
   test('an empty thread is the first-use state once its read has settled', async () => {
     const served = serveHeld([], true);
-    const { container, findByRole } = mount();
+    const { container, findByRole, client } = mountWithClient();
 
-    await settledAround(served.calls, container);
+    await settledAround(client, container);
     expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
 
     served.release();
