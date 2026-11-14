@@ -429,7 +429,7 @@ export interface WorkflowAuditEntry {
 export interface BureauWorkflows {
   /** The deployment's owner of record, which every workflow file belongs to. */
   readonly owner: string;
-  /** The step, activity, and trigger kinds this runtime supports. */
+  /** The step, activity, code workflow, and trigger kinds this runtime supports. */
   readonly catalog: () => WorkflowCatalog;
   readonly list: () => readonly WorkflowListing[];
   /**

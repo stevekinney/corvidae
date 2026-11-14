@@ -527,7 +527,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   const catalog = createTool({
     name: 'workflows-catalog',
     version: '1.0.0',
-    description: 'List the workflow step, activity, and trigger kinds this deployment supports.',
+    description:
+      'List the workflow step, activity, code workflow, and trigger kinds this deployment supports.',
     input: z.object({}),
     metadata: {
       readOnly: true,
