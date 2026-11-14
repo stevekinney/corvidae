@@ -6,6 +6,7 @@
    * run failed, ended without one, or is still going. Drawn under Input and output for a run of a
    * workflow, and under How it ran, as the raw payloads, for a run that answered a chat.
    */
+  import { Spinner } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
@@ -44,8 +45,9 @@
           {:else if workflow.status === 'cancelled' || workflow.status === 'timed-out'}
             <p class="ib-run__note">{copy.noOutputEnded(endedWords)}</p>
           {:else}
+            <!-- Cinder's spinner, hidden from assistive technology: the sentence says it all. -->
             <p class="ib-run__note">
-              <span class="ib-run__spinner" aria-hidden="true"></span>
+              <span aria-hidden="true"><Spinner size="sm" /></span>
               {copy.appearsWhenFinished}
             </p>
           {/if}

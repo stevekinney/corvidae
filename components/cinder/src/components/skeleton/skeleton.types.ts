@@ -4,10 +4,12 @@ import type { Snippet } from 'svelte';
  * Shape of a multi-line skeleton group: `'row'` stacks `lines` bars on the surrounding surface,
  * `'card'` draws them inside a bordered card beneath a heading bar, and `'list'` draws `rows`
  * rows of a status-first list (a status column, two text bars and a time bar) in a bordered
- * surface, the shape of a list of stacked list items, and `'form'` draws `rows` fields, each a
- * short label bar above a full-width control bar, the shape of a form that is still loading.
+ * surface, the shape of a list of stacked list items, `'grouped'` draws `rows` rows of a grouped
+ * list (two text bars, and a button block when `action` is set) on the one rounded surface a
+ * grouped list draws, and `'form'` draws `rows` fields, each a short label bar above a full-width
+ * control bar, the shape of a form that is still loading.
  */
-export type SkeletonVariant = 'row' | 'card' | 'list' | 'form';
+export type SkeletonVariant = 'row' | 'card' | 'list' | 'grouped' | 'form';
 
 /**
  * What stands in for a list row's status in the reserved status column: a short `'bar'` for a
@@ -33,18 +35,28 @@ export type SkeletonProps = {
   lines?: number;
   /**
    * Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the
-   * `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws
-   * `rows` fields, a label bar over a control bar each.
+   * `lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'grouped'`
+   * draws `rows` grouped-list rows; `'form'` draws `rows` fields, a label bar over a control bar
+   * each.
    * @default 'row'
    */
   variant?: SkeletonVariant;
   /**
-   * Number of fields to draw when `variant` is `'form'`, and of list rows when it is `'list'`. Each row keeps the 8rem status
+   * Number of fields to draw when `variant` is `'form'`, of list rows when it is `'list'`, and of
+   * grouped-list rows when it is `'grouped'`. A list row keeps the 8rem status
    * column reserved, then shows two text bars and a time bar, with no leading circle, so
    * nothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.
    * @default 3
    */
   rows?: number;
+  /**
+   * Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`,
+   * for a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone,
+   * the block drops under the text at full width, where the real buttons go. Ignored by other
+   * variants.
+   * @default false
+   */
+  action?: boolean;
   /**
    * What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar
    * where the status word reads; `'dot'` is a small circle where the status dot sits. The column

@@ -15,9 +15,9 @@ const schema = {
       default: 'auto',
     },
     variant: {
-      enum: ['default', 'cards', 'shared-borders'],
+      enum: ['default', 'cards', 'shared-borders', 'plain'],
       description:
-        "Visual variant; surfaced as `data-cinder-variant` for CSS styling.\n- `'default'` — a bordered resting surface, with dividers between stats when\n  `columns` is a fixed count. `columns='auto'` has no dividers: an auto-fit grid's\n  column count is unbounded, so CSS cannot tell which cells end a row.\n- `'cards'` — each stat gets a card of its own, with the one edge `edge` names.\n- `'shared-borders'` — single outer border with 1px gap dividers between stats.",
+        "Visual variant; surfaced as `data-cinder-variant` for CSS styling.\n- `'default'` — a bordered resting surface, with dividers between stats when\n  `columns` is a fixed count. `columns='auto'` has no dividers: an auto-fit grid's\n  column count is unbounded, so CSS cannot tell which cells end a row.\n- `'cards'` — each stat gets a card of its own, with the one edge `edge` names.\n- `'shared-borders'` — single outer border with 1px gap dividers between stats.\n- `'plain'` — no surface, border, padding or divider, and values a step smaller, for a\n  stat or two set in the page flow under a `Spotlight` without competing with it.",
       default: 'default',
     },
     edge: {

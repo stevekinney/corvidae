@@ -29,6 +29,28 @@ export type GroupedListItemLeadUnit =
 /** How pressing a time-led row's lead is: `urgent` reads loudest, in the warning colour; `soon` is muted. */
 export type GroupedListItemUrgency = 'urgent' | 'soon';
 
+/** A text action at the end of a row: a secondary small button, or a link drawn as one. */
+export type GroupedListItemAction = {
+  /** The visible text of the button. */
+  label: string;
+  /** Destination URL. The action renders as a link drawn as a button. */
+  href?: string;
+  /** Called when the action is chosen. */
+  onclick?: (event: MouseEvent) => void;
+  /**
+   * Whether the action is unavailable. It stays focusable and keeps `aria-disabled`, so the
+   * reason can be found; choosing it does nothing.
+   */
+  disabled?: boolean;
+  /** Why the action is unavailable, said as its description and its tooltip. */
+  disabledReason?: string;
+  /**
+   * Marks the action as one that changes something (`data-changes`), so an application that holds
+   * such controls while its server does not answer holds this one too.
+   */
+  changes?: boolean;
+};
+
 /** Props for the GroupedListItem component. */
 export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' | 'title'> & {
   /** The row's main text. With `href`, it becomes the link and the whole row is its target. */
@@ -58,6 +80,14 @@ export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' |
   trailing?: Snippet;
   /** A trailing action such as a menu button. It sits in a fixed-width column, so a changing value never moves its click target. */
   action?: Snippet;
+  /**
+   * Text actions at the end of the row, each a secondary small button (a link drawn as one when it
+   * has `href`), for a row whose action is the point of the row, such as a review waiting on you.
+   * They sit above the row's own link. In a row narrower than 26rem, as on a phone, they leave the
+   * end of the row and stack full width under its text, never collapsing into a menu, each a 44px
+   * target under a coarse pointer.
+   */
+  actions?: GroupedListItemAction[];
   /** Draws a trailing chevron. Left unset, a row with `href` draws one. */
   chevron?: boolean;
   /**

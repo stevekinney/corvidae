@@ -8,7 +8,7 @@ export type StatisticGroupColumns = 1 | 2 | 3 | 4 | 'auto';
  */
 export type StatisticGroupEdge = 'border' | 'shadow';
 /** Visual variant for the stat group container. */
-export type StatisticGroupVariant = 'default' | 'cards' | 'shared-borders';
+export type StatisticGroupVariant = 'default' | 'cards' | 'shared-borders' | 'plain';
 export type StatisticGroupProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /**
    * Optional accessible label for the whole stat set. When provided, the
@@ -27,6 +27,8 @@ export type StatisticGroupProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> 
    *   column count is unbounded, so CSS cannot tell which cells end a row.
    * - `'cards'` — each stat gets a card of its own, with the one edge `edge` names.
    * - `'shared-borders'` — single outer border with 1px gap dividers between stats.
+   * - `'plain'` — no surface, border, padding or divider, and values a step smaller, for a
+   *   stat or two set in the page flow under a `Spotlight` without competing with it.
    * @default 'default'
    */
   variant?: StatisticGroupVariant;
@@ -62,6 +64,8 @@ export interface StatisticGroupSchemaProps {
    *   column count is unbounded, so CSS cannot tell which cells end a row.
    * - `'cards'` — each stat gets a card of its own, with the one edge `edge` names.
    * - `'shared-borders'` — single outer border with 1px gap dividers between stats.
+   * - `'plain'` — no surface, border, padding or divider, and values a step smaller, for a
+   *   stat or two set in the page flow under a `Spotlight` without competing with it.
    * @default 'default'
    */
   variant?: StatisticGroupVariant;
