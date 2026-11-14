@@ -21,6 +21,7 @@
    * @a11yNote J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken.
    */
   export type {
+    ListDetailHeaderContext,
     ListDetailListBodyContext,
     ListDetailProps,
     ListDetailRowContext,
@@ -30,6 +31,8 @@
 </script>
 
 <script lang="ts" generics="T">
+  import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
+  import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
   import { tick, untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -51,10 +54,13 @@
     LIST_PANE_MINIMUM_WIDTH,
     moveCursor,
     ownsTypedKeys,
+    readStoredListCollapsed,
     readStoredListWidth,
     resolveStorage,
+    writeStoredListCollapsed,
     writeStoredListWidth,
   } from './list-detail-state.ts';
+  import { Tooltip } from '../tooltip/index.ts';
   import { LIST_DETAIL_SHORTCUTS } from './list-detail.constants.ts';
   import type { ListDetailProps } from './list-detail.types.ts';
 
@@ -88,6 +94,10 @@
     defaultListWidth = 280,
     maximumListWidth = 560,
     flushDetail = false,
+    listCollapsible = false,
+    listCollapsed = $bindable(false),
+    collapseListLabel = 'Hide list',
+    expandListLabel = 'Show list',
     backLabel = 'Back',
     backVisible = true,
     detailLabel = 'Details',
@@ -129,6 +139,25 @@
   const narrow = $derived(rootWidth > 0 && rootWidth < pushBelow);
   // Wide enough to show both panes, too narrow to put them side by side: the detail sits under the list.
   const below = $derived(!narrow && rootWidth > 0 && rootWidth < stackBelow);
+
+  // A hidden list is remembered beside the divider, and the remembered choice wins on mount.
+  untrack(() => {
+    if (!listCollapsible) return;
+    const stored = readStoredListCollapsed(resolveStorage(storage), storageKey);
+    if (stored !== null) listCollapsed = stored;
+  });
+  // The list is hidden only beside an open item, where both panes could show: one pane at a time
+  // has nothing to hide, and with nothing open the list is all there is to choose from.
+  const toggleShown = $derived(listCollapsible && !narrow && selectedEntry !== undefined);
+  const collapsed = $derived(toggleShown && listCollapsed);
+
+  /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
+  async function setListCollapsed(next: boolean): Promise<void> {
+    listCollapsed = next;
+    writeStoredListCollapsed(resolveStorage(storage), storageKey, next);
+    await tick();
+    rootElement?.querySelector<HTMLElement>('.cinder-list-detail__list-toggle')?.focus();
+  }
 
   // The divider starts where it was left. This is read when the panels mount, not on every render:
   // later drags are the person's, not a prop's, so a new `defaultListWidth` does not move a divider
@@ -270,7 +299,14 @@
 
   async function open(rowKey: string): Promise<void> {
     setSelection(rowKey);
-    if (!narrow) return;
+    if (!narrow) {
+      // A list left hidden hides again once an item is open, taking the row that had focus with it,
+      // so focus moves to the toggle that brings the list back.
+      if (!collapsed) return;
+      await tick();
+      rootElement?.querySelector<HTMLElement>('.cinder-list-detail__list-toggle')?.focus();
+      return;
+    }
     // The list is gone below `pushBelow`, so focus moves to the first control of the detail.
     await tick();
     (
@@ -322,7 +358,14 @@
     onkeydown={handleKeydown}
   >
     {#if header}
-      <header class="cinder-list-detail__header">{@render header()}</header>
+      <!-- The host places the toggle, so the header keeps its width for the search and filter. -->
+      <header class="cinder-list-detail__header">
+        {@render header({ listToggle: toggleShown ? listToggle : undefined })}
+      </header>
+    {:else if toggleShown}
+      <header class="cinder-list-detail__header" data-cinder-list-toggle="">
+        {@render listToggle()}
+      </header>
     {/if}
     <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
       {#if loading}
@@ -361,6 +404,26 @@
       {/if}
     </div>
   </section>
+{/snippet}
+
+{#snippet listToggle()}
+  {@const label = collapsed ? expandListLabel : collapseListLabel}
+  <Tooltip text={label} describe={false}>
+    <Button
+      variant="ghost"
+      size="sm"
+      iconOnly
+      aria-label={label}
+      class="cinder-list-detail__list-toggle"
+      onclick={() => void setListCollapsed(!collapsed)}
+    >
+      {#if collapsed}
+        <PanelLeftOpen class="cinder-icon-md" aria-hidden="true" />
+      {:else}
+        <PanelLeftClose class="cinder-icon-md" aria-hidden="true" />
+      {/if}
+    </Button>
+  </Tooltip>
 {/snippet}
 
 {#snippet detailPane()}
@@ -407,6 +470,7 @@
   data-cinder-layout={narrow ? 'stacked' : below ? 'below' : 'split'}
   data-cinder-flush-detail={flushDetail ? '' : undefined}
   data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
+  data-cinder-list-collapsed={collapsed ? '' : undefined}
 >
   {#if narrow}
     {#if selectedEntry}
@@ -416,18 +480,33 @@
     {/if}
   {:else if below}
     <div class="cinder-list-detail__below">
-      {@render listPane()}
+      {#if collapsed}
+        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+      {:else}
+        {@render listPane()}
+      {/if}
       {@render detailPane()}
     </div>
   {:else}
-    <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
-      {#snippet children(pane)}
-        {#if pane.id === 'list'}
-          {@render listPane()}
-        {:else}
-          {@render detailPane()}
-        {/if}
-      {/snippet}
-    </ResizablePanels>
+    <!-- Hiding the list keeps the panels, and the open item in them, mounted: the list pane and
+         the divider are out of the layout and the list is not drawn, so nothing in it can take
+         focus, and the rail beside them keeps the way back. An open item that mounted again
+         would read its data again and could take focus for itself. -->
+    <div class="cinder-list-detail__split">
+      {#if collapsed}
+        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+      {/if}
+      <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
+        {#snippet children(pane)}
+          {#if pane.id === 'list'}
+            {#if !collapsed}
+              {@render listPane()}
+            {/if}
+          {:else}
+            {@render detailPane()}
+          {/if}
+        {/snippet}
+      </ResizablePanels>
+    </div>
   {/if}
 </div>

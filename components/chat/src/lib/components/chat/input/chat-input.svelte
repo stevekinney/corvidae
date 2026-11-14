@@ -2145,32 +2145,41 @@
     grid-row: 1;
   }
 
+  /* The composer is elevated (COR-2327 AC2, owner decision 2026-11-13): it floats on a shadow, with
+   * a large radius and no outline. Its 1 px border stays, transparent, so a drag can dash it and
+   * forced colours can draw it. Focus in the box draws the focus ring around the whole composer;
+   * a draft that would send says so with Send filled with the accent, not with the box's edge. */
   .chat-input {
+    --_chat-input-radius: calc(var(--cinder-radius-lg) * 2);
     position: relative;
     container-type: inline-size;
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-0-5, 0.125rem);
     background: var(--cinder-control-background);
-    border: 1px solid var(--cinder-control-border);
-    border-radius: var(--cinder-radius-lg);
+    border: 1px solid transparent;
+    border-radius: var(--_chat-input-radius);
+    box-shadow: var(--cinder-shadow-md);
     padding: var(--cinder-space-0-5, 0.125rem) 0;
     padding-block-end: var(--cinder-space-0-5, 0.125rem);
-    transition: border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+    transition: box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
   .chat-input:has(.chat-input-editor:focus) {
-    border-color: var(--cinder-accent-solid);
+    box-shadow:
+      var(--cinder-shadow-md),
+      0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
 
-  .chat-input:has(.chat-input-editor:focus):not([data-ready]) {
-    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
-  }
+  @media (forced-colors: active) {
+    .chat-input {
+      border-color: CanvasText;
+    }
 
-  /* Ready to send: the accent border with a 3 px ring around it, and Send filled with the accent. */
-  .chat-input[data-ready] {
-    border-color: var(--cinder-accent-solid);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--cinder-accent-solid) 25%, transparent);
+    .chat-input:has(.chat-input-editor:focus) {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+    }
   }
 
   /* A notice above the box (offline, a restored draft, a blocking reason) is Cinder's Callout, one
@@ -2215,7 +2224,7 @@
     justify-items: center;
     gap: var(--cinder-space-2);
     border: 2px dashed var(--cinder-accent-solid);
-    border-radius: calc(var(--cinder-radius-lg) - var(--cinder-space-1));
+    border-radius: calc(var(--_chat-input-radius) - var(--cinder-space-1));
     background: color-mix(in oklch, var(--cinder-surface-raised), transparent 8%);
     color: var(--cinder-text-default);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
@@ -2578,10 +2587,6 @@
     gap: var(--cinder-space-2) var(--cinder-space-3);
     padding-block: var(--cinder-space-2);
     padding-inline: var(--cinder-space-3);
-  }
-
-  .chat-input-blocked:focus-within {
-    border-color: var(--cinder-control-border);
   }
 
   /* The glyph and the reason are one unit: the reason wraps beside the glyph, never under it, and

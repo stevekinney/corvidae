@@ -65,6 +65,12 @@ export type OperationMcpMountOptions = {
    * as a tool is ignored.
    */
   readonly toolMeta?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /**
+   * Metadata attached as `_meta` to every tool that has no `toolMeta` entry, such as the
+   * `ui.visibility` that keeps a tool from MCP App pages. An entry replaces it whole; the two are
+   * never merged. Absent, such a tool's listing carries no `_meta`.
+   */
+  readonly defaultToolMeta?: Readonly<Record<string, unknown>>;
 };
 
 /**
@@ -157,8 +163,9 @@ export function createOperationMcpMount(
   const serverInfo = { name: 'weft', title: 'Weft', version: VERSION, ...options.serverInfo };
   const resources = validatedResources(options.resources ?? []);
   const toolMeta = options.toolMeta ?? {};
+  const metaOf = (name: string) => toolMetaOf(toolMeta, options.defaultToolMeta, name);
   const handler = createMcpHandler(
-    (request) => buildServer(contextOf(request), serverInfo, limits, resources, toolMeta),
+    (request) => buildServer(contextOf(request), serverInfo, limits, resources, metaOf),
     {
       legacy: 'stateless',
       maxRequestBodySize: options.maxBodyBytes ?? DEFAULT_MCP_MAX_BODY_BYTES,
@@ -257,7 +264,7 @@ function buildServer(
   serverInfo: { readonly name: string; readonly title?: string; readonly version: string },
   limits: CollectionLimits,
   resources: readonly OperationMcpResource[],
-  toolMeta: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  metaOf: (name: string) => { _meta?: Record<string, unknown> },
 ): McpServer {
   const server = new McpServer(serverInfo, {
     capabilities: resources.length === 0 ? { tools: {} } : { tools: {}, resources: {} },
@@ -275,7 +282,7 @@ function buildServer(
           readOnlyHint: !operation.destructive && operation.kind === 'subscription',
           destructiveHint: operation.destructive,
         },
-        ...toolMetaOf(toolMeta, operation.name),
+        ...metaOf(operation.name),
       },
       async (input, handlerContext) =>
         operation.kind === 'subscription'
@@ -383,8 +390,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function toolMetaOf(
   toolMeta: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  defaultToolMeta: Readonly<Record<string, unknown>> | undefined,
   name: string,
 ): { _meta?: Record<string, unknown> } {
-  const meta = Object.hasOwn(toolMeta, name) ? toolMeta[name] : undefined;
+  const meta = Object.hasOwn(toolMeta, name) ? toolMeta[name] : defaultToolMeta;
   return meta === undefined ? {} : { _meta: { ...meta } };
 }

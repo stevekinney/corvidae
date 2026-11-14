@@ -115,6 +115,50 @@ describe('uploadAsset', () => {
     expect(decoded).toEqual([UPLOAD_CHUNK_BYTES, UPLOAD_CHUNK_BYTES, 5]);
   });
 
+  test('reports the fraction of the file the Bureau has acknowledged, after each append', async () => {
+    const progress: number[] = [];
+    const answered: number[] = [];
+    const { calls, send } = bureau({
+      ...happy,
+      'bureau.assets.uploads.append': () => {
+        answered.push(progress.length);
+        return ok(view());
+      },
+    });
+    const size = UPLOAD_CHUNK_BYTES * 2 + UPLOAD_CHUNK_BYTES / 2;
+
+    await uploadAsset(png(size), {
+      fetch: send,
+      onProgress: (fraction) => progress.push(fraction),
+    });
+
+    expect(progress).toEqual([0.4, 0.8, 1]);
+    // Each fraction is heard only once its append has answered, and none before the first.
+    expect(answered).toEqual([0, 1, 2]);
+    expect(calls.at(-1)?.method).toBe('bureau.assets.uploads.complete');
+  });
+
+  test('reports no progress past what was acknowledged when an append fails', async () => {
+    const progress: number[] = [];
+    let appends = 0;
+    const { send } = bureau({
+      ...happy,
+      'bureau.assets.uploads.append': () => {
+        appends += 1;
+        return appends === 2 ? fault(503, 'Unavailable') : ok(view());
+      },
+    });
+
+    await failure(
+      uploadAsset(png(UPLOAD_CHUNK_BYTES * 4), {
+        fetch: send,
+        onProgress: (fraction) => progress.push(fraction),
+      }),
+    );
+
+    expect(progress).toEqual([0.25]);
+  });
+
   test('stops at once, sends no more bytes, and aborts the open upload, when the signal aborts', async () => {
     const controller = new AbortController();
     const signals: Array<AbortSignal | null | undefined> = [];

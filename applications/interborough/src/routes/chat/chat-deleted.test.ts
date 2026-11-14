@@ -31,29 +31,43 @@ function composerOf(view: Mounted): HTMLTextAreaElement {
   return view.getByRole('textbox', { name: /message/i }) as HTMLTextAreaElement;
 }
 
+/** Chat's deleted availability state, when it is drawn. */
+function deletedState(view: Mounted): HTMLElement | null {
+  return view.container.querySelector<HTMLElement>('[data-chat-availability="deleted"]');
+}
+
+async function untilDeleted(view: Mounted): Promise<void> {
+  await waitFor(() => expect(deletedState(view)).not.toBeNull());
+}
+
 function gone(): never {
   throw new StubFault('NotFound', 404, 'No such context.');
 }
 
 describe('a chat deleted while its page is open', () => {
-  test('closes the composer and offers the way back when the chats are read again', async () => {
+  test('is Chat’s deleted state, with no composer and All conversations, when the chats are read again', async () => {
     let deleted = false;
     const served = serve(TURNS, {
       'bureau.contexts.get': () => (deleted ? gone() : CONTEXT),
     });
     const view = mount();
     await view.findByText('Second answer');
-    expect(view.queryByTestId('chat-gone')).toBeNull();
+    expect(deletedState(view)).toBeNull();
 
     // What `session.deleted` does: the chats are invalidated and read again.
     deleted = true;
     await view.client.invalidateQueries({ queryKey: ['contexts'] });
 
-    const notice = await view.findByTestId('chat-gone');
+    // COR-2285 V3: the deleted state stands in the transcript's place, and the composer is gone.
+    await untilDeleted(view);
+    const notice = deletedState(view)!;
     expect(within(notice).getByText(CHAT_COPY.gone.title)).not.toBeNull();
-    expect(composerOf(view).readOnly).toBe(true);
+    expect(within(notice).getByText(CHAT_COPY.gone.description)).not.toBeNull();
+    expect(view.queryByRole('textbox', { name: /message/i })).toBeNull();
     expect(served.runs).toHaveLength(0);
-    await fireEvent.click(within(notice).getByRole('button', { name: CHAT_COPY.gone.back }));
+    const back = within(notice).getByRole('button', { name: CHAT_COPY.load.allConversations });
+    expect(back.getAttribute('data-cinder-variant')).toBe('primary');
+    await fireEvent.click(back);
     expect(router.pathname).toBe('/chats');
   });
 
@@ -67,7 +81,7 @@ describe('a chat deleted while its page is open', () => {
 
     deleted = true;
     await view.client.invalidateQueries({ queryKey: ['contexts'] });
-    await view.findByTestId('chat-gone');
+    await untilDeleted(view);
 
     expect(view.queryByRole('button', { name: /edit/i })).toBeNull();
     expect(served.runs).toHaveLength(0);
@@ -91,7 +105,7 @@ describe('a chat deleted while its page is open', () => {
     await fireEvent.input(box, { target: { value: 'Still there?' } });
     await fireEvent.keyDown(box, { key: 'Enter' });
 
-    expect(await view.findByTestId('chat-gone')).not.toBeNull();
+    await untilDeleted(view);
     expect(served.runs).toHaveLength(1);
   });
 
@@ -105,7 +119,7 @@ describe('a chat deleted while its page is open', () => {
     await fireEvent.keyDown(box, { key: 'Enter' });
     await waitFor(() => expect(box.value).toBe(''));
 
-    expect(view.queryByTestId('chat-gone')).toBeNull();
+    expect(deletedState(view)).toBeNull();
   });
 });
 
