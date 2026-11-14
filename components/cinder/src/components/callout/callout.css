@@ -380,8 +380,14 @@
       flex: 1 1 100%;
     }
 
+    /* A message that shares its row with the action takes only the width of its words, so the
+     * action sits beside it while both fit and drops under it, at the trailing edge, when not. */
+    .cinder-callout--fit-action > .cinder-callout__body > .cinder-callout__message {
+      flex: 0 1 auto;
+    }
+
     /* The action drops under the message, so the message is not the last ink: the button is. */
-    .cinder-callout:not(.cinder-callout--beside-action)
+    .cinder-callout:not(.cinder-callout--beside-action, .cinder-callout--fit-action)
       .cinder-callout__body
       > .cinder-callout__message {
       margin-block-end: 0;

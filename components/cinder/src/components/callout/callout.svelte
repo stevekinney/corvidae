@@ -70,6 +70,7 @@
     'cinder-callout',
     actionLayout !== 'stacked' && 'cinder-callout--inline-action',
     actionLayout === 'beside' && 'cinder-callout--beside-action',
+    actionLayout === 'fit' && 'cinder-callout--fit-action',
     icon && 'cinder-callout--with-icon',
     onDismiss && 'cinder-callout--dismissible',
     variant !== 'neutral' && 'cinder-_status-surface',

@@ -94,8 +94,8 @@ export type CalloutProps = Omit<
    * itself stays static.
    */
   action?: Snippet;
-  /** Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. `beside` keeps one icon-only action at the trailing end of the message at every width, so a phone's callout is not made a row taller by a glyph. */
-  actionLayout?: 'stacked' | 'inline' | 'beside';
+  /** Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. `beside` keeps one icon-only action at the trailing end of the message at every width, so a phone's callout is not made a row taller by a glyph. `fit` is `inline` that keeps its action beside the message at every width, a phone's too, while both fit in one row, and drops it under the message, at the trailing edge, only when they cannot. */
+  actionLayout?: 'stacked' | 'inline' | 'beside' | 'fit';
   /**
    * Optional progress line rendered under the message inside the content column, usually a small
    * `Progress`. It is decorative to the callout: give the Progress its own accessible name.
