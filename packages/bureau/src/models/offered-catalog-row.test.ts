@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
-import { type BackendDescriptor, createModelCatalog } from '@lostgradient/operative';
+import { type BackendDescriptor } from '@lostgradient/operative';
 
 import { allowedDescriptorsOfFileAgent, resolveModelDescriptor } from '../agent-file-catalog';
 import { findCatalogRow, findDecisionRow, isOfferedCatalogRow } from './create-models';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
-const seed = createModelCatalog().descriptors.find((row) => row.provider === 'anthropic')!;
+const seed = createVendorCatalog().descriptors.find((row) => row.provider === 'anthropic')!;
 
 function row(model: string, lifecycle?: 'retired'): BackendDescriptor {
   return {

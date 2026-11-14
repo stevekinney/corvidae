@@ -18,6 +18,7 @@ import {
 import type { Bureau } from '../bureau-types/facade.ts';
 import { decisionValidator } from './decision-validator.ts';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const bureaus: Bureau[] = [];
 afterEach(async () => {
@@ -51,7 +52,7 @@ async function openGoalBureau(replies: readonly string[], validator = judge().va
     storage: new MemoryStorage(),
     durable: true,
     agents: { worker: workerAgent(answering('an answer')) },
-    models: { generate: () => generate },
+    models: { catalog: createVendorCatalog().descriptors, generate: () => generate },
     validators: [validator],
   });
   bureaus.push(bureau);

@@ -35,6 +35,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const CHILD = join(import.meta.dir, 'test', 'agent-file-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -105,6 +106,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         // The tool catalog is the deployment's, so it is the same after the restart.
         agentSource: agentFileDirectory(agents, { tools: { 'lookup-order': lookupTool } }),
         models: {
+          catalog: createVendorCatalog().descriptors,
           generate:
             (descriptor) =>
             async ({ toolbox }) => {
@@ -216,7 +218,10 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       bureau = await createBureau<AgentDefinitions>({
         agents: {},
         agentSource: agentFileDirectory(agents, { tools: { 'lookup-order': lookupTool } }),
-        models: { generate: () => async () => ({ content: 'unused', toolCalls: [] }) },
+        models: {
+          catalog: createVendorCatalog().descriptors,
+          generate: () => async () => ({ content: 'unused', toolCalls: [] }),
+        },
         storage: await store.reopen(),
         durable: true,
         // The recovered task keeps the grant it started with, whatever this option says (COR-1710).

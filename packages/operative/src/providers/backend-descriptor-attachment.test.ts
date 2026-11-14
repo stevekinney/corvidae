@@ -5,16 +5,16 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { createFixtureCatalog } from '../testing/model-catalog.test-support.ts';
 import { readBackendDescriptors, withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import type { BackendDescriptor } from './model-catalog.ts';
-import { createModelCatalog } from './model-catalog.ts';
 import type { GenerateFunction } from './types.ts';
 
 const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
 function anthropicDescriptor() {
-  const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
-    (row) => row.provider === 'anthropic',
+  const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
+    (row) => row.provider === 'alpha',
   );
   if (!descriptor)
     throw new Error('expected at least one anthropic descriptor in the seed catalog');

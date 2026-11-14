@@ -5,7 +5,6 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   type GenerateContext,
   type GuardrailsOptions,
   MediaAdmissionError,
@@ -25,13 +24,14 @@ import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './bureau-types/facade';
 import { runTask } from './test';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
 });
 
-const anthropicDescriptors = createModelCatalog().descriptors.filter(
+const anthropicDescriptors = createVendorCatalog().descriptors.filter(
   (descriptor) => descriptor.provider === 'anthropic',
 );
 

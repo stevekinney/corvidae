@@ -14,10 +14,10 @@ import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../src/providers/backend-descriptor-attachment';
-import { createModelCatalog } from '../src/providers/model-catalog';
 import { withStreaming } from '../src/streaming';
 import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
+import { createFixtureCatalog } from '../src/testing/model-catalog.test-support.ts';
 import type { GenerateContext, GenerateResponse, StreamingGenerateFunction } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 
@@ -121,7 +121,7 @@ describe('withStreaming', () => {
   });
 
   it('propagates the wrapped function’s attached BackendDescriptor(s) (AB-64, AB-245)', () => {
-    const descriptor = createModelCatalog().descriptors.find((d) => d.provider === 'anthropic');
+    const descriptor = createFixtureCatalog().descriptors.find((d) => d.provider === 'alpha');
     if (!descriptor) throw new Error('expected at least one anthropic seed descriptor');
     const streamingGenerate: StreamingGenerateFunction = withBackendDescriptors(
       async ({ streaming }) => {

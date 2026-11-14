@@ -5,7 +5,6 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   GeneratedMediaNotAdmittedError,
   type GenerateContext,
   type GenerateResponse,
@@ -27,6 +26,7 @@ import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 /** A backend whose descriptor advertises image output, which no catalog row does. */
-const imageOutputDescriptors = createModelCatalog()
+const imageOutputDescriptors = createVendorCatalog()
   .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
   .slice(0, 1)
   .map((descriptor) => ({

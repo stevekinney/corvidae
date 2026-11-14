@@ -1,11 +1,7 @@
 import { MemoryStorage } from '@lostgradient/storage';
 import { decode, encode, KEYS } from '@lostgradient/weft';
 import type { DurableRunDeps } from '@lostgradient/operative';
-import {
-  createModelCatalog,
-  readBackendDescriptors,
-  withBackendDescriptors,
-} from '@lostgradient/operative';
+import { readBackendDescriptors, withBackendDescriptors } from '@lostgradient/operative';
 import { Conversation } from 'conversationalist';
 import {
   createTool,
@@ -24,6 +20,7 @@ import {
   recoverRunWorkspaceAuthority,
   validateRunWorkspaceAuthority,
 } from './run-authority.ts';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 function directory() {
   let membership: WorkspaceMembership | null = {
@@ -257,7 +254,7 @@ it('retains provider media descriptors through session and catalog admission gua
       workspace: authority,
     },
   };
-  const descriptors = createModelCatalog()
+  const descriptors = createVendorCatalog()
     .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
     .slice(0, 1);
   expect(descriptors.length).toBe(1);

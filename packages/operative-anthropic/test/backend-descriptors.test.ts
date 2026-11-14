@@ -12,9 +12,9 @@ import { Conversation } from 'conversationalist';
 import {
   type BackendDescriptor,
   type GenerateContext,
-  createModelCatalog,
   readBackendDescriptors,
 } from '@lostgradient/operative/provider-kit';
+import { anthropicRows } from '../src/anthropic-catalog.ts';
 import { createAnthropicProvider, createAnthropicProviderStream } from '../src/anthropic.ts';
 import {
   anthropicStreamTextEvents,
@@ -30,11 +30,11 @@ function makeContext(): GenerateContext {
 }
 
 // The provider factories under test read the wall clock through
-// `createModelCatalog`'s default `now`, same as this helper — so every
+// `anthropicRows`'s default `freshness`, same as this helper — so every
 // comparison below strips `freshness` rather than pinning it, and asserts
 // separately that it is a well-formed ISO timestamp.
 function seedDescriptor(provider: 'anthropic' | 'openai' | 'gemini', model: string) {
-  return createModelCatalog().descriptors.find(
+  return anthropicRows().find(
     (descriptor) => descriptor.provider === provider && descriptor.model === model,
   );
 }

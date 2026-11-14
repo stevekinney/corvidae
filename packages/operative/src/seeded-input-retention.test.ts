@@ -14,8 +14,9 @@ import { createCheckpointStore } from './durable/checkpoint-store';
 import { createRunEngine } from './durable/create-run-engine';
 import { createRunWorkflow } from './durable/run-workflow';
 import { executeLoop } from './loop';
-import { createModelCatalog, withBackendDescriptors } from './providers/index';
+import { withBackendDescriptors } from './providers/index';
 import { createScriptedMediaAdmitter } from './testing/generated-media.test-support';
+import { createFixtureCatalog } from './testing/model-catalog.test-support.ts';
 import type { ContentSourceResolver, GenerateContext, RunOptions } from './types';
 
 const suppliedImage: MultiModalContent = {
@@ -33,8 +34,8 @@ const resolver: ContentSourceResolver = async () => ({
 });
 
 /** A backend whose descriptors admit image input, which a plain `generate` does not advertise. */
-const imageInputDescriptors = createModelCatalog().descriptors.filter(
-  (descriptor) => descriptor.provider === 'anthropic',
+const imageInputDescriptors = createFixtureCatalog().descriptors.filter(
+  (descriptor) => descriptor.provider === 'alpha',
 );
 
 function optionsWith(

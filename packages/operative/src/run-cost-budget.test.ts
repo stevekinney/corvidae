@@ -423,9 +423,15 @@ describe('spend a step folds in before it finishes', () => {
 });
 
 describe('a model set to null in customPricing', () => {
-  it('has no price, even one the built-in table knows (COR-1921)', () => {
-    expect(getModelPricing('gpt-4.1')).toBeDefined();
-    expect(getModelPricing('gpt-4.1', { customPricing: { 'gpt-4.1': null } })).toBeUndefined();
+  it('has no price, even beside models the same table prices (COR-1921)', () => {
+    const customPricing = { priced: PRICING.customPricing.cheap, unpriced: null };
+    expect(getModelPricing('priced', { customPricing })).toBe(PRICING.customPricing.cheap);
+    expect(getModelPricing('unpriced', { customPricing })).toBeUndefined();
+    expect(getModelPricing('absent', { customPricing })).toBeUndefined();
+  });
+
+  it('is unpriced when no pricing is given: Operative holds no price of its own', () => {
+    expect(getModelPricing('priced')).toBeUndefined();
   });
 });
 

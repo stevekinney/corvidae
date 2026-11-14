@@ -3,15 +3,12 @@
  * providers share one model name, and a generate function that records the model each step was
  * told to use and can hold its first step open while a test steers.
  */
-import {
-  type BackendDescriptor,
-  createModelCatalog,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, type GenerateFunction } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { z } from 'zod';
 
 import type { ModelsOptions } from '../models/create-models.ts';
+import { createVendorCatalog } from './vendor-catalog.test-support';
 
 /** A catalog row, named the way a model override names it. */
 export interface ModelChoice {
@@ -35,7 +32,7 @@ export function modelsOf(descriptors: readonly BackendDescriptor[]): ModelsOptio
  * two providers share the model name `claude-opus-5-5`.
  */
 export function twinModels(): ModelsOptions {
-  const rows = createModelCatalog().descriptors;
+  const rows = createVendorCatalog().descriptors;
   const original = rows.find(
     (row) => row.provider === OPUS_5_5.provider && row.model === OPUS_5_5.model,
   );
