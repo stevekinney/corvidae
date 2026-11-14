@@ -187,10 +187,6 @@
     }
   }
 
-  .cinder-skeleton-group[data-cinder-variant='list'] > .cinder-skeleton-status {
-    justify-content: center;
-  }
-
   /* Grouped variant: the placeholder for a grouped list. The same rounded raised surface the
    * list draws, no border, and rows whose separator is the bottom edge of their content, so it
    * starts at the text as the real rows' does. Each row holds two text bars and, for a list whose
@@ -258,8 +254,9 @@
     border-radius: var(--cinder-button-radius-sm);
   }
 
-  /* A row narrower than 26rem stacks its real buttons full width under the text (GroupedListItem's
-   * own container query), so the block does too, at the same width. */
+  /* A row narrower than 26rem drops its real buttons under the text at their own width, from the
+   * text's leading edge (GroupedListItem's own container query), so the block does too: the text
+   * takes the whole first line, and the block keeps its 5.25rem at the start of the next. */
   .cinder-skeleton-grouped-row--action {
     container: cinder-skeleton-grouped-row / inline-size;
   }
@@ -269,18 +266,9 @@
       flex-wrap: wrap;
     }
 
-    .cinder-skeleton-grouped-row--action .cinder-skeleton-action-bar {
+    .cinder-skeleton-grouped-row--action .cinder-skeleton-grouped-text {
       flex-basis: 100%;
     }
-  }
-
-  .cinder-skeleton-group[data-cinder-variant='grouped'] > .cinder-skeleton-status {
-    justify-content: center;
-  }
-
-  /* A page's own placeholder has its status line centred under it as well. */
-  .cinder-skeleton-group[data-cinder-variant='custom'] > .cinder-skeleton-status {
-    justify-content: center;
   }
 
   .cinder-skeleton-heading {
@@ -289,6 +277,8 @@
     margin-block-end: var(--cinder-space-1);
   }
 
+  /* The status line leads its group, at the inline start, above the placeholders: after a long
+   * wait it is the first thing in view, never cut off below a page of placeholders (COR-2329). */
   .cinder-skeleton-status {
     display: flex;
     align-items: center;

@@ -53,7 +53,7 @@
 
 <div class="ib-home" data-page="home" data-mode={mode} aria-busy={busy ? 'true' : undefined}>
   <p class="ib-home__date" data-testid="home-date">{@render date()}</p>
-  {#if focus}{@render focus()}{/if}
+  {#if focus}<div class="ib-home__focus">{@render focus()}</div>{/if}
   <div class="ib-home__columns">
     <div class="ib-home__main">
       {#if primary}<div class="ib-home__needs-you">{@render primary()}</div>{/if}
@@ -100,6 +100,12 @@
     order: 1;
   }
 
+  /* With nothing waiting the Spotlight says so alone and the list draws nothing, so its place takes
+   * no gap either. */
+  .ib-home__needs-you:not(:has(*)) {
+    display: none;
+  }
+
   .ib-home__running {
     order: 2;
   }
@@ -119,6 +125,14 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) 23.75rem;
       align-items: start;
+    }
+
+    /* The Spotlight is the title of the Needs you list in the wide column, so its line, and the
+     * link to Reviews at the end of it, is that column's width: the link ends where the list does. */
+    .ib-home__focus {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 23.75rem;
+      column-gap: var(--cinder-space-8);
     }
 
     .ib-home__main {

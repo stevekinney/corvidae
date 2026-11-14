@@ -30,6 +30,8 @@ Inline text link with consistent focus ring and underline behavior.
 </ul>
 ```
 
+`variant="more"` is the way out of a section or an empty row to the page that holds the rest, such as "Open Reviews" in a `Section`'s `actions`: small regular text with a chevron after the words, on one line, so it never reads louder than the heading beside it. Its face is the text's own; under a coarse pointer it reaches a 44px hit area that takes no layout, as a compact button does.
+
 ## Guidance
 
 ### Use When
@@ -53,6 +55,7 @@ Inline text link with consistent focus ring and underline behavior.
 | `href` | `string` | no | — | The URL the link points to. Optional ONLY because a `disabled` link renders a `<span>` with no href. For any enabled (non-disabled) link you must provide it — an `<a>` without `href` is not keyboard-focusable and is not exposed as a link to assistive technology, so an enabled Link without `href` is a bug, not a feature. |
 | `rel` | `string` \| `null` | no | — | Forwarded to the rendered `<a>`. `"noopener noreferrer"` is merged in whenever the link opens in a new tab — `external` is true OR the resolved target is `"_blank"` (case-insensitive) — and the whole value is de-duplicated case-insensitively. |
 | `underline` | `"always"` \| `"hover"` \| `"none"` | no | `"hover"` | Controls text-decoration behavior. - `'always'` — underline is always visible. - `'hover'` — underline appears on hover and focus (default). - `'none'` — underline is never shown. |
+| `variant` | `"inline"` \| `"more"` | no | `"inline"` | The link's form. - `'inline'` — a link in running text, at the text's own size and weight. - `'more'` — a link out to the page that holds the rest, such as "Open Reviews" beside a section's title or at the end of an empty row: small regular text with a chevron after it, on one line, and a 44px hit area under a coarse pointer that takes no layout. |
 | `children` | `(opaque)` | yes | — | The link text or composed content. Required. Not expressible in JSON Schema; see the component types for the signature. |
 | `target` | `(opaque)` | no | — | Forwarded to the rendered `<a>`. `external` supplies `"_blank"` only when no target is given. Not expressible in JSON Schema; see the component types for the signature. |
 

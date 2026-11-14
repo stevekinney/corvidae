@@ -33,6 +33,7 @@
     label,
     disabled,
     readonly = false,
+    pending = false,
     description,
     descriptionVisible = true,
     descriptionPlacement = 'inline',
@@ -78,9 +79,10 @@
   );
 
   // A read-only switch keeps its place in the tab order and its value in the form, but a press
-  // changes nothing: it shows a setting that something else owns.
+  // changes nothing: it shows a setting that something else owns. A pending switch is the same
+  // until the read or the change it waits on is done.
   function toggle(): void {
-    if (!resolvedDisabled && !staleInert && !readonly) {
+    if (!resolvedDisabled && !staleInert && !readonly && !pending) {
       commitValue(
         !checked,
         onValueChangeRequest,
@@ -104,11 +106,13 @@
     aria-describedby={describedBy}
     aria-readonly={readonly ? 'true' : undefined}
     disabled={resolvedDisabled}
-    aria-disabled={staleInert ? 'true' : undefined}
+    aria-disabled={staleInert || pending ? 'true' : undefined}
+    aria-busy={pending ? 'true' : undefined}
     onclick={toggle}
     class={classNames('cinder-toggle', customClassName)}
     data-cinder-checked={checked ? '' : undefined}
     data-cinder-readonly={readonly ? '' : undefined}
+    data-cinder-pending={pending ? '' : undefined}
   >
     <span aria-hidden="true" class="cinder-toggle__thumb"></span>
   </button>

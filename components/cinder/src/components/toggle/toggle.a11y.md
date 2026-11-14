@@ -15,6 +15,7 @@ For command-style toggle buttons such as bold, italic, mute, or selected toolbar
 | `aria-checked` | `"true"` \| `"false"` | Communicates whether the switch is on or off. |
 | `aria-labelledby` | id of the rendered label span | Names the switch from the always-present visible (or visually-hidden) label. |
 | `disabled` | present (when `disabled=true`) | Prevents pointer and keyboard activation and removes from tab order. |
+| `aria-busy`, `aria-disabled` | `"true"` (when `pending`) | Says the setting is being read or changed and a press has to wait. The switch stays focusable, so focus is not lost when it starts or stops waiting. |
 
 The native `disabled` attribute is sufficient for the underlying `<button>` element. It removes the element from the tab order, prevents activation, and is announced as "dimmed" or "unavailable" by screen readers. `aria-disabled` is intentionally omitted to avoid duplicate disabled-state announcements.
 

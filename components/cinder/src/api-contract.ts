@@ -46,6 +46,7 @@ export type PropSpec = {
     | 'TSFunctionType'
     | 'TSTypeOperator'
     | 'TSTypeLiteral'
+    | 'TSIndexedAccessType'
     | 'TSUndefinedKeyword';
   default?: DefaultSpec;
 };
@@ -282,6 +283,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       icon: s0(true),
       illustration: s0(true),
       action: s0(true),
+      children: s0(true),
     },
   },
 
@@ -380,6 +382,26 @@ export const CONTRACT: Record<string, ComponentContract> = {
     },
     snippets: {
       descriptionAction: s0(true),
+    },
+  },
+
+  link: {
+    kind: 'intersection',
+    html_attrs: 'HTMLAnchorAttributes',
+    props: {
+      href: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      underline: { optional: true, type_kind: 'TSTypeReference', default: L('hover') },
+      color: { optional: true, type_kind: 'TSTypeReference', default: L('primary') },
+      // `more` (COR-2329): small regular text with a chevron, the way out of a section or empty row.
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('inline') },
+      external: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      target: { optional: true, type_kind: 'TSIndexedAccessType', default: NO_DEFAULT },
+      rel: { optional: true, type_kind: 'TSIndexedAccessType', default: NO_DEFAULT },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+    },
+    snippets: {
+      children: s0(false),
     },
   },
 
@@ -704,6 +726,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       readonly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      pending: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       descriptionVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       descriptionPlacement: { optional: true, type_kind: 'TSUnionType', default: L('inline') },
