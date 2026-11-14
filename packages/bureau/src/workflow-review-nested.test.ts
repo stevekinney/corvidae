@@ -254,6 +254,49 @@ describe('a review inside a parallel branch (probe c)', () => {
     await waitUntil(async () => (await statusOf(harness, runId)) === 'completed');
   });
 
+  it('lists a decided branch`s next review beside its sibling`s, across a restart (matrix row W2)', async () => {
+    // COR-2416: the decided branch moves on to its next review while its sibling still waits, and
+    // its step is committed, so a restart lists both again at the same ids.
+    const storage = new MemoryStorage();
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-review-nested-'));
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    const first = await start({ directory, overrides: { storage } });
+    const runId = await begin(first, 'parallel-next-review', [
+      {
+        kind: 'parallel',
+        branches: {
+          left: [REVIEW('left-ok'), REVIEW('left-next')],
+          right: [REVIEW('right-ok')],
+        },
+      },
+    ]);
+    await waitUntil(() => reviewsOf(first).length === 2);
+    const left = reviewsOf(first).find((review) => review.signalName === 'left-ok')!;
+    await approve(first, left.id);
+    const signals = () =>
+      reviewsOf(first)
+        .map((review) => review.signalName)
+        .toSorted()
+        .join(',');
+    await waitUntil(() => signals() === 'left-next,right-ok', {
+      message: 'the decided branch`s next review to list beside its sibling`s',
+    });
+    const ids = reviewsOf(first)
+      .map((review) => review.id)
+      .toSorted();
+    await first.bureau.dispose();
+
+    const second = await start({ directory, overrides: { storage } });
+    await waitUntil(() => reviewsOf(second).length === 2);
+    expect(
+      reviewsOf(second)
+        .map((review) => review.id)
+        .toSorted(),
+    ).toEqual(ids);
+    for (const id of ids) await approve(second, id);
+    await waitUntil(async () => (await statusOf(second, runId)) === 'completed');
+  });
+
   it('lists a map nested in a branch, one item after another (G19)', async () => {
     const harness = await start({
       output: z.array(z.string()),

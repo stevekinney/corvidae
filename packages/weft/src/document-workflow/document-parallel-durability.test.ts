@@ -116,7 +116,11 @@ describe('a signal a branch takes is committed with the progress that records it
     await waitUntil(async () => isWaitingOn(restarted, id, 'three'), {
       message: 'branch b to wait again',
     });
-    // Branch `a` resumes after the signal it took, so it never waits on `one` again.
+    // Branch `a` resumes after the signal it took: it runs the step that threw again, and never
+    // waits on `one` again.
+    await waitUntil(async () => calls.length === 2, {
+      message: 'branch a to run the step that threw again',
+    });
     expect(await waitingNames(restarted, id)).toEqual(['three']);
     await handle!.signal('three', 'C');
     expect(await throwingRejectionOf(handle!.result())).toThrow('branch exploded');
@@ -142,7 +146,7 @@ describe('a signal a branch takes is committed with the progress that records it
         message: 'every branch to wait',
       });
       await run.signal('one', 'X');
-      await waitUntil(async () => !(await hasBufferedSignal(storage, id, 'one')), {
+      await waitUntil(async () => !(await isWaitingOn(original, id, 'one')), {
         message: 'the nested branch to take its signal',
       });
       await run.signal('three', 'T');

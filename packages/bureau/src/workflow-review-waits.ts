@@ -241,6 +241,8 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
   /** The commit feed of each run that holds a review, by run id: see {@link follow}. */
   const following = new Map<string, () => void>();
   let stopListening: (() => void) | undefined;
+  /** Set by `close`: a refresh still reading then holds and follows nothing. */
+  let closed = false;
 
   function reviewOf(wait: Wait): PendingHumanWaitReview {
     return {
@@ -267,18 +269,20 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
   }
 
   /**
-   * Follow each commit of a run that holds a review. A wait that lost its race to its timeout ends
-   * with no signal event of its own, and the step after it may start no activity (a sleep, or a
-   * sibling's wait in a parallel step), so the commit that follows it is what says it ended: the
-   * engine settles the wait's end before the operation that follows it commits.
+   * Follow each commit of a run that holds a review, or is being read for one. A wait that lost its
+   * race to its timeout ends with no signal event of its own, and the step after it may start no
+   * activity (a sleep, or a sibling's wait in a parallel step), so the commit that follows it is
+   * what says it ended: the engine settles the wait's end before the operation that follows it
+   * commits. A refresh follows the run before it reads it, so a commit that lands during the read
+   * reads it again; nothing is followed once the module is closed.
    */
   function follow(runId: string): void {
     const engine = dependencies.engine();
-    if (engine === undefined || following.has(runId)) return;
+    if (engine === undefined || closed || following.has(runId)) return;
     following.set(
       runId,
       engine.subscribeWorkflowFeedCommits(runId, 'events', () => {
-        if (waits.has(runId)) refreshInBackground(runId, 'quiet');
+        refreshInBackground(runId, 'quiet');
       }),
     );
   }
@@ -351,8 +355,16 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
       // A refresh that failed was reported by its caller; this one reads the engine afresh.
       await previous.catch(() => undefined);
       const engine = dependencies.engine();
-      if (engine === undefined) return;
-      const found = await read(engine, runId);
+      if (engine === undefined || closed) return;
+      follow(runId);
+      let found: readonly Wait[];
+      try {
+        found = await read(engine, runId);
+      } catch (error) {
+        if (!waits.has(runId)) unfollow(runId);
+        throw error;
+      }
+      if (closed) return;
       // A wait already held keeps the time it was first read at: the engine records a fresh
       // timeline entry for the wait each time the run is recovered, which would say it began then.
       const earlier = new Map((waits.get(runId) ?? []).map((wait) => [idOf(wait), wait]));
@@ -367,7 +379,6 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
         return;
       }
       waits.set(runId, held);
-      follow(runId);
       for (const wait of held) {
         const id = idOf(wait);
         if (mode === 'quiet' || announced.has(id)) continue;
@@ -512,6 +523,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
     },
     /** Stop listening to the engine. */
     close(): void {
+      closed = true;
       stopListening?.();
       stopListening = undefined;
       for (const runId of following.keys()) unfollow(runId);
