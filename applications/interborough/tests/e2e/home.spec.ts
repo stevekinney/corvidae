@@ -1044,7 +1044,8 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
     await checkA11y('Home on a phone');
   });
 
-  test('stacks each step’s actions full width under its text on a first run (05c)', async ({
+  // COR-2329 round two: full-width buttons read as page-wide pills; each keeps its own width now.
+  test('drops each step’s actions under its text at their own width on a first run (05c)', async ({
     page,
   }) => {
     await asNewInstallation(page);
@@ -1065,9 +1066,15 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
           box!.y,
           `step ${String(index + 1)}'s button is under its text`,
         ).toBeGreaterThanOrEqual(text!.y + text!.height - 1);
-        expect(box!.width, `step ${String(index + 1)}'s button is full width`).toBeGreaterThan(
-          step!.width - 80,
+        expect(box!.width, `step ${String(index + 1)}'s button keeps its own width`).toBeLessThan(
+          step!.width / 2,
         );
+        if (item === 0) {
+          expect(
+            Math.abs(box!.x - text!.x),
+            `step ${String(index + 1)}'s first button starts at its text`,
+          ).toBeLessThanOrEqual(1);
+        }
       }
     }
     await captureForDesignReview(page, {
