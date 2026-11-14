@@ -67,7 +67,7 @@ Mechanics: [Turborepo stage mechanics](documentation/repository/turborepo-stage-
 
 The coordinator's rules are in [coordination](.agents/skills/chef/references/coordination.md); every brief carries the worker's part.
 
-- Run at most three agent sessions or implementation workers at once on this host, counting every session that edits or tests this repository; a run has at most two implementation workers.
+- Run at most three agent sessions or implementation workers at once on this host, counting every session that edits or tests this repository (enforced: `scripts/host-sessions.ts`); a run has at most two workers.
 - Every implementation dispatch names the `chef-worker` agent type. A worker has no context ceiling: it works until its change is ready for review (owner decision, 2026-11-13).
 - A coordinator whose context is above about 200K tokens restarts from its run log at a batch boundary, as a fresh session, never `hand_off_to_session`.
 - End a turn only on a state change: merged, blocked, needs a decision, or ready for review. Wait on a completion (a background command or a notification); never poll.

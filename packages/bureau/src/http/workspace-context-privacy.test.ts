@@ -13,6 +13,9 @@ const witnesses = workspaceConformanceLedger('workspace-context-privacy.test.ts'
 const cases = [
   { operation: 'bureau.contexts.window', input: {} },
   { operation: 'bureau.contexts.rename', input: { title: sentinel } },
+  // COR-2285: each actor's context is archived before the unarchive is asked for, below.
+  { operation: 'bureau.contexts.archive', input: {} },
+  { operation: 'bureau.contexts.unarchive', input: {} },
   { operation: 'bureau.contexts.delete', input: {} },
   { operation: 'bureau.contexts.retract', input: { inputId: 'private-input' } },
   { operation: 'bureau.contexts.forgetgrants', input: { tools: ['private-tool'] } },
@@ -72,6 +75,10 @@ for (const row of cases) {
           });
           expect(queued.body?.error).toBeUndefined();
         }
+        if (row.operation === 'bureau.contexts.unarchive')
+          expect(await opened.bureau.contexts.archive(task.contextId)).toMatchObject({
+            changed: true,
+          });
         if (row.operation === 'bureau.contexts.forgetgrants')
           await opened.bureau.internals.sessionStore!.update(task.contextId, (session) =>
             session === undefined
@@ -120,6 +127,11 @@ for (const row of cases) {
             const session = await opened.bureau.contexts.get(task.contextId);
             expect(session?.metadata['approvalGrants']).toEqual(['private-tool']);
           }
+          // Refused, so the archive state the owner left is the one it still has.
+          if (row.operation === 'bureau.contexts.archive')
+            expect(retained.body?.result?.['archivedAt']).toBeNull();
+          if (row.operation === 'bureau.contexts.unarchive')
+            expect(retained.body?.result?.['archivedAt']).toEqual(expect.any(String));
         }
       }
     } finally {

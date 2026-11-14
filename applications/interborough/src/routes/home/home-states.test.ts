@@ -125,7 +125,9 @@ describe('Home while it loads (02c, 02d)', () => {
     ).toBe(true);
     expect(
       [...container.querySelectorAll('h2')].map((heading) => heading.textContent?.trim()),
-    ).toEqual(['Needs you', 'Needs attention', 'Start a chat', 'Recent chats']);
+    ).toEqual(['Needs attention', 'Start a chat', 'Recent chats']);
+    // The Needs you rows have no heading, as the loaded ones do: the Spotlight is their title.
+    expect(cardOf(container, 'Needs you').querySelector('h2')).toBeNull();
     // Rows are Cinder's grouped placeholders, with a button block where a row has a button.
     const placeholders = [
       ...container.querySelectorAll('.cinder-skeleton-group[data-cinder-variant="grouped"]'),
@@ -195,7 +197,8 @@ describe('Home while it loads slowly (02e, 02f)', () => {
     jest.advanceTimersByTime(1);
     flushSync();
 
-    // The status line is Cinder skeleton's own, below the placeholders, and not a banner.
+    // The status line is Cinder skeleton's own, above the placeholders (COR-2329: below them it was
+    // drawn under the fold), and not a banner.
     const status = [...container.querySelectorAll('[role="status"]')].find((element) =>
       element.textContent?.includes('Still loading Home.'),
     );
@@ -203,8 +206,11 @@ describe('Home while it loads slowly (02e, 02f)', () => {
       'Still loading Home. This is taking longer than usual.',
     );
     expect(container.querySelector('.cinder-banner')).toBeNull();
-    const group = container.querySelector('.cinder-skeleton-group');
-    expect(group?.lastElementChild).toBe(status ?? null);
+    const page = container.querySelector('[data-mode="loading"]');
+    expect(
+      (status as Element).compareDocumentPosition(page as Element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     const cancel = within(status as HTMLElement).getByRole('button', { name: 'Cancel' });
     expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
 
@@ -297,9 +303,19 @@ describe('One card that cannot be read (01n, 01o)', () => {
     });
     const { container } = render(HomeHarness, { props: { client: installed.client } } as never);
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
+    // The section is a new element once it fails (it takes its heading back), so it is looked up
+    // again on every try.
+    const needsYouFailure = await waitFor(() =>
+      within(cardOf(container, 'Needs you')).getByTestId('home-card-error'),
+    );
+    expect(words(needsYouFailure)).toBe(
+      'Couldn’t load what needs you. The rest of Home is live. Try again',
+    );
+    // No Spotlight stands over the failure, so the section takes its own heading back.
+    expect(container.querySelector('[data-testid="home-spotlight"]')).toBeNull();
     expect(
-      words(await within(cardOf(container, 'Needs you')).findByTestId('home-card-error')),
-    ).toBe('Couldn’t load what needs you. The rest of Home is live. Try again');
+      within(cardOf(container, 'Needs you')).getByRole('heading', { level: 2, name: 'Needs you' }),
+    ).toBeDefined();
     expect(
       words(await within(cardOf(container, 'Recent chats')).findByTestId('home-card-error')),
     ).toBe('Couldn’t load recent chats. The rest of Home is live. Try again');
@@ -354,20 +370,20 @@ describe('Home when the server does not answer (02g to 02j)', () => {
     expect(container.querySelector('[data-testid="home-unreachable"]')).toBeNull();
   });
 
-  test('old data keeps its place: the buttons that change something carry the mark the shell holds, and links to read stay plain', async () => {
+  test('old data keeps its place: the row buttons only open a page, so none carries the mark the shell holds, and links to read stay plain', async () => {
     installed = installHome(sampleHomeWorld());
     const { container, getByTestId } = render(HomeHarness, {
       props: { client: installed.client },
     } as never);
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
-    const held = (name: string): boolean =>
-      container.querySelector(`a[href][data-changes]`) !== null &&
-      [...container.querySelectorAll('[data-changes]')].some(
-        (element) => element.textContent?.trim() === name,
-      );
     await waitFor(() =>
       expect(within(cardOf(container, 'Needs attention')).getAllByRole('listitem')).toHaveLength(3),
     );
+    await waitFor(() =>
+      expect(within(cardOf(container, 'Needs you')).getAllByRole('listitem')).toHaveLength(2),
+    );
+    // COR-2329: each opens a page, as "Open Reviews" does, so none is held while the server does
+    // not answer; holding them drew grey chips beside a live link to the same page.
     for (const name of [
       'Answer',
       'Review',
@@ -375,11 +391,12 @@ describe('Home when the server does not answer (02g to 02j)', () => {
       'View schedule',
       'Connect a provider',
     ]) {
-      expect(held(name), `${name} is held while the server does not answer`).toBe(true);
+      const button = within(container).getByRole('link', { name });
+      expect(button.hasAttribute('data-changes'), `${name} only opens a page`).toBe(false);
     }
     // Reading is not changing: the links to Reviews, Health and the chats are not marked.
     for (const link of [
-      ...within(cardOf(container, 'Needs you')).getAllByRole('link', { name: 'Open Reviews' }),
+      ...within(getByTestId('home-focus')).getAllByRole('link', { name: 'Open Reviews' }),
       ...within(cardOf(container, 'Needs attention')).getAllByRole('link', { name: 'Open Health' }),
     ]) {
       expect(link.hasAttribute('data-changes')).toBe(false);

@@ -13,6 +13,7 @@ import { readRunWorkspaceAuthority, type RunWorkspaceAuthority } from 'armorer';
 import {
   type DocumentActivity,
   type DocumentActivityArgument,
+  type DocumentChildWorkflowArgument,
   type DocumentActivityHandler,
   type DocumentTriggerValidator,
   type DocumentWorkflowHost,
@@ -355,25 +356,60 @@ export function createWorkflowDocumentHost(
       });
     },
   };
+  /** `activity` behind the deployment's authority check, as every activity callback is (O13). */
+  const admitted = (activity: DocumentActivity): DocumentActivity => {
+    if (dependencies.admitActivity === undefined) return activity;
+    const execute: DocumentActivityHandler = async (argument, context) => {
+      await dependencies.admitActivity!(argument);
+      return typeof activity === 'function'
+        ? activity(argument, context)
+        : activity.execute(argument, context);
+    };
+    return typeof activity === 'function' ? execute : { ...activity, execute };
+  };
   return Object.freeze({
     activities: Object.freeze(
       Object.fromEntries(
-        Object.entries(activities).map(([name, activity]) => {
-          if (dependencies.admitActivity === undefined) return [name, activity];
-          const execute: DocumentActivityHandler = async (argument, context) => {
-            await dependencies.admitActivity!(argument);
-            return typeof activity === 'function'
-              ? activity(argument, context)
-              : activity.execute(argument, context);
-          };
-          return [name, typeof activity === 'function' ? execute : { ...activity, execute }];
-        }),
+        Object.entries(activities).map(([name, activity]) => [name, admitted(activity)]),
       ),
     ),
     triggerKinds: Object.freeze({ ...contributions.triggerValidators, ...WORKFLOW_TRIGGER_KINDS }),
     checkSchema: checkWorkflowSchema,
     activityVersions: contributions.activityVersions,
+    workflows: Object.freeze(Object.keys(contributions.workflowVersions)),
+    workflowVersions: contributions.workflowVersions,
+    childInput: childWorkflowInput,
+    // The step starts nothing itself: the child is the engine's. What this activity carries is the
+    // same check an activity callback makes, so a child never starts under authority a callback
+    // would be refused.
+    workflowAdmission: admitted(() => null),
   });
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The envelope a `workflow` step starts its code workflow on (O6): the one a file run starts on,
+ * `{ kind: 'manual', input, origin, workspaceAuthority? }`, with the step's `input`, the origin
+ * and workspace authority of the instance running the step, and no `trigger` or `previous`. An
+ * instance whose trigger carries no origin (a schedule fire, a contributed trigger) is a parent
+ * task of the child, so the child is the step of that instance. Pure, so a re-issued step builds
+ * the same input and re-attaches to the child it already started.
+ */
+function childWorkflowInput(argument: DocumentChildWorkflowArgument): JSONValue {
+  const trigger = isRecord(argument.trigger) ? argument.trigger : {};
+  const origin = isRecord(trigger['origin'])
+    ? trigger['origin']
+    : { kind: 'parent', parentRunId: argument.workflowId };
+  const workspaceAuthority = readRunWorkspaceAuthority(trigger['workspaceAuthority']);
+  return {
+    kind: 'manual',
+    input: argument.input,
+    origin,
+    ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
+  } as JSONValue;
 }
 
 /**

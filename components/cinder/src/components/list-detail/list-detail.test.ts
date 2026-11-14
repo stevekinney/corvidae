@@ -583,6 +583,181 @@ describe('ListDetail', () => {
     expect(unkeyed.setItem).not.toHaveBeenCalled();
   });
 
+  describe('a collapsible list', () => {
+    test('draws no toggle unless listCollapsible is set', async () => {
+      const { container, queryByRole } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation() },
+      });
+      await measure(container, 1000);
+
+      expect(queryByRole('button', { name: 'Hide list' })).toBeNull();
+      expect(container.querySelector('.cinder-list-detail__list-toggle')).toBeNull();
+    });
+
+    test('keeps the open item mounted while the list hides and shows, so the detail keeps its state and focus is not taken back', async () => {
+      const { container, getByRole } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), selectedKey: 'beta', listCollapsible: true },
+      });
+      await measure(container, 1000);
+      const heading = container.querySelector('.cinder-list-detail__detail-body h3')!;
+      expect(heading.textContent).toBe('Beta chat detail');
+
+      await fireEvent.click(getByRole('button', { name: 'Hide list' }));
+      await tick();
+      await tick();
+
+      // The same element, not a new one: a detail that mounts again (an open chat) would read its
+      // data again and take focus for itself, away from the toggle.
+      expect(heading.isConnected).toBe(true);
+      expect(container.querySelector('.cinder-list-detail__detail-body h3')).toBe(heading);
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Show list' }));
+
+      await fireEvent.click(getByRole('button', { name: 'Show list' }));
+      await tick();
+      await tick();
+      expect(container.querySelector('.cinder-list-detail__detail-body h3')).toBe(heading);
+    });
+
+    test('hides the list, keeps the toggle on a rail, moves focus to it, and shows the list again', async () => {
+      const { container, getByRole, queryByRole } = render(ListDetailFixture, {
+        props: {
+          selectionLocation: memoryLocation(),
+          selectedKey: 'beta',
+          listCollapsible: true,
+        },
+      });
+      await measure(container, 1000);
+      const root = container.querySelector('.cinder-list-detail')!;
+
+      // The header places the toggle it is given: here, at the end of its title row.
+      const hide = getByRole('button', { name: 'Hide list' });
+      expect(hide.closest('.list-detail-fixture-title-row')).not.toBeNull();
+      await fireEvent.click(hide);
+      await tick();
+      await tick();
+
+      // The list is not drawn at all, so nothing in it can take focus; its pane and the divider
+      // leave the layout (the styles below), and the detail fills the width.
+      expect(root.hasAttribute('data-cinder-list-collapsed')).toBe(true);
+      expect(queryByRole('region', { name: 'Chats' })).toBeNull();
+      const css = stripCinderComponentsLayer(
+        await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+      );
+      expect(css).toMatch(
+        /\[data-cinder-list-collapsed\]\s*\.cinder-list-detail__panels\s*>\s*:is\(\.cinder-resizable-panels__pane:first-child, \.cinder-resizable-panels__handle\)\s*\{\s*display: none;/,
+      );
+      expect(detailText(container)).toBe('Beta chat detail');
+      const show = getByRole('button', { name: 'Show list' });
+      expect(show.closest('.cinder-list-detail__rail')).not.toBeNull();
+      expect(document.activeElement).toBe(show);
+
+      await fireEvent.click(show);
+      await tick();
+      await tick();
+
+      expect(root.hasAttribute('data-cinder-list-collapsed')).toBe(false);
+      expect(getByRole('region', { name: 'Chats' })).toBeTruthy();
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Hide list' }));
+    });
+
+    test('remembers the choice beside the divider width, and a remembered choice wins on mount', async () => {
+      const storage = memoryStorage({ chats: '410' });
+      const first = render(ListDetailFixture, {
+        props: {
+          selectionLocation: memoryLocation(),
+          selectedKey: 'beta',
+          storage,
+          storageKey: 'chats',
+          listCollapsible: true,
+        },
+      });
+      await measure(first.container, 1000);
+      await fireEvent.click(first.getByRole('button', { name: 'Hide list' }));
+      await tick();
+      expect(storage.values.get('chats:list-collapsed')).toBe('true');
+      // The width is the divider's own entry, untouched.
+      expect(storage.values.get('chats')).toBe('410');
+      cleanup();
+      ResizeObserverStub.instances = [];
+
+      const second = render(ListDetailFixture, {
+        props: {
+          selectionLocation: memoryLocation(),
+          selectedKey: 'beta',
+          storage,
+          storageKey: 'chats',
+          listCollapsible: true,
+          listCollapsed: false,
+        },
+      });
+      await measure(second.container, 1000);
+      expect(second.queryByRole('region', { name: 'Chats' })).toBeNull();
+
+      // Shown again, the panels start from the remembered width.
+      await fireEvent.click(second.getByRole('button', { name: 'Show list' }));
+      await tick();
+      await measure(second.container, 1000);
+      expect(storage.values.get('chats:list-collapsed')).toBe('false');
+      const listPane = second.container.querySelector<HTMLElement>(
+        '.cinder-resizable-panels__pane',
+      )!;
+      expect(listPane.getAttribute('style')).toContain('--_cinder-resizable-panel-size: 410px');
+    });
+
+    test('shows the list, with no toggle, while no item is open', async () => {
+      const { container, getByRole, queryByRole } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), listCollapsible: true, listCollapsed: true },
+      });
+      await measure(container, 1000);
+
+      expect(getByRole('region', { name: 'Chats' })).toBeTruthy();
+      expect(container.querySelector('.cinder-list-detail__list-toggle')).toBeNull();
+      expect(queryByRole('button', { name: 'Show list' })).toBeNull();
+
+      // An item opens: the remembered choice applies, the list hides, and focus, which was on the
+      // row that went with it, moves to the toggle that brings the list back.
+      await fireEvent.click(primaryOf(container, 'beta'));
+      await tick();
+      await tick();
+      expect(queryByRole('region', { name: 'Chats' })).toBeNull();
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Show list' }));
+    });
+
+    test('a list with no header of its own gets one holding the toggle', async () => {
+      const { container, getByRole } = render(ListDetailTableFixture, {
+        props: { selectionLocation: memoryLocation(), selectedKey: 'beta', listCollapsible: true },
+      });
+      await measure(container, 1000);
+
+      const toggle = getByRole('button', { name: 'Hide list' });
+      expect(
+        toggle.closest('.cinder-list-detail__header')?.hasAttribute('data-cinder-list-toggle'),
+      ).toBe(true);
+    });
+
+    test('takes its labels from the host, and has nothing to hide below pushBelow', async () => {
+      const { container, getByRole, queryByRole } = render(ListDetailFixture, {
+        props: {
+          selectionLocation: memoryLocation(),
+          selectedKey: 'beta',
+          listCollapsible: true,
+          listCollapsed: true,
+          collapseListLabel: 'Hide chats',
+          expandListLabel: 'Show chats',
+        },
+      });
+      await measure(container, 1000);
+      expect(getByRole('button', { name: 'Show chats' })).toBeTruthy();
+
+      await measure(container, 599);
+      // One pane at a time: the open item shows with Back, and there is no toggle.
+      expect(detailText(container)).toBe('Beta chat detail');
+      expect(getByRole('button', { name: 'Back' })).toBeTruthy();
+      expect(queryByRole('button', { name: 'Show chats' })).toBeNull();
+      expect(queryByRole('button', { name: 'Hide chats' })).toBeNull();
+    });
+  });
+
   test('forwards the class and attributes to the root', () => {
     const { container } = render(ListDetailFixture, {
       props: { selectionLocation: memoryLocation(), class: 'custom', 'data-testid': 'chats' },

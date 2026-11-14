@@ -3,7 +3,7 @@
    * @cinder
    * @category data-display
    * @status beta
-   * @purpose Read-only view of a JSON Schema as one aligned grid of Field, Type and Description: required fields first with a red dot, nested fields indented, plain-word types, a raw-document disclosure.
+   * @purpose Read-only view of a JSON Schema: one row per field with its label, a coloured type mark, a required dot, the description and facts, nested fields folding.
    * @tag schema
    * @tag json-schema
    * @tag read-only
@@ -18,15 +18,20 @@
 </script>
 
 <script lang="ts">
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { SvelteSet } from 'svelte/reactivity';
 
-  import type { SchemaViewField } from './schema-view-fields.ts';
+  import type { SchemaViewFact, SchemaViewField } from './schema-view-fields.ts';
   import type { SchemaViewProps } from './schema-view.types.ts';
 
   import Collapsible from '../collapsible/collapsible.svelte';
   import JsonViewer from '../json-viewer/json-viewer.svelte';
   import { classNames } from '../../utilities/class-names.ts';
-  import { partitionRequiredFields, readSchemaFields } from './schema-view-fields.ts';
+  import {
+    partitionRequiredFields,
+    readSchemaFields,
+    SCHEMA_VIEW_KIND_WORDS,
+  } from './schema-view-fields.ts';
 
   let {
     schema,
@@ -50,6 +55,8 @@
 
   const baseId = $props.id();
   const expanded = new SvelteSet<string>();
+  // Nested fields show by default; a parent's fold control hides them.
+  const folded = new SvelteSet<string>();
 
   function flatten(
     entries: readonly SchemaViewField[],
@@ -59,8 +66,14 @@
   ): void {
     for (const field of entries) {
       into.push({ field, depth, ancestors, startsOptional: false });
+      if (folded.has(field.path)) continue;
       flatten(field.fields, depth + 1, [...ancestors, field.label], into);
     }
+  }
+
+  function toggleFold(path: string): void {
+    if (folded.has(path)) folded.delete(path);
+    else folded.add(path);
   }
 
   // Required fields read first, then a single hairline, then the rest. Only the top level is
@@ -81,6 +94,18 @@
     else expanded.add(path);
   }
 </script>
+
+{#snippet factText(fact: SchemaViewFact)}
+  <!-- "Default `thorough`": the words, then any values in the code face, comma separated. -->
+  <span class="cinder-schema-view__fact">
+    {fact.label}
+    {#if fact.detail !== undefined}{fact.detail}{/if}
+    {#each fact.values ?? [] as value, index (index)}
+      <code class="cinder-schema-view__value">{value}</code
+      >{#if index < (fact.values?.length ?? 0) - 1}{', '}{/if}
+    {/each}
+  </span>
+{/snippet}
 
 <section {...rest} class={classNames('cinder-schema-view', className)} aria-label={label}>
   {#if rows.length > 0}
@@ -107,6 +132,18 @@
               style:--_cinder-schema-view-depth={row.depth}
             >
               <div class="cinder-schema-view__cell cinder-schema-view__field" role="rowheader">
+                {#if field.fields.length > 0}
+                  {@const shown = !folded.has(field.path)}
+                  <button
+                    type="button"
+                    class="cinder-schema-view__fold"
+                    aria-expanded={shown}
+                    aria-label={`${shown ? 'Hide' : 'Show'} the fields of ${field.label}`}
+                    onclick={() => toggleFold(field.path)}
+                  >
+                    <ChevronRight size={14} strokeWidth={2.25} aria-hidden="true" />
+                  </button>
+                {/if}
                 {#if row.ancestors.length > 0}
                   <span class="cinder-sr-only">{`${row.ancestors.join(' › ')} › `}</span>
                 {/if}
@@ -117,7 +154,9 @@
                 {/if}
               </div>
               <div class="cinder-schema-view__cell cinder-schema-view__kind" role="cell">
-                <span class="cinder-schema-view__type">{field.type}</span>
+                <span class="cinder-schema-view__type" data-cinder-kind={field.kind}
+                  >{SCHEMA_VIEW_KIND_WORDS[field.kind]}</span
+                >
               </div>
               <div class="cinder-schema-view__cell cinder-schema-view__about" role="cell">
                 {#if field.summary}
@@ -136,6 +175,13 @@
                       onclick={() => toggle(field.path)}>{open ? 'Less' : 'More'}</button
                     >
                   {/if}
+                {/if}
+                {#if field.facts.length > 0}
+                  <span class="cinder-schema-view__facts">
+                    {#each field.facts as fact, factIndex (factIndex)}
+                      {@render factText(fact)}{' '}
+                    {/each}
+                  </span>
                 {/if}
                 {#if field.truncated}
                   <p class="cinder-schema-view__truncated">

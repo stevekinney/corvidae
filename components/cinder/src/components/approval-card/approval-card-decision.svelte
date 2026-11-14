@@ -429,7 +429,7 @@
         <Textarea
           id={noteId}
           bind:value={note}
-          label="Note (optional)"
+          label="Note"
           description="Saved with your decision. If you deny, the agent reads it as the reason."
           placeholder="Add a note for the agent or the record"
           rows={2}
@@ -446,7 +446,11 @@
         {@attach fitNoteLabel}
       >
         {#if !noteOpen}
-          <ApprovalCardNoteToggle disabled={isBusy} onOpen={() => (noteOpen = true)} />
+          <ApprovalCardNoteToggle
+            disabled={isBusy}
+            fieldId={noteId}
+            onOpen={() => (noteOpen = true)}
+          />
         {/if}
         <Button
           type="button"

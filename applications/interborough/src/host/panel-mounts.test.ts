@@ -112,10 +112,25 @@ describe('the MCP apps the host serves', () => {
         await app('two'),
       ),
     );
-    expect(Object.keys(toolMeta).toSorted()).toEqual(['a.second', 'bureau.test.two']);
+    expect(Object.keys(toolMeta).toSorted()).toEqual(['a.first', 'a.second', 'bureau.test.two']);
     expect(toolMeta['a.second']).toEqual({
       ui: { resourceUri: 'ui://test/one/v1', visibility: ['model', 'app'] },
     });
+    expect(toolMeta['a.first']).toEqual({ ui: { visibility: ['model', 'app'] } });
+  });
+
+  it('shows every allowed tool to apps and every other tool to the model alone (COR-2209)', async () => {
+    const { toolMeta, defaultToolMeta } = await panelMounts(
+      contributed(
+        await app('one', { allowedTools: ['a.shared', 'a.one'], opensFromTool: 'a.one' }),
+        await app('two', { allowedTools: ['a.shared', 'a.two'], opensFromTool: 'a.two' }),
+      ),
+    );
+    expect(toolMeta['a.shared']).toEqual({ ui: { visibility: ['model', 'app'] } });
+    expect(toolMeta['a.two']).toEqual({
+      ui: { resourceUri: 'ui://test/two/v1', visibility: ['model', 'app'] },
+    });
+    expect(defaultToolMeta).toEqual({ ui: { visibility: ['model'] } });
   });
 
   it('lists each built app with its plugin, its declared tools, and its page, for the panel routes', async () => {
@@ -159,13 +174,18 @@ describe('the MCP apps the host serves', () => {
     expect(await panelMounts([])).toEqual({
       resources: [],
       toolMeta: {},
+      defaultToolMeta: { ui: { visibility: ['model'] } },
       failures: [],
       apps: [],
     });
   });
 
   it('reports an entry that does not build, and still serves the apps that do', async () => {
-    const missing = await app('one', { entry: pathToFileURL(resolve('does-not-exist.ts')) });
+    // A panel that did not build is not running, so its allowed tools stay model-only.
+    const missing = await app('one', {
+      allowedTools: ['bureau.test.one', 'a.unbuilt'],
+      entry: pathToFileURL(resolve('does-not-exist.ts')),
+    });
     const { resources, toolMeta, failures } = await panelMounts(
       contributed(missing, await app('two')),
     );

@@ -55,18 +55,19 @@ test.describe('Card padding', () => {
     expect(overflow.previewScrollWidth).toBeLessThanOrEqual(overflow.previewClientWidth);
     expect(overflow.cardRight).toBeLessThanOrEqual(overflow.previewRight);
   });
-  test('ApprovalCard keeps a single owned header padding layer', async ({ page }) => {
+  test('ApprovalCard draws its heading as the first row of its body, on the card fill', async ({
+    page,
+  }) => {
     const approvalCard = page.locator('.cinder-approval-card').first();
-    const cardHeader = approvalCard.locator('.cinder-card__header');
-    const ownedHeader = approvalCard.locator('.cinder-approval-card__header');
+    const body = approvalCard.locator('.cinder-approval-card__body');
+    const ownedHeader = body.locator(':scope > .cinder-approval-card__header');
     await expect(approvalCard).toBeVisible();
-    await expect(cardHeader).toHaveCSS('padding-top', '0px');
-    await expect(cardHeader).toHaveCSS('padding-right', '0px');
-    await expect(cardHeader).toHaveCSS('padding-bottom', '0px');
-    await expect(cardHeader).toHaveCSS('padding-left', '0px');
-    await expect(ownedHeader).toHaveCSS('padding-top', '16px');
-    await expect(ownedHeader).toHaveCSS('padding-right', '16px');
-    await expect(ownedHeader).toHaveCSS('padding-bottom', '16px');
-    await expect(ownedHeader).toHaveCSS('padding-left', '16px');
+    await expect(approvalCard.locator('.cinder-card__header')).toHaveCount(0);
+    // One padding layer, the body's; the heading adds none and paints no band of its own.
+    await expect(ownedHeader).toHaveCSS('padding-top', '0px');
+    await expect(ownedHeader).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(ownedHeader).toHaveCSS('border-bottom-width', '0px');
+    await expect(body).toHaveCSS('padding-top', '12px');
+    await expect(body).toHaveCSS('padding-left', '12px');
   });
 });

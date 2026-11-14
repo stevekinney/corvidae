@@ -381,6 +381,7 @@ export function contextOf(
     updatedAt: iso(startedAt + 5000),
     activity: held ? 'awaiting-input' : 'idle',
     endReason: null,
+    archivedAt: null,
   };
 }
 

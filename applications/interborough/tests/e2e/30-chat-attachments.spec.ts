@@ -7,6 +7,7 @@
  */
 import type { Page } from '@playwright/test';
 
+import { UPLOAD_CHUNK_BYTES } from '../../src/lib/bureau-assets.ts';
 import { conversation } from './chat-support.ts';
 import { ECHO_NOTHING_REPLY, IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -68,6 +69,38 @@ for (const viewport of VIEWPORTS) {
     await expect.poll(() => decoded(page, own)).toBeGreaterThan(0);
   });
 }
+
+test('draws an upload’s progress on its tile as the Bureau takes each chunk (COR-2277 C6)', async ({
+  page,
+}) => {
+  let release: (() => void) | undefined;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let appends = 0;
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { method: string };
+    if (body.method === 'bureau.assets.uploads.append' && (appends += 1) === 2) {
+      // The second chunk waits, so the tile is caught with one chunk of three acknowledged.
+      await released;
+    }
+    return route.continue();
+  });
+  await page.goto(`/chats/new?agent=${IMAGE_ECHO_AGENT_NAME}`);
+  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'long.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.alloc(UPLOAD_CHUNK_BYTES * 3, 'a'),
+  });
+  const tile = page.locator('.chat-attachment-preview');
+  const bar = tile.getByRole('progressbar');
+  await expect(bar).toHaveAttribute('aria-valuenow', '33');
+  await expect(tile.getByText('33%')).toBeVisible();
+
+  release?.();
+  await expect(tile).toHaveAttribute('data-state', 'ready');
+  await expect(bar).toHaveCount(0);
+});
 
 test('offers no way to attach to an agent that names no model', async ({ page }) => {
   await page.goto('/chats/new?agent=demo:assistant');

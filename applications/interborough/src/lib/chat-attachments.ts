@@ -157,18 +157,20 @@ export function chatAttachmentErrorMessage(failure: ChatAttachmentFailure): stri
 /**
  * The hook Chat's composer calls for each attached file. A file over its own type's limit is
  * refused before the Bureau hears of it; anything else becomes an asset, and Chat keeps its
- * identifier and media type on the attachment.
+ * identifier and media type on the attachment. The upload's progress goes to Chat's `onProgress`,
+ * which draws it on the attachment's tile.
  */
 export function createAttachmentUpload(
   settings: AttachmentSettings,
   options: { readonly fetch?: Fetcher } = {},
 ): ChatAttachmentUpload {
-  return async (file, { signal }) => {
+  return async (file, { signal, onProgress }) => {
     const limit = settings.limitFor(file);
     if (file.size > limit) throw new AttachmentUploadError('too-large', { limit });
     const uploaded = await uploadAsset(file, {
       signal,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      ...(onProgress === undefined ? {} : { onProgress }),
     });
     const mimeType = uploaded.mediaType ?? (file.type === '' ? undefined : file.type);
     return { id: uploaded.assetId, ...(mimeType === undefined ? {} : { mimeType }) };

@@ -216,7 +216,7 @@ describe('Enter on a row', () => {
 });
 
 describe('an approval', () => {
-  test('says what it wants to run and how risky that is, and offers the note as Add a note', async () => {
+  test('says what it wants to run and how risky that is, and offers the note as Add note', async () => {
     const { container, findByTestId, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);

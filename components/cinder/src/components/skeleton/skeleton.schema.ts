@@ -45,7 +45,7 @@ const schema = {
     action: {
       type: 'boolean',
       description:
-        "Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`,\nfor a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone,\nthe block drops under the text at full width, where the real buttons go. Ignored by other\nvariants.",
+        "Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`,\nfor a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone,\nthe block drops under the text at its own width, starting at the text's leading edge, where the\nreal buttons go. Ignored by other variants.",
       default: false,
     },
     statusMarker: {
@@ -107,7 +107,7 @@ const schema = {
         name: 'children',
         reason: 'function-or-snippet',
         description:
-          'The page\'s own placeholder, drawn instead of the bars, for a loading state whose shape is a\nwhole page (real labels and headings with placeholder values and rows). The group still owns\nthe timing: nothing is drawn until `delay` has passed, and the "Still loading" status follows\nthe content after `stillLoadingAfter`. The group is marked busy while it shows. Draw each\nplaceholder block with a `Skeleton` of its own; the content is not hidden from assistive\ntechnology, so text in it is read as written.',
+          'The page\'s own placeholder, drawn instead of the bars, for a loading state whose shape is a\nwhole page (real labels and headings with placeholder values and rows). The group still owns\nthe timing: nothing is drawn until `delay` has passed, and the "Still loading" status leads\nthe content, above it, after `stillLoadingAfter`. The group is marked busy while it shows. Draw each\nplaceholder block with a `Skeleton` of its own; the content is not hidden from assistive\ntechnology, so text in it is read as written.',
       },
       {
         name: 'onCancel',

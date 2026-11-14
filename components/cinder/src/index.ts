@@ -687,7 +687,7 @@ export { default as Label } from './components/label/index.ts';
 export type { LabelProps } from './components/label/index.ts';
 
 export { default as Link } from './components/link/index.ts';
-export type { LinkColor, LinkProps, LinkUnderline } from './components/link/index.ts';
+export type { LinkColor, LinkProps, LinkUnderline, LinkVariant } from './components/link/index.ts';
 
 export { default as LineChart } from './components/line-chart/index.ts';
 export type {
@@ -701,6 +701,7 @@ export type { LocaleProviderProps, TextDirection } from './components/locale-pro
 
 export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
+  ListDetailHeaderContext,
   ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,

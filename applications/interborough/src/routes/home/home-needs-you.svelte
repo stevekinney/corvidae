@@ -1,20 +1,26 @@
 <script lang="ts">
   /**
-   * Home's Needs you section: the reviews waiting on you (approvals, questions and workflow reviews,
+   * Home's Needs you list: the reviews waiting on you (approvals, questions and workflow reviews,
    * the ones Reviews lists and its badge counts), oldest first, as one Cinder `GroupedList`, each row
    * ending in a secondary button that opens it in Reviews: Answer for a question, Review for the
    * rest. The subtitle says what kind of review it is first, then who asked, then whether the call
-   * can be undone, then how long it has waited. With nothing waiting the section says so, and the
-   * link to Reviews stays. More than Home lists ends the list in one more row, a link to Reviews.
+   * can be undone, then how long it has waited. More than Home lists ends the list in one more row,
+   * a link to Reviews.
    *
-   * It reads the same list as Reviews (`waitingReviewsQuery`), and the Spotlight above reads it too,
-   * so none of them can disagree. A read that fails is this section's own failure, said in place
-   * with a Try again, and no other section is held; while it has not answered the section holds
-   * Cinder's grouped placeholder rows in the rows' own shape. On a phone each button is full width
-   * under the row's text, and while the server does not answer each is held like every control
-   * that changes something.
+   * The Spotlight above ("2 need you", `home-focus.svelte`) is this list's title, with the link to
+   * Reviews beside it, so the list draws no heading of its own and the page says "needs you" once;
+   * the list keeps its accessible name. With nothing waiting the Spotlight ("Nothing needs you")
+   * stands alone and this draws nothing.
+   *
+   * It reads the same list as Reviews (`waitingReviewsQuery`), and the Spotlight reads it too, so
+   * none of them can disagree. A read that fails leaves the Spotlight out, so this takes its
+   * "Needs you" heading back and says the failure in place with a Try again, and no other section is
+   * held; while it has not answered it holds Cinder's grouped placeholder rows in the rows' own
+   * shape, under the Spotlight's placeholder. On a phone each button drops under the row's text at
+   * its own width. Each only opens a page in Reviews, so it stays live while the server does not
+   * answer, as the link to Reviews does.
    */
-  import { EmptyState, GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
+  import { GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -27,7 +33,6 @@
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
-  import HomeLink from './home-link.svelte';
   import { openInApplication } from './home-navigation.ts';
   import { useAgentList } from './home-queries.svelte.ts';
   import { NEEDS_YOU_ROW_LIMIT, needsYouRows } from './home-rows.ts';
@@ -50,60 +55,44 @@
   const shown = $derived(rows.slice(0, NEEDS_YOU_ROW_LIMIT));
 </script>
 
-<!-- With nothing waiting the link to Reviews moves into the empty state, at the end of its line. -->
-<HomeCard
-  title={copy.title}
-  link={reviews.data === undefined || rows.length === 0
-    ? undefined
-    : { label: copy.link, href: '/reviews' }}
->
-  {#if reviews.data === undefined && reviews.isError}
+{#if reviews.data === undefined && reviews.isError}
+  <!-- No Spotlight stands over it, so the section has its own heading. -->
+  <HomeCard title={copy.title}>
     <HomeCardError
       title={HOME_COPY.states.cardFailed.needsYou}
       onRetry={() => void reviews.refetch()}
     />
-  {:else if reviews.data === undefined}
+  </HomeCard>
+{:else if reviews.data === undefined}
+  <div data-home-card={copy.title}>
     <Skeleton variant="grouped" rows={2} action />
-  {:else if rows.length === 0}
-    <EmptyState
-      kind="done"
-      layout="row"
-      headingLevel={3}
-      title={copy.empty.title}
-      description={copy.empty.description}
-    >
-      {#snippet action()}
-        <HomeLink path="/reviews" label={copy.link} />
-      {/snippet}
-    </EmptyState>
-  {:else}
-    <div {@attach followLinks}>
-      <GroupedList aria-label={copy.listLabel}>
-        {#each shown as row (row.key)}
-          <GroupedListItem
-            data-review={row.key}
-            actions={[
-              {
-                label: row.action,
-                href: router.href(row.href),
-                onclick: (event) => openInApplication(event, row.href),
-                changes: true,
-              },
-            ]}
-          >
-            {#snippet title()}{row.title}{/snippet}
-            {#snippet subtitle()}
-              {row.kind}{#if row.agent !== undefined}, {row.agent}{/if}{#if row.cantBeUndone}, {copy.cantBeUndone}{/if},
-              {waitedFor(row.requestedAt, clock())}
-            {/snippet}
-          </GroupedListItem>
-        {/each}
-        {#if rows.length > shown.length}
-          <GroupedListItem data-more href={router.href('/reviews')}>
-            {#snippet title()}{copy.more(rows.length - shown.length)}{/snippet}
-          </GroupedListItem>
-        {/if}
-      </GroupedList>
-    </div>
-  {/if}
-</HomeCard>
+  </div>
+{:else if rows.length > 0}
+  <div data-home-card={copy.title} {@attach followLinks}>
+    <GroupedList aria-label={copy.listLabel}>
+      {#each shown as row (row.key)}
+        <GroupedListItem
+          data-review={row.key}
+          actions={[
+            {
+              label: row.action,
+              href: router.href(row.href),
+              onclick: (event) => openInApplication(event, row.href),
+            },
+          ]}
+        >
+          {#snippet title()}{row.title}{/snippet}
+          {#snippet subtitle()}
+            {row.kind}{#if row.agent !== undefined}, {row.agent}{/if}{#if row.cantBeUndone}, {copy.cantBeUndone}{/if},
+            {waitedFor(row.requestedAt, clock())}
+          {/snippet}
+        </GroupedListItem>
+      {/each}
+      {#if rows.length > shown.length}
+        <GroupedListItem data-more href={router.href('/reviews')}>
+          {#snippet title()}{copy.more(rows.length - shown.length)}{/snippet}
+        </GroupedListItem>
+      {/if}
+    </GroupedList>
+  </div>
+{/if}

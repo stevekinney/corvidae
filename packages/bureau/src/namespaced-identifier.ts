@@ -83,6 +83,17 @@ export function handlerNameIssue(handler: string): string | undefined {
 }
 
 /**
+ * Why `workflow`, as a document's `workflow` step names it, cannot be a workflow; `undefined` when
+ * it can. The same rule as {@link handlerNameIssue}: a bare name must not contain `__`.
+ */
+export function workflowReferenceIssue(workflow: string): string | undefined {
+  if (isNamespacedIdentifier(workflow)) return undefined;
+  return workflow.includes(HANDLER_SEPARATOR)
+    ? `workflow "${workflow}" contains "__", which Bureau reserves for the plugin:name mapping; use a plugin:name workflow`
+    : undefined;
+}
+
+/**
  * The name a handler or workflow identifier carries to Weft: mapped when namespaced, as written
  * otherwise. A name already in Weft's form is returned unchanged.
  */

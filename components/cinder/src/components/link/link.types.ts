@@ -3,6 +3,11 @@ import type { HTMLAnchorAttributes } from 'svelte/elements';
 
 export type LinkUnderline = 'always' | 'hover' | 'none';
 export type LinkColor = 'primary' | 'inherit';
+/**
+ * The form of a link: `inline` sits in running text at the text's own size, and `more` is the
+ * quiet way out of a section or an empty row to the page that holds the rest ("Open Reviews ›").
+ */
+export type LinkVariant = 'inline' | 'more';
 
 /**
  * Props for the Link component.
@@ -41,6 +46,15 @@ export type LinkProps = Omit<HTMLAnchorAttributes, 'class' | 'href' | 'target' |
    * @default "primary"
    */
   color?: LinkColor;
+  /**
+   * The link's form.
+   * - `'inline'` — a link in running text, at the text's own size and weight.
+   * - `'more'` — a link out to the page that holds the rest, such as "Open Reviews" beside a
+   *   section's title or at the end of an empty row: small regular text with a chevron after it,
+   *   on one line, and a 44px hit area under a coarse pointer that takes no layout.
+   * @default "inline"
+   */
+  variant?: LinkVariant;
   /**
    * When true, automatically adds `target="_blank"` and merges `rel="noopener noreferrer"`
    * with any consumer-supplied `rel`. Consumer-supplied `target` is preserved if provided.

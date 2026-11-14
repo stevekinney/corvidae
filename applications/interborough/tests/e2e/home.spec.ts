@@ -160,17 +160,39 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     await expect(rows.nth(1)).toContainText('Refund order 4471 for $42.00?');
     await expect(rows.nth(1)).toContainText('Approval, Tool runner, Can’t be undone, 4 min ago');
     await expect(rows.nth(1).getByRole('link', { name: 'Review' })).toBeVisible();
-    await expect(card.getByRole('link', { name: 'Open Reviews' })).toHaveAttribute(
-      'href',
-      '/reviews',
+    // COR-2329: the Spotlight is the list's title, so the list has no heading of its own, and
+    // "Open Reviews" sits beside the Spotlight, ending where the list does.
+    await expect(card.getByRole('heading')).toHaveCount(0);
+    await expect(card.getByRole('list', { name: 'Reviews waiting on you' })).toBeVisible();
+    const open = page.getByTestId('home-focus').getByRole('link', { name: 'Open Reviews' });
+    await expect(open).toHaveAttribute('href', '/reviews');
+    await expect(page.getByRole('link', { name: 'Open Reviews' })).toHaveCount(1);
+    const [spotlightBox, openBox, listBox] = await Promise.all([
+      page.getByTestId('home-spotlight').boundingBox(),
+      open.boundingBox(),
+      card.boundingBox(),
+    ]);
+    expect(openBox!.y).toBeGreaterThanOrEqual(spotlightBox!.y - 1);
+    expect(openBox!.y + openBox!.height).toBeLessThanOrEqual(
+      spotlightBox!.y + spotlightBox!.height + 1,
     );
+    expect(
+      Math.abs(openBox!.x + openBox!.width - (listBox!.x + listBox!.width)),
+    ).toBeLessThanOrEqual(1);
+    // The link is quieter than the Spotlight and the section headings: small regular text.
+    const [linkSize, headingSize] = await Promise.all([
+      open.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+      page
+        .getByRole('heading', { level: 2, name: 'Needs attention' })
+        .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+    ]);
+    expect(linkSize).toBeLessThan(headingSize);
+    await expect(open).toHaveCSS('font-weight', '400');
     // Needs you leads: it sits above Needs attention.
-    const attention = page.getByRole('heading', { level: 2, name: 'Needs attention' });
-    const waitingTop = await card
-      .getByRole('heading', { level: 2, name: 'Needs you' })
+    const attentionTop = await page
+      .getByRole('heading', { level: 2, name: 'Needs attention' })
       .boundingBox();
-    const attentionTop = await attention.boundingBox();
-    expect(waitingTop!.y).toBeLessThan(attentionTop!.y);
+    expect(listBox!.y).toBeLessThan(attentionTop!.y);
   });
 
   test('lists the three system problems, each with one button, and no provider banner (01h, 01i, 01j)', async ({
@@ -307,14 +329,25 @@ test.describe('Home with nothing waiting and a provider connected', () => {
         .getByRole('link', { name: /^Health/ })
         .locator('.cinder-status-dot'),
     ).toHaveAttribute('data-cinder-status', 'success');
-    const empty = page.getByRole('group', { name: 'Nothing is waiting on you' });
-    await expect(empty).toContainText('Approvals and questions from your agents show up here.');
-    await expect(empty.getByRole('link', { name: 'Open Reviews' })).toBeVisible();
+    // "Nothing needs you" stands alone, with the link to Reviews beside it: no second line says it
+    // again (COR-2329).
+    await expect(
+      page.getByTestId('home-focus').getByRole('link', { name: 'Open Reviews' }),
+    ).toBeVisible();
+    await expect(page.getByText('Nothing is waiting on you')).toHaveCount(0);
+    await expect(needsYou(page)).toHaveCount(0);
     const clear = page.getByTestId('attention-clear');
     await expect(clear.getByRole('group', { name: 'Nothing needs attention' })).toContainText(
       'Storage, schedules, providers and hooks are fine.',
     );
     await expect(clear.getByRole('link', { name: 'Open Health' })).toBeVisible();
+    // The clear line sits under its own heading, so it never reads as part of the section above.
+    const attentionSection = page.locator('[data-home-card="Needs attention"]');
+    await expect(
+      attentionSection.getByRole('heading', { level: 2, name: 'Needs attention' }),
+    ).toBeVisible();
+    await expect(attentionSection.getByTestId('attention-clear')).toHaveCount(1);
+    await expect(attentionSection.getByRole('link', { name: 'Open Health' })).toHaveCount(1);
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
     await expect(rows.nth(0)).toContainText('Done');
     await expect(rows.nth(0)).toContainText(
@@ -539,8 +572,9 @@ test.describe('Home with a run going', () => {
       '/runs/running-daily-summary',
     );
     await expect(card.getByRole('link', { name: 'Open Runs' })).toHaveAttribute('href', '/runs');
-    // It sits under Needs you (which shows its empty state) and above Needs attention.
-    const waiting = await needsYou(page).boundingBox();
+    // It sits under the Spotlight (nothing waits, so no list is drawn under it) and above Needs
+    // attention.
+    const waiting = await page.getByTestId('home-focus').boundingBox();
     const running = await card.boundingBox();
     const attention = await page.getByTestId('attention-clear').boundingBox();
     expect(waiting!.y + waiting!.height).toBeLessThan(running!.y);
@@ -615,8 +649,8 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     ).toBeVisible();
     await expect(counts.locator('.cinder-statistic__value .cinder-skeleton')).toHaveCount(1);
     await expect(counts.locator('.cinder-statistic__value')).toHaveText(['']);
+    // The Needs you rows have no heading, as the loaded ones do: the Spotlight is their title.
     await expect(body.getByRole('heading', { level: 2 })).toHaveText([
-      'Needs you',
       'Needs attention',
       'Start a chat',
       'Recent chats',
@@ -638,6 +672,18 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     expect(await animation()).not.toBe('none');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await captureForDesignReview(page, { route: '/', state: 'loading', source: SOURCE });
+    // COR-2329: the Spotlight's and the count's placeholders were taller than the text they stand
+    // for, so every section moved up about 7px when the data arrived. Measured while the clock is
+    // still stopped, before the slow-load line can appear above the placeholders.
+    const sectionTops = async () =>
+      Promise.all(
+        [
+          needsYou(page),
+          page.getByRole('heading', { level: 2, name: 'Needs attention' }),
+          page.getByRole('heading', { level: 2, name: 'Start a chat' }),
+        ].map(async (locator) => (await locator.boundingBox())!.y),
+      );
+    const topsWhileLoading = await sectionTops();
     // The page settles its paint on animation frames, which a stopped clock never delivers.
     await page.clock.resume();
     await checkA11y('Home loading');
@@ -651,6 +697,14 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     const after = await page.locator('[data-home-card="Start a chat"]').boundingBox();
     expect(Math.round(after!.x)).toBe(Math.round(before!.x));
     expect(Math.round(after!.width)).toBe(Math.round(before!.width));
+    await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
+    const topsLoaded = await sectionTops();
+    for (const [index, name] of ['Needs you', 'Needs attention', 'Start a chat'].entries()) {
+      expect(
+        Math.abs(topsLoaded[index]! - topsWhileLoading[index]!),
+        `${name} starts where its placeholder did`,
+      ).toBeLessThanOrEqual(1);
+    }
   });
 
   test('after 10 s the skeleton’s own status line offers Cancel, and Cancel says Loading canceled (02e, 02f)', async ({
@@ -672,11 +726,13 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
       'data-cinder-variant',
       'ghost',
     );
-    // It is the skeleton's own line below the placeholders, not a banner.
+    // It is the skeleton's own line above the placeholders, in view, not a banner (COR-2329: under
+    // them it was cut off at the bottom of the viewport).
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
-    const placeholders = await page.locator('[data-home-card="Recent chats"]').boundingBox();
+    const firstPlaceholder = await page.getByTestId('home-date').boundingBox();
     const line = await status.boundingBox();
-    expect(line!.y).toBeGreaterThan(placeholders!.y + placeholders!.height - 1);
+    expect(line!.y + line!.height).toBeLessThanOrEqual(firstPlaceholder!.y);
+    await expect(status).toBeInViewport();
     await captureForDesignReview(page, { route: '/', state: 'still loading', source: SOURCE });
 
     await status.getByRole('button', { name: 'Cancel' }).click();
@@ -833,21 +889,15 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
         }
         return product;
       });
-    expect(await opacity(page.getByRole('heading', { level: 2, name: 'Needs you' }))).toBe(1);
+    expect(await opacity(page.getByRole('heading', { level: 2, name: 'Needs attention' }))).toBe(1);
     expect(
       await opacity(needsYou(page).getByText('Which environment should the release go to?')),
     ).toBe(1);
     expect(await opacity(page.getByTestId('home-counts'))).toBe(1);
     expect(await opacity(page.getByTestId('home-spotlight'))).toBe(1);
-    // Only the controls that change something are inert.
-    const disabledColour = await page.evaluate(() => {
-      const probe = document.createElement('span');
-      probe.style.color = 'var(--cinder-text-disabled)';
-      document.body.append(probe);
-      const colour = getComputedStyle(probe).color;
-      probe.remove();
-      return colour;
-    });
+    // Only the controls that change something are inert. The row buttons only open a page, as
+    // "Open Reviews" does, so they stay live (COR-2329: holding them drew grey chips beside a live
+    // link to the same page).
     for (const [name, scope] of [
       ['Answer', needsYou(page)],
       ['Review', needsYou(page)],
@@ -856,25 +906,24 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
       ['Connect a provider', page.locator('[data-home-card="Needs attention"]')],
     ] as const) {
       const control = scope.getByRole('link', { name, exact: true });
-      await expect(control, `${name} is held`).toHaveAttribute('aria-disabled', 'true');
-      // It reads as off by its colour, never by a fade: the disabled text colour at full opacity.
+      await expect(control, `${name} stays live`).not.toHaveAttribute('aria-disabled', 'true');
       expect(await opacity(control), `${name} is not faded`).toBe(1);
-      expect(
-        await control.evaluate((element) => getComputedStyle(element).color),
-        `${name} reads as off`,
-      ).toBe(disabledColour);
     }
-    await expect(needsYou(page).getByRole('link', { name: 'Open Reviews' })).not.toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'Open Reviews' })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );
-    // The composer keeps what was typed; Assistant is still the agent, with the note beside it,
-    // and Send is disabled.
+    // The composer keeps what was typed; Assistant is still the agent, and Send is disabled, its
+    // description and tooltip saying why. No note squeezes the footer (COR-2329: at 375 it cut the
+    // agent's name short).
     const composer = page.getByTestId('home-start-chat');
     await expect(message).toHaveValue('What did I approve yesterday?');
     await expect(composer.getByRole('combobox', { name: 'Agent' })).toContainText('Assistant');
-    await expect(composer.getByText('Off until it’s back')).toBeVisible();
-    await expect(composer.getByRole('button', { name: 'Send' })).toBeDisabled();
+    const send = composer.getByRole('button', { name: 'Send' });
+    await expect(send).toBeDisabled();
+    await expect(send).toHaveAttribute('title', 'Off until it’s back');
+    await expect(send).toHaveAccessibleDescription('Off until it’s back');
+    await expect(composer.getByText('Off until it’s back')).toHaveClass(/cinder-sr-only/);
     await captureForDesignReview(page, {
       route: '/',
       state: 'couldn’t reach Interborough',
@@ -916,7 +965,7 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
 test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  test('has a menu button, Home and three icon buttons, the Spotlight over one count, and full-width 44px buttons under each review (05c, 05o, 05p, 05q)', async ({
+  test('has a menu button, Home and three icon buttons, the Spotlight over one count, and 44px buttons at their own width under each review (05c, 05o, 05p, 05q)', async ({
     page,
     checkA11y,
   }) => {
@@ -941,7 +990,8 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
     const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
     await expect(stats).toHaveText([/Failed in 24 hours\s*0/]);
     await expect(stats.locator('xpath=self::*[@data-cinder-attention]')).toHaveCount(0);
-    // Needs you, oldest first: each button is full width and 44px, under its text.
+    // Needs you, oldest first: each button is 44px, under its text at its own width, from the
+    // title's leading edge (COR-2329: a full-width button read as a page-wide pill).
     const rows = needsYou(page).getByRole('listitem');
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText('Which environment should the release go to?');
@@ -961,7 +1011,13 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
         .count();
       expect(title).toBeLessThanOrEqual(1);
       expect(await touchHeight(button), `${name} is 44px`).toBeGreaterThanOrEqual(44);
-      expect(box!.width, `${name} is the row's width`).toBeGreaterThan(row!.width - 40);
+      const titleBox = await rows
+        .nth(index)
+        .locator('.cinder-grouped-list-item__title')
+        .boundingBox();
+      expect(box!.y, `${name} is under its text`).toBeGreaterThan(titleBox!.y);
+      expect(box!.width, `${name} keeps its own width`).toBeLessThan(row!.width / 2);
+      expect(Math.abs(box!.x - titleBox!.x), `${name} starts at the title`).toBeLessThanOrEqual(1);
     }
     await expect(needsYou(page).getByRole('button', { name: 'More actions' })).toHaveCount(0);
     // The phone's order: the Spotlight, Needs you, the composer card, then Needs attention and Recent chats.

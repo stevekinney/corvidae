@@ -147,7 +147,11 @@ export async function registerWorkflowDocuments(
   documents: WorkflowDocumentSet,
 ): Promise<readonly RegisteredWorkflowDocument[]> {
   const active = documents.active.map((input) => validateWorkflowDocument(input, host));
-  const retained = (documents.retained ?? []).map((input) => validateWorkflowDocument(input, host));
+  // A retained revision is already registered and has runs on it: it may call the activities it
+  // was registered against, `compensate` included.
+  const retained = (documents.retained ?? []).map((input) =>
+    validateWorkflowDocument(input, host, { allowCompensate: true }),
+  );
   assertRegistrable(engine, active, retained);
 
   const preparedActive = await Promise.all(

@@ -25,6 +25,7 @@ import {
   payloadText,
   readSessionTaint,
   reservedIdentifierReason,
+  sessionArchivedAtOf,
 } from '@lostgradient/operative';
 import type {
   CatalogAgentRunOptionsResolver,
@@ -91,6 +92,7 @@ import {
 } from '../run-request-context';
 import { mayUseAutomationInput, recoverRunWorkspaceAuthority } from '../run-authority.ts';
 import { ownerOrLocal } from '../owner-of-record';
+import { ContextArchivedError } from '../bureau-errors';
 import { registerTrailingOnStep, scheduledFireApprovalMetadata } from '../bureau-invariant-hooks';
 import { scheduledAgentRunOptions } from '../session-agent-options';
 import { serializeUnknownError } from '../serialization';
@@ -260,6 +262,17 @@ export function createScheduledRunServices(
         // created since, or one that a concurrent fire created for another owner.
         if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
           throw new SessionOwnerConflictError(sessionId);
+        }
+        // COR-2285 — decided inside the atomic update too: an archive can commit after the fire
+        // checked the session and before this first save. A fire that has already saved here goes
+        // on, as a replay after a crash does: an archive that came after that save found the fire's
+        // workflow unsettled, or saw the save move the session's revision, and was refused.
+        if (
+          existing !== undefined &&
+          sessionArchivedAtOf(existing.metadata) !== null &&
+          existing.metadata['lastScheduledFireRunId'] !== runId
+        ) {
+          throw new ContextArchivedError(sessionId);
         }
         const next =
           existing ??
@@ -729,6 +742,18 @@ export function createScheduledRunServices(
       return {
         status: 'unavailable',
         reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which was not found`,
+      };
+    }
+    // COR-2285 — an archived context takes no new work, a schedule's fire included. A replay of a
+    // fire that already wrote to it is let through, so a fire recovered after a crash finishes.
+    if (
+      existing !== undefined &&
+      sessionArchivedAtOf(existing.metadata) !== null &&
+      existing.metadata['lastScheduledFireRunId'] !== runId
+    ) {
+      return {
+        status: 'unavailable',
+        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which is archived (context-archived)`,
       };
     }
     // COR-323 — a fire runs as its named agent, and a continued session keeps the system prompt

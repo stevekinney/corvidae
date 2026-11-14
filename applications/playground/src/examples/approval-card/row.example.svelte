@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Approval row';
   export const description =
-    'The shared approval row: risk glyph and question, the tool and where it came from, the consequence, Input, Add a note, Deny and Approve.';
+    'The shared approval row: risk glyph and question, the tool and where it came from, the consequence, Input, Add note, Deny and Approve.';
 </script>
 
 <script lang="ts">

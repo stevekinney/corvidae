@@ -86,6 +86,29 @@ const schema = {
         'Widest width in pixels the divider can give the list pane, and the most a remembered or default\nwidth can be. Raise it for a list that is a table, whose columns need more than a list of rows.',
       default: 560,
     },
+    listCollapsible: {
+      type: 'boolean',
+      description:
+        'Offers a toggle that hides the list pane while an item is open and the panes sit side by side\nor one above the other, so the detail takes the whole width. While the list shows, `header`\nis given the toggle to place (a list with no `header` gets a header holding it alone); while\nthe list is hidden, the toggle is the only control of a narrow rail at the start edge, so it is\nalways on screen, and focus moves to it each time it flips. With no item open the list shows\nand there is no toggle, and below `pushBelow`, where one pane shows at a time, there is\nnothing to hide.',
+      default: false,
+    },
+    listCollapsed: {
+      type: 'boolean',
+      description:
+        'Whether the list pane is hidden, with `listCollapsible`. Bindable. With `storageKey`, the\nchoice is remembered beside the divider width, and a remembered choice wins on mount.',
+      default: false,
+    },
+    collapseListLabel: {
+      type: 'string',
+      description:
+        'Accessible name and tooltip of the toggle while the list shows: what pressing it does.',
+      default: 'Hide list',
+    },
+    expandListLabel: {
+      type: 'string',
+      description: 'Accessible name and tooltip of the toggle while the list is hidden.',
+      default: 'Show list',
+    },
     backLabel: {
       type: 'string',
       description: 'Label of the Back button shown above the detail below `pushBelow`.',
@@ -143,7 +166,7 @@ const schema = {
         name: 'header',
         reason: 'function-or-snippet',
         description:
-          "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button.",
+          "List header, above the rows: the title, the count, the create action, the search and the\nfilter. Put the title and the create action on their own row and the filter below at full\nwidth, so the action never reads as the filter's submit button. With `listCollapsible`, it is\ngiven the toggle that hides the list to place, usually at the end of the title row.",
       },
       {
         name: 'items',

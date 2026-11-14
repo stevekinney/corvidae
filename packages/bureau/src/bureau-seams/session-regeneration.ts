@@ -8,7 +8,7 @@
  */
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauCore, SteeringCursor } from './core';
-import { BureauError, BureauShuttingDownError } from '../bureau-errors';
+import { BureauError, BureauShuttingDownError, ContextArchivedError } from '../bureau-errors';
 import {
   BureauLedgerConflictError,
   type CommandLedgerIdentity,
@@ -38,6 +38,7 @@ import {
   type SessionStore,
   type StepContext,
   parseStepRowIdentifier,
+  sessionArchivedAtOf,
   sessionOriginOf,
   sessionOwnerOf,
 } from '@lostgradient/operative';
@@ -169,6 +170,9 @@ export function createSessionRegeneration<D extends AgentDefinitions>(
     if (session === undefined || sessionOriginOf(session.metadata) === 'try') {
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
+    // COR-2285: an archived context asks no model. An archive that commits after this read moves
+    // the revision the replacement below is fenced on, so the answer is refused there.
+    if (sessionArchivedAtOf(session.metadata) !== null) throw new ContextArchivedError(sessionId);
     // A retained claim under another payload is refused by the claim below, before any judgment.
     if (retained === undefined) await assertLatestEndedAnswer(session, messageId);
     const steering = await desiredSteeringOf(session);

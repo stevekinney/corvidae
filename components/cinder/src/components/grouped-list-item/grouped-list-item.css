@@ -233,7 +233,7 @@
   }
 
   /* ----------------------------------------
- * Text actions: buttons at the end of the row, full width under the text on a phone
+ * Text actions: buttons at the end of the row, under the text on a phone
  * ---------------------------------------- */
 
   /* Above the row's link, so a row can be a link and still carry its own buttons. */
@@ -247,8 +247,9 @@
   }
 
   /* A row with actions measures its own width: on a phone, or in any pane that narrow, the actions
-     are never folded into a menu. They take a line of their own under the text, one button per
-     line, each the full width of the content. */
+     are never folded into a menu. They take a line of their own under the text, each button at its
+     own width, starting at the text's leading edge (COR-2329: a button the width of the row read
+     as a page-wide pill, five of them in one scroll). */
   .cinder-grouped-list-item--actions {
     container: cinder-grouped-list-item / inline-size;
   }
@@ -260,12 +261,8 @@
 
     .cinder-grouped-list-item--actions .cinder-grouped-list-item__actions {
       flex: 1 0 100%;
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .cinder-grouped-list-item--actions .cinder-grouped-list-item__actions > .cinder-button {
-      inline-size: 100%;
+      flex-flow: row wrap;
+      justify-content: flex-start;
     }
   }
 

@@ -9,13 +9,15 @@
    * While the first-run checklist shows, its first step says the provider notice, so `omitProviderNotice`
    * leaves that row out; the rest stay.
    *
-   * With nothing to show the section gives way to one row, Cinder's `EmptyState` in its row layout:
-   * "Nothing needs attention", and the link to Health stays. A read that failed says so in the
+   * With nothing to show the section keeps its heading over one row, Cinder's `EmptyState` in its
+   * row layout: "Nothing needs attention", with the link to Health at the end of it. (Without the
+   * heading the row read as part of the section above it.) A read that failed says so in the
    * section's own place, with a Try again and no link to Health, and never claims all is well;
-   * while it has not answered the section holds Cinder's grouped placeholder rows. While the server
-   * does not answer each row's button is held like every control that changes something.
+   * while it has not answered the section holds Cinder's grouped placeholder rows. Each row's button
+   * only opens a page, so it stays live while the server does not answer, as the link to Health
+   * does.
    */
-  import { EmptyState, GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, GroupedList, GroupedListItem, Link, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -25,7 +27,6 @@
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
-  import HomeLink from './home-link.svelte';
   import { openInApplication } from './home-navigation.ts';
   import { useAgentList, useAttentionItems } from './home-queries.svelte.ts';
   import { attentionRows } from './home-rows.ts';
@@ -65,52 +66,56 @@
   );
 </script>
 
-{#if items.data !== undefined && rows.length === 0}
-  <!-- One row on the page itself, with no heading over it: the sections beside it draw no box. -->
-  <div data-testid="attention-clear">
-    <EmptyState
-      kind="done"
-      layout="row"
-      headingLevel={3}
-      title={copy.clear.title}
-      description={copy.clear.description}
-    >
-      {#snippet action()}
-        <HomeLink path="/health" label={copy.link} />
-      {/snippet}
-    </EmptyState>
-  </div>
-{:else}
-  <HomeCard
-    title={copy.title}
-    link={items.data === undefined ? undefined : { label: copy.link, href: '/health' }}
-  >
-    {#if items.data === undefined && items.isError}
-      <HomeCardError
-        title={HOME_COPY.states.cardFailed.attention}
-        onRetry={() => void items.refetch()}
-      />
-    {:else if items.data === undefined}
-      <Skeleton variant="grouped" rows={3} action />
-    {:else if rows.length > 0}
-      <GroupedList aria-label={copy.listLabel}>
-        {#each rows as row (row.key)}
-          <GroupedListItem
-            data-attention={row.key}
-            actions={[
-              {
-                label: row.action.label,
-                href: router.href(row.action.href),
-                onclick: (event) => openInApplication(event, row.action.href),
-                changes: true,
-              },
-            ]}
+<!-- With nothing to show the link to Health moves into the clear row, at the end of its line, so
+     the section never says it twice. -->
+<HomeCard
+  title={copy.title}
+  link={items.data === undefined || rows.length === 0
+    ? undefined
+    : { label: copy.link, href: '/health' }}
+>
+  {#if items.data === undefined && items.isError}
+    <HomeCardError
+      title={HOME_COPY.states.cardFailed.attention}
+      onRetry={() => void items.refetch()}
+    />
+  {:else if items.data === undefined}
+    <Skeleton variant="grouped" rows={3} action />
+  {:else if rows.length === 0}
+    <div data-testid="attention-clear">
+      <EmptyState
+        kind="done"
+        layout="row"
+        headingLevel={3}
+        title={copy.clear.title}
+        description={copy.clear.description}
+      >
+        {#snippet action()}
+          <Link
+            variant="more"
+            href={router.href('/health')}
+            onclick={(event: MouseEvent) => openInApplication(event, '/health')}>{copy.link}</Link
           >
-            {#snippet title()}{row.title}{/snippet}
-            {#snippet subtitle()}{row.detail ?? ''}{/snippet}
-          </GroupedListItem>
-        {/each}
-      </GroupedList>
-    {/if}
-  </HomeCard>
-{/if}
+        {/snippet}
+      </EmptyState>
+    </div>
+  {:else}
+    <GroupedList aria-label={copy.listLabel}>
+      {#each rows as row (row.key)}
+        <GroupedListItem
+          data-attention={row.key}
+          actions={[
+            {
+              label: row.action.label,
+              href: router.href(row.action.href),
+              onclick: (event) => openInApplication(event, row.action.href),
+            },
+          ]}
+        >
+          {#snippet title()}{row.title}{/snippet}
+          {#snippet subtitle()}{row.detail ?? ''}{/snippet}
+        </GroupedListItem>
+      {/each}
+    </GroupedList>
+  {/if}
+</HomeCard>

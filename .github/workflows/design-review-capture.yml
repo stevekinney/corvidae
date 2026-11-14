@@ -1,0 +1,108 @@
+# Runs the Interborough design-review capture (`applications/interborough/scripts/design-review-capture.ts`,
+# `.agents/skills/design-review/references/capture.md`) on a GitHub runner and uploads its screens, for
+# when the shared development host is too loaded to start it (COR-2461):
+#
+#   gh workflow run design-review-capture.yml --ref <branch> -f grep='/agents' -f scheme=dark -f data=showcase
+#   gh run download <run id> --name <artifact name> --dir tmp/design-review/<run id>
+#
+# It runs in the image and with the setup of the Interborough end-to-end job in `browser-suites.yml`, so
+# the fonts, and with them the layout, are the ones its end-to-end layout checks measure: Linux, not
+# macOS. The ref checked out is the one the run was dispatched on. `workflow_call` takes the same inputs
+# so another workflow can run it; `scripts/browser-fixtures/scripts/browser-suites-workflow.test.ts`
+# keeps the image tag equal to the Playwright that `bun.lock` resolves.
+#
+# The script exits 0 when it wrote at least one capture, 1 when it wrote none and 2 on bad usage or a
+# taken end-to-end port, and the job's conclusion follows it. The upload runs either way, because the
+# captures are taken before a specification's assertions, so a failing specification keeps them and
+# `summary.json` records its exit code. On CI the script's host admission reports memory and never waits
+# (`scripts/run-exclusively.ts`), and Playwright starts its own server rather than reusing one.
+name: Design review capture
+
+on:
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: Playwright title filter, for example /agents. Empty captures every page.
+        type: string
+        required: false
+        default: ''
+      scheme:
+        description: The color scheme to capture.
+        type: choice
+        options: [both, light, dark]
+        default: both
+      data:
+        description: The content to capture.
+        type: choice
+        options: [both, showcase, stress]
+        default: both
+  workflow_call:
+    inputs:
+      grep:
+        description: Playwright title filter, for example /agents. Empty captures every page.
+        type: string
+        required: false
+        default: ''
+      scheme:
+        description: The color scheme to capture (light, dark or both).
+        type: string
+        default: both
+      data:
+        description: The content to capture (showcase, stress or both).
+        type: string
+        default: both
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+
+jobs:
+  capture:
+    name: Capture
+    runs-on: ubuntu-latest
+    # The four end-to-end shards take 12 to 23 minutes each (about 65 in all, on `main.yml` runs of
+    # 2026-11-14) for one pass of the whole suite; a default capture runs most of it twice on one
+    # worker. The capture step stops earlier than the job so the upload still runs after an overrun.
+    timeout-minutes: 120
+    # The image ships the Chromium the lockfile's Playwright launches, so there is no browser install.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-jammy
+    steps:
+      # The image has neither Git (which `actions/checkout` needs for a repository rather than a
+      # tarball) nor `unzip` (which `setup-bun` needs).
+      - run: apt-get update && apt-get install -y --no-install-recommends git unzip
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      # Inputs reach the shell through the environment, never by interpolation into the script. Inside a
+      # container `github.workspace` names the host's path, so the output takes the container's
+      # `GITHUB_WORKSPACE`; the upload step names it relative to the workspace.
+      - name: Capture
+        working-directory: applications/interborough
+        shell: bash
+        timeout-minutes: 105
+        env:
+          CAPTURE_GREP: ${{ inputs.grep }}
+          CAPTURE_SCHEME: ${{ inputs.scheme }}
+          CAPTURE_DATA: ${{ inputs.data }}
+        run: |
+          arguments=(--out "$GITHUB_WORKSPACE/design-review-capture" --scheme "$CAPTURE_SCHEME" --data "$CAPTURE_DATA")
+          if [ -n "$CAPTURE_GREP" ]; then arguments+=(--grep "$CAPTURE_GREP"); fi
+          bun scripts/design-review-capture.ts "${arguments[@]}"
+      # A failed upload must not hide the capture's own conclusion, so it does not fail the job.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        continue-on-error: true
+        with:
+          name: design-review-capture-${{ github.run_id }}-${{ inputs.scheme }}-${{ inputs.data }}
+          path: design-review-capture/
+          retention-days: 3
+          if-no-files-found: warn

@@ -12,6 +12,7 @@ import {
   type PermissionMode,
   SteeringAcceptedEvent,
   type SteeringRequestedValue,
+  sessionArchivedAtOf,
 } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
 import {
@@ -20,7 +21,7 @@ import {
   type SteeringCursor,
   type SteeringFoldHistory,
 } from './core';
-import { BureauError, UnpricedSwitchRefusedError } from '../bureau-errors';
+import { BureauError, ContextArchivedError, UnpricedSwitchRefusedError } from '../bureau-errors';
 import {
   type BureauSteeringGate,
   type ImplementedSteeringCommand,
@@ -197,6 +198,12 @@ export function createSteeringAdmission<D extends AgentDefinitions>(
         steersIdleSession(request.requestedValue),
       );
       if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
+      // COR-2285: an archived context takes no steering, decided after authorization so another
+      // owner's reads as missing, and before the lifecycle, since an archived context has no run.
+      // A retry of a key the log already decided is still answered from the log, above.
+      if (sessionArchivedAtOf(session.metadata) !== null) {
+        throw new ContextArchivedError(sessionId);
+      }
       if (preAdmission.verdict === 'session-terminal') {
         return { outcome: 'session-terminal', sessionId };
       }

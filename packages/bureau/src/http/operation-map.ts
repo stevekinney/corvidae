@@ -127,6 +127,8 @@ export const OPERATION_MAP = {
     member: 'contexts.regenerate',
   },
   'bureau.contexts.rename': { workspaceClass: 'private-owned', member: 'contexts.rename' },
+  'bureau.contexts.archive': { workspaceClass: 'private-owned', member: 'contexts.archive' },
+  'bureau.contexts.unarchive': { workspaceClass: 'private-owned', member: 'contexts.unarchive' },
   'bureau.contexts.window': { workspaceClass: 'private-owned', member: 'contexts.window' },
 
   'bureau.reviews.list': { workspaceClass: 'private-owned', member: 'reviews.list' },

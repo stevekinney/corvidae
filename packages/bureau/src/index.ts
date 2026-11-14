@@ -427,6 +427,9 @@ export type {
 export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
+  ContextArchivedError,
+  ContextBusyError,
+  ContextNotArchivableError,
   PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
@@ -772,6 +775,7 @@ export type {
 } from './bureau-types/reviews';
 export type {
   BureauContexts,
+  ContextArchiveOutcome,
   ContextWindowCategory,
   ContextWindowCategoryName,
   ContextWindowReport,

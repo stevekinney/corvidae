@@ -39,6 +39,7 @@ export async function buildWorkflowDocumentManifest(
   document: unknown,
   host: DocumentWorkflowHost,
 ): Promise<WorkflowRevisionManifest> {
-  const validated = validateWorkflowDocument(document, host);
+  // A manifest compares revisions, including ones registered before `compensate` was refused.
+  const validated = validateWorkflowDocument(document, host, { allowCompensate: true });
   return deriveWorkflowDefinitionManifest(await buildDocumentWorkflowDefinition(validated, host));
 }

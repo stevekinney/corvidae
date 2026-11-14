@@ -12,6 +12,7 @@ import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { restartProbing } from '../../app/restart/host-restart-flow.svelte.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient } from '../../lib/query.ts';
+import { router } from '../../lib/router.svelte.ts';
 import { installFakePluginHost } from '../settings/plugins/plugins-host.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -146,17 +147,21 @@ describe('the live composer', () => {
 });
 
 describe('a blocked composer', () => {
-  test('replaces the text box with one row when no provider is connected for a model agent, with no Use Assistant in a chat whose agent is fixed', async () => {
+  test('keeps a chat with messages readable with no provider, and Chat replaces only the text box with the Connect provider row (COR-2285 V4)', async () => {
     serve({}, { hasKey: false });
     const { container } = mount();
 
     await waitFor(() => expect(row(container)).not.toBeNull());
-    expect(row(container)?.textContent).toContain(COPY.noProvider);
+    expect(row(container)?.textContent).toContain('Connect a model provider');
     const buttons = [...row(container)!.querySelectorAll('a, button')];
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual([COPY.connectProvider]);
-    expect(buttons[0]?.getAttribute('href')).toBe('/settings/models');
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Connect provider']);
+    expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('primary');
     expect(composer(container)).toBeNull();
-    expect(container.querySelector('.chat-input-footer')).toBeNull();
+    // The transcript is still there, and nothing stands in its place.
+    expect(container.querySelector('[data-chat-availability]')).toBeNull();
+    expect(container.querySelector<HTMLElement>('.chat-timeline')?.style.display).not.toBe('none');
+    await fireEvent.click(buttons[0] as HTMLElement);
+    expect(router.pathname).toBe('/settings/models');
   });
 
   test('replaces the text box with one row while the server does not answer, with no second retry', async () => {
@@ -182,16 +187,21 @@ describe('a blocked composer', () => {
     }
   });
 
-  test('on a new chat also offers Use Assistant, which switches to the scripted agent and brings the composer back', async () => {
+  test('on a new chat with no provider is Chat’s Connect a model provider state, in place of the welcome and the composer (COR-2285 V4)', async () => {
     serve({}, { hasKey: false });
-    const { container, findByRole } = mount('tool-runner', true);
+    const { container } = mount('tool-runner', true);
 
-    await waitFor(() => expect(row(container)).not.toBeNull());
-    expect(row(container)?.textContent).toContain(COPY.noProvider);
-    await fireEvent.click(await findByRole('button', { name: COPY.useAssistant }));
-
-    await waitFor(() => expect(row(container)).toBeNull());
-    expect(composer(container)?.placeholder).toBe('Message Assistant…');
+    await waitFor(() =>
+      expect(container.querySelector('[data-chat-availability="unconfigured"]')).not.toBeNull(),
+    );
+    const state = container.querySelector<HTMLElement>('[data-chat-availability="unconfigured"]')!;
+    expect(state.textContent).toContain('Connect a model provider');
+    const connect = [...state.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Connect provider',
+    );
+    expect(connect?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(container.querySelector<HTMLElement>('.chat-input-wrapper')?.style.display).toBe('none');
+    expect(row(container)).toBeNull();
   });
 
   test('leaves a scripted agent’s composer alone, since it needs no provider', async () => {

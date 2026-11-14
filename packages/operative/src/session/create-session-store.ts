@@ -8,6 +8,7 @@ import { getOwn, messageText } from 'conversationalist';
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';
 import { SessionOutboxAppendedEvent } from '../events';
+import { matchesArchivedFilter } from './session-archive';
 import { sessionLineageOf } from './session-lineage';
 import { sessionOriginOf } from './session-origin';
 import { sessionOwnerOf } from './session-owner';
@@ -1251,9 +1252,9 @@ export function createSessionStore(
         }
 
         // Filter by agentName when requested
-        // The owner, origin and title filters are applied here, to the index, before `offset` and
-        // `limit`, so every page is full of the owner's own sessions. The index keeps each
-        // session's metadata, so the origin needs no summary field of its own.
+        // The owner, origin, archived and title filters are applied here, to the index, before
+        // `offset` and `limit`, so every page is full of the owner's own sessions. The index keeps
+        // each session's metadata, so neither the origin nor the archive needs a summary field.
         const filtered = [...summaries.values()].filter(
           (s) =>
             (!listOptions?.agentName || s.agentName === listOptions.agentName) &&
@@ -1263,6 +1264,7 @@ export function createSessionStore(
             (listOptions?.origin !== undefined ||
               listOptions?.excludeOrigins === undefined ||
               !listOptions.excludeOrigins.includes(sessionOriginOf(s.metadata))) &&
+            matchesArchivedFilter(s.metadata, listOptions?.archived) &&
             (listOptions?.titleContains === undefined ||
               (s.title !== null &&
                 s.title.toLowerCase().includes(listOptions.titleContains.toLowerCase()))),

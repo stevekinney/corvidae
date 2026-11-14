@@ -12,7 +12,8 @@ type ModalBaseProps = {
   /**
    * Viewport width below which the modal opens as a bottom sheet instead of a centred card: it
    * docks to the bottom edge with a grabber and rounded top corners, its footer actions stack at
-   * full width and 44px with the last action (the confirmation) first, and it rides above the
+   * full width, drawn at the button's painted height with the 44px reached through its hit area,
+   * with the last action (the confirmation) first, and it rides above the
    * on-screen keyboard and the bottom safe area. A CSS length such as `"640px"`, or `false` for the
    * centred card at every width. Ignored for `chrome="none"`.
    * @default false

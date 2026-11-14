@@ -170,6 +170,46 @@ test.describe('the chat list on the sample world', () => {
   });
 });
 
+test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
+  test('hides with Hide chats, leaves Show chats on a rail, and stays hidden across a reload', async ({
+    page,
+    checkA11y,
+  }) => {
+    const refund = 'Please refund order 4471, it arrived damaged.';
+    await openChats(page);
+    await row(page, refund).getByRole('link').first().click();
+    const detail = page.getByRole('region', { name: 'Open chat' });
+    await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
+    const detailBefore = await detail.boundingBox();
+
+    const hide = list(page).locator('header').getByRole('button', { name: 'Hide chats' });
+    await expect(hide).toBeVisible();
+    await hide.click();
+
+    // The list is gone, not squeezed: nothing of it is on the page, and the chat takes its width.
+    await expect(list(page)).toHaveCount(0);
+    const show = page.getByRole('button', { name: 'Show chats' });
+    await expect(show).toBeFocused();
+    const detailAfter = await detail.boundingBox();
+    expect(detailAfter!.width).toBeGreaterThan(detailBefore!.width + 150);
+    await checkA11y('the chat list hidden beside an open chat');
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'chat list hidden',
+      source: SOURCE,
+    });
+
+    // The choice is kept: a reload opens the chat with the list still hidden.
+    await page.reload();
+    await expect(detail.getByRole('heading', { level: 1, name: refund })).toBeVisible();
+    await expect(list(page)).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Show chats' }).click();
+    await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
+    await expect(list(page).getByRole('button', { name: 'Hide chats' })).toBeFocused();
+  });
+});
+
 test.describe('the chat list at other widths', () => {
   test('in a pane dragged wide names today’s date, and the agent before each message (11g, 11h)', async ({
     page,

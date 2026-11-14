@@ -63,11 +63,13 @@
     line-height: var(--cinder-statistic-value-line-height, 1.1);
   }
 
-  /* The placeholder block keeps the height of a figure, so nothing shifts when the figure arrives. */
+  /* The placeholder block is exactly one line of the figure it stands for, in the figure's own size
+   * and leading (the plain variant's smaller figure too), with the bar inside it, so nothing shifts
+   * when the figure arrives (COR-2329: a fixed 28px bar made the plain variant 6px taller). */
   .cinder-statistic__value--loading {
     display: flex;
     align-items: center;
-    min-block-size: calc(var(--cinder-statistic-value-font-size, var(--cinder-text-4xl)) * 1.1);
+    block-size: 1lh;
   }
 
   .cinder-statistic[data-cinder-has-icon] .cinder-statistic__value {

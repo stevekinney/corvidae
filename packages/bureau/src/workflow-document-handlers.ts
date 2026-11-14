@@ -12,9 +12,15 @@ import {
   type WorkflowDocument,
   type WorkflowDocumentIssue,
   type WorkflowDocumentStep,
+  type WorkflowDocumentValidationOptions,
 } from '@lostgradient/weft';
 
-import { bureauNameOf, handlerNameIssue, weftNameOf } from './namespaced-identifier';
+import {
+  bureauNameOf,
+  handlerNameIssue,
+  weftNameOf,
+  workflowReferenceIssue,
+} from './namespaced-identifier';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -34,6 +40,7 @@ function renameSteps(
 ): WorkflowDocumentStep[] {
   return steps.map((step) => {
     if (step.kind === 'activity') return { ...step, handler: rename(step.handler) };
+    if (step.kind === 'workflow') return { ...step, workflow: rename(step.workflow) };
     if (step.kind === 'map') return { ...step, steps: renameSteps(step.steps, rename) };
     if (step.kind === 'parallel') {
       return {
@@ -61,8 +68,8 @@ function renameSteps(
 }
 
 /**
- * `document` with its `name`, every activity step's handler, and the handlers its
- * `activityVersions` pins, rewritten by `rename`.
+ * `document` with its `name`, every activity step's handler, every workflow step's workflow, and
+ * the names its `activityVersions` and `workflowVersions` pin, rewritten by `rename`.
  */
 function renameHandlers(
   document: WorkflowDocument,
@@ -75,6 +82,9 @@ function renameHandlers(
     ...(document.activityVersions === undefined
       ? {}
       : { activityVersions: renameVersionKeys(document.activityVersions, rename) }),
+    ...(document.workflowVersions === undefined
+      ? {}
+      : { workflowVersions: renameVersionKeys(document.workflowVersions, rename) }),
   };
 }
 
@@ -102,27 +112,40 @@ export function toWeftDocumentInput(input: unknown): unknown {
   if (isRecord(input['activityVersions'])) {
     mapped['activityVersions'] = renameVersionKeys(input['activityVersions'], weftNameOf);
   }
+  if (isRecord(input['workflowVersions'])) {
+    mapped['workflowVersions'] = renameVersionKeys(input['workflowVersions'], weftNameOf);
+  }
   return mapped;
+}
+
+/** What a walk over a document's input steps reports about the names it renames. */
+interface StepNameObserver {
+  readonly onActivity?: (step: Record<string, unknown>, indexPath: string) => void;
+  readonly onWorkflow?: (step: Record<string, unknown>, indexPath: string) => void;
 }
 
 function renameInputSteps(
   steps: readonly unknown[],
   rename: (handler: string) => string,
-  onActivity?: (step: Record<string, unknown>, indexPath: string) => void,
+  observer: StepNameObserver = {},
   path = 'steps',
 ): unknown[] {
   return steps.map((step, index) => {
     if (!isRecord(step)) return step;
     const stepPath = `${path}[${String(index)}]`;
     if (step['kind'] === 'activity' && typeof step['handler'] === 'string') {
-      onActivity?.(step, stepPath);
+      observer.onActivity?.(step, stepPath);
       return { ...step, handler: rename(step['handler']) };
+    }
+    if (step['kind'] === 'workflow' && typeof step['workflow'] === 'string') {
+      observer.onWorkflow?.(step, stepPath);
+      return { ...step, workflow: rename(step['workflow']) };
     }
     if (step['kind'] === 'map') {
       return {
         ...step,
         steps: Array.isArray(step['steps'])
-          ? renameInputSteps(step['steps'], rename, onActivity, `${stepPath}.steps`)
+          ? renameInputSteps(step['steps'], rename, observer, `${stepPath}.steps`)
           : step['steps'],
       };
     }
@@ -134,7 +157,7 @@ function renameInputSteps(
               Object.entries(step['branches']).map(([name, nested]) => [
                 name,
                 Array.isArray(nested)
-                  ? renameInputSteps(nested, rename, onActivity, `${stepPath}.branches.${name}`)
+                  ? renameInputSteps(nested, rename, observer, `${stepPath}.branches.${name}`)
                   : nested,
               ]),
             )
@@ -147,7 +170,7 @@ function renameInputSteps(
           Object.entries(step['cases']).map(([literal, nested]) => [
             literal,
             Array.isArray(nested)
-              ? renameInputSteps(nested, rename, onActivity, `${stepPath}.cases.${literal}`)
+              ? renameInputSteps(nested, rename, observer, `${stepPath}.cases.${literal}`)
               : nested,
           ]),
         )
@@ -160,7 +183,7 @@ function renameInputSteps(
             otherwise: renameInputSteps(
               step['otherwise'],
               rename,
-              onActivity,
+              observer,
               `${stepPath}.otherwise`,
             ),
           }
@@ -178,16 +201,20 @@ function renameInputSteps(
 export function validateBureauWorkflowDocument(
   input: unknown,
   host: DocumentWorkflowHost,
+  options?: WorkflowDocumentValidationOptions,
 ): WorkflowDocument {
   const issues: WorkflowDocumentIssue[] = [];
   let prepared = input;
   if (isRecord(input) && Array.isArray(input['steps'])) {
-    const steps = renameInputSteps(input['steps'], weftNameOf, (step, path) => {
-      const handler = step['handler'] as string;
-      const problem = handlerNameIssue(handler);
-      if (problem !== undefined) {
-        issues.push({ path: `${path}.handler`, message: problem });
-      }
+    const steps = renameInputSteps(input['steps'], weftNameOf, {
+      onActivity: (step, path) => {
+        const problem = handlerNameIssue(step['handler'] as string);
+        if (problem !== undefined) issues.push({ path: `${path}.handler`, message: problem });
+      },
+      onWorkflow: (step, path) => {
+        const problem = workflowReferenceIssue(step['workflow'] as string);
+        if (problem !== undefined) issues.push({ path: `${path}.workflow`, message: problem });
+      },
     });
     prepared = { ...input, steps };
   }
@@ -200,9 +227,15 @@ export function validateBureauWorkflowDocument(
       activityVersions: renameVersionKeys(prepared['activityVersions'], weftNameOf),
     };
   }
+  if (isRecord(prepared) && isRecord(prepared['workflowVersions'])) {
+    prepared = {
+      ...prepared,
+      workflowVersions: renameVersionKeys(prepared['workflowVersions'], weftNameOf),
+    };
+  }
   let document: WorkflowDocument | undefined;
   try {
-    document = validateWorkflowDocument(prepared, host);
+    document = validateWorkflowDocument(prepared, host, options);
   } catch (error) {
     if (!(error instanceof WorkflowDocumentValidationError)) throw error;
     issues.push(...error.issues);

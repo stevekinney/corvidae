@@ -198,6 +198,7 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
         { uri, name: 'probe', mimeType: 'text/html;profile=mcp-app', text: '<!doctype html>' },
       ],
       toolMeta: { 'bureau.tasks.inspect': { ui: { resourceUri: uri } } },
+      defaultToolMeta: { ui: { visibility: ['model'] } },
     });
     const alice = await connect(opened.handler, 'alice-key', mode);
     const listed = await alice.listResources();
@@ -207,6 +208,9 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
     const { tools } = await alice.listTools();
     expect(tools.find((tool) => tool.name === 'bureau.tasks.inspect')?._meta).toEqual({
       ui: { resourceUri: uri },
+    });
+    expect(tools.find((tool) => tool.name === 'bureau.tasks.get')?._meta).toEqual({
+      ui: { visibility: ['model'] },
     });
   });
 

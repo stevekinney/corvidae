@@ -22,12 +22,13 @@ import {
   createRunStartedFrame,
   isFailureFinishReason,
   runScopedExecutionContextOf,
+  sessionArchivedAtOf,
 } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
 import { describeDefinitionDrift } from '../agent-definition-pin';
 import { BUREAU_AGENT_NAME, detachBestEffortPromise } from '../bureau-construction-support';
 import type { BureauCore, ChatRunSpend } from './core';
-import { BureauError, toBadRequest } from '../bureau-errors';
+import { BureauError, ContextArchivedError, toBadRequest } from '../bureau-errors';
 import type { BureauSteeringGate } from '../steering';
 import {
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
@@ -390,6 +391,11 @@ export function createRunCreation<D extends AgentDefinitions>(
           });
     if (ledgerAttempt?.kind === 'replay') return ledgerAttempt.result;
     const ledgerClaim = ledgerAttempt;
+    // COR-2285 — an archived context takes no new task. Decided after the ledger, so an exact
+    // retry of a task started before the archive still replays it, and after the owner check, so
+    // another owner's archived context reads as one that does not exist. The save below decides it
+    // again inside its atomic update, against an archive that commits meanwhile.
+    await refuseArchivedContext(session, sessionId, ledgerClaim);
     if (core.flowController) {
       const decision = core.flowController.admit({
         runId,
@@ -549,6 +555,10 @@ export function createRunCreation<D extends AgentDefinitions>(
         // agent it was created for.
         agentName,
         baseConversationHistory,
+        undefined,
+        undefined,
+        // COR-2285 — this save starts the run, so it refuses a context archived meanwhile.
+        true,
       );
 
       // F3 — opt-in `requestHumanInput` wiring for a REAL durable run
@@ -1254,6 +1264,21 @@ export function createRunCreation<D extends AgentDefinitions>(
       peers.abortTask(runId, 'Aborted: the task’s receipt was not recorded');
       throw error;
     });
+  }
+
+  /**
+   * COR-2285 — refuses a task in `session` when it is archived, with a `ContextArchivedError`,
+   * releasing the run-creation claim first so an exact retry after an unarchive starts afresh.
+   */
+  async function refuseArchivedContext(
+    session: AgentSession | undefined,
+    sessionId: string,
+    ledgerClaim: Parameters<typeof releaseRunCreationClaim>[0],
+  ): Promise<void> {
+    if (session === undefined || sessionArchivedAtOf(session.metadata) === null) return;
+    const refusal = new ContextArchivedError(sessionId);
+    await releaseRunCreationClaim(ledgerClaim, refusal);
+    throw refusal;
   }
 
   /**

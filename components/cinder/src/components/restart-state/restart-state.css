@@ -1,4 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../copy-button/copy-button.css';
 @layer cinder.components {
   /* ========================================
  * RESTART STATE
@@ -113,10 +114,11 @@
  * Failed: what to check, the details, the command
  * ---------------------------------------- */
 
+  /* What to check is a heading and a sentence on the card itself, not a box inside the card. */
   .cinder-restart-state__check {
-    padding: var(--cinder-space-3);
-    background: var(--cinder-surface-inset);
-    border-radius: var(--cinder-radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
   }
 
   .cinder-restart-state__check-title {
@@ -143,21 +145,32 @@
     overflow-wrap: anywhere;
   }
 
+  /* The label, then one flat row: the command in the code face, and the copy icon at the row's
+     inline end. No chip or box around the command. */
   .cinder-restart-state__command {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-restart-state__command-row {
+    display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
   }
 
   .cinder-restart-state__command-text {
-    padding: var(--cinder-space-0-5) var(--cinder-space-2);
-    background: var(--cinder-surface-inset);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-sm);
+    flex: 1 1 auto;
+    min-inline-size: 0;
     font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-xs);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-default);
     overflow-wrap: anywhere;
+  }
+
+  .cinder-restart-state__copy {
+    flex: none;
   }
 
   .cinder-restart-state__actions {

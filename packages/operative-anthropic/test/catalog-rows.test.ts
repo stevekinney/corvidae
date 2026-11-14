@@ -71,9 +71,9 @@ describe('anthropicRows: model set (computed, not hand-copied)', () => {
   });
 
   it('defaults the freshness to a real timestamp', () => {
-    expect(anthropicRows()[0]?.freshness).toBe(
-      new Date(anthropicRows()[0]!.freshness).toISOString(),
-    );
+    // One call: each call stamps its own time, so two calls can straddle a millisecond.
+    const freshness = anthropicRows()[0]!.freshness;
+    expect(freshness).toBe(new Date(freshness).toISOString());
   });
 });
 

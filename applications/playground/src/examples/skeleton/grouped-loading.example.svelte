@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Grouped list loading';
   export const description =
-    "The grouped variant draws a grouped list's rows on its rounded surface, separators inset at the text. With action, each row keeps a block where its button goes, and on a phone the block drops under the text at full width.";
+    "The grouped variant draws a grouped list's rows on its rounded surface, separators inset at the text. With action, each row keeps a block where its button goes, and on a phone the block drops under the text at its own width.";
 </script>
 
 <script lang="ts">

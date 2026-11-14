@@ -17,3 +17,9 @@
 <StatisticGroup label="Home counts" columns={1} variant="plain" data-testid="plain-group">
   <StatisticGroup.Statistic label="Failed in 24 hours" value={3} attention />
 </StatisticGroup>
+
+<!-- The same stat while it loads (COR-2329): the placeholder is one value line tall, so nothing
+     under it moves when the number arrives. -->
+<StatisticGroup label="Home counts" columns={1} variant="plain" data-testid="plain-group-loading">
+  <StatisticGroup.Statistic label="Failed in 24 hours" value="" loading />
+</StatisticGroup>

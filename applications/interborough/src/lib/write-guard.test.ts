@@ -56,6 +56,14 @@ describe('classifyRequest', () => {
     expect(isReadOperation('bureau.schedules.subscribeEvents')).toBe(true);
     expect(isReadOperation('bureau.schedules.pause')).toBe(false);
   });
+
+  test('archiving and unarchiving a chat are writes', () => {
+    const url = 'http://localhost/bureau/jsonrpc';
+    for (const method of ['bureau.contexts.archive', 'bureau.contexts.unarchive']) {
+      expect(isReadOperation(method)).toBe(false);
+      expect(classifyRequest(url, 'POST', jsonRpc(method))).toBe('write');
+    }
+  });
 });
 
 describe('armWriteGuard', () => {

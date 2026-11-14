@@ -324,7 +324,12 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     },
   ],
   'components/cinder/src/components/run-step-timeline/run-step-timeline.css': [
-    { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
+    // The item's connector and the rail-through segment past a nested row: both 1px wide.
+    {
+      declaration: 'background: var(--cinder-border-muted);',
+      category: 'hairline',
+      occurrences: 2,
+    },
     {
       declaration: '--_cinder-rst-marker-color: var(--cinder-border-contrast);',
       category: 'area',

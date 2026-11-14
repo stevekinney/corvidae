@@ -221,8 +221,12 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
       }),
     ).toBeVisible();
     // The composer is the one blocked row, not a banner.
-    await expect(blockedRow(page)).toContainText('Connect a model provider to chat');
-    await expect(blockedRow(page).getByRole('link', { name: 'Connect a provider' })).toBeVisible();
+    // Chat keeps the conversation and replaces only the composer (COR-2285 V4).
+    await expect(blockedRow(page)).toContainText('Connect a model provider');
+    await expect(
+      blockedRow(page).getByRole('button', { name: 'Connect provider' }),
+    ).toHaveAttribute('data-cinder-variant', 'primary');
+    await expect(page.locator('[data-chat-availability]')).toHaveCount(0);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/chats/:chat',

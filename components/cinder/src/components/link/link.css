@@ -32,6 +32,39 @@
   }
 
   /* ----------------------------------------
+ * More: the way out of a section or an empty row to the page that holds the rest
+ * ("Open Reviews ›"). Small regular text and a chevron, on one line, so it never reads louder
+ * than the heading beside it. The face is the text's own; under a coarse pointer a hit area
+ * that takes no layout reaches 44px, as a compact button's does.
+ * ---------------------------------------- */
+
+  .cinder-link[data-variant='more'] {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-0-5);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    line-height: var(--cinder-leading-snug);
+    white-space: nowrap;
+  }
+
+  .cinder-link__chevron {
+    flex: none;
+    inline-size: 1em;
+    block-size: 1em;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-link[data-variant='more']::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
+  /* ----------------------------------------
  * Underline variants
  * ---------------------------------------- */
 

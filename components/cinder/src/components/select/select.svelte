@@ -227,7 +227,7 @@
           {/each}
         </select>
       {/if}
-      <span class="cinder-select-field__chevron" aria-hidden="true"></span>
+      <span class="cinder-_field-chevron cinder-select-field__chevron" aria-hidden="true"></span>
     </span>
   {/if}
 {/snippet}

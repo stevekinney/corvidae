@@ -48,15 +48,22 @@
     gap: var(--cinder-space-3);
   }
 
-  /* As a sheet the actions stack at full width, the confirmation first (Modal's own footer rule,
-   * which now reaches only this wrapper). */
+  /* As a sheet the confirmation, the one primary action, fills the row beside a compact Cancel that
+   * keeps its own width; both are drawn at the button's painted height and reach 44px through the
+   * button's hit area. When the two do not fit one line, the confirmation wraps above Cancel.
+   * DOM order is unchanged, so Cancel keeps initial focus. */
   .cinder-modal[data-cinder-sheet='docked'] .cinder-confirm-dialog__actions {
-    flex-direction: column-reverse;
-    align-items: stretch;
+    flex-wrap: wrap-reverse;
+    align-items: center;
+    justify-content: stretch;
   }
 
   .cinder-modal[data-cinder-sheet='docked'] .cinder-confirm-dialog__actions > * {
-    inline-size: 100%;
+    flex: 1 1 auto;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-confirm-dialog__actions > :first-child {
+    flex: 0 0 auto;
   }
 
   /* What each choice does: a checkbox, or the command about to run. */
@@ -83,7 +90,10 @@
     overflow-wrap: anywhere;
   }
 
+  /* The first row has no padding above it either, so the line that introduces the list sits one
+   * column step (16px) above it, and not that step plus the row's own padding. */
   .cinder-confirm-dialog__options > ul > li:first-child {
+    padding-block-start: 0;
     border-block-start: 0;
   }
 

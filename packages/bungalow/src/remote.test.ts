@@ -9,7 +9,16 @@ import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { openBungalow, openBungalowWithDependencies, openTemporaryBungalow } from './bungalow.ts';
+import {
+  openBungalow,
+  openBungalowWithDependencies,
+  openTemporaryBungalow,
+  type OpenRemoteBungalowOptions,
+} from './bungalow.ts';
+import type { DeploymentSecretsContext } from './deployment-secrets.ts';
+import { resolveBungalowDescriptor } from './descriptor.ts';
+import { processEnvironment } from './environment-configuration.ts';
+import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
 import {
   homeEnvironment,
@@ -17,7 +26,8 @@ import {
   TEST_NAME,
   useTemporaryDirectories,
 } from './fixtures.test-support.ts';
-import { openRemoteBungalow } from './remote.ts';
+import type { RemoteBungalowDescriptor } from './remote-configuration.ts';
+import { openRemoteBungalow, openValidatedRemoteBungalow } from './remote.ts';
 import { useS3Proxy } from './s3-proxy.test-support.ts';
 import { generateUlid, isUlid } from './ulid.ts';
 
@@ -260,30 +270,182 @@ describe('remote mode: the lock', () => {
 describe('remote mode: exact addressing', () => {
   test('a key a request URL would rewrite is refused before any request', async () => {
     const proxy = startProxy(startServer());
-    // Past the prefix validation, as a later caller of `openRemoteBungalow` could be.
+    // Past the descriptor validation, through the internal seam that trusts it was done.
     const error = await rejectionOf(
-      openRemoteBungalow(
-        TEST_NAME,
-        {
+      openValidatedRemoteBungalow({
+        name: TEST_NAME,
+        descriptor: {
+          kind: 'remote',
           databaseUrl: DATABASE_URL,
           bucket: BUCKET,
           prefix: 'a/./',
-          client: {
-            endpoint: proxy.endpoint,
-            region: 'us-east-1',
-            accessKeyId: ACCESS_KEY_ID,
-            secretAccessKey: SECRET_ACCESS_KEY,
-            bucket: BUCKET,
-            virtualHostedStyle: false,
-          },
+          endpoint: proxy.endpoint,
+          region: 'us-east-1',
+          accessKeyId: ACCESS_KEY_ID,
+          secretAccessKey: SECRET_ACCESS_KEY,
           secrets: new Map(),
         },
-        undefined,
-        async () => {},
-      ),
+        databaseWorkspaceClaim: async () => {},
+      }),
     );
     expect(error).toBeInstanceOf(BungalowInputError);
     expectNothingLeaked(error, proxy.endpoint);
+    expect(proxy.requests).toEqual([]);
+  });
+});
+
+describe('remote mode: an explicit descriptor', () => {
+  /** A descriptor built by hand, as a host that keeps its settings elsewhere than the environment would. */
+  function handBuilt(
+    endpoint: string,
+    overrides: Partial<RemoteBungalowDescriptor> = {},
+  ): RemoteBungalowDescriptor {
+    return {
+      kind: 'remote',
+      databaseUrl: DATABASE_URL,
+      bucket: BUCKET,
+      prefix: `/${PREFIX}`,
+      endpoint,
+      region: 'us-east-1',
+      accessKeyId: ACCESS_KEY_ID,
+      secretAccessKey: SECRET_ACCESS_KEY,
+      sessionToken: SESSION_TOKEN,
+      secrets: new Map([['BUNGALOW_TEST_SECRET_API_KEY', SECRET_VALUE]]),
+      ...overrides,
+    };
+  }
+
+  test('opens with no environment at all, and reaches the home the environment names', async () => {
+    for (const variable of [DATABASE_VARIABLE, BUCKET_VARIABLE, 'S3_ENDPOINT']) {
+      expect(processEnvironment()[variable]).toBeUndefined();
+    }
+    const server = startServer();
+    const secrets = new Map([['BUNGALOW_TEST_SECRET_API_KEY', SECRET_VALUE]]);
+    const opening = openRemoteBungalow({
+      name: TEST_NAME,
+      descriptor: handBuilt(server.endpoint, { secrets }),
+      databaseWorkspaceClaim: async () => {},
+    });
+    // The descriptor was copied when the open began.
+    secrets.set('BUNGALOW_TEST_SECRET_API_KEY', 'changed-after-the-open-began');
+    using bungalow = await opening;
+    expect(bungalow.mode).toBe('remote');
+    expect(bungalow.database).toEqual({ kind: 'postgres', url: DATABASE_URL });
+    expect(bungalow.configurationLocation).toBe(`s3://${BUCKET}/${CONFIGURATION_KEY}`);
+    expect(bungalow.content('agents')).toEqual({
+      kind: 's3',
+      bucket: BUCKET,
+      prefix: `${PREFIX}/agents/`,
+    });
+    expect(await bungalow.deploymentSecrets.read('api-key')).toBe(SECRET_VALUE);
+    expect(await bungalow.secretProvider.readLegacy('api-key')).toBe(SECRET_VALUE);
+    expect(bungalow.deploymentSecrets.location('api-key')).toBe('BUNGALOW_TEST_SECRET_API_KEY');
+    expect([...server.objects().keys()].toSorted()).toEqual([DEPLOYMENT_KEY, WORKSPACE_KEY]);
+
+    const descriptor = resolveBungalowDescriptor({
+      name: TEST_NAME,
+      environment: remoteEnvironment(server.endpoint),
+      homeDirectory: '/unused',
+    });
+    if (descriptor.kind !== 'remote') throw new Error('Expected a remote descriptor.');
+    using resolved = await openRemoteBungalow({
+      name: TEST_NAME,
+      descriptor,
+      databaseWorkspaceClaim: async () => {},
+    });
+    expect(resolved.deploymentId).toBe(bungalow.deploymentId);
+  });
+
+  const rejected: readonly (readonly [string, Partial<RemoteBungalowDescriptor>, string])[] = [
+    ['a prefix with a `.` segment', { prefix: 'a/./b' }, 'descriptor.prefix'],
+    ['a prefix starting with `./`', { prefix: './prod' }, 'descriptor.prefix'],
+    ['a prefix with a `..` segment', { prefix: 'a/../b' }, 'descriptor.prefix'],
+    ['a prefix with an empty segment', { prefix: 'a//b' }, 'descriptor.prefix'],
+    ['a prefix ending in two slashes', { prefix: 'prod//' }, 'descriptor.prefix'],
+    ['a prefix with a backslash', { prefix: 'a\\b' }, 'descriptor.prefix'],
+    ['a bucket with a slash', { bucket: 'a/b' }, 'descriptor.bucket'],
+    ['a bucket with a backslash', { bucket: 'a\\b' }, 'descriptor.bucket'],
+    ['a bucket of `..`', { bucket: '..' }, 'descriptor.bucket'],
+    ['a bucket of `.`', { bucket: '.' }, 'descriptor.bucket'],
+    ['an empty bucket', { bucket: '' }, 'descriptor.bucket'],
+    ['an empty database URL', { databaseUrl: '' }, 'descriptor.databaseUrl'],
+    ['an empty endpoint', { endpoint: '' }, 'descriptor.endpoint'],
+    ['an empty region', { region: '' }, 'descriptor.region'],
+    ['an empty access key ID', { accessKeyId: '' }, 'descriptor.accessKeyId'],
+    ['an empty secret access key', { secretAccessKey: '' }, 'descriptor.secretAccessKey'],
+  ];
+  for (const [name, overrides, names] of rejected) {
+    test(`${name}: BungalowInputError naming ${names}, before any request`, async () => {
+      const proxy = startProxy(startServer());
+      const error = await rejectionOf(
+        openRemoteBungalow({
+          name: TEST_NAME,
+          descriptor: handBuilt(proxy.endpoint, overrides),
+          databaseWorkspaceClaim: async () => {},
+        }),
+      );
+      expect(error).toBeInstanceOf(BungalowInputError);
+      expect((error as Error).message).toContain(names);
+      expectNothingLeaked(error, proxy.endpoint);
+      expect(proxy.requests).toEqual([]);
+    });
+  }
+
+  test('injected deployment secrets are the ones read, and the managed provider keeps the descriptor values', async () => {
+    const server = startServer();
+    const contexts: DeploymentSecretsContext[] = [];
+    const bungalow = await openRemoteBungalow({
+      name: TEST_NAME,
+      descriptor: handBuilt(server.endpoint),
+      databaseWorkspaceClaim: async () => {},
+      deploymentSecrets: (context) => {
+        contexts.push(context);
+        return {
+          async read(key) {
+            context.assertOpen();
+            return `injected-${key}`;
+          },
+          async write() {
+            context.assertOpen();
+          },
+          location: (key) => `keychain:${key}`,
+        };
+      },
+    });
+    expect(contexts.map(({ workspaceId }) => workspaceId)).toEqual([bungalow.workspaceId]);
+    expect(await bungalow.deploymentSecrets.read('api-key')).toBe('injected-api-key');
+    expect(bungalow.deploymentSecrets.location('api-key')).toBe('keychain:api-key');
+    await bungalow.deploymentSecrets.write('api-key', 'accepted');
+    expect(await bungalow.secretProvider.readLegacy('api-key')).toBe(SECRET_VALUE);
+    bungalow.close();
+    expect(await throwingRejectionOf(bungalow.deploymentSecrets.read('api-key'))).toThrow(
+      BungalowStateError,
+    );
+  });
+
+  test('an injected managed provider leaves the default deployment secrets on the descriptor', async () => {
+    const server = startServer();
+    using bungalow = await openRemoteBungalow({
+      name: TEST_NAME,
+      descriptor: handBuilt(server.endpoint),
+      databaseWorkspaceClaim: async () => {},
+      secretProvider: (workspaceId) =>
+        createEnvironmentSecretProvider({ workspaceId, values: { 'api-key': 'managed' } }),
+    });
+    expect(await bungalow.deploymentSecrets.read('api-key')).toBe(SECRET_VALUE);
+    expect(await bungalow.secretProvider.readLegacy('api-key')).toBe('managed');
+  });
+
+  test('requires the database binding callback before any request', async () => {
+    const proxy = startProxy(startServer());
+    const error = await rejectionOf(
+      openRemoteBungalow({
+        name: TEST_NAME,
+        descriptor: handBuilt(proxy.endpoint),
+      } as unknown as OpenRemoteBungalowOptions),
+    );
+    expect(error).toBeInstanceOf(BungalowInputError);
+    expect((error as Error).message).toContain('database workspace binding callback');
     expect(proxy.requests).toEqual([]);
   });
 });

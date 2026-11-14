@@ -68,6 +68,11 @@ export interface WorkflowContributions {
    * its plugin's).
    */
   readonly workflows: ReadonlyMap<string, CodeWorkflow>;
+  /**
+   * The version each contributed code workflow is loaded at, by the Weft name of its `plugin:name`:
+   * what a document's `workflow` step pins, as `activityVersions` is for activities.
+   */
+  readonly workflowVersions: Readonly<Record<string, string>>;
   /** A validator for each contributed trigger, by its `plugin:name`. */
   readonly triggerValidators: Readonly<Record<string, DocumentTriggerValidator>>;
   /** The contributed triggers, by their `plugin:name`. */
@@ -77,6 +82,11 @@ export interface WorkflowContributions {
    * when no version of it is loaded and `version-mismatch` when only others are.
    */
   resolveActivity(id: string, version: string): VersionedCatalogResolution<PluginActivity>;
+  /**
+   * The exact contributed code workflow `id` (`plugin:name`) at `version`: the entry, or `missing`
+   * when no version of it is loaded and `version-mismatch` when only others are.
+   */
+  resolveWorkflow(id: string, version: string): VersionedCatalogResolution<PluginWorkflow>;
 }
 
 /** No contributions: the host a Bureau without plugins has. */
@@ -85,12 +95,20 @@ export const NO_WORKFLOW_CONTRIBUTIONS: WorkflowContributions = Object.freeze({
   activityVersions: Object.freeze({}),
   activityTitles: Object.freeze({}),
   workflows: new Map(),
+  workflowVersions: Object.freeze({}),
   triggerValidators: Object.freeze({}),
   triggers: new Map(),
   resolveActivity: (id: string, version: string): VersionedCatalogResolution<PluginActivity> => ({
     ok: false,
     reason: 'missing',
     kind: 'activity',
+    requested: Object.freeze({ name: id, version }),
+    availableVersions: [],
+  }),
+  resolveWorkflow: (id: string, version: string): VersionedCatalogResolution<PluginWorkflow> => ({
+    ok: false,
+    reason: 'missing',
+    kind: 'workflow',
     requested: Object.freeze({ name: id, version }),
     availableVersions: [],
   }),
@@ -162,7 +180,9 @@ export function createWorkflowContributions(
     }
   }
   const workflows = new Map<string, CodeWorkflow>();
+  const workflowVersions: Record<string, string> = {};
   for (const entry of workflowEntries) {
+    workflowVersions[toWeftName(entry.name)] = entry.version;
     workflows.set(entry.name, {
       id: entry.name,
       plugin: entry.source.name,
@@ -225,6 +245,7 @@ export function createWorkflowContributions(
     activityVersions: Object.freeze(activityVersions),
     activityTitles: Object.freeze(activityTitles),
     workflows,
+    workflowVersions: Object.freeze(workflowVersions),
     triggerValidators: Object.freeze(triggerValidators),
     triggers,
     resolveActivity: (id: string, version: string) =>
@@ -232,5 +253,10 @@ export function createWorkflowContributions(
         name: id,
         version,
       }) as VersionedCatalogResolution<PluginActivity>,
+    resolveWorkflow: (id: string, version: string) =>
+      catalog.resolve('workflow', {
+        name: id,
+        version,
+      }) as VersionedCatalogResolution<PluginWorkflow>,
   });
 }

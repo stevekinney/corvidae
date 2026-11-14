@@ -12,6 +12,11 @@
    * line saying nothing else on the form works until then. The steps to set one up by hand follow,
    * for a person who would rather edit the files; a host that keeps its keys in its deployment has
    * no Connect a provider, so the steps are all it shows.
+   *
+   * Only the Connect button is the state's action, which Cinder lays out as a row of buttons
+   * (COR-2415). The two lines and the numbered steps are the state's children, which Cinder draws
+   * under the action in reading order: the description, Connect a provider, the line under it, "Or
+   * set it up by hand:", then the steps.
    */
   import { Button, CodeBlock, CodeLocation, EmptyState } from '@lostgradient/cinder';
   import { Plug } from '@lucide/svelte';
@@ -69,30 +74,30 @@
   headingLevel={2}
   align="start"
   description={copy.description}
+  {...canConnect ? { action: connectAction } : {}}
   class="weft-no-provider"
   data-testid="agent-no-provider"
 >
   {#snippet icon()}
     <Plug size={20} aria-hidden="true" />
   {/snippet}
-  {#snippet action()}
-    {#if canConnect}
-      <div class="weft-no-provider__connect">
-        <Button
-          variant="primary"
-          href={router.href(connectPath)}
-          onclick={connect}
-          data-testid="agent-connect-provider">{copy.connectAction}</Button
-        >
-        <p class="weft-no-provider__text" data-testid="agent-no-provider-blocked">
-          {copy.blocked}
-        </p>
-        <p class="weft-no-provider__text">{copy.byHand}</p>
-      </div>
-    {/if}
-    {@render steps()}
-  {/snippet}
+  {#if canConnect}
+    <p class="weft-no-provider__text" data-testid="agent-no-provider-blocked">{copy.blocked}</p>
+    <p class="weft-no-provider__text">{copy.byHand}</p>
+  {/if}
+  {@render steps()}
 </EmptyState>
+
+<!-- The action is the one button; the lines and the steps are the state's details under it. A host
+     that keeps its keys in its deployment has no Connect a provider, so it has no action either. -->
+{#snippet connectAction()}
+  <Button
+    variant="primary"
+    href={router.href(connectPath)}
+    onclick={connect}
+    data-testid="agent-connect-provider">{copy.connectAction}</Button
+  >
+{/snippet}
 
 {#snippet steps()}
   <ol class="weft-no-provider__steps">
@@ -137,19 +142,6 @@
     padding-inline: 0;
     padding-block: var(--cinder-space-4);
     align-items: stretch;
-  }
-
-  .weft-no-provider__connect {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--cinder-space-3);
-    margin-block-end: var(--cinder-space-4);
-    text-align: start;
-  }
-
-  .weft-no-provider__connect .weft-no-provider__text {
-    margin: 0;
   }
 
   .weft-no-provider__steps {

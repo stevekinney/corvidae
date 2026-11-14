@@ -28,6 +28,12 @@ const schema = {
         'Shows the setting without letting a press change it, for a value that something else owns,\nsuch as a schedule defined in a file. The switch stays focusable, announces\n`aria-readonly="true"`, ignores a press on the track or the label, and still submits its value\nwith a native form (unlike `disabled`).',
       default: false,
     },
+    pending: {
+      type: 'boolean',
+      description:
+        'Shows that the setting is being read or changed and a press has to wait, such as a switch\nwhose consequence is still being looked up. The switch announces `aria-busy="true"` and\n`aria-disabled="true"`, shows a small spinner in its thumb, and ignores a press on the track,\nthe label or the state words. It stays focusable, so focus is not lost when it starts or\nstops, and it keeps its value and its colour (unlike `disabled`, which greys it).',
+      default: false,
+    },
     description: {
       type: 'string',
       description:

@@ -26,6 +26,15 @@ export const MCP_APP_UI_META = {
   prefersBorder: false,
 };
 
+/** The `_meta.ui.visibility` of a tool some built panel lists in its `allowedTools`. */
+const APP_VISIBILITY: readonly string[] = ['model', 'app'];
+
+/**
+ * The `_meta` of every exposed tool no built panel lists: the model may call it, an MCP App page
+ * may not (COR-2209).
+ */
+export const MODEL_ONLY_TOOL_META = { ui: { visibility: ['model'] } } as const;
+
 /** The apps `bureau.plugins.panels()` lists. */
 export type ContributedPanels = ReturnType<BureauPlugins['panels']>;
 
@@ -137,9 +146,14 @@ export async function panelMounts(contributed: ContributedPanels, prebuiltDirect
       hostOnlyTools: [...(app.hostOnlyTools ?? [])],
       html: page.html,
     });
-    toolMeta[app.opensFromTool] = {
-      ui: { resourceUri: app.uri, visibility: ['model', 'app'] },
-    };
   }
-  return { resources, toolMeta, failures, apps };
+  // Enforcement is per tool, not per panel (COR-2209): a tool any built panel lists is visible to
+  // every app, and every other tool only to the model.
+  for (const app of apps) {
+    for (const tool of app.allowedTools) toolMeta[tool] = { ui: { visibility: APP_VISIBILITY } };
+  }
+  for (const app of apps) {
+    toolMeta[app.opensFromTool] = { ui: { resourceUri: app.uri, visibility: APP_VISIBILITY } };
+  }
+  return { resources, toolMeta, defaultToolMeta: MODEL_ONLY_TOOL_META, failures, apps };
 }

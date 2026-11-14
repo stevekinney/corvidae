@@ -52,8 +52,8 @@ export type SkeletonProps = {
   /**
    * Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`,
    * for a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone,
-   * the block drops under the text at full width, where the real buttons go. Ignored by other
-   * variants.
+   * the block drops under the text at its own width, starting at the text's leading edge, where the
+   * real buttons go. Ignored by other variants.
    * @default false
    */
   action?: boolean;
@@ -120,8 +120,8 @@ export type SkeletonProps = {
   /**
    * The page's own placeholder, drawn instead of the bars, for a loading state whose shape is a
    * whole page (real labels and headings with placeholder values and rows). The group still owns
-   * the timing: nothing is drawn until `delay` has passed, and the "Still loading" status follows
-   * the content after `stillLoadingAfter`. The group is marked busy while it shows. Draw each
+   * the timing: nothing is drawn until `delay` has passed, and the "Still loading" status leads
+   * the content, above it, after `stillLoadingAfter`. The group is marked busy while it shows. Draw each
    * placeholder block with a `Skeleton` of its own; the content is not hidden from assistive
    * technology, so text in it is read as written.
    */

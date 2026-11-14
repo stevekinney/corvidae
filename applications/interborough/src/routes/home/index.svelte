@@ -4,8 +4,10 @@
    * `visually-hidden` wrapper, so the page shows no heading of its own: the breadcrumb already says
    * "Home", and Home's heading row carries no status or actions. The date line leads the content,
    * then the page's one focal value, a Spotlight that says how many reviews wait on you, with the
-   * one count Home lists nowhere else under it (`home-focus.svelte`), then two columns: what needs
-   * you, what is running and what needs attention at the left, each one grouped list, the box that
+   * link to Reviews beside it and the one count Home lists nowhere else under it
+   * (`home-focus.svelte`), then two columns: what needs you (titled by the Spotlight, so it draws no
+   * heading of its own), what is running and what needs attention at the left, each one grouped
+   * list, the box that
    * starts a chat at the right, and the chats you were last in across the full width below
    * (`home-layout.svelte`).
    *

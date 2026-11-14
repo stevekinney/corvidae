@@ -37,6 +37,7 @@
     listAgentVersions,
     restoreAgentVersion,
     type AgentDetail,
+    type AgentGuardrailEntry,
     type AgentVersion,
   } from '../../lib/agent-definitions.ts';
   import { rowTime } from '../../lib/format/clock.ts';
@@ -52,11 +53,16 @@
     currentHash: string | null;
     /** The definition the file holds now, which a version's view sets its tools against. */
     current: AgentDetail['definition'];
+    /**
+     * The tools a code agent states itself, which a version of its overrides that does not
+     * override its tools allows; `undefined` for an agent file.
+     */
+    ownTools?: readonly string[] | undefined;
     /** The version open read-only, by its number, or `null` while the list shows. */
     viewing?: number | null;
   }
 
-  let { id, currentHash, current, viewing = $bindable(null) }: Props = $props();
+  let { id, currentHash, current, ownTools, viewing = $bindable(null) }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.versions;
   const asksWords = AGENT_PAGE_COPY.access.approvals;
@@ -110,6 +116,7 @@
       restoreOpen = false;
       viewing = null;
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.versions(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.overrides(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.revisions(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
@@ -123,6 +130,7 @@
           fault.kind === 'rejected' || fault.kind === 'other' ? fault.message : copy.restoreFailed;
       if (fault.kind === 'stale') {
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.versions(id) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.agents.overrides(id) });
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
       }
     },
@@ -153,15 +161,28 @@
 
   /** The tools of a version, each with when it asks first, and the current tools it does not allow. */
   function toolLines(version: AgentVersion): string[] {
+    // A code agent's version holds overrides: the tools it overrides, else the agent's own.
+    const overridden = version.overrides;
     const definition = version.definition;
-    if (definition === null) return [];
-    const allowed = definition.tools.map((tool) =>
-      copy.view.tool(humanizeName(tool), asksWords[definition.approvals?.[tool] ?? 'on-changes']),
+    const tools = overridden === null ? definition?.tools : (overridden.tools ?? ownTools);
+    if (tools === undefined) return [];
+    const approvals = overridden === null ? definition?.approvals : overridden.approvals;
+    const allowed = tools.map((tool) =>
+      copy.view.tool(humanizeName(tool), asksWords[approvals?.[tool] ?? 'on-changes']),
     );
     const missing = (current?.tools ?? [])
-      .filter((tool) => !definition.tools.includes(tool))
+      .filter((tool) => !tools.includes(tool))
       .map((tool) => copy.view.notAllowed(humanizeName(tool)));
     return [...allowed, ...missing];
+  }
+
+  /** The guardrails of a version, by id, whichever form its definition or overrides hold them in. */
+  function guardrailsOf(version: AgentVersion): AgentGuardrailEntry[] {
+    return (
+      (version.overrides === null
+        ? version.definition?.guardrails
+        : version.overrides.guardrails) ?? []
+    );
   }
 </script>
 
@@ -203,21 +224,33 @@
         </p>
       {/if}
       {#if newest !== undefined}
-        <p class="ib-agent-note">{copy.view.note(newest)}</p>
+        <p class="ib-agent-note">
+          {shown.overrides === null ? copy.view.note(newest) : copy.view.overridesNote(newest)}
+        </p>
       {/if}
-      {#if shown.definition === null}
+      {#if shown.definition === null && shown.overrides === null}
         <p class="ib-agent-note">{copy.view.noDefinition}</p>
       {:else}
         <section class="ib-agent-section" aria-label={copy.view.instructions}>
           <h3>{copy.view.instructions}</h3>
-          <p class="ib-agent-version-view__instructions" data-testid="agent-version-instructions">
-            {shown.definition.instructions}
-          </p>
+          {#if shown.overrides !== null && shown.overrides.instructions === null}
+            <p class="ib-agent-note">{copy.view.ownInstructions}</p>
+          {:else}
+            <p class="ib-agent-version-view__instructions" data-testid="agent-version-instructions">
+              {shown.overrides === null
+                ? shown.definition?.instructions
+                : shown.overrides.instructions}
+            </p>
+          {/if}
         </section>
         <section class="ib-agent-section" aria-label={copy.view.tools}>
           <h3>{copy.view.tools}</h3>
           {#if toolLines(shown).length === 0}
-            <p class="ib-agent-note">{copy.view.noTools}</p>
+            <p class="ib-agent-note">
+              {shown.overrides !== null && shown.overrides.tools === null
+                ? copy.view.ownTools
+                : copy.view.noTools}
+            </p>
           {:else}
             <ul class="ib-agent-version-view__list" data-testid="agent-version-tools">
               {#each keyedByOccurrence(toolLines(shown), (line) => line) as { key, item: line } (key)}
@@ -228,11 +261,15 @@
         </section>
         <section class="ib-agent-section" aria-label={copy.view.guardrails}>
           <h3>{copy.view.guardrails}</h3>
-          {#if (shown.definition.guardrails ?? []).length === 0}
-            <p class="ib-agent-note">{copy.view.noGuardrails}</p>
+          {#if guardrailsOf(shown).length === 0}
+            <p class="ib-agent-note">
+              {shown.overrides !== null && shown.overrides.guardrails === null
+                ? copy.view.ownGuardrails
+                : copy.view.noGuardrails}
+            </p>
           {:else}
             <ul class="ib-agent-version-view__list">
-              {#each keyedByOccurrence(shown.definition.guardrails ?? [], guardrailEntryId) as { key, item: entry } (key)}
+              {#each keyedByOccurrence(guardrailsOf(shown), guardrailEntryId) as { key, item: entry } (key)}
                 <li><code>{guardrailEntryId(entry)}</code></li>
               {/each}
             </ul>

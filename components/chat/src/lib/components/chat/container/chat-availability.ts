@@ -84,7 +84,11 @@ export const DEFAULT_SLOW_AFTER_SECONDS = 10;
  *   the `cause`, with a primary Retry (`onRetry`) and a secondary `allConversations`.
  * - `deleted`: the conversation no longer exists. A neutral `ErrorState` replaces the transcript and
  *   the composer, with `allConversations` as its primary button.
- * - `unconfigured`: a model provider is missing. An EmptyState offers `onConnect` as its primary action.
+ * - `unconfigured`: a model provider is missing. A conversation with no message yet is an EmptyState
+ *   in place of the transcript and the composer, with `onConnect` as its primary action. A
+ *   conversation that has messages keeps them readable, and a waiting approval answerable, and
+ *   only the composer gives way, to one blocked row that says `Connect a model provider` with the
+ *   same primary action.
  */
 export type ChatAvailability =
   | {

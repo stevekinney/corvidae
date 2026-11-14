@@ -18,6 +18,19 @@ The capture refuses (exit 2) when the end-to-end port, 7399 unless `INTERBOROUGH
 
 Exit 0 means at least one capture was written, 1 means none was, and 2 means bad usage or a taken port. `summary.json` records each scheme's Playwright exit code; `clean: false` means a specification failed, and its screenshots are still there.
 
+## On GitHub Actions
+
+When the host is loaded (the capture times out waiting for its web server), dispatch `.github/workflows/design-review-capture.yml` from the branch under review instead. It runs the same command in the Playwright image the end-to-end job uses, so fonts are Linux's, and uploads the output directory as an artifact kept three days:
+
+```sh
+gh workflow run design-review-capture.yml --ref <branch> -f grep='/agents' -f scheme=dark -f data=showcase
+gh run list --workflow design-review-capture.yml --branch <branch> --limit 1 --json databaseId,url
+gh run watch <run id> --exit-status
+gh run download <run id> --dir tmp/design-review/<run id>
+```
+
+The inputs are `grep` (empty by default: no `--grep`), `scheme` and `data` (both `both` by default). The artifact is named `design-review-capture-<run id>-<scheme>-<data>` and holds the screenshots, `manifest.jsonl`, `summary.json` and the geometry report. The job's conclusion follows the exit codes above, and the artifact is uploaded either way. Dispatching by name needs the workflow file on `main`.
+
 ## The two data sets
 
 - Showcase (`fixtures/sample-world-seed.ts`) is the boards' sample world (`tmp/design-review/decisions.md`) at Monday, Nov 2, 10:45 AM: six built-in agents, five chats (two waiting on you, one ended by a restart), Tool runner's four versions and memories, three workflow files (Order refund can't load), four schedules, the twenty runs those and three goals left, five hooks, the GitHub tool source, the plugins' states, a firing storage alert, and the audit entries those leave. Judge layout, hierarchy and density from it. No word in its workflow files is longer than 40 characters, by a test.

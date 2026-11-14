@@ -216,6 +216,32 @@ export async function listRunningTasks(options?: Options): Promise<TaskView[]> {
   return running;
 }
 
+/** The states of a task a restart recovers: submitted, working, or parked on a person. */
+const IN_FLIGHT_STATES = [
+  'submitted',
+  'working',
+  'input-required',
+] as const satisfies readonly TaskState[];
+
+/**
+ * The runs of the agents named in `agentNames` that are in flight (`bureau.tasks.list`): started,
+ * working, or waiting on a person, so a restart would recover them (COR-2235). It is the
+ * per-plugin read of Settings › Plugins, which passes a plugin's agents: the listing is read once
+ * per state, never once per agent, and holds only runs that have not ended.
+ */
+export async function listInFlightTasks(
+  agentNames: ReadonlySet<string>,
+  options?: Options,
+): Promise<TaskView[]> {
+  const found = await Promise.all(
+    IN_FLIGHT_STATES.map((status) => listAllTasks({ status }, options)),
+  );
+  return found
+    .flat()
+    .filter((task) => task.agentName !== null && agentNames.has(task.agentName))
+    .toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
+}
+
 /**
  * Every child run started from any run in `contextId` (`bureau.tasks.list` with `parentContextId`,
  * COR-1987), read page by page. A reloaded chat shows the children of every run in its thread, not

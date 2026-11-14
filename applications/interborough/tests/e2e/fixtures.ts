@@ -194,6 +194,40 @@ export async function holdBureauFeed(page: Page): Promise<void> {
 }
 
 /**
+ * Resolves true once a control with this accessible name has been pressed on the page. A failing
+ * read that answers "until pressed" cannot recover from an automatic retry and remove the control
+ * under the click. One capturing `click` listener on `document` records the press, so a control
+ * that re-renders is still covered; install it after the page that shows the control has loaded,
+ * because a navigation drops it.
+ */
+export async function pressRecorder(page: Page, name: string): Promise<() => Promise<boolean>> {
+  await page.evaluate((accessibleName) => {
+    const recorded = window as unknown as { __pressRecorded?: Record<string, boolean> };
+    const presses = (recorded.__pressRecorded ??= {});
+    presses[accessibleName] = false;
+    document.addEventListener(
+      'click',
+      (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        const button = target?.closest('button') ?? null;
+        if (button === null) return;
+        const text = button.getAttribute('aria-label') ?? button.textContent ?? '';
+        if (text.trim() === accessibleName) presses[accessibleName] = true;
+      },
+      true,
+    );
+  }, name);
+  return () =>
+    page.evaluate(
+      (accessibleName) =>
+        (window as unknown as { __pressRecorded?: Record<string, boolean> }).__pressRecorded?.[
+          accessibleName
+        ] === true,
+      name,
+    );
+}
+
+/**
  * Takes the context offline on purpose, for a test about what the page does when its network is cut.
  * Every request the page starts while the context is offline fails with `ERR_INTERNET_DISCONNECTED`,
  * and which requests those are follows the page's own schedule (its health probe, a feed that

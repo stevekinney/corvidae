@@ -376,5 +376,6 @@ export function toolCallTurnContext(kind: Record<string, unknown>): Record<strin
     updatedAt: iso(ASKED + 21_000),
     activity: 'awaiting-input',
     endReason: null,
+    archivedAt: null,
   };
 }

@@ -194,6 +194,87 @@ test('Home’s step 3 is live while steps 1 and 2 are open (02a, 13g, 14c)', asy
   await expect(page).toHaveURL(/\/chats\/new$/);
 });
 
+for (const width of [1280, 375] as const) {
+  test(`a new agent with no provider reads top to bottom: the description, Connect a provider, the line under it, the steps by hand, at ${width} pixels (COR-2415)`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/agents/new');
+    const state = page.getByTestId('agent-no-provider');
+    await expect(state).toBeVisible();
+
+    const words = AGENT_EDITOR_COPY.noProvider;
+    const boxOf = async (locator: ReturnType<typeof page.locator>) => {
+      const box = await locator.boundingBox();
+      if (box === null) throw new Error('expected the element to be drawn');
+      return box;
+    };
+    const description = await boxOf(state.getByText(words.description));
+    const connect = await boxOf(page.getByTestId('agent-connect-provider'));
+    const blocked = await boxOf(page.getByTestId('agent-no-provider-blocked'));
+    const byHand = await boxOf(state.getByText(words.byHand, { exact: true }));
+    const steps = await boxOf(state.locator('ol.weft-no-provider__steps'));
+
+    // Each piece sits under the one before it, at the start edge, with nothing beside the button.
+    const order = [description, connect, blocked, byHand, steps];
+    for (const [index, box] of order.entries()) {
+      const next = order[index + 1];
+      if (next !== undefined) expect(next.y).toBeGreaterThanOrEqual(box.y + box.height - 1);
+    }
+    for (const box of [connect, blocked, byHand, steps]) {
+      expect(Math.abs(box.x - connect.x)).toBeLessThanOrEqual(24);
+    }
+    // The page never scrolls sideways.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    );
+    await captureForDesignReview(page, {
+      route: '/agents/new',
+      state: 'no provider, the steps under the Connect action',
+      source: 'first-run.spec.ts',
+    });
+    await checkA11y(`a new agent with no provider at ${width}px`);
+  });
+
+  test(`a new agent with no provider on a host that keeps its keys in its deployment has no action, and the steps by hand read from the top, at ${width} pixels (COR-2415)`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // The host's own answer, with its provider keys locked: the state is then the steps alone.
+    await page.route('**/host/paths', async (route) => {
+      const response = await route.fetch();
+      const paths = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({
+        response,
+        json: { ...paths, locked: { providerKeys: 'deployment', configuration: 'deployment' } },
+      });
+    });
+    await page.goto('/agents/new');
+    const state = page.getByTestId('agent-no-provider');
+    await expect(state).toBeVisible();
+
+    await expect(page.getByTestId('agent-connect-provider')).toHaveCount(0);
+    await expect(page.getByTestId('agent-no-provider-blocked')).toHaveCount(0);
+    const description = await state
+      .getByText(AGENT_EDITOR_COPY.noProvider.description)
+      .boundingBox();
+    const steps = await state.locator('ol.weft-no-provider__steps').boundingBox();
+    if (description === null || steps === null) throw new Error('expected both to be drawn');
+    expect(steps.y).toBeGreaterThanOrEqual(description.y + description.height - 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    );
+    await captureForDesignReview(page, {
+      route: '/agents/new',
+      state: 'no provider, provider keys locked, no action',
+      source: 'first-run.spec.ts',
+    });
+    await checkA11y(`a new agent with no provider and locked keys at ${width}px`);
+  });
+}
+
 test('each step completes from its own signal, from connecting a provider to saying hello', async ({
   page,
 }) => {

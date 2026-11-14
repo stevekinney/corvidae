@@ -81,7 +81,7 @@
       id={`access-allow-${tool.name}`}
       aria-label={copy.allowLabel(heading)}
       checked={allowed}
-      disabled={!form.editable}
+      disabled={!form.toolsEditable}
       mutating
       data-changes
       onValueChange={allow}
@@ -112,7 +112,7 @@
         size="sm"
         {options}
         value={approval}
-        disabled={!allowed || !form.editable}
+        disabled={!allowed || !form.approvalsEditable}
         mutating
         data-changes
         {...unclassifiedNever ? { description: copy.neverUnclassifiedHint } : {}}

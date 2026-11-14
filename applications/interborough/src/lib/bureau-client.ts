@@ -66,6 +66,13 @@ export const chatContextSchema = z.object({
     .nullable()
     .or(z.unknown().transform((): 'other' => 'other'))
     .optional(),
+  /**
+   * When the session was archived (`bureau.contexts.archive`), as an ISO 8601 timestamp, or `null`
+   * when it is not. An archived session takes no new message, steering or regenerated answer until
+   * it is unarchived. Absent from a Bureau that does not say, as `endReason` is, which reads as not
+   * archived.
+   */
+  archivedAt: z.string().nullable().optional(),
 });
 
 /**
@@ -440,6 +447,49 @@ export async function renameContext(
     .parse(await callBureau('bureau.contexts.rename', input, options)).title;
 }
 
+/** What `bureau.contexts.archive` and `bureau.contexts.unarchive` answer. */
+const contextArchiveReceiptSchema = z.object({
+  id: z.string(),
+  changed: z.boolean(),
+  archivedAt: z.string().nullable(),
+});
+
+/**
+ * What archiving or unarchiving a session settled: whether this call changed it, and when it was
+ * archived (`null` once it is not).
+ */
+export type ContextArchiveReceipt = z.infer<typeof contextArchiveReceiptSchema>;
+
+/**
+ * Archives a session (`bureau.contexts.archive`), so it takes no new message, steering or
+ * regenerated answer until it is unarchived: each is then a `Conflict` fault with reason
+ * `context-archived`. A session with a run going, or one waiting on an approval or an answer, is
+ * a `Conflict` with reason `context-busy`, and nothing is archived: stop or answer it first.
+ * Archiving an archived session is not an error (`changed: false`, with the time it was first
+ * archived), so a retry is safe; a missing session is a `NotFound` fault.
+ */
+export async function archiveContext(
+  contextId: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<ContextArchiveReceipt> {
+  return contextArchiveReceiptSchema.parse(
+    await callBureau('bureau.contexts.archive', { contextId }, options),
+  );
+}
+
+/**
+ * Unarchives a session (`bureau.contexts.unarchive`), so it takes work again. Unarchiving one that
+ * is not archived is not an error (`changed: false`); a missing session is a `NotFound` fault.
+ */
+export async function unarchiveContext(
+  contextId: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<ContextArchiveReceipt> {
+  return contextArchiveReceiptSchema.parse(
+    await callBureau('bureau.contexts.unarchive', { contextId }, options),
+  );
+}
+
 /**
  * What `bureau.contexts.delete` settled for the runs the session had going: `applied` (none),
  * `cleaned-up`, or a cleanup still going or unfinished, and `rejected` when the Bureau was shutting
@@ -493,6 +543,12 @@ export async function listContexts(
     readonly titleContains?: string;
     /** Only the chats in this activity state right now, before the page is cut. */
     readonly activity?: 'running' | 'awaiting-input';
+    /**
+     * Which sessions to list by whether they are archived, before the page is cut: `include` (the
+     * Bureau's default) lists every one, `exclude` leaves the archived ones out, `only` lists only
+     * them.
+     */
+    readonly archived?: 'include' | 'exclude' | 'only';
     readonly sortBy?: 'updatedAt' | 'createdAt';
     readonly sortOrder?: 'asc' | 'desc';
     readonly limit?: number;

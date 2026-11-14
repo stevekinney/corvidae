@@ -176,6 +176,31 @@ describe('the identity of every request', () => {
       (tool) => tool.name === 'bureau.tasks.inspect',
     );
     expect(inspect?._meta).toMatchObject({ ui: { resourceUri: 'ui://bureau/run-inspector/v1' } });
+    // Every tool a running panel lists in its `allowedTools` is visible to apps; every other tool
+    // to the model alone (COR-2209).
+    const panelTools = new Set([
+      'bureau.tasks.inspect',
+      'bureau.tasks.events',
+      'bureau.tasks.cancel',
+      'bureau.reviews.list',
+      'bureau.reviews.get',
+      'bureau.reviews.resolve',
+      'bureau.workflows.get',
+      'bureau.workflows.update',
+    ]);
+    const visibilities = Object.fromEntries(
+      (tools as Array<{ name: string; _meta?: { ui?: { visibility?: unknown } } }>).map((tool) => [
+        tool.name,
+        tool._meta?.ui?.visibility,
+      ]),
+    );
+    expect(visibilities).toEqual(
+      Object.fromEntries(
+        names.map((name) => [name, panelTools.has(name) ? ['model', 'app'] : ['model']]),
+      ),
+    );
+    expect(names.filter((name) => panelTools.has(name)).length).toBeGreaterThan(0);
+    expect(names.some((name) => !panelTools.has(name))).toBe(true);
     const resources = await mcp(4, 'resources/list', {});
     expect(resources.result?.['resources']).toMatchObject([
       { uri: 'ui://bureau/run-inspector/v1', mimeType: 'text/html;profile=mcp-app' },

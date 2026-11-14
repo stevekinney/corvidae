@@ -3,6 +3,7 @@ import type { JSONValue } from 'armorer/protocol';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';
+import type { SessionArchivedFilter } from './session-archive';
 import type { SessionOrigin } from './session-origin';
 
 /**
@@ -35,6 +36,13 @@ export interface SessionListOptions {
    * so a page is full of matches. Empty text matches every session that has a title.
    */
   titleContains?: string | undefined;
+  /**
+   * Which sessions to keep by whether they are archived (`SESSION_ARCHIVED_AT_METADATA_KEY`):
+   * `include` (the default) keeps every session, `exclude` only the ones that are not archived,
+   * and `only` only the archived ones. Applied to the summary index before `offset` and `limit`,
+   * like `owner`, so a page is full of matches.
+   */
+  archived?: SessionArchivedFilter | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
   sortBy?: ('createdAt' | 'updatedAt') | undefined;

@@ -79,18 +79,43 @@ function composerWrapperOf(container: HTMLElement): HTMLElement {
   return container.querySelector<HTMLElement>('.chat-input-wrapper')!;
 }
 
-test('an unconfigured chat centers a provider action in place of the conversation', async () => {
+test('an unconfigured chat with no message centers a provider action in place of the conversation', async () => {
   let connected = 0;
-  const { container } = mountWith('availability-unconfigured', {
+  const { container } = render(Chat, {
+    props: {
+      id: 'availability-unconfigured',
+      conversation: createConversationHistory({ id: 'availability-unconfigured-conversation' }),
+      availability: { kind: 'unconfigured', onConnect: () => (connected += 1) },
+    },
+  });
+  const state = container.querySelector<HTMLElement>('[data-chat-availability="unconfigured"]')!;
+  expect(state.textContent).toContain('Connect a model provider');
+  expect(timelineOf(container).style.display).toBe('none');
+  expect(composerWrapperOf(container).style.display).toBe('none');
+  const connect = buttonNamed(state, 'Connect provider')!;
+  expect(connect.getAttribute('data-cinder-variant')).toBe('primary');
+  await fireEvent.click(connect);
+  expect(connected).toBe(1);
+});
+
+test('an unconfigured chat with messages keeps them readable and replaces only the composer', async () => {
+  let connected = 0;
+  const { container } = mountWith('availability-unconfigured-history', {
     kind: 'unconfigured',
     onConnect: () => (connected += 1),
   });
-  expect(container.querySelector('.cinder-empty-state')?.textContent).toContain(
-    'Connect a model provider',
-  );
-  expect(timelineOf(container).style.display).toBe('none');
-  expect(composerWrapperOf(container).style.display).toBe('none');
+
+  // The transcript stays: nothing stands in its place.
+  expect(timelineOf(container).style.display).not.toBe('none');
+  expect(container.querySelector('[data-chat-availability]')).toBeNull();
+  expect(timelineOf(container).textContent).toContain('hello');
+  // The composer is one blocked row with the same words and the primary provider action.
+  expect(composerWrapperOf(container).style.display).not.toBe('none');
+  const blocked = container.querySelector('[data-chat-composer-status="blocked"]')!;
+  expect(blocked.textContent).toContain('Connect a model provider');
+  expect(container.querySelector('textarea.chat-input-editor')).toBeNull();
   const connect = buttonNamed(container, 'Connect provider')!;
+  expect(blocked.contains(connect)).toBe(true);
   expect(connect.getAttribute('data-cinder-variant')).toBe('primary');
   await fireEvent.click(connect);
   expect(connected).toBe(1);

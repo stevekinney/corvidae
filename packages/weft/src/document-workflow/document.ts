@@ -16,8 +16,9 @@ import { parseDuration } from '../core/scheduler.ts';
 import type { ActivityContext, ActivityDefinition } from '../core/types/activity.ts';
 import { validateWorkflowOrActivityName } from '../core/types/name-grammar.ts';
 import { canonicalJsonStringify } from '../worker/manifest/canonical-json.ts';
-import { sha256Hex } from '../worker/manifest/content-digest.ts';
+import { sha256Hex, sha256HexSync } from '../worker/manifest/content-digest.ts';
 import type { WorkflowDocumentIssue } from './document-errors.ts';
+import { hostIssues } from './document-host-issues.ts';
 import type { DocumentRejectionStep } from './document-rejection.ts';
 
 /**
@@ -55,6 +56,30 @@ export function documentStepAddress(
   if (iteration === undefined || iteration.length === 0) return String(step);
   return `${String(step)}#${iteration.map((segment) => encodeURIComponent(String(segment)).replaceAll('.', '%2E')).join('.')}`;
 }
+
+/**
+ * The id of the child a `workflow` step starts: a function of the instance and the step address,
+ * so a step a restart re-issues finds the child it already started instead of starting another,
+ * and two instances of one document never share one. Hashed, because an instance id can already
+ * be close to the 128 characters an id may have and an address holds characters an id may not.
+ */
+export function documentChildWorkflowId(workflowId: string, stepAddress: string): string {
+  return `workflow-child-${sha256HexSync(`${workflowId}:${stepAddress}`).slice('sha256:'.length, 'sha256:'.length + 32)}`;
+}
+
+/** What {@link DocumentWorkflowHost.childInput} is asked to build a child's input from. */
+export type DocumentChildWorkflowArgument = Readonly<{
+  /** The child the step calls, as the document names it. */
+  workflow: string;
+  /** The instance that is running the step. */
+  workflowId: string;
+  /** The trigger that started the instance. */
+  trigger: unknown;
+  /** The step's `input`, or `null` when it gives none. */
+  input: JSONValue;
+  step: number;
+  stepAddress: string;
+}>;
 /**
  * A host-registered activity handler a document names by key. A thrown error
  * fails the instance with that error. The optional `context` is the activity's
@@ -138,6 +163,32 @@ export interface DocumentWorkflowHost {
    */
   readonly activityVersions?: Readonly<Record<string, string>> | undefined;
   /**
+   * The workflows a document's `workflow` step may call, by the name the step uses. The host
+   * registers each on the engine as a workflow of that type; a step naming any other is refused by
+   * {@link validateWorkflowDocument}. Absent, no document may call a child.
+   */
+  readonly workflows?: readonly string[] | undefined;
+  /**
+   * The version each workflow in {@link DocumentWorkflowHost.workflows} is at, keyed by name, as
+   * {@link DocumentWorkflowHost.activityVersions} is for handlers. A document that pins a workflow
+   * in its {@link WorkflowDocument.workflowVersions} is refused unless the host has exactly that
+   * version.
+   */
+  readonly workflowVersions?: Readonly<Record<string, string>> | undefined;
+  /**
+   * The input a `workflow` step starts its child with. Without it the child receives the step's
+   * `input` (`null` when it has none). It must be pure: a re-issued step asks again, and a child
+   * already started under the step's id is only re-attached to when its input is the same.
+   */
+  readonly childInput?: ((argument: DocumentChildWorkflowArgument) => JSONValue) | undefined;
+  /**
+   * An activity the interpreter runs, with the step's {@link DocumentActivityArgument}, before it
+   * starts each child. A host that must check something at that moment (that the run still holds
+   * its authority) does it here, as it does in its activities, and a throw fails the step with no
+   * child started. Only a document that has a `workflow` step carries it.
+   */
+  readonly workflowAdmission?: DocumentActivity | undefined;
+  /**
    * Whether the payload an `await-signal` step received is a rejection: when it is, the run ends
    * without running a later step, as `failed` with {@link WorkflowDocumentReviewRejectedError}.
    * What a rejection looks like, and at which steps, belongs to the host: the call names the step.
@@ -149,6 +200,16 @@ export interface DocumentWorkflowHost {
 /** One step of a {@link WorkflowDocument}. */
 export type WorkflowDocumentStep =
   | Readonly<{ kind: 'activity'; handler: string; input?: JSONValue | undefined }>
+  | Readonly<{
+      /**
+       * Starts the registered workflow `workflow` as a child (`ctx.startChild`) and continues with
+       * its result as `previous`. The child fails the step by failing. Its id derives from the
+       * instance and the step address ({@link documentChildWorkflowId}).
+       */
+      kind: 'workflow';
+      workflow: string;
+      input?: JSONValue | undefined;
+    }>
   | Readonly<{ kind: 'sleep'; duration: string | number }>
   | Readonly<{
       kind: 'await-signal';
@@ -209,6 +270,14 @@ export interface WorkflowDocument {
    * handler one of the steps uses.
    */
   readonly activityVersions?: Readonly<Record<string, string>>;
+  /**
+   * The version of each workflow a `workflow` step calls, keyed by workflow name, as
+   * {@link WorkflowDocument.activityVersions} is for handlers: hashed into the document's version,
+   * and refused when the host cannot honor it (see {@link DocumentWorkflowHost.workflowVersions}).
+   * Optional: a document that pins no child keeps the version it always had. Every key names a
+   * workflow one of the steps calls.
+   */
+  readonly workflowVersions?: Readonly<Record<string, string>>;
 }
 
 const jsonValueSchema = z.custom<JSONValue>(isJSONValue, 'must be a JSON value');
@@ -285,6 +354,12 @@ export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.laz
           }
         }),
     }),
+    // Last, so the editor catalog lists the kinds it always did in the order it always did.
+    z.strictObject({
+      kind: z.literal('workflow'),
+      workflow: z.string().min(1),
+      input: jsonValueSchema.optional(),
+    }),
   ]),
 );
 
@@ -304,6 +379,7 @@ export const workflowDocumentSchema = z.strictObject({
   inputSchema: jsonObjectSchema.optional(),
   outputSchema: jsonObjectSchema.optional(),
   activityVersions: z.record(z.string().min(1), z.string().min(1)).optional(),
+  workflowVersions: z.record(z.string().min(1), z.string().min(1)).optional(),
 });
 
 /** Thrown by {@link validateWorkflowDocument} with every reason the document was rejected. */
@@ -331,126 +407,28 @@ function formatPath(path: readonly PropertyKey[]): string {
   return formatted;
 }
 
-/** Why `name` cannot be an activity name, or `undefined` when it can. */
-function activityNameIssue(name: string): string | undefined {
-  try {
-    validateWorkflowOrActivityName(name, 'activity');
-    return undefined;
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-}
+/** What {@link validateWorkflowDocument} may be told about the document it validates. */
+export type WorkflowDocumentValidationOptions = Readonly<{
+  /**
+   * Accept an activity that defines `compensate`. A document never runs `compensate`, so a
+   * document written now may not name such an activity; a revision that is already registered
+   * keeps working with the activities it was registered against, so a host that re-validates one
+   * (to register it as retained, or to read its manifest) sets this.
+   */
+  allowCompensate?: boolean;
+}>;
 
-/** A document that declares a schema needs a host that checks it. */
-function schemaHostIssues(
-  document: WorkflowDocument,
-  host: DocumentWorkflowHost,
-): WorkflowDocumentIssue[] {
-  if (host.checkSchema !== undefined) return [];
-  return (['inputSchema', 'outputSchema'] as const)
-    .filter((key) => document[key] !== undefined)
-    .map((key) => ({
-      path: key,
-      message: `this host does not check schemas, so a document cannot declare "${key}"`,
-    }));
-}
-
-function hostIssues(
-  document: WorkflowDocument,
-  host: DocumentWorkflowHost,
-): WorkflowDocumentIssue[] {
-  const issues: WorkflowDocumentIssue[] = schemaHostIssues(document, host);
-  const validator = Object.hasOwn(host.triggerKinds, document.trigger.kind)
-    ? host.triggerKinds[document.trigger.kind]
-    : undefined;
-  if (validator === undefined) {
-    issues.push({
-      path: 'trigger.kind',
-      message: `trigger kind "${document.trigger.kind}" is not registered`,
-    });
-  } else {
-    const reason = validator(document.trigger);
-    if (reason !== undefined) issues.push({ path: 'trigger', message: reason });
-  }
-  visitSteps(document.steps, 'steps', (step, path) => {
-    if (step.kind !== 'activity') return;
-    const nameIssue = activityNameIssue(step.handler);
-    if (nameIssue !== undefined) {
-      issues.push({ path: `${path}.handler`, message: nameIssue });
-    } else if (!Object.hasOwn(host.activities, step.handler)) {
-      issues.push({
-        path: `${path}.handler`,
-        message: `activity handler "${step.handler}" is not registered`,
-      });
-    }
-  });
-  issues.push(...pinIssues(document, host));
-  return issues;
-}
-function visitSteps(
-  steps: readonly WorkflowDocumentStep[],
-  path: string,
-  visit: (step: WorkflowDocumentStep, path: string) => void,
-): void {
-  for (const [index, step] of steps.entries()) {
-    const stepPath = `${path}[${String(index)}]`;
-    visit(step, stepPath);
-    if (step.kind === 'branch') {
-      for (const [literal, nested] of Object.entries(step.cases)) {
-        visitSteps(nested, `${stepPath}.cases.${literal}`, visit);
-      }
-      if (step.otherwise !== undefined) visitSteps(step.otherwise, `${stepPath}.otherwise`, visit);
-    } else if (step.kind === 'map') {
-      visitSteps(step.steps, `${stepPath}.steps`, visit);
-    } else if (step.kind === 'parallel') {
-      for (const [name, nested] of Object.entries(step.branches)) {
-        visitSteps(nested, `${stepPath}.branches.${name}`, visit);
-      }
-    }
-  }
-}
-/** The issues with a document's `activityVersions`: a pin for a handler no step uses, or one the host cannot honor. */
-function pinIssues(
-  document: WorkflowDocument,
-  host: DocumentWorkflowHost,
-): WorkflowDocumentIssue[] {
-  if (document.activityVersions === undefined) return [];
-  const used = new Set<string>();
-  visitSteps(document.steps, 'steps', (step) => {
-    if (step.kind === 'activity') used.add(step.handler);
-  });
-  const issues: WorkflowDocumentIssue[] = [];
-  for (const [handler, version] of Object.entries(document.activityVersions)) {
-    const path = `activityVersions.${handler}`;
-    if (!used.has(handler)) {
-      issues.push({ path, message: `no step uses the activity handler "${handler}"` });
-      continue;
-    }
-    const loaded =
-      host.activityVersions !== undefined && Object.hasOwn(host.activityVersions, handler)
-        ? host.activityVersions[handler]
-        : undefined;
-    if (loaded !== version) {
-      issues.push({
-        path,
-        message:
-          loaded === undefined
-            ? `activity handler "${handler}" is pinned at version "${version}", but this host has no version of it`
-            : `activity handler "${handler}" is pinned at version "${version}", but this host has version "${loaded}"`,
-      });
-    }
-  }
-  return issues;
-}
 /**
  * Validate `input` as a {@link WorkflowDocument} against what `host` has
  * registered, and return a detached copy. Call it when a document is written:
- * a document naming an unregistered activity handler or trigger kind throws a
- * {@link WorkflowDocumentValidationError} listing every problem found.
+ * a document naming an unregistered activity handler, workflow or trigger kind throws a
+ * {@link WorkflowDocumentValidationError} listing every problem found. A new document may not
+ * name an activity that defines `compensate`; see {@link WorkflowDocumentValidationOptions}.
  */
 export function validateWorkflowDocument(
   input: unknown,
   host: DocumentWorkflowHost,
+  options: WorkflowDocumentValidationOptions = {},
 ): WorkflowDocument {
   const parsed = workflowDocumentSchema.safeParse(input);
   if (!parsed.success) {
@@ -462,7 +440,7 @@ export function validateWorkflowDocument(
     );
   }
   const document = structuredClone(parsed.data) as WorkflowDocument;
-  const issues = hostIssues(document, host);
+  const issues = hostIssues(document, host, options);
   if (issues.length > 0) throw new WorkflowDocumentValidationError(issues);
   return document;
 }

@@ -14,6 +14,7 @@ import {
   isTerminalState,
   listAllTasks,
   listChildRuns,
+  listInFlightTasks,
   listRunningTasks,
   listTasks,
   respondToTask,
@@ -446,6 +447,28 @@ describe('listRunningTasks', () => {
 
   test('is zero when nothing is going', async () => {
     expect(await listRunningTasks({ fetch: holding([]).fetch })).toEqual([]);
+  });
+
+  test('listInFlightTasks reads the three states that a restart recovers, and only the agents named (COR-2235)', async () => {
+    const world = holding([
+      { ...TASK, id: 'a', status: 'working', agentName: 'demo:echo' },
+      { ...TASK, id: 'b', status: 'submitted', agentName: 'demo:echo' },
+      { ...TASK, id: 'c', status: 'input-required', agentName: 'demo:ask' },
+      { ...TASK, id: 'd', status: 'input-required', agentName: 'other:agent' },
+      { ...TASK, id: 'e', status: 'completed', agentName: 'demo:echo' },
+      { ...TASK, id: 'f', status: 'working', agentName: null },
+    ]);
+    const found = await listInFlightTasks(new Set(['demo:echo', 'demo:ask']), {
+      fetch: world.fetch,
+    });
+    expect(
+      found.map((task) => task.id).toSorted((left, right) => left.localeCompare(right)),
+    ).toEqual(['a', 'b', 'c']);
+    expect(
+      world.calls
+        .map((call) => String(call['status']))
+        .toSorted((left, right) => left.localeCompare(right)),
+    ).toEqual(['input-required', 'submitted', 'working']);
   });
 
   test('listAllTasks reads every page of what a filter matches, a hundred at a time', async () => {

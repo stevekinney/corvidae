@@ -46,6 +46,7 @@ export type PropSpec = {
     | 'TSFunctionType'
     | 'TSTypeOperator'
     | 'TSTypeLiteral'
+    | 'TSIndexedAccessType'
     | 'TSUndefinedKeyword';
   default?: DefaultSpec;
 };
@@ -282,6 +283,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       icon: s0(true),
       illustration: s0(true),
       action: s0(true),
+      children: s0(true),
     },
   },
 
@@ -383,6 +385,26 @@ export const CONTRACT: Record<string, ComponentContract> = {
     },
   },
 
+  link: {
+    kind: 'intersection',
+    html_attrs: 'HTMLAnchorAttributes',
+    props: {
+      href: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      underline: { optional: true, type_kind: 'TSTypeReference', default: L('hover') },
+      color: { optional: true, type_kind: 'TSTypeReference', default: L('primary') },
+      // `more` (COR-2329): small regular text with a chevron, the way out of a section or empty row.
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('inline') },
+      external: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      target: { optional: true, type_kind: 'TSIndexedAccessType', default: NO_DEFAULT },
+      rel: { optional: true, type_kind: 'TSIndexedAccessType', default: NO_DEFAULT },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+    },
+    snippets: {
+      children: s0(false),
+    },
+  },
+
   'list-detail': {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',
@@ -403,6 +425,14 @@ export const CONTRACT: Record<string, ComponentContract> = {
       defaultListWidth: { optional: true, type_kind: 'TSNumberKeyword', default: L(280) },
       maximumListWidth: { optional: true, type_kind: 'TSNumberKeyword', default: L(560) },
       flushDetail: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      listCollapsible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      listCollapsed: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      collapseListLabel: {
+        optional: true,
+        type_kind: 'TSStringKeyword',
+        default: L('Hide list'),
+      },
+      expandListLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Show list') },
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
@@ -423,7 +453,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       detail: sp(1, false),
       empty: s0(true),
       listEmpty: s0(true),
-      header: s0(true),
+      header: sp(1, true),
     },
   },
 
@@ -696,6 +726,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       readonly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      pending: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       descriptionVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       descriptionPlacement: { optional: true, type_kind: 'TSUnionType', default: L('inline') },

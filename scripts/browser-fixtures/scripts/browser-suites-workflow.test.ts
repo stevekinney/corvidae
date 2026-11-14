@@ -42,6 +42,18 @@ describe('the browser suites workflow', () => {
     expect(jobText('interborough')).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
   });
 
+  // COR-2461: the design-review capture runs where the end-to-end layout checks run, so its fonts match.
+  test('runs the design-review capture in the same image, and uploads whatever it captured', () => {
+    const { playwrightVersion } = readRepositoryPins();
+    const capture = readFileSync(
+      resolve(REPOSITORY_ROOT, '.github/workflows/design-review-capture.yml'),
+      'utf8',
+    );
+    expect(capture).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
+    expect(capture).toMatch(/if: \$\{\{ always\(\) \}\}\n/u);
+    expect(capture).not.toMatch(/run:[^\n]*\$\{\{ *inputs\./u);
+  });
+
   test('compares screenshots in block mode', () => {
     expect(jobText('fixtures')).toContain('CINDER_VISUAL_DIFF: block\n');
   });

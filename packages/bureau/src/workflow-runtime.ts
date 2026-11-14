@@ -1154,7 +1154,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   const isCodeName = (id: string): boolean =>
     engine.getWorkflowDefinition(weftNameOf(id)) !== undefined && !registeredTypes.has(id);
 
-  /** The first activity `document` pins that is not loaded at the pinned version, or `undefined`. */
+  /**
+   * The first activity or child workflow `document` pins that is not loaded at the pinned version,
+   * or `undefined`. A pinned child is held to exactly the version it was pinned at, as an activity
+   * is (COR-2246).
+   */
   function unresolvedPin(document: WorkflowDocument): WorkflowRunPinProblem | undefined {
     for (const [handler, version] of Object.entries(document.activityVersions ?? {})) {
       const resolution = contributions.resolveActivity(handler, version);
@@ -1162,6 +1166,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         return {
           reason: resolution.reason,
           activity: formatVersionedId(handler, version),
+          availableVersions: resolution.availableVersions,
+        };
+      }
+    }
+    for (const [name, version] of Object.entries(document.workflowVersions ?? {})) {
+      const resolution = contributions.resolveWorkflow(name, version);
+      if (!resolution.ok) {
+        return {
+          reason: resolution.reason,
+          workflow: formatVersionedId(name, version),
           availableVersions: resolution.availableVersions,
         };
       }
@@ -1254,7 +1268,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           retained.push({
             id,
             version,
-            document: validateBureauWorkflowDocument(snapshot.document, registrationHost),
+            // Already registered, with runs in flight: it keeps the activities it was written
+            // against, `compensate` included (O14).
+            document: validateBureauWorkflowDocument(snapshot.document, registrationHost, {
+              allowCompensate: true,
+            }),
           });
         } catch (error) {
           if (!(error instanceof WorkflowDocumentValidationError)) throw error;

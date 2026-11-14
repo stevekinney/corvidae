@@ -154,9 +154,9 @@ describe('ApprovalCard decision layout', () => {
     expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
   });
 
-  test('offers Add a note, then Deny as secondary on the left and the named primary on the right', () => {
+  test('offers Add note, then Deny as secondary on the left and the named primary on the right', () => {
     const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
-    // "Add a note" is a quiet control in the action row, not a second caption row.
+    // "Add note" is a quiet control in the action row, not a second caption row.
     expect(container.querySelector('.cinder-approval-card__decision-tools button')).toBeNull();
     const labels = Array.from(
       container.querySelectorAll('.cinder-approval-card__row-actions button'),
@@ -201,7 +201,7 @@ describe('ApprovalCard decision layout', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(getByLabelText('Note (optional)'), { target: { value: 'Looks right' } });
+    await fireEvent.input(getByLabelText('Note'), { target: { value: 'Looks right' } });
     await fireEvent.click(getByRole('button', { name: 'Publish' }));
 
     expect(onResolve).toHaveBeenCalledTimes(1);
@@ -843,7 +843,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(container.textContent).toContain('Sends $42.00 back to the original card');
   });
 
-  test('Add a note is a ghost small Cinder Button with an icon and a tooltip', () => {
+  test('Add note is a ghost small Cinder Button with an icon and a tooltip', () => {
     const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
     const toggle = getByRole('button', { name: 'Add note' });
     expect(toggle.classList.contains('cinder-button')).toBe(true);
@@ -862,7 +862,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(group?.firstElementChild?.contains(toggle)).toBe(true);
   });
 
-  test('the icon-only fallback of Add a note takes the outline of Deny', () => {
+  test('the icon-only fallback of Add note takes the outline of Deny', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -884,7 +884,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(container.querySelector('[data-cinder-note-compact]')).toBeNull();
   });
 
-  test('Add a note keeps space-3 before Deny and hides only its words when the row cannot fit them', () => {
+  test('Add note keeps space-3 before Deny and hides only its words when the row cannot fit them', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -897,7 +897,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
   });
 
-  test('Add a note sits on the text column and is a square icon face when it must be compact', () => {
+  test('Add note sits on the text column and is a square icon face when it must be compact', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -910,7 +910,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
   });
 
-  test('Add a note never squeezes or wraps its words on a card 30rem or wider', () => {
+  test('Add note never squeezes or wraps its words on a card 30rem or wider', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -985,7 +985,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/inline-size < 20rem\).*grid-template-columns: minmax\(0, 1fr\)/);
   });
 
-  // C#3 (chat stress sweep): the disclosures were text-sized on a phone. "Add a note" is a Button
+  // C#3 (chat stress sweep): the disclosures were text-sized on a phone. "Add note" is a Button
   // and owns its own hit area.
   test('on a coarse pointer the disclosures are 44px targets', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(

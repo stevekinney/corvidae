@@ -23,7 +23,7 @@
    *
    * A question the agent asks is answered here. A tool that asks first is the shared approval row
    * in place of its call, under "Waiting on you for Issue refund", with the context line "Test chat,
-   * this runs for real", Add a note, Deny and Approve, which answer this test run only (rows 43d,
+   * this runs for real", Add note, Deny and Approve, which answer this test run only (rows 43d,
    * 43e).
    *
    * The agent in the chat is the form as it was when the chat started; Try it says so once the form

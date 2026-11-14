@@ -432,17 +432,24 @@
     onSelectedKeyChange={openChat}
     selectionParameter={null}
     storageKey="interborough-chats"
+    listCollapsible
+    collapseListLabel={CHAT_COPY.list.hideList}
+    expandListLabel={CHAT_COPY.list.showList}
     flushDetail
     backVisible={!phone.current}
     {listBody}
   >
-    {#snippet header()}
+    {#snippet header({ listToggle })}
       <div class="ib-chats__controls" bind:clientWidth={paneWidth}>
         <div class="ib-chats__title-row">
           <svelte:element this={openId === null ? 'h1' : 'h2'} class="ib-chats__title">
             {phone.current ? CHAT_COPY.sessionsTitlePhone : CHAT_COPY.sessionsTitle}
           </svelte:element>
-          {@render newChatButton()}
+          <!-- The "+" and, beside an open chat, the toggle that hides the list (COR-2327 AC1). -->
+          <span class="ib-chats__title-actions">
+            {@render newChatButton()}
+            {@render listToggle?.()}
+          </span>
         </div>
         {#if !phone.current}
           <SearchField

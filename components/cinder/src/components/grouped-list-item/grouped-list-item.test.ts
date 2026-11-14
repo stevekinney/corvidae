@@ -169,7 +169,7 @@ describe('GroupedListItem', () => {
     expect(chosen).toBe(0);
   });
 
-  test('stylesheet lifts the actions over the row link and stacks them full width in a narrow row', () => {
+  test('stylesheet lifts the actions over the row link and drops them under the text, at their own width, in a narrow row', () => {
     const css = readFileSync(new URL('./grouped-list-item.css', import.meta.url), 'utf8')
       .replace(/\s+/g, ' ')
       .replace(/\/\*.*?\*\//g, '');
@@ -182,8 +182,12 @@ describe('GroupedListItem', () => {
     const phone =
       /@container cinder-grouped-list-item \(width < 26rem\) \{(.*?)\} \}/.exec(css)?.[1] ?? '';
     expect(phone).toContain('flex-wrap: wrap');
-    expect(phone).toMatch(/__actions \{[^}]*flex: 1 0 100%[^}]*flex-direction: column/);
-    expect(phone).toMatch(/__actions > \.cinder-button \{ inline-size: 100%;/);
+    // A line of their own, a row of buttons from the text's leading edge, each at its own width
+    // (COR-2329: a button the width of the row read as a page-wide pill).
+    expect(phone).toMatch(/__actions \{[^}]*flex: 1 0 100%[^}]*flex-flow: row wrap/);
+    expect(phone).toMatch(/__actions \{[^}]*justify-content: flex-start/);
+    expect(phone).not.toContain('inline-size: 100%');
+    expect(phone).not.toContain('align-items: stretch');
   });
 
   test('stylesheet insets the separator, fixes the action column, and styles by class only', () => {

@@ -102,6 +102,29 @@ Use `layout="row"` for a state that sits inside a card or a list in place of its
 </EmptyState>
 ```
 
+The action stays buttons: it is a wrapping row of call-to-action controls. Content that belongs under the action, such as the lines and numbered steps of a manual set-up, goes in the component's children, which follow the action in a block of their own, at the full width of the state and in its alignment (stacked layout only):
+
+```svelte
+<script lang="ts">
+  import { Button, EmptyState } from '@lostgradient/cinder';
+</script>
+
+<EmptyState
+  align="start"
+  title="Connect a model provider"
+  description="Agents can't answer until one is connected."
+>
+  {#snippet action()}
+    <Button variant="primary" label="Connect a provider" />
+  {/snippet}
+  <p>Or set it up by hand:</p>
+  <ol>
+    <li>Save the key in a file.</li>
+    <li>Restart.</li>
+  </ol>
+</EmptyState>
+```
+
 The `icon` snippet replaces the glyph in the disc. The `illustration` snippet draws a larger picture above the title in place of the disc, in the stacked layout only; it is decorative and sizes to its own content, so give it an `svg` or an `img` of the size you want. The description keeps a measure of 380px however wide the region is, and the action row wraps with even spacing.
 
 ## Props
@@ -121,6 +144,7 @@ The `icon` snippet replaces the glyph in the disc. The `illustration` snippet dr
 | `size` | `"default"` \| `"compact"` | no | `"default"` | Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a tab or a panel rather than a whole page region. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
 | `action` | `(opaque)` | no | — | Call-to-action content rendered below the description, after the "Clear filters" button when both exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for done, and a secondary button for a not-found or blocked state. Not expressible in JSON Schema; see the component types for the signature. |
+| `children` | `(opaque)` | no | — | Supporting content under the call to action, such as the steps of a manual set-up; the action stays buttons. It follows `align`, takes the full width of the state with no measure of its own, and draws no border or background. Drawn only in the `'stacked'` layout; a `'row'` or `'inline'` state ignores it. Not expressible in JSON Schema; see the component types for the signature. |
 | `icon` | `(opaque)` | no | — | Replaces the glyph in the disc. First use shows the view's own icon; every other kind has a default glyph. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
 | `illustration` | `(opaque)` | no | — | A larger picture drawn above the title in place of the disc, for a page-sized state that wants more than a glyph. Drawn only in the `'stacked'` layout; a `'row'` or `'inline'` state keeps its disc and ignores it. Decorative, so it is hidden from assistive technology; say what is missing in the title. Not expressible in JSON Schema; see the component types for the signature. |
 | `onClearFilters` | `(opaque)` | no | — | Called when the "Clear filters" button of a `'filtered'` state is pressed. The button renders only when this is set. Not expressible in JSON Schema; see the component types for the signature. |

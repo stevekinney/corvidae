@@ -376,6 +376,13 @@ describe('ErrorState row variant', () => {
     expect(css).toMatch(
       /\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-title,\s*\.cinder-error-state\[data-cinder-variant='row'\] \.cinder-error-state-description \{\s*display: inline;/,
     );
+    // A grouped list row's insets, so the retry ends on the same edge as a list row's button
+    // (COR-2329: it ended 8px short).
+    const body = declarationsFor(
+      css,
+      ".cinder-error-state[data-cinder-variant='row'] .cinder-error-state-body",
+    );
+    expect(body.get('padding-inline')).toBe('var(--cinder-space-4) var(--cinder-space-2)');
   });
 
   test('an icon given for the retry button is drawn', () => {

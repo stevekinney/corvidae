@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { Button, GroupedList, GroupedListItem, StatusDot } from '@lostgradient/cinder';
+  import {
+    Button,
+    EmptyState,
+    ErrorState,
+    GroupedList,
+    GroupedListItem,
+    StatusDot,
+  } from '@lostgradient/cinder';
 </script>
 
 <div style="max-inline-size: 28rem;">
@@ -32,4 +39,20 @@
       {#snippet subtitle()}<StatusDot word="Running" />, Schedule, started 10:42 AM{/snippet}
     </GroupedListItem>
   </GroupedList>
+
+  <!-- A list's empty and failed rows (COR-2329): their actions end on the list buttons' edge. -->
+  <div data-testid="grouped-list-empty-row">
+    <EmptyState kind="done" layout="row" title="Nothing needs attention">
+      {#snippet action()}<Button variant="secondary" size="sm" label="Open Health" />{/snippet}
+    </EmptyState>
+  </div>
+  <div data-testid="grouped-list-error-row">
+    <ErrorState
+      variant="row"
+      headingLevel={3}
+      title="Couldn’t load system problems."
+      description="The rest of Home is live."
+      onRetry={() => {}}
+    />
+  </div>
 </div>

@@ -136,13 +136,13 @@ export type ApprovalResolution = {
  * Layout of an approval. `card` is the full review surface: who asked, the question, the tool and
  * the consequence in the header, then the evidence and the decision. `row` is the shared approval
  * row (glyph and question, a line naming the tool and where it came from, the consequence, Input,
- * Add a note, Deny and Approve) for an approval inside a transcript or beneath a tool call.
+ * Add note, Deny and Approve) for an approval inside a transcript or beneath a tool call.
  * `detail` is the approval's own page: an eyebrow, the question, who asked and how long it has
  * waited, the tool, the Input block, then a line carrying the risk glyph and what approving does,
  * and the decision below. It has no Details disclosure. `decision` is the explicit decision
  * surface for a transcript: no glyph gutter, the action as the title with one small facts line
  * (when the approval expires, and "Can't be undone" in muted danger text), meaningful host facts
- * and a readable Command with the command always visible and monospaced, Add a note, then Deny
+ * and a readable Command with the command always visible and monospaced, Add note, then Deny
  * and a named primary
  * action. An irreversible primary arms on its first press. Once decided it stays as a receipt:
  * the action, one status line saying what was decided and by whom (in the layout an expired card

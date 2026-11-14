@@ -141,6 +141,14 @@ import {
   contextsRenameOperation,
 } from './management/contexts-rename-operation.ts';
 import {
+  type BureauContextsArchiveOperationHost,
+  contextsArchiveOperation,
+} from './management/contexts-archive-operation.ts';
+import {
+  type BureauContextsUnarchiveOperationHost,
+  contextsUnarchiveOperation,
+} from './management/contexts-unarchive-operation.ts';
+import {
   type BureauContextsWindowOperationHost,
   contextsWindowOperation,
 } from './management/contexts-window-operation.ts';
@@ -314,6 +322,8 @@ export type BureauHandlerSource = Pick<
     | 'get'
     | 'delete'
     | 'rename'
+    | 'archive'
+    | 'unarchive'
     | 'window'
     | 'input'
     | 'retract'
@@ -402,6 +412,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsForkOperationHost &
   BureauContextsRegenerateOperationHost &
   BureauContextsRenameOperationHost &
+  BureauContextsArchiveOperationHost &
+  BureauContextsUnarchiveOperationHost &
   BureauContextsWindowOperationHost &
   BureauAgentModelsOperationHost &
   BureauAgentReferencesOperationHost &
@@ -818,6 +830,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsForkOperation,
   contextsRegenerateOperation,
   contextsRenameOperation,
+  contextsArchiveOperation,
+  contextsUnarchiveOperation,
   contextsWindowOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauAgentOverridesOperations,
@@ -1298,6 +1312,8 @@ export function buildBureauHandlerHost(
       get: (id) => bureau.contexts.get(id),
       delete: (id, deleteOptions) => bureau.contexts.delete(id, deleteOptions),
       rename: (id, title, renameOptions) => bureau.contexts.rename(id, title, renameOptions),
+      archive: (id, archiveOptions) => bureau.contexts.archive(id, archiveOptions),
+      unarchive: (id, unarchiveOptions) => bureau.contexts.unarchive(id, unarchiveOptions),
       steering: (id) => bureau.contexts.steering(id),
       window: (id, windowOptions) => bureau.contexts.window(id, windowOptions),
       input: (id, request) => bureau.contexts.input(id, request),
