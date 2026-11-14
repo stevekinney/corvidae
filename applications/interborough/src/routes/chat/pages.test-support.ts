@@ -40,7 +40,8 @@ export type Call = { method: string; params: Record<string, unknown> };
 /** Answers each Bureau operation by name, records the calls, and says no to anything else. */
 export function bureau(
   answers: Record<string, (params: Record<string, unknown>) => unknown>,
-  other: (url: string, init?: RequestInit) => Response | undefined = () => undefined,
+  other: (url: string, init?: RequestInit) => Response | Promise<Response> | undefined = () =>
+    undefined,
 ): { calls: Call[]; restore: () => void } {
   const calls: Call[] = [];
   const restore = installFetchImplementation(async (input, init) => {

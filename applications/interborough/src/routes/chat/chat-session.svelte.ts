@@ -173,6 +173,13 @@ export class ChatSessionState {
   /** Whether the session opened on a run that was going, and is still reading it. */
   attaching = $state(false);
   /**
+   * Whether the first read of the thread has settled: a run was joined, or the history the Bureau
+   * holds (none, for a thread it has no record of) is on screen. Until then an empty transcript
+   * says nothing about the chat, so the page shows it loading, not empty. A new chat has nothing to
+   * read and starts settled. It never goes back: a later read replaces rows that are already there.
+   */
+  historySettled = $state(false);
+  /**
    * Whether the session has stopped trying to reach the thread: it failed `MAX_RECONNECT_ATTEMPTS`
    * times in a row, or the Bureau refused it in a way a retry cannot change. The page says so and
    * offers `reconnect()`. It clears when the thread is read again, or a frame of the run arrives,
@@ -262,6 +269,7 @@ export class ChatSessionState {
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
     this.#opened = options.unopened !== true;
+    this.historySettled = !this.#opened;
     this.#closed = options.closed;
     this.#onNotFound = options.onNotFound;
     this.conversation = createConversationHistory({ id: options.sessionId });
@@ -908,10 +916,13 @@ export class ChatSessionState {
           this.restore(history);
           this.disconnected = false;
         }
+        // The Bureau answered: with the thread's rows, or with none for a thread it has no record of.
+        this.historySettled = true;
         this.#attachedRun = false;
         return false;
       }
       this.restore(restored);
+      this.historySettled = true;
       // A run was restored, so the Bureau holds the thread.
       this.#opened = true;
       this.disconnected = false;

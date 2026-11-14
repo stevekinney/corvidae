@@ -540,6 +540,27 @@
         },
       };
     }
+    // Until the first read of the thread settles, an empty transcript is not an empty chat: it is
+    // still loading, in the words the stand-in used before the chat was read (`index.svelte`). A
+    // first read the session gave up on is a chat that could not be loaded, with Try again.
+    if (!session.historySettled) {
+      if (session.disconnected) {
+        return {
+          kind: 'error',
+          cause: CHAT_COPY.load.errorDescription,
+          onRetry: () => void session.reconnect(),
+          allConversations: {
+            label: CHAT_COPY.load.allConversations,
+            onclick: () => router.navigate('/chats'),
+          },
+          labels: { errorTitle: CHAT_COPY.load.errorTitle, tryAgain: CHAT_COPY.load.tryAgain },
+        };
+      }
+      return {
+        kind: 'loading',
+        labels: { loading: CHAT_COPY.load.loading, slow: CHAT_COPY.load.stillLoading },
+      };
+    }
     if (noProvider && composerStatus?.kind !== 'blocked') {
       return { kind: 'unconfigured', onConnect: () => router.navigate('/settings/models') };
     }
@@ -555,6 +576,7 @@
   );
   const emptyPrompts = $derived(
     listedAgent === undefined ||
+      !session.historySettled ||
       composerStatus?.kind === 'blocked' ||
       noProvider ||
       session.disconnected ||
@@ -1934,7 +1956,7 @@
       <SessionTasks {sessionId} streaming={session.streaming} />
     {/if}
 
-    {#if session.failure !== undefined && !failureShownInTranscript && !choosing}
+    {#if session.failure !== undefined && !failureShownInTranscript && !choosing && !(session.disconnected && !session.historySettled)}
       <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
         <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
         <p class="weft-chat-approval__message">{session.failure}</p>
@@ -1943,7 +1965,7 @@
 
     <!-- While Interborough cannot be reached the shell's banner is the one account of it: a dropped
        stream gets no banner of its own (design row 18e). -->
-    {#if session.disconnected && !connection.unreachable}
+    {#if session.disconnected && session.historySettled && !connection.unreachable}
       <Alert variant="warning">
         <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
         <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>

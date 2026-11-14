@@ -315,6 +315,99 @@ describe('an existing chat with no message yet (COR-2285 V1)', () => {
   });
 });
 
+describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
+  const withExamples = {
+    'bureau.agents.list': () => ({
+      agents: [
+        { ...RUNNER, description: 'Runs the tools you name.', examples: ['List the tools'] },
+        AGENT,
+      ],
+    }),
+  };
+
+  /** Serves the chat as `serve` does, with its history held until `release` is called. */
+  function serveHeld(messages: readonly Record<string, unknown>[], hasKey: boolean) {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const served = bureau(
+      {
+        'bureau.agents.list': withExamples['bureau.agents.list'],
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        'bureau.contexts.window': () => ({
+          maxTokens: 200_000,
+          usedEstimated: 76_000,
+          usedReported: null,
+          categories: [],
+        }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+      },
+      (url) => {
+        if (url.endsWith('/host/providers')) return provider(hasKey);
+        if (url.endsWith('/messages')) {
+          return held.then(() => Response.json({ threadId: 'session-1', messages }));
+        }
+        if (!url.includes('/threads/')) return undefined;
+        return new Response(
+          `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' })}\n\n`,
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+      },
+    );
+    restore = served.restore;
+    landAt('/chats/session-1');
+    return { ...served, release: () => release() };
+  }
+
+  /** Waits until the page has read the agents and the providers, so every empty state could show. */
+  async function settledAround(calls: { method: string }[], container: HTMLElement) {
+    await waitFor(() => {
+      expect(calls.some((call) => call.method === 'bureau.agents.list')).toBe(true);
+      expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull();
+    });
+  }
+
+  for (const hasKey of [true, false]) {
+    test(`shows the transcript loading, with no empty state and no prompt, while it is read (provider ${hasKey ? 'connected' : 'missing'})`, async () => {
+      const served = serveHeld(heldByPluginMessages(), hasKey);
+      const { container, queryByRole, findByRole } = mount();
+
+      await settledAround(served.calls, container);
+      expect(container.querySelector('.chat-empty')).toBeNull();
+      expect(container.querySelector('[data-chat-availability="unconfigured"]')).toBeNull();
+      expect(container.textContent).not.toContain(CHAT_COPY.emptyTranscript.title);
+      expect(container.textContent).not.toContain('Connect a model provider');
+      expect(queryByRole('button', { name: 'List the tools' })).toBeNull();
+      expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+      // The editor stays, for what the person types while the chat is read.
+      expect(container.querySelector('textarea')).not.toBeNull();
+
+      served.release();
+
+      // The history arrives: the waiting approval is on screen, and the loading state is gone.
+      expect(await findByRole('button', { name: 'Approve' })).not.toBeNull();
+      await waitFor(() =>
+        expect(container.querySelector('[data-chat-availability="loading"]')).toBeNull(),
+      );
+      expect(container.querySelector('.chat-empty')).toBeNull();
+    });
+  }
+
+  test('an empty thread is the first-use state once its read has settled', async () => {
+    const served = serveHeld([], true);
+    const { container, findByRole } = mount();
+
+    await settledAround(served.calls, container);
+    expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+
+    served.release();
+
+    await findByRole('heading', { level: 2, name: CHAT_COPY.emptyTranscript.title });
+    expect(await findByRole('group', { name: 'Suggested prompts' })).not.toBeNull();
+  });
+});
+
 describe('a turn that ends on a tool call (20h)', () => {
   test('closes the rail with the run finished and no reply, and reads Done', async () => {
     serve(endedOnToolCallMessages(), {

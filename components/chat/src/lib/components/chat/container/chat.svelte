@@ -2698,7 +2698,11 @@
         {/if}
 
         {#if messages.length === 0 && typingIndicatorState.participantCount === 0}
-          {#if empty}
+          <!-- An availability state stands where the transcript is: an empty transcript then says
+               nothing about the conversation, so no empty state is drawn behind it. -->
+          {#if transcriptHidden}
+            <!-- Nothing: the availability state is the conversation for now. -->
+          {:else if empty}
             {@render empty()}
           {:else}
             <div class="chat-empty" role="status">
