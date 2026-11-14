@@ -25,6 +25,7 @@ import type { Context } from './index.ts';
 import {
   getInternals,
   hasContextInternals,
+  stepStateKey,
   yieldOperation,
   type ContextInternals,
 } from './internals.ts';
@@ -274,8 +275,13 @@ export function createRunActivityRequest<TResult>(
   return createRunActivityRequestAtStep(context, activity, rest, step, {
     ...(explicitName === undefined ? {} : { explicitName }),
     advanceStepIndexForCachedRetryState: true,
-    retryStateKey: step,
+    retryStateKey: stepStateKey(internals, step),
     cacheResultStep: step,
+    // A branch of a parallel step counts its own steps, so its activity's heartbeat and
+    // async-completion identity is qualified by the branch; at the top level it stays the step.
+    ...(internals.branchNamespace === undefined
+      ? {}
+      : { activityStateKey: String(stepStateKey(internals, step)) }),
   });
 }
 

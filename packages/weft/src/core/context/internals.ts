@@ -9,6 +9,13 @@ export interface ContextInternals {
   context: Context;
   abortController: AbortController;
   stepIndex: number;
+  /**
+   * Names the branch of an advancing parallel step whose operations are running, or `undefined` at
+   * the workflow's top level. A branch counts its steps from zero and keeps its own results, so the
+   * state a step keeps under its number in the checkpoint's locals is qualified by this name; see
+   * {@link stepStateKey}.
+   */
+  branchNamespace: string | undefined;
   /** See {@link ContextOptions.logStep}; `undefined` stamps `ctx.log` records with `stepIndex`. */
   logStep: number | undefined;
   accumulatedResults: Map<number, unknown> | undefined;
@@ -61,6 +68,20 @@ export interface ContextInternals {
 
 const INTERNALS = new WeakMap<Context, ContextInternals>();
 
+/**
+ * The key under which a step keeps its own state in the checkpoint's locals (a retry's attempt, a
+ * sleep's deadline) and in the heartbeat and async-completion identity of its activity: the step
+ * number at the workflow's top level, so a run persisted before branches counted their own steps
+ * keeps every key, and the number qualified by the branch's name inside one, where two branches
+ * each have a step 0.
+ */
+export function stepStateKey(
+  internals: Pick<ContextInternals, 'branchNamespace'>,
+  step: number,
+): number | string {
+  return internals.branchNamespace === undefined ? step : `${internals.branchNamespace}:${step}`;
+}
+
 export function initializeInternals(
   context: Context,
   options: ContextOptions,
@@ -70,6 +91,7 @@ export function initializeInternals(
     context,
     abortController: options.abortController,
     stepIndex: options.initialStep ?? 0,
+    branchNamespace: undefined,
     logStep: options.logStep,
     accumulatedResults: options.accumulatedResults,
     replayingToPark: options.resumed === true,

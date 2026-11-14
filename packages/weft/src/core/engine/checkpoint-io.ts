@@ -48,12 +48,14 @@ import {
   type CompactionResult,
 } from './event-log-compaction.ts';
 import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-write.ts';
+import type { FileWorkflowEvent } from './file-workflow-completion-events.ts';
 import { appendFileWorkflowCheckpointEvents } from './file-workflow-history.ts';
 import type { EngineInternals } from './internals.ts';
 import { getTimelineInputSummary, getTimelineOperationLabel } from './state-utilities.ts';
 import { buildPendingTimelineOperation } from './termination.ts';
 import {
   captureActivityCompletionReceipts,
+  captureSettledBranchReceipts,
   type ActivityCompletionReceipt,
 } from './timeline-coordinator-detail.ts';
 import { notifyWorkflowFeedCommit } from './workflow-feed.ts';
@@ -89,7 +91,17 @@ export type PersistCheckpointOptions = {
    * reads the live context.
    */
   pendingStepIndex?: number;
+  /** With `preserve-pending`: the branch activities whose completion receipts this commit reports. */
+  settledBranchOperationIds?: readonly string[];
+  /** With `preserve-pending`: the file-workflow completion events this commit records. */
+  settledFileWorkflowEvents?: readonly FileWorkflowEvent[];
 };
+
+/** What a commit made while its operation is still running reports for the steps it settled. */
+export type MidOperationCommitReport = Pick<
+  PersistCheckpointOptions,
+  'settledBranchOperationIds' | 'settledFileWorkflowEvents'
+>;
 
 export type PersistCheckpointCallbacks = {
   appendTimelineBatchOperations: (
@@ -412,6 +424,20 @@ function appendAttributeOperations(
   );
 }
 
+/**
+ * The activity completions the commit about to run reports. A commit that keeps the pending entry
+ * is made while its operation still runs, so it reports only the branch activities it names.
+ */
+function captureCommitReceipts(
+  internals: EngineInternals,
+  workflowId: string,
+  options: PersistCheckpointOptions,
+): ActivityCompletionReceipt[] {
+  return options.timeline === 'preserve-pending'
+    ? captureSettledBranchReceipts(internals, workflowId, options.settledBranchOperationIds ?? [])
+    : captureActivityCompletionReceipts(internals, workflowId);
+}
+
 async function commitCheckpoint(
   internals: EngineInternals,
   workflowId: string,
@@ -420,7 +446,7 @@ async function commitCheckpoint(
   callbacks: PersistCheckpointCallbacks,
   options: PersistCheckpointOptions,
 ): Promise<void> {
-  const activityCompletionReceipts = captureActivityCompletionReceipts(internals, workflowId);
+  const activityCompletionReceipts = captureCommitReceipts(internals, workflowId, options);
   dispatchCheckpointSizeWarning(internals, workflowId, commit, callbacks);
   const nextPendingTimelineEntry =
     options.timeline === 'preserve-pending'
@@ -440,6 +466,7 @@ async function commitCheckpoint(
     commit.stepIndex,
     commit.operations,
     internals.eventLogHeads.get(workflowId) ?? EMPTY_EVENT_HEAD,
+    options.settledFileWorkflowEvents,
   );
   const { newHead, timestamp } = appendCheckpointEventLog(
     internals,

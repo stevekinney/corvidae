@@ -5,7 +5,9 @@ import {
   readAtomicStateSnapshot,
 } from '../atomic-state.ts';
 import type { ContextOperationRequest } from '../context.ts';
+import { branchDriversOf } from '../context/branch-driver.ts';
 import type { HumanReviewOptions } from '../review/index.ts';
+import { runAdvancingBranches } from './advancing-branches.ts';
 import {
   assertChildWorkflowNestingDepth,
   executeChildWorkflow,
@@ -30,7 +32,7 @@ import {
 } from './operations-coordination.ts';
 import type { OperationWithCallerStack } from './operations-router.ts';
 import type { StateOperationCallbacks } from './operations-state.ts';
-import { normalizeRejectionReason } from './parallel-dispatch.ts';
+import { normalizeRejectionReason, valuesFromSlots } from './parallel-dispatch.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callMemoFunction } from './state-utilities.ts';
 import { workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
@@ -259,6 +261,31 @@ async function executeParallelSubOperation(
   speculativeState?: SpeculativeExecutionState,
 ): Promise<unknown> {
   signal?.throwIfAborted();
+
+  // An advancing parallel step nested in another coordinator's branch runs its branches on their
+  // own, with no commit of its own: the outermost coordinator owns durability.
+  const drivers = branchDriversOf(operation);
+  if (drivers !== undefined) {
+    const result = await runAdvancingBranches({
+      internals,
+      workflowId,
+      operation,
+      drivers,
+      execute: (request, branchSignal) =>
+        executeSubOperation(
+          internals,
+          workflowId,
+          request,
+          callbacks,
+          branchSignal,
+          speculativeState,
+        ),
+      parentSignal: signal,
+    });
+    if (result.fatal !== undefined) throw result.fatal.error;
+    if (result.hasFirstError) throw result.firstError;
+    return valuesFromSlots(result.slots);
+  }
 
   // A nested `ctx.all` keeps `Promise.all`'s reject-fast result semantics (the
   // outer coordinator owns durability and partial-result preservation), but it

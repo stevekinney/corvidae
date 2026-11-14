@@ -53,7 +53,12 @@ export interface WorkflowRevisionSteps {
 /** What the module reads of the engine. */
 export type WorkflowReviewEngine = Pick<
   RegistryAgnosticEngine,
-  'get' | 'getTimeline' | 'getEvents' | 'addEventListener' | 'removeEventListener'
+  | 'get'
+  | 'getTimeline'
+  | 'getEvents'
+  | 'addEventListener'
+  | 'removeEventListener'
+  | 'subscribeWorkflowFeedCommits'
 >;
 
 /** What {@link createWorkflowReviewWaits} reads from the Bureau around it. */
@@ -233,6 +238,8 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
   const announced = new Set<string>();
   /** Each run's refresh in flight, so two refreshes of one run apply in order. */
   const refreshing = new Map<string, Promise<void>>();
+  /** The commit feed of each run that holds a review, by run id: see {@link follow}. */
+  const following = new Map<string, () => void>();
   let stopListening: (() => void) | undefined;
 
   function reviewOf(wait: Wait): PendingHumanWaitReview {
@@ -259,12 +266,36 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
     return workflowReviewId(wait.runId, wait.signalName, wait.stepIndex, wait.stepAddress);
   }
 
+  /**
+   * Follow each commit of a run that holds a review. A wait that lost its race to its timeout ends
+   * with no signal event of its own, and the step after it may start no activity (a sleep, or a
+   * sibling's wait in a parallel step), so the commit that follows it is what says it ended: the
+   * engine settles the wait's end before the operation that follows it commits.
+   */
+  function follow(runId: string): void {
+    const engine = dependencies.engine();
+    if (engine === undefined || following.has(runId)) return;
+    following.set(
+      runId,
+      engine.subscribeWorkflowFeedCommits(runId, 'events', () => {
+        if (waits.has(runId)) refreshInBackground(runId, 'quiet');
+      }),
+    );
+  }
+
+  function unfollow(runId: string): void {
+    following.get(runId)?.();
+    following.delete(runId);
+  }
+
   function drop(runId: string): void {
     waits.delete(runId);
+    unfollow(runId);
   }
 
   function settle(runId: string): void {
     waits.delete(runId);
+    unfollow(runId);
     for (const ids of [resolved, announced]) {
       for (const id of ids) if (id.startsWith(`human-wait:${runId}:`)) ids.delete(id);
     }
@@ -322,12 +353,21 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
       const engine = dependencies.engine();
       if (engine === undefined) return;
       const found = await read(engine, runId);
-      const held = found.filter((wait) => !resolved.has(idOf(wait)));
+      // A wait already held keeps the time it was first read at: the engine records a fresh
+      // timeline entry for the wait each time the run is recovered, which would say it began then.
+      const earlier = new Map((waits.get(runId) ?? []).map((wait) => [idOf(wait), wait]));
+      const held = found
+        .filter((wait) => !resolved.has(idOf(wait)))
+        .map((wait) => {
+          const before = earlier.get(idOf(wait));
+          return before === undefined ? wait : { ...wait, requestedAt: before.requestedAt };
+        });
       if (held.length === 0) {
         drop(runId);
         return;
       }
       waits.set(runId, held);
+      follow(runId);
       for (const wait of held) {
         const id = idOf(wait);
         if (mode === 'quiet' || announced.has(id)) continue;
@@ -466,7 +506,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
       resolved.add(id);
       for (const [runId, held] of waits) {
         const rest = held.filter((wait) => idOf(wait) !== id);
-        if (rest.length === 0) waits.delete(runId);
+        if (rest.length === 0) drop(runId);
         else if (rest.length !== held.length) waits.set(runId, rest);
       }
     },
@@ -474,6 +514,7 @@ export function createWorkflowReviewWaits(dependencies: WorkflowReviewWaitsDepen
     close(): void {
       stopListening?.();
       stopListening = undefined;
+      for (const runId of following.keys()) unfollow(runId);
     },
   };
 }

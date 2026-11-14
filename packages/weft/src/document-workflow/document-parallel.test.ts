@@ -8,8 +8,12 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
+import { deserializeCheckpoint } from '../core/checkpoint.ts';
+import { isParallelOperationCacheEntry } from '../core/context/parallel-cache-entry.ts';
 import { Engine } from '../core/engine/index.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   validateWorkflowDocument,
   workflowDocumentVersion,
@@ -36,6 +40,45 @@ async function waitingOn(engine: Engine, id: string): Promise<readonly string[]>
 async function signalWaitingEvents(engine: Engine, id: string) {
   const events = await engine.getEvents(id);
   return events.filter((event) => event.type === 'file-workflow:signal-waiting');
+}
+
+/** The status of every branch slot the run's committed checkpoint holds, empty before any commit. */
+async function committedSlotStatuses(storage: MemoryStorage, id: string): Promise<string[]> {
+  const bytes = await storage.get(KEYS.checkpoint(id));
+  if (bytes === null) return [];
+  const entry = deserializeCheckpoint(bytes)
+    .accumulatedResults.map(([, value]) => value)
+    .find(isParallelOperationCacheEntry);
+  return entry?.branches.map((slot) => slot.status) ?? [];
+}
+
+async function hasCommittedSlot(
+  storage: MemoryStorage,
+  id: string,
+  status: string,
+): Promise<boolean> {
+  const statuses = await committedSlotStatuses(storage, id);
+  return statuses.includes(status);
+}
+
+/** The status of the committed slot of branch `index`, if the run has committed one. */
+async function committedSlotStatus(
+  storage: MemoryStorage,
+  id: string,
+  index: number,
+): Promise<string | undefined> {
+  const statuses = await committedSlotStatuses(storage, id);
+  return statuses[index];
+}
+
+async function waitingCount(engine: Engine, id: string): Promise<number> {
+  const names = await waitingOn(engine, id);
+  return names.length;
+}
+
+async function statusOf(engine: Engine, id: string): Promise<string | undefined> {
+  const state = await engine.get(id);
+  return state?.status;
 }
 
 async function isWaitingOnTwo(engine: Engine, id: string): Promise<boolean> {
@@ -74,8 +117,22 @@ const host: DocumentWorkflowHost = {
       calls.push(labelOf(input));
       return hangRestart ? new Promise(() => undefined) : input;
     },
+    pair: () => ({ items: ['fast', 'slow'] }),
+    // A map item: `slow` hangs until the test restarts the engine.
+    hold: ({ previous }) => {
+      calls.push(labelOf(previous));
+      return previous === 'slow' && hangRestart ? new Promise(() => undefined) : previous;
+    },
     boom: () => {
       throw new Error('branch exploded');
+    },
+    boomCounted: ({ input }) => {
+      calls.push(labelOf(input));
+      throw new Error('branch exploded');
+    },
+    after: ({ previous }) => {
+      calls.push('after');
+      return previous;
     },
     pinned: ({ input }) => input,
   },
@@ -256,11 +313,14 @@ describe('running a parallel step', () => {
     expect(await run.result()).toEqual({ a: 'A', b: 'B' });
   });
 
-  it('advances branches in rounds: a branch starts its next step when every branch has finished the one before', async () => {
+  it('advances each branch on its own: a branch starts its next step without waiting for a sibling`s current one', async () => {
+    // COR-2416: branch `a` finishes `seed` and opens its wait while branch `b` is still on its own.
+    // The branches advanced in lockstep rounds before, and `a` opened its wait only once `b` had
+    // finished its step.
     await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
     await registerWorkflowDocuments(engine, host, {
       active: [
-        doc('parallel-rounds', [
+        doc('parallel-independent', [
           parallel({
             a: [
               { kind: 'activity', handler: 'seed' },
@@ -271,28 +331,16 @@ describe('running a parallel step', () => {
         ]),
       ],
     });
-    const run = await engine.start('parallel-rounds', null, { id: 'parallel-rounds-run' });
-    const waiting = async () => {
-      const current = await engine.get(run.id);
-      return current?.waitingForSignals ?? [];
-    };
-    await waitForCondition(
-      async () => {
-        const names = await waiting();
-        return names.includes('two');
-      },
-      { label: 'branch b' },
-    );
-    expect(await waiting()).toEqual(['two']);
-    await run.signal('two', 'B');
-    await waitForCondition(
-      async () => {
-        const names = await waiting();
-        return names.includes('one');
-      },
-      { label: 'branch a' },
-    );
+    const run = await engine.start('parallel-independent', null, {
+      id: 'parallel-independent-run',
+    });
+    await waitUntil(async () => (await waitingCount(engine, run.id)) === 2, {
+      message: 'both branches to wait at once',
+    });
+    const waiting = await waitingOn(engine, run.id);
+    expect(waiting.toSorted()).toEqual(['one', 'two']);
     await run.signal('one', 'A');
+    await run.signal('two', 'B');
     expect(await run.result()).toEqual({ a: 'A', b: 'B' });
   });
 
@@ -314,12 +362,13 @@ describe('running a parallel step', () => {
     expect(await throwingRejectionOf(run.result())).toThrow('same signal');
   });
 
-  it('runs a finished activity again after each restart while a sibling wait is open, and resumes the wait once', async () => {
-    // A round settles as a whole: its results reach the cache only when every branch has settled
-    // (the engine's `ctx.all`, and raw `ctx.all` on `main` does the same), so a round that holds an
-    // open wait never caches the activity beside it. An activity is at-least-once across a crash.
+  it('does not run a finished activity again after a restart while a sibling wait is open, and resumes the wait once', async () => {
+    // COR-2416: a branch that settles before its siblings is committed on its own, so a restart
+    // that comes while a sibling still waits finds it done. It was run again on every restart
+    // before, with the whole round cached only once every branch had settled.
     calls.length = 0;
     const storage = new MemoryStorage();
+    const id = 'parallel-wait-restarts-run';
     const document = doc('parallel-wait-restarts', [
       parallel({
         notify: [{ kind: 'activity', handler: 'count', input: 'notify' }],
@@ -330,32 +379,38 @@ describe('running a parallel step', () => {
     {
       await using original = new Engine({ storage });
       await registerWorkflowDocuments(original, host, { active: [document] });
-      await original.start('parallel-wait-restarts', null, { id: 'parallel-wait-restarts-run' });
-      await waitForCondition(async () => executions() === 1, { label: 'the first run' });
+      await original.start('parallel-wait-restarts', null, { id });
+      await waitUntil(async () => executions() === 1, { message: 'the first run' });
+      await waitUntil(async () => hasCommittedSlot(storage, id, 'fulfilled'), {
+        message: 'the finished branch to be committed',
+      });
     }
-    for (const restart of [1, 2, 3]) {
+    for (const restart of [1, 2, 3, 4]) {
       await using restarted = new Engine({ storage });
       await registerWorkflowDocuments(restarted, host, { active: [document] });
       await restarted.recoverAll();
-      await waitForCondition(async () => executions() === 1 + restart, {
-        label: `restart ${String(restart)}`,
+      await waitUntil(async () => isWaitingOnSignal(restarted, id, 'approve'), {
+        message: `restart ${String(restart)} to wait again`,
       });
+      expect(executions()).toBe(1);
     }
     await using last = new Engine({ storage });
     await registerWorkflowDocuments(last, host, { active: [document] });
     const [handle] = await last.recoverAll();
-    await waitForCondition(async () => executions() === 5, { label: 'the last restart' });
-    await last.signal('parallel-wait-restarts-run', 'approve', 'yes');
-    // The wait resumed once and took the one signal; the activity ran once for the first run and
-    // once for each of the four restarts.
+    await waitUntil(async () => isWaitingOnSignal(last, id, 'approve'), {
+      message: 'the last restart to wait again',
+    });
+    await last.signal(id, 'approve', 'yes');
+    // The wait resumed once and took the one signal; the activity ran once, for the first run.
     expect(await handle!.result()).toEqual({ notify: 'notify', review: 'yes' });
-    expect(executions()).toBe(5);
+    expect(executions()).toBe(1);
   });
 
-  it('runs every branch of an interrupted round again after a restart, once each', async () => {
+  it('runs only the branches that had not finished again after a restart', async () => {
     calls.length = 0;
     hangRestart = true;
     const storage = new MemoryStorage();
+    const id = 'parallel-restart-run';
     const document = doc('parallel-restart', [
       parallel({
         done: [{ kind: 'activity', handler: 'count', input: 'done' }],
@@ -366,20 +421,23 @@ describe('running a parallel step', () => {
     {
       await using original = new Engine({ storage });
       await registerWorkflowDocuments(original, host, { active: [document] });
-      await original.start('parallel-restart', null, { id: 'parallel-restart-run' });
+      await original.start('parallel-restart', null, { id });
       await waitForCondition(async () => calls.length === 3, { label: 'every branch to start' });
+      await waitUntil(async () => hasCommittedSlot(storage, id, 'fulfilled'), {
+        message: 'the finished branch to be committed',
+      });
     }
     hangRestart = false;
     await using restarted = new Engine({ storage });
     await registerWorkflowDocuments(restarted, host, { active: [document] });
     const [handle] = await restarted.recoverAll();
     expect(await handle!.result()).toEqual({ done: 'done', slow: 'slow', slower: 'slower' });
-    // Each branch ran once before the restart and once after it. A round that never settled caches
-    // nothing, so the branch that had finished runs again too: an activity is at-least-once across
-    // a crash, which is why it is handed a stable workflow id and step.
+    // The branch that finished ran once. The two that had not ran before the restart and again
+    // after it: an activity is at-least-once across a crash, which is why it is handed a stable
+    // workflow id and step.
     const count = (label: string) => calls.filter((call) => call === label).length;
     expect({ done: count('done'), slow: count('slow'), slower: count('slower') }).toEqual({
-      done: 2,
+      done: 1,
       slow: 2,
       slower: 2,
     });
@@ -575,5 +633,273 @@ describe('the version of a document with a parallel step', () => {
     expect(await workflowDocumentVersion(written(['a', 'b']))).toBe(
       await workflowDocumentVersion(written(['b', 'a'])),
     );
+  });
+});
+
+describe('a map batch across restarts (COR-2416)', () => {
+  it('commits an item that finished beside one still running, and runs only the one that had not', async () => {
+    // A `map` batch runs its items through `ctx.allSettled`, whose settled items commit on their
+    // own now: the item that finished is not run again after a restart. (Only the first round is
+    // covered; a batch that parks after a settled round is the matrix's row D16, left as it was.)
+    calls.length = 0;
+    hangRestart = true;
+    const storage = new MemoryStorage();
+    const id = 'map-batch-restart-run';
+    const document = doc('map-batch-restart', [
+      { kind: 'activity', handler: 'pair' },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'hold' }] },
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      await original.start('map-batch-restart', null, { id });
+      await waitUntil(async () => calls.length === 2, { message: 'both items to start' });
+      await waitUntil(async () => hasCommittedSlot(storage, id, 'fulfilled'), {
+        message: 'the finished item to be committed',
+      });
+    }
+    hangRestart = false;
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [handle] = await restarted.recoverAll();
+    expect(await handle!.result()).toEqual(['fast', 'slow']);
+    const count = (label: string) => calls.filter((call) => call === label).length;
+    expect({ fast: count('fast'), slow: count('slow') }).toEqual({ fast: 1, slow: 2 });
+  });
+});
+
+describe('a parallel step across restarts (COR-2416)', () => {
+  it('resumes a branch after a settled step and a settled sibling, and runs each activity once', async () => {
+    // Before, a restart after a settled round recovered with the wrong values: the next round's
+    // results were read from the numbers the settled round had used.
+    calls.length = 0;
+    const storage = new MemoryStorage();
+    const id = 'parallel-resume-run';
+    const document = doc('parallel-resume', [
+      parallel({
+        a: [
+          { kind: 'activity', handler: 'count', input: 'a1' },
+          { kind: 'await-signal', signal: 'one' },
+        ],
+        b: [{ kind: 'await-signal', signal: 'two' }],
+      }),
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      const run = await original.start('parallel-resume', null, { id });
+      await waitUntil(async () => (await waitingCount(original, id)) === 2, {
+        message: 'both branches to wait',
+      });
+      await waitUntil(async () => (await committedSlotStatus(storage, id, 0)) === 'pending', {
+        message: 'the first branch`s step to be committed',
+      });
+      await run.signal('two', 'B');
+      await waitUntil(async () => (await committedSlotStatus(storage, id, 1)) === 'fulfilled', {
+        message: 'the second branch to be committed',
+      });
+    }
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [handle] = await restarted.recoverAll();
+    await waitUntil(async () => isWaitingOnSignal(restarted, id, 'one'), {
+      message: 'the first branch to wait again',
+    });
+    await handle!.signal('one', 'A');
+    expect(await handle!.result()).toEqual({ a: 'A', b: 'B' });
+    expect(calls.filter((call) => call === 'a1')).toHaveLength(1);
+  });
+
+  it('settles a branch that fails after its siblings settle, and runs the failed activity again after a restart', async () => {
+    calls.length = 0;
+    const storage = new MemoryStorage();
+    const id = 'parallel-failed-branch-run';
+    const document = doc('parallel-failed-branch', [
+      parallel({
+        a: [{ kind: 'activity', handler: 'boomCounted', input: 'boom' }],
+        b: [{ kind: 'await-signal', signal: 'two' }],
+      }),
+      { kind: 'activity', handler: 'after' },
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      await original.start('parallel-failed-branch', null, { id });
+      await waitUntil(async () => calls.includes('boom'), { message: 'the branch to fail' });
+      // A failed branch ends the step only once its siblings settle: the run is still waiting.
+      expect(await statusOf(original, id)).toBe('running');
+    }
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [handle] = await restarted.recoverAll();
+    await waitUntil(async () => calls.filter((call) => call === 'boom').length === 2, {
+      message: 'the failed activity to run again',
+    });
+    await handle!.signal('two', 'B');
+    expect(await throwingRejectionOf(handle!.result())).toThrow('branch exploded');
+    expect(calls).not.toContain('after');
+  });
+
+  it('holds a branch`s wait on a signal a sibling already waits on until that wait ends (matrix row D11)', async () => {
+    // The lockstep rounds never held two such waits at once, and a document that runs there is
+    // not refused now: the branch's wait opens when its sibling's has taken a signal.
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, {
+      active: [
+        doc('parallel-same-signal-later', [
+          parallel({
+            a: [
+              { kind: 'activity', handler: 'seed' },
+              { kind: 'await-signal', signal: 'shared' },
+            ],
+            b: [{ kind: 'await-signal', signal: 'shared' }],
+          }),
+        ]),
+      ],
+    });
+    const run = await engine.start('parallel-same-signal-later', null, {
+      id: 'parallel-same-signal-later-run',
+    });
+    await waitUntil(async () => (await waitingCount(engine, run.id)) === 1, {
+      message: 'the sibling`s wait to open',
+    });
+    await run.signal('shared', 'first');
+    await waitUntil(
+      async () => {
+        const events = await engine.getEvents(run.id);
+        return events.filter((event) => event.type === 'file-workflow:signal-waiting').length === 2;
+      },
+      { message: 'the held wait to open' },
+    );
+    await run.signal('shared', 'second');
+    expect(await run.result()).toEqual({ a: 'second', b: 'first' });
+  });
+
+  const orders: readonly [string, readonly [string, string]][] = [
+    ['one then two', ['one', 'two']],
+    ['two then one', ['two', 'one']],
+  ];
+  for (const [name, [firstSignal, secondSignal]] of orders) {
+    it(`completes with the same result, running each activity once, when the signals come ${name} across a restart`, async () => {
+      calls.length = 0;
+      const storage = new MemoryStorage();
+      const id = `parallel-order-${firstSignal}-run`;
+      const document = doc(`parallel-order-${firstSignal}`, [
+        parallel({
+          a: [
+            { kind: 'await-signal', signal: 'one' },
+            { kind: 'activity', handler: 'count', input: 'a2' },
+          ],
+          b: [
+            { kind: 'await-signal', signal: 'two' },
+            { kind: 'activity', handler: 'count', input: 'b2' },
+          ],
+        }),
+      ]);
+      {
+        await using original = new Engine({ storage });
+        await registerWorkflowDocuments(original, host, { active: [document] });
+        const run = await original.start(document.name, null, { id });
+        await waitUntil(async () => (await waitingCount(original, id)) === 2, {
+          message: 'both branches to wait',
+        });
+        await run.signal(firstSignal, firstSignal);
+        const settledBranch = firstSignal === 'one' ? 0 : 1;
+        await waitUntil(
+          async () => (await committedSlotStatus(storage, id, settledBranch)) === 'fulfilled',
+          { message: 'the first branch to be committed' },
+        );
+      }
+      await using restarted = new Engine({ storage });
+      await registerWorkflowDocuments(restarted, host, { active: [document] });
+      const [handle] = await restarted.recoverAll();
+      await waitUntil(async () => isWaitingOnSignal(restarted, id, secondSignal), {
+        message: 'the second branch to wait again',
+      });
+      await handle!.signal(secondSignal, secondSignal);
+      // Each branch's result is the output of its last step, an activity that echoes its input.
+      expect(await handle!.result()).toEqual({ a: 'a2', b: 'b2' });
+      expect(calls.toSorted()).toEqual(['a2', 'b2']);
+    });
+  }
+});
+
+/**
+ * COR-2416 AC6: a run persisted before branches advanced on their own. Each fixture is the storage
+ * of a run the previous interpreter left parked, dumped on `main`, loaded into a fresh store and
+ * recovered by this one.
+ */
+async function loadPersistedRun(fixture: string): Promise<MemoryStorage> {
+  const entries = (await Bun.file(
+    new URL(`./__fixtures__/legacy-parallel/${fixture}.json`, import.meta.url),
+  ).json()) as [string, string][];
+  const storage = new MemoryStorage();
+  for (const [key, encoded] of entries) await storage.put(key, Buffer.from(encoded, 'base64'));
+  return storage;
+}
+
+describe('a parallel step persisted before branches advanced on their own (COR-2416)', () => {
+  it('recovers a run parked in the first round, and commits its finished branch from then on', async () => {
+    calls.length = 0;
+    const storage = await loadPersistedRun('legacy-round-one');
+    const id = 'legacy-round-one-run';
+    const document = doc('legacy-round-one', [
+      parallel({
+        notify: [{ kind: 'activity', handler: 'count', input: 'notify' }],
+        review: [{ kind: 'await-signal', signal: 'approve' }],
+      }),
+      { kind: 'activity', handler: 'after' },
+    ]);
+    {
+      await using recovered = new Engine({ storage });
+      await registerWorkflowDocuments(recovered, host, { active: [document] });
+      await recovered.recoverAll();
+      await waitUntil(async () => isWaitingOnSignal(recovered, id, 'approve'), {
+        message: 'the recovered run to wait',
+      });
+      await waitUntil(async () => hasCommittedSlot(storage, id, 'fulfilled'), {
+        message: 'the finished branch to be committed',
+      });
+    }
+    // The previous interpreter ran `notify` before the fixture was taken; this one ran it once for
+    // the recovery, and a second restart finds it done.
+    expect(calls.filter((call) => call === 'notify')).toHaveLength(1);
+    await using again = new Engine({ storage });
+    await registerWorkflowDocuments(again, host, { active: [document] });
+    const [handle] = await again.recoverAll();
+    await waitUntil(async () => isWaitingOnSignal(again, id, 'approve'), {
+      message: 'the run to wait again',
+    });
+    await handle!.signal('approve', 'yes');
+    expect(await handle!.result()).toEqual({ notify: 'notify', review: 'yes' });
+    expect(calls.filter((call) => call === 'notify')).toHaveLength(1);
+  });
+
+  it('finishes a run the previous interpreter left between rounds, on the numbering it began with', async () => {
+    // The first round settled and the second is open: its results sit under the shared step
+    // numbers of the lockstep rounds, so the step is finished by the lockstep path. (That path
+    // reads the second round's results from the numbers the first used, which `main` did too; the
+    // step is not a regression, and a run that begins now does not take it.)
+    calls.length = 0;
+    const storage = await loadPersistedRun('legacy-round-two');
+    const id = 'legacy-round-two-run';
+    const document = doc('legacy-round-two', [
+      parallel({
+        a: [
+          { kind: 'activity', handler: 'count', input: 'a1' },
+          { kind: 'await-signal', signal: 'one' },
+        ],
+        b: [{ kind: 'await-signal', signal: 'two' }],
+      }),
+    ]);
+    await using recovered = new Engine({ storage });
+    await registerWorkflowDocuments(recovered, host, { active: [document] });
+    const [handle] = await recovered.recoverAll();
+    await waitUntil(async () => isWaitingOnSignal(recovered, id, 'one'), {
+      message: 'the recovered run to wait on the second round',
+    });
+    await handle!.signal('one', 'A');
+    await handle!.result();
+    expect(await statusOf(recovered, id)).toBe('completed');
   });
 });

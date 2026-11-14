@@ -6,6 +6,7 @@
  * @module document-workflow/interpreter
  */
 
+import { advanceBranchesOf, canAdvanceBranches } from '../core/context/advancing-operations.ts';
 import type { ContextOperationRequest } from '../core/context/operation-request.ts';
 import {
   activity,
@@ -256,7 +257,14 @@ export async function buildDocumentWorkflowDefinition(
       state.previous = results;
       state.pendingSignal = undefined;
     }
-    /** Lockstep `ctx.allSettled` rounds, cached whole: see `parallel` in document.ts for the limit. */
+    /**
+     * One `parallel` step. Each branch advances on its own, as soon as its current step settles,
+     * and commits each step it settles, so a restart resumes every branch where it stopped.
+     *
+     * A run persisted before branches advanced on their own kept its parallel step as lockstep
+     * rounds, numbered through the shared step counter, and holds that step's results where this
+     * step would count its own: such a step finishes the way it began.
+     */
     function* runParallel(
       step: Extract<WorkflowDocument['steps'][number], { kind: 'parallel' }>,
       iteration: readonly (string | number)[],
@@ -274,7 +282,9 @@ export async function buildDocumentWorkflowDefinition(
           return yield* runNested(nested, [...iteration, name], branchState);
         })();
       });
-      const results = yield* runMapBatch(context, generators);
+      const results = canAdvanceBranches(context)
+        ? yield* advanceBranchesOf(context, generators)
+        : yield* runMapBatch(context, generators);
       state.previous = Object.fromEntries(
         branches.map(([name], offset) => [name, results[offset]]),
       );
