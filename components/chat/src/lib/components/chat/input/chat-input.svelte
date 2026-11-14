@@ -2350,7 +2350,8 @@
   .chat-input-attachment-strip {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1);
+    /* The notice sits as far under the chips as the editor does: the composer's own gap. */
+    gap: var(--cinder-space-0-5, 0.125rem);
     min-inline-size: 0;
     padding-inline: var(--cinder-space-3);
   }

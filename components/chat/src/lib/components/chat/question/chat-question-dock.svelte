@@ -179,7 +179,10 @@
     if (selectedRadio && optionsScroll) {
       const radioBox = selectedRadio.getBoundingClientRect();
       const viewportBox = optionsScroll.getBoundingClientRect();
-      optionsScroll.scrollTop += radioBox.top - viewportBox.top;
+      // It stops where the list's start fade ends (its scroll padding), not under the fade.
+      const fade = Number.parseFloat(getComputedStyle(optionsScroll).scrollPaddingBlockStart);
+      optionsScroll.scrollTop +=
+        radioBox.top - viewportBox.top - (Number.isFinite(fade) ? fade : 0);
     }
     root?.querySelector<HTMLInputElement>('input[type="text"], input:not([type])')?.focus();
   }
