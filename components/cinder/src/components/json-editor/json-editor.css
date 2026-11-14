@@ -95,6 +95,8 @@
      fill of their own: the editor's surface fades in behind them, so a long first line slides
      under them instead of colliding. They clear the vertical scrollbar, never cover the gutter,
      and let a click anywhere else in the corner through to the code. */
+  /* CodeMirror's scroller is its own stacking context at z-index 0, so 1 lifts the actions over the
+     code and the gutter while a completion list (z-index 500) still opens over them. */
   .cinder-json-editor__actions {
     position: absolute;
     z-index: 1;
@@ -110,7 +112,8 @@
     background: linear-gradient(
       to right,
       transparent,
-      var(--_cinder-json-editor-surface) var(--cinder-space-4)
+      var(--_cinder-json-editor-actions-surface, var(--_cinder-json-editor-surface))
+        var(--cinder-space-4)
     );
     pointer-events: none;
   }
@@ -119,8 +122,14 @@
     background: linear-gradient(
       to left,
       transparent,
-      var(--_cinder-json-editor-surface) var(--cinder-space-4)
+      var(--_cinder-json-editor-actions-surface, var(--_cinder-json-editor-surface))
+        var(--cinder-space-4)
     );
+  }
+
+  /* Over a marked first line the corner takes the mark's tint, so it never reads as a patch. */
+  .cinder-json-editor__input:has(.cm-content > .cinder-json-editor__line--problem:first-child) {
+    --_cinder-json-editor-actions-surface: var(--cinder-status-danger-background);
   }
 
   .cinder-json-editor__actions > * {
@@ -190,12 +199,10 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  /* Its own stacking context, so CodeMirror's sticky gutter and layers stay under the actions. */
   .cinder-json-editor__body {
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
-    isolation: isolate;
   }
 
   /* CodeMirror themes itself (see json-editor-enhancement.ts) because its injected rules are

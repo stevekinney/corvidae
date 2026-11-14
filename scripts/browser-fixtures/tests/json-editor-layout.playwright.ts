@@ -65,12 +65,12 @@ for (const width of [1280, 390]) {
   test(`JsonEditor gutter sits on its lines when the editor mounts below the fold, at ${width}`, async ({
     browser,
   }) => {
-    const page = await openFixture(browser, { fixtureName: 'long-document', width, height: 30 });
+    const page = await openFixture(browser, { fixtureName: 'long-document', width, height: 16 });
     try {
       const editorTop = await page
         .locator('.cinder-json-editor .cm-editor')
         .evaluate((element) => element.getBoundingClientRect().top);
-      expect(editorTop, 'the editor starts below the window').toBeGreaterThan(30);
+      expect(editorTop, 'the editor starts below the window').toBeGreaterThan(16);
 
       await expect
         .poll(async () => {
@@ -78,8 +78,12 @@ for (const width of [1280, 390]) {
           return geometry.numbers === geometry.lines && geometry.worstOffset <= TOLERANCE;
         })
         .toBe(true);
+      // Off-window, CodeMirror draws only the lines near the top it measured: all 32 when they do
+      // not wrap, fewer at phone width, where they do. Before the fix the drawn numbers ran short
+      // of the lines and drifted.
       const geometry = await gutterGeometry(page);
-      expect(geometry.lines, 'the whole short document is drawn').toBe(32);
+      if (width === 1280) expect(geometry.lines, 'the whole short document is drawn').toBe(32);
+      else expect(geometry.lines).toBeGreaterThan(10);
       expect(await page.evaluate(() => window.scrollY), 'mounting never scrolls the page').toBe(0);
       expect(await page.evaluate(() => document.activeElement?.tagName)).toBe('BODY');
     } finally {
