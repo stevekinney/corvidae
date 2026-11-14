@@ -9,6 +9,12 @@
  * ======================================== */
 
   .cinder-grouped-list-item {
+    /* One line of the title: the line a trailing value and the chevron sit on. */
+    /* @runtime-state */
+    --_cinder-grouped-list-item-title-line: calc(
+      var(--cinder-text-base) * var(--cinder-leading-snug, 1.35)
+    );
+
     position: relative;
     display: flex;
     align-items: stretch;
@@ -201,21 +207,31 @@
     color: var(--cinder-text-muted);
   }
 
+  /* A trailing value is one line ("Yesterday, 4:12 PM" never breaks), and it and the chevron sit on
+     the title's first line rather than the middle of the row: each sits at the top of the content
+     in a line one title line tall (COR-2329). */
   .cinder-grouped-list-item__trailing {
     position: relative;
     z-index: 1;
     flex: none;
+    align-self: flex-start;
     max-inline-size: 40%;
+    line-height: var(--_cinder-grouped-list-item-title-line);
+    overflow: hidden;
     font-size: var(--cinder-text-sm);
     font-variant-numeric: tabular-nums;
     color: var(--cinder-text-muted);
     text-align: end;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .cinder-grouped-list-item__chevron {
     display: inline-flex;
     flex: none;
     align-items: center;
+    align-self: flex-start;
+    min-block-size: var(--_cinder-grouped-list-item-title-line);
     color: var(--cinder-text-subtle);
   }
 
@@ -249,8 +265,14 @@
   /* A row with actions measures its own width: on a phone, or in any pane that narrow, the actions
      are never folded into a menu. They take a line of their own under the text, each button at its
      own width, starting at the text's leading edge (COR-2329: a button the width of the row read
-     as a page-wide pill, five of them in one scroll). */
-  .cinder-grouped-list-item--actions {
+     as a page-wide pill, five of them in one scroll).
+
+     A row with a trailing value measures its own width too: narrower than 26rem, the title and the
+     value share the first line and the subtitle takes the full width under them, so neither the
+     value nor the title is squeezed into what the other leaves (COR-2329). The title keeps at least
+     5rem; a value too long to fit beside that drops to a line of its own under the title. */
+  .cinder-grouped-list-item--actions,
+  .cinder-grouped-list-item--trailing {
     container: cinder-grouped-list-item / inline-size;
   }
 
@@ -263,6 +285,38 @@
       flex: 1 0 100%;
       flex-flow: row wrap;
       justify-content: flex-start;
+    }
+
+    .cinder-grouped-list-item--trailing > .cinder-grouped-list-item__content {
+      flex-wrap: wrap;
+      row-gap: var(--cinder-space-0-5);
+    }
+
+    /* The text column gives its lines to the row, so the subtitle can take a line of its own. */
+    .cinder-grouped-list-item--trailing .cinder-grouped-list-item__text {
+      display: contents;
+    }
+
+    .cinder-grouped-list-item--trailing .cinder-grouped-list-item__suggested {
+      flex: 1 0 100%;
+      order: -1;
+    }
+
+    .cinder-grouped-list-item--trailing .cinder-grouped-list-item__title {
+      flex: 1 1 5rem;
+    }
+
+    .cinder-grouped-list-item--trailing .cinder-grouped-list-item__trailing {
+      max-inline-size: none;
+    }
+
+    .cinder-grouped-list-item--trailing .cinder-grouped-list-item__subtitle {
+      flex: 1 0 100%;
+      order: 1;
+    }
+
+    .cinder-grouped-list-item--trailing .cinder-grouped-list-item__actions {
+      order: 2;
     }
   }
 

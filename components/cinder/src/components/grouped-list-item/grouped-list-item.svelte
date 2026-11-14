@@ -92,6 +92,7 @@
     selected && 'cinder-grouped-list-item--selected',
     timed && 'cinder-grouped-list-item--timed',
     hasActions && 'cinder-grouped-list-item--actions',
+    trailing !== undefined && 'cinder-grouped-list-item--trailing',
     className,
   )}
   data-cinder-selected={selected ? '' : undefined}

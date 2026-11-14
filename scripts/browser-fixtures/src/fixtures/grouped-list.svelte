@@ -40,6 +40,21 @@
     </GroupedListItem>
   </GroupedList>
 
+  <!-- Trailing values (COR-2329): one line, on the title's line, the subtitle under both on a phone. -->
+  <GroupedList aria-label="Recent chats" data-testid="grouped-list-trailing">
+    <GroupedListItem href="/chats/1">
+      {#snippet title()}Please refund order 4471, it arrived damaged.{/snippet}
+      {#snippet subtitle()}<StatusDot word="Waiting on you" />, I found order 4471 ($42.00). I need
+        your approval to refund it.{/snippet}
+      {#snippet trailing()}10:42 AM{/snippet}
+    </GroupedListItem>
+    <GroupedListItem href="/chats/2">
+      {#snippet title()}Say hello{/snippet}
+      {#snippet subtitle()}<StatusDot word="Done" />, Hello! How can I help?{/snippet}
+      {#snippet trailing()}Yesterday, 4:12 PM{/snippet}
+    </GroupedListItem>
+  </GroupedList>
+
   <!-- A list's empty and failed rows (COR-2329): their actions end on the list buttons' edge. -->
   <div data-testid="grouped-list-empty-row">
     <EmptyState kind="done" layout="row" title="Nothing needs attention">

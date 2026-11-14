@@ -159,6 +159,76 @@ test.describe('GroupedList layout', () => {
     expect(Math.abs(retry!.x + retry!.width - listEdge)).toBeLessThanOrEqual(1);
   });
 
+  test('a trailing value is one line on the title’s line, and on a phone the subtitle runs under both (COR-2329)', async ({
+    page,
+  }) => {
+    const rows = page.getByTestId('grouped-list-trailing').locator('.cinder-grouped-list-item');
+    const measure = async (index: number) => {
+      const row = rows.nth(index);
+      const [title, subtitle, trailing, chevron, content] = await Promise.all(
+        [
+          '.cinder-grouped-list-item__title',
+          '.cinder-grouped-list-item__subtitle',
+          '.cinder-grouped-list-item__trailing',
+          '.cinder-grouped-list-item__chevron',
+          '.cinder-grouped-list-item__content',
+        ].map(async (selector) => (await row.locator(selector).boundingBox())!),
+      );
+      const titleLine = await row
+        .locator('.cinder-grouped-list-item__title')
+        .evaluate((element) => Number.parseFloat(getComputedStyle(element).lineHeight));
+      return {
+        title: title!,
+        subtitle: subtitle!,
+        trailing: trailing!,
+        chevron: chevron!,
+        content: content!,
+        titleLine,
+      };
+    };
+    for (const width of [1024, 375, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const index of [0, 1]) {
+        const { title, subtitle, trailing, chevron, content, titleLine } = await measure(index);
+        const at = `row ${index} at ${width}`;
+        // One line, never broken.
+        expect(trailing.height, `${at}: the value is one line`).toBeLessThanOrEqual(titleLine + 1);
+        // Centred on the title's first line, not on the row; the chevron too.
+        const firstLine = title.y + titleLine / 2;
+        expect(Math.abs(trailing.y + trailing.height / 2 - firstLine), at).toBeLessThanOrEqual(1);
+        expect(Math.abs(chevron.y + chevron.height / 2 - firstLine), at).toBeLessThanOrEqual(1);
+        if (width < 1024) {
+          // The subtitle takes the full width under the title and the value.
+          expect(subtitle.y, at).toBeGreaterThanOrEqual(trailing.y + trailing.height - 1);
+          expect(subtitle.y, at).toBeGreaterThanOrEqual(title.y + title.height - 1);
+          expect(Math.abs(subtitle.x - content.x), at).toBeLessThanOrEqual(1);
+          expect(subtitle.width, at).toBeGreaterThan(content.width - 12);
+        }
+      }
+    }
+    // The fixture's longer value beside a lead column: the title never breaks letter by letter.
+    await page.setViewportSize({ width: 320, height: 900 });
+    const indexRebuild = page
+      .locator('.cinder-grouped-list-item')
+      .filter({ hasText: 'Index rebuild' });
+    const title = await indexRebuild.locator('.cinder-grouped-list-item__title').boundingBox();
+    expect(title!.width).toBeGreaterThanOrEqual(80);
+    const value = await indexRebuild.locator('.cinder-grouped-list-item__trailing').boundingBox();
+    const valueLine = await indexRebuild
+      .locator('.cinder-grouped-list-item__title')
+      .evaluate((element) => Number.parseFloat(getComputedStyle(element).lineHeight));
+    expect(value!.height).toBeLessThanOrEqual(valueLine + 1);
+    const titleLines = await indexRebuild
+      .locator('.cinder-grouped-list-item__title')
+      .evaluate((element) =>
+        Math.round(
+          element.getBoundingClientRect().height /
+            Number.parseFloat(getComputedStyle(element).lineHeight),
+        ),
+      );
+    expect(titleLines).toBe(1);
+  });
+
   test('text actions trail their row on a wide screen (COR-2329)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 800 });
     const rows = page.getByTestId('grouped-list-actions').locator('.cinder-grouped-list-item');

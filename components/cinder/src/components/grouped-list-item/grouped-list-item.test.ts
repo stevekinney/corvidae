@@ -24,6 +24,39 @@ describe('GroupedListItem', () => {
     }
   });
 
+  // COR-2329: on a phone "Yesterday, 4:12 PM" broke across two lines and squeezed the title.
+  test('a row with a trailing value measures its own width; one without keeps its classes', () => {
+    const plain = render(GroupedListItem, { props: { title: text('Home') } });
+    expect(
+      plain.container
+        .querySelector('.cinder-grouped-list-item')
+        ?.classList.contains('cinder-grouped-list-item--trailing'),
+    ).toBe(false);
+    plain.unmount();
+    const { container } = render(GroupedListItem, {
+      props: { title: text('Say hello'), subtitle: text('Done'), trailing: text('Yesterday') },
+    });
+    expect(
+      container
+        .querySelector('.cinder-grouped-list-item')
+        ?.classList.contains('cinder-grouped-list-item--trailing'),
+    ).toBe(true);
+    const css = readFileSync(new URL('./grouped-list-item.css', import.meta.url), 'utf8')
+      .replace(/\/\*.*?\*\//gs, '')
+      .replace(/\s+/g, ' ');
+    // One line, on the title's first line; the chevron too.
+    expect(css).toMatch(/\.cinder-grouped-list-item__trailing \{[^}]*white-space: nowrap/);
+    expect(css).toMatch(/\.cinder-grouped-list-item__trailing \{[^}]*align-self: flex-start/);
+    expect(css).toMatch(/\.cinder-grouped-list-item__chevron \{[^}]*align-self: flex-start/);
+    expect(css).toMatch(
+      /\.cinder-grouped-list-item--actions, \.cinder-grouped-list-item--trailing \{ container: cinder-grouped-list-item \/ inline-size; \}/,
+    );
+    // Narrower than 26rem the subtitle takes the full width under the title and the value.
+    expect(css).toMatch(
+      /--trailing \.cinder-grouped-list-item__subtitle \{ flex: 1 0 100%; order: 1; \}/,
+    );
+  });
+
   test('a trailing photo reserves no space when absent and renders when given', () => {
     const absent = render(GroupedListItem, { props: { title: text('A') } });
     expect(absent.container.querySelector('.cinder-grouped-list-item__photo')).toBeNull();
