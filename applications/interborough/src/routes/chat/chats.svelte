@@ -197,7 +197,7 @@
   const questions = $derived(pendingQuestions(reviews.data ?? []));
   const failedChats = $derived(chatsWithFailedRun(tasks.data?.tasks ?? []));
   /** The open chat as a row, when it is on no loaded page: an old chat, or an archived one. */
-  const openRow = $derived(
+  const openChatRow = $derived(
     open.data === undefined || openIsListed
       ? undefined
       : sessionRow(open.data, questions, failedChats),
@@ -288,7 +288,7 @@
       : [
           allRows.find((row) => row.id === openId) ??
             archivedRows.find((row) => row.id === openId) ??
-            (openRow?.id === openId ? openRow : undefined) ?? {
+            (openChatRow?.id === openId ? openChatRow : undefined) ?? {
               id: openId,
               title: CHAT_COPY.untitled,
               snippet: '',

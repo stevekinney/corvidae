@@ -2041,7 +2041,7 @@
         id={`chat-${sessionId}`}
         conversation={choosing ? unstartedConversation : shown}
         adapter={chatAdapter}
-        onRegenerate={archivedAt === null ? regenerateAnswer : undefined}
+        {...archivedAt === null ? { onRegenerate: regenerateAnswer } : {}}
         messageStatus={regenerationStatus}
         {availability}
         {...choosing ? { empty: newChatEmpty } : {}}

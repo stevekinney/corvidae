@@ -20,6 +20,7 @@
 import {
   appendMessages,
   assertRunInputAccepted,
+  ChatRunFailureError,
   countQueuedFollowUps,
   createChatSessionController,
   createConversationHistory,
@@ -36,6 +37,7 @@ import { parseStepRowIdentifier } from '@lostgradient/operative';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import {
   forgetContextGrants,
+  forkRefusalReason,
   regenerateContext,
   retractContextInput,
   sendContextInput,
