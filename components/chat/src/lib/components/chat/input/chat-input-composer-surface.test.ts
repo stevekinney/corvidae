@@ -351,9 +351,10 @@ describe('attachments', () => {
     expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
       'foto-0.png ist größer als 100 B.',
     );
-    expect(target.querySelector('.chat-input-attachment-reason button')?.textContent?.trim()).toBe(
-      'Entfernen',
-    );
+    // One file: a glyph named for the file in the host's words, with no words of its own.
+    const lineAction = target.querySelector('.chat-input-attachment-reason button');
+    expect(lineAction?.getAttribute('aria-label')).toBe('Entfernen: foto-0.png');
+    expect(lineAction?.textContent?.trim()).toBe('');
     instance.addFiles([png('foto-1.png')]);
     await tick();
     expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(

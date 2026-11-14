@@ -160,8 +160,11 @@ describe('an attachment with an upload hook', () => {
     expect(line.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
       "photo.png didn't upload.",
     );
+    // One file: the action is a glyph named for the file, with no words of its own.
     const retry = line.querySelector<HTMLButtonElement>('button')!;
-    expect(retry.textContent?.trim()).toBe('Retry');
+    expect(retry.getAttribute('aria-label')).toBe('Retry photo.png');
+    expect(retry.textContent?.trim()).toBe('');
+    expect(retry.querySelector('svg')?.getAttribute('class')).toContain('lucide-rotate-ccw');
     // Send is described by the line, not by a second sentence.
     expect(send.getAttribute('aria-describedby')).toContain(line.id);
 
@@ -318,9 +321,9 @@ describe('a file the composer refuses', () => {
       'photo.png is over the 4 B limit.',
     );
     // A file the composer refused is removed, never retried.
-    expect(target.querySelector('.chat-input-attachment-reason button')?.textContent?.trim()).toBe(
-      'Remove',
-    );
+    const action = target.querySelector('.chat-input-attachment-reason button');
+    expect(action?.getAttribute('aria-label')).toBe('Remove photo.png');
+    expect(action?.textContent?.trim()).toBe('');
     unmount(instance);
   });
 
@@ -348,9 +351,9 @@ describe('a file the composer refuses', () => {
     expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
       "photo.png can't be attached.",
     );
-    expect(target.querySelector('.chat-input-attachment-reason button')?.textContent?.trim()).toBe(
-      'Remove',
-    );
+    const action = target.querySelector('.chat-input-attachment-reason button');
+    expect(action?.getAttribute('aria-label')).toBe('Remove photo.png');
+    expect(action?.textContent?.trim()).toBe('');
     unmount(instance);
   });
 
@@ -381,6 +384,13 @@ describe('the failure line under the strip', () => {
     target.querySelector('.chat-input-attachment-reason-text')?.textContent;
   const lineAction = (target: HTMLElement) =>
     target.querySelector<HTMLButtonElement>('.chat-input-attachment-reason button');
+  // One file's action is a glyph with no words, named for the file; several files keep words.
+  const expectGlyphAction = (target: HTMLElement, name: string) => {
+    const action = lineAction(target);
+    expect(action?.getAttribute('aria-label')).toBe(name);
+    expect(action?.textContent?.trim()).toBe('');
+    expect(action?.querySelector('svg')).not.toBeNull();
+  };
 
   async function settleFailures(
     errors: unknown[],
@@ -402,14 +412,14 @@ describe('the failure line under the strip', () => {
       target.querySelector('.chat-attachment-preview')?.getAttribute('data-failure-kind'),
     ).toBe('unknown');
     expect(lineText(target)).toBe("file-1.png didn't upload.");
-    expect(lineAction(target)?.textContent?.trim()).toBe('Retry');
+    expectGlyphAction(target, 'Retry file-1.png');
     unmount(instance);
   });
 
   test('a TypeError, which is what fetch rejects with, says to check the connection and offers Retry', async () => {
     const { target, instance } = await settleFailures([new TypeError('Failed to fetch')]);
     expect(lineText(target)).toBe("file-1.png didn't upload. Check your connection.");
-    expect(lineAction(target)?.textContent?.trim()).toBe('Retry');
+    expectGlyphAction(target, 'Retry file-1.png');
     // A retry glyph stands where the file's glyph was.
     expect(
       target.querySelector('.chat-attachment-preview-glyph svg')?.getAttribute('class'),
@@ -422,7 +432,7 @@ describe('the failure line under the strip', () => {
       new ChatAttachmentUploadError('too-large', { maxFileSize: 25 * 1024 * 1024 }),
     ]);
     expect(lineText(target)).toBe('file-1.png is over the 25 MB limit.');
-    expect(lineAction(target)?.textContent?.trim()).toBe('Remove');
+    expectGlyphAction(target, 'Remove file-1.png');
     expect(
       target.querySelector('.chat-attachment-preview-glyph svg')?.getAttribute('class'),
     ).toContain('lucide-triangle-alert');
@@ -441,7 +451,7 @@ describe('the failure line under the strip', () => {
       new ChatAttachmentUploadError('unsupported-type'),
     ]);
     expect(lineText(target)).toBe("file-1.png can't be attached.");
-    expect(lineAction(target)?.textContent?.trim()).toBe('Remove');
+    expectGlyphAction(target, 'Remove file-1.png');
     unmount(instance);
   });
 
@@ -462,7 +472,7 @@ describe('the failure line under the strip', () => {
     await fireEvent.click(second);
     await tick();
     expect(lineText(target)).toBe('file-2.png is over the 1 KB limit.');
-    expect(lineAction(target)?.textContent?.trim()).toBe('Remove');
+    expectGlyphAction(target, 'Remove file-2.png');
     await fireEvent.click(second);
     await tick();
     expect(lineText(target)).toBe("3 files didn't upload");
