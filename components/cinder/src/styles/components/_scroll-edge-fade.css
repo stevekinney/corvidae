@@ -1,0 +1,76 @@
+/* INTERNAL — the edge fade for a scroller whose own surface paints nothing (a strip of chips, a
+ * list of choices), applied by the `scrollEdgeFade()` attachment, which sets
+ * `data-cinder-edge-fade="block|inline"` and the overflow attributes this file reads.
+ *
+ * It is a MASK, not the opaque overlay `_scroll-fade.css` paints: a mask fades the scroller's own
+ * content to transparent, so it works over any background in both themes with no colour to keep in
+ * step. Because it masks, never put it on an element that paints its own background (the surface
+ * would fade too); put it on the scroller inside the surface.
+ *
+ * An edge fades only while content is hidden past it: the attachment sets
+ * `data-cinder-overflows-start` / `data-cinder-overflows` (block) or
+ * `data-cinder-overflows-inline-start` / `-inline-end` (inline) from the scroll position. With no
+ * attribute the edge's stop is zero length and the edge is crisp.
+ *
+ * The mask paints and takes no pointer events and no layout. `scroll-padding` on the fading axis is
+ * the fade's own size, so a focused item scrolls clear of the fade instead of sitting under it.
+ *
+ * `--_cinder-edge-fade-size` is private: a host may set it. The default is one and a half text
+ * lines of the scroller itself. The gradient direction is physical (no engine has a logical one),
+ * and `:dir(rtl)` flips the inline pair.
+ */
+@layer cinder.components {
+  [data-cinder-edge-fade] {
+    --_cinder-edge-fade-size: 1.5lh;
+    --_cinder-edge-fade-start: 0px;
+    --_cinder-edge-fade-end: 0px;
+  }
+
+  [data-cinder-edge-fade='block'] {
+    scroll-padding-block: var(--_cinder-edge-fade-size);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--_cinder-edge-fade-start),
+      #000 calc(100% - var(--_cinder-edge-fade-end)),
+      transparent 100%
+    );
+  }
+
+  [data-cinder-edge-fade='block'][data-cinder-overflows-start] {
+    --_cinder-edge-fade-start: var(--_cinder-edge-fade-size);
+  }
+
+  [data-cinder-edge-fade='block'][data-cinder-overflows] {
+    --_cinder-edge-fade-end: var(--_cinder-edge-fade-size);
+  }
+
+  [data-cinder-edge-fade='inline'] {
+    scroll-padding-inline: var(--_cinder-edge-fade-size);
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--_cinder-edge-fade-start),
+      #000 calc(100% - var(--_cinder-edge-fade-end)),
+      transparent 100%
+    );
+  }
+
+  [data-cinder-edge-fade='inline']:dir(rtl) {
+    mask-image: linear-gradient(
+      to left,
+      transparent 0,
+      #000 var(--_cinder-edge-fade-start),
+      #000 calc(100% - var(--_cinder-edge-fade-end)),
+      transparent 100%
+    );
+  }
+
+  [data-cinder-edge-fade='inline'][data-cinder-overflows-inline-start] {
+    --_cinder-edge-fade-start: var(--_cinder-edge-fade-size);
+  }
+
+  [data-cinder-edge-fade='inline'][data-cinder-overflows-inline-end] {
+    --_cinder-edge-fade-end: var(--_cinder-edge-fade-size);
+  }
+}

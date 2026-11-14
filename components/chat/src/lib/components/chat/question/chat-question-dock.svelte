@@ -48,6 +48,7 @@
     createLabelFit,
     Input,
     MessageSquare,
+    scrollEdgeFade,
     Tooltip,
   } from '@lostgradient/cinder';
   import { tick, untrack } from 'svelte';
@@ -277,7 +278,11 @@
     <fieldset class="chat-question-dock-fieldset">
       <legend id={legendId} class="cinder-sr-only" dir="auto">{labels.legend}</legend>
       <div class="chat-question-dock-options">
-        <div bind:this={optionsScroll} class="chat-question-dock-options-scroll">
+        <div
+          bind:this={optionsScroll}
+          class="chat-question-dock-options-scroll"
+          {@attach scrollEdgeFade('block')}
+        >
           <ChoiceGrid
             variant="card"
             size="sm"
@@ -496,7 +501,8 @@
 
   /* `overflow-y: auto` clips inline too: the padding keeps a card's focus ring (its width plus the
      gap) inside the scroller, and the matching negative margin leaves the text column alone. The
-     last visible row is cut by the list's edge, with no caption. */
+     last visible row fades into the list's edge while more choices lie past it (Cinder's
+     `scrollEdgeFade`), with no caption. */
   .chat-question-dock-options-scroll {
     --_dock-ring-room: calc(var(--cinder-ring-width, 2px) + 2px);
     flex: 0 1 auto;
