@@ -16,7 +16,6 @@ import { expect, test } from './fixtures.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
 import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
-  answerEmptyActivityCatalog,
   createWorkflowFile,
   expectTabOpen,
   listWorkflowRuns,
@@ -60,11 +59,6 @@ async function waitInsteadOfAgent(root: Locator): Promise<void> {
 
 /** Identifiers this file's specs create, removed after each spec. */
 const created = new Set<string>();
-
-// The Add a step menu asks for the catalog of activities, which the Bureau does not serve yet.
-test.beforeEach(async ({ page }) => {
-  await answerEmptyActivityCatalog(page);
-});
 
 test.afterEach(async ({ request }) => {
   for (const id of created) {

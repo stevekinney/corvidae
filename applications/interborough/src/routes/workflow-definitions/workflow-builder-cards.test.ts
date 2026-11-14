@@ -54,7 +54,12 @@ const ACTIVITIES = [
     id: 'agent',
     title: 'Run an agent',
     description: 'Run a Bureau agent.',
-    inputSchema: { type: 'object', properties: { agent: { type: 'string' } } },
+    inputSchema: {
+      type: 'object',
+      properties: { agent: { type: 'string' }, message: { type: 'string' } },
+      required: ['agent', 'message'],
+      additionalProperties: false,
+    },
   },
   {
     id: 'demo:echo-input',
@@ -65,12 +70,12 @@ const ACTIVITIES = [
   { id: 'demo:untitled', title: null, description: null, inputSchema: null },
 ];
 
-/** What a plugin's `inputSchema` becomes on the wire: a Zod object, as JSON Schema. */
+/** What a plugin's `inputSchema` becomes on the wire: a Zod object, as the Bureau's catalog writes it. */
 const TEAM_SCHEMA = {
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
   properties: { team: { type: 'string', title: 'Team' } },
   required: ['team'],
+  additionalProperties: false,
 };
 
 const CODE_WORKFLOWS = [

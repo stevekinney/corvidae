@@ -1,11 +1,14 @@
 /**
  * The workflow builder's step cards for the design review (COR-2247, COR-2248): one workflow with a
- * step of every kind the builder draws (a plugin's activity with a form from its schema, a code
- * workflow, a wait with a limit, a path chosen by a value with a path nested in it, steps side by
- * side, and steps repeated for each item), in each state the cards have: the data, empty lists that
- * are problems to fix, the catalog still loading, the catalog failing, the add menu open, and the
- * read-only phone. The Bureau serves no operation for the catalog of activities yet, so each scene
- * answers `bureau.workflows.catalog` itself, and the code workflows the list holds with it.
+ * step of every kind the builder draws (a code workflow with a form from its schema, a wait with a
+ * limit, a path chosen by a value with a path nested in it, steps side by side, and steps repeated
+ * for each item), in each state the cards have: the data, empty lists that are problems to fix, the
+ * catalog still loading, the catalog failing, the add menu open, and the read-only phone.
+ *
+ * The seeded host serves the catalog (`bureau.workflows.catalog`) itself: its only activity is the
+ * built-in `agent`, and its one code workflow is the demo plugin's `demo:echo-input`. Only the two
+ * scenes that hold or refuse the read touch it, so a card for a plugin's activity, which the demo
+ * plugin does not provide, is drawn there from a handler no plugin has to answer for.
  * These scenes only capture: the assertions on each card are in
  * `src/routes/workflow-definitions/workflow-builder-cards.test.ts`.
  */
@@ -20,91 +23,66 @@ import { openJsonTab, openTab } from './workflow-support.ts';
 const BUILDER = WORKFLOW_COPY.builder;
 const WIDTHS = [1280, 375] as const;
 
-const CATALOG = {
-  stepKinds: [],
-  triggers: [],
-  activities: [
-    {
-      id: 'demo:echo-input',
-      title: 'Echo input',
-      description: 'Hands back the text it is given.',
-      inputSchema: {
-        $schema: 'https://json-schema.org/draft/2020-12/schema',
-        type: 'object',
-        properties: {
-          text: { type: 'string', title: 'Text' },
-          loud: { type: 'boolean', title: 'Loud' },
-          recipients: {
-            type: 'array',
-            title: 'Recipients',
-            items: {
-              type: 'object',
-              properties: { address: { type: 'string', title: 'Address' } },
-            },
-          },
-        },
-        required: ['text'],
-      },
-    },
-  ],
+/** The step of a plugin's activity, which the scenes that hold or refuse the catalog draw. */
+const ACTIVITY_STEP = {
+  title: 'Echo what came in',
+  kind: 'activity',
+  handler: 'demo:echo-text',
+  input: { text: 'Hello' },
 };
 
-const CODE_WORKFLOWS = [
+/** The step of the demo plugin's code workflow, whose form the seeded host's catalog draws. */
+const WORKFLOW_STEP = {
+  title: 'Echo what came in',
+  kind: 'workflow',
+  workflow: 'demo:echo-input',
+  input: { message: 'Hello' },
+};
+
+/** The other kinds of step, a branch inside a branch included. */
+const OTHER_KINDS = [
+  { kind: 'await-signal', signal: 'review-1', review: true, timeout: '2h' },
   {
-    kind: 'code',
-    id: 'demo:echo-workflow',
-    name: 'echo-workflow',
-    title: 'Echo workflow',
-    plugin: 'demo',
-    version: '1.0.0',
+    kind: 'branch',
+    on: 'status',
+    cases: {
+      approved: [
+        {
+          kind: 'branch',
+          on: 'region',
+          cases: { north: [{ kind: 'await-signal', signal: 'north-ready' }] },
+        },
+      ],
+      rejected: [],
+    },
+    otherwise: [{ kind: 'sleep', duration: '1m' }],
   },
+  {
+    kind: 'parallel',
+    branches: {
+      notify: [
+        {
+          kind: 'activity',
+          handler: 'agent',
+          input: { agent: 'assistant', message: 'Tell them.' },
+        },
+      ],
+      log: [{ kind: 'sleep', duration: '5s' }],
+    },
+  },
+  { kind: 'map', over: 'files', concurrency: 2, steps: [{ kind: 'sleep', duration: '1s' }] },
 ];
 
-/** A workflow with one step of every kind, a branch inside a branch three levels deep included. */
+/** A workflow with one step of every kind the seeded host provides. */
 const EVERY_KIND = {
   name: 'e2e-cards',
   title: 'Every kind of step',
   trigger: { kind: 'manual' },
-  steps: [
-    {
-      title: 'Echo what came in',
-      kind: 'activity',
-      handler: 'demo:echo-input',
-      input: { text: 'Hello', loud: false, recipients: [{ address: 'a@example.com' }] },
-    },
-    { kind: 'workflow', workflow: 'demo:echo-workflow' },
-    { kind: 'await-signal', signal: 'review-1', review: true, timeout: '2h' },
-    {
-      kind: 'branch',
-      on: 'status',
-      cases: {
-        approved: [
-          {
-            kind: 'branch',
-            on: 'region',
-            cases: { north: [{ kind: 'await-signal', signal: 'north-ready' }] },
-          },
-        ],
-        rejected: [],
-      },
-      otherwise: [{ kind: 'sleep', duration: '1m' }],
-    },
-    {
-      kind: 'parallel',
-      branches: {
-        notify: [
-          {
-            kind: 'activity',
-            handler: 'agent',
-            input: { agent: 'assistant', message: 'Tell them.' },
-          },
-        ],
-        log: [{ kind: 'sleep', duration: '5s' }],
-      },
-    },
-    { kind: 'map', over: 'files', concurrency: 2, steps: [{ kind: 'sleep', duration: '1s' }] },
-  ],
+  steps: [WORKFLOW_STEP, ...OTHER_KINDS],
 };
+
+/** The same, with a plugin's activity first, for the scenes the catalog does not answer. */
+const EVERY_KIND_WITH_ACTIVITY = { ...EVERY_KIND, steps: [ACTIVITY_STEP, ...OTHER_KINDS] };
 
 /** Empty lists the engine would refuse: each one is a problem the page says at its own Add a step. */
 const EMPTY_LISTS = {
@@ -117,37 +95,27 @@ const EMPTY_LISTS = {
   ],
 };
 
-type CatalogAnswer = 'data' | 'loading' | 'error';
-
-/** Answers the catalog of activities, and adds the code workflows to the list of workflows. */
-async function answerCatalogs(page: Page, answer: CatalogAnswer): Promise<Route[]> {
+/** Holds the read of the catalog until the scene lets it go, or refuses it. */
+async function holdCatalog(page: Page): Promise<Route[]> {
   const held: Route[] = [];
   await page.route('**/jsonrpc', async (route) => {
-    const body = route.request().postData() ?? '';
-    if (body.includes('bureau.workflows.catalog')) {
-      if (answer === 'loading') {
-        held.push(route);
-        return;
-      }
-      if (answer === 'error') {
-        await route.fulfill({ status: 400, json: { error: { message: 'No such operation.' } } });
-        return;
-      }
-      await route.fulfill({
-        json: { jsonrpc: '2.0', id: 'bureau.workflows.catalog', result: CATALOG },
-      });
-      return;
-    }
-    if (body.includes('bureau.workflows.list') && answer === 'data') {
-      const response = await route.fetch();
-      const json = (await response.json()) as { result?: { workflows?: unknown[] } };
-      json.result?.workflows?.push(...CODE_WORKFLOWS);
-      await route.fulfill({ response, json });
+    if ((route.request().postData() ?? '').includes('bureau.workflows.catalog')) {
+      held.push(route);
       return;
     }
     await route.fallback();
   });
   return held;
+}
+
+async function refuseCatalog(page: Page): Promise<void> {
+  await page.route('**/jsonrpc', async (route) => {
+    if ((route.request().postData() ?? '').includes('bureau.workflows.catalog')) {
+      await route.fulfill({ status: 400, json: { error: { message: 'No such operation.' } } });
+      return;
+    }
+    await route.fallback();
+  });
 }
 
 /** Opens a new workflow on the Builder tab holding `document`. */
@@ -171,11 +139,10 @@ for (const width of WIDTHS) {
       page,
       checkA11y,
     }) => {
-      await answerCatalogs(page, 'data');
       await openWith(page, EVERY_KIND);
       const root = page.locator('[data-page="workflow-creator"]');
       await expect(
-        root.locator('[data-step-kind="activity"] .cinder-schema-form').first(),
+        root.locator('[data-step-kind="workflow"] .cinder-schema-form').first(),
       ).toBeVisible();
       await expect(root.locator('[data-step-kind="map"]')).toBeVisible();
       await captureForDesignReview(page, {
@@ -189,7 +156,6 @@ for (const width of WIDTHS) {
     test(`workflow builder cards: empty lists are problems at their own Add a step, at ${width} pixels`, async ({
       page,
     }) => {
-      await answerCatalogs(page, 'data');
       await openWith(page, EMPTY_LISTS);
       const root = page.locator('[data-page="workflow-creator"]');
       if (width > 640) {
@@ -204,8 +170,8 @@ for (const width of WIDTHS) {
     });
 
     test(`workflow builder cards: the catalog loading, at ${width} pixels`, async ({ page }) => {
-      const held = await answerCatalogs(page, 'loading');
-      await openWith(page, EVERY_KIND);
+      const held = await holdCatalog(page);
+      await openWith(page, EVERY_KIND_WITH_ACTIVITY);
       const root = page.locator('[data-page="workflow-creator"]');
       await expect(root.getByTestId('step-activity-loading').first()).toBeVisible();
       await captureForDesignReview(page, {
@@ -213,12 +179,8 @@ for (const width of WIDTHS) {
         state: 'loading',
         source: 'workflow-builder-cards.spec.ts',
       });
-      // The held read is answered, never dropped: a request the page loses logs an error.
-      for (const route of held) {
-        await route.fulfill({
-          json: { jsonrpc: '2.0', id: 'bureau.workflows.catalog', result: CATALOG },
-        });
-      }
+      // The held read goes on to the host, which answers it: a request the page loses logs an error.
+      for (const route of held) await route.continue();
     });
 
     test(`workflow builder cards: the catalog failing, at ${width} pixels`, async ({
@@ -227,10 +189,10 @@ for (const width of WIDTHS) {
     }) => {
       pageErrors.expectEvery({
         pattern: loggedFailedResponse(400, /\/jsonrpc/),
-        reason: 'the scene refuses the read of the catalog of activities',
+        reason: 'the scene refuses the read of the catalog',
       });
-      await answerCatalogs(page, 'error');
-      await openWith(page, EVERY_KIND);
+      await refuseCatalog(page);
+      await openWith(page, EVERY_KIND_WITH_ACTIVITY);
       const root = page.locator('[data-page="workflow-creator"]');
       await expect(root.getByTestId('step-activity-error').first()).toBeVisible();
       await captureForDesignReview(page, {
@@ -247,12 +209,10 @@ test.describe('the workflow builder’s add menu', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await answerCatalogs(page, 'data');
     await openWith(page, EVERY_KIND);
     const root = page.locator('[data-page="workflow-creator"]');
     await root.locator('#workflow-builder-add').click();
-    await expect(page.getByRole('menuitem', { name: 'Echo input' })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: 'Echo workflow' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Echo the input' })).toBeVisible();
     await captureForDesignReview(page, {
       route: '/workflows/new (add a step menu)',
       state: 'ready',
@@ -264,7 +224,6 @@ test.describe('the workflow builder’s add menu', () => {
 test.describe('the workflow builder’s read-only step cards', () => {
   test('workflow builder cards: read-only below 640 pixels, at 375 pixels', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 900 });
-    await answerCatalogs(page, 'data');
     await openWith(page, EVERY_KIND);
     const root = page.locator('[data-page="workflow-creator"]');
     await expect(root.locator('.weft-workflow-builder__body')).toHaveAttribute('inert', '');

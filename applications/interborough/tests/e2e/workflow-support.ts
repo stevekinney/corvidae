@@ -4,7 +4,7 @@
  * host's temporary home, so a spec that creates one removes it, and a later spec's list never sees
  * it. The files the specs read without changing are seeded by `e2e-server.ts`.
  */
-import type { APIRequestContext, Locator, Page } from '@playwright/test';
+import type { APIRequestContext, Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { join } from 'node:path';
 
@@ -139,27 +139,6 @@ function tabsAreCollapsed(root: Locator): boolean {
 /** The control that shows which tab is open: the select when the bar is collapsed. */
 function collapsedTabs(root: Locator): Locator {
   return root.getByRole('combobox', { name: COLLAPSED_TABS_LABEL });
-}
-
-/**
- * Answers the builder's read of the catalog of activities (`bureau.workflows.catalog`) with an
- * empty one. The Bureau serves no such operation yet and answers a 404 for it, which the page logs
- * as an error, so a spec that opens the builder's Add a step menu answers it itself.
- */
-export async function answerEmptyActivityCatalog(page: Page): Promise<void> {
-  await page.route('**/jsonrpc', async (route) => {
-    if ((route.request().postData() ?? '').includes('bureau.workflows.catalog')) {
-      await route.fulfill({
-        json: {
-          jsonrpc: '2.0',
-          id: 'bureau.workflows.catalog',
-          result: { activities: [], stepKinds: [], triggers: [] },
-        },
-      });
-      return;
-    }
-    await route.fallback();
-  });
 }
 
 /** Opens the tab `name` of the tab bar in `root`, from the select at the phone width. */
