@@ -76,6 +76,9 @@ export const CHAT_COPY = {
   list: {
     /** The accessible name of the pane that holds the open chat. */
     detailLabel: 'Open chat',
+    /** The toggle that hides the list beside the open chat, and shows it again (COR-2327). */
+    hideList: 'Hide chats',
+    showList: 'Show chats',
     /** The day bands: today and yesterday by their names, any other day by its date. */
     today: 'Today',
     yesterday: 'Yesterday',
@@ -455,19 +458,31 @@ export const CHAT_COPY = {
     category: (name: string, tokens: string) => `${name}: ${tokens} tokens`,
     unavailable: 'Context window unavailable',
   },
-  /** An open chat while it is read, and when it cannot be (design rows 17c to 17e, 17j, 17y). */
+  /**
+   * An open chat while it is read, and when it cannot be (design rows 17c to 17e, 17j, 17y), drawn
+   * by Chat's `availability` states (COR-2285 V2 and V3) in these words.
+   */
   load: {
-    /** The accessible name of the placeholders while the chat is read. */
-    loadingLabel: 'Loading this chat',
-    /** Cinder skeleton's status line once the read is taking long, with a Cancel beside it. */
+    /** The status line while the chat is read; Chat counts the seconds after it. */
+    loading: 'Loading this chat…',
+    /** The status line once the read is taking long, with the elapsed time and Cancel. */
     stillLoading: 'Still loading this chat…',
+    /** The title after the person canceled a slow read. */
+    canceledTitle: 'Loading was canceled',
+    /** The sentence under that title. */
+    canceledDescription: 'The chat was not loaded. Nothing was lost.',
+    /** The visible line in place of the composer's hint after a canceled read. */
+    canceledComposer: 'Loading this chat stopped.',
+    /** Why Send is off after a canceled read. */
+    sendBlocked: 'Load the chat to send messages.',
     /** The breadcrumb's last entry while the chat is not read yet or cannot be read, in place of its identifier. */
     crumb: 'This chat',
     errorTitle: 'This chat couldn’t be loaded',
     errorDescription:
       'Interborough didn’t send it back. Nothing was lost; the messages are stored with the chat.',
     tryAgain: 'Try again',
-    backToChats: 'Back to chats',
+    /** The way back to the list from a chat that cannot be shown (Availability board, row V3). */
+    allConversations: 'All conversations',
     /** What the composer's placeholder calls the agent before the list has said which it is. */
     unnamedAgent: 'the agent',
   },
@@ -631,10 +646,10 @@ export const CHAT_COPY = {
     },
   },
   /** Shown when the chat on screen has been deleted: nothing more can be sent to it. */
+  /** A chat deleted while its page is open, drawn by Chat's `deleted` availability state. */
   gone: {
     title: 'This chat was deleted',
     description: 'It no longer exists, so nothing more can be sent here.',
-    back: 'Back to chats',
   },
   /** The names of the files a row carries: attached by the person, or returned by the agent. */
   assets: {

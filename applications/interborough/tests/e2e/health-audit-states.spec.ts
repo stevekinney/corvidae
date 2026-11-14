@@ -17,7 +17,7 @@ import type { Page, Route } from '@playwright/test';
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, pressRecorder, test } from './fixtures.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -62,7 +62,7 @@ async function answerAudit(
       return;
     }
     const request: AuditRequest = { id: body.id, read: readOf(body.params ?? {}) };
-    const reply = answer(request.read);
+    const reply = await answer(request.read);
     if (reply === undefined) {
       await route.fallback();
     } else if (reply === 'hold') {
@@ -282,8 +282,11 @@ for (const width of WIDTHS) {
       });
       let failing = false;
       let failedReads = 0;
-      await answerAudit(page, (read) => {
-        if (!failing || read !== 'page') return undefined;
+      // The reads keep failing until Retry now is pressed, so the banner's own countdown cannot
+      // recover them and remove the button under the click.
+      let pressed: () => Promise<boolean> = async () => false;
+      await answerAudit(page, async (read) => {
+        if (!failing || read !== 'page' || (await pressed())) return undefined;
         failedReads += 1;
         return 'fail';
       });
@@ -309,6 +312,7 @@ for (const width of WIDTHS) {
       await expect(banner).toContainText('Couldn’t refresh this page.');
       await expect(banner).toContainText(/Showing what loaded as of \d{1,2}:\d{2} (AM|PM)/);
       await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+      pressed = await pressRecorder(page, 'Retry now');
       await expect(banner.getByRole('button', { name: /dismiss/i })).toHaveCount(0);
       // 83b: the filter row and the rows stay, at full contrast.
       await expect(rows(page)).toHaveCount(count);
@@ -342,7 +346,6 @@ for (const width of WIDTHS) {
       });
       await checkA11y(`health audit, a failed refresh at ${width}px`);
 
-      failing = false;
       await banner.getByRole('button', { name: 'Retry now' }).click();
       await expect(banner).toHaveCount(0);
       await expect(exportButton).not.toHaveAttribute('aria-disabled', 'true');

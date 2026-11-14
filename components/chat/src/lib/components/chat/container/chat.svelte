@@ -1477,21 +1477,38 @@
   // transcript's place; a failed or deleted one has nothing to send to, so it takes the composer's
   // place too, while a loading or canceled one keeps the editor and Send waits for the history.
   // Both stay mounted but out of sight, so a draft and the scroll state survive.
-  const transcriptHidden = $derived(availability !== undefined);
-  const composerHidden = $derived(availabilityReplacesComposer(availability));
+  // A conversation with no model provider is the one exception that has history worth keeping: with
+  // messages it stays readable, and answerable where a run waits on a person, and only the composer
+  // gives way, to one blocked row with the provider action. Without messages the state stands in the
+  // transcript's place as the others do.
+  const unconfiguredWithHistory = $derived(
+    availability?.kind === 'unconfigured' && messages.length > 0,
+  );
+  const placedAvailability = $derived(unconfiguredWithHistory ? undefined : availability);
+  const transcriptHidden = $derived(placedAvailability !== undefined);
+  const composerHidden = $derived(availabilityReplacesComposer(placedAvailability));
   const composerWaitsForHistory = $derived(
     availability?.kind === 'loading' ? availabilityLabels(availability).sendWaits : undefined,
   );
-  const availabilityComposerStatus = $derived<ChatComposerStatus | undefined>(
-    availability?.kind === 'canceled'
-      ? {
-          kind: 'drawer-notice',
-          text: availabilityLabels(availability).canceledComposer,
-          tone: 'neutral',
-          sendDisabledReason: availabilityLabels(availability).sendBlocked,
-        }
-      : undefined,
-  );
+  const availabilityComposerStatus = $derived.by<ChatComposerStatus | undefined>(() => {
+    if (availability?.kind === 'canceled') {
+      return {
+        kind: 'drawer-notice',
+        text: availabilityLabels(availability).canceledComposer,
+        tone: 'neutral',
+        sendDisabledReason: availabilityLabels(availability).sendBlocked,
+      };
+    }
+    if (availability?.kind === 'unconfigured' && unconfiguredWithHistory) {
+      const words = availabilityLabels(availability);
+      return {
+        kind: 'blocked',
+        reason: words.unconfiguredTitle,
+        action: { label: words.connectProvider, onclick: availability.onConnect, primary: true },
+      };
+    }
+    return undefined;
+  });
   // While a question Chat draws waits on the composer, its placeholder says what to do: a free-text
   // question just reads Answer; a choice says the choices are above and an answer of your own is
   // welcome. A host that draws its own question (`composerAnswering`) words the placeholder itself.
@@ -2744,8 +2761,8 @@
       </div>
     {/key}
 
-    {#if availability !== undefined}
-      <ChatAvailabilityState {availability} />
+    {#if placedAvailability !== undefined}
+      <ChatAvailabilityState availability={placedAvailability} />
     {/if}
 
     <!-- Input Area with Jump Buttons -->
