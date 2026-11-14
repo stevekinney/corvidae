@@ -666,6 +666,8 @@
     var(--cinder-surface-raised),
     var(--cinder-surface-inset)
   );
+  /* The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues. */
+  --cinder-code-block-edge: light-dark(var(--cinder-border-muted), transparent);
   /* Code text font size. */
   --cinder-code-block-font-size: var(--cinder-text-sm);
   /* Block height. Real value is CSS `auto` (intrinsic content height); DTCG's dimension type has no keyword form, so `$value` is a non-authoritative placeholder and `cssRecipe` governs emission. Flagged in the CIN-472 PR body as a type-system limitation, not a design decision. Excluded from the published resolved-context JSON (`nonRepresentableValue`) so a generic consumer applying `$value` literally does not collapse the block to zero height. */

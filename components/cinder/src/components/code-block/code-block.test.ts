@@ -420,9 +420,7 @@ describe('CodeBlock — static structure', () => {
     // One surface: the root (and so the bar) takes the code's own fill, and its one edge is a
     // hairline in the light theme only.
     expect(css).not.toContain('background: var(--cinder-surface-inset);');
-    expect(css).toContain(
-      'box-shadow: inset 0 0 0 1px light-dark(var(--cinder-border-muted), transparent);',
-    );
+    expect(css).toContain('box-shadow: inset 0 0 0 1px var(--cinder-code-block-edge);');
     expect(css).toContain('background: var(--cinder-code-block-background);');
     expect(css).toContain('background: var(--cinder-code-block-background) !important;');
   });

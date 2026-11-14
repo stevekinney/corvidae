@@ -729,11 +729,36 @@
     },
     "ramp": {
       "$type": "color",
-      "low": { "$value": { "colorSpace": "oklch", "components": [0.3, 0.06, 265] } },
-      "high": { "$value": { "colorSpace": "oklch", "components": [0.78, 0.11, 265] } },
-      "negative": { "$value": { "colorSpace": "oklch", "components": [0.74, 0.12, 265] } },
-      "neutral": { "$value": { "colorSpace": "oklch", "components": [0.28, 0.01, 265] } },
-      "positive": { "$value": { "colorSpace": "oklch", "components": [0.78, 0.14, 50] } }
+      "low": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.3, 0.06, 265]
+        }
+      },
+      "high": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.78, 0.11, 265]
+        }
+      },
+      "negative": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.74, 0.12, 265]
+        }
+      },
+      "neutral": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.28, 0.01, 265]
+        }
+      },
+      "positive": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.78, 0.14, 50]
+        }
+      }
     }
   },
   "status": {

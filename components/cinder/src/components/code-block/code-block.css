@@ -41,16 +41,17 @@
 
   /* The block stands apart from the prose by one quiet cue, never two. In the light theme the code
    * field is white (see above) on a near-white page, so a hairline draws its edge; in the dark
-   * theme the field is a step deeper than the page and its fill alone sets it apart. The edge is
-   * drawn over the content, not on the root's own background: the scroller is opaque and an inset
-   * shadow on the root would sit under it. */
+   * theme the field is a step deeper than the page and its fill alone sets it apart. The
+   * `--cinder-code-block-edge` token carries both arms. The edge is drawn over the content, not on
+   * the root's own background: the scroller is opaque and an inset shadow on the root would sit
+   * under it. */
   .cinder-code-block::after {
     content: '';
     position: absolute;
     inset: 0;
     z-index: 2;
     border-radius: inherit;
-    box-shadow: inset 0 0 0 1px light-dark(var(--cinder-border-muted), transparent);
+    box-shadow: inset 0 0 0 1px var(--cinder-code-block-edge);
     pointer-events: none;
   }
 

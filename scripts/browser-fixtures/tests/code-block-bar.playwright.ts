@@ -96,7 +96,8 @@ for (const theme of ['light', 'dark'] as const) {
     const copyOnly = await read(page, 'copy-only');
     expect(copyOnly.root.right - copyOnly.copy!.right).toBeLessThanOrEqual(8);
     // Neither: no bar at all.
-    expect((await read(page, 'neither')).bar).toBeNull();
+    const neither = await read(page, 'neither');
+    expect(neither.bar).toBeNull();
     // A long language label never pushes Copy out or under it.
     const long = await read(page, 'long-language');
     expect(long.language!.right).toBeLessThanOrEqual(long.copy!.left);

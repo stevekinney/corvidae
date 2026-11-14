@@ -116,6 +116,7 @@ export const COMPONENT_DOC_SECTIONS: readonly DocSection[] = ([] = [
     headings: ['## Component tokens', '### Code Block'],
     cssProperties: [
       '--cinder-code-block-background',
+      '--cinder-code-block-edge',
       '--cinder-code-block-font-size',
       '--cinder-code-block-height',
       '--cinder-code-block-line-height',

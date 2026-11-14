@@ -3884,6 +3884,20 @@
       }
     }
   },
+  "code-block.edge": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.08 },
+    "$description": "The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-code-block-edge",
+        "public": true,
+        "category": "color",
+        "component": "code-block",
+        "cssRecipe": "light-dark(var(--cinder-border-muted), transparent)"
+      }
+    }
+  },
   "code-block.font-size": {
     "$type": "dimension",
     "$value": { "value": 0.8125, "unit": "rem" },

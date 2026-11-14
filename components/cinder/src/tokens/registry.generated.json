@@ -2693,6 +2693,16 @@
       "description": "Code surface background. Light arm MUST stay pure `surface-raised` (not `surface-inset`) -- Shiki's github-light token colors measure their AA contrast against that surface with almost no margin; darkening it fails the axe sweep. See code-block.css for the full rationale. Dark arm uses `surface-inset` for the deeper github-dark ground."
     },
     {
+      "path": "code-block.edge",
+      "cssProperty": "--cinder-code-block-edge",
+      "category": "color",
+      "component": "code-block",
+      "public": true,
+      "themeAware": false,
+      "deprecated": false,
+      "description": "The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues."
+    },
+    {
       "path": "code-block.font-size",
       "cssProperty": "--cinder-code-block-font-size",
       "category": "typography",
@@ -3469,6 +3479,7 @@
     "carousel.aspect-ratio": "--cinder-carousel-aspect-ratio",
     "carousel.dot-size": "--cinder-carousel-dot-size",
     "code-block.background": "--cinder-code-block-background",
+    "code-block.edge": "--cinder-code-block-edge",
     "code-block.font-size": "--cinder-code-block-font-size",
     "code-block.height": "--cinder-code-block-height",
     "code-block.line-height": "--cinder-code-block-line-height",
@@ -3814,6 +3825,7 @@
     "--cinder-carousel-aspect-ratio": "carousel.aspect-ratio",
     "--cinder-carousel-dot-size": "carousel.dot-size",
     "--cinder-code-block-background": "code-block.background",
+    "--cinder-code-block-edge": "code-block.edge",
     "--cinder-code-block-font-size": "code-block.font-size",
     "--cinder-code-block-height": "code-block.height",
     "--cinder-code-block-line-height": "code-block.line-height",
@@ -4165,6 +4177,7 @@
     "--cinder-carousel-aspect-ratio": ["carousel.aspect-ratio"],
     "--cinder-carousel-dot-size": ["carousel.dot-size"],
     "--cinder-code-block-background": ["code-block.background"],
+    "--cinder-code-block-edge": ["code-block.edge"],
     "--cinder-code-block-font-size": ["code-block.font-size"],
     "--cinder-code-block-height": ["code-block.height"],
     "--cinder-code-block-line-height": ["code-block.line-height"],
@@ -4462,6 +4475,7 @@
       "toggle.track.off-hover-resting",
       "alert.info",
       "code-block.background",
+      "code-block.edge",
       "file-upload.background",
       "file-upload.border-color",
       "file-upload.progress.background",
@@ -4627,6 +4641,7 @@
     ],
     "code-block": [
       "code-block.background",
+      "code-block.edge",
       "code-block.font-size",
       "code-block.height",
       "code-block.line-height",

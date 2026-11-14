@@ -18896,6 +18896,60 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'code-block.edge',
+      cssProperty: '--cinder-code-block-edge',
+      category: 'color',
+      component: 'code-block',
+      description:
+        "The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues.",
+      themeAware: false,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/components.tokens.json', path: 'code-block.edge' },
+            layers: [
+              {
+                document: 'sets/components.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'code-block.edge',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'sets/components.tokens.json', path: 'code-block.edge' },
+            },
+            inputs: {
+              aliases: ['border.muted'],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-muted', path: 'border.muted' }],
+            },
+          },
+        },
+      ],
+    },
+    {
       path: 'code-block.font-size',
       cssProperty: '--cinder-code-block-font-size',
       category: 'typography',

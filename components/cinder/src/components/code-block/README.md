@@ -68,6 +68,7 @@ A code block scrolls inside its own box, with a scrollbar that is always painted
 <!-- generated:variables:start -->
 
 - `--cinder-code-block-background`
+- `--cinder-code-block-edge`
 - `--cinder-code-block-font-size`
 - `--cinder-code-block-height`
 - `--cinder-code-block-line-height`
