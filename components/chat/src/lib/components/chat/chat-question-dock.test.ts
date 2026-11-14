@@ -246,6 +246,16 @@ describe('a docked question', () => {
     expect(source).toContain('display: none;');
   });
 
+  test('draws the pager as a row of its own at the leading edge, not a slot at the trailing end', async () => {
+    const source = await Bun.file(
+      new URL('./question/chat-question-dock.svelte', import.meta.url),
+    ).text();
+    const block = /\.chat-question-dock-steps \{([^}]*)\}/u.exec(source)?.[1] ?? '';
+    expect(block).toContain('flex: 1 0 100%;');
+    expect(block).toContain('justify-content: flex-start;');
+    expect(block).not.toContain('margin-inline-start: auto');
+  });
+
   test('shows every choice: no "N more" count, no whole-row sizing, no scroll snap', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),

@@ -134,9 +134,12 @@ describe('chat stress visual measurement', () => {
   describe('question steps guard', () => {
     // The real mechanism of the dock's header, one question or several: a row that wraps upwards,
     // the question first and growing, the tag after it, and the progress with its two compact
-    // buttons last, pushed to the trailing end. The tag and the question share a line while the
-    // question fits; the progress wraps first, and the tag with it when the question does not fit.
+    // buttons last, asking for a whole line: the muted 12px words at the leading edge and the
+    // buttons right after them, a row above the tag and the question. The tag and the question
+    // share a line while the question fits.
     const dock = (options: {
+      stepsStyle?: string;
+      progressStyle?: string;
       progress?: string;
       previousDisabled?: boolean;
       nextDisabled?: boolean;
@@ -154,8 +157,10 @@ describe('chat stress visual measurement', () => {
           * { box-sizing: border-box; }
           [data-chat-question-heading] { display: flex; flex-wrap: wrap-reverse; align-items: center; gap: 4px 12px; width: ${options.width ?? 296}px; }
           .chat-question-dock-needs { order: 1; flex: none; white-space: nowrap; padding: 2px 8px; }
-          .chat-question-dock-steps { order: 2; display: inline-flex; margin-inline-start: auto; gap: 4px; align-items: center; }
+          .chat-question-dock-steps { order: 2; display: flex; flex: 1 0 100%; justify-content: flex-start; gap: 4px; align-items: center; ${options.stepsStyle ?? ''} }
           .chat-question-dock-steps button { width: 28px; height: 28px; padding: 0; }
+          [data-chat-question-progress] { font-size: 12px; color: rgb(110, 110, 110); white-space: nowrap; ${options.progressStyle ?? ''} }
+          .chat-question-dock-question { color: rgb(20, 20, 20); }
           .chat-question-dock-question { order: 0; flex: ${options.questionOwnLine ? '1 0 100%' : '1 1 auto'}; margin: 0; }
         </style>
         <div data-chat-question-dock>
@@ -218,9 +223,33 @@ describe('chat stress visual measurement', () => {
       );
     });
 
-    it('fails when the row is too narrow and the buttons are pushed off the trailing end', async () => {
-      expect(await problemsFor(dock({ width: 100 }))).toContain(
-        'the buttons are not at the trailing end',
+    it('fails the old pager: a slot pushed to the trailing end with nothing before it', async () => {
+      const problems = await problemsFor(
+        dock({ stepsStyle: 'flex: none; margin-inline-start: auto;' }),
+      );
+      expect(
+        problems.some((problem) => problem.includes('does not start at the leading edge')),
+      ).toBe(true);
+    });
+
+    it('fails buttons that are not directly after the words', async () => {
+      const problems = await problemsFor(dock({ stepsStyle: 'justify-content: space-between;' }));
+      expect(problems.some((problem) => problem.includes('not directly after'))).toBe(true);
+    });
+
+    it('fails a pager on the tag’s line instead of its own row', async () => {
+      const problems = await problemsFor(
+        dock({ width: 1200, stepsStyle: 'flex: none; order: 3;' }),
+      );
+      expect(problems).toContain('the pager shares a line with the tag or the question');
+    });
+
+    it('fails progress words that are not a muted 12px eyebrow', async () => {
+      expect(await problemsFor(dock({ progressStyle: 'font-size: 13px;' }))).toContain(
+        'the progress is 13px, not a 12px eyebrow',
+      );
+      expect(await problemsFor(dock({ progressStyle: 'color: rgb(20, 20, 20);' }))).toContain(
+        'the progress is not muted: it has the question’s colour',
       );
     });
 

@@ -228,8 +228,8 @@
        question share a row when the question fits on one line beside it (the question at the
        leading end, the tag at the trailing end), and otherwise the tag takes the line above and the
        question the full width. With several, the row is the same, and the progress with its
-       buttons is a trailing slot of its own: it wraps onto the line above first, at the trailing
-       end, and the tag follows it there only when the question does not fit beside it. -->
+       buttons is a row of its own above it, at the leading edge where the question starts: the
+       muted words first and the previous and next buttons right after them. -->
   <div
     class="chat-question-dock-heading"
     data-chat-question-heading
@@ -424,17 +424,17 @@
     min-inline-size: 0;
   }
 
-  /* Several questions use the same row: the question with the tag on its line when it fits, and the
-   * progress with its two buttons in a trailing slot of its own. The slot is the last item, so
-   * when the row runs out of room it is what wraps first, onto the line above, at the trailing
-   * end; the row wraps further, the tag with it, only when the question does not fit. */
+  /* Several questions use the same row, and the pager is a row of its own above it: the muted
+   * words "Question 2 of 4" at the leading edge, where the question starts, with the previous and
+   * next buttons directly after them. It is the last item and asks for the whole line, so it is
+   * the line the others wrap above, and never shares a line with the tag or the question. */
   .chat-question-dock-steps {
-    display: inline-flex;
-    flex: none;
+    display: flex;
+    flex: 1 0 100%;
     align-items: center;
+    justify-content: flex-start;
     gap: var(--cinder-space-1);
     order: 2;
-    margin-inline-start: auto;
   }
 
   /* The chevrons point the way the questions run, so right-to-left mirrors them. */

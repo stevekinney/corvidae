@@ -2524,10 +2524,11 @@ export async function readActionRowProblems(
 /**
  * Measures the docked question's header when several questions were asked together: it reads
  * `Question <position> of <total>`; the tag comes first in the document, then the progress, the
- * previous button, the next button and the choices; the progress with its two compact buttons
- * share one line at the trailing end of the header; the tag shares the question's line when the
- * question fits beside it, and otherwise the question has the full width on the line under the tag,
- * which stands at the leading end; previous is off on the first question and next on the last.
+ * previous button, the next button and the choices; the progress is a muted 12px eyebrow with its
+ * two compact buttons directly after it, one row of their own above the tag and the question, at
+ * the leading edge where the question starts; the tag shares the question's line when the question
+ * fits beside it, and otherwise the question has the full width on the line under the tag, which
+ * stands at the leading end; previous is off on the first question and next on the last.
  */
 export async function readQuestionStepsProblems(
   page: Page,
@@ -2591,10 +2592,43 @@ export async function readQuestionStepsProblems(
         if (face.height > 40 || face.width > 40)
           problems.push('a navigation button is not compact');
       }
-      const trailingGap = rtl
-        ? box(next).left - headingBox.left
-        : headingBox.right - box(next).right;
-      if (Math.abs(trailingGap) > 1) problems.push('the buttons are not at the trailing end');
+      // The pager is the row that starts where the question starts: the words at the leading
+      // edge, the buttons directly after them (previous, then next), and nothing before them.
+      const words = box(progress);
+      const leadingOffset = rtl ? headingBox.right - words.right : words.left - headingBox.left;
+      if (Math.abs(leadingOffset) > 1) {
+        problems.push(
+          `the pager does not start at the leading edge (${leadingOffset.toFixed(1)}px in)`,
+        );
+      }
+      const afterWords = rtl ? words.left - box(previous).right : box(previous).left - words.right;
+      if (afterWords < -1 || afterWords > 12) {
+        problems.push(
+          `the buttons are ${afterWords.toFixed(1)}px from the words, not directly after`,
+        );
+      }
+      const betweenButtons = rtl
+        ? box(previous).left - box(next).right
+        : box(next).left - box(previous).right;
+      if (betweenButtons < -1 || betweenButtons > 12) {
+        problems.push('next does not follow previous directly');
+      }
+      const wordsStyle = getComputedStyle(progress);
+      if (wordsStyle.fontSize !== '12px') {
+        problems.push(`the progress is ${wordsStyle.fontSize}, not a 12px eyebrow`);
+      }
+      if (question !== null && wordsStyle.color === getComputedStyle(question).color) {
+        problems.push('the progress is not muted: it has the question’s colour');
+      }
+      for (const other of [tag, question]) {
+        if (
+          other !== null &&
+          box(other).top < Math.max(box(progress).bottom, box(next).bottom) - 1
+        ) {
+          problems.push('the pager shares a line with the tag or the question');
+          break;
+        }
+      }
       if (question !== null) {
         if ((question.textContent ?? '').trim() === '') problems.push('the question is empty');
         // The question's own width on one line: it is held at its natural size for a moment.
