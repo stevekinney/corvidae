@@ -166,10 +166,8 @@ describe('Link variant prop (COR-2329)', () => {
   });
 
   test('the more form reaches a 24px hit area under a mouse and 44px under a coarse pointer, above what follows', async () => {
-    const css = (await Bun.file(new URL('./link.css', import.meta.url)).text()).replace(
-      /\s+/g,
-      ' ',
-    );
+    const source = await Bun.file(new URL('./link.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
     const coarseAt = css.indexOf('@media (any-pointer: coarse)');
     const fine = css.slice(0, coarseAt);
     const coarse = css.slice(coarseAt);
