@@ -140,6 +140,7 @@ function dockTarget(toolCallId: string): DockedQuestionTarget {
   return {
     toolCallId,
     answer: undefined,
+    locked: false,
     schema: { enum: ['one', 'two'] },
     message: toolCallId,
     submit: async () => true,
@@ -319,9 +320,12 @@ describe('a docked question', () => {
     expect(icon.getAttribute('data-cinder-variant')).toBe('secondary');
     expect(icon.getAttribute('data-cinder-icon-only')).toBe('');
     expect(icon.getAttribute('aria-label') ?? icon.textContent?.trim()).toBe('Reply in chat');
-    expect(
-      words.closest('.chat-question-dock-actions')?.hasAttribute('data-chat-reply-compact'),
-    ).toBe(false);
+    // Both sit in the wrapper the row's fit marks compact (there is no layout here to measure; the
+    // stress guard `readLabelFitProblems` proves the fit in a browser).
+    const tip = words.closest('.chat-question-dock-reply-tip');
+    expect(tip).not.toBeNull();
+    expect(tip?.contains(icon)).toBe(true);
+    expect(tip?.hasAttribute('data-chat-reply-compact')).toBe(false);
     expect(answer.textContent?.trim()).toBe('Answer');
     expect(answer.getAttribute('data-cinder-variant')).toBe('primary');
   });
@@ -815,6 +819,70 @@ describe('several docked questions', () => {
       // The changed answer is what the receipt now says, and the dock is on the open question again.
       expect(shownOf(container)).toBe('second');
       expect(container.querySelector('[data-question-answer]')?.textContent).toContain('Canary');
+    });
+
+    test('keeps an answered question in the round, read only with one line saying it was sent, once its call resolves', async () => {
+      const answers: [string, unknown][] = [];
+      const view = await mountThree(answers);
+      const container = view.container;
+
+      await fireEvent.click(radiosOf(container)[0]!);
+      sendDock(container);
+      await settle();
+
+      // The run took the first answer: its call now has the tool's own result, while the other two
+      // questions are still open.
+      let resumed = appendUserMessage(createConversationHistory({ id: 'dock-steps' }), 'deploy it');
+      resumed = appendToolResult(
+        appendToolCall(resumed, { id: 'first', name: 'requestHumanInput', arguments: {} }),
+        { callId: 'first', outcome: 'success', content: 'staging' },
+      );
+      for (const [id, message, schema] of [
+        ['second', 'Which region?', REGION],
+        ['third', 'Which tier?', { enum: ['free', 'paid'] }],
+      ] as const) {
+        resumed = appendToolResult(
+          appendToolCall(resumed, { id, name: 'requestHumanInput', arguments: {} }),
+          {
+            callId: id,
+            outcome: 'action_required',
+            content: null,
+            action: { type: 'input', message, schema: { ...schema } },
+          },
+        );
+      }
+      await view.rerender({ conversation: resumed });
+      await settle();
+
+      // The count does not shrink and the way back to the answered question stays.
+      expect(shownOf(container)).toBe('second');
+      expect(container.querySelector('[data-chat-question-progress]')?.textContent?.trim()).toBe(
+        'Question 2 of 3',
+      );
+      await fireEvent.click(previousOf(container));
+      await settle();
+      expect(shownOf(container)).toBe('first');
+      expect(radiosOf(container).map((radio) => radio.getAttribute('aria-checked'))).toEqual([
+        'true',
+        'false',
+        'false',
+      ]);
+      expect(dockOf(container)!.querySelector('[data-chat-question-sent]')?.textContent).toBe(
+        'This answer was sent.',
+      );
+      // Read only: the choices and Answer are off, and the keys choose nothing.
+      expect(
+        radiosOf(container).every(
+          (radio) =>
+            radio.getAttribute('aria-disabled') === 'true' || radio.hasAttribute('disabled'),
+        ),
+      ).toBe(true);
+      expect(buttonNamed(container, 'Answer')?.disabled).toBe(true);
+      await fireEvent.keyDown(radiosOf(container)[0]!, { key: '2' });
+      expect(radiosOf(container)[1]!.getAttribute('aria-checked')).toBe('false');
+      sendDock(container);
+      await settle();
+      expect(answers).toEqual([['first', 'staging']]);
     });
 
     test('the keys still choose a card of the question shown, and add no shortcut of their own', async () => {

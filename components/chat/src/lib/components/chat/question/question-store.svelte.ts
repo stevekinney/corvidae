@@ -37,6 +37,11 @@ export interface DockedQuestionTarget {
   readonly toolCallId: string;
   /** The answer that was sent, or `undefined` while the question is open. */
   readonly answer: QuestionAnswerRecord | undefined;
+  /**
+   * Whether the run has moved on, so the sent answer can no longer be changed. The question stays
+   * in the round, read only, so the person can still see what was sent.
+   */
+  readonly locked: boolean;
   /** The answer schema, which says which choices to draw. */
   readonly schema: Readonly<Record<string, unknown>>;
   /** What the question asks. */

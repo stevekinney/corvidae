@@ -95,6 +95,8 @@
 
   const pickingOther = $derived(selected === OTHER_CHOICE);
   const sentAnswer = $derived(question.answer);
+  // The run has moved on: the sent answer is shown read only, with one line saying it was sent.
+  const locked = $derived(question.locked);
 
   /** The answer the chosen card stands for, or the person's own words. */
   function chosenValue(): unknown {
@@ -163,7 +165,7 @@
 
   function send(event: SubmitEvent): void {
     event.preventDefault();
-    if (!ready || question.busy) return;
+    if (!ready || question.busy || locked) return;
     void question.submit(chosenValue());
   }
 
@@ -193,7 +195,7 @@
       return;
     }
     const index = Number(event.key) - 1;
-    if (index >= choiceCount || question.busy) return;
+    if (index >= choiceCount || question.busy || locked) return;
     event.preventDefault();
     const next = index < choices.length ? String(index) : OTHER_CHOICE;
     selected = next;
@@ -286,7 +288,7 @@
             {#each choices as choice, index (index)}
               <ChoiceGridItem
                 value={String(index)}
-                disabled={question.busy}
+                disabled={question.busy || locked}
                 {...choice.description === undefined ? {} : { description: choice.description }}
               >
                 <span class="chat-question-dock-choice">
@@ -296,7 +298,7 @@
               </ChoiceGridItem>
             {/each}
             {#if allowsOther}
-              <ChoiceGridItem value={OTHER_CHOICE} disabled={question.busy}>
+              <ChoiceGridItem value={OTHER_CHOICE} disabled={question.busy || locked}>
                 <span class="chat-question-dock-choice">
                   <span class="chat-question-dock-choice-label" dir="auto"
                     >{labels.somethingElse}</span
@@ -316,8 +318,11 @@
             labelVisible={false}
             placeholder={labels.ownAnswerPlaceholder}
             bind:value={text}
-            disabled={question.busy}
+            disabled={question.busy || locked}
           />
+        {/if}
+        {#if locked}
+          <p class="chat-question-dock-sent" data-chat-question-sent>{labels.sent}</p>
         {/if}
         {#if errorText !== ''}
           <p id={errorId} class="chat-question-dock-error" role="alert">{errorText}</p>
@@ -361,7 +366,7 @@
         {#snippet leadingIcon()}<MessageSquare aria-hidden="true" />{/snippet}
       </Button>
     </Tooltip>
-    <Button type="submit" variant="primary" disabled={!ready || question.busy}>
+    <Button type="submit" variant="primary" disabled={!ready || question.busy || locked}>
       {labels.answer}
     </Button>
   </div>
@@ -571,6 +576,13 @@
     .chat-question-dock-key {
       display: none;
     }
+  }
+
+  /* One muted line, at the notice size: the answer was sent and is no longer open to change. */
+  .chat-question-dock-sent {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
   .chat-question-dock-error {

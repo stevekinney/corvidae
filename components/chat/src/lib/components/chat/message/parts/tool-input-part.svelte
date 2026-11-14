@@ -42,13 +42,15 @@
   // A question that has choices is drawn in the dock in place of the composer, when the host asks
   // for `questionPlacement="docked"`, until the person replies in chat instead. Its row then holds
   // only the question; once it is answered the row is the receipt, as for any question.
-  // Whether the question belongs to the dock's round: open, or answered but not yet resolved, so
-  // the dock can step back to it and change the answer the way Change does.
+  // Whether the question belongs to the dock's round: open, or answered here, so the dock can step
+  // back to it. Before the run moves on the answer can be changed the way Change does; after, it is
+  // shown read only (the part is resolved), so the count and the way back do not shrink under the
+  // person while other questions of the round are still open.
   const dockEligible = $derived(
     sharedStore !== undefined &&
       sharedStore.placement === 'docked' &&
       (kind === 'choice' || kind === 'choice-other' || kind === 'boolean') &&
-      !resolved &&
+      (!resolved || answer !== undefined) &&
       onInputSubmit !== undefined &&
       !sharedStore.isDockDismissed(part.toolCallId),
   );
@@ -129,6 +131,9 @@
       toolCallId,
       get answer() {
         return answer;
+      },
+      get locked() {
+        return resolved;
       },
       get schema() {
         return part.schema;
