@@ -497,7 +497,9 @@ describe('a workflow card', () => {
 
   test('draws its input form from the catalog’s schema and writes { kind: workflow, workflow, input }', async () => {
     const { container, getByLabelText } = await openBuilder(
-      file([{ kind: 'workflow', workflow: 'demo:echo-workflow', input: { team: 'core', extra: 1 } }]),
+      file([
+        { kind: 'workflow', workflow: 'demo:echo-workflow', input: { team: 'core', extra: 1 } },
+      ]),
     );
     const card = (await waitFor(() => {
       const found = container.querySelector('[data-step-kind="workflow"]');
@@ -537,7 +539,9 @@ describe('a workflow card', () => {
   });
 
   test('says an input that is not an object is edited in the JSON tab, and leaves it', async () => {
-    const text = file([{ kind: 'workflow', workflow: 'demo:echo-workflow', input: 'not an object' }]);
+    const text = file([
+      { kind: 'workflow', workflow: 'demo:echo-workflow', input: 'not an object' },
+    ]);
     const { container } = await openBuilder(text);
     await waitFor(() =>
       expect(container.querySelector('[data-testid="step-input-note"]')?.textContent).toContain(

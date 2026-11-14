@@ -209,7 +209,9 @@
   }));
 
   /** One read answers both lists, so they load, fail and retry together. */
-  function catalogState<Entry>(pick: (catalog: WorkflowCatalog) => readonly Entry[]): CatalogState<Entry> {
+  function catalogState<Entry>(
+    pick: (catalog: WorkflowCatalog) => readonly Entry[],
+  ): CatalogState<Entry> {
     if (catalogQuery.isError) return { status: 'failed', retry: () => void catalogQuery.refetch() };
     return catalogQuery.data === undefined
       ? { status: 'loading' }

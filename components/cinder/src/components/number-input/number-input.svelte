@@ -322,10 +322,7 @@
    * number) is committed.
    */
   function commitLeftText(text: string): void {
-    if (
-      commitWhileTyping &&
-      parseLocaleNumber(text, resolvedLocale, format).status === 'valid'
-    ) {
+    if (commitWhileTyping && parseLocaleNumber(text, resolvedLocale, format).status === 'valid') {
       return;
     }
     commitFromText('typed', text);

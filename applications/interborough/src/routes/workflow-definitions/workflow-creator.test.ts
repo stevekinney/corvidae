@@ -565,7 +565,9 @@ describe('the builder', () => {
     await ready(container);
     await fireEvent.click(button(container, BUILDER.remove(step(1))));
     await addStep(container, BUILDER.add.wait);
-    await waitFor(() => expect(field(container, 'workflow-builder-step-1-duration-unit')).toBeTruthy());
+    await waitFor(() =>
+      expect(field(container, 'workflow-builder-step-1-duration-unit')).toBeTruthy(),
+    );
     await fireEvent.change(field(container, 'workflow-builder-step-1-duration-unit'), {
       target: { value: 'hours' },
     });

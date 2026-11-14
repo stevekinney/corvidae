@@ -135,7 +135,12 @@
         bind:unit={limitUnit}
         onValueChange={(next) =>
           host.commit(
-            setTimeoutDuration(host.text, path, amountOf(next, unitOf(limitUnit)), unitOf(limitUnit)),
+            setTimeoutDuration(
+              host.text,
+              path,
+              amountOf(next, unitOf(limitUnit)),
+              unitOf(limitUnit),
+            ),
           )}
       />
     </div>
