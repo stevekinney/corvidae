@@ -144,6 +144,14 @@ describe('the session count', () => {
     expect(placesAfterEach(events)).toEqual([1, 2, 2, 1, 0]);
   });
 
+  test('a launched dispatch whose start was never recorded keeps its place past the limit, and its stop returns it', () => {
+    const events = [admit('tA', 0), launched('tA', 'a')];
+    const state = foldSession(events);
+    expect(neverStarted(state, neverStartedLimitMilliseconds * 3)).toEqual([]);
+    expect(workerPlaces(state)).toBe(1);
+    expect(placesAfterEach([...events, stop('a'), stop('a')])).toEqual([1, 1, 0, 0]);
+  });
+
   test('only a pending dispatch older than the limit counts as never started', () => {
     const state = foldSession([admit('tA', 0), admit('tB', 5), start('a', 6)]);
     expect(neverStarted(state, neverStartedLimitMilliseconds + 4).map((d) => d.toolUseId)).toEqual(

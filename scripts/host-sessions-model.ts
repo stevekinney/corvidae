@@ -222,6 +222,15 @@ export function applySessionEvent(state: SessionState, event: SessionEvent): Ses
       return next;
     }
     case 'stop': {
+      if (!next.agents.has(event.agentId)) {
+        // Its start was never recorded: the launched dispatch that named it is over.
+        const named = [...next.dispatches.values()].find(
+          (dispatch) => dispatch.status === 'pending' && dispatch.agentId === event.agentId,
+        );
+        if (named === undefined) return state;
+        update(next.dispatches, named.toolUseId, { status: 'finished' });
+        return next;
+      }
       stopRun(next, event.agentId);
       return next;
     }
@@ -296,6 +305,11 @@ export function neverStarted(
   limit = neverStartedLimitMilliseconds,
 ): Dispatch[] {
   return [...state.dispatches.values()].filter(
-    (dispatch) => dispatch.status === 'pending' && now - dispatch.admittedAt >= limit,
+    // A dispatch its `PostToolUse` launched as a named agent has started, whether or not its
+    // `SubagentStart` was recorded; it keeps its place until that agent's stop.
+    (dispatch) =>
+      dispatch.status === 'pending' &&
+      dispatch.agentId === undefined &&
+      now - dispatch.admittedAt >= limit,
   );
 }

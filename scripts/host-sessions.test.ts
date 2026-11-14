@@ -464,6 +464,23 @@ describe('the hook', () => {
     expect(await places(directory)).toBe(0);
   });
 
+  test('a start in a session resumed in a new process drops what the old process ran', async () => {
+    const directory = await scratch();
+    const time = clock();
+    await admitWorker({
+      directory,
+      readProcessTable: () => hostTable(),
+      ...time,
+      request: request('A', '1', { holder: { pid: 999_999, pidStartedAt: 'gone' } }),
+    });
+    await appendEvent(directory, 'session-A', { kind: 'start', agentId: 'agent-old', at: 0 });
+    expect(await places(directory)).toBe(2);
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-new'), context(directory));
+    const [ledger] = await readSessions(directory);
+    expect([...(ledger?.state.agents.keys() ?? [])]).toEqual(['agent-new']);
+    expect(ledger?.holder?.pid).toBe(400);
+  });
+
   test('StopFailure in a worker returns its place', async () => {
     const directory = await scratch();
     await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));

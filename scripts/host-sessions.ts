@@ -262,7 +262,9 @@ export function describeSession(
   ];
   for (const dispatch of state.dispatches.values()) {
     const what = `worker ${dispatch.issue ?? 'without an issue'} "${dispatch.description}", dispatch ${dispatch.toolUseId}, admitted ${age(now - dispatch.admittedAt)} ago${dispatch.bypass ? ' past the cap' : ''}`;
-    if (dispatch.status === 'pending') {
+    if (dispatch.status === 'pending' && dispatch.agentId !== undefined) {
+      lines.push(`  place: ${what}, launched as agent ${dispatch.agentId}, no start recorded`);
+    } else if (dispatch.status === 'pending') {
       const never = now - dispatch.admittedAt >= limit;
       lines.push(
         `  place: ${what}, ${never ? 'admitted, never started (reclaimed by the next dispatch)' : 'no agent started yet'}`,
@@ -708,7 +710,12 @@ async function recordStart(input: HookInput, context: HookContext): Promise<void
   const table = context.readProcessTable();
   const session = table === undefined ? undefined : sessionProcess(context.hookPid, table);
   const ledgers = await readSessions(context.directory);
-  const own = ledgers.find((ledger) => ledger.sessionId === sessionId);
+  let own = ledgers.find((ledger) => ledger.sessionId === sessionId);
+  if (own !== undefined && !sessionAlive(own, table)) {
+    // The session was resumed in a new process: what the old one ran ended with it.
+    await rm(own.directory, { recursive: true, force: true });
+    own = undefined;
+  }
   if (own === undefined && session === undefined) return;
   if (session !== undefined && table !== undefined) {
     const holder = ownerFor(
