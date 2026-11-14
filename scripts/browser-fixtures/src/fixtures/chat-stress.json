@@ -1334,6 +1334,11 @@
         "text": "Denied"
       },
       {
+        "action": "click",
+        "role": "button",
+        "name": "Details"
+      },
+      {
         "action": "expect-text",
         "text": "The duplicate charge was already refunded."
       }
