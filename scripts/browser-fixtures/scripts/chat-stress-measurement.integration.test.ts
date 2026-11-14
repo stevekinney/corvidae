@@ -1611,6 +1611,39 @@ describe('chat stress visual measurement', () => {
       ]);
     });
 
+    // Chat's own rule in miniature: bare narration is muted and smaller, an answer and text that
+    // asks (`data-asking`) are not.
+    const rules = `<style>
+      .chat-message-body { color: rgb(20, 20, 20); font-size: 14px; }
+      .chat-message-wrapper[data-narration]:not([data-asking]) .chat-message-body {
+        color: rgb(120, 120, 120); font-size: 13px;
+      }
+    </style>`;
+    const askingWith = (attributes: string): string =>
+      `${rules}<div class="chat-message-wrapper" data-narration ${attributes}><div class="chat-message-body"><p>Looking up the order.</p></div>${line({})}</div>`;
+
+    it('passes asking text drawn in an answer’s ink and size', async () => {
+      expect(await problemsFor(askingWith('data-asking'), 'asking')).toEqual([]);
+    });
+
+    it('fails asking text still drawn as muted, smaller narration', async () => {
+      expect(await problemsFor(askingWith(''), 'asking')).toEqual([
+        'the asking text "Looking up the order." is rgb(120, 120, 120), not an answer\'s rgb(20, 20, 20)',
+        'the asking text "Looking up the order." is 13px, not an answer\'s 14px',
+      ]);
+    });
+
+    it('fails asking text that only has the size, or only the colour, of narration', async () => {
+      const sizeOnly = `${rules}<style>.chat-message-wrapper[data-asking] .chat-message-body { font-size: 13px; }</style>`;
+      expect(await problemsFor(sizeOnly + askingWith('data-asking'), 'asking')).toEqual([
+        'the asking text "Looking up the order." is 13px, not an answer\'s 14px',
+      ]);
+      const colourOnly = `${rules}<style>.chat-message-wrapper[data-asking] .chat-message-body { color: rgb(120, 120, 120); }</style>`;
+      expect(await problemsFor(colourOnly + askingWith('data-asking'), 'asking')).toEqual([
+        'the asking text "Looking up the order." is rgb(120, 120, 120), not an answer\'s rgb(20, 20, 20)',
+      ]);
+    });
+
     it('reports a page with no narration, and ignores narration folded into a step row', async () => {
       expect(await problemsFor('<p>Nothing.</p>', 'bare')).toEqual([
         'no narration message was found on the page',

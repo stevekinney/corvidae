@@ -1964,6 +1964,7 @@
         onRegenerate={regenerateAnswer}
         messageStatus={regenerationStatus}
         streaming={session.streaming && !choosing}
+        trailingAskPending={!session.streaming && session.humanRequests.length > 0}
         surfaceMode="transparent"
         variant="transcript"
         notSent={connection.unreachable

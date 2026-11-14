@@ -251,6 +251,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   empty?: Snippet;
   /** Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. */
   trailing?: Snippet;
+  /** Set while the `trailing` content is a pending ask of the host's own, such as the question a run parked on. The assistant text directly before it is the agent talking to the person, so it keeps its full message line instead of drawing as bare narration. Chat sees an approval or question in its own messages without this. Default `false`. */
+  trailingAskPending?: boolean | undefined;
   /** The title of the default empty state, drawn with the first-use `EmptyState` of Cinder. Has no effect when a custom `empty` snippet is provided. Default `No messages yet`. */
   emptyTitle?: string | undefined;
   /** One sentence under the empty state title, such as what the agent does. Has no effect when a custom `empty` snippet is provided. Default none. */

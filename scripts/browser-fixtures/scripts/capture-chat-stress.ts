@@ -3586,6 +3586,38 @@ export async function readNarrationLineProblems(
       } else {
         if (times === 0) problems.push(`the asking text "${label}" has no time under it`);
         if (buttons === 0) problems.push(`the asking text "${label}" has no action buttons`);
+        // It reads as a message, not as narration: the letters' colour and size equal an answer's.
+        // The answer's value is measured on a hidden copy of the same wrapper with the narration
+        // marks removed, in the same place, so the page's own rules say what an answer is.
+        const holderOf = (root: Element): HTMLElement | undefined => {
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+            if ((node.textContent ?? '').trim() !== '') return node.parentElement ?? undefined;
+          }
+          return undefined;
+        };
+        const ownHolder = holderOf(wrapper.querySelector('.chat-message-body') ?? wrapper);
+        const probe = wrapper.cloneNode(true) as HTMLElement;
+        probe.removeAttribute('data-narration');
+        probe.removeAttribute('data-asking');
+        probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
+        wrapper.after(probe);
+        const answerHolder = holderOf(probe.querySelector('.chat-message-body') ?? probe);
+        if (ownHolder !== undefined && answerHolder !== undefined) {
+          const own = getComputedStyle(ownHolder);
+          const answer = getComputedStyle(answerHolder);
+          if (own.color !== answer.color) {
+            problems.push(
+              `the asking text "${label}" is ${own.color}, not an answer's ${answer.color}`,
+            );
+          }
+          if (own.fontSize !== answer.fontSize) {
+            problems.push(
+              `the asking text "${label}" is ${own.fontSize}, not an answer's ${answer.fontSize}`,
+            );
+          }
+        }
+        probe.remove();
       }
     }
     return problems;

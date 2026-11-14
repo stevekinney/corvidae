@@ -164,6 +164,33 @@ describe('Chat — narration and answer', () => {
     expect(narrationTexts(container)).toEqual(['Reading the ledger entries now']);
   });
 
+  test('narration before a question the host draws in trailing is asking and keeps its message line', async () => {
+    const { container } = render(Chat, {
+      id: 'narration-trailing-ask',
+      conversation: turn('narration-trailing-ask', false),
+      variant: 'transcript',
+      trailingAskPending: true,
+    });
+    await tick();
+
+    const wrapper = container.querySelector('.chat-message-wrapper[data-narration]');
+    expect(wrapper?.hasAttribute('data-asking')).toBe(true);
+    expect(wrapper?.querySelector('.chat-message-line time')).not.toBeNull();
+  });
+
+  test('without a pending ask the same narration is bare: no asking mark and no time', async () => {
+    const { container } = render(Chat, {
+      id: 'narration-no-ask',
+      conversation: turn('narration-no-ask', false),
+      variant: 'transcript',
+    });
+    await tick();
+
+    const wrapper = container.querySelector('.chat-message-wrapper[data-narration]');
+    expect(wrapper?.hasAttribute('data-asking')).toBe(false);
+    expect(wrapper?.querySelector('.chat-message-line time')).toBeNull();
+  });
+
   test('the default presentation marks nothing', async () => {
     const { container } = render(Chat, {
       id: 'narration-default',

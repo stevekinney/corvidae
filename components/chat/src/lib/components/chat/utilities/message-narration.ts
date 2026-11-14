@@ -32,6 +32,12 @@ export type ClassifyAssistantTextOptions = {
    * answered) whose result has not yet stopped asking.
    */
   answeredCallIds?: ReadonlySet<string>;
+  /**
+   * Whether the host draws a pending ask of its own after the last message (the `trailing` content
+   * of Chat, such as an open question the run parked on). Chat sees an ask in the messages
+   * itself; one that lives only in the host's `trailing` it cannot, so the host says so.
+   */
+  trailingAskPending?: boolean;
 };
 
 /** Whether a message is tool activity the transcript shows: a call or a result that is not hidden. */
@@ -78,7 +84,7 @@ export function classifyAssistantText(
   // turn's closing person's message says whether the text above it is followed by a tool, and
   // whether a pending ask was seen since the later assistant text says it follows directly.
   let toolFollows = false;
-  let askFollows = false;
+  let askFollows = options.trailingAskPending === true;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
     if (message.role === 'user') {

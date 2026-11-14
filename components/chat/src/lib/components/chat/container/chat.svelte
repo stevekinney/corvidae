@@ -179,6 +179,7 @@
     questionLabels,
     empty,
     trailing,
+    trailingAskPending = false,
     emptyTitle = 'No messages yet',
     emptyDescription,
     emptyPrompts,
@@ -718,6 +719,7 @@
   // counting before its result stops asking.
   const assistantTextRoles = $derived(
     classifyAssistantText(messages, {
+      trailingAskPending,
       answeredCallIds: new Set([
         ...questions.answers.keys(),
         ...[...commandActions.approvalStates]

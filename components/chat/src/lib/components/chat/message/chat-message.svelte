@@ -1085,6 +1085,7 @@
   data-presentation={transcript ? 'transcript' : undefined}
   data-streaming={streaming || undefined}
   data-narration={transcript && narration && message.role === 'assistant' ? '' : undefined}
+  data-asking={transcript && narration && asking && message.role === 'assistant' ? '' : undefined}
   data-ends-in-punctuation={endsInTerminalPunctuation ? '' : undefined}
   data-section={section === 'whole' ? undefined : section}
   data-turn-state={turn.kind === 'complete' ? undefined : turn.kind}
@@ -2482,16 +2483,19 @@
     color: var(--cinder-text-muted);
   }
 
-  /* What an agent says while it works (narration) is quieter than its answer: muted, and at the
-   * notice size, one step under the answer's body size. It stays on the answer's left edge. */
-  .chat-message-wrapper[data-presentation='transcript'][data-narration] .chat-message-body {
+  /* What an agent says while it works (bare narration) is quieter than its answer: muted, and at
+   * the notice size, one step under the answer's body size. It stays on the answer's left edge.
+   * Text that asks (`data-asking`) is the agent talking to the person: it keeps its message line
+   * and is drawn as a message, in message ink at the message size, until the person answers. */
+  .chat-message-wrapper[data-presentation='transcript'][data-narration]:not([data-asking])
+    .chat-message-body {
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
   /* The rendered Markdown sets its own size and leading, so the step down is set on it too. The
    * lines are a whole 21px at the 13px size, so what follows starts on a pixel boundary. */
-  .chat-message-wrapper[data-presentation='transcript'][data-narration]
+  .chat-message-wrapper[data-presentation='transcript'][data-narration]:not([data-asking])
     :global(.cinder-markdown-content) {
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     line-height: calc(21 / 13);

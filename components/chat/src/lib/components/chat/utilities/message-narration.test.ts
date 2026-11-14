@@ -131,6 +131,28 @@ describe('classifyAssistantText', () => {
     });
   });
 
+  test('a question the host draws after the last message makes the narration before it an ask', () => {
+    const transcript = [user('u'), text('n'), call('c')];
+    expect(
+      Object.fromEntries(classifyAssistantText(transcript, { trailingAskPending: true })),
+    ).toEqual({ n: 'asking' });
+    expect(Object.fromEntries(classifyAssistantText(transcript, {}))).toEqual({ n: 'narration' });
+  });
+
+  test('a trailing ask does not reach narration with other assistant text between, an earlier turn, or an answer', () => {
+    const options = { trailingAskPending: true };
+    expect(
+      Object.fromEntries(
+        classifyAssistantText([user('u'), text('n1'), call('c'), text('n2'), call('d')], options),
+      ),
+    ).toEqual({ n1: 'narration', n2: 'asking' });
+    expect(
+      Object.fromEntries(
+        classifyAssistantText([user('u1'), text('n'), call('c'), user('u2'), text('a')], options),
+      ),
+    ).toEqual({ n: 'narration', a: 'answer' });
+  });
+
   test('an ask in an earlier turn does not make a later turn narration an ask', () => {
     expect(
       roles([
