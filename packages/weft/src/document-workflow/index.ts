@@ -30,12 +30,14 @@ export type {
   DocumentActivityArgument,
   DocumentActivityDefinition,
   DocumentActivityHandler,
+  DocumentChildWorkflowArgument,
   DocumentSchemaChecker,
   DocumentSchemaPoint,
   DocumentTriggerValidator,
   DocumentWorkflowHost,
   WorkflowDocument,
   WorkflowDocumentStep,
+  WorkflowDocumentValidationOptions,
 } from './document.ts';
 export { buildWorkflowDocumentManifest } from './manifest.ts';
 export { registerWorkflowDocuments } from './register.ts';
