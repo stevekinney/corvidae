@@ -137,6 +137,24 @@ describe('comparing two versions', () => {
     expect(input).toEqual([{ kind: 'input-schema', breaking: true }]);
   });
 
+  it('calls pointing a workflow step at another workflow breaking, and another input likewise (COR-2246)', () => {
+    const call = (workflow: string, input?: unknown) => ({
+      ...RELEASE_NOTES,
+      steps: [
+        ...RELEASE_NOTES.steps.slice(0, 1),
+        { kind: 'workflow', workflow, ...(input === undefined ? {} : { input }) },
+      ],
+    });
+    const before = contentOf(call('kit:sync'));
+    expect(compareWorkflowRevisions(before, contentOf(call('kit:other')))).toEqual([
+      { kind: 'step-replaced', step: 2, breaking: true },
+    ]);
+    expect(compareWorkflowRevisions(before, contentOf(call('kit:sync', { a: 1 })))).toEqual([
+      { kind: 'step-input', step: 2, breaking: true },
+    ]);
+    expect(compareWorkflowRevisions(before, contentOf(call('kit:sync')))).toEqual([]);
+  });
+
   it('calls a person deciding a wait, a new trigger, a new agent and a new title compatible', () => {
     const changes = changesTo({
       ...withStep(3, { ...RELEASE_NOTES.steps[3], review: true }),
