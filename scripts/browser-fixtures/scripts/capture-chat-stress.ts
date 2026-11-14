@@ -2230,11 +2230,11 @@ async function measure(
   if (stressCase.id === 19 || stressCase.id === 59) {
     problems.push(...(await readRepeatedSummaryProblems(opened.page)));
   }
-  if (stressCase.id === 19) {
+  if (stressCase.id === 19 || stressCase.id === 83) {
     const spacing = await readStepRowSpacing(opened.page);
     if (spacing !== undefined) {
       console.log(
-        `case 19 at ${profile.name}: step row text to answer ${spacing.stepToAnswer.toFixed(2)}px, a message's text to its time ${spacing.betweenParts.toFixed(2)}px`,
+        `case ${stressCase.id} at ${profile.name}: step row text to answer ${spacing.stepToAnswer.toFixed(2)}px, a message's text to its time ${spacing.betweenParts.toFixed(2)}px`,
       );
     }
     problems.push(...stepRowSpacingProblems(spacing));
@@ -3185,36 +3185,59 @@ export async function readIconCentreProblems(page: Page): Promise<string[]> {
 /** How far the two spacings of the step row may differ, in pixels (owner decision of 2026-11-13). */
 export const STEP_ROW_SPACING_TOLERANCE = 1;
 
-/** The two distances the step row's spacing is judged by, in pixels. */
+/** The two distances the step row's spacing is judged by, in pixels, measured between drawn ink. */
 export interface StepRowSpacing {
-  /** From the bottom of the collapsed step row's last text line to the top of the answer's first. */
+  /** From the baseline of the collapsed step row's text to the top of the capitals of the answer's first line. */
   readonly stepToAnswer: number;
-  /** From the bottom of a message's last text line to the top of the time beneath it. */
+  /** From the baseline of an assistant message's last text line to the top of the capitals of its time. */
   readonly betweenParts: number;
 }
 
 /**
- * Measures how far the answer stands under a collapsed step row, and how far two parts of one
- * message stand from each other (the text of the message before the row, and its time). Both run
- * from the letters' own extent (the text's client rectangle), so the leading of the line is part of
- * what a person sees. `undefined` when the page has no collapsed step row, an answer after it and a
- * message with a time before it.
+ * Measures how far the answer stands under a collapsed step row, and how far an assistant
+ * message's text stands over its time, from the letters' ink: a baseline above, the top of the
+ * capitals below. A box edge is not ink: the leading of a line puts air above and below the
+ * letters, so two gaps between boxes can differ by many pixels where the letters are the same
+ * distance apart. A text rectangle starts at the font's ascent, so a line's baseline is its top
+ * plus the font's ascent and its capitals' top is the baseline less the height of an `H`, both read
+ * from the font the text is drawn in. `undefined` when the page has no collapsed step row, no
+ * answer after it, or no assistant message with a time.
  */
 export async function readStepRowSpacing(page: Page): Promise<StepRowSpacing | undefined> {
   return page.evaluate(() => {
-    const lines = (root: Element, which: 'first' | 'last'): DOMRect | undefined => {
-      const rectangles: DOMRect[] = [];
+    const canvas = document.createElement('canvas').getContext('2d');
+    if (canvas === null) return undefined;
+    /** The baseline and capital top of one line of text, from its rectangle and its font. */
+    const ink = (
+      root: Element,
+      which: 'first' | 'last',
+    ): { baseline: number; capTop: number } | undefined => {
+      let found: { rectangle: DOMRect; holder: Element } | undefined;
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-        if ((node.textContent ?? '').trim() === '') continue;
-        if (node.parentElement?.closest('.cinder-sr-only, [role="tooltip"], [hidden]') != null) {
-          continue;
-        }
+        const holder = node.parentElement;
+        if (holder === null || (node.textContent ?? '').trim() === '') continue;
+        if (holder.closest('.cinder-sr-only, [role="tooltip"], [hidden]') !== null) continue;
         const range = document.createRange();
         range.selectNodeContents(node);
-        rectangles.push(...[...range.getClientRects()].filter((rectangle) => rectangle.height > 0));
+        const rectangles = [...range.getClientRects()].filter((rectangle) => rectangle.height > 0);
+        const rectangle = which === 'first' ? rectangles[0] : rectangles.at(-1);
+        if (rectangle === undefined) continue;
+        // The first line is the highest one found, and the last line the lowest.
+        const better =
+          found === undefined ||
+          (which === 'first'
+            ? rectangle.top < found.rectangle.top
+            : rectangle.bottom > found.rectangle.bottom);
+        if (better) found = { rectangle, holder };
       }
-      return which === 'first' ? rectangles[0] : rectangles.at(-1);
+      if (found === undefined) return undefined;
+      const style = getComputedStyle(found.holder);
+      canvas.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const ascent = canvas.measureText('H').fontBoundingBoxAscent;
+      const capital = canvas.measureText('H').actualBoundingBoxAscent;
+      const baseline = found.rectangle.top + ascent;
+      return { baseline, capTop: baseline - capital };
     };
     const toggle = document.querySelector<HTMLElement>(
       '.chat-tool-call-toggle[aria-expanded="false"]',
@@ -3224,26 +3247,33 @@ export async function readStepRowSpacing(page: Page): Promise<StepRowSpacing | u
     const answer = bodies.find(
       (body) => (toggle.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
     );
-    const before = bodies.find(
-      (body) => (toggle.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_PRECEDING) !== 0,
-    );
-    const time = before?.closest('.chat-message-wrapper')?.querySelector('.chat-message-line time');
-    if (answer === undefined || before === undefined || time == null) return undefined;
-    const stepText = lines(toggle, 'last');
-    const answerText = lines(answer, 'first');
-    const messageText = lines(before, 'last');
-    const timeText = lines(time, 'first');
+    // The message whose text and time are compared: the answer itself when it has a time, and
+    // otherwise any assistant message that does.
+    const assistants = [
+      ...document.querySelectorAll<HTMLElement>('.chat-message-wrapper[data-role="assistant"]'),
+    ];
+    const timed = assistants.filter((wrapper) => wrapper.querySelector('.chat-message-line time'));
+    const message =
+      timed.find((wrapper) => wrapper.contains(answer ?? null)) ??
+      timed.find((wrapper) => wrapper.querySelector('.chat-message-body') !== null);
+    const body = message?.querySelector('.chat-message-body');
+    const time = message?.querySelector('.chat-message-line time');
+    if (answer === undefined || body == null || time == null) return undefined;
+    const step = ink(toggle, 'last');
+    const answerFirst = ink(answer, 'first');
+    const messageLast = ink(body, 'last');
+    const timeTop = ink(time, 'first');
     if (
-      stepText === undefined ||
-      answerText === undefined ||
-      messageText === undefined ||
-      timeText === undefined
+      step === undefined ||
+      answerFirst === undefined ||
+      messageLast === undefined ||
+      timeTop === undefined
     ) {
       return undefined;
     }
     return {
-      stepToAnswer: answerText.top - stepText.bottom,
-      betweenParts: timeText.top - messageText.bottom,
+      stepToAnswer: answerFirst.capTop - step.baseline,
+      betweenParts: timeTop.capTop - messageLast.baseline,
     };
   });
 }

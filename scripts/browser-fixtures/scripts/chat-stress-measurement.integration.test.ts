@@ -1338,21 +1338,23 @@ describe('chat stress visual measurement', () => {
   });
 
   describe('step row spacing guard', () => {
-    const transcript = (stepToAnswer: number): string => `
+    // An assistant message with its time, a collapsed step row, then the answer. `answerLeading`
+    // is the answer's line height: it moves the letters inside their boxes and no box.
+    const transcript = (stepToAnswer: number, answerLeading = 20): string => `
       <style>
         body { margin: 0; font: 14px/20px sans-serif; }
         .chat-message-wrapper { display: block }
         .chat-message-body p { margin: 0 }
         .chat-message-line { margin-block-start: 12px; font: 12px/normal sans-serif }
         .chat-tool-call-toggle { display: block; padding: 0; border: 0; font: inherit }
-        .answer { margin-block-start: ${stepToAnswer}px }
+        .answer { margin-block-start: ${stepToAnswer}px; line-height: ${answerLeading}px }
       </style>
-      <div class="chat-message-wrapper">
+      <div class="chat-message-wrapper" data-role="assistant">
         <div class="chat-message-body"><p>Check the refund queue.</p></div>
         <div class="chat-message-line"><time>8:00 AM</time></div>
       </div>
       <div><button class="chat-tool-call-toggle" aria-expanded="false">Compared 20 recent orders…</button></div>
-      <div class="chat-message-wrapper answer">
+      <div class="chat-message-wrapper answer" data-role="assistant">
         <div class="chat-message-body"><p>All of them match the ledger.</p></div>
       </div>`;
 
@@ -1372,6 +1374,15 @@ describe('chat stress visual measurement', () => {
       expect(spacing).toBeDefined();
       expect(spacing!.stepToAnswer).toBeGreaterThan(14);
       expect(spacing!.betweenParts).toBeGreaterThan(12);
+    });
+
+    it('measures ink and not boxes: leading inside the answer moves the letters and no box', async () => {
+      const snug = await spacingFor(transcript(14, 20));
+      const loose = await spacingFor(transcript(14, 48));
+      // Half of the 28px of extra leading sits above the answer's letters, so they stand 14px lower
+      // under the row while every box edge stays where it was.
+      expect(loose!.stepToAnswer - snug!.stepToAnswer).toBeCloseTo(14, 0);
+      expect(loose!.betweenParts).toBeCloseTo(snug!.betweenParts, 1);
     });
 
     it('passes when the two distances are within a pixel and fails when they are not', async () => {
