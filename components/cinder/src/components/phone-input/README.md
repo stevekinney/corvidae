@@ -2,6 +2,8 @@
 
 International phone-number input pairing a country-code dropdown with an as-you-type national number input and emitting E.164 values.
 
+The two read as one field. The closed country control shows the region and dial code ("US +1") and is only as wide as that; the number takes the rest of the line, and a narrow container keeps both on one line. The open list is the platform's own, with full country names and their dial codes, and type-ahead by country name. The country control is still named by the country ("Country: United States, +1"), not by the code.
+
 ## Usage
 
 ```svelte

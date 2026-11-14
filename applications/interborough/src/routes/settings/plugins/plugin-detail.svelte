@@ -40,6 +40,8 @@
     locked: boolean;
     /** Asked when a person turns the plugin off, which needs their say-so first. */
     onDisable: (plugin: PluginStanding) => void;
+    /** Whether the runs of the plugin's agents are being read for that question: the switch waits. */
+    checking?: boolean;
     /** Asked when a person turns the plugin on, which restarts Interborough and so needs their say-so first. */
     onEnable: (plugin: PluginStanding) => void;
     /**
@@ -63,6 +65,7 @@
     drafts,
     locked,
     onDisable,
+    checking = false,
     onEnable,
     problemsListed = false,
     onSecret,
@@ -169,6 +172,7 @@
           label={enabled ? copy.enabled : copy.disabled}
           checked={enabled}
           disabled={locked}
+          pending={checking}
           onValueChangeRequest={request}
         />
       {/if}

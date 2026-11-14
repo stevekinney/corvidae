@@ -19,6 +19,25 @@ import type {
   PluginStanding,
 } from '../../../lib/host-plugins.ts';
 
+/** How many runs the disable question names before it says "and N more". */
+export const NAMED_RUNS = 5;
+
+/** One run in flight, as the disable question names it (`plugin-runs.ts` reads them). */
+export interface InFlightRun {
+  readonly id: string;
+  /** The run as a person reads it: its chat's title, or its identifier when it has none. */
+  readonly name: string;
+  /** Whether the run waits on a person, which the plugin's waiting-run count also counts. */
+  readonly waiting: boolean;
+}
+
+/** What the read of a plugin's runs found: the runs (none, usually), or that it could not say. */
+export type InFlightRuns =
+  { readonly kind: 'listed'; readonly runs: readonly InFlightRun[] } | { readonly kind: 'unknown' };
+
+/** No run in flight: the question as it was before the read existed. */
+export const NO_RUNS: InFlightRuns = { kind: 'listed', runs: [] };
+
 /** A status as a person reads it: the word and the dot that goes with it. */
 export type PluginStatusView = { readonly label: string; readonly dot: StatusDotStatus };
 
@@ -244,7 +263,7 @@ export function inUseSentence(plugin: PluginStanding): string | undefined {
 
 /** One line of the disable dialog: the count, and the sentence about what it means. */
 export type DisableImpact = {
-  readonly key: 'agents' | 'schedules' | 'waitingRuns';
+  readonly key: 'inFlightRuns' | 'agents' | 'schedules' | 'waitingRuns';
   readonly count: string;
   readonly sentence: string;
 };
@@ -253,15 +272,44 @@ export type DisableImpact = {
  * What depends on the plugin now, from the counts the host reports for each thing it adds. Each
  * line names the contributions that are named by that many; a plugin nothing depends on has none.
  */
-export function disableImpacts(plugin: PluginStanding): readonly DisableImpact[] {
+export function disableImpacts(
+  plugin: PluginStanding,
+  inFlight: InFlightRuns = NO_RUNS,
+): readonly DisableImpact[] {
   const words = PLUGINS_COPY.disable;
-  const named = (key: DisableImpact['key']): string =>
+  const named = (key: 'agents' | 'schedules' | 'waitingRuns'): string =>
     plugin.contributions
       .filter((entry: PluginContribution) => entry.references[key] > 0)
       .map((entry) => entry.id)
       .join(', ');
   const totals = referenceTotals(plugin);
+  const title = plugin.descriptor.title;
   const impacts: DisableImpact[] = [];
+  // The runs going now come first, because failing them is the costliest effect. A run that waits
+  // on a person is in the plugin's waiting runs too, so it is counted once, here. When the runs
+  // could not be read, the one line says the same fate for any run going or waiting, so the
+  // waiting runs have no line of their own: no run is told two fates.
+  let waitingRuns = totals.waitingRuns;
+  if (inFlight.kind === 'unknown') {
+    impacts.push({
+      key: 'inFlightRuns',
+      count: words.inFlightRunsUnknownLead,
+      sentence: words.inFlightRunsUnknown(title),
+    });
+    waitingRuns = 0;
+  } else if (inFlight.runs.length > 0) {
+    const shown = inFlight.runs.slice(0, NAMED_RUNS);
+    impacts.push({
+      key: 'inFlightRuns',
+      count: PLUGINS_COPY.counts.inFlightRuns(inFlight.runs.length),
+      sentence: words.inFlightRuns(
+        title,
+        shown.map((run) => run.name),
+        inFlight.runs.length - shown.length,
+      ),
+    });
+    waitingRuns = Math.max(0, waitingRuns - inFlight.runs.filter((run) => run.waiting).length);
+  }
   if (totals.agents > 0) {
     const count = PLUGINS_COPY.counts.agents(totals.agents);
     impacts.push({ key: 'agents', count, sentence: words.agents(totals.agents, named('agents')) });
@@ -274,12 +322,12 @@ export function disableImpacts(plugin: PluginStanding): readonly DisableImpact[]
       sentence: words.schedules(totals.schedules, named('schedules')),
     });
   }
-  if (totals.waitingRuns > 0) {
-    const count = PLUGINS_COPY.counts.waitingRuns(totals.waitingRuns);
+  if (waitingRuns > 0) {
+    const count = PLUGINS_COPY.counts.waitingRuns(waitingRuns);
     impacts.push({
       key: 'waitingRuns',
       count,
-      sentence: words.waitingRuns(totals.waitingRuns, named('waitingRuns')),
+      sentence: words.waitingRuns(waitingRuns, named('waitingRuns')),
     });
   }
   return impacts;

@@ -15,6 +15,8 @@ if (!desktop) {
 test('country control stays compact for a long country name', async ({ componentPage }) => {
   const page = await componentPage.open({
     entry: phoneInputEntry,
+    // The playground examples, not the first named fixture (`sizing`).
+    fixtureName: 'assertion',
     theme: 'light',
     viewport: desktop,
   });

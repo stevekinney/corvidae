@@ -1,14 +1,26 @@
-export { openBungalow, openTemporaryBungalow } from './bungalow.ts';
+export { openBungalow, openLocalBungalow, openTemporaryBungalow } from './bungalow.ts';
 export type {
   Bungalow,
   ContentLocation,
   DatabaseLocation,
   DatabaseWorkspaceClaim,
-  DeploymentSecrets,
   OpenBungalowOptions,
+  OpenLocalBungalowOptions,
+  OpenRemoteBungalowOptions,
   OpenTemporaryBungalowOptions,
   SecretProviderFactory,
 } from './bungalow.ts';
+export type {
+  DeploymentSecrets,
+  DeploymentSecretsContext,
+  DeploymentSecretsFactory,
+} from './deployment-secrets.ts';
+export { resolveBungalowDescriptor } from './descriptor.ts';
+export type {
+  BungalowDescriptor,
+  LocalBungalowDescriptor,
+  ResolveBungalowDescriptorOptions,
+} from './descriptor.ts';
 export {
   BungalowError,
   BungalowFilesystemError,
@@ -17,6 +29,9 @@ export {
   BungalowStateError,
   BungalowUnsupportedError,
 } from './errors.ts';
+export type { RootLock } from './lock.ts';
+export type { RemoteBungalowDescriptor } from './remote-configuration.ts';
+export { openRemoteBungalow } from './remote.ts';
 export { bungalowHomeVariable, resolveBungalowRoot } from './resolve-root.ts';
 export type { BungalowEnvironment, ResolveBungalowRootOptions } from './resolve-root.ts';
 

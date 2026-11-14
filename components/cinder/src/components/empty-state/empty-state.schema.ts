@@ -69,6 +69,12 @@ const schema = {
           'Call-to-action content rendered below the description, after the "Clear filters" button when\nboth exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for\ndone, and a secondary button for a not-found or blocked state.',
       },
       {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description:
+          "Supporting content under the call to action, such as the steps of a manual set-up; the action\nstays buttons. It follows `align`, takes the full width of the state with no measure of its\nown, and draws no border or background. Drawn only in the `'stacked'` layout; a `'row'` or\n`'inline'` state ignores it.",
+      },
+      {
         name: 'icon',
         reason: 'function-or-snippet',
         description:

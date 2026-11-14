@@ -29,10 +29,15 @@ export function bungalowHomeVariable(name: string): string {
 }
 
 function requireAbsolute(path: string, description: string): string {
-  if (!isAbsolute(path)) {
+  if (typeof path !== 'string' || !isAbsolute(path)) {
     throw new BungalowInputError(`${description} must be an absolute path.`);
   }
   return path;
+}
+
+/** An explicit root, which must be absolute, normalized as an override is. */
+export function absoluteRoot(root: string): string {
+  return resolve(requireAbsolute(root, 'The root'));
 }
 
 /**

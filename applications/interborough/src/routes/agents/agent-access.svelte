@@ -20,8 +20,11 @@
    * focused, and the page holds Edit back too, while the search and the segments still work.
    *
    * A file that changed on disk under the tab is read again: once no write is waiting, a hash the
-   * tab did not write itself rebuilds the table. An agent the page cannot write (one defined in
-   * code, or a plugin's) shows the same table read-only.
+   * tab did not write itself rebuilds the table. An agent defined in code that the page can change
+   * (a built-in agent, or a running plugin's, COR-2229) saves each change as the next version of its
+   * overrides instead (`agent-overrides.ts`), and its skills, which overrides do not carry, stay as
+   * they are. A plugin's agent that is a file, or whose plugin is disabled, shows the same table
+   * read-only, and its one line of note says why.
    */
   import {
     Alert,
@@ -82,11 +85,28 @@
   interface Props {
     /** The agent's identifier. */
     id: string;
-    /** The agent as the Bureau shows it, once read. */
+    /** The agent as the Bureau shows it, once read; for a code agent the page changes, its definition with its overrides applied. */
     detail: AgentDetail | undefined;
+    /** The plugin's title, as Settings › Plugins shows it, for the line that names the plugin. */
+    pluginTitle?: string;
+    /** Whether the agent's plugin is disabled, so its table is read-only and says why. */
+    unavailable?: boolean;
+    /**
+     * Set for a code agent the page changes (COR-2229): each change is saved as a version of the
+     * agent's overrides through `write`, not to a file, and `ownTools` are the tools it states
+     * itself, which a person who took one away can allow again.
+     */
+    overrides?:
+      | {
+          readonly write: AccessWriter;
+          readonly ownTools: readonly string[];
+          /** What the agent states itself that an override would replace whole, so the tab holds it. */
+          readonly keptOwn: readonly ('approvals' | 'guardrails')[];
+        }
+      | undefined;
   }
 
-  let { id, detail }: Props = $props();
+  let { id, detail, pluginTitle = '', unavailable = false, overrides }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.access;
   const queryClient = useQueryClient();
@@ -131,6 +151,7 @@
       case 'stale':
         // The row went back; the file is read again, and the table rebuilt once no write waits.
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.agents.overrides(id) });
         return;
       case 'forbidden':
         problem = copy.forbidden;
@@ -172,10 +193,16 @@
   }
 
   /** One row's write: the whole definition over the hash the tab holds, and what follows it. */
-  const write: AccessWriter = async (expectedHash, definition) => {
+  const write: AccessWriter = async (expectedHash, definition, filled) => {
     problem = null;
     try {
-      const result = await updateAgent(id, expectedHash, definition);
+      // A code agent's change is a version of its overrides; an agent file's is a write to the file.
+      const writer = overrides?.write;
+      const result =
+        writer === undefined
+          ? await updateAgent(id, expectedHash, definition)
+          : await writer(expectedHash, definition, filled);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.overrides(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.revisions(id) });
@@ -203,7 +230,24 @@
         if (form.hash === (loaded.hash ?? '')) return;
         if (loaded.hash !== null && form.wrote(loaded.hash)) return;
       }
-      form = AgentAccessState.from(loaded, offered, plugin === null ? write : undefined);
+      // A code agent's overrides carry no skills, so its skills stay as they are; its own tools
+      // are offered again once taken away.
+      form = AgentAccessState.from(
+        loaded,
+        offered,
+        plugin === null || overrides !== undefined ? write : undefined,
+        overrides === undefined
+          ? undefined
+          : {
+              ownTools: overrides.ownTools,
+              namespace: plugin ?? undefined,
+              skillsEditable: false,
+              // Any change to the tools drops the Asks the agent states itself, as a change to the Asks does.
+              toolsEditable: !overrides.keptOwn.includes('approvals'),
+              approvalsEditable: !overrides.keptOwn.includes('approvals'),
+              guardrailsEditable: !overrides.keptOwn.includes('guardrails'),
+            },
+      );
     });
   });
 
@@ -440,7 +484,8 @@
                 label={guardrailName(choice.id)}
                 description={choice.description}
                 checked={on}
-                disabled={!state.editable || (!on && choice.description === copy.guardrailMissing)}
+                disabled={!state.guardrailsEditable ||
+                  (!on && choice.description === copy.guardrailMissing)}
                 mutating
                 data-changes
                 onValueChange={(next) => turn(state, choice.id, next)}
@@ -508,8 +553,14 @@
       <Skeleton height="8rem" />
     </div>
   {:else}
-    {#if plugin !== null}
-      <AgentPluginNote {plugin} />
+    {#if overrides !== undefined}
+      <AgentPluginNote {plugin} title={pluginTitle} mode="editable" kept={overrides.keptOwn} />
+    {:else if plugin !== null}
+      <AgentPluginNote
+        {plugin}
+        title={pluginTitle}
+        mode={unavailable ? 'unavailable' : 'read-only'}
+      />
     {:else if !form.editable}
       <p class="ib-agent-note" data-testid="agent-built-in">{copy.builtIn}</p>
     {/if}

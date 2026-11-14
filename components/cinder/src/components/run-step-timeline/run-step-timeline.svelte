@@ -16,6 +16,7 @@
    * @related timeline, feed, steps
    */
   import type { RunStep, RunStepBranchGroup } from './run-step-timeline.types.ts';
+  import type { RailThrough } from './run-step-timeline.utilities.ts';
 
   export type {
     RunStep,
@@ -43,6 +44,8 @@
     depth: number;
     pathKey: string;
     connectorAfter: 'hidden' | 'visible';
+    /** Shallower depths whose line runs past this row (see `railConnections`). */
+    railsThrough: RailThrough[];
     ariaCurrent: boolean;
     /** Forward step label when this step compensates a resolvable sibling id. */
     compensatesLabel: string | undefined;
@@ -53,6 +56,7 @@
     depth: number;
     pathKey: string;
     connectorAfter: 'hidden' | 'visible';
+    railsThrough: RailThrough[];
     ariaCurrent: boolean;
     hiddenStepCount: number;
     hiddenCurrent: boolean;
@@ -63,6 +67,7 @@
     group: RunStepBranchGroup;
     pathKey: string;
     connectorAfter: 'hidden' | 'visible';
+    railsThrough: RailThrough[];
   };
 
   type RenderedStepLike = RenderedStepRow | RenderedDepthLimitRow;
@@ -111,6 +116,7 @@
     laneOutcomeBadgeVariant,
     laneOutcomeLabel,
     metadataItems,
+    railConnections,
     relocateCompensationEntries,
     relocateCompensationSteps,
     safeStepLinkHref,
@@ -176,6 +182,7 @@
           // cannot collide with any step's path key.
           pathKey: `%branch/${escapeStepPathSegment(entry.id)}`,
           connectorAfter: 'hidden',
+          railsThrough: [],
         });
       } else {
         stepRun.push(entry);
@@ -227,17 +234,20 @@
     return row.kind === 'branch' ? 0 : row.depth;
   }
 
-  // Recompute each top-level row's downward connector against the ACTUAL next
-  // rendered row (including branch rows), rather than the per-run view that
-  // `flattenSteps` sees. A connector shows unless the row is last or the next
-  // row dedents to a shallower level — so a depth-0 step followed by a branch,
-  // and a branch followed by another run, both stay linked.
+  // Recompute the rail against the ACTUAL rendered rows (including branch
+  // rows), rather than the per-run view that `flattenSteps` sees, so a depth-0
+  // step followed by a branch, and a branch followed by another run, both stay
+  // linked. A row's line runs to its next sibling, past any nested rows, which
+  // carry it in `railsThrough`.
   function applyGlobalRailConnectors(rows: RenderedEntry[]): RenderedEntry[] {
+    const connections = railConnections(rows.map(railRowDepth));
     return rows.map((row, index) => {
-      const next = rows[index + 1];
-      const connectorAfter: 'hidden' | 'visible' =
-        next === undefined || railRowDepth(next) < railRowDepth(row) ? 'hidden' : 'visible';
-      return { ...row, connectorAfter };
+      const connection = connections[index];
+      return {
+        ...row,
+        connectorAfter: connection?.after ?? 'hidden',
+        railsThrough: connection?.through ?? [],
+      };
     });
   }
 
@@ -284,17 +294,18 @@
       if (row.kind === 'step') labelByPathKey.set(row.pathKey, row.step.label);
     }
 
+    const connections = railConnections(rows.map((row) => row.depth));
     return rows.map((row, index) => {
-      const next = rows[index + 1];
-      const connectorAfter: 'hidden' | 'visible' =
-        next === undefined || next.depth < row.depth ? 'hidden' : 'visible';
+      const connectorAfter = connections[index]?.after ?? 'hidden';
+      const railsThrough = connections[index]?.through ?? [];
       const ariaCurrent = index === currentRowIndex;
       if (row.kind === 'depth-limit') {
-        return { ...row, connectorAfter, ariaCurrent };
+        return { ...row, connectorAfter, railsThrough, ariaCurrent };
       }
       return {
         ...row,
         connectorAfter,
+        railsThrough,
         ariaCurrent,
         compensatesLabel: resolveSiblingCompensatesLabel(row, labelByPathKey),
       };
@@ -439,6 +450,18 @@
   }
 </script>
 
+{#snippet railsThroughRow(lines: RailThrough[])}
+  <!-- An ancestor's line on its way past this nested row. -->
+  {#each lines as line (line.depth)}
+    <span
+      class="cinder-run-step-timeline__rail-through"
+      aria-hidden="true"
+      data-cinder-ends={line.ends ? '' : undefined}
+      style:--_cinder-rst-rail-depth={line.depth}
+    ></span>
+  {/each}
+{/snippet}
+
 {#snippet stepItem(row: RenderedStepRow)}
   {@const step = row.step}
   {@const terminal = isTerminal(step.status)}
@@ -460,6 +483,7 @@
     aria-current={row.ariaCurrent ? 'step' : undefined}
     style:--_cinder-rst-depth={row.depth}
   >
+    {@render railsThroughRow(row.railsThrough)}
     {#if onStepSelect !== undefined}
       <button
         type="button"
@@ -663,6 +687,7 @@
     aria-current={row.ariaCurrent ? 'step' : undefined}
     style:--_cinder-rst-depth={row.depth}
   >
+    {@render railsThroughRow(row.railsThrough)}
     <div class="cinder-run-step-timeline__event">
       <span class="cinder-run-step-timeline__marker" aria-hidden="true" inert>
         <StatusDot status="neutral" label="Nested steps hidden" labelVisible={false} size="md" />

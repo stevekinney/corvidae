@@ -3158,7 +3158,26 @@ async function constructBureau<const D extends AgentDefinitions>(
     } catch (error) {
       return { status: 'resolver-failed', error };
     }
-    if (!agent) return { status: 'missing-agent' };
+    if (!agent) {
+      // COR-2235 — a run that pinned a plugin's agent version, recovered where the plugin is off,
+      // is the agent moved to no version: it settles failed with `definition-drifted` like a run
+      // whose plugin moved, never `missing-agent`. A built-in agent pins no plugin version, and a
+      // record from before the pin carries none, so each is still `missing-agent`.
+      if (recorded?.agentPluginVersion !== undefined) {
+        return {
+          status: 'definition-drifted',
+          agentName: name,
+          drift: [
+            {
+              field: 'agentPluginVersion',
+              recorded: recorded.agentPluginVersion,
+              current: undefined,
+            },
+          ],
+        };
+      }
+      return { status: 'missing-agent' };
+    }
     // AB-240 review finding: distinct from `'missing-agent'` — the name IS
     // still in the catalog, it just no longer (or never did) exposes AB-21's
     // resolver, e.g. the catalog was reconfigured between restarts to swap

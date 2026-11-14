@@ -160,14 +160,17 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
     );
   });
 
-  test('stacks the footer at full width and 44px with the confirmation on top', () => {
+  test('stacks the footer at full width with the confirmation on top, its buttons at their painted height', () => {
     const footer = modalCss.slice(
       modalCss.indexOf(".cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {"),
     );
     expect(footer).toContain('flex-direction: column-reverse;');
+    // The body's fields are full 44px targets; the footer's buttons are drawn compact and reach
+    // 44px through their hit area, so no sheet rule sets a height on them.
     expect(modalCss).toMatch(
-      /__footer \.cinder-button\[data-cinder-size\],\s*[^{]*__body \.cinder-input\.cinder-input\s*\{\s*min-height:\s*var\(--cinder-touch-target-min\);/,
+      /\[data-cinder-sheet='docked'\] \.cinder-modal__body \.cinder-input\.cinder-input\s*\{\s*min-height:\s*var\(--cinder-touch-target-min\);/,
     );
+    expect(modalCss).not.toMatch(/__footer \.cinder-button\[data-cinder-size\]/);
     expect(modalCss).toMatch(/__footer > \*\s*\{\s*inline-size:\s*100%;/);
     expect(modalCss).toMatch(/env\(safe-area-inset-bottom\)/);
   });
