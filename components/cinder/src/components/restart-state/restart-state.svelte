@@ -175,7 +175,6 @@
                 value={command}
                 label={copyLabel}
                 copiedLabel="Copied the command."
-                iconOnly
                 class="cinder-restart-state__copy"
               />
             </div>
