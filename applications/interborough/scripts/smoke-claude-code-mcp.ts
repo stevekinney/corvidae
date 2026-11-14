@@ -101,6 +101,31 @@ async function main(): Promise<number> {
       }
       console.log(`[smoke:claude-code-mcp] ${uri} -> ${content?.text?.length ?? 0} bytes`);
     }
+    // Per-tool visibility (COR-2209): a tool some running panel lists in its `allowedTools` is
+    // visible to apps, and every other tool to the model alone.
+    const panelTools = new Set([
+      'bureau.tasks.inspect',
+      'bureau.tasks.events',
+      'bureau.tasks.cancel',
+      'bureau.reviews.list',
+      'bureau.reviews.get',
+      'bureau.reviews.resolve',
+      'bureau.workflows.get',
+      'bureau.workflows.update',
+    ]);
+    const listedTools: Array<{ name: string; _meta?: { ui?: { visibility?: unknown } } }> =
+      tools?.result?.tools ?? [];
+    if (listedTools.length === 0) problems.push('tools/list answered no tools');
+    for (const { name, _meta } of listedTools) {
+      const expected = panelTools.has(name) ? ['model', 'app'] : ['model'];
+      const actual = _meta?.ui?.visibility;
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        problems.push(
+          `${name} has visibility ${JSON.stringify(actual)}, not ${JSON.stringify(expected)}`,
+        );
+      }
+    }
+    console.log(`[smoke:claude-code-mcp] checked the visibility of ${listedTools.length} tools`);
     await claude(['mcp', 'remove', serverName, '-s', 'local'], configDirectory);
   } finally {
     await host.close();
