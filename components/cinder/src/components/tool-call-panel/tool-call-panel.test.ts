@@ -332,14 +332,21 @@ describe('ToolCallPanel decision', () => {
     input: { orderId: '4480', amount: '$27.25', reason: 'Arrived damaged' },
   } as const;
 
-  test('a waiting call shows a note field and Deny and Approve, with Approve the only primary', () => {
-    const { container, getByRole, getByLabelText } = render(ToolCallPanel, {
+  test('a waiting call keeps its note behind Add a note, before Deny and Approve, with Approve the only primary', () => {
+    const { container, getByRole, queryByRole } = render(ToolCallPanel, {
       props: { ...waiting, onApprove: () => undefined, onDeny: () => undefined },
     });
-    expect(getByLabelText('Note (optional)')).toBeTruthy();
-    expect(text(container)).toContain(
-      'Saved with your decision. If you deny, the agent reads it as the reason.',
-    );
+    expect(queryByRole('textbox')).toBeNull();
+    expect(text(container)).not.toContain('(optional)');
+    const toggle = getByRole('button', { name: 'Add a note' });
+    expect(toggle.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    const row = container.querySelector('.cinder-tool-call-panel__decision-actions');
+    expect(row?.contains(toggle)).toBe(true);
+    expect(
+      toggle.compareDocumentPosition(getByRole('button', { name: 'Deny' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
@@ -350,13 +357,72 @@ describe('ToolCallPanel decision', () => {
     expect(container.querySelector('section[aria-labelledby$="-result"]')).toBeNull();
   });
 
+  test('Add a note opens a Note field, moves focus into it and leaves', async () => {
+    const { container, getByRole, getByLabelText, queryByRole } = render(ToolCallPanel, {
+      props: { ...waiting, onApprove: () => undefined, onDeny: () => undefined },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await tick();
+    const field = getByLabelText('Note');
+    expect(field.tagName).toBe('TEXTAREA');
+    expect(document.activeElement).toBe(field);
+    expect(queryByRole('button', { name: 'Add a note' })).toBeNull();
+    expect(text(container)).toContain(
+      'Saved with your decision. If you deny, the agent reads it as the reason.',
+    );
+  });
+
+  test('the note stays open once opened, even when it is emptied again', async () => {
+    const view = render(ToolCallPanel, {
+      props: { ...waiting, onApprove: () => undefined, onDeny: () => undefined },
+    });
+    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await tick();
+    await fireEvent.input(view.getByLabelText('Note'), { target: { value: 'Photo checked' } });
+    await view.rerender({ ...waiting, onApprove: () => undefined, duration: '2.0s' });
+    expect((view.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Photo checked');
+    await fireEvent.input(view.getByLabelText('Note'), { target: { value: '' } });
+    expect(view.getByLabelText('Note')).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Add a note' })).toBeNull();
+  });
+
+  test('Approve with the note never opened sends an empty note', async () => {
+    const onApprove = mock((_note: string) => undefined);
+    const { getByRole } = render(ToolCallPanel, {
+      props: { ...waiting, onApprove, onDeny: () => undefined },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Approve' }));
+    expect(onApprove).toHaveBeenCalledWith('');
+  });
+
+  test('labels rename Add a note and the Note field', async () => {
+    const { getByRole, getByLabelText } = render(ToolCallPanel, {
+      props: {
+        ...waiting,
+        onApprove: () => undefined,
+        labels: { addNote: 'Notiz hinzufügen', note: 'Notiz' },
+      },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Notiz hinzufügen' }));
+    await tick();
+    expect(document.activeElement).toBe(getByLabelText('Notiz'));
+  });
+
+  test('in the sheet Deny and Approve take their own line under Add a note', () => {
+    expect(cssText).toMatch(
+      /\[data-cinder-placement='sheet'\]\s+\.cinder-tool-call-panel__decision-buttons\s*\{[^}]*flex-basis:\s*100%/,
+    );
+  });
+
   test('Approve and Deny send the note', async () => {
     const onApprove = mock((_note: string) => undefined);
     const onDeny = mock((_note: string) => undefined);
     const { getByRole, getByLabelText } = render(ToolCallPanel, {
       props: { ...waiting, onApprove, onDeny },
     });
-    await fireEvent.input(getByLabelText('Note (optional)'), {
+    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await tick();
+    await fireEvent.input(getByLabelText('Note'), {
       target: { value: 'Photo checked' },
     });
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
@@ -370,14 +436,24 @@ describe('ToolCallPanel decision', () => {
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 
-  test('while an answer is on its way both buttons are off and the note is read-only', () => {
-    const { getByRole, getByLabelText } = render(ToolCallPanel, {
-      props: {
-        ...waiting,
-        onApprove: () => undefined,
-        onDeny: () => undefined,
-        resolving: 'approve',
-      },
+  test('while an answer is on its way Add a note is off', () => {
+    const { getByRole } = render(ToolCallPanel, {
+      props: { ...waiting, onApprove: () => undefined, resolving: 'deny' },
+    });
+    expect(getByRole('button', { name: 'Add a note' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  test('while an answer is on its way both buttons are off and the note is read-only', async () => {
+    const { getByRole, getByLabelText, rerender } = render(ToolCallPanel, {
+      props: { ...waiting, onApprove: () => undefined, onDeny: () => undefined },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await tick();
+    await rerender({
+      ...waiting,
+      onApprove: () => undefined,
+      onDeny: () => undefined,
+      resolving: 'approve',
     });
     expect(getByRole('button', { name: 'Deny' }).hasAttribute('disabled')).toBe(true);
     expect(
@@ -385,7 +461,7 @@ describe('ToolCallPanel decision', () => {
         getByRole('button', { name: /Approv/ }).hasAttribute('disabled') ||
         getByRole('button', { name: /Approv/ }).getAttribute('aria-disabled') === 'true',
     ).toBe(true);
-    expect(getByLabelText('Note (optional)').hasAttribute('disabled')).toBe(true);
+    expect(getByLabelText('Note').hasAttribute('disabled')).toBe(true);
   });
 });
 

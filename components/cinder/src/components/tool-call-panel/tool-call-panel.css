@@ -322,10 +322,38 @@
     gap: var(--cinder-space-3);
   }
 
+  /* "Add a note" (ApprovalCard's toggle) sits at the start of the row, Deny and Approve at its end. */
   .cinder-tool-call-panel__decision-actions {
     display: flex;
-    justify-content: flex-end;
+    flex-wrap: wrap;
+    align-items: center;
     gap: var(--cinder-space-2);
+  }
+
+  .cinder-tool-call-panel__decision-buttons {
+    display: flex;
+    gap: var(--cinder-space-2);
+    margin-inline-start: auto;
+  }
+
+  /* The ghost face is pulled back by its own inline padding so the glyph starts on the panel's
+   * text column, as it does in ApprovalCard. */
+  .cinder-tool-call-panel__decision-actions .cinder-button.cinder-approval-card__note-toggle {
+    flex: none;
+    min-inline-size: max-content;
+    margin-inline-start: calc(-1 * var(--cinder-button-padding-x-sm));
+    white-space: nowrap;
+  }
+
+  /* The words never squeeze or clip: one line at the label's own width. */
+  .cinder-tool-call-panel__decision-actions
+    .cinder-approval-card__note-toggle
+    .cinder-button__label {
+    flex: none;
+    max-inline-size: none;
+    min-inline-size: max-content;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   /* On a phone a sheet's buttons are 44px, the retry rests at the foot, and Deny and Approve share the row equally. */
@@ -342,8 +370,14 @@
     display: none;
   }
 
+  /* In the sheet Deny and Approve take a line of their own under "Add a note". */
   .cinder-tool-call-panel-drawer[data-cinder-placement='sheet']
-    .cinder-tool-call-panel__decision-actions
+    .cinder-tool-call-panel__decision-buttons {
+    flex-basis: 100%;
+  }
+
+  .cinder-tool-call-panel-drawer[data-cinder-placement='sheet']
+    .cinder-tool-call-panel__decision-buttons
     > * {
     flex: 1;
     min-block-size: var(--cinder-touch-target-min);
