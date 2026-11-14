@@ -395,7 +395,8 @@ describe('the hook', () => {
       { ...completed, hook_event_name: 'PostToolUseFailure', tool_response: undefined },
       context(directory),
     );
-    const workers = (await recordsIn(directory)).filter((record) => record.kind === 'worker');
+    const records = await recordsIn(directory);
+    const workers = records.filter((record) => record.kind === 'worker');
     expect(workers.map((record) => record.agentId)).toEqual(['agent-2']);
   });
 
