@@ -27,6 +27,20 @@
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* The text face's two words share one grid cell; only the current one shows, so the button is as
+   * wide as the longer word in both states. */
+  .cinder-copy-button__words {
+    display: inline-grid;
+  }
+
+  .cinder-copy-button__word {
+    grid-area: 1 / 1;
+  }
+
+  .cinder-copy-button__word:not([data-cinder-current]) {
+    visibility: hidden;
+  }
+
   /* An icon-only button is still a 24px target, however narrow the place it sits in. */
   .cinder-copy-button[data-cinder-icon-only] {
     justify-content: center;

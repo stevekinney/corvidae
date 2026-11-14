@@ -34,7 +34,7 @@
     Textarea,
     VisuallyHidden,
   } from '@lostgradient/cinder';
-  import { Copy, Ellipsis, Lock, Pencil, Trash2 } from '@lucide/svelte';
+  import { Ellipsis, Lock, Pencil, Trash2 } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { getContext } from 'svelte';
 
@@ -351,12 +351,10 @@
   {#if !editing}
     <div class="ib-storage-key__actions">
       <CopyButton value={entry.key} label={copy.copyKey} disabled={valueQuery.isPending}>
-        <Copy aria-hidden="true" size={14} />
         {copy.copyKey}
       </CopyButton>
       {#if stored !== undefined}
         <CopyButton value={text ?? ''} label={copy.copyValue} disabled={text === undefined}>
-          <Copy aria-hidden="true" size={14} />
           {copy.copyValue}
         </CopyButton>
         {#if writable && text !== undefined}

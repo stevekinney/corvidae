@@ -17,6 +17,11 @@
     --_cinder-rst-rail-size: 1.5rem;
     --_cinder-rst-marker-size: 0.875rem;
     --_cinder-rst-rail-center: 0.6875rem;
+    /* Every marker sits this far below the top of its row and is this tall, whatever it draws
+       inside its box (a filled dot, a ring, a dashed ring), so the connector is measured from the
+       box: it leaves the bottom of one marker and meets the top of the next. */
+    --_cinder-rst-marker-offset: var(--cinder-space-1);
+    --_cinder-rst-marker-block: 0.625rem;
     --_cinder-rst-depth: 0;
     --_cinder-rst-nested-indent: 1.75rem;
 
@@ -34,22 +39,50 @@
     --_cinder-rst-depth-offset: calc(var(--_cinder-rst-depth) * var(--_cinder-rst-nested-indent));
 
     position: relative;
-    padding-bottom: var(--cinder-space-4);
+    /* The row owns the whole gap to the next row, so the connector, measured inside the row,
+       meets the next marker. The foundation's 4px list-item margin would otherwise open a 4px
+       gap under every line; it is folded into the padding, so the rhythm is unchanged. */
+    margin: 0;
+    padding-bottom: var(--cinder-space-5);
   }
 
   .cinder-run-step-timeline__item:last-child {
     padding-bottom: 0;
   }
 
-  /* Connector rail line between items */
+  /* The connector: from the bottom of this row's marker to the top of the next row's marker,
+     which sits the same offset below the next row's top. */
   .cinder-run-step-timeline__item::before {
     content: '';
     position: absolute;
     inset-inline-start: calc(var(--_cinder-rst-depth-offset) + var(--_cinder-rst-rail-center));
-    inset-block-start: 1rem;
-    inset-block-end: 0;
+    inset-block-start: calc(var(--_cinder-rst-marker-offset) + var(--_cinder-rst-marker-block));
+    inset-block-end: calc(-1 * var(--_cinder-rst-marker-offset));
     inline-size: 1px;
     background: var(--cinder-border-muted);
+  }
+
+  /* An ancestor's line running past a nested row to the ancestor's next sibling. Each segment
+     starts where the one above it ended (a marker offset into its row) and ends the same offset
+     into the next row, so the segments meet end to end and the last meets the sibling's marker. */
+  .cinder-run-step-timeline__rail-through {
+    position: absolute;
+    inset-inline-start: calc(
+      var(--_cinder-rst-rail-depth, 0) * var(--_cinder-rst-nested-indent) +
+        var(--_cinder-rst-rail-center)
+    );
+    inset-block-start: var(--_cinder-rst-marker-offset);
+    inset-block-end: calc(-1 * var(--_cinder-rst-marker-offset));
+    inline-size: 1px;
+    background: var(--cinder-border-muted);
+    pointer-events: none;
+  }
+
+  /* A parent with no later sibling: its line runs along its nested rows and stops level with the
+     last one's marker. */
+  .cinder-run-step-timeline__rail-through[data-cinder-ends] {
+    inset-block-end: auto;
+    block-size: var(--_cinder-rst-marker-block);
   }
 
   .cinder-run-step-timeline__item[data-cinder-connector-after='hidden']::before {
@@ -111,7 +144,7 @@
     align-items: center;
     justify-content: center;
     width: var(--_cinder-rst-rail-size);
-    padding-top: var(--cinder-space-1);
+    padding-top: var(--_cinder-rst-marker-offset);
   }
 
   /* ----------------------------------------
@@ -506,15 +539,8 @@
   .cinder-run-step-timeline[data-cinder-variant='narrative'] {
     --_cinder-rst-rail-size: 0.875rem;
     --_cinder-rst-rail-center: 0.4375rem;
-  }
-
-  .cinder-run-step-timeline[data-cinder-variant='narrative']
-    > .cinder-run-step-timeline__item::before {
-    inset-block-start: 1.3125rem;
-  }
-
-  .cinder-run-step-timeline[data-cinder-variant='narrative'] .cinder-run-step-timeline__marker {
-    padding-top: 0.1875rem;
+    --_cinder-rst-marker-offset: 0.1875rem;
+    --_cinder-rst-marker-block: var(--_cinder-rst-marker-size);
   }
 
   .cinder-run-step-timeline[data-cinder-variant='narrative'] .cinder-run-step-timeline__content {
@@ -667,7 +693,8 @@
     }
 
     /* Ensure connector lines are visible in high-contrast mode */
-    .cinder-run-step-timeline__item::before {
+    .cinder-run-step-timeline__item::before,
+    .cinder-run-step-timeline__rail-through {
       background: ButtonText;
     }
 

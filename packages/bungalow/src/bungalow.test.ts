@@ -15,12 +15,19 @@ import { afterAll, describe, expect, test } from 'bun:test';
 
 import {
   absoluteTemporaryDirectory,
-  openAtRoot,
   openBungalow,
+  openLocalAtRoot,
+  openLocalBungalow,
   openTemporaryBungalow,
   resolveOpenRoot,
 } from './bungalow.ts';
+import type {
+  DeploymentSecrets,
+  DeploymentSecretsContext,
+  DeploymentSecretsFactory,
+} from './deployment-secrets.ts';
 import { processEnvironment } from './environment-configuration.ts';
+import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import {
   BungalowFilesystemError,
   BungalowInputError,
@@ -240,11 +247,17 @@ describe('writeConfiguration', () => {
 
   test('a failure while publishing the file leaves the previous file whole and no temporary file', async () => {
     const root = temporaryDirectory();
-    using handle = openAtRoot(TEST_NAME, root, {
-      renameConfiguration: () => {
-        throw Object.assign(new Error(`rename ${root} failed`), { code: 'EIO', syscall: 'rename' });
+    using handle = await openLocalAtRoot(
+      { name: TEST_NAME, root },
+      {
+        renameConfiguration: () => {
+          throw Object.assign(new Error(`rename ${root} failed`), {
+            code: 'EIO',
+            syscall: 'rename',
+          });
+        },
       },
-    });
+    );
     writeFileSync(join(root, 'configuration.json'), '{"previous":true}');
     const configurationSnapshot9 = await handle.readConfiguration();
     const result = await handle.writeConfiguration(SENTINEL, {
@@ -375,11 +388,15 @@ describe('close', () => {
 
   test('can be retried after the lock fails to release, and releases once it succeeds', async () => {
     let releases = 0;
-    const handle = openAtRoot(TEST_NAME, temporaryDirectory(), {
+    const handle = await openLocalBungalow({
+      name: TEST_NAME,
+      root: temporaryDirectory(),
       acquireLock: () => ({
         release: () => {
           releases += 1;
-          if (releases === 1) throw new BungalowFilesystemError('Could not release the lock file.');
+          if (releases === 1) {
+            throw new BungalowFilesystemError('Could not release the lock file.');
+          }
         },
       }),
     });
@@ -397,20 +414,26 @@ describe('close', () => {
     expect(releases).toBe(2);
   });
 
-  test('a temporary Bungalow keeps its root until the release has succeeded', () => {
+  test('a temporary Bungalow keeps its root until the release has succeeded', async () => {
     const root = temporaryDirectory();
     let removed = 0;
     let fail = true;
-    const handle = openAtRoot(TEST_NAME, root, {
-      acquireLock: () => ({
-        release: () => {
-          if (fail) throw new BungalowFilesystemError('Could not release the lock file.');
-        },
-      }),
-      onClose: () => {
-        removed += 1;
+    const handle = await openLocalAtRoot(
+      {
+        name: TEST_NAME,
+        root,
+        acquireLock: () => ({
+          release: () => {
+            if (fail) throw new BungalowFilesystemError('Could not release the lock file.');
+          },
+        }),
       },
-    });
+      {
+        onClose: () => {
+          removed += 1;
+        },
+      },
+    );
     expect(() => handle.close()).toThrow(BungalowFilesystemError);
     expect(removed).toBe(0);
     fail = false;
@@ -463,6 +486,225 @@ describe('NODE_ENV=test guard', () => {
       environment: { NODE_ENV: 'test', ...homeEnvironment(root) },
     });
     expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
+  });
+});
+
+describe('openLocalBungalow', () => {
+  test('opens an explicit root with no environment and no NODE_ENV=test refusal', async () => {
+    expect(processEnvironment()['NODE_ENV']).toBe('test');
+    expect(processEnvironment()[TEST_HOME_VARIABLE]).toBeUndefined();
+    const root = join(temporaryDirectory(), 'home');
+    using handle = await openLocalBungalow({ name: TEST_NAME, root: `${root}/./` });
+    expect(handle.mode).toBe('local');
+    expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
+    expect(modeOf(root)).toBe(0o700);
+    expect(readdirSync(root).toSorted()).toEqual([
+      '.managed-secrets',
+      'deployment-id',
+      'lock',
+      'logs',
+      'secrets',
+      'workspace-id',
+    ]);
+  });
+
+  test('opens the same home openBungalow opens for the same root', async () => {
+    const root = temporaryDirectory();
+    await openAndClose(root);
+    const persisted = readFileSync(join(root, 'deployment-id'), 'utf8').trim();
+    using handle = await openLocalBungalow({ name: TEST_NAME, root });
+    expect(handle.deploymentId).toBe(persisted);
+    expect(await throwingRejectionOf(openIn(root))).toThrow(BungalowLockedError);
+  });
+
+  test('refuses a relative root or an invalid name, creating nothing', async () => {
+    const parent = temporaryDirectory();
+    expect(
+      await throwingRejectionOf(openLocalBungalow({ name: TEST_NAME, root: 'relative/home' })),
+    ).toThrow(BungalowInputError);
+    expect(
+      await throwingRejectionOf(openLocalBungalow({ name: '../x', root: join(parent, 'home') })),
+    ).toThrow(BungalowInputError);
+    expect(readdirSync(parent)).toEqual([]);
+  });
+
+  test('two homes with different roots are open at once, each with its own lock, identity, and secrets', async () => {
+    const firstRoot = temporaryDirectory();
+    const secondRoot = temporaryDirectory();
+    const first = await openLocalBungalow({ name: TEST_NAME, root: firstRoot });
+    using second = await openLocalBungalow({ name: TEST_NAME, root: secondRoot });
+    expect(first.deploymentId).not.toBe(second.deploymentId);
+    expect(first.workspaceId).not.toBe(second.workspaceId);
+    expect(first.secretProvider.workspaceId).toBe(first.workspaceId);
+    expect(second.secretProvider.workspaceId).toBe(second.workspaceId);
+    await first.deploymentSecrets.write('token', 'first');
+    await second.deploymentSecrets.write('token', 'second');
+    expect(await first.deploymentSecrets.read('token')).toBe('first');
+    expect(await second.deploymentSecrets.read('token')).toBe('second');
+    // Each holds its own root's lock.
+    expect(
+      await throwingRejectionOf(openLocalBungalow({ name: TEST_NAME, root: firstRoot })),
+    ).toThrow(BungalowLockedError);
+    expect(
+      await throwingRejectionOf(openLocalBungalow({ name: TEST_NAME, root: secondRoot })),
+    ).toThrow(BungalowLockedError);
+
+    first.close();
+    // Closing one released its root and left the other open and locked.
+    expect(await second.deploymentSecrets.read('token')).toBe('second');
+    expect(
+      await throwingRejectionOf(openLocalBungalow({ name: TEST_NAME, root: secondRoot })),
+    ).toThrow(BungalowLockedError);
+    using reopened = await openLocalBungalow({ name: TEST_NAME, root: firstRoot });
+    expect(reopened.deploymentId).toBe(first.deploymentId);
+    expect(await reopened.deploymentSecrets.read('token')).toBe('first');
+  });
+});
+
+describe('an injected lock', () => {
+  test('is the one taken, after the root exists, and released once on close', async () => {
+    const root = join(temporaryDirectory(), 'home');
+    const calls: string[] = [];
+    const handle = await openLocalBungalow({
+      name: TEST_NAME,
+      root,
+      acquireLock: (lockedRoot) => {
+        calls.push(`acquire ${lockedRoot} ${existsSync(lockedRoot)}`);
+        return { release: () => calls.push('release') };
+      },
+    });
+    expect(calls).toEqual([`acquire ${root} true`]);
+    // The default flock was never taken: there is no lock file, and another open is not refused.
+    expect(existsSync(join(root, 'lock'))).toBe(false);
+    await openAndClose(root);
+    handle.close();
+    handle.close();
+    expect(calls).toEqual([`acquire ${root} true`, 'release']);
+  });
+
+  test('is released when the open fails after taking it', async () => {
+    const root = temporaryDirectory();
+    await openAndClose(root);
+    writeFileSync(join(root, 'deployment-id'), 'not-a-ulid\n');
+    let releases = 0;
+    expect(
+      await throwingRejectionOf(
+        openLocalBungalow({
+          name: TEST_NAME,
+          root,
+          acquireLock: () => ({ release: () => (releases += 1) }),
+        }),
+      ),
+    ).toThrow(BungalowStateError);
+    expect(releases).toBe(1);
+  });
+
+  test('that refuses the root fails the open before anything in the root is read', async () => {
+    const root = temporaryDirectory();
+    expect(
+      await throwingRejectionOf(
+        openLocalBungalow({
+          name: TEST_NAME,
+          root,
+          acquireLock: (lockedRoot) => {
+            throw new BungalowLockedError(lockedRoot, 4242);
+          },
+        }),
+      ),
+    ).toThrow(BungalowLockedError);
+    expect(readdirSync(root)).toEqual([]);
+  });
+});
+
+describe('injected deployment secrets', () => {
+  function vault() {
+    const values = new Map<string, string>();
+    const contexts: DeploymentSecretsContext[] = [];
+    const factory: DeploymentSecretsFactory = (context) => {
+      contexts.push(context);
+      return {
+        async read(key) {
+          context.assertOpen();
+          return values.get(key);
+        },
+        async write(key, value) {
+          context.assertOpen();
+          values.set(key, value);
+        },
+        location: (key) => `vault:${key}`,
+      };
+    };
+    return { values, contexts, factory };
+  }
+
+  test('are the ones read and written, bound to the workspace, and never the managed provider', async () => {
+    const root = temporaryDirectory();
+    const { values, contexts, factory } = vault();
+    const handle = await openLocalBungalow({ name: TEST_NAME, root, deploymentSecrets: factory });
+    expect(contexts.map(({ workspaceId }) => workspaceId)).toEqual([handle.workspaceId]);
+    await handle.deploymentSecrets.write('api-key', 'from-the-vault');
+    expect(values.get('api-key')).toBe('from-the-vault');
+    expect(await handle.deploymentSecrets.read('api-key')).toBe('from-the-vault');
+    expect(handle.deploymentSecrets.location('api-key')).toBe('vault:api-key');
+    // The secrets directory is still created, and nothing went to it or through the provider.
+    expect(readdirSync(join(root, 'secrets'))).toEqual([]);
+    expect(await handle.secretProvider.readLegacy('api-key')).toBeUndefined();
+    writeFileSync(join(root, 'secrets', 'api-key'), 'from-the-file', { mode: 0o600 });
+    expect(await handle.secretProvider.readLegacy('api-key')).toBe('from-the-file');
+    expect(await handle.deploymentSecrets.read('api-key')).toBe('from-the-vault');
+
+    handle.close();
+    expect(() => contexts[0]?.assertOpen()).toThrow(BungalowStateError);
+    expect(await throwingRejectionOf(handle.deploymentSecrets.read('api-key'))).toThrow(
+      BungalowStateError,
+    );
+  });
+
+  test('an injected managed provider leaves the default deployment secrets in secrets/', async () => {
+    const root = temporaryDirectory();
+    let providerReads = 0;
+    using handle = await openLocalBungalow({
+      name: TEST_NAME,
+      root,
+      secretProvider: (workspaceId) => ({
+        ...createEnvironmentSecretProvider({ workspaceId, values: { 'api-key': 'managed' } }),
+        async readLegacy() {
+          providerReads += 1;
+          return 'managed';
+        },
+      }),
+    });
+    await handle.deploymentSecrets.write('api-key', 'deployment');
+    expect(await handle.deploymentSecrets.read('api-key')).toBe('deployment');
+    expect(readFileSync(join(root, 'secrets', 'api-key'), 'utf8')).toBe('deployment');
+    expect(providerReads).toBe(0);
+    expect(await handle.secretProvider.readLegacy('api-key')).toBe('managed');
+  });
+
+  test('a factory that fails, or returns something unusable, fails the open and releases the root', async () => {
+    const root = temporaryDirectory();
+    expect(
+      await throwingRejectionOf(
+        openLocalBungalow({
+          name: TEST_NAME,
+          root,
+          deploymentSecrets: () => {
+            throw new Error('the vault is sealed');
+          },
+        }),
+      ),
+    ).toThrow('the vault is sealed');
+    expect(
+      await throwingRejectionOf(
+        openLocalBungalow({
+          name: TEST_NAME,
+          root,
+          deploymentSecrets: () => ({}) as DeploymentSecrets,
+        }),
+      ),
+    ).toThrow(BungalowInputError);
+    using reopened = await openLocalBungalow({ name: TEST_NAME, root });
+    expect(reopened.mode).toBe('local');
   });
 });
 

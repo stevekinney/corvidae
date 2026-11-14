@@ -6,7 +6,8 @@ MultiSelect uses an anchored picker surface with a listbox (`aria-multiselectabl
 
 ## Roles, names, states
 
-- Trigger is a native button with `aria-haspopup="listbox"`, `aria-expanded`, and `aria-controls`.
+- Trigger is a native button with `aria-haspopup="listbox"`, `aria-expanded`, and `aria-controls`. Its text is the placeholder, or the count as "3 selected"; there is no separate count chip.
+- With a selection, an editable field shows a clear button after the summary and before the chevron: a native button named "Clear selected items", an x icon (`aria-hidden`), and a tooltip with the same words that does not describe it a second time. It sits beside the trigger, never inside it, and returns focus to the trigger once it clears. Backspace or Delete on the trigger clears too. A disabled or read-only field shows no clear button.
 - Options are rendered as `role="option"` and expose `aria-selected` and `aria-disabled`.
 - The listbox exposes `aria-multiselectable="true"` so assistive tech announces multi-selection behavior.
 - `description`, `warning`, and `error` are composed into `aria-describedby`.

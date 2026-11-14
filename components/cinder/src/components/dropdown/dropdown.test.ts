@@ -454,7 +454,10 @@ describe('Dropdown', () => {
       new URL('../navigation-item/navigation-item.css', import.meta.url),
     ).text();
 
-    const triggerBlock = extractDeclarationBlock(dropdownCss, '.cinder-dropdown-trigger');
+    const triggerBlock = extractDeclarationBlock(
+      dropdownCss,
+      '.cinder-dropdown-trigger:not(.cinder-button)',
+    );
     const caretBlock = extractDeclarationBlock(dropdownCss, '.cinder-dropdown-trigger__caret');
     const navigationItemBlock = extractDeclarationBlock(
       navigationItemCss,

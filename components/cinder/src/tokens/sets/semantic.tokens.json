@@ -944,11 +944,11 @@
   "chart": {
     "series": {
       "$type": "color",
-      "$description": "8 categorical chart colors retuned for the indigo brand. Solved so the set is brand-safe (no hue in 248-292), mutually distinguishable in normal vision (min CIEDE2000 dE00 >= 12 in both arms), and carries a minimum pairwise CIE L* separation >= 4 in each arm as a secondary distinguishing channel for colour-vision-deficient viewers. Every color is in sRGB gamut, chroma >= 0.06, and >= 3:1 on its theme's chart background. Light and dark arms are tuned independently for in-theme contrast and gamut, so a series is not guaranteed the same hue across themes.",
+      "$description": "8 bright, saturated categorical chart colors, in the same hue order in both themes: blue (the indigo accent's family), pink, orange, green, violet, yellow, teal, red. Each is the lightest step of its hue that keeps >= 3:1 against the surface, the canvas and the raised surface (WCAG non-text), at near-maximum sRGB chroma; the dark arm is a lighter step of the same hue. The set is mutually distinguishable in normal vision (min CIEDE2000 dE00 >= 12 in both arms), and neighbouring series (n and n+1) stay >= 10 dE00 apart under simulated protanopia and deuteranopia (Machado 2009, full severity, in linear sRGB). Series colors are marks, never text: a label beside a series uses the default text color with a swatch.",
       "1": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.33, 0.121, 8]
+          "components": [0.63, 0.19, 265]
         },
         "$description": "Chart series 1.",
         "$extensions": {
@@ -956,14 +956,14 @@
             "cssProperty": "--cinder-chart-series-1",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(33% 0.121 8), oklch(58% 0.089 205))"
+            "cssRecipe": "light-dark(oklch(63% 0.19 265), oklch(70.5% 0.138 265))"
           }
         }
       },
       "2": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.36, 0.069, 80]
+          "components": [0.675, 0.247, 350]
         },
         "$description": "Chart series 2.",
         "$extensions": {
@@ -971,14 +971,14 @@
             "cssProperty": "--cinder-chart-series-2",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(36% 0.069 80), oklch(67% 0.275 330))"
+            "cssRecipe": "light-dark(oklch(67.5% 0.247 350), oklch(73.5% 0.175 350))"
           }
         }
       },
       "3": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4, 0.082, 160]
+          "components": [0.655, 0.156, 55]
         },
         "$description": "Chart series 3.",
         "$extensions": {
@@ -986,14 +986,14 @@
             "cssProperty": "--cinder-chart-series-3",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(40% 0.082 160), oklch(69% 0.182 44))"
+            "cssRecipe": "light-dark(oklch(65.5% 0.156 55), oklch(74% 0.164 55))"
           }
         }
       },
       "4": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.45, 0.087, 235]
+          "components": [0.625, 0.136, 160]
         },
         "$description": "Chart series 4.",
         "$extensions": {
@@ -1001,14 +1001,14 @@
             "cssProperty": "--cinder-chart-series-4",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(45% 0.087 235), oklch(70% 0.144 160))"
+            "cssRecipe": "light-dark(oklch(62.5% 0.136 160), oklch(67.5% 0.137 160))"
           }
         }
       },
       "5": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.53, 0.218, 330]
+          "components": [0.66, 0.205, 300]
         },
         "$description": "Chart series 5.",
         "$extensions": {
@@ -1016,14 +1016,14 @@
             "cssProperty": "--cinder-chart-series-5",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(53% 0.218 330), oklch(78% 0.12 8))"
+            "cssRecipe": "light-dark(oklch(66% 0.205 300), oklch(73% 0.148 300))"
           }
         }
       },
       "6": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.56, 0.148, 44]
+          "components": [0.645, 0.127, 85]
         },
         "$description": "Chart series 6.",
         "$extensions": {
@@ -1031,14 +1031,14 @@
             "cssProperty": "--cinder-chart-series-6",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(56% 0.148 44), oklch(81% 0.152 80))"
+            "cssRecipe": "light-dark(oklch(64.5% 0.127 85), oklch(79% 0.146 85))"
           }
         }
       },
       "7": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.59, 0.126, 120]
+          "components": [0.6, 0.098, 200]
         },
         "$description": "Chart series 7.",
         "$extensions": {
@@ -1046,14 +1046,14 @@
             "cssProperty": "--cinder-chart-series-7",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(59% 0.126 120), oklch(85% 0.078 235))"
+            "cssRecipe": "light-dark(oklch(60% 0.098 200), oklch(70% 0.107 200))"
           }
         }
       },
       "8": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.63, 0.098, 205]
+          "components": [0.665, 0.213, 25]
         },
         "$description": "Chart series 8.",
         "$extensions": {
@@ -1061,7 +1061,86 @@
             "cssProperty": "--cinder-chart-series-8",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(63% 0.098 205), oklch(89% 0.19 120))"
+            "cssRecipe": "light-dark(oklch(66.5% 0.213 25), oklch(73% 0.149 25))"
+          }
+        }
+      }
+    },
+    "ramp": {
+      "$type": "color",
+      "$description": "The value ramps every scale-coloured chart (MatrixChart, Spectrogram) shares. The sequential ramp runs from a faint tint of the series-1 blue to a vivid full step of the same hue; the diverging ramp runs from that blue through a quiet middle to an orange. In the dark theme the low and middle steps sit near the surface and the strong steps are light, so strength always reads as distance from the page. A cell's number is never a ramp colour: it is black or white, whichever keeps 4.5:1 on its cell.",
+      "low": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.965, 0.016, 265]
+        },
+        "$description": "The lowest value of the sequential chart ramp: a faint blue tint.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-chart-ramp-low",
+            "public": true,
+            "category": "color",
+            "cssRecipe": "light-dark(oklch(96.5% 0.016 265), oklch(30% 0.06 265))"
+          }
+        }
+      },
+      "high": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.48, 0.24, 265]
+        },
+        "$description": "The highest value of the sequential chart ramp: a vivid, saturated blue.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-chart-ramp-high",
+            "public": true,
+            "category": "color",
+            "cssRecipe": "light-dark(oklch(48% 0.24 265), oklch(78% 0.11 265))"
+          }
+        }
+      },
+      "negative": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.5, 0.22, 265]
+        },
+        "$description": "The negative end of the diverging chart ramp: a bright blue.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-chart-ramp-negative",
+            "public": true,
+            "category": "color",
+            "cssRecipe": "light-dark(oklch(50% 0.22 265), oklch(74% 0.12 265))"
+          }
+        }
+      },
+      "neutral": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.975, 0.008, 265]
+        },
+        "$description": "The middle of the diverging chart ramp, where a value is zero: near white, or near the surface in the dark theme.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-chart-ramp-neutral",
+            "public": true,
+            "category": "color",
+            "cssRecipe": "light-dark(oklch(97.5% 0.008 265), oklch(28% 0.01 265))"
+          }
+        }
+      },
+      "positive": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.6, 0.18, 40]
+        },
+        "$description": "The positive end of the diverging chart ramp: a bright orange.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-chart-ramp-positive",
+            "public": true,
+            "category": "color",
+            "cssRecipe": "light-dark(oklch(60% 0.18 40), oklch(78% 0.14 50))"
           }
         }
       }

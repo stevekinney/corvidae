@@ -18,7 +18,7 @@
     {
       "id": "split-button",
       "title": "Split button composition",
-      "description": "A primary action button paired with a dropdown for related secondary actions. This is composition — ButtonGroup does no split-button work itself.",
+      "description": "An action button paired with a dropdown for related secondary actions. The trigger takes the variant and size of the Button beside it, so the two halves read as one control with one seam.",
       "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n  import { ButtonGroup } from '@lostgradient/cinder';\n  import { Dropdown } from '@lostgradient/cinder';\n  import { DropdownItem } from '@lostgradient/cinder';\n  import { DropdownMenu } from '@lostgradient/cinder';\n  import { DropdownTrigger } from '@lostgradient/cinder';\n</script>\n\n<ButtonGroup label=\"Save options\">\n  <Button>Save</Button>\n  <Dropdown id=\"save-options\">\n    <DropdownTrigger aria-label=\"More save options\" />\n    <DropdownMenu>\n      <DropdownItem>Save as draft</DropdownItem>\n      <DropdownItem>Save and publish</DropdownItem>\n      <DropdownItem variant=\"danger\">Discard changes</DropdownItem>\n    </DropdownMenu>\n  </Dropdown>\n</ButtonGroup>\n"
     },
     {

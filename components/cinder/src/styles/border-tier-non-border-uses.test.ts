@@ -78,6 +78,8 @@ export const CORPUS_ALIASES: Record<string, Classification> = {
   // The control frame's hover and disabled edges, consumed as borders.
   'control.border.hover': { declaration: 'control.border.hover', category: 'alias' },
   'control.border.disabled': { declaration: 'control.border.disabled', category: 'alias' },
+  // CodeBlock's one edge: a 1px inset hairline in the light arm, transparent in the dark.
+  'code-block.edge': { declaration: 'code-block.edge', category: 'hairline' },
 
   // The Toggle track: the tier fills the whole track in the light arm. The dark
   // arm is an independent literal, held to 3:1 by the `toggle:track-off` pairings.
@@ -211,6 +213,10 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/button-group/button-group.css': [
     { declaration: 'background: var(--cinder-border-strong);', category: 'hairline' },
   ],
+  'components/cinder/src/components/matrix-chart/matrix-chart.css': [
+    // The 1px outline of a matrix cell with no value, drawn over the page canvas.
+    { declaration: 'stroke: var(--cinder-border);', category: 'hairline' },
+  ],
   'components/cinder/src/components/spinner/spinner.css': [
     {
       declaration: 'stroke: var(--cinder-spinner-track, var(--cinder-border-contrast));',
@@ -280,12 +286,6 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/kbd/kbd.css': [
     { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/cinder/src/components/code-block/code-block.css': [
-    {
-      declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-muted);',
-      category: 'hairline',
-    },
-  ],
   'components/cinder/src/components/media-controls/media-controls.css': [
     {
       declaration: 'background-color: var(--cinder-border-contrast);',
@@ -324,7 +324,12 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     },
   ],
   'components/cinder/src/components/run-step-timeline/run-step-timeline.css': [
-    { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
+    // The item's connector and the rail-through segment past a nested row: both 1px wide.
+    {
+      declaration: 'background: var(--cinder-border-muted);',
+      category: 'hairline',
+      occurrences: 2,
+    },
     {
       declaration: '--_cinder-rst-marker-color: var(--cinder-border-contrast);',
       category: 'area',

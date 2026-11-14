@@ -56,7 +56,11 @@ describe('WorkflowRevisionsPanel activation', () => {
     await fireEvent.click(within(dialog).getByRole('button', { name: 'Activate' }));
 
     expect(await findByText('Compatible')).not.toBeNull();
-    expect(await findByText(/order-processing-rev-2/)).not.toBeNull();
+    // Scoped to the outcome's message: the row's icon CopyButton names the same revision in its
+    // tooltip, so an unscoped text query matches twice.
+    expect(
+      await findByText(/order-processing-rev-2/, { selector: '.weft-activation-outcome p' }),
+    ).not.toBeNull();
 
     // Invalidated queries refetch: at least one more call landed after the
     // mutation itself (revisions.list and/or active.get and/or the

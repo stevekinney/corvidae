@@ -759,10 +759,10 @@
     "dot-size": {
       "$type": "dimension",
       "$value": {
-        "value": 1.5,
+        "value": 0.5,
         "unit": "rem"
       },
-      "$description": "Pagination dot painted size; its 44px hit area is a pseudo-element.",
+      "$description": "Pagination dot painted size (the current dot is two and a half times as wide); its 24px hit area, 44px on a coarse pointer, is a pseudo-element.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-carousel-dot-size",
@@ -786,6 +786,20 @@
           "category": "color",
           "component": "code-block",
           "cssRecipe": "light-dark(var(--cinder-surface-raised), var(--cinder-surface-inset))"
+        }
+      }
+    },
+    "edge": {
+      "$type": "color",
+      "$value": "{border.muted}",
+      "$description": "The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-code-block-edge",
+          "public": true,
+          "category": "color",
+          "component": "code-block",
+          "cssRecipe": "light-dark(var(--cinder-border-muted), transparent)"
         }
       }
     },

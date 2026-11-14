@@ -979,7 +979,7 @@
         onkeydown={handleKeydown}
       />
     {/if}
-    <span class="cinder-combobox__chevron" aria-hidden="true"></span>
+    <span class="cinder-_field-chevron cinder-combobox__chevron" aria-hidden="true"></span>
   </div>
 
   {#if loading && stillLoadingAfter !== undefined}
