@@ -7,6 +7,11 @@
 import { describe, expect, it } from 'bun:test';
 
 import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
+import {
+  advanceTimersByTime,
+  restoreRealTimers,
+  useFakeTimers,
+} from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
@@ -21,6 +26,9 @@ import type { DocumentWorkflowHost } from './document.ts';
 import { registerWorkflowDocuments } from './register.ts';
 
 const calls: string[] = [];
+/** Whether the `gated` activity holds item `y` open: until the test restarts the engine. */
+let holdItemY = false;
+let retryingAttempts = 0;
 
 const host: DocumentWorkflowHost = {
   activities: {
@@ -32,9 +40,51 @@ const host: DocumentWorkflowHost = {
       calls.push('boom');
       throw new Error('branch exploded');
     },
+    list: () => ({ items: ['x', 'y'] }),
+    each: ({ previous }) => {
+      calls.push(`each:${String(previous)}`);
+      return previous;
+    },
+    gated: ({ previous }) => {
+      calls.push(`gated:${String(previous)}`);
+      return previous === 'y' && holdItemY ? new Promise(() => undefined) : previous;
+    },
+    charge: {
+      idempotencyKey: () => 'charge-1',
+      execute: () => {
+        calls.push('charge');
+        return 'C';
+      },
+    },
+    retrying: {
+      retry: {
+        maxAttempts: 2,
+        initialBackoff: 3_600_000,
+        backoffMultiplier: 1,
+        maxBackoff: 3_600_000,
+      },
+      execute: () => {
+        retryingAttempts += 1;
+        calls.push('retrying');
+        if (retryingAttempts === 1) throw new Error('first attempt fails');
+        return 'R';
+      },
+    },
   },
   triggerKinds: { manual: () => undefined },
 };
+
+/** Whether run `id`'s committed checkpoint keeps the backoff of an activity retry. */
+async function hasCommittedRetryBackoff(storage: MemoryStorage, id: string): Promise<boolean> {
+  const bytes = await storage.get(KEYS.checkpoint(id));
+  if (bytes === null) return false;
+  const keys = Object.keys(deserializeCheckpoint(bytes).locals ?? {});
+  // The attempt the retry is on, and the deadline of the backoff sleep it waits in.
+  return (
+    keys.includes('__weftActivityRetryState') &&
+    keys.some((key) => key.startsWith('__weftSleepDeadline:'))
+  );
+}
 
 const parallel = (branches: Record<string, unknown>) => ({ kind: 'parallel', branches });
 const wait = (signal: string) => ({ kind: 'await-signal', signal });
@@ -249,5 +299,97 @@ describe('a signal a branch takes is committed with the progress that records it
     await handle!.signal('y', 'Y2');
     await handle!.signal('z', 'Z');
     expect(await handle!.result()).toEqual({ left: { a: 'Y1', b: 'Z' }, right: 'Y2' });
+  });
+});
+
+describe('what a branch`s settled step commits besides a signal', () => {
+  it('commits an idempotent activity`s completed receipt with its step, so the branch`s second call reuses it (review E)', async () => {
+    calls.length = 0;
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const document = doc('receipt-in-branch', [
+      parallel({
+        a: [
+          { kind: 'activity', handler: 'charge' },
+          { kind: 'activity', handler: 'charge' },
+        ],
+        b: [wait('go')],
+      }),
+    ]);
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start(document.name, null, { id: 'receipt-in-branch-run' });
+    await waitUntil(async () => isWaitingOn(engine, run.id, 'go'), { message: 'b to wait' });
+    await run.signal('go', 'G');
+    expect(await run.result()).toEqual({ a: 'C', b: 'G' });
+    expect(calls).toEqual(['charge']);
+  });
+
+  it('commits a retried activity`s attempt and backoff while its sibling has finished (review F)', async () => {
+    calls.length = 0;
+    retryingAttempts = 0;
+    const storage = new MemoryStorage();
+    const id = 'retry-in-branch-run';
+    const document = doc('retry-in-branch', [
+      parallel({
+        a: [{ kind: 'activity', handler: 'retrying' }],
+        b: [{ kind: 'activity', handler: 'count', input: 'b' }],
+      }),
+    ]);
+    {
+      await using original = await startEngine(storage, document);
+      await original.start(document.name, null, { id });
+      await waitUntil(async () => hasCommittedRetryBackoff(storage, id), {
+        message: 'the retry`s attempt and backoff to be committed',
+      });
+    }
+    // The backoff is an hour from the first attempt; the recovered run waits it out, not reruns it.
+    useFakeTimers(Date.now());
+    try {
+      await using restarted = await startEngine(storage, document);
+      const [handle] = await restarted.recoverAll();
+      // The backoff's deadline is in the checkpoint: one move of the clock passes it, whether the
+      // replay arms its timer before the move or after (`executeSleepSubOperation`).
+      await advanceTimersByTime(2 * 3_600_000);
+      expect(await handle!.result()).toEqual({ a: 'R', b: 'b' });
+      expect(retryingAttempts).toBe(2);
+    } finally {
+      restoreRealTimers();
+    }
+  });
+
+  it('recovers a map whose items each hold a parallel step, restarted after its first item`s slot commit (review D)', async () => {
+    calls.length = 0;
+    holdItemY = true;
+    const storage = new MemoryStorage();
+    const id = 'map-of-parallels-run';
+    const document = doc('map-of-parallels', [
+      { kind: 'activity', handler: 'list' },
+      {
+        kind: 'map',
+        over: 'items',
+        steps: [
+          parallel({
+            p: [{ kind: 'activity', handler: 'gated' }],
+            q: [{ kind: 'activity', handler: 'each' }],
+          }),
+        ],
+      },
+    ]);
+    {
+      await using original = await startEngine(storage, document);
+      await original.start(document.name, null, { id });
+      // The map's round is the run's one parallel cache entry: its first slot is item `x`.
+      await waitUntil(async () => (await committedStepCount(storage, id, 0)) > 1, {
+        message: 'item x`s slot to be committed while item y runs',
+      });
+    }
+    holdItemY = false;
+    await using restarted = await startEngine(storage, document);
+    const [handle] = await restarted.recoverAll();
+    expect(await handle!.result()).toEqual([
+      { p: 'x', q: 'x' },
+      { p: 'y', q: 'y' },
+    ]);
+    // Item `x` finished before the restart and is not run again.
+    expect(calls.filter((call) => call.endsWith(':x')).toSorted()).toEqual(['each:x', 'gated:x']);
   });
 });
