@@ -234,15 +234,19 @@ async function openWithCatalog(
   catalog: readonly BackendDescriptor[],
   options: {
     readonly fallbackModel?: string;
+    /** The `decisions.model` the Bureau starts with: a catalog row written `<provider>/<model>`. */
+    readonly model?: string;
     readonly modelPolicy?: BureauModelPolicyOptions;
   } = {},
 ): Promise<OpenedBureau> {
+  const decisions = {
+    ...(options.fallbackModel === undefined ? {} : { fallbackModel: options.fallbackModel }),
+    ...(options.model === undefined ? {} : { model: options.model }),
+  };
   const opened = await openBureau({
     bureauOptions: {
       models: { catalog, generate: (): GenerateFunction => createMockGenerate([]) },
-      ...(options.fallbackModel === undefined
-        ? {}
-        : { decisions: { fallbackModel: options.fallbackModel } }),
+      decisions,
       ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
     },
   });
@@ -256,10 +260,20 @@ const models = (opened: OpenedBureau, key = 'settings-reader-key') =>
 /** The rows `bureau.decisions.models` answers a caller that may read the settings. */
 async function answeredRows(
   opened: OpenedBureau,
-): Promise<{ model: string; answering: boolean }[]> {
+): Promise<{ model: string; answering: boolean; fallback: boolean }[]> {
   const answered = await models(opened);
-  return (answered.result?.['rows'] ?? []) as { model: string; answering: boolean }[];
+  return (answered.result?.['rows'] ?? []) as {
+    model: string;
+    answering: boolean;
+    fallback: boolean;
+  }[];
 }
+
+/** The names of the rows marked by `field`. */
+const marked = (
+  rows: readonly { model: string; answering: boolean; fallback: boolean }[],
+  field: 'answering' | 'fallback',
+): string[] => rows.filter((entry) => entry[field]).map((entry) => entry.model);
 
 describe('bureau.decisions.models', () => {
   it('is served, beside bureau.decisions.decide', () => {
@@ -293,6 +307,7 @@ describe('bureau.decisions.models', () => {
         availability: 'available',
         decisionOnly: false,
         answering: false,
+        fallback: false,
       },
       {
         provider: 'acme',
@@ -300,6 +315,7 @@ describe('bureau.decisions.models', () => {
         availability: 'available',
         decisionOnly: false,
         answering: true,
+        fallback: true,
       },
       {
         provider: 'ollama',
@@ -307,6 +323,7 @@ describe('bureau.decisions.models', () => {
         availability: 'needs-setup',
         decisionOnly: false,
         answering: false,
+        fallback: false,
       },
       {
         provider: 'typesafe',
@@ -314,8 +331,80 @@ describe('bureau.decisions.models', () => {
         availability: 'available',
         decisionOnly: true,
         answering: false,
+        fallback: false,
       },
     ]);
+  });
+
+  it('marks the row decisions.model names as answering while it is available, and the fallback still as the fallback', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('acme', 'cheap', {
+          pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+        }),
+        row('typesafe', 'jev', {
+          structuredOutput: false,
+          decisions: { kinds: ['boolean'], only: true },
+        }),
+      ],
+      { model: 'typesafe/jev' },
+    );
+
+    const rows = await answeredRows(opened);
+
+    expect(marked(rows, 'answering')).toEqual(['jev']);
+    expect(marked(rows, 'fallback')).toEqual(['cheap']);
+  });
+
+  it('leaves the answering to the fallback while the row decisions.model names needs setup, or is not in the catalog', async () => {
+    for (const row_ of [
+      row('typesafe', 'jev', {
+        availability: 'unavailable',
+        structuredOutput: false,
+        decisions: { kinds: ['boolean'], only: true },
+      }),
+      row('typesafe', 'other'),
+    ]) {
+      const opened = await openWithCatalog(
+        [
+          row('acme', 'cheap', {
+            pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+          }),
+          row_,
+        ],
+        { model: 'typesafe/jev' },
+      );
+
+      const rows = await answeredRows(opened);
+
+      expect(marked(rows, 'answering')).toEqual(['cheap']);
+      expect(marked(rows, 'fallback')).toEqual(['cheap']);
+    }
+  });
+
+  it('marks no row as answering while the model policy forbids the row decisions.model names, which refuses every decision', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('acme', 'cheap', {
+          pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+        }),
+        row('typesafe', 'jev', {
+          structuredOutput: false,
+          decisions: { kinds: ['boolean'], only: true },
+        }),
+      ],
+      {
+        model: 'typesafe/jev',
+        modelPolicy: { deployment: { deniedModels: ['jev'] }, policyRevision: 1 },
+      },
+    );
+
+    const rows = await answeredRows(opened);
+
+    // The forbidden row is left out of the list; nothing answers, though the fallback is chosen.
+    expect(rows.map((entry) => entry.model)).toEqual(['cheap']);
+    expect(marked(rows, 'answering')).toEqual([]);
+    expect(marked(rows, 'fallback')).toEqual(['cheap']);
   });
 
   it('marks the configured fallback row when it is eligible, in place of a cheaper one', async () => {
@@ -333,9 +422,8 @@ describe('bureau.decisions.models', () => {
 
     const rows = await answeredRows(opened);
 
-    expect(rows.filter((entry) => entry.answering).map((entry) => entry.model)).toEqual([
-      'preferred',
-    ]);
+    expect(marked(rows, 'fallback')).toEqual(['preferred']);
+    expect(marked(rows, 'answering')).toEqual(['preferred']);
   });
 
   it('matches the configured fallback by an alias of a row, as the fallback itself does', async () => {
@@ -354,9 +442,8 @@ describe('bureau.decisions.models', () => {
 
     const rows = await answeredRows(opened);
 
-    expect(rows.filter((entry) => entry.answering).map((entry) => entry.model)).toEqual([
-      'preferred-long-name',
-    ]);
+    expect(marked(rows, 'fallback')).toEqual(['preferred-long-name']);
+    expect(marked(rows, 'answering')).toEqual(['preferred-long-name']);
   });
 
   it('marks no row while nothing eligible and priced can answer, and leaves out a row the policy forbids', async () => {
@@ -372,7 +459,8 @@ describe('bureau.decisions.models', () => {
     const rows = await answeredRows(opened);
 
     expect(rows.map((entry) => entry.model)).toEqual(['local', 'unpriced']);
-    expect(rows.some((entry) => entry.answering)).toBe(false);
+    expect(marked(rows, 'answering')).toEqual([]);
+    expect(marked(rows, 'fallback')).toEqual([]);
   });
 
   it('requires bureau.settings:read, and the decisions scope alone does not read it', async () => {

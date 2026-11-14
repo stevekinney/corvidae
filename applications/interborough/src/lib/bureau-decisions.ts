@@ -15,7 +15,10 @@ const rowSchema = z.object({
   model: z.string(),
   availability: z.enum(['available', 'needs-setup']),
   decisionOnly: z.boolean(),
+  /** The row a decision goes to now, as the Bureau's `decide` chooses it; at most one row, none when nothing can answer. */
   answering: z.boolean(),
+  /** The row the language-model fallback uses; at most one row. */
+  fallback: z.boolean(),
 });
 
 const modelsSchema = z.object({ rows: z.array(rowSchema) });

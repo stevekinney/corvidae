@@ -901,6 +901,7 @@
     "$.rows[].answering",
     "$.rows[].availability",
     "$.rows[].decisionOnly",
+    "$.rows[].fallback",
     "$.rows[].model",
     "$.rows[].provider"
   ],

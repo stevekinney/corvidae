@@ -78,13 +78,20 @@ export interface BureauDecisionModel {
   /** Whether the row only decides and is no chat model (TypeSafe's rows). */
   readonly decisionOnly: boolean;
   /**
-   * Whether this is the row the language-model fallback answers with: `decisions.fallbackModel`
-   * when it is in the catalog and eligible (available, with structured output), otherwise the
-   * cheapest priced eligible row, never one the model policy forbids. At most one row is marked.
-   * A `decisions.model` that names an available row answers in its place; one that names no row,
-   * or a row that needs setup, leaves the answering to this row.
+   * Whether this is the row a decision goes to now, as `decide` chooses it: the row
+   * `decisions.model` names (or defaults to) when it is in the catalog, can decide and is not
+   * `needs-setup`; else the {@link BureauDecisionModel.fallback} row. A named row the model policy
+   * forbids refuses every decision, so no row is marked. At most one row is marked, and none when
+   * nothing can answer. A page names the answering row by comparing this with its setting.
    */
   readonly answering: boolean;
+  /**
+   * Whether this is the row the language-model fallback uses: `decisions.fallbackModel` (its alias
+   * included) when that row is available and returns structured output, otherwise the cheapest
+   * priced such row (input price, then output price, then catalog order), never one the model
+   * policy forbids. At most one row is marked. With no `decisions.model` it is the answering row.
+   */
+  readonly fallback: boolean;
 }
 
 /**

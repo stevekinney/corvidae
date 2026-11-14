@@ -308,14 +308,15 @@
           }}
         />
       {:else if spec.kind === 'choice' && spec.source === 'decision-rows'}
-        <!-- The empty option stays, so a chosen row can be put back to the default. -->
         <Select
           {id}
           {label}
           labelVisible={false}
           presentation="listbox"
           placeholder={emptyOption}
-          options={[{ value: '', label: emptyOption }, ...(rowChoices ?? [])]}
+          options={hasValue
+            ? [...(rowChoices ?? [])]
+            : [{ value: '', label: emptyOption }, ...(rowChoices ?? [])]}
           value={typeof draft === 'string' ? draft : ''}
           disabled={inert}
           onValueChange={(next: string) => {

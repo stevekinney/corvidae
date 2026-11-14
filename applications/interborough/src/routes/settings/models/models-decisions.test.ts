@@ -55,11 +55,12 @@ function decisionRow(
     availability: 'available',
     decisionOnly: false,
     answering: false,
+    fallback: false,
     ...extra,
   };
 }
 
-const HAIKU = decisionRow('anthropic', 'claude-haiku-5-5', { answering: true });
+const HAIKU = decisionRow('anthropic', 'claude-haiku-5-5', { answering: true, fallback: true });
 const GPT = decisionRow('openai', 'gpt-5', { availability: 'needs-setup' });
 const JEV = decisionRow('typesafe', 'jev', { decisionOnly: true });
 
@@ -214,7 +215,7 @@ describe('the decision model row', () => {
     const { container, findByRole } = open({
       rows: [
         decisionRow('anthropic', 'claude-haiku-5-5'),
-        decisionRow('openai', 'gpt-5', { answering: true }),
+        decisionRow('openai', 'gpt-5', { answering: true, fallback: true }),
       ],
     });
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
@@ -229,7 +230,11 @@ describe('the decision model row', () => {
   test('says nothing about an answering row while the chosen row is available', async () => {
     const served = servedSettings();
     served.values['decisions.model'] = 'typesafe/jev';
-    const { container, findByRole } = open({ served });
+    // The Bureau marks the chosen row as the one a decision goes to; the fallback is another.
+    const { container, findByRole } = open({
+      served,
+      rows: [{ ...HAIKU, answering: false }, GPT, { ...JEV, answering: true }],
+    });
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     await waitFor(() =>
@@ -237,6 +242,37 @@ describe('the decision model row', () => {
     );
     expect(row(container, 'decisions.model').textContent).not.toContain('answers until');
     expect(section(container).dataset['waiting']).toBeUndefined();
+  });
+
+  test('reads the host’s default decision model as the one in force while none is stored, and says nothing while it answers', async () => {
+    const served = servedSettings({ effective: { 'decisions.model': 'typesafe/jev' } });
+    const { container, findByRole } = open({
+      served,
+      rows: [{ ...HAIKU, answering: false }, GPT, { ...JEV, answering: true }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.description),
+    );
+    expect(trigger(container, 'decisions.model').textContent).toContain(
+      SETTINGS_COPY.defaultOption('Jev'),
+    );
+  });
+
+  test('names the fallback while the host’s default decision model needs setup', async () => {
+    const served = servedSettings({ effective: { 'decisions.model': 'typesafe/jev' } });
+    const { container, findByRole } = open({
+      served,
+      rows: [HAIKU, GPT, { ...JEV, availability: 'needs-setup' }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
   });
 
   test('names the answering row while the chosen row needs setup, and keeps that row chosen', async () => {
@@ -286,7 +322,12 @@ describe('the fallback model row', () => {
   test('names the row the Bureau marks as the default in its empty option', async () => {
     const served = servedSettings();
     delete served.values['decisions.fallbackModel'];
-    const { container, findByRole } = open({ served });
+    served.values['decisions.model'] = 'typesafe/jev';
+    // The decision model answers, so it is not the fallback: the empty option names the fallback row.
+    const { container, findByRole } = open({
+      served,
+      rows: [{ ...HAIKU, answering: false }, GPT, { ...JEV, answering: true }],
+    });
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     await waitFor(() =>
@@ -309,7 +350,7 @@ describe('a decision model the Bureau cannot use', () => {
         copy.model.missing('acme/vanished'),
       ),
     );
-    // Not a silent default: the select still shows the stored name, and the fallback is named.
+    // Not a silent default: the select still shows the stored name, and the row that answers is named.
     expect(trigger(container, 'decisions.model').textContent).toContain('acme/vanished');
     expect(row(container, 'decisions.model').textContent).toContain(
       copy.model.fallbackAnswers('Claude Haiku 5.5'),

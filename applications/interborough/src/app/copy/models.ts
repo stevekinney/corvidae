@@ -193,14 +193,11 @@ export const MODELS_COPY = {
       /** Said while the Bureau reports no row that can answer. */
       nothingAnswers: 'Nothing can answer decisions until you connect a provider or TypeSafe.',
       connect: 'Connect TypeSafe',
-      /** The empty option of the select. */
-      none: 'The fallback model alone',
       /** The Bureau dropped the stored value and records why; the row warns in these words, not the Bureau's. */
       dropped:
         'The saved decision model no longer exists, so the fallback answers. Choose another.',
       /** The stored value names a row the Bureau does not list as able to answer. */
-      missing: (name: string) =>
-        `“${name}” can’t answer decisions, so the fallback answers. Choose another.`,
+      missing: (name: string) => `“${name}” can’t answer decisions. Choose another.`,
     },
     fallbackModel: {
       label: 'Fallback model',

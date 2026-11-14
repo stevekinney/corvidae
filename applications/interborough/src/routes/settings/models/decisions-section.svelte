@@ -74,23 +74,36 @@
     undefined,
   );
   const listed = $derived<readonly DecisionModelRow[] | undefined>(rows.data);
-  /** The row the Bureau says answers while the chosen row cannot. */
+  /** The row the Bureau says a decision goes to now. */
   const answering = $derived(listed?.find((row) => row.answering));
+  /** The row the Bureau says the language-model fallback uses. */
+  const fallbackRow = $derived(listed?.find((row) => row.fallback));
 
-  /** The decision model the page holds: what the person chose, else nothing. */
-  const chosenName = $derived.by(() => {
+  /** The decision model the person chose and has not saved or has: the draft, which is `undefined` while none is set. */
+  const storedName = $derived.by(() => {
     const draft = form.draft('decisions.model');
     return typeof draft === 'string' && draft !== '' ? draft : undefined;
   });
-  const chosen = $derived(
-    chosenName === undefined
-      ? undefined
-      : listed?.find((row) => decisionRowName(row) === chosenName),
+  /** The decision model in force: the one on the page, else the one the host applies by default. */
+  const inForceName = $derived.by(() => {
+    if (storedName !== undefined) return storedName;
+    const applied = effective['decisions.model'];
+    return typeof applied === 'string' && applied !== '' ? applied : undefined;
+  });
+  /**
+   * Whether the row in force is the one that answers. The Bureau says which row answers (its
+   * `answering` mark); the page only compares its name with the setting. Nothing here decides
+   * whether a row is available, can decide or is allowed.
+   */
+  const inForceAnswers = $derived(
+    answering !== undefined &&
+      inForceName !== undefined &&
+      decisionRowName(answering) === inForceName,
   );
-  /** The fallback answers: no row is chosen, the one chosen is not listed, or it needs setup. */
-  const fallbackAnswers = $derived(listed !== undefined && chosen?.availability !== 'available');
+  /** Another row answers, or none: the row in force is empty, missing, needs setup or is not allowed. */
+  const fallbackAnswers = $derived(listed !== undefined && !inForceAnswers);
 
-  /** What the decision model row says: which row answers while the chosen one cannot, or what it is. */
+  /** What the decision model row says: what it is, or which row answers in its place. */
   const modelDescription = $derived.by(() => {
     if (!fallbackAnswers) return copy.model.description;
     return answering === undefined
@@ -100,8 +113,10 @@
   /** An advisory in the page's words (never the Bureau's, which is written for a settings file). */
   const modelWarning = $derived.by(() => {
     if (stateOf('decisions.model').problem !== undefined) return copy.model.dropped;
-    return listed !== undefined && chosenName !== undefined && chosen === undefined
-      ? copy.model.missing(chosenName)
+    return listed !== undefined &&
+      storedName !== undefined &&
+      !listed.some((row) => decisionRowName(row) === storedName)
+      ? copy.model.missing(storedName)
       : undefined;
   });
 
@@ -125,11 +140,11 @@
       : options;
   }
 
-  /** The empty option of the fallback: the row that answers while it is empty, as the Bureau says. */
+  /** The empty option of the fallback: the row the Bureau says the fallback uses while it is empty. */
   const fallbackEmpty = $derived(
-    form.draft('decisions.fallbackModel') === undefined && answering !== undefined
-      ? SETTINGS_COPY.defaultOption(modelDisplayName(answering.model))
-      : SETTINGS_COPY.notSet,
+    fallbackRow === undefined
+      ? SETTINGS_COPY.notSet
+      : SETTINGS_COPY.defaultOption(modelDisplayName(fallbackRow.model)),
   );
 
   function openTypesafe(event: MouseEvent): void {
@@ -190,7 +205,6 @@
     {@render field('decisions.model', copy.model.label, modelDescription, {
       descriptionAction: fallbackAnswers && typesafeNeedsKey ? connectTypesafe : undefined,
       rowChoices: optionsFor(form.draft('decisions.model')),
-      emptyLabel: copy.model.none,
       warning: modelWarning,
     })}
     {@render field(

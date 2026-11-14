@@ -424,13 +424,24 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
 
   const decisions: BureauDecisions = {
     models() {
-      const { permitted, row: answering } = fallbackNow();
+      const { permitted, policy, row: fallbackRow } = fallbackNow();
+      // The row `modelFor` goes to: the one `decisions.model` names when it is in the catalog, can
+      // decide and is not `unavailable` (a policy that forbids it refuses the decision, so no row
+      // answers), else the fallback's. Read from the same lookups `decide` uses.
+      const chosen = chosenRowNow();
+      const answering =
+        chosen !== undefined && canDecide(chosen)
+          ? modelPolicyDenialOf(chosen, policy) === undefined
+            ? chosen
+            : undefined
+          : fallbackRow;
       return permitted.filter(canDecide).map((row) => ({
         provider: row.provider,
         model: row.model,
         availability: row.availability === 'unavailable' ? 'needs-setup' : 'available',
         decisionOnly: row.decisions?.only === true,
         answering: row === answering,
+        fallback: row === fallbackRow,
       }));
     },
     async decide<Request extends DecisionRequest>(

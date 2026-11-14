@@ -226,6 +226,7 @@ async function withDecisionRows(page: Page) {
     availability: 'available',
     decisionOnly: false,
     answering: false,
+    fallback: false,
     ...extra,
   });
   await page.route('**/bureau/jsonrpc', async (route) => {
@@ -239,7 +240,7 @@ async function withDecisionRows(page: Page) {
           rows: [
             row('anthropic', 'claude-opus-5-5'),
             row('anthropic', 'claude-sonnet-5-5'),
-            row('anthropic', 'claude-haiku-5-5', { answering: true }),
+            row('anthropic', 'claude-haiku-5-5', { answering: true, fallback: true }),
             row('openai', 'gpt-5', { availability: 'needs-setup' }),
             row('typesafe', 'jev', { availability: 'needs-setup', decisionOnly: true }),
           ],

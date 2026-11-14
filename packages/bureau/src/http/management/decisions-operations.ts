@@ -149,7 +149,12 @@ const modelsOutput = z.object({
         answering: z
           .boolean()
           .describe(
-            'Whether this is the row the language-model fallback answers with, by the rule `chooseFallbackRow` applies. At most one row is marked.',
+            'Whether a decision goes to this row now, as `bureau.decisions.decide` chooses it: the row `decisions.model` names when it is in the catalog, can decide and is available, else the `fallback` row. A named row the model policy forbids refuses every decision, so no row is marked. At most one row is marked.',
+          ),
+        fallback: z
+          .boolean()
+          .describe(
+            'Whether this is the row the language-model fallback uses, by the rule `chooseFallbackRow` applies: `decisions.fallbackModel` when that row is available and returns structured output, otherwise the cheapest priced such row. At most one row is marked.',
           ),
       }),
     )
@@ -171,7 +176,7 @@ export const decisionsModelsOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models that can answer decisions',
   description:
-    'Returns `rows`: every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model) and `answering`: whether it is the row the language-model fallback answers with, chosen as `decisions.fallbackModel` when that row is available and returns structured output, otherwise the cheapest priced such row. A row the model policy forbids is left out. A `decisions.model` that names an available row answers in the fallback’s place. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.',
+    'Returns `rows`: every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model), `answering` (the row a decision goes to now: the row `decisions.model` names when it is in the catalog, can decide and is available, else the fallback’s; none when the named row is forbidden by the model policy, which refuses every decision) and `fallback` (the row the language-model fallback uses: `decisions.fallbackModel` when that row is available and returns structured output, otherwise the cheapest priced such row). A row the model policy forbids is left out. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.',
   destructive: false,
   tags: ['Decisions'],
   inputSchema: modelsInput,
