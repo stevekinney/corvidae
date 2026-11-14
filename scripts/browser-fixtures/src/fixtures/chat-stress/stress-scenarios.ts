@@ -521,14 +521,67 @@ const scenarios: Record<StressScenarioName, Scenario> = {
   },
 
   'tool-group': (stressCase) => {
-    const shape = param<'repeat' | 'steps' | 'approval' | 'identifier' | 'failed' | 'running'>(
-      stressCase,
-      'shape',
-      'steps',
-    );
+    const shape = param<
+      | 'repeat'
+      | 'steps'
+      | 'approval'
+      | 'identifier'
+      | 'failed'
+      | 'running'
+      | 'narration-working'
+      | 'narration-settled'
+      | 'narration-stopped'
+    >(stressCase, 'shape', 'steps');
     let conversation = appendUserMessage(start('stress-tools'), 'Check the refund queue.');
     const setup = baseSetup(conversation);
-    if (shape === 'running') {
+    if (shape === 'narration-working') {
+      // The agent said what it is doing, a step finished, and the run goes on: the narration is
+      // muted where it falls, and the working dots sit under the last part.
+      conversation = appendAssistantMessage(conversation, 'Reading the refund policy first.');
+      conversation = withCall(
+        conversation,
+        'read-policy',
+        'read_policy',
+        { document: 'refunds' },
+        { status: 'ok' },
+      );
+      setup.streaming = true;
+      setup.runInput = true;
+    } else if (shape === 'narration-settled') {
+      // Two steps with a line said before each, then the answer: when the turn is settled the
+      // lines fold into the step row and the turn reads as that row and the answer.
+      conversation = appendAssistantMessage(conversation, 'Reading the refund policy first.');
+      conversation = withCall(
+        conversation,
+        'read-policy',
+        'read_policy',
+        { document: 'refunds' },
+        { status: 'ok' },
+      );
+      conversation = appendAssistantMessage(conversation, 'Now the recent orders.');
+      conversation = withCall(
+        conversation,
+        'read-orders',
+        'list_orders',
+        { limit: 20 },
+        { status: 'ok' },
+      );
+      conversation = appendAssistantMessage(
+        conversation,
+        'The policy and the orders agree on the 4471 refund.',
+      );
+    } else if (shape === 'narration-stopped') {
+      // The run was stopped after a line and a step, before any answer: the line stays, muted.
+      conversation = appendAssistantMessage(conversation, 'Reading the refund policy first.');
+      conversation = withCall(
+        conversation,
+        'read-policy',
+        'read_policy',
+        { document: 'refunds' },
+        { status: 'ok' },
+      );
+      setup.turnStates[0] = { kind: 'stopped' };
+    } else if (shape === 'running') {
       // A call with no result yet is a step that is running: the run is live and waits on it.
       conversation = appendToolCall(conversation, {
         id: 'read-ledger',

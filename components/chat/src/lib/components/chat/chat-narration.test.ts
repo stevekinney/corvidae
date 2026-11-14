@@ -76,11 +76,12 @@ function narrationTexts(container: HTMLElement): string[] {
 }
 
 describe('Chat — narration and answer', () => {
-  test('the text before a tool is narration and the text after the last tool is the answer', async () => {
+  test('while the agent works, the text before a tool is narration drawn in place and the text after is the answer', async () => {
     const { container } = render(Chat, {
       id: 'narration-answer',
       conversation: turn('narration-answer', true),
       variant: 'transcript',
+      streaming: true,
     });
     await tick();
 
@@ -89,6 +90,67 @@ describe('Chat — narration and answer', () => {
       .filter((wrapper) => !wrapper.hasAttribute('data-narration'))
       .map((wrapper) => wrapper.querySelector('.chat-message-body')?.textContent?.trim());
     expect(answer).toEqual(['The ledger balances.']);
+    expect(container.querySelectorAll('.chat-tool-call-narration')).toHaveLength(0);
+  });
+
+  test('once the answer settles, the narration folds into the step group and the answer stays mounted', async () => {
+    const conversation = turn('narration-fold', true);
+    const { container, rerender } = render(Chat, {
+      id: 'narration-fold',
+      conversation,
+      variant: 'transcript',
+      streaming: true,
+    });
+    await tick();
+    const answerWrapper = [
+      ...container.querySelectorAll<HTMLElement>('.chat-message-wrapper[data-role="assistant"]'),
+    ].find((wrapper) => wrapper.textContent?.includes('The ledger balances.'));
+    expect(answerWrapper).toBeDefined();
+
+    await rerender({ streaming: false });
+    await tick();
+
+    // The narration is no longer a message of its own: it lives in the group, which counts steps.
+    expect(narrationTexts(container)).toEqual([]);
+    expect(container.querySelectorAll('.chat-tool-call-timeline')).toHaveLength(1);
+    expect(container.querySelector('.chat-tool-call-summary-count')?.textContent).toBe('1 step');
+    const folded = [...container.querySelectorAll('.chat-tool-call-narration')];
+    expect(folded.map((line) => line.textContent?.trim())).toEqual([
+      'Reading the ledger entries now',
+    ]);
+    // The group is closed, so the line is not shown, and it is inside the group's list.
+    expect(container.querySelector<HTMLElement>('.chat-tool-call-list')?.hidden).toBe(true);
+    expect(folded[0]?.closest('.chat-tool-call-list')).not.toBeNull();
+    // The answer's message component did not remount: the same element, and the only prose outside.
+    const settledAnswer = [
+      ...container.querySelectorAll<HTMLElement>('.chat-message-wrapper[data-role="assistant"]'),
+    ];
+    expect(settledAnswer).toHaveLength(1);
+    expect(settledAnswer[0]).toBe(answerWrapper);
+  });
+
+  test('opening the group shows the narration between the steps, and the closed row counts steps only', async () => {
+    const { container } = render(Chat, {
+      id: 'narration-open',
+      conversation: turn('narration-open', true),
+      variant: 'transcript',
+    });
+    await tick();
+
+    container.querySelector<HTMLButtonElement>('.chat-tool-call-toggle')!.click();
+    await tick();
+
+    const list = container.querySelector<HTMLElement>('.chat-tool-call-list')!;
+    expect(list.hidden).toBe(false);
+    expect([...list.children].map((item) => item.className.split(' ')[0])).toEqual([
+      'chat-tool-call-narration',
+      'chat-tool-call-item',
+    ]);
+    expect(
+      container
+        .querySelector('.chat-tool-call-timeline')
+        ?.getAttribute('data-cinder-tool-call-count'),
+    ).toBe('1');
   });
 
   test('a turn that stops after its tool keeps its narration marked', async () => {

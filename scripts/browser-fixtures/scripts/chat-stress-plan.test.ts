@@ -163,12 +163,12 @@ describe('image names', () => {
 });
 
 describe('expectedCounts', () => {
-  it('hold 324 primaries and 159 fixed variants before any focus image', () => {
+  it('hold 340 primaries and 159 fixed variants before any focus image', () => {
     const counts = expectedCounts(cases, STRESS_PROFILES, {});
-    expect(counts.primary).toBe(324);
+    expect(counts.primary).toBe(340);
     expect(counts.fixedVariants).toBe(159);
     expect(counts.focus).toBe(0);
-    expect(counts.total).toBe(483);
+    expect(counts.total).toBe(499);
   });
 
   it('add the focus stops each profile found', () => {
@@ -179,7 +179,7 @@ describe('expectedCounts', () => {
       '320-dark': 13,
     });
     expect(counts.focus).toBe(54);
-    expect(counts.total).toBe(537);
+    expect(counts.total).toBe(553);
   });
 });
 
@@ -524,7 +524,7 @@ describe('countProblems', () => {
   it('names a missing primary image', () => {
     const records = completeRun().filter((entry) => entry.file !== '320-dark-24.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 324 primary images, found 323',
+      'expected 340 primary images, found 339',
     ]);
   });
 
@@ -627,8 +627,8 @@ describe('renderGallery', () => {
 
 describe('selectCases', () => {
   it('keeps every case when nothing is selected', () => {
-    expect(selectCases(cases, undefined)).toHaveLength(81);
-    expect(selectCases(cases, ' ')).toHaveLength(81);
+    expect(selectCases(cases, undefined)).toHaveLength(85);
+    expect(selectCases(cases, ' ')).toHaveLength(85);
   });
 
   it('reads numbers and ranges, in case order', () => {
@@ -637,7 +637,7 @@ describe('selectCases', () => {
 
   it('refuses a malformed part and a number that is not a case', () => {
     expect(() => selectCases(cases, '9,x')).toThrow("'x' is not a case number");
-    expect(() => selectCases(cases, '82')).toThrow('Unknown case numbers: 82.');
+    expect(() => selectCases(cases, '86')).toThrow('Unknown case numbers: 86.');
   });
 
   it('marks a summary that did not draw every case as a partial run in its gallery', () => {
