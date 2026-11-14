@@ -15,6 +15,7 @@
    * @a11yPattern Native HTML form with labelled controls
    * @keyboardShortcut Enter | Submits the form from text-like controls.
    * @a11yNote Invalid submission moves focus to the first invalid field and associates each field error through aria-describedby.
+   * @a11yNote A hosted form (`hosted`) is a `div` with `role="group"`, never a form inside a form, and never submits.
    */
   export type {
     SchemaFormDraftChangeHandler,

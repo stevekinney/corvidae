@@ -4753,7 +4753,8 @@
           }
         ],
         "notes": [
-          "Invalid submission moves focus to the first invalid field and associates each field error through aria-describedby."
+          "Invalid submission moves focus to the first invalid field and associates each field error through aria-describedby.",
+          "A hosted form (`hosted`) is a `div` with `role=\"group\"`, never a form inside a form, and never submits."
         ]
       }
     },
