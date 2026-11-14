@@ -231,7 +231,7 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     );
   });
 
-  test('says "Still loading this chat…" after 10 s with the elapsed time and Cancel, then offers Retry (17y, COR-2285 V2)', async ({
+  test('says "Still loading this chat…" after 10 s with the elapsed time and Cancel, then offers Try again (17y, COR-2285 V2)', async ({
     page,
     checkA11y,
   }) => {
@@ -281,7 +281,8 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     const canceled = loading.locator('[data-chat-availability="canceled"]');
     await expect(canceled).toContainText('Loading was canceled');
     await expect(page).toHaveURL(new RegExp(`/chats/${SAMPLE_WORLD_THREADS.refund}$`));
-    await expect(canceled.getByRole('button', { name: 'Retry' })).toHaveAttribute(
+    // One label for one job (COR-2327 Q1): Try again, as a failed read and a failing list say it.
+    await expect(canceled.getByRole('button', { name: 'Try again' })).toHaveAttribute(
       'data-cinder-variant',
       'primary',
     );
@@ -289,7 +290,7 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     // Said once (COR-2327 B6): no notice over the composer, only the reason beside Send.
     await expect(loading.locator('[data-chat-composer-drawer]')).toHaveCount(0);
     await expect(loading.locator('.chat-input-paused-reason')).toHaveText(
-      'Retry to send messages.',
+      'Try again to send messages.',
     );
     await checkA11y('a canceled chat read');
     await captureForDesignReview(page, {
@@ -300,7 +301,7 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
 
     holding = false;
     release();
-    await canceled.getByRole('button', { name: 'Retry' }).click();
+    await canceled.getByRole('button', { name: 'Try again' }).click();
     await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
     await expect(page.getByTestId('chat-unavailable')).toHaveCount(0);
   });

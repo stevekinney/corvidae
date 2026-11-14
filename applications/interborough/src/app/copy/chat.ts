@@ -472,7 +472,7 @@ export const CHAT_COPY = {
     /** The sentence under that title. */
     canceledDescription: 'The chat was not loaded. Nothing was lost.',
     /** Why Send is off after a canceled read, beside Send: it names the button that loads the chat. */
-    sendBlocked: 'Retry to send messages.',
+    sendBlocked: 'Try again to send messages.',
     /** The breadcrumb's last entry while the chat is not read yet or cannot be read, in place of its identifier. */
     crumb: 'This chat',
     errorTitle: 'This chat couldn’t be loaded',

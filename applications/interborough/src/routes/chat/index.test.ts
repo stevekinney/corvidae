@@ -234,7 +234,7 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     ]);
   });
 
-  test('says it is still loading after 10 s with Cancel, and a canceled read offers Retry and All conversations', async () => {
+  test('says it is still loading after 10 s with Cancel, and a canceled read offers Try again and All conversations', async () => {
     let answers = 0;
     restore = bureau(
       { 'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }) },
@@ -281,14 +281,19 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     expect(send.getAttribute('aria-describedby')).toContain(reason?.id ?? 'missing-reason');
     expect(container.querySelector<HTMLTextAreaElement>('textarea')?.readOnly).toBe(false);
     const asked = answers;
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    // One label for one job (COR-2327 Q1): a canceled read, a failed one and a failing list each
+    // offer Try again.
+    expect(
+      container.querySelector('[data-chat-availability="canceled"]')?.textContent,
+    ).not.toContain('Retry');
+    await fireEvent.click(await findByRole('button', { name: CHAT_COPY.load.tryAgain }));
     await until(() => expect(answers).toBeGreaterThan(asked));
     await until(() =>
       expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull(),
     );
   });
 
-  test('stays canceled when the reads held at Cancel answer late, and reads again only on Retry', async () => {
+  test('stays canceled when the reads held at Cancel answer late, and reads again only on Try again', async () => {
     // Every read of the chat is held: the pane's, and the list's read of the open chat's row.
     const held: Array<() => void> = [];
     let asked = 0;
@@ -359,8 +364,8 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     expect(container.querySelector('[data-testid="chat-header"]')).toBeNull();
     const readsBeforeRetry = asked;
 
-    // Retry reads it again, and the chat it answers is shown.
-    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    // Try again reads it again, and the chat it answers is shown.
+    await fireEvent.click(await findByRole('button', { name: CHAT_COPY.load.tryAgain }));
     await until(() => expect(asked).toBeGreaterThan(readsBeforeRetry));
     for (const answer of held.splice(0)) answer();
     jest.useRealTimers();

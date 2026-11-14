@@ -146,6 +146,7 @@
         onRetry: retryLoading,
         allConversations,
         labels: {
+          retry: CHAT_COPY.load.tryAgain,
           canceledTitle: CHAT_COPY.load.canceledTitle,
           canceledDescription: CHAT_COPY.load.canceledDescription,
           sendBlocked: CHAT_COPY.load.sendBlocked,
