@@ -19,6 +19,8 @@ const rowSchema = z.object({
   answering: z.boolean(),
   /** The row the language-model fallback uses; at most one row. */
   fallback: z.boolean(),
+  /** Whether the Bureau's fallback rule can ever use the row (it returns structured output); the fallback model is chosen among these only. */
+  canBeFallback: z.boolean(),
 });
 
 const modelsSchema = z.object({ rows: z.array(rowSchema) });

@@ -92,6 +92,14 @@ export interface BureauDecisionModel {
    * policy forbids. At most one row is marked. With no `decisions.model` it is the answering row.
    */
   readonly fallback: boolean;
+  /**
+   * Whether this row can be the language-model fallback at all: it returns structured output, the
+   * rule `chooseFallbackRow` applies before it looks at availability. A row that cannot (a
+   * decision-only row such as TypeSafe's) is skipped by the fallback however `decisions.fallbackModel`
+   * is saved, so a page offers only rows marked here for that setting. A `needs-setup` row that
+   * returns structured output is marked: it becomes the fallback once its provider has a key.
+   */
+  readonly canBeFallback: boolean;
 }
 
 /**

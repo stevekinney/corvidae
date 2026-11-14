@@ -20,10 +20,15 @@ const SOURCE = 'settings-models.spec.ts';
 const ROUTE = '/settings/models';
 
 /** Captures the screen at the three widths Settings is drawn at: desktop, tablet and phone. */
-async function captureAtEveryWidth(page: Page, state: string) {
+async function captureAtEveryWidth(
+  page: Page,
+  state: string,
+  ready?: (page: Page) => Promise<void>,
+) {
   for (const width of [1280, 768, 375] as const) {
     await page.setViewportSize({ width, height: 900 });
-    await captureForDesignReview(page, { route: ROUTE, state, source: SOURCE });
+    await ready?.(page);
+    await captureForDesignReview(page, { route: ROUTE, state, source: SOURCE, ready });
   }
   await page.setViewportSize({ width: 1280, height: 900 });
 }
@@ -227,7 +232,58 @@ test.describe('Settings › Models, provider connected', () => {
       MODELS_COPY.decisions.needsSetup,
     );
     await checkA11y('settings models, decision model open, at 1280px');
-    await captureAtEveryWidth(page, 'decision-model-open');
+    // Each viewport change (and the capture at 320 by 640) leaves the open listbox somewhere in the
+    // outlet: scroll it into view, opening it again if the resize closed it, before the pixels.
+    const listbox = page.getByRole('listbox');
+    await captureAtEveryWidth(page, 'decision-model-open', async (current) => {
+      if (!(await listbox.isVisible())) await model.getByRole('combobox').click();
+      await expect(listbox).toBeVisible();
+      await listbox.scrollIntoViewIfNeeded();
+    });
+  });
+
+  test('Decisions, the fallback model open: only the rows the fallback can use, the decision-only row left out', async ({
+    page,
+  }) => {
+    await withSampleCatalog(page);
+    await withDecisionRows(page);
+    await open(page, E2E_BASE_URL);
+    await page.locator('[data-setting="decisions.fallbackModel"]').getByRole('combobox').click();
+    await expect(page.getByRole('option', { name: /GPT 5/ })).toContainText(
+      MODELS_COPY.decisions.needsSetup,
+    );
+    await expect(page.getByRole('option', { name: /Jev/ })).toHaveCount(0);
+  });
+
+  test('Decisions, the rows that can answer did not load: the description says so with Try again, and both selects wait', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withSampleCatalog(page);
+    await withDecisionRows(page);
+    let failing = true;
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { id?: unknown; method?: string } | null;
+      if (body?.method !== 'bureau.decisions.models' || !failing) return route.fallback();
+      return route.fulfill({
+        status: 503,
+        json: { jsonrpc: '2.0', id: body.id ?? null, error: { code: -32000, message: 'Down' } },
+      });
+    });
+    await open(page, E2E_BASE_URL);
+    const model = page.locator('[data-setting="decisions.model"]');
+    await expect(model).toContainText(MODELS_COPY.decisions.model.loadFailed);
+    await expect(model.getByRole('combobox')).toBeDisabled();
+    await expect(
+      page.locator('[data-setting="decisions.fallbackModel"]').getByRole('combobox'),
+    ).toBeDisabled();
+    await checkA11y('settings models, decision rows failed, at 1280px');
+    await captureAtEveryWidth(page, 'decision-rows-failed');
+
+    failing = false;
+    await model.getByRole('button', { name: MODELS_COPY.decisions.model.tryAgain }).click();
+    await expect(model).not.toContainText(MODELS_COPY.decisions.model.loadFailed);
+    await expect(model.getByRole('combobox')).toBeEnabled();
   });
 
   test('Decisions, a stored decision model the Bureau set aside: a warning on its row, not an error', async ({
@@ -253,7 +309,10 @@ test.describe('Settings › Models, provider connected', () => {
     });
     await open(page, E2E_BASE_URL);
     const model = page.locator('[data-setting="decisions.model"]');
-    await expect(model).toContainText(MODELS_COPY.decisions.model.dropped);
+    // TypeSafe has no key on this host, so the warning may end with its Connect TypeSafe next step.
+    await expect(model).toContainText(
+      MODELS_COPY.decisions.model.dropped.replace(' Choose another.', ''),
+    );
     await expect(model).not.toContainText('the stored value names the retired catalog row');
     await checkA11y('settings models, decision model dropped, at 1280px');
     await captureAtEveryWidth(page, 'decision-model-dropped');
@@ -277,7 +336,10 @@ test.describe('Settings › Models, provider connected', () => {
     });
     await open(page, E2E_BASE_URL);
     const model = page.locator('[data-setting="decisions.model"]');
-    await expect(model).toContainText(MODELS_COPY.decisions.model.missing('acme/vanished'));
+    // Another row answers while TypeSafe, which has no key on this host, waits: the warning ends
+    // with both next steps, and the row has no separate Connect TypeSafe link.
+    await expect(model).toContainText(MODELS_COPY.decisions.model.missingWaiting('acme/vanished'));
+    await expect(model.getByRole('link', { name: 'Connect TypeSafe' })).toHaveCount(0);
     await expect(model.getByRole('combobox')).toContainText('acme/vanished');
     await checkA11y('settings models, decision model missing, at 1280px');
     await captureAtEveryWidth(page, 'decision-model-missing');
@@ -305,6 +367,7 @@ async function withDecisionRows(page: Page) {
     decisionOnly: false,
     answering: false,
     fallback: false,
+    canBeFallback: true,
     ...extra,
   });
   await page.route('**/bureau/jsonrpc', async (route) => {
@@ -320,7 +383,12 @@ async function withDecisionRows(page: Page) {
             row('anthropic', 'claude-sonnet-5-5'),
             row('anthropic', 'claude-haiku-5-5', { answering: true, fallback: true }),
             row('openai', 'gpt-5', { availability: 'needs-setup' }),
-            row('typesafe', 'jev', { availability: 'needs-setup', decisionOnly: true }),
+            // Decision-only: the Bureau's fallback never uses it, so it cannot be the fallback.
+            row('typesafe', 'jev', {
+              availability: 'needs-setup',
+              decisionOnly: true,
+              canBeFallback: false,
+            }),
           ],
         },
       },

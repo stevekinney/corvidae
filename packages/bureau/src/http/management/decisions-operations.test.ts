@@ -299,18 +299,19 @@ const models = (opened: OpenedBureau, key = 'settings-reader-key') =>
 /** The rows `bureau.decisions.models` answers a caller that may read the settings. */
 async function answeredRows(
   opened: OpenedBureau,
-): Promise<{ model: string; answering: boolean; fallback: boolean }[]> {
+): Promise<{ model: string; answering: boolean; fallback: boolean; canBeFallback: boolean }[]> {
   const answered = await models(opened);
   return (answered.result?.['rows'] ?? []) as {
     model: string;
     answering: boolean;
     fallback: boolean;
+    canBeFallback: boolean;
   }[];
 }
 
 /** The names of the rows marked by `field`. */
 const marked = (
-  rows: readonly { model: string; answering: boolean; fallback: boolean }[],
+  rows: readonly { model: string; answering: boolean; fallback: boolean; canBeFallback: boolean }[],
   field: 'answering' | 'fallback',
 ): string[] => rows.filter((entry) => entry[field]).map((entry) => entry.model);
 
@@ -347,6 +348,7 @@ describe('bureau.decisions.models', () => {
         decisionOnly: false,
         answering: false,
         fallback: false,
+        canBeFallback: true,
       },
       {
         provider: 'acme',
@@ -355,6 +357,7 @@ describe('bureau.decisions.models', () => {
         decisionOnly: false,
         answering: true,
         fallback: true,
+        canBeFallback: true,
       },
       {
         provider: 'ollama',
@@ -363,6 +366,8 @@ describe('bureau.decisions.models', () => {
         decisionOnly: false,
         answering: false,
         fallback: false,
+        // It returns structured output: the fallback uses it once its provider has a key.
+        canBeFallback: true,
       },
       {
         provider: 'typesafe',
@@ -371,8 +376,32 @@ describe('bureau.decisions.models', () => {
         decisionOnly: true,
         answering: false,
         fallback: false,
+        canBeFallback: false,
       },
     ]);
+  });
+
+  it('reports per row whether it can be the fallback, by the rule the fallback applies: a decision-only row cannot, however it is saved', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('acme', 'cheap', {
+          pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+        }),
+        row('typesafe', 'jev', {
+          structuredOutput: false,
+          decisions: { kinds: ['boolean'], only: true },
+        }),
+      ],
+      { fallbackModel: 'typesafe/jev' },
+    );
+
+    const rows = await answeredRows(opened);
+
+    // The saved fallback names a row the fallback skips, so the cheapest eligible row is used.
+    expect(rows.filter((entry) => entry.canBeFallback).map((entry) => entry.model)).toEqual([
+      'cheap',
+    ]);
+    expect(marked(rows, 'fallback')).toEqual(['cheap']);
   });
 
   it('marks the row decisions.model names as answering while it is available, and the fallback still as the fallback', async () => {

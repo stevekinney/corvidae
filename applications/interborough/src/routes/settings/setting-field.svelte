@@ -315,9 +315,7 @@
           labelVisible={false}
           presentation="listbox"
           placeholder={emptyOption}
-          options={hasValue
-            ? [...(rowChoices ?? [])]
-            : [{ value: '', label: emptyOption }, ...(rowChoices ?? [])]}
+          options={[{ value: '', label: emptyOption }, ...(rowChoices ?? [])]}
           value={typeof draft === 'string' ? draft : ''}
           disabled={inert}
           onValueChange={(next: string) => {

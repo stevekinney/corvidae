@@ -915,6 +915,7 @@
     "$.rows",
     "$.rows[].answering",
     "$.rows[].availability",
+    "$.rows[].canBeFallback",
     "$.rows[].decisionOnly",
     "$.rows[].fallback",
     "$.rows[].model",

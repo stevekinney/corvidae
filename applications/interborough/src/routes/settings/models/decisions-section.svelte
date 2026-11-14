@@ -7,14 +7,18 @@
    *
    * Both model rows choose among the rows the Bureau reports (`bureau.decisions.models`): every
    * catalog row that can decide, grouped by provider, a row that needs setup marked as such and still
-   * selectable. The page only draws that list: which rows can decide, which are available and which
-   * one answers while the chosen row cannot are the Bureau's rules, read from its fields. The
-   * decision model row says which row answers only when the chosen row is not the one (nothing chosen,
-   * a row the Bureau no longer lists, or one that needs setup), with a quiet link to Connect TypeSafe
-   * while its plugin waits for a key, and warns, as an advisory and not an error, when the Bureau set
-   * a stored value aside or the stored row is not in the list.
+   * selectable; the fallback model row offers only the rows the Bureau marks `canBeFallback`, because
+   * the fallback skips the others. The page only draws that list: which rows can decide, which can be
+   * the fallback, which are available and which one answers while the chosen row cannot are the
+   * Bureau's rules, read from its fields. Both selects keep an empty option. The decision model row
+   * says which row answers only when the chosen row is not the one (nothing chosen, a row the Bureau
+   * no longer lists, or one that needs setup), with a quiet link to Connect TypeSafe while its plugin
+   * waits for a key (said inside the warning, with no link, while the row also warns), and warns, as
+   * an advisory and not an error, when the Bureau set a stored value aside or the stored row is not
+   * in the list. While the read of the rows fails the description says so with a quiet Try again, and
+   * both selects stay unable to choose until the rows load.
    */
-  import { FormSection, Link, type SelectOption } from '@lostgradient/cinder';
+  import { Button, FormSection, Link, type SelectOption } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
@@ -78,6 +82,12 @@
   const answering = $derived(listed?.find((row) => row.answering));
   /** The row the Bureau says the language-model fallback uses. */
   const fallbackRow = $derived(listed?.find((row) => row.fallback));
+  /** The read of the rows failed: the description says so, and the selects wait for a read that works. */
+  const failed = $derived(rows.isError);
+  /** Both selects are unable to choose until the rows are here: while they load, and while their read failed. */
+  const choosing = $derived(listed === undefined || failed);
+  /** The rows the Bureau says the fallback can use, which the fallback model is chosen among. */
+  const fallbackChoices = $derived(listed?.filter((row) => row.canBeFallback));
 
   /** The decision model the person chose and has not saved or has: the draft, which is `undefined` while none is set. */
   const storedName = $derived.by(() => {
@@ -105,24 +115,50 @@
 
   /** What the decision model row says: what it is, or which row answers in its place. */
   const modelDescription = $derived.by(() => {
+    if (failed) return copy.model.loadFailed;
     if (!fallbackAnswers) return copy.model.description;
     return answering === undefined
       ? copy.model.nothingAnswers
       : copy.model.fallbackAnswers(modelDisplayName(answering.model));
   });
-  /** An advisory in the page's words (never the Bureau's, which is written for a settings file). */
+  /** The row offers Connect TypeSafe as a next step: another row answers while its plugin waits for a key. */
+  const connectOffered = $derived(fallbackAnswers && typesafeNeedsKey);
+  /**
+   * An advisory in the page's words (never the Bureau's, which is written for a settings file).
+   * While Connect TypeSafe is offered, the warning ends with it, so the row names its two next steps
+   * once.
+   */
   const modelWarning = $derived.by(() => {
-    if (stateOf('decisions.model').problem !== undefined) return copy.model.dropped;
-    return listed !== undefined &&
+    if (stateOf('decisions.model').problem !== undefined) {
+      return connectOffered ? copy.model.droppedWaiting : copy.model.dropped;
+    }
+    if (
+      listed !== undefined &&
       storedName !== undefined &&
       !listed.some((row) => decisionRowName(row) === storedName)
-      ? copy.model.missing(storedName)
-      : undefined;
+    ) {
+      return connectOffered ? copy.model.missingWaiting(storedName) : copy.model.missing(storedName);
+    }
+    return undefined;
+  });
+  /** An advisory on the fallback row: the stored row is listed, and the Bureau's fallback never uses it. */
+  const fallbackWarning = $derived.by(() => {
+    const stored = form.draft('decisions.fallbackModel');
+    if (typeof stored !== 'string' || stored === '') return undefined;
+    const unusable = listed?.some((row) => !row.canBeFallback && decisionRowName(row) === stored);
+    return unusable === true ? copy.fallbackModel.unusable(stored) : undefined;
   });
 
-  /** One option per row, grouped by its provider; a row that needs setup is marked and still chosen. */
-  function optionsFor(current: unknown): SelectOption[] {
-    const options = (listed ?? []).map((row): SelectOption => {
+  /**
+   * One option per row, grouped by its provider; a row that needs setup is marked and still chosen.
+   * None while the rows are not here: the stored name is not offered as a bare option in their place.
+   */
+  function optionsFor(
+    offered: readonly DecisionModelRow[] | undefined,
+    current: unknown,
+  ): SelectOption[] {
+    if (offered === undefined) return [];
+    const options = offered.map((row): SelectOption => {
       const provider = providerTitle(row.provider);
       return {
         value: decisionRowName(row),
@@ -162,6 +198,12 @@
   >
 {/snippet}
 
+{#snippet retryRows()}
+  <Button variant="ghost" size="sm" onclick={() => void rows.refetch()}
+    >{copy.model.tryAgain}</Button
+  >
+{/snippet}
+
 {#snippet field(
   key: string,
   label: string,
@@ -171,6 +213,7 @@
     rowChoices?: readonly SelectOption[];
     emptyLabel?: string;
     warning?: string | undefined;
+    disabled?: boolean;
   } = {},
 )}
   {@const node = nodes[key]}
@@ -191,6 +234,7 @@
       rowChoices={extra.rowChoices}
       emptyLabel={extra.emptyLabel}
       warning={extra.warning}
+      disabled={extra.disabled ?? false}
       onEdit={() => revert.forget(key)}
     />
   {/if}
@@ -203,17 +247,24 @@
 >
   <FormSection grouped heading={copy.heading} description={copy.description}>
     {@render field('decisions.model', copy.model.label, modelDescription, {
-      descriptionAction: fallbackAnswers && typesafeNeedsKey ? connectTypesafe : undefined,
-      rowChoices: optionsFor(form.draft('decisions.model')),
+      descriptionAction: failed
+        ? retryRows
+        : connectOffered && modelWarning === undefined
+          ? connectTypesafe
+          : undefined,
+      rowChoices: optionsFor(listed, form.draft('decisions.model')),
       warning: modelWarning,
+      disabled: choosing,
     })}
     {@render field(
       'decisions.fallbackModel',
       copy.fallbackModel.label,
       copy.fallbackModel.description,
       {
-        rowChoices: optionsFor(form.draft('decisions.fallbackModel')),
+        rowChoices: optionsFor(fallbackChoices, form.draft('decisions.fallbackModel')),
         emptyLabel: fallbackEmpty,
+        warning: fallbackWarning,
+        disabled: choosing,
       },
     )}
     {@render field(

@@ -179,8 +179,19 @@ export function validateDecisionsModelChoice(
   );
 }
 
+/**
+ * Whether a row can ever be the language-model fallback: it returns structured output. A row that
+ * does not (a decision-only row, TypeSafe's) is skipped by {@link chooseFallbackRow} however it is
+ * saved. `bureau.decisions.models` reports it per row (`canBeFallback`) so a page offers only rows
+ * the fallback can use, without copying the rule.
+ */
+function canBeFallback(row: BackendDescriptor): boolean {
+  return row.structuredOutput;
+}
+
+/** A row the fallback uses now: one that can be the fallback and is not `unavailable`. */
 function eligible(row: BackendDescriptor): boolean {
-  return row.availability !== 'unavailable' && row.structuredOutput;
+  return row.availability !== 'unavailable' && canBeFallback(row);
 }
 
 /** Whether a row can decide at all: it declares decision kinds of its own, or it returns structured output. */
@@ -442,6 +453,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
         decisionOnly: row.decisions?.only === true,
         answering: row === answering,
         fallback: row === fallbackRow,
+        canBeFallback: canBeFallback(row),
       }));
     },
     async decide<Request extends DecisionRequest>(

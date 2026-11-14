@@ -12,7 +12,7 @@ import { MODELS_COPY } from '../../../app/copy/models.ts';
 import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import type { DecisionModelRow } from '../../../lib/bureau-decisions.ts';
-import type { BureauStub } from '../../../lib/bureau-stub.test-support.ts';
+import { StubFault, type BureauStub } from '../../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import {
@@ -58,13 +58,16 @@ function decisionRow(
     decisionOnly: false,
     answering: false,
     fallback: false,
+    canBeFallback: true,
     ...extra,
   };
 }
 
 const HAIKU = decisionRow('anthropic', 'claude-haiku-5-5', { answering: true, fallback: true });
+const SONNET = decisionRow('anthropic', 'claude-sonnet-5-5');
 const GPT = decisionRow('openai', 'gpt-5', { availability: 'needs-setup' });
-const JEV = decisionRow('typesafe', 'jev', { decisionOnly: true });
+/** Decision-only: the Bureau's fallback rule never uses it, so it reports `canBeFallback: false`. */
+const JEV = decisionRow('typesafe', 'jev', { decisionOnly: true, canBeFallback: false });
 
 function open(
   options: {
@@ -74,6 +77,8 @@ function open(
     served?: SettingsServed;
     plugins?: PluginFixture[];
     stream?: SettingsStream;
+    /** Holds the answer of the rows until it settles, so the read stays pending. */
+    hold?: Promise<void>;
   } = {},
 ) {
   const served = options.served ?? servedSettings();
@@ -81,9 +86,10 @@ function open(
     served,
     {
       'bureau.agents.catalog': () => ({ models: [], tools: [] }),
-      'bureau.decisions.models': () => ({
-        rows: options.rowsFor?.(served) ?? options.rows ?? [HAIKU, GPT, JEV],
-      }),
+      'bureau.decisions.models': async () => {
+        await options.hold;
+        return { rows: options.rowsFor?.(served) ?? options.rows ?? [HAIKU, GPT, JEV] };
+      },
       // The plugins' titles name the groups of rows: TypeSafe is no chat provider and is not in the
       // host's providers list, but its plugin is.
       'bureau.plugins.contributions': () => ({
@@ -133,8 +139,13 @@ async function optionsOf(container: HTMLElement, key: string): Promise<HTMLEleme
   return [...body.querySelectorAll<HTMLElement>('[role="option"]')];
 }
 
+/** Both selects are here and can choose: the rows the Bureau reports have loaded. */
 const ready = (container: HTMLElement) =>
-  waitFor(() => expect(trigger(container, 'decisions.model')).toBeDefined());
+  waitFor(() => {
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      expect(trigger(container, key).hasAttribute('disabled')).toBe(false);
+    }
+  });
 
 describe('the decisions section', () => {
   test('is the decision model, its fallback and its limit per task, and nothing else of Settings', async () => {
@@ -178,17 +189,45 @@ describe('the rows of the decision model and the fallback model', () => {
     expect(marked[0]?.getAttribute('aria-disabled')).not.toBe('true');
   });
 
-  test('give the fallback model the same rows and marks', async () => {
+  test('give the fallback model only the rows the Bureau says can be the fallback, with the same marks', async () => {
     const { container, findByRole } = open();
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
     await ready(container);
 
     const options = await optionsOf(container, 'decisions.fallbackModel');
 
+    // The decision-only row is no fallback (the Bureau skips it), so it is not offered; a row that
+    // needs setup and returns structured output still is.
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining(SETTINGS_COPY.defaultOption('Claude Haiku 5.5')),
+      expect.stringContaining('Claude Haiku 5.5'),
+      expect.stringContaining('GPT 5'),
+    ]);
     expect(options.filter((option) => option.textContent?.includes(copy.needsSetup))).toHaveLength(
       1,
     );
-    expect(options.map((option) => option.textContent).join('|')).toContain('Jev');
+  });
+
+  test('keep the empty option once a value is set, for both selects, and saving it clears the setting', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-haiku-5-5';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    // A row is chosen in each select (the fixture stores a fallback), and the empty option stays
+    // first: the description promises "Leave it empty".
+    expect(served.values['decisions.fallbackModel']).toBe('anthropic/claude-haiku-5-5');
+    const modelOptions = await optionsOf(container, 'decisions.model');
+    expect(modelOptions).toHaveLength(4);
+    expect(modelOptions[0]?.textContent).not.toContain('Jev');
+    expect(modelOptions[0]?.textContent).not.toContain(copy.needsSetup);
+    await fireEvent.click(modelOptions[0]!);
+
+    await waitFor(() => expect(stub?.callsTo('bureau.settings.update')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.settings.update')[0]?.params['patch']).toEqual({
+      'decisions.model': null,
+    });
   });
 
   test('save the row that is chosen, with a needs-setup row allowed', async () => {
@@ -315,6 +354,8 @@ describe('the decision model row', () => {
       name: copy.model.connect,
     });
     expect(link.getAttribute('href')).toBe('/settings/plugins?plugin=typesafe');
+    // The row says Connect TypeSafe once, as the link, not again in the sentence before it.
+    expect(row(container, 'decisions.model').textContent?.split(copy.model.connect)).toHaveLength(2);
   });
 
   test('leaves out Connect TypeSafe once its plugin is running', async () => {
@@ -333,28 +374,27 @@ describe('the decision model row', () => {
 /**
  * The Bureau's marks follow the settings it holds: the stored decision model answers while it is
  * available, else the stored fallback does, else Haiku; the fallback mark is the stored fallback,
- * else Jev.
+ * else Haiku. Only rows that `canBeFallback` are the fallback, as the Bureau's rule has it.
  */
 function marksFollowSettings(served: SettingsServed): DecisionModelRow[] {
   const stored = (key: string): string | undefined => {
     const value = served.values[key];
     return typeof value === 'string' && value !== '' ? value : undefined;
   };
-  const rows = [HAIKU, GPT, JEV];
+  const rows = [HAIKU, SONNET, GPT, JEV];
   const nameOf = (entry: DecisionModelRow) => `${entry.provider}/${entry.model}`;
   const isAvailable = (name: string | undefined) =>
     rows.some((entry) => nameOf(entry) === name && entry.availability === 'available');
+  const isFallback = (name: string | undefined) =>
+    isAvailable(name) && rows.some((entry) => nameOf(entry) === name && entry.canBeFallback);
   const decisionModel = stored('decisions.model');
   const fallbackModel = stored('decisions.fallbackModel');
-  const answering = isAvailable(decisionModel)
-    ? decisionModel
-    : isAvailable(fallbackModel)
-      ? fallbackModel
-      : 'anthropic/claude-haiku-5-5';
+  const fallback = isFallback(fallbackModel) ? fallbackModel : 'anthropic/claude-haiku-5-5';
+  const answering = isAvailable(decisionModel) ? decisionModel : fallback;
   return rows.map((entry) => ({
     ...entry,
     answering: nameOf(entry) === answering,
-    fallback: nameOf(entry) === (fallbackModel ?? 'typesafe/jev'),
+    fallback: nameOf(entry) === fallback,
   }));
 }
 
@@ -395,12 +435,14 @@ describe('a save moves the rows the Bureau marks (the rows are read again)', () 
     );
 
     const options = await optionsOf(container, 'decisions.fallbackModel');
-    await fireEvent.click(options.find((option) => option.textContent?.includes('Jev'))!);
+    await fireEvent.click(options.find((option) => option.textContent?.includes('Sonnet'))!);
 
-    await waitFor(() => expect(served.values['decisions.fallbackModel']).toBe('typesafe/jev'));
+    await waitFor(() =>
+      expect(served.values['decisions.fallbackModel']).toBe('anthropic/claude-sonnet-5-5'),
+    );
     await waitFor(() =>
       expect(row(container, 'decisions.model').textContent).toContain(
-        copy.model.fallbackAnswers('Jev'),
+        copy.model.fallbackAnswers('Claude Sonnet 5.5'),
       ),
     );
   });
@@ -521,5 +563,145 @@ describe('a decision model the Bureau cannot use', () => {
     expect(row(container, 'decisions.model').textContent).not.toContain(
       copy.model.missing('openai/gpt-5'),
     );
+  });
+
+  test('says its two next steps once while TypeSafe waits for its key, in the warning, with no separate link', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'acme/vanished';
+    const { container, findByRole } = open({
+      served,
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.missingWaiting('acme/vanished'),
+      ),
+    );
+    expect(copy.model.missingWaiting('acme/vanished')).toEndWith(
+      'Connect TypeSafe or choose another.',
+    );
+    expect(
+      within(row(container, 'decisions.model')).queryByRole('link', { name: copy.model.connect }),
+    ).toBeNull();
+    expect(row(container, 'decisions.model').textContent?.split(copy.model.connect)).toHaveLength(
+      2,
+    );
+  });
+
+  test('ends the set-aside warning with Connect TypeSafe or choose another while TypeSafe waits, and leaves the link out', async () => {
+    const served = servedSettings({
+      problems: { 'decisions.model': 'The "catalog" decision model no longer exists' },
+    });
+    delete served.values['decisions.model'];
+    const { container, findByRole } = open({
+      served,
+      rows: [],
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.droppedWaiting),
+    );
+    expect(copy.model.droppedWaiting).toEndWith('Connect TypeSafe or choose another.');
+    expect(
+      within(row(container, 'decisions.model')).queryByRole('link', { name: copy.model.connect }),
+    ).toBeNull();
+  });
+});
+
+describe('a fallback model the Bureau’s fallback never uses', () => {
+  test('is a warning on the fallback row when the stored row is listed but cannot be the fallback', async () => {
+    const served = servedSettings();
+    served.values['decisions.fallbackModel'] = 'typesafe/jev';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.fallbackModel').textContent).toContain(
+        copy.fallbackModel.unusable('typesafe/jev'),
+      ),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain(
+      copy.fallbackModel.unusable('typesafe/jev'),
+    );
+  });
+
+  test('is no warning for a stored fallback that can be the fallback', async () => {
+    const { container, findByRole } = open();
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    expect(row(container, 'decisions.fallbackModel').textContent).not.toContain(
+      'can’t be the fallback',
+    );
+  });
+});
+
+describe('the read of the rows that can answer decisions', () => {
+  test('failing says so in place of the description, with a quiet Try again, and leaves both selects unable to choose', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-haiku-5-5';
+    let failing = true;
+    const { container, findByRole } = open({
+      served,
+      rowsFor: () => {
+        if (failing) throw new StubFault('Unavailable', 503, 'The rows did not come back.');
+        return [HAIKU, GPT, JEV];
+      },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain(copy.model.description);
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      expect(trigger(container, key).hasAttribute('disabled'), key).toBe(true);
+    }
+    // The stored row is not offered as a bare provider/model id in place of the rows.
+    expect(trigger(container, 'decisions.model').textContent).not.toContain(
+      'anthropic/claude-haiku-5-5',
+    );
+    // The failure is on the description, not in the row's error tier.
+    expect(row(container, 'decisions.model').querySelector('[aria-invalid="true"]')).toBeNull();
+
+    failing = false;
+    await fireEvent.click(
+      within(row(container, 'decisions.model')).getByRole('button', { name: copy.model.tryAgain }),
+    );
+
+    await ready(container);
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).not.toContain(copy.model.loadFailed),
+    );
+    expect(
+      within(row(container, 'decisions.model')).queryByRole('button', {
+        name: copy.model.tryAgain,
+      }),
+    ).toBeNull();
+  });
+
+  test('pending leaves both selects unable to choose and does not show the stored id as an option', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-haiku-5-5';
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { container, findByRole } = open({ served, hold: held });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(row(container, 'decisions.model')).not.toBeNull());
+
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      expect(trigger(container, key).hasAttribute('disabled'), key).toBe(true);
+    }
+    expect(trigger(container, 'decisions.model').textContent).not.toContain(
+      'anthropic/claude-haiku-5-5',
+    );
+    release?.();
+    await ready(container);
   });
 });

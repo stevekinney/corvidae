@@ -189,10 +189,19 @@ export const MODELS_COPY = {
         'Answers yes-or-no and classification questions for Interborough. Leave it empty to let the fallback model answer.',
       /** Said instead while the chosen row is empty, missing or needs setup: the row that answers, named by the Bureau. */
       fallbackAnswers: (model: string) => `${model} answers until a decision model is ready.`,
-      /** Said while the Bureau reports no row that can answer. */
+      /**
+       * Said while the Bureau reports no row that can answer. It does not name TypeSafe: while its
+       * plugin waits for a key, a quiet "Connect TypeSafe" link follows.
+       */
       nothingAnswers:
-        'None of your connected models can answer decisions. Connect TypeSafe, or a provider whose models can.',
+        'None of your connected models can answer decisions. Connect a provider whose models can.',
       connect: 'Connect TypeSafe',
+      /**
+       * Said in place of the description while the rows that can answer decisions did not load, with
+       * a quiet Try again: the selects cannot offer a row until they do.
+       */
+      loadFailed: 'Couldn’t load the models that can answer decisions.',
+      tryAgain: 'Try again',
       /**
        * The Bureau dropped the stored value and records why; the row warns in these words, not the
        * Bureau's. It names no row that answers, so it cannot be read as a claim about the value the
@@ -202,10 +211,20 @@ export const MODELS_COPY = {
         'Your earlier decision model was retired, so this shows the default. Choose another.',
       /** The stored value names a row the Bureau does not list as able to answer. */
       missing: (name: string) => `“${name}” can’t answer decisions. Choose another.`,
+      /**
+       * The same two warnings while TypeSafe waits for its key: the row's two next steps are said
+       * once, at the end of the warning, and the separate Connect TypeSafe link is left out.
+       */
+      droppedWaiting:
+        'Your earlier decision model was retired, so this shows the default. Connect TypeSafe or choose another.',
+      missingWaiting: (name: string) =>
+        `“${name}” can’t answer decisions. Connect TypeSafe or choose another.`,
     },
     fallbackModel: {
       label: 'Fallback model',
       description: 'Used when the decision model can’t answer.',
+      /** The stored fallback is a row the Bureau's fallback never uses (it returns no structured output). */
+      unusable: (name: string) => `“${name}” can’t be the fallback. Choose another.`,
     },
     /** The mark beside a row whose provider has no key saved yet or whose model is off. */
     needsSetup: 'Needs setup',
