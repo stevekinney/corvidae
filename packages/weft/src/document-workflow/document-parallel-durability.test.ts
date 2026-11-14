@@ -153,6 +153,9 @@ describe('a signal a branch takes is committed with the progress that records it
       await waitUntil(async () => (await committedStepCount(storage, id, 1)) === 1, {
         message: 'branch b`s first step to be committed',
       });
+      // The commit that landed the consume of `one` holds the nested step's progress, which took it.
+      expect(await hasBufferedSignal(storage, id, 'one')).toBe(false);
+      expect(await committedStepCount(storage, id, 0)).toBe(1);
     }
     await using restarted = await startEngine(storage, document);
     const [handle] = await restarted.recoverAll();

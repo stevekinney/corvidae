@@ -103,9 +103,12 @@ function isAdvancingEntry(
 /**
  * Whether the step `context` numbers next can run as an advancing parallel step of `branchCount`
  * branches: it belongs to an inline run, no lockstep parallel step encloses it, and the step holds
- * nothing yet or what such a step wrote. A run persisted before branches advanced on their own
- * finishes its parallel step, and every parallel step nested in it, in lockstep rounds (see the
- * document `parallel` step).
+ * what such a step wrote, or nothing at or after its number. A run persisted before branches
+ * advanced on their own finishes its parallel step, and every parallel step nested in it, in
+ * lockstep rounds (see the document `parallel` step). Such a run's rounds number their operations
+ * through the shared counter from this step on, so once a round has settled it holds results at
+ * or after this number, though the step's own number may hold none (a branch that failed there).
+ * An advancing step keeps all it has under its own number until it finishes.
  */
 export function canAdvanceBranches(context: object, branchCount: number): boolean {
   if (!hasContextInternals(context)) return false;
@@ -113,8 +116,10 @@ export function canAdvanceBranches(context: object, branchCount: number): boolea
   if (internals.lockstepDepth > 0) return false;
   const step = internals.stepIndex;
   const results = internals.accumulatedResults;
-  if (results?.has(step) !== true) return true;
-  return isAdvancingEntry(results.get(step), operationIdAt(internals, step), branchCount);
+  if (results?.has(step) === true) {
+    return isAdvancingEntry(results.get(step), operationIdAt(internals, step), branchCount);
+  }
+  return results === undefined || [...results.keys()].every((key) => key < step);
 }
 
 /**

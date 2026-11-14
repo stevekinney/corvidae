@@ -6,7 +6,12 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import {
+  advanceTimersByTime,
+  restoreRealTimers,
+  useFakeTimers,
+  waitForCondition,
+} from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
@@ -135,6 +140,19 @@ const host: DocumentWorkflowHost = {
       return previous;
     },
     pinned: ({ input }) => input,
+    // The retrying activity of the `legacy-retry-round` fixture: it failed once before it was taken.
+    flaky: {
+      retry: {
+        maxAttempts: 2,
+        initialBackoff: 3_600_000,
+        backoffMultiplier: 1,
+        maxBackoff: 3_600_000,
+      },
+      execute: () => {
+        calls.push('flaky');
+        return 'F';
+      },
+    },
   },
   triggerKinds: { manual: () => undefined },
   activityVersions: { pinned: '2.0.0' },
@@ -875,11 +893,13 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
     expect(calls.filter((call) => call === 'notify')).toHaveLength(1);
   });
 
-  it('finishes a run the previous interpreter left between rounds, on the numbering it began with', async () => {
+  it('finishes a run the previous interpreter left between rounds, with the values main gives it (matrix row D7)', async () => {
     // The first round settled and the second is open: its results sit under the shared step
-    // numbers of the lockstep rounds, so the step is finished by the lockstep path. (That path
-    // reads the second round's results from the numbers the first used, which `main` did too; the
-    // step is not a regression, and a run that begins now does not take it.)
+    // numbers of the lockstep rounds, so the step is finished by the lockstep path, with the values
+    // `main` gives it (ruling 1). That path reads the second round's results from the numbers the
+    // first used (finding F1 of the matrix), so `a` is the signal `b` took and `b` the first
+    // round's entry: measured on `main` from this fixture, and a run that begins now does not
+    // take this path.
     calls.length = 0;
     const storage = await loadPersistedRun('legacy-round-two');
     const id = 'legacy-round-two-run';
@@ -899,7 +919,136 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
       message: 'the recovered run to wait on the second round',
     });
     await handle!.signal('one', 'A');
-    await handle!.result();
+    expect(await handle!.result()).toEqual({
+      a: 'B',
+      b: lockstepRoundEntry(2, [
+        { status: 'fulfilled', value: 'a1' },
+        { status: 'fulfilled', value: 'B' },
+      ]),
+    });
     expect(await statusOf(recovered, id)).toBe('completed');
+    // The first round's activity is not run again: its result is in the round's entry.
+    expect(calls).not.toContain('a1');
+  });
+
+  it('finishes a run left between rounds whose first branch began with a timed wait, on the lockstep path (review item 4)', async () => {
+    // The step's first number holds the `race` winner of the timed wait, not an entry this step
+    // writes now: the run stays on the lockstep path and ends with the values `main` gives it.
+    const storage = await loadPersistedRun('legacy-timed-round-two');
+    const id = 'legacy-timed-round-two-run';
+    const document = doc('legacy-timed-round-two', [
+      parallel({
+        a: [
+          { kind: 'await-signal', signal: 'one', timeout: '1h' },
+          { kind: 'await-signal', signal: 'three' },
+        ],
+        b: [{ kind: 'await-signal', signal: 'two' }],
+      }),
+    ]);
+    await using recovered = new Engine({ storage });
+    await registerWorkflowDocuments(recovered, host, { active: [document] });
+    const [handle] = await recovered.recoverAll();
+    await waitUntil(async () => isWaitingOnSignal(recovered, id, 'three'), {
+      message: 'the recovered run to wait on the second round',
+    });
+    await handle!.signal('three', 'C');
+    expect(await handle!.result()).toEqual({
+      a: 'B',
+      b: lockstepRoundEntry(4, [
+        { status: 'fulfilled', value: { key: 'signal', value: 'A' } },
+        { status: 'fulfilled', value: 'B' },
+      ]),
+    });
+  });
+
+  it('finishes a run whose settled round holds a rejected branch, its retry pending, with main`s values (matrix row D8)', async () => {
+    useFakeTimers(0);
+    try {
+      calls.length = 0;
+      const storage = await loadPersistedRun('legacy-retry-round');
+      const document = doc('legacy-retry-round', [
+        parallel({
+          a: [{ kind: 'activity', handler: 'flaky' }],
+          b: [{ kind: 'await-signal', signal: 'two' }],
+        }),
+      ]);
+      await using recovered = new Engine({ storage });
+      await registerWorkflowDocuments(recovered, host, { active: [document] });
+      const [handle] = await recovered.recoverAll();
+      await advanceTimersByTime(3_600_000);
+      await advanceTimersByTime(3_600_000);
+      expect(await handle!.result()).toEqual({
+        a: 'F',
+        b: lockstepRoundEntry(2, [
+          { status: 'rejected', reason: { name: 'Error', message: 'flaky once' } },
+          { status: 'fulfilled', value: 'B' },
+        ]),
+      });
+      expect(calls).toEqual(['flaky']);
+    } finally {
+      restoreRealTimers();
+    }
+  });
+});
+
+/**
+ * The cache entry of a lockstep round coordinated at engine step `step`, as `main` leaks it into a
+ * recovered run's result (finding F1 of the matrix).
+ */
+function lockstepRoundEntry(step: number, branches: readonly Record<string, unknown>[]) {
+  return {
+    __weftParallelOperationCache: true,
+    formatVersion: 2,
+    variant: 'all-settled',
+    branches: branches.map((branch, index) => ({
+      ...branch,
+      operationId: `parallel:${String(step)}:${String(index)}`,
+    })),
+    subOperationCount: branches.length,
+  };
+}
+
+describe('a batch map restarted after its first round (matrix row D16)', () => {
+  it('ends with the values main gives it', async () => {
+    // `map` is another step kind (out of scope for COR-2416): this pins today's result, the
+    // second item being the first round's entry (finding F1), so a change to it is seen.
+    useFakeTimers(0);
+    try {
+      const storage = new MemoryStorage();
+      const id = 'batch-map-rounds-run';
+      const document = doc('batch-map-rounds', [
+        { kind: 'activity', handler: 'pinned', input: { items: ['x', 'y'] } },
+        {
+          kind: 'map',
+          over: 'items',
+          steps: [
+            { kind: 'activity', handler: 'count' },
+            { kind: 'sleep', duration: '1h' },
+          ],
+        },
+      ]);
+      {
+        await using original = new Engine({ storage });
+        await registerWorkflowDocuments(original, host, { active: [document] });
+        await original.start(document.name, null, { id });
+        await waitUntil(async () => {
+          const timeline = await original.getTimeline(id);
+          return timeline.some((entry) => entry.status === 'running');
+        });
+      }
+      await using restarted = new Engine({ storage });
+      await registerWorkflowDocuments(restarted, host, { active: [document] });
+      const [handle] = await restarted.recoverAll();
+      await advanceTimersByTime(3_600_000);
+      expect(await handle!.result()).toEqual([
+        null,
+        lockstepRoundEntry(3, [
+          { status: 'fulfilled', value: null },
+          { status: 'fulfilled', value: null },
+        ]),
+      ]);
+    } finally {
+      restoreRealTimers();
+    }
   });
 });

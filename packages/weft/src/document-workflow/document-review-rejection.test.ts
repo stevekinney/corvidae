@@ -309,6 +309,10 @@ describe('a rejected review (COR-2238)', () => {
     });
     expect(await waiting(restarted)).toEqual(['third']);
     await handle!.signal('third', 'done');
+    // The review is not shown again: the run settles once its last branch has its signal.
+    await waitUntil(async () => (await restarted.get(id))?.status !== 'running', {
+      message: 'the run to settle once its last branch takes its signal',
+    });
     expect(await throwingRejectionOf(handle!.result())).toThrow('review-rejected');
     expect(ran).toEqual([]);
     expect((await restarted.get(id))?.status).toBe('failed');

@@ -283,6 +283,72 @@ describe('a timed wait in a branch of a parallel step', () => {
     expect(await run.result()).toEqual({ short: { timedOut: true }, long: { timedOut: true } });
   });
 
+  it('finishes a map in a branch restarted after its first round as a top-level map does (map rounds after the first)', async () => {
+    // A map with no wait runs its items in lockstep rounds of its own inside the branch: its first
+    // round settles and is committed in the branch, its second parks on the sleeps, and the run
+    // restarts there. The first round does not run again. The map's own replay then reads its
+    // second round from the numbers the first used, as a top-level map does on `main` (matrix
+    // finding F1, row D16; `map` is another step kind, out of scope here): this pins that value.
+    useFakeTimers(0);
+    calls.length = 0;
+    const storage = new MemoryStorage();
+    const id = 'branch-map-rounds-run';
+    const document = doc('branch-map-rounds', [
+      parallel({
+        m: [
+          { kind: 'activity', handler: 'list' },
+          {
+            kind: 'map',
+            over: 'items',
+            steps: [
+              { kind: 'activity', handler: 'each' },
+              { kind: 'sleep', duration: '1h' },
+            ],
+          },
+        ],
+        b: [wait('go')],
+      }),
+    ]);
+    {
+      await using original = new Engine({ storage });
+      original.register(child);
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      await original.start(document.name, null, { id });
+      await waitUntil(async () => calls.length === 2 && (await isWaitingOn(original, id, 'go')), {
+        message: 'the map`s first round to settle beside the waiting sibling',
+      });
+      // Branches run in name order: `m` is the second.
+      await waitUntil(async () => hasCommittedSteps(storage, id, 1, 2), {
+        message: 'the map`s first round to be committed in its branch',
+      });
+    }
+    await using restarted = new Engine({ storage });
+    restarted.register(child);
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [handle] = await restarted.recoverAll();
+    await waitUntil(async () => isWaitingOn(restarted, id, 'go'), { message: 'the sibling to wait' });
+    await advanceTimersByTime(60 * 60 * 1000);
+    await handle!.signal('go', 'signalled');
+    expect(await handle!.result()).toEqual({
+      m: [
+        'x',
+        {
+          __weftParallelOperationCache: true,
+          formatVersion: 2,
+          variant: 'all-settled',
+          branches: [
+            { status: 'fulfilled', value: 'x', operationId: 'parallel:3:0' },
+            { status: 'fulfilled', value: 'y', operationId: 'parallel:3:1' },
+          ],
+          subOperationCount: 2,
+        },
+      ],
+      b: 'signalled',
+    });
+    // The first round ran once: the restart resumed the branch inside its map.
+    expect(calls).toEqual(['each:x', 'each:y']);
+  });
+
   it('stops waiting for its signal when the timeout wins, across a restart, while a sibling waits on', async () => {
     useFakeTimers(0);
     const storage = new MemoryStorage();
@@ -319,6 +385,21 @@ describe('a timed wait in a branch of a parallel step', () => {
     expect(await handle!.result()).toEqual({ a: { timedOut: true }, b: 'B' });
   });
 });
+
+/** Whether branch `index` of the run's committed parallel step holds at least `count` results. */
+async function hasCommittedSteps(
+  storage: MemoryStorage,
+  id: string,
+  index: number,
+  count: number,
+): Promise<boolean> {
+  const bytes = await storage.get(KEYS.checkpoint(id));
+  if (bytes === null) return false;
+  const slot = deserializeCheckpoint(bytes)
+    .accumulatedResults.map(([, value]) => value)
+    .find(isParallelOperationCacheEntry)?.branches[index];
+  return slot?.status === 'pending' && (slot.results?.length ?? 0) >= count;
+}
 
 async function waitingNames(engine: Engine, id: string): Promise<readonly string[]> {
   const state = await engine.get(id);
