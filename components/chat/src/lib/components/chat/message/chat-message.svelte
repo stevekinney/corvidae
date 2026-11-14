@@ -328,6 +328,9 @@
     ),
   );
   const turnPresentation = $derived(presentTurnState(turn));
+  // Narration the turn did not end on: it is not an answer, so its line carries no time and no
+  // actions, only its sources when it has some.
+  const workingNarration = $derived(narration && turnState === undefined);
   const turnWords = $derived(resolveTurnLabels(turnLabels));
   const messageLabels = $derived(resolveChatLabels(labels));
   // Text arrives with a caret only in a state that draws one: a reconnecting turn's partial text
@@ -880,10 +883,10 @@
           Remove
         </Button>
       {/if}
-    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice}
+    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice && !workingNarration}
       <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
     {/if}
-    {#if !isPending && !streaming}
+    {#if !isPending && !streaming && !workingNarration}
       <span class="chat-message-line-actions">
         {@render messageIconActions()}
         {#if actions}
@@ -1237,7 +1240,7 @@
          line again, and so does an empty one, which carries its time there. What the agent says
          while it works (narration) is not an answer, so it has no time, Copy, Quote or Regenerate
          unless the turn ended on it. -->
-    {#if !isEditing && !systemRow && turnPresentation.line && !(narration && turnState === undefined)}
+    {#if !isEditing && !systemRow && turnPresentation.line && (!workingNarration || shownSources)}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
