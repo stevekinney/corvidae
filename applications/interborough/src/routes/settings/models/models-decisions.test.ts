@@ -152,7 +152,7 @@ describe('the rows of the decision model and the fallback model', () => {
 
     // The empty option, then the three rows the Bureau listed, TypeSafe's among them.
     expect(options.map((option) => option.textContent)).toEqual([
-      expect.stringContaining(copy.model.none),
+      expect.stringContaining(SETTINGS_COPY.notSet),
       expect.stringContaining('Claude Haiku 5.5'),
       expect.stringContaining('GPT 5'),
       expect.stringContaining('Jev'),
