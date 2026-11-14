@@ -154,8 +154,10 @@
   }
 
   /* A row lays the parts on one line: the disc, then the title over the description, then the
-   * action at the end. It is the line of a list, so it reads from the start and keeps the compact
-   * type whatever the size. A phone drops the action under the words. */
+   * action at the end. It is the line of a list, so it reads from the start, keeps the compact
+   * type whatever the size, and takes a grouped list row's insets (16px at the start, 8px at the
+   * end), so its action ends on the same edge as a list row's button. A phone drops the action
+   * under the words. */
   .cinder-empty-state[data-cinder-layout='row'] {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -168,7 +170,7 @@
     row-gap: 0;
     min-block-size: 0;
     padding-block: var(--cinder-space-3);
-    padding-inline: var(--cinder-space-4);
+    padding-inline: var(--cinder-space-4) var(--cinder-space-2);
     text-align: start;
   }
 

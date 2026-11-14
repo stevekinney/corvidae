@@ -16,6 +16,11 @@
       "description": "Controls text-decoration behavior.\n- `'always'` — underline is always visible.\n- `'hover'` — underline appears on hover and focus (default).\n- `'none'` — underline is never shown.",
       "default": "hover"
     },
+    "variant": {
+      "enum": ["inline", "more"],
+      "description": "The link's form.\n- `'inline'` — a link in running text, at the text's own size and weight.\n- `'more'` — a link out to the page that holds the rest, such as \"Open Reviews\" beside a\n  section's title or at the end of an empty row: small regular text with a chevron after it,\n  on one line, and a 44px hit area under a coarse pointer that takes no layout.",
+      "default": "inline"
+    },
     "external": {
       "type": "boolean",
       "description": "When true, automatically adds `target=\"_blank\"` and merges `rel=\"noopener noreferrer\"`\nwith any consumer-supplied `rel`. Consumer-supplied `target` is preserved if provided.",

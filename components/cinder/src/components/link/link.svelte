@@ -10,10 +10,11 @@
    * @avoidWhen Navigating between pages in a sidebar or nav bar — use NavigationItem.
    * @related navigation-item, button, breadcrumbs
    */
-  export type { LinkProps, LinkColor, LinkUnderline } from './link.types.ts';
+  export type { LinkProps, LinkColor, LinkUnderline, LinkVariant } from './link.types.ts';
 </script>
 
 <script lang="ts">
+  import { ChevronRight } from '@lucide/svelte';
   import type { HTMLAttributes } from 'svelte/elements';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -23,6 +24,7 @@
     href,
     underline = 'hover',
     color = 'primary',
+    variant = 'inline',
     external = false,
     disabled = false,
     target,
@@ -79,9 +81,41 @@
   });
 
   const resolvedClass = $derived(classNames('cinder-link', className));
+  // An unknown variant behaves as an inline link rather than a root attribute no rule matches.
+  const more = $derived(variant === 'more');
 </script>
 
-{#if disabled}
+<!-- The "more" form ends in a chevron, which says the link leads on to a page of its own. It has
+     branches of its own, so an inline link renders exactly what it always did: its children and
+     nothing else, with no whitespace, chevron or block anchor beside them (COR-2329). The chevron
+     follows the words with no whitespace between them, so the text is the words alone. -->
+{#if more && disabled}
+  <span
+    {...spanAttributes}
+    class={resolvedClass}
+    aria-disabled="true"
+    data-cinder-link
+    data-underline={underline}
+    data-color={color}
+    data-variant="more"
+    data-disabled
+    >{@render children()}<ChevronRight class="cinder-link__chevron" aria-hidden="true" /></span
+  >
+{:else if more}
+  <a
+    {...rest}
+    {href}
+    {tabindex}
+    target={resolvedTarget}
+    rel={resolvedRel}
+    class={resolvedClass}
+    data-cinder-link
+    data-underline={underline}
+    data-color={color}
+    data-variant="more"
+    >{@render children()}<ChevronRight class="cinder-link__chevron" aria-hidden="true" /></a
+  >
+{:else if disabled}
   <!--
     Disabled link: rendered as <span> with aria-disabled="true" so assistive technology
     understands the element is not interactive. The href is intentionally withheld — a
