@@ -2602,9 +2602,15 @@ export async function readQuestionStepsProblems(
         );
       }
       const afterWords = rtl ? words.left - box(previous).right : box(previous).left - words.right;
+      // The count is set apart from the pair (8px), and the two buttons stay together (4px), so the
+      // count never reads as part of the button group.
       if (afterWords < -1 || afterWords > 12) {
         problems.push(
           `the buttons are ${afterWords.toFixed(1)}px from the words, not directly after`,
+        );
+      } else if (Math.abs(afterWords - 8) > 1) {
+        problems.push(
+          `the words are ${afterWords.toFixed(1)}px from the buttons, not the 8px that sets the count apart`,
         );
       }
       const betweenButtons = rtl
@@ -2612,6 +2618,8 @@ export async function readQuestionStepsProblems(
         : box(next).left - box(previous).right;
       if (betweenButtons < -1 || betweenButtons > 12) {
         problems.push('next does not follow previous directly');
+      } else if (Math.abs(betweenButtons - 4) > 1) {
+        problems.push(`the two buttons are ${betweenButtons.toFixed(1)}px apart, not 4px`);
       }
       const wordsStyle = getComputedStyle(progress);
       if (wordsStyle.fontSize !== '12px') {

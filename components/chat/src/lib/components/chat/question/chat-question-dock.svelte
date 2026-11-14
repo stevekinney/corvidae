@@ -459,6 +459,10 @@
     font-size: var(--cinder-text-xs);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    /* The count is set apart from the pair: 8px to the buttons in all, the row's 4px gap and this
+     * margin, where the two buttons keep the 4px between them, so the count never reads as a
+     * third button. */
+    margin-inline-end: calc(var(--cinder-space-2) - var(--cinder-space-1));
   }
 
   .chat-question-dock-fieldset {

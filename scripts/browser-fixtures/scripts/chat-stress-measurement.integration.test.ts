@@ -159,7 +159,7 @@ describe('chat stress visual measurement', () => {
           .chat-question-dock-needs { order: 1; flex: none; white-space: nowrap; padding: 2px 8px; }
           .chat-question-dock-steps { order: 2; display: flex; flex: 1 0 100%; justify-content: flex-start; gap: 4px; align-items: center; ${options.stepsStyle ?? ''} }
           .chat-question-dock-steps button { width: 28px; height: 28px; padding: 0; }
-          [data-chat-question-progress] { font-size: 12px; color: rgb(110, 110, 110); white-space: nowrap; ${options.progressStyle ?? ''} }
+          [data-chat-question-progress] { font-size: 12px; color: rgb(110, 110, 110); white-space: nowrap; margin-inline-end: 4px; ${options.progressStyle ?? ''} }
           .chat-question-dock-question { color: rgb(20, 20, 20); }
           .chat-question-dock-question { order: 0; flex: ${options.questionOwnLine ? '1 0 100%' : '1 1 auto'}; margin: 0; }
         </style>
@@ -235,6 +235,20 @@ describe('chat stress visual measurement', () => {
     it('fails buttons that are not directly after the words', async () => {
       const problems = await problemsFor(dock({ stepsStyle: 'justify-content: space-between;' }));
       expect(problems.some((problem) => problem.includes('not directly after'))).toBe(true);
+    });
+
+    it('fails a count that crowds the buttons as closely as they crowd each other', async () => {
+      expect(await problemsFor(dock({ progressStyle: 'margin-inline-end: 0;' }))).toEqual([
+        'the words are 4.0px from the buttons, not the 8px that sets the count apart',
+      ]);
+    });
+
+    it('fails two buttons spread wider than 4px, though the count is set apart', async () => {
+      expect(
+        await problemsFor(
+          dock({ stepsStyle: 'gap: 8px;', progressStyle: 'margin-inline-end: 0;' }),
+        ),
+      ).toEqual(['the two buttons are 8.0px apart, not 4px']);
     });
 
     it('fails a pager on the tag’s line instead of its own row', async () => {
