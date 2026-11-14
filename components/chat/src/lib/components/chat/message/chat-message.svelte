@@ -36,6 +36,12 @@
      * a dashed bubble marked "Queued". A run's notes sit outside the bubble. Default `'default'`.
      */
     presentation?: 'default' | 'transcript';
+    /**
+     * Whether an assistant message's text is what the agent said while it worked, not its answer:
+     * a tool message follows it in the turn. The transcript presentation draws it muted at the
+     * notice size. The container derives it from the turn; it changes nothing stored. Default `false`.
+     */
+    narration?: boolean;
     /** The words of a message's "Not sent" popover, for the transcript presentation. */
     notSent?: ChatNotSent | undefined;
     /** Whether the "Not sent" popover is open. Bindable; it opens from the red icon. */
@@ -262,6 +268,7 @@
     onExpandedChange,
     onRetry,
     presentation = 'default',
+    narration = false,
     notSent,
     notSentOpen = $bindable(false),
     onRemoveQueued,
@@ -1044,6 +1051,7 @@
   dir="ltr"
   data-presentation={transcript ? 'transcript' : undefined}
   data-streaming={streaming || undefined}
+  data-narration={transcript && narration && message.role === 'assistant' ? '' : undefined}
   data-turn-state={turn.kind === 'complete' ? undefined : turn.kind}
   data-role={message.role}
   data-message-direction={messageDirection}
@@ -2434,6 +2442,13 @@
   /* A reconnecting turn's partial text reads muted: it may not be the final answer yet. */
   .chat-message-wrapper[data-turn-state='reconnecting'] .chat-message-body {
     color: var(--cinder-text-muted);
+  }
+
+  /* What an agent says while it works (narration) is quieter than its answer: muted, and at the
+   * notice size, one step under the answer's body size. It stays on the answer's left edge. */
+  .chat-message-wrapper[data-presentation='transcript'][data-narration] .chat-message-body {
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
   /* An answer that stopped short ends in a muted ellipsis, on the last line of its last text block,

@@ -113,6 +113,7 @@
   import { useChatQuoteSelection } from './use-chat-quote-selection.svelte.ts';
   import ChatQuoteChips from './chat-quote-chips.svelte';
   import { MAX_QUOTES, composeQuotedContent } from '../utilities/quote-composition.ts';
+  import { classifyAssistantText } from '../utilities/message-narration.ts';
   import { useChatHistoryLifecycle } from './use-chat-history-lifecycle.svelte.ts';
   import { useChatHistoryRestoration } from './use-chat-history-restoration.svelte.ts';
   import { useChatAutoScroll } from './use-chat-auto-scroll.svelte.ts';
@@ -666,6 +667,9 @@
     messages.findLast((candidate) => candidate.role === 'assistant')?.id,
   );
   const activeTurnMessageIds = $derived(transcript.activeTurnMessageIds);
+  // What each assistant text message is within its turn: narration (a tool message follows it) or
+  // the answer. Derived from position alone, so nothing stored or sent changes.
+  const assistantTextRoles = $derived(classifyAssistantText(messages));
   const progressState = $derived(transcript.progressState);
   const toolCallPairsByCallId = $derived(transcript.toolCallPairsByCallId);
   const toolResultMessagesByResult = $derived(transcript.toolResultMessagesByResult);
@@ -2459,6 +2463,7 @@
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           presentation={variant === 'transcript' ? 'transcript' : 'default'}
+          narration={assistantTextRoles.get(message.id) === 'narration'}
           {notSent}
           onRemoveQueued={commandActions.canRemoveQueued &&
           !commandActions.removingMessageIds.has(message.id)
