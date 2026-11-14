@@ -153,13 +153,6 @@
 
   /** Hides or shows the list, remembers it, and moves focus to the toggle, which has moved. */
   async function setListCollapsed(next: boolean): Promise<void> {
-    // Shown again, the panels mount anew, so they start from where the divider was left.
-    if (!next) {
-      const width =
-        readStoredListWidth(resolveStorage(storage), storageKey, maximumListWidth) ??
-        draggedListWidth;
-      if (width !== null) initialListWidth = clampListWidth(width, maximumListWidth);
-    }
     listCollapsed = next;
     writeStoredListCollapsed(resolveStorage(storage), storageKey, next);
     await tick();
@@ -485,26 +478,35 @@
     {:else}
       {@render listPane()}
     {/if}
-  {:else if collapsed}
-    <!-- The list is not drawn at all, so nothing in it can take focus; the rail keeps the way back. -->
-    <div class="cinder-list-detail__collapsed">
-      <div class="cinder-list-detail__rail">{@render listToggle()}</div>
-      {@render detailPane()}
-    </div>
   {:else if below}
     <div class="cinder-list-detail__below">
-      {@render listPane()}
+      {#if collapsed}
+        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+      {:else}
+        {@render listPane()}
+      {/if}
       {@render detailPane()}
     </div>
   {:else}
-    <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
-      {#snippet children(pane)}
-        {#if pane.id === 'list'}
-          {@render listPane()}
-        {:else}
-          {@render detailPane()}
-        {/if}
-      {/snippet}
-    </ResizablePanels>
+    <!-- Hiding the list keeps the panels, and the open item in them, mounted: the list pane and
+         the divider are out of the layout and the list is not drawn, so nothing in it can take
+         focus, and the rail beside them keeps the way back. An open item that mounted again
+         would read its data again and could take focus for itself. -->
+    <div class="cinder-list-detail__split">
+      {#if collapsed}
+        <div class="cinder-list-detail__rail">{@render listToggle()}</div>
+      {/if}
+      <ResizablePanels {panes} class="cinder-list-detail__panels" onLayoutCommit={commitLayout}>
+        {#snippet children(pane)}
+          {#if pane.id === 'list'}
+            {#if !collapsed}
+              {@render listPane()}
+            {/if}
+          {:else}
+            {@render detailPane()}
+          {/if}
+        {/snippet}
+      </ResizablePanels>
+    </div>
   {/if}
 </div>

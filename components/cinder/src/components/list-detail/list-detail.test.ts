@@ -594,6 +594,30 @@ describe('ListDetail', () => {
       expect(container.querySelector('.cinder-list-detail__list-toggle')).toBeNull();
     });
 
+    test('keeps the open item mounted while the list hides and shows, so the detail keeps its state and focus is not taken back', async () => {
+      const { container, getByRole } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), selectedKey: 'beta', listCollapsible: true },
+      });
+      await measure(container, 1000);
+      const heading = container.querySelector('.cinder-list-detail__detail-body h3')!;
+      expect(heading.textContent).toBe('Beta chat detail');
+
+      await fireEvent.click(getByRole('button', { name: 'Hide list' }));
+      await tick();
+      await tick();
+
+      // The same element, not a new one: a detail that mounts again (an open chat) would read its
+      // data again and take focus for itself, away from the toggle.
+      expect(heading.isConnected).toBe(true);
+      expect(container.querySelector('.cinder-list-detail__detail-body h3')).toBe(heading);
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Show list' }));
+
+      await fireEvent.click(getByRole('button', { name: 'Show list' }));
+      await tick();
+      await tick();
+      expect(container.querySelector('.cinder-list-detail__detail-body h3')).toBe(heading);
+    });
+
     test('hides the list, keeps the toggle on a rail, moves focus to it, and shows the list again', async () => {
       const { container, getByRole, queryByRole } = render(ListDetailFixture, {
         props: {
@@ -612,10 +636,16 @@ describe('ListDetail', () => {
       await tick();
       await tick();
 
-      // The list is not drawn at all, so nothing in it can take focus; the detail fills the width.
+      // The list is not drawn at all, so nothing in it can take focus; its pane and the divider
+      // leave the layout (the styles below), and the detail fills the width.
       expect(root.hasAttribute('data-cinder-list-collapsed')).toBe(true);
       expect(queryByRole('region', { name: 'Chats' })).toBeNull();
-      expect(container.querySelector('[role="separator"]')).toBeNull();
+      const css = stripCinderComponentsLayer(
+        await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+      );
+      expect(css).toMatch(
+        /\[data-cinder-list-collapsed\]\s*\.cinder-list-detail__panels\s*>\s*:is\(\.cinder-resizable-panels__pane:first-child, \.cinder-resizable-panels__handle\)\s*\{\s*display: none;/,
+      );
       expect(detailText(container)).toBe('Beta chat detail');
       const show = getByRole('button', { name: 'Show list' });
       expect(show.closest('.cinder-list-detail__rail')).not.toBeNull();

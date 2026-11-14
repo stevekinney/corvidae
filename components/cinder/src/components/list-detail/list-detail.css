@@ -51,15 +51,22 @@
     align-items: flex-end;
   }
 
-  /* The list hidden: a narrow rail at the start edge holds the toggle, set off from the detail by
-   * the same hairline the divider draws, and the detail takes the rest of the width. */
-  .cinder-list-detail__collapsed {
+  /* Side by side: the rail, while the list is hidden, then the panels. */
+  .cinder-list-detail__split {
     display: flex;
     flex: 1 1 auto;
     min-inline-size: 0;
     min-block-size: 0;
   }
 
+  .cinder-list-detail__split > .cinder-list-detail__panels {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  /* The list hidden: a narrow rail at the start edge holds the toggle, set off from the detail by
+   * the same hairline the divider draws. The panels stay mounted, so the open item keeps its
+   * state; the list pane and the divider leave the layout, and the detail takes the width. */
   .cinder-list-detail__rail {
     display: flex;
     flex: none;
@@ -69,13 +76,29 @@
     border-inline-end: 1px solid var(--cinder-border-muted);
   }
 
-  .cinder-list-detail__collapsed > .cinder-list-detail__detail {
-    flex: 1 1 auto;
+  .cinder-list-detail[data-cinder-list-collapsed]
+    .cinder-list-detail__panels
+    > :is(.cinder-resizable-panels__pane:first-child, .cinder-resizable-panels__handle) {
+    display: none;
+  }
+
+  .cinder-list-detail[data-cinder-list-collapsed]
+    .cinder-list-detail__panels
+    > .cinder-resizable-panels__pane {
+    flex: 1 1 0;
+  }
+
+  /* One above the other, the rail is a row across the top of the detail. */
+  .cinder-list-detail__below > .cinder-list-detail__rail {
+    flex-direction: row;
+    padding: var(--cinder-space-2) var(--cinder-space-4);
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--cinder-border-muted);
   }
 
   @media (forced-colors: active) {
     .cinder-list-detail__rail {
-      border-inline-end-color: CanvasText;
+      border-color: CanvasText;
     }
   }
 

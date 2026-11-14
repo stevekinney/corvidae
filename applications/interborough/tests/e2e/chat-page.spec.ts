@@ -240,10 +240,12 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    let reads = 0;
+    // Every read of the chat waits while the gate is shut: the pane's read and the list's read of
+    // the open chat's row are two, in no fixed order, and the pane must be the one held. The
+    // retry after Cancel reads once the gate is open.
+    let holding = true;
     await answerOperation(page, 'bureau.contexts.get', async (route) => {
-      reads += 1;
-      if (reads === 1) await gate;
+      if (holding) await gate;
       await route.fallback().catch(() => undefined);
     });
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -287,6 +289,7 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
       source: SOURCE,
     });
 
+    holding = false;
     release();
     await page.clock.resume();
     await canceled.getByRole('button', { name: 'Retry' }).click();
