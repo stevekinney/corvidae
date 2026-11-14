@@ -2,11 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "density": {
-      "enum": ["comfortable", "condensed"],
-      "description": "Density token surfaced as `data-cinder-density`.",
-      "default": "comfortable"
-    },
     "selected": {
       "type": "boolean",
       "description": "Whether the row is currently selected.",

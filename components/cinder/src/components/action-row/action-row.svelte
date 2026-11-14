@@ -15,7 +15,6 @@
    */
   export type {
     ActionRowCurrentValue,
-    ActionRowDensity,
     ActionRowProps,
     ActionRowSelectedState,
   } from './action-row.types.ts';
@@ -26,7 +25,6 @@
   import type { ActionRowProps } from './action-row.types.ts';
 
   let {
-    density = 'comfortable',
     selected = false,
     selectedState = 'pressed',
     currentValue = 'true',
@@ -56,7 +54,6 @@
     trailing && 'cinder-action-row--has-trailing',
     className,
   )}
-  data-cinder-density={density}
   data-cinder-selected={selectedDataAttribute}
   aria-pressed={ariaPressed}
   aria-current={ariaCurrent}

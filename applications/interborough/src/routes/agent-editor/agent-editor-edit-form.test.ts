@@ -262,6 +262,20 @@ describe('a save of a saved agent', () => {
     });
   });
 
+  test('saves a copy without a from, so the Bureau keeps where it came from, and shows no field for it (COR-2234)', async () => {
+    const calls = bureau({
+      agent: agentWith({ from: { agent: 'linear:triager', version: '1.0.0' } }),
+    });
+    const { container, findByRole, getByRole } = mountEditor();
+    await findByRole('textbox', { name: /^Instructions/ });
+    expect(container.textContent).not.toContain('linear:triager');
+    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
+
+    await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(1));
+    // An update that omits `from` keeps the file's; the editor never sends it, never as null.
+    expect(Object.hasOwn(updatedDefinition(calls), 'from')).toBe(false);
+  });
+
   test('is sent even when the file’s effort is not one its model lists: the Bureau judges it, and says why', async () => {
     const calls = bureau({
       agent: agentWith({ model: 'anthropic/claude-haiku-5', effort: 'high' }),

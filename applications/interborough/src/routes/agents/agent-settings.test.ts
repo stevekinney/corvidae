@@ -404,6 +404,14 @@ describe('what the Settings tab words and writes', () => {
     expect(restoredChanges(VERSIONS, 2)).toBe('Instructions, Tools and Model');
   });
 
+  test('labels a change of where a copy came from as Copied from, never as the raw key (COR-2234)', () => {
+    const copied = version(2, ['from'], {
+      from: { agent: 'linear:triager', version: '1.0.0' },
+    });
+    expect(versionChanges(copied, VERSIONS[3])).toBe('Copied from: changed');
+    expect(restoredChanges([copied, VERSIONS[3] as AgentVersion], 1)).toBe('Copied from');
+  });
+
   test('names what finds an agent, by name or by identifier', () => {
     expect(dependentsLine(undefined)).toBe('');
     expect(

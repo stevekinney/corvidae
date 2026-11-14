@@ -412,8 +412,11 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       references: null,
       guardrails: null,
       approvals: null,
+      from: null,
       instructions: 'You are a careful researcher.',
     },
+    dropped: [],
+    fromNow: null,
     referenceSizes: null,
     ...overrides,
   };
