@@ -41,10 +41,10 @@
  * The first ink sits as far under the top border as the last ink sits over the bottom one, as in
  * Callout. A line box has air round its letters (half of what its height leaves beside the
  * capitals), so a plain inset reads heavier above the capitals than below a button: the air above
- * the first line is taken out of the top inset, and when no action row follows, the air under the
- * last baseline is taken out of the bottom one. An action row ends in a button face, a box with no
- * air to take out. `1cap` and `1lh` follow the text's own size. The feature banner has its own
- * block with art and keeps its padding.
+ * the first line is taken out of the top inset, and when no action row follows, or the row holds
+ * only links, the air under the last baseline is taken out of the bottom one. An action row that
+ * ends in a button face is a box with no air to take out. `1cap` and `1lh` follow the text's own
+ * size. The feature banner has its own block with art and keeps its padding.
  * ---------------------------------------- */
 
   .cinder-banner:not([data-cinder-variant='feature']) {
@@ -54,6 +54,14 @@
   }
 
   .cinder-banner:not([data-cinder-variant='feature']):not(:has(> .cinder-banner__actions)) {
+    padding-block-end: calc(var(--_cinder-banner-inset) - var(--_cinder-banner-last-air));
+  }
+
+  /* An action row of links ends in text, which has leading under its letters like any line: the
+   * air comes off the bottom here too. A row with a button, a field or a select ends in a box. */
+  .cinder-banner:not([data-cinder-variant='feature']):has(
+      > .cinder-banner__actions .cinder-link
+    ):not(:has(> .cinder-banner__actions :is(button, input, select, textarea, .cinder-button))) {
     padding-block-end: calc(var(--_cinder-banner-inset) - var(--_cinder-banner-last-air));
   }
 

@@ -6,6 +6,8 @@
 
 import { describe, expect, test } from 'bun:test';
 
+import { parse } from 'postcss';
+
 import { declarationsFor } from '../../test/css.ts';
 
 const css = await Bun.file(new URL('./banner.css', import.meta.url)).text();
@@ -64,6 +66,55 @@ describe('Banner layout', () => {
         ".cinder-banner:not([data-cinder-variant='feature']) > .cinder-banner__dismiss",
       ).get('margin-block-start'),
     ).toBe('var(--_cinder-banner-first-air)');
+  });
+
+  // A Banner that ends in a text link ("Change retention") has leading under the link's letters,
+  // like any line of text, and kept 15px under the descender against 11px over the capitals.
+  describe('a row of links', () => {
+    const trimsBottomFor = (needle: string): boolean => {
+      let found = false;
+      parse(css).walkRules((rule) => {
+        const selector = rule.selector.replace(/\s+/g, '');
+        if (!selector.includes(needle)) return;
+        rule.walkDecls('padding-block-end', (declaration) => {
+          found =
+            declaration.value ===
+            'calc(var(--_cinder-banner-inset) - var(--_cinder-banner-last-air))';
+        });
+      });
+      return found;
+    };
+
+    test('takes the air under the last baseline off the bottom inset, as a bare banner does', () => {
+      expect(trimsBottomFor('>.cinder-banner__actions.cinder-link')).toBe(true);
+    });
+
+    test('keeps the inset whole when the row holds a button face, a field or a select', () => {
+      let excluded = '';
+      parse(css).walkRules((rule) => {
+        const selector = rule.selector.replace(/\s+/g, '');
+        if (selector.includes('>.cinder-banner__actions.cinder-link')) excluded = selector;
+      });
+      for (const box of ['button', 'input', 'select', 'textarea', '.cinder-button']) {
+        expect(excluded).toContain(box);
+      }
+      expect(excluded).toContain(':not(:has(>.cinder-banner__actions:is(');
+    });
+
+    test('no rule trims the bottom for an action row on its own', () => {
+      // The bare rule says there is no action row, and the link rule needs a link in it.
+      const trimmed: string[] = [];
+      parse(css).walkRules((rule) => {
+        rule.walkDecls('padding-block-end', () => {
+          trimmed.push(rule.selector.replace(/\s+/g, ''));
+        });
+      });
+      expect(
+        trimmed.filter((selector) => selector.includes('actions') && !selector.includes('link')),
+      ).toEqual([
+        ".cinder-banner:not([data-cinder-variant='feature']):not(:has(>.cinder-banner__actions))",
+      ]);
+    });
   });
 
   test('a button label never wraps', () => {

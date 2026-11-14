@@ -84,6 +84,15 @@
     padding-block-end: calc(var(--_cinder-callout-inset) - var(--_cinder-callout-last-air));
   }
 
+  /* A stacked action row of links ends in text, which has leading under its letters like any line,
+   * so the air comes off the bottom here too. A row with a button, a field or a select ends in a
+   * box. */
+  .cinder-callout:not(:has(> .cinder-callout__body, .cinder-callout__progress)):has(
+      > .cinder-callout__action .cinder-link
+    ):not(:has(> .cinder-callout__action :is(button, input, select, textarea, .cinder-button))) {
+    padding-block-end: calc(var(--_cinder-callout-inset) - var(--_cinder-callout-last-air));
+  }
+
   /* The dismiss button keeps its place against the border. */
   .cinder-callout:not(:has(> .cinder-callout__body)) > .cinder-callout__dismiss {
     margin-block-start: calc(var(--cinder-space-0-5) + var(--_cinder-callout-first-air));

@@ -300,6 +300,42 @@ describe('callout — one edge, no stripe', () => {
     });
   });
 
+  describe('a stacked row of links', () => {
+    // A link has leading under its letters like any line, so a callout that ends in one takes the
+    // last line's air off the bottom inset; a button face, a field or a select is a box.
+    const linkRule = (): { selector: string; trimmed: string | undefined } => {
+      let found: { selector: string; trimmed: string | undefined } = {
+        selector: '',
+        trimmed: undefined,
+      };
+      root.walkRules((rule) => {
+        const flat = rule.selector.replace(/\s+/g, '');
+        if (!flat.includes('>.cinder-callout__action.cinder-link')) return;
+        let trimmed: string | undefined;
+        rule.walkDecls('padding-block-end', (declaration) => {
+          trimmed = declaration.value;
+        });
+        found = { selector: flat, trimmed };
+      });
+      return found;
+    };
+
+    test('takes the last line’s air off the bottom inset', () => {
+      expect(linkRule().trimmed).toBe(
+        'calc(var(--_cinder-callout-inset) - var(--_cinder-callout-last-air))',
+      );
+    });
+
+    test('keeps the inset whole beside a button face, a field or a select, or a progress line', () => {
+      const { selector } = linkRule();
+      for (const box of ['button', 'input', 'select', 'textarea', '.cinder-button']) {
+        expect(selector).toContain(box);
+      }
+      expect(selector).toContain('.cinder-callout__progress');
+      expect(selector).toContain('>.cinder-callout__body');
+    });
+  });
+
   describe('phone layout', () => {
     test('under 30rem the message takes the full row so the action stacks under it', () => {
       const css = calloutCss.replace(/\s+/g, ' ');
