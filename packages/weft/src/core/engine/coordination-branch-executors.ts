@@ -6,6 +6,7 @@ import {
   captureSignalWaitRun,
   clearSignalWait,
   recordSignalWaitBegan,
+  trackSignalWaitClear,
 } from './signal-wait-tracking.ts';
 import {
   consumeSignalWithAtomicWorkflowCommit,
@@ -203,7 +204,11 @@ export function executeWaitSignalSubOperation(
       // the durable `waitingForSignals` list. Nothing awaits this branch any
       // more, so the write runs on its own; it changes nothing when the engine
       // is shutting down, because then the wait is still outstanding durably.
-      void clearSignalWait(internals, workflowId, run, signalName);
+      trackSignalWaitClear(
+        internals,
+        workflowId,
+        clearSignalWait(internals, workflowId, run, signalName),
+      );
       // Prefer the race-loser `signal`'s reason; fall back to the engine-abort
       // reason on teardown (mirrors `executeSleepSubOperation`) so a disposed
       // engine surfaces its own abort reason rather than a generic Error.

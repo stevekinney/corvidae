@@ -34,6 +34,7 @@ import {
 import { canPersistPartialEntry, writePartialEntry } from './partial-entry.ts';
 import { takeSettledSteps } from './settled-step-sink.ts';
 import { assertSupportedSignalBranches } from './signal-branch-guard.ts';
+import { settleSignalWaitClears } from './signal-wait-tracking.ts';
 import { peekSignal } from './signals.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callActivityFunction } from './state-utilities.ts';
@@ -523,6 +524,10 @@ export async function executeRaceSubOperations(
     parentSignal?.removeEventListener('abort', abortFromParent);
     // Abort losers before the owning coordinator finalizes a signal envelope.
     controller.abort();
+    // A wait that lost clears itself from the durable list in a write of its own. Settle it before
+    // the race does, so a reader told the race's operation settled finds the list without the wait.
+    const clearing = settleSignalWaitClears(internals, workflowId);
+    if (clearing !== undefined) await clearing;
   }
 }
 
