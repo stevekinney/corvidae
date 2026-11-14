@@ -19,7 +19,6 @@
   decidedBy="Priya Raman"
   decidedIn="Reviews"
   decidedInHref="/reviews"
-  decidedAt="2026-11-02T10:46:00.000Z"
   decisionNote="Checked the order first."
   result="Refunded $42.00 to the original card."
 />

@@ -2727,11 +2727,14 @@ describe('ApprovalCard on a phone', () => {
     );
   });
 
-  test('a receipt card keeps room under its last row for the 44px Details area', () => {
+  test('a receipt card has the padding and gap an expired card has, with room for the 44px Details area', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
+    // No rule gives a receipt its own padding: the three settled states share the decision card's.
+    expect(css).not.toMatch(/\.cinder-approval-card--decision:has\(/);
+    // The card's own block padding (12px) holds the 10px the Details control's hit area overhangs.
     expect(css).toMatch(
-      /\.cinder-approval-card--decision:has\(> \.cinder-approval-card__receipt\) \{[\s\S]*?padding-block-end: var\(--cinder-space-2-5\);/,
+      /\.cinder-approval-card--decision \{[\s\S]*?padding: var\(--cinder-space-3\);/,
     );
   });
 

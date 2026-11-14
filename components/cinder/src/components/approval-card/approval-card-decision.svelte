@@ -241,9 +241,10 @@
       titleClass="cinder-approval-card__decision-title"
     >
       {#snippet status()}
-        <span class="cinder-approval-card__settled-word"
-          >{outcomeWord ?? STATE_LABELS[approvalState]}</span
-        >{#if hasWho}{' '}{byText}{inText}{#if decidedIn !== undefined}{#if decidedInHref !== undefined}<Link
+        {outcomeWord ??
+          STATE_LABELS[
+            approvalState
+          ]}{#if hasWho}{' '}{byText}{inText}{#if decidedIn !== undefined}{#if decidedInHref !== undefined}<Link
                 href={decidedInHref}>{decidedIn}</Link
               >{:else}{decidedIn}{/if}{/if}{/if}
       {/snippet}
