@@ -167,7 +167,7 @@ export function slugify(name: string): string {
 
 /**
  * What the model field is narrowed by besides the catalog: the providers the host reports, with
- * whether each has a key, and what the model policy forbids. Either is left out when it could not
+ * whether each is connected, and what the model policy forbids. Either is left out when it could not
  * be read, and the field then offers what the catalog lists.
  */
 export type ModelContext = {

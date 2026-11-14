@@ -80,7 +80,7 @@ export const GOALS_COPY = {
     editAction: 'Edit',
     startAgainAction: 'Start again',
     stopAction: 'Stop goal',
-    /** Why Start again is off for a model agent while no provider holds a key, and where to fix it. */
+    /** Why Start again is off for a model agent while no provider is connected, and where to fix it. */
     connectProvider: 'Connect a provider',
     connectProviderPath: '/settings/models',
     /** Why Edit and Stop goal are inert while the server gives no answer (row 68w). */
@@ -207,7 +207,7 @@ export const GOALS_COPY = {
     maximumAttemptsLabel: 'Attempt limit',
     maximumAttemptsDescription: 'Gives up after this many attempts, from 1 to 20.',
     maximumAttemptsInvalid: 'Use a number from 1 to 20.',
-    /** Above the first field when a model agent is chosen and no provider holds a key. */
+    /** Above the first field when a model agent is chosen and no provider is connected. */
     needsProvider: (agent: string): string =>
       `${agent} needs a model provider, so a goal can’t make attempts yet.`,
     connectProvider: 'Connect a provider',

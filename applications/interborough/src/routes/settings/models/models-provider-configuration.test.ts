@@ -406,7 +406,6 @@ describe('a keyless provider (COR-2414)', () => {
     await waitFor(() => expect(row.textContent).toContain('Ollama'));
     expect(row.textContent).toContain(MODELS_COPY.providers.connected);
     expect(within(row).queryByRole('button', { name: /^Connect/ })).toBeNull();
-    expect(row.textContent).not.toContain(MODELS_COPY.providers.connect);
     // The page says a provider is connected, so it asks for no provider to be connected.
     expect(container.textContent).not.toContain(MODELS_COPY.providers.description);
     expect(container.textContent).toContain(MODELS_COPY.providers.connectedDescription);

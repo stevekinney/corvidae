@@ -142,7 +142,7 @@ export function unavailableReason(
  * catalog lacks (`kept`) joins its provider's group, so it can stay selected.
  *
  * @param catalog What `bureau.agents.catalog` returned.
- * @param hostProviders The providers the host can call, each with whether it has a key, or
+ * @param hostProviders The providers the host can call, each with whether it is connected, or
  *   `undefined` when the host did not say.
  * @param restrictions What the model policy forbids.
  * @param kept The model an agent file names that the catalog lacks, written `<provider>/<model>`.

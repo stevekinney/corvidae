@@ -77,6 +77,7 @@ function open(
       models: (options.agentCatalog ?? []).map(catalogModelFixture),
       tools: [],
     }),
+    'bureau.decisions.models': () => ({ rows: [] }),
     'bureau.agents.list': () => ({
       agents: Object.keys(agents).map((name) => ({
         name,
@@ -519,9 +520,10 @@ describe('connecting a provider', () => {
     expect(
       within(providerOf(container, 'openai')!).getByRole('button', { name: /Manage/ }),
     ).toBeDefined();
-    // The agent editor’s choices are read again with the catalog.
+    // The rows that can answer decisions are read again: the provider's rows needed setup until
+    // its key was saved. (The agent editor's choices are marked stale too, and read when it opens.)
     await waitFor(() =>
-      expect(stub?.callsTo('bureau.agents.catalog').length).toBeGreaterThanOrEqual(1),
+      expect(stub?.callsTo('bureau.decisions.models').length).toBeGreaterThanOrEqual(2),
     );
 
     await press(dialog, copy.done);

@@ -48,6 +48,7 @@ export class ProviderConfigurationDraft {
   saving = $state(false);
 
   readonly #options: ProviderConfigurationOptions;
+  #generation = 0;
 
   constructor(options: ProviderConfigurationOptions) {
     this.#options = options;
@@ -119,6 +120,9 @@ export class ProviderConfigurationDraft {
       ...undrawnFields(this.stored, this.formSchema),
       ...configurationWithoutEmpty(draft),
     };
+    // The dialog may close, and open again, while the host answers: what it settles belongs to
+    // the dialog that asked, and only to the draft that was sent.
+    const generation = this.#generation;
     this.saving = true;
     this.issues = [];
     this.failure = '';
@@ -126,13 +130,13 @@ export class ProviderConfigurationDraft {
       const stored = await updatePlugin(source.plugin, { configuration });
       showToast(stored.restartRequired ? copy.saved : copy.savedNow, { variant: 'success' });
       await this.#options.onSaved();
-      this.draft = undefined;
+      if (generation === this.#generation && this.draft === draft) this.draft = undefined;
       return true;
     } catch (error) {
-      this.#fail(error);
+      if (generation === this.#generation) this.#fail(error);
       return false;
     } finally {
-      this.saving = false;
+      if (generation === this.#generation) this.saving = false;
     }
   }
 
@@ -160,6 +164,7 @@ export class ProviderConfigurationDraft {
 
   /** Puts the draft back as it was before the dialog opened. */
   reset(): void {
+    this.#generation += 1;
     this.draft = undefined;
     this.issues = [];
     this.failure = '';

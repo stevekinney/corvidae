@@ -26,9 +26,14 @@ export function markConnected(queryClient: QueryClient, provider: string): void 
   );
 }
 
-/** Reads again what a change of key moved: the providers, the agent editor's model choices, and the plugin that holds the key. */
+/**
+ * Reads again what a change of key moved: the providers, the rows that can answer decisions (a
+ * provider's rows need setup until its key is saved), the agent editor's model choices, and the
+ * plugin that holds the key.
+ */
 export function refreshAfterKeyChange(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.decisionModels() });
   void queryClient.invalidateQueries({ queryKey: queryKeys.agents.catalog() });
   void queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() });
 }
