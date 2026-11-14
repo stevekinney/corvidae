@@ -190,9 +190,30 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     const row = page.locator('[data-approval-decision]');
     const denyButton = row.getByRole('button', { name: 'Deny' });
     const approveButton = row.getByRole('button', { name: 'Approve' });
-    const rowBox = await boxOf(row);
-    const deny = await boxOf(denyButton);
-    const approve = await boxOf(approveButton);
+    // The page has brought the person to the approval: it scrolled the row to the middle and
+    // focused it, and until then it scrolls it again each frame the row is drawn anew.
+    await expect(row).toBeFocused();
+    // The three boxes come from one layout. Read one at a time, they can straddle a scroll: the
+    // CI failure measured Deny and Approve 22px apart, which is no wrap (a wrapped Approve sits a
+    // 28px button and the 12px row gap lower) but the transcript moving between two reads.
+    const { rowBox, deny, approve } = await row.evaluate((element) => {
+      const rectOf = (node: Element) => {
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      const buttonNamed = (name: string) => {
+        const button = [...element.querySelectorAll('button')].find(
+          (candidate) => candidate.textContent?.trim() === name,
+        );
+        if (button === undefined) throw new Error(`No ${name} button in the approval.`);
+        return button;
+      };
+      return {
+        rowBox: rectOf(element),
+        deny: rectOf(buttonNamed('Deny')),
+        approve: rectOf(buttonNamed('Approve')),
+      };
+    });
     // One row, in reading order, the primary decision last.
     expect(Math.abs(deny.y - approve.y)).toBeLessThan(1);
     expect(approve.x).toBeGreaterThanOrEqual(deny.x + deny.width - 1);
