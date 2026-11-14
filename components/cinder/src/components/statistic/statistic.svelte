@@ -139,7 +139,7 @@
   >
   {#if loading}
     <span id={valueId} class="cinder-statistic__value cinder-statistic__value--loading">
-      <Skeleton width="3rem" height="1.75rem" radius="var(--cinder-radius-md)" />
+      <Skeleton width="3rem" height="0.8em" radius="var(--cinder-radius-md)" />
     </span>
   {:else}
     <span id={valueId} class="cinder-statistic__value">{displayValue}</span>

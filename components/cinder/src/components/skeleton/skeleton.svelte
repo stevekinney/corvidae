@@ -139,6 +139,11 @@
     {#if label}
       <VisuallyHidden role="status">{visible ? label : ''}</VisuallyHidden>
     {/if}
+    <!-- The status line leads the group: after a long wait it is read first, above the
+         placeholders, never below a page of them out of view (COR-2329). -->
+    {#if visible}
+      {@render stillLoadingStatus()}
+    {/if}
     {#if visible && shape === 'grouped'}
       <!-- A grouped list's rows: one rounded surface, separators inset at the text. -->
       <div class="cinder-skeleton-grouped" aria-hidden="true">
@@ -166,7 +171,6 @@
           </div>
         {/each}
       </div>
-      {@render stillLoadingStatus()}
     {:else if visible}
       <div
         class="cinder-skeleton-list"
@@ -199,7 +203,6 @@
           </div>
         {/each}
       </div>
-      {@render stillLoadingStatus()}
     {/if}
   </div>
 {:else if visible}
@@ -212,6 +215,7 @@
       {#if label}
         <VisuallyHidden role="status">{label}</VisuallyHidden>
       {/if}
+      {@render stillLoadingStatus()}
       {#if children}
         {@render children()}
       {:else}
@@ -236,7 +240,6 @@
           {/each}
         </div>
       {/if}
-      {@render stillLoadingStatus()}
     </div>
   {:else}
     <div class={classNames('cinder-skeleton', className)} aria-hidden="true" {style}></div>

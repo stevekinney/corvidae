@@ -40,7 +40,7 @@ Load a reference when its step comes up: [capture](references/capture.md), [the 
 
 Run a sweep when the owner asks for a design audit, before a design milestone, or after a large Cinder change.
 
-Start the capture in the background: `bun scripts/design-review-capture.ts` from `applications/interborough`. Meanwhile, gather the agreed design reference if one exists ([design references](references/design-references.md)).
+Start the capture in the background: `bun scripts/design-review-capture.ts` from `applications/interborough`, or, when the host is loaded, `gh workflow run design-review-capture.yml --ref <branch>` and `gh run download <run id>` ([capture](references/capture.md) "On GitHub Actions"). Meanwhile, gather the agreed design reference if one exists ([design references](references/design-references.md)).
 
 Group the manifest by area: chat; agents and memory; capabilities; workflows and runs; schedules; reviews, hooks and goals; health, workers, storage and audit; settings; shell and not-found. Dispatch `design-reviewer` in sweep mode per area, at most two at a time, each with its manifest lines, the run's `summary.json` and `geometry-report.md`, the reference images for that area, and the data caveat.
 

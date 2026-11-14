@@ -445,6 +445,9 @@ describe('EmptyState layout', () => {
     expect(root.get('display')).toBe('grid');
     expect(root.get('grid-template-columns')).toBe('auto minmax(0, 1fr) auto');
     expect(root.get('text-align')).toBe('start');
+    // A grouped list row's insets, so the action ends on the same edge as a list row's button
+    // (COR-2329: it ended 8px short).
+    expect(root.get('padding-inline')).toBe('var(--cinder-space-4) var(--cinder-space-2)');
     const action = declarationsFor(
       emptyStateCss,
       ".cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action",

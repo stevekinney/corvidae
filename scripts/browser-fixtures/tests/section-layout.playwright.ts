@@ -21,6 +21,19 @@ test.describe('Section layout', () => {
     expect(first?.height).toBeGreaterThanOrEqual(8 * 48);
   });
 
+  test('a small more link in the actions is centred on the title’s line (COR-2329)', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('section'), { waitUntil: 'load' });
+    const section = page.getByTestId('section-more-link');
+    const [title, link] = await Promise.all([
+      section.getByRole('heading', { name: 'Needs attention' }).boundingBox(),
+      section.getByRole('link', { name: 'Open Health' }).boundingBox(),
+    ]);
+    const centre = (box: { y: number; height: number }) => box.y + box.height / 2;
+    expect(Math.abs(centre(link!) - centre(title!))).toBeLessThanOrEqual(1);
+  });
+
   test('the Section draws no box', async ({ page }) => {
     await page.goto(fixtureRoute('section'), { waitUntil: 'load' });
     const section = page.locator('.cinder-section').first();
@@ -76,7 +89,7 @@ test.describe('GroupedList layout', () => {
     expect(overlay.inset).toBe('0px');
   });
 
-  test('the grouped skeleton draws the grouped list surface, and its button block stacks on a phone (COR-2329)', async ({
+  test('the grouped skeleton draws the grouped list surface, and its button block drops under the text on a phone (COR-2329)', async ({
     page,
   }) => {
     await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
@@ -103,11 +116,47 @@ test.describe('GroupedList layout', () => {
     expect(Math.abs((await real.boundingBox())!.height - placeholderHeight)).toBeLessThanOrEqual(1);
     await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
     await page.setViewportSize({ width: 375, height: 800 });
-    const row = await rows.first().boundingBox();
     const text = await rows.first().locator('.cinder-skeleton-grouped-text').boundingBox();
     const block = await rows.first().locator('.cinder-skeleton-action-bar').boundingBox();
+    // Under the text, at the button's own 84px, from the text's leading edge, as the real one is.
     expect(block!.y).toBeGreaterThanOrEqual(text!.y + text!.height - 1);
-    expect(block!.width).toBeGreaterThan(row!.width - 40);
+    expect(block!.width).toBeCloseTo(84, 0);
+    expect(Math.abs(block!.x - text!.x)).toBeLessThanOrEqual(1);
+  });
+
+  test('a slow load’s status line sits above the first placeholder, not under them (COR-2329)', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
+    const group = page.getByTestId('skeleton-still-loading');
+    const status = group.locator('.cinder-skeleton-status');
+    await expect(status).toContainText('Still loading reviews.');
+    const line = await status.boundingBox();
+    const first = await group.locator('.cinder-skeleton-grouped-row').first().boundingBox();
+    expect(line!.y + line!.height).toBeLessThanOrEqual(first!.y);
+    // It starts at the inline start, with the placeholders.
+    expect(Math.abs(line!.x - first!.x)).toBeLessThanOrEqual(1);
+  });
+
+  test('an empty row’s and a failed row’s actions end on the list buttons’ edge (COR-2329)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const listButton = await page
+      .getByTestId('grouped-list-actions')
+      .getByRole('link', { name: 'Answer' })
+      .boundingBox();
+    const listEdge = listButton!.x + listButton!.width;
+    const emptyAction = await page
+      .getByTestId('grouped-list-empty-row')
+      .getByRole('button', { name: 'Open Health' })
+      .boundingBox();
+    const retry = await page
+      .getByTestId('grouped-list-error-row')
+      .getByRole('button', { name: 'Try again' })
+      .boundingBox();
+    expect(Math.abs(emptyAction!.x + emptyAction!.width - listEdge)).toBeLessThanOrEqual(1);
+    expect(Math.abs(retry!.x + retry!.width - listEdge)).toBeLessThanOrEqual(1);
   });
 
   test('text actions trail their row on a wide screen (COR-2329)', async ({ page }) => {
@@ -119,20 +168,41 @@ test.describe('GroupedList layout', () => {
     expect(button!.width).toBeLessThan(row!.width / 3);
   });
 
-  test('text actions stack full width under the text on a phone (COR-2329)', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 800 });
+  test('text actions drop under the text on a phone at their own width, from the title’s leading edge (COR-2329)', async ({
+    page,
+  }) => {
     const rows = page.getByTestId('grouped-list-actions').locator('.cinder-grouped-list-item');
-    for (const [index, name] of [
+    const actions = [
       [0, 'Answer'],
       [1, 'View run'],
-    ] as const) {
-      const row = await rows.nth(index).boundingBox();
-      const text = await rows.nth(index).locator('.cinder-grouped-list-item__text').boundingBox();
-      const button = await rows.nth(index).getByRole('link', { name }).boundingBox();
-      expect(button!.y, `${name} is under its text`).toBeGreaterThanOrEqual(
-        text!.y + text!.height - 1,
-      );
-      expect(button!.width, `${name} is the row's width`).toBeGreaterThan(row!.width - 40);
+    ] as const;
+    // The natural width of each button is its width beside the text on a wide screen.
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const natural = new Map<string, number>();
+    for (const [index, name] of actions) {
+      natural.set(name, (await rows.nth(index).getByRole('link', { name }).boundingBox())!.width);
+    }
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const [index, name] of actions) {
+        const text = await rows.nth(index).locator('.cinder-grouped-list-item__text').boundingBox();
+        const title = await rows
+          .nth(index)
+          .locator('.cinder-grouped-list-item__title')
+          .boundingBox();
+        const button = await rows.nth(index).getByRole('link', { name }).boundingBox();
+        expect(button!.y, `${name} is under its text at ${width}`).toBeGreaterThanOrEqual(
+          text!.y + text!.height - 1,
+        );
+        expect(
+          Math.abs(button!.width - natural.get(name)!),
+          `${name} keeps its natural width at ${width}`,
+        ).toBeLessThanOrEqual(1);
+        expect(
+          Math.abs(button!.x - title!.x),
+          `${name} starts at the title's leading edge at ${width}`,
+        ).toBeLessThanOrEqual(1);
+      }
     }
   });
 });

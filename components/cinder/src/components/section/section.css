@@ -56,9 +56,12 @@
     flex: none;
     align-items: center;
     gap: var(--cinder-space-2);
-    /* Actions are centered on the title's first line, so they never make the header taller. */
+    /* Actions are centered on the title's first line, so they never make the header taller. The
+       box is at least a compact control tall, so an action shorter than one, such as a small "more"
+       link, is centred on the title too rather than riding above it. */
     font-size: var(--cinder-text-lg);
     line-height: var(--cinder-leading-tight);
+    min-block-size: var(--_cinder-compact-control-height);
     margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
   }
 
