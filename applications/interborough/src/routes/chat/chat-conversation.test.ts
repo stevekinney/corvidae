@@ -1601,6 +1601,14 @@ describe('attachments', () => {
     [...container.querySelectorAll('.chat-attachment-preview')].map((node) =>
       node.getAttribute('data-state'),
     );
+  /**
+   * The page's words for each attachment's failure. The composer draws a failure as one line under
+   * the strip with Chat's own copy, and keeps the page's words as the chip's tooltip.
+   */
+  const reasonsOf = (container: HTMLElement) =>
+    [...container.querySelectorAll('.chat-attachment-preview')].map(
+      (node) => node.getAttribute('title') ?? '',
+    );
   const png = (size = 4) => new File([new Uint8Array(size)], 'photo.png', { type: 'image/png' });
 
   test('turns the composer’s file picker on for an agent whose model takes media, accepting what it takes', async () => {
@@ -1657,14 +1665,20 @@ describe('attachments', () => {
 
   test('refuses a file over the limit for its type without uploading it, in the page’s words', async () => {
     const state = served([SEER]);
-    const { container, findByText } = open();
+    const { container } = open();
     const big = png();
     Object.defineProperty(big, 'size', { value: 10 * MIB + 1 });
 
     await attach(container, big);
 
     await waitFor(() => expect(states(container)).toEqual(['error']));
-    expect(await findByText('Can’t attach: 10 MB is over the 10 MB limit.')).not.toBeNull();
+    expect(reasonsOf(container)).toEqual([
+      'photo.png. Can’t attach: 10 MB is over the 10 MB limit.',
+    ]);
+    // The composer's own line names the file and the limit, and offers Remove.
+    expect(container.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      'photo.png is over the 10 MB limit.',
+    );
     expect(state.methods).toEqual([]);
   });
 
@@ -1679,17 +1693,20 @@ describe('attachments', () => {
         },
       },
     ]);
-    const { container, findByText } = open();
+    const { container } = open();
     const big = png();
     Object.defineProperty(big, 'size', { value: 4 * MIB });
 
     await attach(container, big, new File(['zip'], 'a.zip', { type: 'application/zip' }));
 
     await waitFor(() => expect(states(container)).toEqual(['error', 'error']));
-    expect(await findByText('Can’t attach: 4.0 MB is over the 3.0 MB limit.')).not.toBeNull();
-    expect(
-      await findByText('Can’t attach: ZIP files aren’t supported. Use PNG, JPG.'),
-    ).not.toBeNull();
+    expect(reasonsOf(container)).toEqual([
+      'photo.png. Can’t attach: 4.0 MB is over the 3.0 MB limit.',
+      'a.zip. Can’t attach: ZIP files aren’t supported. Use PNG, JPG.',
+    ]);
+    expect(container.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      "2 files didn't upload",
+    );
     expect(state.methods).toEqual([]);
   });
 
@@ -1715,12 +1732,12 @@ describe('attachments', () => {
     async (failing, answer, words) => {
       const state = served([SEER]);
       state.uploadFault.current = (method) => (method === failing ? answer() : undefined);
-      const { container, findByText } = open();
+      const { container } = open();
 
       await attach(container, png());
 
       await waitFor(() => expect(states(container)).toEqual(['error']));
-      expect(await findByText(words)).not.toBeNull();
+      expect(reasonsOf(container).join(' ')).toMatch(words);
     },
   );
 
@@ -1728,7 +1745,7 @@ describe('attachments', () => {
     const plain = { ...AGENT, name: 'plain', displayName: 'Plain', media: null };
     const state = served([SEER, plain]);
     landAt('/chats/new?agent=seer');
-    const { container, findByRole, findByText } = mount({
+    const { container, findByRole } = mount({
       sessionId: 'thread-1',
       title: null,
       agentName: 'seer',
@@ -1741,7 +1758,9 @@ describe('attachments', () => {
     await chooseOption(container, 'Plain', 'weft-chat-agent');
 
     await waitFor(() => expect(states(container)).toEqual(['error']));
-    expect(await findByText('Can’t attach: this agent does not take files.')).not.toBeNull();
+    expect(reasonsOf(container)).toEqual([
+      'photo.png. Can’t attach: this agent does not take files.',
+    ]);
     // A file that needs attention holds Send until it is retried or removed (COR-2277).
     await fireEvent.click(await findByRole('button', { name: 'Remove photo.png' }));
     await sendMessage(container, 'Hello');
