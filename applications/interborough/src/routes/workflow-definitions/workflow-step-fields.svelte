@@ -3,10 +3,10 @@
    * The fields of one step that holds no steps of its own: an agent, a wait for a person or a
    * signal (each with its limit), a wait, an activity a plugin provides, a code workflow a plugin
    * contributed, and a step the builder can only move and remove. The step's name, its fields and
-   * their problems, drawn inside the card or the row the list gave it. An activity's input is
-   * drawn from the JSON Schema the Bureau's catalog gives it: while the catalog loads, after a failed
-   * read, and when no running plugin provides the activity, the step's `input` is kept exactly as
-   * the file writes it and a note says why it is not drawn.
+   * their problems, drawn inside the card or the row the list gave it. An activity's or a workflow's
+   * input is drawn from the JSON Schema the Bureau's catalog gives it: while the catalog loads, after
+   * a failed read, when no running plugin provides it, and when its registration declares no schema,
+   * the step's `input` is kept exactly as the file writes it and a note says why it is not drawn.
    */
   import { Button, Input, Select, Textarea } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
@@ -288,9 +288,34 @@
     options={workflowOptions(step.workflow)}
     onValueChange={(next: string) => host.commit(setStepField(host.text, path, 'workflow', next))}
   />
-  <p class="weft-step-fields__note" data-testid="step-input-note">
-    {step.input === null ? copy.workflowCard.inputNotObject : copy.workflowCard.noSchema}
-  </p>
+  {@const workflows = host.workflows}
+  {@const entry =
+    workflows.status === 'ready'
+      ? workflows.entries.find((candidate) => candidate.id === step.workflow)
+      : undefined}
+  {#if step.input === null}
+    <p class="weft-step-fields__note" data-testid="step-input-note">
+      {copy.workflowCard.inputNotObject}
+    </p>
+  {:else if entry === undefined || entry.inputSchema === null}
+    <p class="weft-step-fields__note" data-testid="step-input-note">
+      {copy.workflowCard.noSchema}
+    </p>
+  {:else}
+    {@const schema = entry.inputSchema}
+    {#key `${stepKey}:${step.workflow}`}
+      <ContributedConfigurationForm
+        kindId={step.workflow}
+        {schema}
+        value={step.input}
+        hosted
+        reportInitialDraft={false}
+        noFieldsText={copy.workflowCard.noInput}
+        unavailableText={copy.workflowCard.noSchema}
+        onChange={(next) => host.commit(setStepInput(host.text, path, next, schema))}
+      />
+    {/key}
+  {/if}
 {/if}
 
 <style>

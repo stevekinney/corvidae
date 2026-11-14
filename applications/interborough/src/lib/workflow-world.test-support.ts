@@ -360,13 +360,18 @@ export type World = {
   failBureauSchedules: boolean;
   /** Makes `bureau.workflows.list` answer with a fault, as a Bureau that is down would. */
   failBureauFiles: boolean;
-  /** The plugin code workflows `bureau.workflows.list` lists after the files, each with `kind: 'code'`. */
+  /**
+   * The plugin code workflows `bureau.workflows.list` lists after the files, each with `kind: 'code'`,
+   * and `bureau.workflows.catalog` lists with the JSON Schema of the `input` each declares (`null`
+   * when none).
+   */
   codeWorkflows: Array<{
     id: string;
     name: string;
     title: string;
     plugin: string;
     version: string;
+    inputSchema?: Record<string, unknown> | null;
   }>;
   /**
    * The activities `bureau.workflows.catalog` lists, with the title and input schema a step's card is
@@ -749,14 +754,24 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
             ...listing(file),
             runs: params['includeRuns'] === true ? file.runs : null,
           })),
-          ...world.codeWorkflows.map((code) => ({ kind: 'code', ...code })),
+          ...world.codeWorkflows.map(({ inputSchema: _inputSchema, ...code }) => ({
+            kind: 'code',
+            ...code,
+          })),
         ],
         nextOffset: null,
       };
     },
+    // The shape the Bureau answers: every member, the code workflows without the list's `plugin` and `version`.
     'bureau.workflows.catalog': () => ({
-      activities: world.activities,
       stepKinds: [],
+      activities: world.activities,
+      workflows: world.codeWorkflows.map((code) => ({
+        id: code.id,
+        name: code.name,
+        title: code.title,
+        inputSchema: code.inputSchema ?? null,
+      })),
       triggers: [],
     }),
     'bureau.workflows.create': (params) => {

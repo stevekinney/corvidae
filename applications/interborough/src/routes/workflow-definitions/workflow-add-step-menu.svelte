@@ -57,6 +57,11 @@
     const input = startingInput(id, schema);
     add('activity', { handler: id, ...(input === undefined ? {} : { input }) });
   }
+
+  function addWorkflow(id: string, schema: Readonly<Record<string, unknown>> | null): void {
+    const input = startingInput(id, schema);
+    add('workflow', { workflow: id, ...(input === undefined ? {} : { input }) });
+  }
 </script>
 
 <Dropdown id={`${addControlId(list)}-menu`}>
@@ -110,7 +115,7 @@
       {#each host.workflows.entries as workflow (workflow.id)}
         <Dropdown.Item
           data-add-workflow={workflow.id}
-          onclick={() => add('workflow', { workflow: workflow.id })}
+          onclick={() => addWorkflow(workflow.id, workflow.inputSchema)}
         >
           {workflow.title}
         </Dropdown.Item>

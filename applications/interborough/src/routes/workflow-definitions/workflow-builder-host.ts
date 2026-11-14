@@ -6,8 +6,7 @@
  */
 import { getContext, setContext } from 'svelte';
 
-import type { CatalogActivity } from '../../lib/bureau-workflow-catalog.ts';
-import type { CodeWorkflowListing } from '../../lib/workflow-files.ts';
+import type { CatalogActivity, CatalogWorkflow } from '../../lib/bureau-workflow-catalog.ts';
 import type { StepKeys } from './workflow-step-keys.svelte.ts';
 
 /** A catalog the Bureau answers: loading, failed (with a way to ask again), or its entries. */
@@ -53,8 +52,8 @@ export interface BuilderHost {
   requestCatalogs: () => void;
   /** The activities a step can call, for the add menu and a card's input form. */
   readonly activities: CatalogState<CatalogActivity>;
-  /** The plugin code workflows a `workflow` step can start. */
-  readonly workflows: CatalogState<CodeWorkflowListing>;
+  /** The plugin code workflows a `workflow` step can start, for the add menu and a card's input form. */
+  readonly workflows: CatalogState<CatalogWorkflow>;
   /** What a person reads for an activity: its title, or its id in words. */
   activityTitle: (handler: string) => string;
   /** What a person reads for a workflow: its title, or its id in words. */

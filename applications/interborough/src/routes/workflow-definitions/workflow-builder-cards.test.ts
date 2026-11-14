@@ -65,6 +65,14 @@ const ACTIVITIES = [
   { id: 'demo:untitled', title: null, description: null, inputSchema: null },
 ];
 
+/** What a plugin's `inputSchema` becomes on the wire: a Zod object, as JSON Schema. */
+const TEAM_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: { team: { type: 'string', title: 'Team' } },
+  required: ['team'],
+};
+
 const CODE_WORKFLOWS = [
   {
     id: 'demo:echo-workflow',
@@ -72,6 +80,7 @@ const CODE_WORKFLOWS = [
     title: 'Echo workflow',
     plugin: 'demo',
     version: '1.0.0',
+    inputSchema: TEAM_SCHEMA,
   },
   {
     id: 'demo:other-workflow',
@@ -79,8 +88,22 @@ const CODE_WORKFLOWS = [
     title: 'Other workflow',
     plugin: 'demo',
     version: '1.0.0',
+    inputSchema: null,
   },
 ];
+
+/** The answer `bureau.workflows.catalog` gives, in the shape the Bureau serves. */
+const catalogAnswer = () => ({
+  stepKinds: [],
+  activities: ACTIVITIES,
+  workflows: CODE_WORKFLOWS.map(({ id, name, title, inputSchema }) => ({
+    id,
+    name,
+    title,
+    inputSchema,
+  })),
+  triggers: [],
+});
 
 /** A workflow file's text with the given steps. */
 const file = (steps: unknown[]): string =>
@@ -249,7 +272,7 @@ describe('Add a step', () => {
         installed.on('bureau.workflows.catalog', () => {
           answers += 1;
           if (answers === 1) throw workflowFaults.unavailable();
-          return { activities: ACTIVITIES };
+          return catalogAnswer();
         }),
     );
     const trigger = field(container, 'workflow-builder-add');
@@ -429,6 +452,7 @@ describe('a workflow card', () => {
     expect(stepsOf(await textOf(container))[1]).toEqual({
       kind: 'workflow',
       workflow: 'demo:echo-workflow',
+      input: { team: '' },
     });
     expect(container.querySelector('[data-step-kind="workflow"]')?.textContent).toContain(
       BUILDER.stepKinds.workflow,
@@ -440,11 +464,88 @@ describe('a workflow card', () => {
     );
     await fireEvent.change(select, { target: { value: 'demo:other-workflow' } });
     await waitFor(async () =>
-      expect(stepsOf(await textOf(container))[1]).toEqual({
+      expect(stepsOf(await textOf(container))[1]).toMatchObject({
         kind: 'workflow',
         workflow: 'demo:other-workflow',
       }),
     );
+  });
+
+  test('draws its input form from the catalog’s schema and writes { kind: workflow, workflow, input }', async () => {
+    const { container, getByLabelText } = await openBuilder(
+      file([{ kind: 'workflow', workflow: 'demo:echo-workflow', input: { team: 'core', extra: 1 } }]),
+    );
+    const card = (await waitFor(() => {
+      const found = container.querySelector('[data-step-kind="workflow"]');
+      expect(found?.querySelector('.cinder-schema-form')).toBeTruthy();
+      return found;
+    })) as HTMLElement;
+    // The form is a group inside the card, never a form inside the page's form, and has no Submit.
+    expect(card.querySelector('form')).toBeNull();
+    expect(card.querySelector('button[type="submit"]')).toBeNull();
+    expect((getByLabelText(/Team/) as HTMLInputElement).value).toBe('core');
+
+    await fireEvent.input(getByLabelText(/Team/), { target: { value: 'platform' } });
+    await waitFor(async () =>
+      expect(stepsOf(await textOf(container))[0]).toEqual({
+        kind: 'workflow',
+        workflow: 'demo:echo-workflow',
+        // A key the schema does not name is kept, as an activity's is.
+        input: { team: 'platform', extra: 1 },
+      }),
+    );
+  });
+
+  test('draws no form for a workflow whose registration declares no schema, and keeps its input as written', async () => {
+    const text = file([{ kind: 'workflow', workflow: 'demo:other-workflow', input: { raw: [1] } }]);
+    const { container } = await openBuilder(text);
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="step-input-note"]')?.textContent).toContain(
+        BUILDER.workflowCard.noSchema,
+      ),
+    );
+    expect(container.querySelector('.cinder-schema-form')).toBeNull();
+    expect(stepsOf(await textOf(container))[0]).toEqual({
+      kind: 'workflow',
+      workflow: 'demo:other-workflow',
+      input: { raw: [1] },
+    });
+  });
+
+  test('says an input that is not an object is edited in the JSON tab, and leaves it', async () => {
+    const text = file([{ kind: 'workflow', workflow: 'demo:echo-workflow', input: 'not an object' }]);
+    const { container } = await openBuilder(text);
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="step-input-note"]')?.textContent).toContain(
+        BUILDER.workflowCard.inputNotObject,
+      ),
+    );
+    expect(container.querySelector('.cinder-schema-form')).toBeNull();
+    expect(stepsOf(await textOf(container))[0]?.['input']).toBe('not an object');
+  });
+
+  test('a workflow whose schema is open (any input) is added with no input, as the form has no field to show', async () => {
+    const { container } = await openBuilder(file([{ kind: 'sleep', duration: '1m' }]), {
+      codeWorkflows: [
+        {
+          id: 'demo:anything',
+          name: 'anything',
+          title: 'Anything goes',
+          plugin: 'demo',
+          version: '1.0.0',
+          // `z.unknown()` is the schema `{}` on the wire.
+          inputSchema: {},
+        },
+      ],
+    });
+    await addStep(container, 'Anything goes');
+    await waitFor(() =>
+      expect(container.querySelector('[data-step-kind="workflow"]')).toBeTruthy(),
+    );
+    expect(stepsOf(await textOf(container))[1]).toEqual({
+      kind: 'workflow',
+      workflow: 'demo:anything',
+    });
   });
 
   test('keeps a workflow no running plugin lists selectable under its own id, with its input as written', async () => {

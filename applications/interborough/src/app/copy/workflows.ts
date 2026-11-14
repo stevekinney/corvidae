@@ -710,7 +710,9 @@ export const WORKFLOW_COPY = {
         'The list of workflows did not load, so the one this step runs is kept as the file has it.',
       retry: 'Try again',
       label: (where: string): string => `Workflow for ${where}`,
+      /** The workflow's registration declares no input schema, or no running plugin lists the workflow. */
       noSchema: 'Its input is edited in the JSON tab.',
+      noInput: 'It takes no input.',
       inputNotObject: 'Its input is not an object. It is edited in the JSON tab.',
     },
     /** The control-flow cards, in the person's words. */

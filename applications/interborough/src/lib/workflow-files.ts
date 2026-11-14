@@ -77,7 +77,7 @@ export type WorkflowFileListing = z.infer<typeof listingSchema>;
 /**
  * A code workflow a plugin contributed, which the list shows after the files with an explicit
  * `kind` and none of a file's members (no state, hash or trigger). {@link listWorkflowFiles} leaves
- * it out, so the workflow pages show files; {@link listCodeWorkflows} reads it for the builder.
+ * it out, so the workflow pages show files; the builder reads the code workflows from the catalog.
  */
 const codeListingSchema = z.object({
   kind: z.literal('code'),
@@ -193,17 +193,6 @@ export async function listWorkflowFiles(
 ): Promise<readonly WorkflowFileListing[]> {
   const { files } = await listWorkflowEntries(options);
   return files;
-}
-
-/**
- * The code workflows plugins contributed, from the same list as the files. A `workflow` step names
- * one by its `id` (`plugin:name`), and `title` is what the builder calls it.
- */
-export async function listCodeWorkflows(
-  options?: Options,
-): Promise<readonly CodeWorkflowListing[]> {
-  const { code } = await listWorkflowEntries(options);
-  return code;
 }
 
 /** Everything `bureau.workflows.list` answers: the files, and the code workflows plugins contributed. */

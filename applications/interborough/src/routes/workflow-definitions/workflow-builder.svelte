@@ -47,13 +47,12 @@
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
-  import { readWorkflowCatalog } from '../../lib/bureau-workflow-catalog.ts';
+  import { readWorkflowCatalog, type WorkflowCatalog } from '../../lib/bureau-workflow-catalog.ts';
   import ContributedConfigurationForm from '../../lib/contributed-configuration-form.svelte';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
-  import { listCodeWorkflows } from '../../lib/workflow-files.ts';
   import { loadModelAgents } from '../schedules/schedule-row-context.ts';
   import { ROOT_ADDRESS } from './workflow-builder-addresses.ts';
   import {
@@ -185,10 +184,10 @@
   }));
 
   /**
-   * The activities a step can call (`bureau.workflows.catalog`), and the plugin code workflows a
-   * `workflow` step can start (the `code` entries of `bureau.workflows.list`). Each answers once for
-   * every list of steps on the page. A failed read keeps what the file holds and offers a retry; it
-   * never says that nothing is provided.
+   * The activities a step can call and the plugin code workflows a `workflow` step can start, from
+   * one read of `bureau.workflows.catalog`. It answers once for every list of steps on the page. A
+   * failed read keeps what the file holds and offers a retry; it never says that nothing is
+   * provided.
    */
   let catalogsRequested = $state(false);
   /** A card of an activity or a workflow is drawn from the catalogs, so a file that has one reads them. */
@@ -202,32 +201,23 @@
   });
   const catalogsEnabled = $derived(catalogsRequested || stepsNeedCatalogs);
 
-  const activitiesQuery = createQuery(() => ({
-    queryKey: queryKeys.workflows.builderActivities(),
+  const catalogQuery = createQuery(() => ({
+    queryKey: queryKeys.workflows.builderCatalog(),
     queryFn: ({ signal }: { signal: AbortSignal }) => readWorkflowCatalog({ signal }),
     enabled: catalogsEnabled,
     retry: false,
   }));
-  const workflowsQuery = createQuery(() => ({
-    queryKey: queryKeys.workflows.builderCodeWorkflows(),
-    queryFn: ({ signal }: { signal: AbortSignal }) => listCodeWorkflows({ signal }),
-    enabled: catalogsEnabled,
-    retry: false,
-  }));
 
-  function catalogState<Entry>(query: {
-    isError: boolean;
-    data: readonly Entry[] | undefined;
-    refetch: () => unknown;
-  }): CatalogState<Entry> {
-    if (query.isError) return { status: 'failed', retry: () => void query.refetch() };
-    return query.data === undefined
+  /** One read answers both lists, so they load, fail and retry together. */
+  function catalogState<Entry>(pick: (catalog: WorkflowCatalog) => readonly Entry[]): CatalogState<Entry> {
+    if (catalogQuery.isError) return { status: 'failed', retry: () => void catalogQuery.refetch() };
+    return catalogQuery.data === undefined
       ? { status: 'loading' }
-      : { status: 'ready', entries: query.data };
+      : { status: 'ready', entries: pick(catalogQuery.data) };
   }
 
-  const activities = $derived(catalogState(activitiesQuery));
-  const codeWorkflows = $derived(catalogState(workflowsQuery));
+  const activities = $derived(catalogState((catalog) => catalog.activities));
+  const codeWorkflows = $derived(catalogState((catalog) => catalog.workflows));
 
   /** What a person reads for an activity or a workflow: the title the catalog gives, else the id in words. */
   function titleOfActivity(handler: string): string {
