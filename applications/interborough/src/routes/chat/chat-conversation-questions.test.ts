@@ -9,7 +9,7 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { setAnswerUndoMilliseconds } from '../../lib/answer-undo.ts';
 import { shortcuts } from '../../lib/shortcuts.ts';
 import ChatConversation from './chat-conversation.svelte';
-import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -87,8 +87,7 @@ async function open() {
     },
   } as never);
   await view.findByText('Plan the week');
-  const box = view.container.querySelector('textarea');
-  if (box === null) throw new Error('The composer did not render.');
+  const box = await loadedComposer(view.container);
   await fireEvent.input(box, { target: { value: 'Ship it' } });
   await fireEvent.keyDown(box, { key: 'Enter' });
   return view;

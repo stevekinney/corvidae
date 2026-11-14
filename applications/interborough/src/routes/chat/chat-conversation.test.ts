@@ -21,7 +21,13 @@ import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { chooseOption, optionLabels } from './listbox.test-support.ts';
 import { handOffFirstMessage, takeFirstMessage } from './new-chat-handoff.ts';
-import { AGENT, bureau as bureauOf, CONTEXT, landAt } from './pages.test-support.ts';
+import {
+  AGENT,
+  bureau as bureauOf,
+  CONTEXT,
+  landAt,
+  loadedComposer,
+} from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 /**
@@ -77,8 +83,7 @@ const sse = (events: readonly unknown[]) =>
   });
 
 async function sendMessage(container: HTMLElement, text: string): Promise<void> {
-  const box = container.querySelector('textarea');
-  if (box === null) throw new Error('The composer did not render.');
+  const box = await loadedComposer(container);
   await fireEvent.input(box, { target: { value: text } });
   await fireEvent.keyDown(box, { key: 'Enter' });
 }
@@ -1347,8 +1352,7 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
       hub.write('bureau', REPLAY_COMPLETE_CHUNK);
       await until(() => expect(bureauEvents.status).toBe('live'));
       const container = document.body;
-      const box = container.querySelector('textarea');
-      if (box === null) throw new Error('The composer did not render.');
+      const box = await loadedComposer(container);
       await fireEvent.input(box, { target: { value: 'Refund it' } });
       await fireEvent.keyDown(box, { key: 'Enter' });
       await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
@@ -1433,8 +1437,7 @@ describe('a decision made somewhere else, while the Bureau’s feed is live', ()
       hub.write('bureau', REPLAY_COMPLETE_CHUNK);
       await until(() => expect(bureauEvents.status).toBe('live'));
       const container = document.body;
-      const box = container.querySelector('textarea');
-      if (box === null) throw new Error('The composer did not render.');
+      const box = await loadedComposer(container);
       await fireEvent.input(box, { target: { value: 'Refund it' } });
       await fireEvent.keyDown(box, { key: 'Enter' });
       await until(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());

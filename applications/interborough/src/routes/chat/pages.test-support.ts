@@ -2,6 +2,7 @@
  * What the route component tests share: a Bureau that answers each JSON-RPC operation from a
  * table, and a happy-dom window with a real origin to navigate in.
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { Window } from 'happy-dom';
 
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
@@ -77,6 +78,23 @@ export function bureau(
     }
   });
   return { calls, restore };
+}
+
+/**
+ * The open chat's composer once the first read of its thread has settled, for a test that sends:
+ * until then the transcript is drawn loading and Send waits for it (COR-2327 B3), so an Enter
+ * sends nothing. It waits through `waitUntil`, whose turns are not faked, so a test under fake
+ * timers can use it as well as one on the real clock.
+ */
+export async function loadedComposer(container: ParentNode): Promise<HTMLTextAreaElement> {
+  const ready = (): HTMLTextAreaElement | null =>
+    container.querySelector('[data-chat-availability="loading"]') === null
+      ? container.querySelector<HTMLTextAreaElement>('textarea')
+      : null;
+  await waitUntil(() => ready() !== null, {
+    message: 'the chat to be read, with its composer on screen',
+  });
+  return ready()!;
 }
 
 /** Gives happy-dom's `about:blank` window a real origin, so `pushState` takes effect, at `path`. */

@@ -11,7 +11,7 @@ import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
-import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -80,8 +80,7 @@ function mount(title = 'Plan the week') {
 }
 
 async function askForApproval(container: HTMLElement): Promise<void> {
-  const box = container.querySelector('textarea');
-  if (box === null) throw new Error('The composer did not render.');
+  const box = await loadedComposer(container);
   await fireEvent.input(box, { target: { value: 'Refund it' } });
   await fireEvent.keyDown(box, { key: 'Enter' });
   await waitFor(() => expect(container.querySelector('[data-approval-decision]')).not.toBeNull());
@@ -329,8 +328,7 @@ describe('an approval raised after the person answered a question', () => {
     ).restore;
     landAt('/chats/session-1');
     const { container } = mount();
-    const box = container.querySelector('textarea');
-    if (box === null) throw new Error('The composer did not render.');
+    const box = await loadedComposer(container);
     await fireEvent.input(box, { target: { value: 'Ship it' } });
     await fireEvent.keyDown(box, { key: 'Enter' });
     await waitFor(() => expect(bodies).toHaveLength(1));

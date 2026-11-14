@@ -23,7 +23,7 @@ import { TASK_COPY } from '../../src/app/copy/tasks.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { addTools, bureau, readAgent, removeAgent } from './agent-support.ts';
-import { conversation } from './chat-support.ts';
+import { conversation, untilChatLoaded } from './chat-support.ts';
 import { E2E_BARRIER_URL, E2E_JOURNEY_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -67,6 +67,7 @@ const ASSISTANT_ROW = '.chat-message-wrapper[data-role="assistant"]';
 const composer = (page: Page) => page.getByRole('textbox');
 
 async function send(page: Page, text: string): Promise<void> {
+  await untilChatLoaded(page);
   await composer(page).fill(text);
   await composer(page).press('Enter');
 }

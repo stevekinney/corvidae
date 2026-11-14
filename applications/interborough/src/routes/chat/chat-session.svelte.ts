@@ -173,10 +173,11 @@ export class ChatSessionState {
   /** Whether the session opened on a run that was going, and is still reading it. */
   attaching = $state(false);
   /**
-   * Whether the first read of the thread has settled: a run was joined, or the history the Bureau
-   * holds (none, for a thread it has no record of) is on screen. Until then an empty transcript
-   * says nothing about the chat, so the page shows it loading, not empty. A new chat has nothing to
-   * read and starts settled. It never goes back: a later read replaces rows that are already there.
+   * Whether the first read of the thread has settled: a run was joined, the history the Bureau
+   * holds (none, for a thread it has no record of) is on screen, or the read failed and the page
+   * says so. Until then an empty transcript says nothing about the chat, so the page shows it
+   * loading, not empty. A new chat has nothing to read and starts settled. It never goes back: a
+   * later read replaces rows that are already there.
    */
   historySettled = $state(false);
   /**
@@ -933,6 +934,9 @@ export class ChatSessionState {
       // The page opened on a session it could not read: it says so, and it is not an unhandled
       // rejection with an empty transcript.
       if (generation !== this.#retryGeneration || signal.aborted) return false;
+      // The read has settled, though it failed: the page says so, as it always has, and does not
+      // keep drawing the transcript as loading behind it.
+      this.historySettled = true;
       this.#attachFailed = true;
       if (isNotFound(error)) this.#onNotFound?.();
       if (!rereading) this.failure = error instanceof Error ? error.message : String(error);

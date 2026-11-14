@@ -10,7 +10,7 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
-import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -234,11 +234,7 @@ describe('a chat that opens on an approval', () => {
     landAt('/chats/session-1');
     const { container } = mount();
 
-    const box = await waitFor(() => {
-      const found = container.querySelector('textarea');
-      if (found === null) throw new Error('The composer did not render.');
-      return found;
-    });
+    const box = await loadedComposer(container);
     await fireEvent.input(box, { target: { value: 'Refund it' } });
     await fireEvent.keyDown(box, { key: 'Enter' });
     const row = await waitFor(() => {

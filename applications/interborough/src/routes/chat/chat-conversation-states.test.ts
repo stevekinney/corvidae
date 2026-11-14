@@ -420,6 +420,42 @@ describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
     });
   }
 
+  test('a first read that fails says so with Reconnect, keeps the composer, and offers no prompt', async () => {
+    restore = bureau(
+      {
+        'bureau.agents.list': withExamples['bureau.agents.list'],
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        'bureau.contexts.window': () => ({
+          maxTokens: 200_000,
+          usedEstimated: 76_000,
+          usedReported: null,
+          categories: [],
+        }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+      },
+      (url) => {
+        if (url.endsWith('/host/providers')) return provider(true);
+        // The thread cannot be read, in a way a retry cannot change: the session gives up at once.
+        if (url.includes('/threads/')) return new Response('', { status: 403 });
+        return undefined;
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByRole, client } = mountWithClient();
+
+    expect(await findByRole('button', { name: CHAT_COPY.disconnected.reconnect })).not.toBeNull();
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.agents.list())?.status).toBe('success'),
+    );
+    // The read settled, though it failed: no skeleton behind the alert, and the composer stays.
+    expect(container.querySelector('[data-chat-availability="loading"]') === null).toBe(true);
+    expect(container.querySelector('textarea')).not.toBeNull();
+    // The chat may hold history the page could not read, so nothing offers to send a prompt.
+    expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+  });
+
   test('an empty thread is the first-use state once its read has settled', async () => {
     const served = serveHeld([], true);
     const { container, findByRole, client } = mountWithClient();

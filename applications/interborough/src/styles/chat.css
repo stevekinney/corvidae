@@ -175,8 +175,7 @@
 
 /* The header, the runs line and the alerts above the conversation stand in the same column, inset
  * as Chat insets its transcript and composer: 16px, and 12px once the column is 480px or narrower
- * (Chat's `--cinder-chat-timeline-padding` and `--cinder-chat-narrow-padding` at the default
- * density). So the title, each line under it, the transcript and the composer share one left edge
+ * (Chat's timeline padding and its narrow padding at the default density). So the title, each line under it, the transcript and the composer share one left edge
  * at every width (COR-2327 B4). The route is the container the width is read from: the column is
  * the route's width up to 760px, the same width Chat's own container query reads. */
 .weft-chat-route {

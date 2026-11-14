@@ -231,6 +231,47 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     );
   });
 
+  test('holds the transcript loading, with no empty state, no Connect state and no prompt, until the chat’s history arrives (COR-2327 B3)', async ({
+    page,
+  }) => {
+    // The chat is read and its header drawn; only the thread (the run to join and the history) is
+    // held. The sample world has no provider key, so an empty transcript would be Connect a model
+    // provider, and with one the agent's first-use prompts, which send.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/ag-ui/threads/**', async (route) => {
+      await gate;
+      await route.fallback().catch(() => undefined);
+    });
+    const providers = page.waitForResponse((response) =>
+      response.url().endsWith('/host/providers'),
+    );
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
+    await providers;
+    // The agents are read: the composer names Tool runner.
+    const open = page.getByRole('region', { name: 'Open chat' });
+    await expect(open.getByRole('textbox', { name: 'Message' })).toHaveAttribute(
+      'placeholder',
+      'Message Tool runner…',
+    );
+
+    await expect(open.locator('[data-chat-availability="loading"]')).toBeVisible();
+    await expect(open.locator('[data-chat-availability="unconfigured"]')).toHaveCount(0);
+    await expect(open.locator('.chat-empty')).toHaveCount(0);
+    await expect(open.getByRole('group', { name: 'Suggested prompts' })).toHaveCount(0);
+    await expect(open.getByText('Connect a model provider')).toHaveCount(0);
+    await expect(open.getByRole('button', { name: 'Loading…' })).toBeDisabled();
+
+    release();
+    await expect(open.locator('[data-approval-decision]')).toBeVisible();
+    await expect(open.locator('[data-chat-availability="loading"]')).toHaveCount(0);
+  });
+
   test('says "Still loading this chat…" after 10 s with the elapsed time and Cancel, then offers Try again (17y, COR-2285 V2)', async ({
     page,
     checkA11y,

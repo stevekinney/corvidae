@@ -19,6 +19,18 @@ export function conversation(page: Page): Locator {
   return page.getByRole('region', { name: 'Conversation' });
 }
 
+/**
+ * Waits until the open chat's history is read. Until then the transcript is drawn loading and Send
+ * waits for it (COR-2327 B3), so an Enter pressed sooner sends nothing. A new chat has no history to
+ * read and is never drawn loading.
+ */
+export async function untilChatLoaded(page: Page): Promise<void> {
+  // A composer on screen while the chat is read always stands beside the loading state, so once a
+  // composer shows, the state's absence means the history is in.
+  await expect(page.getByRole('textbox').first()).toBeVisible();
+  await expect(page.locator('[data-chat-availability="loading"]')).toHaveCount(0);
+}
+
 /** A composer select a spec waits for, by its name, and the words it should show once settled. */
 export interface ComposerSelectExpectation {
   readonly name: string | RegExp;

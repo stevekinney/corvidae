@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import ChatConversation from './chat-conversation.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
-import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { bureau, CONTEXT, landAt, loadedComposer } from './pages.test-support.ts';
 
 let restore: (() => void) | undefined;
 afterEach(() => {
@@ -85,8 +85,7 @@ async function lookedUp() {
       pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' },
     },
   } as never);
-  const box = view.container.querySelector('textarea');
-  if (box === null) throw new Error('The composer did not render.');
+  const box = await loadedComposer(view.container);
   await fireEvent.input(box, { target: { value: 'Look up 4471' } });
   await fireEvent.keyDown(box, { key: 'Enter' });
   const row = await waitFor(() => {
