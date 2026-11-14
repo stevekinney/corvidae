@@ -227,7 +227,7 @@ describe('the committed Chat stress cases', () => {
       {
         action: 'fill',
         role: 'textbox',
-        name: 'Note (optional)',
+        name: 'Note',
         text: 'The duplicate charge was already refunded.',
       },
       { action: 'click', role: 'button', name: 'Deny' },

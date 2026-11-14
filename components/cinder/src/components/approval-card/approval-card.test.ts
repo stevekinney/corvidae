@@ -67,16 +67,17 @@ function approvalCardProps(overrides: Partial<ApprovalCardProps> = {}): Approval
 }
 
 describe('ApprovalCard', () => {
-  test('keeps a single owned padding layer inside Card', () => {
+  test('draws its heading as the first row of the body, on the card fill with no band', () => {
     const styles = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
-    const surfaceHeaderRule =
-      styles.match(
-        /\.cinder-approval-card__surface\s*>\s*\.cinder-card__header\s*\{[^}]*\}/,
-      )?.[0] ?? '';
     const ownedHeaderRule = styles.match(/\.cinder-approval-card__header\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(ownedHeaderRule).not.toContain('background');
+    expect(ownedHeaderRule).not.toContain('padding');
+    expect(ownedHeaderRule).not.toContain('border');
 
-    expect(surfaceHeaderRule).toContain('padding: 0');
-    expect(ownedHeaderRule).toContain('padding: var(--cinder-space-4)');
+    const { container } = render(ApprovalCard, { ...approvalCardProps() });
+    expect(container.querySelector('.cinder-card__header')).toBeNull();
+    const body = container.querySelector('.cinder-approval-card__body');
+    expect(body?.firstElementChild?.classList.contains('cinder-approval-card__header')).toBe(true);
   });
 
   test('imports JsonEditor through its public component subpath', () => {
@@ -324,7 +325,8 @@ describe('ApprovalCard', () => {
       button.textContent?.trim(),
     );
 
-    expect(buttons).toEqual(['Deny', 'Approve with edits', 'Approve']);
+    // Add a note opens the row at its start; the decisions follow, the primary last.
+    expect(buttons).toEqual(['Add a note', 'Deny', 'Approve with edits', 'Approve']);
   });
 
   test('does not render a Remember action button', () => {
@@ -365,7 +367,8 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ editableArgs: false, onResolve }),
     });
 
-    await fireEvent.input(getByLabelText('Note (optional)'), {
+    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await fireEvent.input(getByLabelText('Note'), {
       target: { value: 'Outside the deployment window.' },
     });
     await fireEvent.click(
@@ -395,7 +398,8 @@ describe('ApprovalCard', () => {
       }),
     });
 
-    await fireEvent.input(view.getByLabelText('Note (optional)'), {
+    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Applies only to the first approval.' },
     });
     await fireEvent.click(
@@ -409,9 +413,10 @@ describe('ApprovalCard', () => {
       }),
     });
 
-    expect(
-      requiredInstance(view.getByLabelText('Note (optional)'), HTMLTextAreaElement).value,
-    ).toBe('');
+    // A new request starts with the note closed and empty.
+    expect(view.queryByLabelText('Note')).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe('');
     expect(
       requiredInstance(
         view.getByRole('checkbox', {
@@ -434,7 +439,8 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ onResolve, idempotencyKey: 'approval-one' }),
     });
 
-    await fireEvent.input(view.getByLabelText('Note (optional)'), {
+    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Still drafting this reason.' },
     });
     await fireEvent.click(
@@ -448,9 +454,9 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ onResolve, idempotencyKey: 'approval-one', snapshotId: 'snap-2' }),
     });
 
-    expect(
-      requiredInstance(view.getByLabelText('Note (optional)'), HTMLTextAreaElement).value,
-    ).toBe('Still drafting this reason.');
+    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+      'Still drafting this reason.',
+    );
     expect(
       requiredInstance(
         view.getByRole('checkbox', {
@@ -468,6 +474,7 @@ describe('ApprovalCard', () => {
       }),
     });
     expect(container.querySelector('.cinder-json-viewer')).toBeNull();
+    await fireEvent.click(getByRole('button', { name: /^Arguments/ }));
     await fireEvent.click(getByRole('radio', { name: 'JSON' }));
     expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
     expect(container.textContent).toContain('"1"');
@@ -765,6 +772,7 @@ describe('ApprovalCard', () => {
         }),
       });
 
+      await fireEvent.click(getByRole('button', { name: /^Arguments/ }));
       await fireEvent.click(getByRole('radio', { name: 'JSON' }));
       const viewer = container.querySelector('.cinder-json-viewer');
       expect(viewer?.textContent).toContain('"--force"');
@@ -809,7 +817,7 @@ describe('ApprovalCard', () => {
     });
 
     expect(container.textContent).toContain('Truncated');
-    expect(container.textContent).toContain('8 files');
+    expect(container.textContent).toContain('8 files touched');
     for (const file of filesTouched) {
       expect(container.textContent).toContain(file);
     }
@@ -830,8 +838,41 @@ describe('ApprovalCard', () => {
         item.textContent?.trim(),
       ),
     ).toEqual(['src/repeated.ts']);
-    expect(container.textContent).toContain('1 file');
-    expect(container.textContent).not.toContain('1 files');
+    expect(container.textContent).toContain('File touched');
+    expect(container.textContent).not.toContain('1 file');
+  });
+
+  test('marks each touched file with a glyph, mutes its directory and keeps the path whole', () => {
+    const files = ['packages/components/src/run-step-timeline.svelte', 'README.md'];
+    const { container } = render(ApprovalCard, {
+      ...approvalCardProps({ operation: { kind: 'patch', filesTouched: files, diff: '+a' } }),
+    });
+
+    const heading = container.querySelector('.cinder-approval-card__section-title');
+    expect(heading?.textContent?.trim()).toBe('2 files touched');
+    expect(container.querySelector('.cinder-approval-card__section .cinder-badge')).toBeNull();
+    const rows = Array.from(container.querySelectorAll('.cinder-approval-card__file'));
+    expect(rows).toHaveLength(2);
+    for (const [index, row] of rows.entries()) {
+      expect(row.querySelector('svg.cinder-approval-card__file-icon')).not.toBeNull();
+      // The path's text is the path exactly, with nothing between the directory and the name.
+      expect(row.querySelector('.cinder-approval-card__file-path')?.textContent).toBe(files[index]);
+    }
+    expect(
+      Array.from(rows[0]?.querySelectorAll('.cinder-approval-card__file-directory') ?? []).map(
+        (segment) => segment.textContent,
+      ),
+    ).toEqual(['packages/', 'components/', 'src/']);
+    expect(rows[0]?.querySelector('.cinder-approval-card__file-name')?.textContent).toBe(
+      'run-step-timeline.svelte',
+    );
+    expect(rows[1]?.querySelector('.cinder-approval-card__file-directory')).toBeNull();
+    // The glyph says what happens to the file: a patch, a write and anything else each draw their own.
+    const glyphFor = (kind: 'patch' | 'file-write' | 'other') =>
+      render(ApprovalCard, {
+        ...approvalCardProps({ operation: { kind, filesTouched: ['a.ts'], diff: '+a' } }),
+      }).container.querySelector('.cinder-approval-card__file-icon')?.innerHTML;
+    expect(new Set([glyphFor('patch'), glyphFor('file-write'), glyphFor('other')]).size).toBe(3);
   });
 
   test('renders a copy button for each touched file path', async () => {
@@ -1213,7 +1254,64 @@ function squash(text: string | null | undefined): string {
 }
 
 describe('ApprovalCard card layout anatomy', () => {
-  test('stacks who asked, the question, the tool and the risk line on a neutral header', () => {
+  test('reads the title, the command, the files, then the decision, with arguments and Details closed', async () => {
+    const { container, getByRole } = render(ApprovalCard, { ...approvalCardProps() });
+
+    const body = requiredInstance(
+      container.querySelector('.cinder-approval-card__body'),
+      HTMLElement,
+    );
+    const argumentsToggle = getByRole('button', { name: /^Arguments/ });
+    const detailsToggle = getByRole('button', { name: 'Details' });
+    const order = [
+      body.querySelector('.cinder-approval-card__header'),
+      body.querySelector('.cinder-code-block'),
+      body.querySelector('.cinder-approval-card__file-list'),
+      argumentsToggle,
+      detailsToggle,
+      getByRole('group', { name: 'Approval actions' }),
+    ];
+    for (const [index, element] of order.entries()) {
+      expect(element).not.toBeNull();
+      const next = order[index + 1];
+      if (next) {
+        expect(element!.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+          Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      }
+    }
+
+    // Both disclosures start closed: the summary line shows, the inspector and the details wait.
+    expect(argumentsToggle.getAttribute('aria-expanded')).toBe('false');
+    // The title already names the tool, so the closed line does not say it again.
+    expect(squash(argumentsToggle.textContent)).toBe('Arguments Dry run No, Retries 1');
+    const argumentsRegion = requiredInstance(
+      document.getElementById(argumentsToggle.getAttribute('aria-controls') ?? ''),
+      HTMLElement,
+    );
+    expect(argumentsRegion.hidden).toBe(true);
+    expect(detailsToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.textContent).not.toContain('policy-2026-06');
+    // Flat lines in the card, not a bordered box inside it.
+    expect(container.querySelector('.cinder-collapsible')).toBeNull();
+
+    await fireEvent.click(argumentsToggle);
+    expect(argumentsToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(argumentsRegion.hidden).toBe(false);
+    // The inspector it opens keeps the tool's name for its copy button.
+    expect(getByRole('button', { name: 'Copy deploy-cloud arguments' })).not.toBeNull();
+  });
+
+  test('gives arguments that only repeat the command no disclosure of their own', () => {
+    const { queryByRole } = render(ApprovalCard, {
+      ...approvalCardProps({
+        operation: { kind: 'command', command: 'bun test', argsPreview: { command: 'bun test' } },
+      }),
+    });
+    expect(queryByRole('button', { name: /arguments/i })).toBeNull();
+  });
+
+  test('stacks who asked, the question, and one line with the tool and its risk', () => {
     const { container } = render(ApprovalCard, {
       props: refundRow({ layout: 'card', onResolve: undefined }),
     });
@@ -1224,26 +1322,25 @@ describe('ApprovalCard card layout anatomy', () => {
     expect(container.querySelector('.cinder-approval-card__title')?.textContent?.trim()).toBe(
       'Refund order 4471 for $42.00?',
     );
-    expect(squash(container.querySelector('.cinder-approval-card__tool-line')?.textContent)).toBe(
-      'Issue refund issue-refund',
-    );
+    expect(container.querySelector('.cinder-approval-card__tool-line')).toBeNull();
     expect(squash(container.querySelector('.cinder-approval-card__risk-line')?.textContent)).toBe(
-      "Dangerous, Can't be undone",
+      "Issue refund issue-refund, Dangerous, Can't be undone",
     );
     expect(container.querySelector('.cinder-approval-card__consequence')?.textContent).toBe(
       'Sends $42.00 back to the original card',
     );
   });
 
-  test('offers Deny as secondary, a Note (optional) field and no Allow checkbox for an Always tool', () => {
-    const { getByRole, getByLabelText, queryByRole } = render(ApprovalCard, {
+  test('offers Deny as secondary, a closed note behind Add a note and no Allow checkbox for an Always tool', () => {
+    const { getByRole, queryByLabelText, queryByRole } = render(ApprovalCard, {
       props: refundRow({ layout: 'card', rememberScope: undefined }),
     });
 
     expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
-    expect(getByLabelText('Note (optional)')).not.toBeNull();
+    expect(queryByLabelText('Note')).toBeNull();
+    expect(getByRole('group', { name: 'Approval actions' }).textContent).toContain('Add a note');
     expect(queryByRole('checkbox')).toBeNull();
   });
 
@@ -1547,16 +1644,45 @@ describe('ApprovalCard row layout', () => {
     expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: true });
   });
 
-  test('Add a note opens the Note (optional) field, and the note travels with Approve and Deny', async () => {
+  for (const layout of ['card', 'row', 'decision', 'detail'] as const) {
+    test(`the ${layout} layout keeps its note closed behind Add a note, beside Deny, and focuses it on open`, async () => {
+      const onResolve = mock((_resolution: unknown) => undefined);
+      const view = render(ApprovalCard, { props: refundRow({ layout, onResolve }) });
+
+      expect(view.queryByRole('textbox', { name: /note/i })).toBeNull();
+      expect(view.container.textContent).not.toContain('(optional)');
+      const actions = view.getByRole('group', { name: 'Approval actions' });
+      const toggle = view.getByRole('button', { name: 'Add a note' });
+      // The toggle sits in the actions row, before Deny.
+      expect(actions.contains(toggle)).toBe(true);
+      const deny = view.getByRole('button', { name: 'Deny' });
+      expect(toggle.compareDocumentPosition(deny) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      await fireEvent.click(toggle);
+      await tick();
+      const field = requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement);
+      expect(document.activeElement).toBe(field);
+      expect(view.queryByRole('button', { name: 'Add a note' })).toBeNull();
+
+      // A typed note keeps the field open through an unrelated re-render.
+      await fireEvent.input(field, { target: { value: 'Check the carrier first.' } });
+      await view.rerender({ ...refundRow({ layout, onResolve }), consequence: 'Sends it back' });
+      expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+        'Check the carrier first.',
+      );
+    });
+  }
+
+  test('Add a note opens the Note field, and the note travels with Approve and Deny', async () => {
     const onResolve = mock((_resolution: unknown) => undefined);
     const { getByLabelText, getByRole, getByText, queryByLabelText } = render(ApprovalCard, {
       props: refundRow({ onResolve }),
     });
-    expect(queryByLabelText('Note (optional)')).toBeNull();
+    expect(queryByLabelText('Note')).toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Add a note' }));
 
-    const field = requiredInstance(getByLabelText('Note (optional)'), HTMLTextAreaElement);
+    const field = requiredInstance(getByLabelText('Note'), HTMLTextAreaElement);
     expect(field.placeholder).toBe('Add a note for the agent or the record');
     expect(
       getByText('Saved with your decision. If you deny, the agent reads it as the reason.'),
@@ -1583,18 +1709,18 @@ describe('ApprovalCard row layout', () => {
     });
     const view = render(ApprovalCard, { props });
     await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
-    await fireEvent.input(view.getByLabelText('Note (optional)'), {
+    await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Draft for the first.' },
     });
     await fireEvent.click(view.getByRole('checkbox'));
 
     await view.rerender({ ...props, consequence: 'Sends it back' });
-    expect(
-      requiredInstance(view.getByLabelText('Note (optional)'), HTMLTextAreaElement).value,
-    ).toBe('Draft for the first.');
+    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+      'Draft for the first.',
+    );
 
     await view.rerender({ ...props, idempotencyKey: 'two' });
-    expect(view.queryByLabelText('Note (optional)')).toBeNull();
+    expect(view.queryByLabelText('Note')).toBeNull();
     expect(requiredInstance(view.getByRole('checkbox'), HTMLInputElement).checked).toBe(false);
   });
 
