@@ -12,9 +12,11 @@
     fieldId: string;
     /** Opens the note field. */
     onOpen: () => void;
+    /** The button's words, which ToolCallPanel takes from its own labels. Defaults to "Add a note". */
+    label?: string | undefined;
   };
 
-  let { disabled, fieldId, onOpen }: ApprovalCardNoteToggleProps = $props();
+  let { disabled, fieldId, onOpen, label = 'Add a note' }: ApprovalCardNoteToggleProps = $props();
 
   function open(): void {
     onOpen();
@@ -24,15 +26,16 @@
 </script>
 
 <!-- A quiet ghost Button. Under 30rem of card width the stylesheet hides its words and the
-     tooltip carries them; the accessible name is the same either way. -->
-<Tooltip text="Add a note" describe={false} class="cinder-approval-card__note-toggle-tip">
+     tooltip carries them; the accessible name is the same either way. ToolCallPanel draws the
+     same toggle at the start of its decision row. -->
+<Tooltip text={label} describe={false} class="cinder-approval-card__note-toggle-tip">
   <Button
     type="button"
     variant="ghost"
     size="sm"
     class="cinder-approval-card__note-toggle"
     aria-expanded={false}
-    label="Add a note"
+    {label}
     {disabled}
     onclick={open}
   >
