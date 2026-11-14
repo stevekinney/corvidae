@@ -8,8 +8,12 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
+import { deserializeCheckpoint } from '../core/checkpoint.ts';
+import { isParallelOperationCacheEntry } from '../core/context/parallel-cache-entry.ts';
 import { Engine } from '../core/engine/index.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   validateWorkflowDocument,
   workflowDocumentVersion,
@@ -36,6 +40,16 @@ async function waitingOn(engine: Engine, id: string): Promise<readonly string[]>
 async function signalWaitingEvents(engine: Engine, id: string) {
   const events = await engine.getEvents(id);
   return events.filter((event) => event.type === 'file-workflow:signal-waiting');
+}
+
+/** The status of every branch slot the run's committed checkpoint holds, empty before any commit. */
+async function committedSlotStatuses(storage: MemoryStorage, id: string): Promise<string[]> {
+  const bytes = await storage.get(KEYS.checkpoint(id));
+  if (bytes === null) return [];
+  const entry = deserializeCheckpoint(bytes)
+    .accumulatedResults.map(([, value]) => value)
+    .find(isParallelOperationCacheEntry);
+  return entry?.branches.map((slot) => slot.status) ?? [];
 }
 
 async function isWaitingOnTwo(engine: Engine, id: string): Promise<boolean> {
@@ -314,12 +328,13 @@ describe('running a parallel step', () => {
     expect(await throwingRejectionOf(run.result())).toThrow('same signal');
   });
 
-  it('runs a finished activity again after each restart while a sibling wait is open, and resumes the wait once', async () => {
-    // A round settles as a whole: its results reach the cache only when every branch has settled
-    // (the engine's `ctx.all`, and raw `ctx.all` on `main` does the same), so a round that holds an
-    // open wait never caches the activity beside it. An activity is at-least-once across a crash.
+  it('does not run a finished activity again after a restart while a sibling wait is open, and resumes the wait once', async () => {
+    // COR-2416: a branch that settles before its siblings is committed on its own, so a restart
+    // that comes while a sibling still waits finds it done. It was run again on every restart
+    // before, with the whole round cached only once every branch had settled.
     calls.length = 0;
     const storage = new MemoryStorage();
+    const id = 'parallel-wait-restarts-run';
     const document = doc('parallel-wait-restarts', [
       parallel({
         notify: [{ kind: 'activity', handler: 'count', input: 'notify' }],
@@ -330,32 +345,38 @@ describe('running a parallel step', () => {
     {
       await using original = new Engine({ storage });
       await registerWorkflowDocuments(original, host, { active: [document] });
-      await original.start('parallel-wait-restarts', null, { id: 'parallel-wait-restarts-run' });
-      await waitForCondition(async () => executions() === 1, { label: 'the first run' });
+      await original.start('parallel-wait-restarts', null, { id });
+      await waitUntil(async () => executions() === 1, { message: 'the first run' });
+      await waitUntil(async () => (await committedSlotStatuses(storage, id)).includes('fulfilled'), {
+        message: 'the finished branch to be committed',
+      });
     }
-    for (const restart of [1, 2, 3]) {
+    for (const restart of [1, 2, 3, 4]) {
       await using restarted = new Engine({ storage });
       await registerWorkflowDocuments(restarted, host, { active: [document] });
       await restarted.recoverAll();
-      await waitForCondition(async () => executions() === 1 + restart, {
-        label: `restart ${String(restart)}`,
+      await waitUntil(async () => isWaitingOnSignal(restarted, id, 'approve'), {
+        message: `restart ${String(restart)} to wait again`,
       });
+      expect(executions()).toBe(1);
     }
     await using last = new Engine({ storage });
     await registerWorkflowDocuments(last, host, { active: [document] });
     const [handle] = await last.recoverAll();
-    await waitForCondition(async () => executions() === 5, { label: 'the last restart' });
-    await last.signal('parallel-wait-restarts-run', 'approve', 'yes');
-    // The wait resumed once and took the one signal; the activity ran once for the first run and
-    // once for each of the four restarts.
+    await waitUntil(async () => isWaitingOnSignal(last, id, 'approve'), {
+      message: 'the last restart to wait again',
+    });
+    await last.signal(id, 'approve', 'yes');
+    // The wait resumed once and took the one signal; the activity ran once, for the first run.
     expect(await handle!.result()).toEqual({ notify: 'notify', review: 'yes' });
-    expect(executions()).toBe(5);
+    expect(executions()).toBe(1);
   });
 
-  it('runs every branch of an interrupted round again after a restart, once each', async () => {
+  it('runs only the branches that had not finished again after a restart', async () => {
     calls.length = 0;
     hangRestart = true;
     const storage = new MemoryStorage();
+    const id = 'parallel-restart-run';
     const document = doc('parallel-restart', [
       parallel({
         done: [{ kind: 'activity', handler: 'count', input: 'done' }],
@@ -366,20 +387,23 @@ describe('running a parallel step', () => {
     {
       await using original = new Engine({ storage });
       await registerWorkflowDocuments(original, host, { active: [document] });
-      await original.start('parallel-restart', null, { id: 'parallel-restart-run' });
+      await original.start('parallel-restart', null, { id });
       await waitForCondition(async () => calls.length === 3, { label: 'every branch to start' });
+      await waitUntil(async () => (await committedSlotStatuses(storage, id)).includes('fulfilled'), {
+        message: 'the finished branch to be committed',
+      });
     }
     hangRestart = false;
     await using restarted = new Engine({ storage });
     await registerWorkflowDocuments(restarted, host, { active: [document] });
     const [handle] = await restarted.recoverAll();
     expect(await handle!.result()).toEqual({ done: 'done', slow: 'slow', slower: 'slower' });
-    // Each branch ran once before the restart and once after it. A round that never settled caches
-    // nothing, so the branch that had finished runs again too: an activity is at-least-once across
-    // a crash, which is why it is handed a stable workflow id and step.
+    // The branch that finished ran once. The two that had not ran before the restart and again
+    // after it: an activity is at-least-once across a crash, which is why it is handed a stable
+    // workflow id and step.
     const count = (label: string) => calls.filter((call) => call === label).length;
     expect({ done: count('done'), slow: count('slow'), slower: count('slower') }).toEqual({
-      done: 2,
+      done: 1,
       slow: 2,
       slower: 2,
     });

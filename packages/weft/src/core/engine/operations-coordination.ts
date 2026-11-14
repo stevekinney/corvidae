@@ -22,10 +22,12 @@ import {
   buildEntryFromSlots,
   dispatchBranchesAllSettled,
   valuesFromSlots,
+  type OnSlotSettled,
 } from './parallel-dispatch.ts';
 import { peekSignal } from './signals.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callActivityFunction } from './state-utilities.ts';
+import { isCurrentOperation, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
 import {
   parallelTimelineDetails,
   raceTimelineDetails,
@@ -95,13 +97,91 @@ export type CoordinationOperationCallbacks = {
     speculativeState?: SpeculativeExecutionState,
   ) => Promise<unknown>;
   getActivityOperationCallbacks: () => ActivityOperationCallbacks;
+  /**
+   * Commit a checkpoint while the coordinator is still running, keeping its pending timeline
+   * entry, and report the named branch activities as completed. Absent where a coordinator has no
+   * way to commit mid-operation, which keeps the whole result until every branch has settled.
+   */
+  persistCheckpoint?: (
+    workflowId: string,
+    operation: ContextOperationRequest,
+    settledBranchOperationIds?: readonly string[],
+  ) => Promise<void>;
 };
+
+/**
+ * Commits each `ctx.all` branch that settles before its siblings, so a branch that finished is not
+ * run again when the workflow recovers while a sibling still waits. A slot commits only when a
+ * sibling is still pending: the last branch to settle belongs to the operation's own result.
+ *
+ * A commit finalizes the slot's deferred signal consume first. That stages the consume into the
+ * same batch the checkpoint writes, so the slot and the delete of its signal record land together.
+ * Commits are chained: each one compares-and-swaps against the checkpoint bytes the one before it
+ * wrote, so two overlapping would make the second a conflict and abandon the run.
+ */
+function createSlotCommitter(
+  internals: EngineInternals,
+  workflowId: string,
+  operation: ParallelOperation,
+  persistCheckpoint: NonNullable<CoordinationOperationCallbacks['persistCheckpoint']>,
+  resumedSlots: readonly ParallelBranchSlot[] | undefined,
+): { onSlotSettled: OnSlotSettled; failure: () => { error: unknown } | undefined } {
+  const workflowExecutionToken = workflowExecutionTokenForWorkflow(internals, workflowId);
+  const variant = operation.settle === 'settled' ? 'all-settled' : 'all';
+  const committed = new Set<number>(
+    (resumedSlots ?? []).flatMap((slot, index) => (slot.status === 'fulfilled' ? [index] : [])),
+  );
+  let chain: Promise<void> = Promise.resolve();
+  let failure: { error: unknown } | undefined;
+  const isCurrent = () =>
+    isCurrentOperation(internals, workflowId, operation.operationId, workflowExecutionToken);
+  const commitSlot = async (slots: readonly ParallelBranchSlot[], index: number) => {
+    const slot = slots[index];
+    if (failure !== undefined || slot?.status !== 'fulfilled') return;
+    if (!slots.some((other) => other.status === 'pending')) return;
+    if (!canPersistPartialEntry(internals, workflowId) || !isCurrent()) return;
+    try {
+      slot.value = await finalizeAndUnwrap(slot.value);
+      if (!isCurrent()) return;
+      committed.add(index);
+      // A settled branch whose own commit is still queued is not durable yet, and its value may
+      // still hold an envelope that cannot encode: it stays pending in this entry.
+      const snapshot = slots.map((other, otherIndex): ParallelBranchSlot => {
+        if (other.status === 'fulfilled') {
+          return committed.has(otherIndex)
+            ? { ...other }
+            : { status: 'pending', operationId: other.operationId };
+        }
+        return { ...other };
+      });
+      writePartialEntry(
+        internals,
+        workflowId,
+        operation.step,
+        buildEntryFromSlots(variant, snapshot),
+      );
+      await persistCheckpoint(workflowId, operation, [slot.operationId]);
+    } catch (error) {
+      failure = { error };
+    }
+  };
+  return {
+    onSlotSettled: (slots, index) => {
+      chain = chain.then(() => commitSlot(slots, index));
+      return chain;
+    },
+    failure: () => failure,
+  };
+}
 
 export async function processParallelOperation(
   internals: EngineInternals,
   workflowId: string,
   operation: ParallelOperation,
-  callbacks: Pick<CoordinationOperationCallbacks, 'executeSubOperation' | 'runOperationWithResult'>,
+  callbacks: Pick<
+    CoordinationOperationCallbacks,
+    'executeSubOperation' | 'runOperationWithResult' | 'persistCheckpoint'
+  >,
 ): Promise<void> {
   // `ctx.all()` awaits every branch, so there's no "loser" to abort like
   // there is for `ctx.race()`. Each sub-operation runs to completion or
@@ -116,17 +196,30 @@ export async function processParallelOperation(
     const operationIds = operation.operations.map((sub, i) =>
       typeof sub.operationId === 'string' ? sub.operationId : `parallel:${operation.step}:${i}`,
     );
+    const slotCommitter =
+      callbacks.persistCheckpoint === undefined
+        ? undefined
+        : createSlotCommitter(
+            internals,
+            workflowId,
+            operation,
+            callbacks.persistCheckpoint,
+            resumedSlots,
+          );
     const { slots, hasFirstError, firstError } = await dispatchBranchesAllSettled(
       operationIds,
       resumedSlots,
       // Branches return their RAW result (a wait-signal envelope stays unfinalized)
-      // so a fast wait-signal does not consume its durable signal while `ctx.all`
-      // is still waiting for slower siblings — that would open a wait-for-siblings
-      // window where the signal is gone but the `all` result is not yet
-      // checkpointed. Finalization is deferred to `finalizeFulfilledSlots` below,
-      // after every branch has settled.
+      // so the slot committer, or `finalizeFulfilledSlots` below once every branch has
+      // settled, is the only place a durable signal is consumed: the consume is staged
+      // into the same batch that checkpoints the slot or the whole result.
       (index) => callbacks.executeSubOperation(workflowId, operation.operations[index]!),
+      slotCommitter?.onSlotSettled,
     );
+    // A slot commit that failed means a branch's result and its signal consume never became
+    // durable: fail the operation the way a failed checkpoint write fails it.
+    const slotCommitFailure = slotCommitter?.failure();
+    if (slotCommitFailure !== undefined) throw slotCommitFailure.error;
 
     // On the failure path, decide whether this execution mode can persist the
     // partial entry BEFORE finalizing — and throw the "unsupported" error first
@@ -155,7 +248,7 @@ export async function processParallelOperation(
     // path already has.
     await finalizeFulfilledSlots(slots);
 
-    const entry = buildEntryFromSlots('all', slots);
+    const entry = buildEntryFromSlots(operation.settle === 'settled' ? 'all-settled' : 'all', slots);
     writePartialEntry(internals, workflowId, operation.step, entry);
     recordTimelineBranches(
       internals,

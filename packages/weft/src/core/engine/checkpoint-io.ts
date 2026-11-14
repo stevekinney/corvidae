@@ -54,6 +54,7 @@ import { getTimelineInputSummary, getTimelineOperationLabel } from './state-util
 import { buildPendingTimelineOperation } from './termination.ts';
 import {
   captureActivityCompletionReceipts,
+  captureSettledBranchReceipts,
   type ActivityCompletionReceipt,
 } from './timeline-coordinator-detail.ts';
 import { notifyWorkflowFeedCommit } from './workflow-feed.ts';
@@ -89,6 +90,11 @@ export type PersistCheckpointOptions = {
    * reads the live context.
    */
   pendingStepIndex?: number;
+  /**
+   * With `timeline: 'preserve-pending'`, the operation ids of the coordinator's branch activities
+   * this commit makes durable: their completion receipts are reported with it.
+   */
+  settledBranchOperationIds?: readonly string[];
 };
 
 export type PersistCheckpointCallbacks = {
@@ -420,7 +426,13 @@ async function commitCheckpoint(
   callbacks: PersistCheckpointCallbacks,
   options: PersistCheckpointOptions,
 ): Promise<void> {
-  const activityCompletionReceipts = captureActivityCompletionReceipts(internals, workflowId);
+  // A commit that keeps the pending timeline entry is made while its operation is still running (a
+  // memo's durable retry sleep, a coordinator's settled slot): the entry is not settled, so it
+  // reports only the branch activities it names, and the coordinator's own commit reports the rest.
+  const activityCompletionReceipts =
+    options.timeline === 'preserve-pending'
+      ? captureSettledBranchReceipts(internals, workflowId, options.settledBranchOperationIds ?? [])
+      : captureActivityCompletionReceipts(internals, workflowId);
   dispatchCheckpointSizeWarning(internals, workflowId, commit, callbacks);
   const nextPendingTimelineEntry =
     options.timeline === 'preserve-pending'

@@ -124,6 +124,28 @@ export function captureActivityCompletionReceipts(
   ];
 }
 
+/**
+ * The completion receipts of the named branch activities, taken out of the held set. A commit made
+ * while its coordinator is still running (a settled slot, before its siblings) reports only the
+ * branches it made durable: the rest stay held for the commit that settles the coordinator.
+ */
+export function captureSettledBranchReceipts(
+  internals: EngineInternals,
+  workflowId: string,
+  operationIds: readonly string[],
+): ActivityCompletionReceipt[] {
+  const receipts = branchActivityReceipts.get(internals)?.get(workflowId);
+  if (receipts === undefined) return [];
+  const settled: ActivityCompletionReceipt[] = [];
+  for (const operationId of operationIds) {
+    const receipt = receipts.get(operationId);
+    if (receipt === undefined) continue;
+    receipts.delete(operationId);
+    settled.push(receipt);
+  }
+  return settled;
+}
+
 function captureBranchCompletionReceipts(
   internals: EngineInternals,
   workflowId: string,

@@ -93,6 +93,13 @@ export function captureFirstRejection(capture: FirstRejectionCapture, reason: un
 export type DispatchOneBranch = (index: number) => Promise<unknown>;
 
 /**
+ * Called after the branch at `index` settled and its slot in `slots` was set. The dispatch awaits
+ * it before the branch counts as done, so a caller that commits the slot durably has finished
+ * doing so by the time the dispatch resolves. It must not throw: the caller keeps its own failure.
+ */
+export type OnSlotSettled = (slots: readonly ParallelBranchSlot[], index: number) => Promise<void>;
+
+/**
  * Run every branch via `executeOne(index)`, capturing per-branch outcomes
  * in a slot table. Reused fulfilled slots (passed in via `resumedSlots`)
  * skip dispatch entirely; missing/rejected/aborted slots dispatch fresh.
@@ -109,6 +116,7 @@ export async function dispatchBranchesAllSettled(
   operationIds: string[],
   resumedSlots: ParallelBranchSlot[] | undefined,
   executeOne: DispatchOneBranch,
+  onSlotSettled?: OnSlotSettled,
 ): Promise<ParallelDispatchResult> {
   const slots: ParallelBranchSlot[] = operationIds.map((operationId, i) => {
     const cached = resumedSlots?.[i];
@@ -134,6 +142,7 @@ export async function dispatchBranchesAllSettled(
         slots[index] = { status: 'rejected', reason: normalizeRejectionReason(error), operationId };
         captureFirstRejection(capture, error);
       }
+      await onSlotSettled?.(slots, index);
     }),
   );
 
@@ -145,7 +154,7 @@ export async function dispatchBranchesAllSettled(
  * Convenience wrapper used by every dispatch site.
  */
 export function buildEntryFromSlots(
-  variant: 'all' | 'race' | 'run-all',
+  variant: 'all' | 'all-settled' | 'race' | 'run-all',
   slots: ParallelBranchSlot[],
   branchNames?: string[],
 ): ParallelOperationCacheEntry {
