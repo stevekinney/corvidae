@@ -21,6 +21,19 @@ test.describe('Section layout', () => {
     expect(first?.height).toBeGreaterThanOrEqual(8 * 48);
   });
 
+  test('a small more link in the actions is centred on the title’s line (COR-2329)', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('section'), { waitUntil: 'load' });
+    const section = page.getByTestId('section-more-link');
+    const [title, link] = await Promise.all([
+      section.getByRole('heading', { name: 'Needs attention' }).boundingBox(),
+      section.getByRole('link', { name: 'Open Health' }).boundingBox(),
+    ]);
+    const centre = (box: { y: number; height: number }) => box.y + box.height / 2;
+    expect(Math.abs(centre(link!) - centre(title!))).toBeLessThanOrEqual(1);
+  });
+
   test('the Section draws no box', async ({ page }) => {
     await page.goto(fixtureRoute('section'), { waitUntil: 'load' });
     const section = page.locator('.cinder-section').first();
