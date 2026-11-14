@@ -165,11 +165,21 @@ describe('Link variant prop (COR-2329)', () => {
     expect(container.querySelector('a')?.hasAttribute('data-variant')).toBe(false);
   });
 
-  test('the more form reaches a 44px hit area under a coarse pointer, with a pseudo-element', async () => {
-    const css = await Bun.file(new URL('./link.css', import.meta.url)).text();
-    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
-    expect(coarse).toContain(".cinder-link[data-variant='more']::before");
-    expect(coarse).toContain('var(--cinder-touch-target-min)');
+  test('the more form reaches a 24px hit area under a mouse and 44px under a coarse pointer, above what follows', async () => {
+    const css = (await Bun.file(new URL('./link.css', import.meta.url)).text()).replace(
+      /\s+/g,
+      ' ',
+    );
+    const coarseAt = css.indexOf('@media (any-pointer: coarse)');
+    const fine = css.slice(0, coarseAt);
+    const coarse = css.slice(coarseAt);
+    // The pseudo-element is drawn at every pointer, sized from the hit variable.
+    expect(fine).toMatch(
+      /\.cinder-link\[data-variant='more'\]::before \{[^}]*inset-block: min\(0px, calc\(\(100% - var\(--_cinder-link-hit\)\) \/ 2\)\)/,
+    );
+    expect(fine).toMatch(/--_cinder-link-hit: 1\.5rem;/);
+    expect(fine).toMatch(/\.cinder-link\[data-variant='more'\] \{[^}]*z-index: 1;/);
+    expect(coarse).toMatch(/--_cinder-link-hit: var\(--cinder-touch-target-min\);/);
   });
 });
 

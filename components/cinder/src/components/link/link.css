@@ -34,12 +34,16 @@
   /* ----------------------------------------
  * More: the way out of a section or an empty row to the page that holds the rest
  * ("Open Reviews ›"). Small regular text and a chevron, on one line, so it never reads louder
- * than the heading beside it. The face is the text's own; under a coarse pointer a hit area
- * that takes no layout reaches 44px, as a compact button's does.
+ * than the heading beside it. The face is the text's own; a hit area that takes no layout
+ * reaches 24px under a mouse and 44px under a coarse pointer, as a compact button's does.
  * ---------------------------------------- */
 
   .cinder-link[data-variant='more'] {
+    /* @runtime-state */
+    --_cinder-link-hit: 1.5rem;
+
     position: relative;
+    z-index: 1;
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-0-5);
@@ -55,12 +59,20 @@
     block-size: 1em;
   }
 
+  /* The hit area takes no layout: at least 24px under a mouse and 44px under a coarse pointer
+   * (WCAG 2.5.8 and 2.5.5), centred on the face. The link stacks above what follows it, so a list
+   * row drawn after it, itself positioned, never paints over the bottom of that area (COR-2329). */
+  .cinder-link[data-variant='more']::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--_cinder-link-hit)) / 2));
+    inset-inline: min(0px, calc((100% - var(--_cinder-link-hit)) / 2));
+  }
+
   @media (any-pointer: coarse) {
-    .cinder-link[data-variant='more']::before {
-      content: '';
-      position: absolute;
-      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    .cinder-link[data-variant='more'] {
+      /* @runtime-state */
+      --_cinder-link-hit: var(--cinder-touch-target-min);
     }
   }
 
