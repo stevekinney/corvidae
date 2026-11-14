@@ -37,14 +37,15 @@
      and reaches 44px through a positioned pseudo-element that takes no layout space: the raised
      `--cinder-button-height-md` would otherwise draw it 44px tall in a row of 32px buttons. A fine
      pointer keeps the rule above unchanged. `min()` keeps a trigger already 44px or more from
-     shrinking its own region. */
+     shrinking its own region. A trigger drawn as a Button has the Button's own painted height and
+     hit area. */
   @media (any-pointer: coarse) {
-    .cinder-dropdown-trigger {
+    .cinder-dropdown-trigger:not(.cinder-button) {
       position: relative;
       min-block-size: var(--_cinder-painted-height-md);
     }
 
-    .cinder-dropdown-trigger::before {
+    .cinder-dropdown-trigger:not(.cinder-button)::before {
       content: '';
       position: absolute;
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
