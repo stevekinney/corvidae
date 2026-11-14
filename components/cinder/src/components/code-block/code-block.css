@@ -147,6 +147,14 @@
     background: transparent !important;
   }
 
+  /* github-light's one token colour under AA: its orange (parameters, attributes and other
+   * variables) measures 3.48:1 on the white field. It takes Cinder's warning text, the same hue at
+   * a contrast-safe lightness. Shiki writes the colour inline, so the override needs `!important`;
+   * the dark-theme swap below is more specific and still wins in a dark theme. */
+  .cinder-code-block :where(pre.shiki) span[style*='E36209;' i] {
+    color: var(--cinder-status-warning-text) !important;
+  }
+
   /* ── Dark-theme Shiki dual-theme fix ─────────────────────────────────────
    * Shiki's dual-theme output emits inline styles on every token span with
    * BOTH the light value (`color: #24292E`) and the dark value

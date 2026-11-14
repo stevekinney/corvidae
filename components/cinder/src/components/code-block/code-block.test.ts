@@ -415,6 +415,13 @@ describe('CodeBlock — static structure', () => {
     expect(css).toContain('@media (prefers-color-scheme: dark)');
   });
 
+  test("github-light's orange takes Cinder's warning text, which meets AA on the white field", async () => {
+    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    expect(css).toContain(
+      ".cinder-code-block :where(pre.shiki) span[style*='E36209;' i] {\n    color: var(--cinder-status-warning-text) !important;",
+    );
+  });
+
   test('code surface background is one component-owned declaration', async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     // One surface: the root (and so the bar) takes the code's own fill, and its one edge is a
