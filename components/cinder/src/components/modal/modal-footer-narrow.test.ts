@@ -30,7 +30,9 @@ function footerDeclaration(property: string): string | undefined {
   let value: string | undefined;
   parse(modalCss).walkRules((rule) => {
     if (!rule.selectors.includes('.cinder-modal__footer')) return;
-    if (rule.parent?.type === 'atrule') return;
+    if (rule.parent?.type === 'atrule' && 'name' in rule.parent && rule.parent.name === 'media') {
+      return;
+    }
     rule.walkDecls(property, (declaration) => {
       value = declaration.value;
     });
