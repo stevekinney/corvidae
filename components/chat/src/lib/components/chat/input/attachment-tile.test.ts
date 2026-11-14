@@ -189,7 +189,7 @@ describe('failures', () => {
     });
   });
 
-  test('a long accept list is named by its first three kinds and "another kind of file"', () => {
+  test('a long accept list is named by its first three kinds and a count of the rest', () => {
     expect(
       acceptedKindsText([
         'image/*',
@@ -198,7 +198,18 @@ describe('failures', () => {
         'application/pdf',
         'application/xml',
       ]),
-    ).toBe('an image, a text file, a JSON file or another kind of file');
+    ).toBe('an image, a text file, a JSON file or one of 2 other kinds');
+    expect(
+      acceptedKindsText([
+        'image/*',
+        'audio/*',
+        'video/*',
+        'text/*',
+        'application/json',
+        'application/pdf',
+        'application/xml',
+      ]),
+    ).toBe('an image, an audio file, a video or one of 4 other kinds');
     expect(acceptedKindsText(['image/*', 'text/*', 'application/json', 'application/pdf'])).toBe(
       'an image, a text file, a JSON file or a PDF',
     );
@@ -223,8 +234,27 @@ describe('typeNotAcceptedText', () => {
     );
     expect(acceptedKindsText(['image/png', 'image/jpeg'])).toBe('an image');
     expect(acceptedKindsText(['.csv', 'application/zip'])).toBe('a CSV file or a ZIP file');
-    expect(acceptedKindsText([])).toBe('another kind of file');
     expect(typeNotAcceptedText(['image/*'])).not.toMatch(/\/|application|\*/);
+  });
+
+  test('names every kind of one to four, and never says another kind works', () => {
+    expect(acceptedKindsText(['image/*', 'audio/*', 'video/*', 'application/pdf'])).toBe(
+      'an image, an audio file, a video or a PDF',
+    );
+    expect(acceptedKindsText(['image/*'])).toBe('an image');
+    for (const types of [
+      ['image/*'],
+      ['image/*', 'audio/*', 'video/*', 'text/*', 'application/json', 'application/pdf'],
+    ]) {
+      expect(acceptedKindsText(types)).not.toContain('another kind');
+    }
+  });
+
+  test('leaves the Attach sentence out when no accepted kind is known', () => {
+    expect(acceptedKindsText([])).toBe('');
+    expect(acceptedKindsText(['*/*', ''])).toBe('');
+    expect(typeNotAcceptedText([])).toBe('This file type can’t be attached.');
+    expect(typeNotAcceptedText(['*/*'])).not.toContain('Attach');
   });
 });
 

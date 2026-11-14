@@ -228,8 +228,10 @@ export function uploadPercent(progress: number | undefined): number | undefined 
  * The kinds of file an accept list takes, in the person's words: `image/*`, `application/pdf` and
  * `text/plain` read "an image, a PDF or a text file". A type with no common name reads as its
  * subtype in capitals ("a JSON file"), and an extension as itself (".csv" reads "a CSV file"). A
- * list of more than four kinds names the first three and says "or another kind of file", so a long
- * list is a sentence a person reads and not a table.
+ * list of one to four kinds names every one; a longer list names the first three and counts the
+ * rest ("an image, an audio file, a video or one of 4 other kinds"), so a long list is a sentence a
+ * person reads and not a table, and never claims that any kind works. A list with no kind a person
+ * can name reads as an empty string, and the sentence that would tell what to attach is left out.
  */
 export function acceptedKindsText(acceptedTypes: readonly string[]): string {
   const kinds: string[] = [];
@@ -237,8 +239,10 @@ export function acceptedKindsText(acceptedTypes: readonly string[]): string {
     const kind = acceptedKind(type.trim().toLowerCase());
     if (kind !== undefined && !kinds.includes(kind)) kinds.push(kind);
   }
-  if (kinds.length > 4) return `${kinds.slice(0, 3).join(', ')} or another kind of file`;
-  if (kinds.length <= 1) return kinds[0] ?? 'another kind of file';
+  if (kinds.length > 4) {
+    return `${kinds.slice(0, 3).join(', ')} or one of ${kinds.length - 3} other kinds`;
+  }
+  if (kinds.length <= 1) return kinds[0] ?? '';
   return `${kinds.slice(0, -1).join(', ')} or ${kinds.at(-1)}`;
 }
 
@@ -269,5 +273,8 @@ function acceptedKind(type: string): string | undefined {
 
 /** Why a file the composer does not take was refused, and what it does take. */
 export function typeNotAcceptedText(acceptedTypes: readonly string[]): string {
-  return `This file type can’t be attached. Attach ${acceptedKindsText(acceptedTypes)}.`;
+  const kinds = acceptedKindsText(acceptedTypes);
+  return kinds === ''
+    ? 'This file type can’t be attached.'
+    : `This file type can’t be attached. Attach ${kinds}.`;
 }

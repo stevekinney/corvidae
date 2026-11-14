@@ -79,6 +79,7 @@ export type ChatLabels = {
    */
   attachmentFailureNetwork: (name: string) => string;
   attachmentFailureTooLarge: (name: string, limit: string | undefined) => string;
+  /** `accepted` is the kinds the composer takes in words, or an empty string when none is known. */
   attachmentFailureUnsupported: (name: string, accepted: string) => string;
   attachmentFailureUnknown: (name: string) => string;
   /**
@@ -208,7 +209,9 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   attachmentFailureTooLarge: (name, limit) =>
     limit === undefined ? `${name} is over the limit.` : `${name} is over the ${limit} limit.`,
   attachmentFailureUnsupported: (name, accepted) =>
-    `${name} can't be attached. Attach ${accepted}.`,
+    accepted === ''
+      ? `${name} can't be attached.`
+      : `${name} can't be attached. Attach ${accepted}.`,
   attachmentFailureUnknown: (name) => `${name} didn't upload.`,
   attachmentFailureNetworkMany: (count) =>
     `${count} ${count === 1 ? 'file' : 'files'} didn't upload. Check your connection.`,

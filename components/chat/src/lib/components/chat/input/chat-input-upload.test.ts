@@ -453,7 +453,7 @@ describe('the failure line under the strip', () => {
     ]);
     // The next step the old line had: what the composer takes, here its default list, kept short.
     expect(lineText(target)).toBe(
-      "file-1.png can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+      "file-1.png can't be attached. Attach an image, a text file, a JSON file or one of 8 other kinds.",
     );
     expectGlyphAction(target, 'Remove file-1.png');
     unmount(instance);
