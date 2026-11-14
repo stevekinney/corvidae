@@ -6,7 +6,11 @@
  * @module document-workflow/interpreter
  */
 
-import { advanceBranchesOf, canAdvanceBranches } from '../core/context/advancing-operations.ts';
+import {
+  advanceBranchesOf,
+  canAdvanceBranches,
+  inLockstep,
+} from '../core/context/advancing-operations.ts';
 import type { ContextOperationRequest } from '../core/context/operation-request.ts';
 import {
   activity,
@@ -282,9 +286,9 @@ export async function buildDocumentWorkflowDefinition(
           return yield* runNested(nested, [...iteration, name], branchState);
         })();
       });
-      const results = canAdvanceBranches(context)
+      const results = canAdvanceBranches(context, generators.length)
         ? yield* advanceBranchesOf(context, generators)
-        : yield* runMapBatch(context, generators);
+        : yield* inLockstep(context, runMapBatch(context, generators));
       state.previous = Object.fromEntries(
         branches.map(([name], offset) => [name, results[offset]]),
       );

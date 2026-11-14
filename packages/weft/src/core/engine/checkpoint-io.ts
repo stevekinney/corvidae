@@ -95,12 +95,19 @@ export type PersistCheckpointOptions = {
   settledBranchOperationIds?: readonly string[];
   /** With `preserve-pending`: the file-workflow completion events this commit records. */
   settledFileWorkflowEvents?: readonly FileWorkflowEvent[];
+  /**
+   * With `preserve-pending`: the side effects this commit writes, which the coordinator held for
+   * the results its entry now records (see `held-side-effects.ts`). Such a commit writes none of
+   * the workflow's staged side effects: one staged by a branch still running belongs to a result
+   * this commit does not hold, so it waits for the commit that settles the operation.
+   */
+  sideEffects?: AtomicWorkflowCommitSideEffects;
 };
 
 /** What a commit made while its operation is still running reports for the steps it settled. */
 export type MidOperationCommitReport = Pick<
   PersistCheckpointOptions,
-  'settledBranchOperationIds' | 'settledFileWorkflowEvents'
+  'settledBranchOperationIds' | 'settledFileWorkflowEvents' | 'sideEffects'
 >;
 
 export type PersistCheckpointCallbacks = {
@@ -492,11 +499,14 @@ async function commitCheckpoint(
           retentionWindow,
           commit.operations,
         );
-  const pendingSideEffects = takePendingAtomicWorkflowCommitSideEffects(
-    internals,
-    workflowId,
-    commit.checkpoint.workflowExecutionToken,
-  );
+  const carriesHeldSideEffects = options.sideEffects !== undefined;
+  const pendingSideEffects = carriesHeldSideEffects
+    ? options.sideEffects
+    : takePendingAtomicWorkflowCommitSideEffects(
+        internals,
+        workflowId,
+        commit.checkpoint.workflowExecutionToken,
+      );
   if (pendingSideEffects !== undefined) {
     commit.operations.push(...pendingSideEffects.operations);
   }
@@ -541,7 +551,7 @@ async function commitCheckpoint(
     commit,
     newHead,
     nextPendingTimelineEntry,
-    pendingSideEffects !== undefined,
+    pendingSideEffects !== undefined && !carriesHeldSideEffects,
   );
   for (const receipt of activityCompletionReceipts) {
     dispatchActivityCompletionReceipt(callbacks, workflowId, receipt);

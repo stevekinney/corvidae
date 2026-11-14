@@ -17,6 +17,7 @@ import {
   stageCoordinatorCompletion,
   type SettledRequestCompletion,
 } from './file-workflow-completion-events.ts';
+import { HeldSideEffects } from './held-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   executeActivityOperationResult as executeActivityOperationResultFromInternals,
@@ -93,8 +94,11 @@ export type CoordinationOperationCallbacks = {
  * run again when the workflow recovers while a sibling still waits. A slot commits only when a
  * sibling is still pending: the last branch to settle belongs to the operation's own result.
  *
- * A commit finalizes the slot's deferred signal consume first. That stages the consume into the
- * same batch the checkpoint writes, so the slot and the delete of its signal record land together.
+ * A commit finalizes the slot's deferred signal consume first, into the committer's own hold (see
+ * `held-side-effects.ts`), and writes the held consumes with the entry that records the slot: the
+ * slot and the delete of its signal record land together, and the commit writes nothing a branch
+ * still running staged. What the committer still holds when the branches settle goes to the
+ * staged buffer, for the commit that settles the operation.
  * Commits are chained: each one compares-and-swaps against the checkpoint bytes the one before it
  * wrote, so two overlapping would make the second a conflict and abandon the run.
  */
@@ -104,13 +108,20 @@ function createSlotCommitter(
   operation: ParallelOperation,
   persistCheckpoint: CoordinationOperationCallbacks['persistCheckpoint'],
   resumedSlots: readonly ParallelBranchSlot[] | undefined,
-): { onSlotSettled: OnSlotSettled; failure: () => { error: unknown } | undefined } | undefined {
+):
+  | {
+      onSlotSettled: OnSlotSettled;
+      failure: () => { error: unknown } | undefined;
+      held: HeldSideEffects;
+    }
+  | undefined {
   if (persistCheckpoint === undefined) return undefined;
   const workflowExecutionToken = workflowExecutionTokenForWorkflow(internals, workflowId);
   const variant = operation.settle === 'settled' ? 'all-settled' : 'all';
   const committed = new Set<number>(
     (resumedSlots ?? []).flatMap((slot, index) => (slot.status === 'fulfilled' ? [index] : [])),
   );
+  const held = new HeldSideEffects();
   let chain: Promise<void> = Promise.resolve();
   let failure: { error: unknown } | undefined;
   const isCurrent = () =>
@@ -120,8 +131,9 @@ function createSlotCommitter(
     if (failure !== undefined || slot?.status !== 'fulfilled') return;
     if (!slots.some((other) => other.status === 'pending')) return;
     if (!canPersistPartialEntry(internals, workflowId) || !isCurrent()) return;
+    let taken: ReturnType<HeldSideEffects['take']>;
     try {
-      slot.value = await finalizeAndUnwrap(slot.value);
+      slot.value = await finalizeAndUnwrap(slot.value, held.hold);
       if (!isCurrent()) return;
       committed.add(index);
       // A settled branch whose own commit is still queued is not durable yet, and its value may
@@ -140,10 +152,13 @@ function createSlotCommitter(
         operation.step,
         buildEntryFromSlots(variant, snapshot),
       );
+      taken = held.take();
       await persistCheckpoint(workflowId, operation, {
         settledBranchOperationIds: [slot.operationId],
+        sideEffects: taken?.sideEffects ?? { conditions: [], operations: [] },
       });
     } catch (error) {
+      taken?.restore();
       failure = { error };
     }
   };
@@ -153,6 +168,7 @@ function createSlotCommitter(
       return chain;
     },
     failure: () => failure,
+    held,
   };
 }
 
@@ -219,11 +235,13 @@ export async function processParallelOperation(
       resumedSlots,
       // Branches return their RAW result (a wait-signal envelope stays unfinalized)
       // so the slot committer, or `finalizeFulfilledSlots` below once every branch has
-      // settled, is the only place a durable signal is consumed: the consume is staged
-      // into the same batch that checkpoints the slot or the whole result.
+      // settled, is the only place a durable signal is consumed: the consume goes into
+      // the same batch that checkpoints the slot or the whole result.
       (index) => callbacks.executeSubOperation(workflowId, operation.operations[index]!),
       slotCommitter?.onSlotSettled,
     );
+    // Every slot is in `slots` now: the commit that settles the operation writes what is held.
+    slotCommitter?.held.stageRemaining(internals, workflowId);
     // What an advancing parallel step nested in a branch settled reports here, whatever follows.
     const nestedCompletion = takeSettledSteps(internals, workflowId);
     // A slot commit that failed means a branch's result and its signal consume never became

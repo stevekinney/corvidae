@@ -5,7 +5,7 @@ import type { MidOperationCommitReport } from './checkpoint-io.ts';
 import { stageCoordinatorCompletion } from './file-workflow-completion-events.ts';
 import type { EngineInternals } from './internals.ts';
 import type { OperationWithCallerStack } from './operations-router.ts';
-import { buildEntryFromSlots, valuesFromSlots } from './parallel-dispatch.ts';
+import { valuesFromSlots } from './parallel-dispatch.ts';
 import { canPersistPartialEntry, writePartialEntry } from './partial-entry.ts';
 import { takeSettledSteps } from './settled-step-sink.ts';
 import { isCurrentOperation, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
@@ -90,12 +90,7 @@ export async function processAdvancingParallelOperation(
     const settled = takeSettledSteps(internals, workflowId);
     if (result.fatal !== undefined) throw result.fatal.error;
     if (result.commitFailure !== undefined) throw result.commitFailure.error;
-    writePartialEntry(
-      internals,
-      workflowId,
-      operation.step,
-      buildEntryFromSlots('all', result.slots),
-    );
+    writePartialEntry(internals, workflowId, operation.step, result.entry);
     recordBranchTimeline(internals, workflowId, result);
     const pendingEntry = internals.pendingTimelineEntries?.get(workflowId)?.entry;
     if (pendingEntry !== undefined) stageCoordinatorCompletion(pendingEntry, settled);

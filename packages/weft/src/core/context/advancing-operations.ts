@@ -33,6 +33,7 @@ import {
   createParallelOperationCacheEntry,
   isParallelOperationCacheEntry,
   type ParallelBranchSlot,
+  type ParallelOperationCacheEntry,
 } from './parallel-cache-entry.ts';
 import { captureCallerStack } from './validation.ts';
 
@@ -73,19 +74,66 @@ function finishedEntry(operationId: string, values: readonly unknown[]) {
   );
 }
 
+/** The operation id of the advancing parallel step at `step`, which its slots' ids extend. */
+function operationIdAt(internals: ContextInternals, step: number): string {
+  return `parallel:${stepStateKey(internals, step)}`;
+}
+
 /**
- * Whether the step `context` numbers next can run as an advancing parallel step: it belongs to an
- * inline run, and does not hold what a run persisted before branches advanced on their own left
- * there, as the first result of the lockstep rounds it ran (see the document `parallel` step).
+ * Whether `cached` is what an advancing parallel step of `branchCount` branches at `step` writes:
+ * an `all` entry with one slot per branch, each slot named after the step. A run persisted before
+ * branches advanced on their own holds the first result of its lockstep rounds there instead: a
+ * plain value, the `race` winner of a timed wait, or the `all` entry of a `map` round, none of
+ * whose slots carry this step's name.
  */
-export function canAdvanceBranches(context: object): boolean {
+function isAdvancingEntry(
+  cached: unknown,
+  operationId: string,
+  branchCount: number,
+): cached is ParallelOperationCacheEntry {
+  return (
+    isParallelOperationCacheEntry(cached) &&
+    cached.variant === 'all' &&
+    cached.subOperationCount === branchCount &&
+    cached.branches.length === branchCount &&
+    cached.branches.every((slot, index) => slot.operationId === `${operationId}:${String(index)}`)
+  );
+}
+
+/**
+ * Whether the step `context` numbers next can run as an advancing parallel step of `branchCount`
+ * branches: it belongs to an inline run, no lockstep parallel step encloses it, and the step holds
+ * nothing yet or what such a step wrote. A run persisted before branches advanced on their own
+ * finishes its parallel step, and every parallel step nested in it, in lockstep rounds (see the
+ * document `parallel` step).
+ */
+export function canAdvanceBranches(context: object, branchCount: number): boolean {
   if (!hasContextInternals(context)) return false;
   const internals = getInternals(context);
+  if (internals.lockstepDepth > 0) return false;
+  const step = internals.stepIndex;
   const results = internals.accumulatedResults;
-  return (
-    results?.has(internals.stepIndex) !== true ||
-    isParallelOperationCacheEntry(results.get(internals.stepIndex))
-  );
+  if (results?.has(step) !== true) return true;
+  return isAdvancingEntry(results.get(step), operationIdAt(internals, step), branchCount);
+}
+
+/**
+ * Run `rounds`, the lockstep rounds of a parallel step a run began before branches advanced on
+ * their own, so every parallel step nested in it runs in lockstep too: such a step was numbered
+ * through the shared step counter, and there is no advancing step around it to commit it.
+ */
+export function* inLockstep<Result>(
+  context: object,
+  rounds: Generator<ContextOperationRequest, Result, unknown>,
+): Generator<ContextOperationRequest, Result, unknown> {
+  if (!hasContextInternals(context)) return yield* rounds;
+  const internals = getInternals(context);
+  internals.lockstepDepth += 1;
+  try {
+    return yield* rounds;
+  } finally {
+    internals.lockstepDepth -= 1;
+  }
 }
 
 /** {@link advanceBranches} for a caller outside the context's own modules. */
@@ -109,7 +157,7 @@ export function* advanceBranches(
   branches: Generator<ContextOperationRequest, unknown, unknown>[],
 ): Generator<ContextOperationRequest, unknown[], unknown> {
   const step = internals.stepIndex++;
-  const operationId = `parallel:${stepStateKey(internals, step)}`;
+  const operationId = operationIdAt(internals, step);
   const parentNamespace =
     internals.branchNamespace === undefined ? '' : `${internals.branchNamespace}/`;
   const namespace = `${parentNamespace}p${String(step)}`;
@@ -123,14 +171,19 @@ export function* advanceBranches(
   const drivers: BranchDriver[] = branches.map((generator, index) => {
     const slot = slots?.[index];
     if (slot?.status === 'fulfilled') return settledBranchDriver(slot.value);
+    // A branch that threw resumes from the steps it finished, as one still running does: a signal
+    // one of them took is gone, and only the step that threw runs again.
+    const results = slot?.status === 'pending' || slot?.status === 'rejected' ? slot.results : [];
     return startBranchDriver(internals, generator, {
       namespace: `${namespace}.${String(index)}`,
-      results: slot?.status === 'pending' ? slot.results : undefined,
+      results,
     });
   });
   const operations = drivers.flatMap((driver) => (driver.first.done ? [] : [driver.first.request]));
   if (operations.length === 0) {
     // Every branch finished while priming (its steps all had results): nothing for the engine to run.
+    const failed = drivers.find((driver) => driver.failure !== undefined);
+    if (failed?.failure !== undefined) throw failed.failure.error;
     const values = drivers.map((driver) => (driver.first.done ? driver.first.value : undefined));
     context.accumulatedResults.set(step, finishedEntry(operationId, values));
     return values;

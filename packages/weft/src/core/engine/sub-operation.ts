@@ -7,7 +7,7 @@ import {
 import type { ContextOperationRequest } from '../context.ts';
 import { branchDriversOf } from '../context/branch-driver.ts';
 import type { HumanReviewOptions } from '../review/index.ts';
-import { runAdvancingBranches } from './advancing-branches.ts';
+import { nestedLinkOf, runAdvancingBranches } from './advancing-branches.ts';
 import {
   assertChildWorkflowNestingDepth,
   executeChildWorkflow,
@@ -263,7 +263,9 @@ async function executeParallelSubOperation(
   signal?.throwIfAborted();
 
   // An advancing parallel step nested in another coordinator's branch runs its branches on their
-  // own, with no commit of its own: the outermost coordinator owns durability.
+  // own, with no commit of its own: the outermost coordinator owns durability. Nested in a branch
+  // of another advancing step, it reports its progress, and the consumes its branches take,
+  // through that step (see `NestedLink`).
   const drivers = branchDriversOf(operation);
   if (drivers !== undefined) {
     const result = await runAdvancingBranches({
@@ -281,6 +283,7 @@ async function executeParallelSubOperation(
           speculativeState,
         ),
       parentSignal: signal,
+      nested: nestedLinkOf(operation),
     });
     if (result.fatal !== undefined) throw result.fatal.error;
     if (result.hasFirstError) throw result.firstError;

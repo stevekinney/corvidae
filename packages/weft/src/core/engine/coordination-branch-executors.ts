@@ -1,6 +1,7 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { SignalDeliveredEvent } from '../events.ts';
 import { createDeferredConsumeEnvelope } from './deferred-consume-envelope.ts';
+import type { SideEffectHold } from './held-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   captureSignalWaitRun,
@@ -179,13 +180,14 @@ export function executeWaitSignalSubOperation(
     // The deferred consume the coordinator runs on the winning path. Wrapped in
     // an envelope so a losing branch (which never reaches finalize) cannot delete
     // the durable record.
-    const finalize = async (): Promise<unknown> => {
+    const finalize = async (hold?: SideEffectHold): Promise<unknown> => {
       const consumed = await consumeSignalWithAtomicWorkflowCommit(
         internals,
         workflowId,
         signalName,
         () => isCurrentWorkflowExecutionToken(internals, workflowId, workflowExecutionToken),
         workflowExecutionToken,
+        hold,
       );
       return consumed.found ? consumed.payload : undefined;
     };

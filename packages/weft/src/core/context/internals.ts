@@ -16,6 +16,11 @@ export interface ContextInternals {
    * {@link stepStateKey}.
    */
   branchNamespace: string | undefined;
+  /**
+   * How many lockstep parallel steps enclose the operations running now: a parallel step a run
+   * began before branches advanced on their own, which every parallel step nested in it follows.
+   */
+  lockstepDepth: number;
   /** See {@link ContextOptions.logStep}; `undefined` stamps `ctx.log` records with `stepIndex`. */
   logStep: number | undefined;
   accumulatedResults: Map<number, unknown> | undefined;
@@ -92,6 +97,7 @@ export function initializeInternals(
     abortController: options.abortController,
     stepIndex: options.initialStep ?? 0,
     branchNamespace: undefined,
+    lockstepDepth: 0,
     logStep: options.logStep,
     accumulatedResults: options.accumulatedResults,
     replayingToPark: options.resumed === true,

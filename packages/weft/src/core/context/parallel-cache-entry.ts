@@ -25,7 +25,9 @@ import { WeftError } from '../weft-error.ts';
  * - `rejected`: branch threw. Metadata only — never reused on retry; the
  *   branch re-dispatches just like a `pending` slot. The `reason` is a
  *   normalized `{ name, message }` because raw `Error` objects don't
- *   round-trip through MessagePack.
+ *   round-trip through MessagePack. A branch of an advancing parallel step keeps the `results` of
+ *   the steps it finished before it threw, as a `pending` one does: a signal one of them took is
+ *   consumed for good, so a recovered run replays those steps and runs only the one that threw.
  * - `aborted`: reserved for `ctx.race` losers. Never produced by
  *   `ctx.all`/`ctx.runAll` because they don't cancel siblings on failure.
  */
@@ -36,6 +38,7 @@ export type ParallelBranchSlot =
       status: 'rejected';
       reason: { name: string; message: string };
       operationId: string;
+      results?: [number, unknown][];
     }
   | { status: 'aborted'; operationId: string };
 
@@ -112,7 +115,12 @@ function isValidBranchSlot(value: unknown): boolean {
   if (!isValidSlotStatus(slot['status'])) return false;
   if (typeof slot['operationId'] !== 'string') return false;
   if (slot['status'] === 'rejected' && !isValidRejectionReason(slot['reason'])) return false;
-  if (slot['status'] === 'pending' && !isValidBranchResults(slot['results'])) return false;
+  if (
+    (slot['status'] === 'pending' || slot['status'] === 'rejected') &&
+    !isValidBranchResults(slot['results'])
+  ) {
+    return false;
+  }
   return true;
 }
 

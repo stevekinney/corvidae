@@ -27,12 +27,22 @@ export interface BranchDriver {
   /** The branch after priming: the first operation it needs, or its result if it needed none. */
   readonly first: BranchStep;
   /**
+   * Why the branch threw while priming, when it did: a recovered branch whose replayed results end
+   * in a rejected review throws again before it asks for anything. `first` is then `done`.
+   */
+  readonly failure?: { error: unknown } | undefined;
+  /**
    * Resume the branch with the outcome of the operation it last asked for. A rejected outcome is
    * thrown into the branch, which may handle it. Throws when the branch itself throws.
    */
   resume(outcome: BranchOutcome): BranchStep;
   /** The results of the branch's own steps so far, as the parent's cache entry keeps them. */
   results(): [number, unknown][];
+  /**
+   * Keep `value` as the result of the branch's step `step` before that step has finished: the
+   * progress of a parallel step nested in the branch, which a replay resumes from.
+   */
+  hold(step: number, value: unknown): void;
 }
 
 /**
@@ -102,9 +112,17 @@ export function startBranchDriver(
       internals.branchNamespace = outer.branchNamespace;
     }
   };
-  const first = inScope(() => generator.next());
+  let first: BranchStep;
+  let failure: { error: unknown } | undefined;
+  try {
+    first = inScope(() => generator.next());
+  } catch (error) {
+    first = { done: true, value: undefined };
+    failure = { error };
+  }
   return {
     first,
+    failure,
     resume(outcome) {
       return inScope(() => {
         // Time has moved on since the resumed checkpoint's parked moment: a sleep this step asks for
@@ -116,6 +134,9 @@ export function startBranchDriver(
       });
     },
     results: () => [...scope.accumulatedResults.entries()],
+    hold: (step, value) => {
+      scope.accumulatedResults.set(step, value);
+    },
   };
 }
 
@@ -125,5 +146,6 @@ export function settledBranchDriver(value: unknown): BranchDriver {
     first: { done: true, value },
     resume: () => ({ done: true, value }),
     results: () => [],
+    hold: () => undefined,
   };
 }
