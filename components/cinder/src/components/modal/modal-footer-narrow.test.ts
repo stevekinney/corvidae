@@ -25,6 +25,20 @@ afterEach(() => {
   setTestViewportWidth(DEFAULT_TEST_VIEWPORT.width);
 });
 
+const NOT_SHEET_FOOTER = ".cinder-modal:not([data-cinder-sheet='docked']) .cinder-modal__footer";
+
+/** What the one rule with this selector declares. */
+function declarationsOf(selector: string): Record<string, string> {
+  const declared: Record<string, string> = {};
+  parse(modalCss).walkRules((rule) => {
+    if (!rule.selectors.includes(selector)) return;
+    rule.walkDecls((declaration) => {
+      declared[declaration.prop] = declaration.value;
+    });
+  });
+  return declared;
+}
+
 /** What the footer rule declares for a property, outside the media queries. */
 function footerDeclaration(property: string): string | undefined {
   let value: string | undefined;
@@ -66,24 +80,19 @@ describe('Modal footer at 320px with three buttons', () => {
       'Save',
     ]);
     expect(footerDeclaration('display')).toBe('flex');
-    expect(footerDeclaration('flex-wrap')).toBe('wrap');
+    expect(declarationsOf(NOT_SHEET_FOOTER)['flex-wrap']).toBe('wrap');
     expect(footerDeclaration('justify-content')).toBe('flex-end');
     expect(footerDeclaration('gap')).toBe('var(--cinder-space-3)');
   });
 
-  test('keeps the bottom sheet’s stacked footer one column, so the row wrap never reaches it', () => {
-    const sheetFooter: Record<string, string> = {};
-    parse(modalCss).walkRules((rule) => {
-      if (
-        !rule.selectors.includes(".cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer")
-      ) {
-        return;
-      }
-      rule.walkDecls((declaration) => {
-        sheetFooter[declaration.prop] = declaration.value;
-      });
-    });
+  test('leaves the bottom sheet’s stacked footer alone: the wrap rule does not apply to a docked sheet and no sheet rule sets it', () => {
+    expect(NOT_SHEET_FOOTER).toContain(':not([data-cinder-sheet=');
+    // The base footer rule no longer wraps, so a docked sheet (a column) inherits no wrap.
+    expect(footerDeclaration('flex-wrap')).toBeUndefined();
+    const sheetFooter = declarationsOf(
+      ".cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer",
+    );
     expect(sheetFooter['flex-direction']).toBe('column-reverse');
-    expect(sheetFooter['flex-wrap']).toBe('nowrap');
+    expect(sheetFooter['flex-wrap']).toBeUndefined();
   });
 });

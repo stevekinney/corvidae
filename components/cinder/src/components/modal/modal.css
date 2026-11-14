@@ -317,14 +317,18 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    /* Wrap, so three buttons that do not fit one line (a 320px dialog) start another line at the
-       end edge instead of overflowing and clipping the first. */
-    flex-wrap: wrap;
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-3) var(--cinder-space-5);
     border-block-start: 1px solid var(--cinder-border-muted);
     background: var(--cinder-surface);
     flex-shrink: 0;
+  }
+
+  /* The centered dialog's footer wraps, so three buttons that do not fit one line start another
+     line at the end edge instead of overflowing and clipping the first. The bottom sheet is left
+     alone: its footer is a stacked column with its own rules below. */
+  .cinder-modal:not([data-cinder-sheet='docked']) .cinder-modal__footer {
+    flex-wrap: wrap;
   }
 
   /* Chromeless mode fills the dialog's entire content box with the panel/
@@ -403,9 +407,6 @@
 
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {
     flex-direction: column-reverse;
-    /* The stack is one column: the footer's row wrap (which keeps three buttons on a narrow dialog
-       from overflowing) would make a column container lay its actions out in more than one column. */
-    flex-wrap: nowrap;
     align-items: stretch;
   }
 

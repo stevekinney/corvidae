@@ -54,8 +54,11 @@ async function showListOpen(page: Page, select: Locator) {
   await select.click();
   await expect(select).toHaveAttribute('aria-expanded', 'true');
   // The `listbox` element is an empty owner of the options, which are drawn beside it (`aria-owns`),
-  // so it has no box and is never "visible": the options are what is on screen.
-  await expect(page.getByRole('option').first()).toBeVisible();
+  // so it has no box and is never "visible": the select's own options are what is on screen. They
+  // carry the select's id as their prefix (`<id>-option-<n>`), which keeps this off the page's
+  // native options (the Settings tab select holds some).
+  const selectId = await select.getAttribute('id');
+  await expect(page.locator(`[id^="${selectId}-option-"]`).first()).toBeVisible();
 }
 
 const providerRow = (page: Page, name: string) => page.locator(`[data-provider="${name}"]`);
