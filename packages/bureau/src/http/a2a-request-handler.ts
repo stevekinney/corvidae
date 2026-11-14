@@ -86,7 +86,7 @@ import {
   canonicalJson,
   digestCommandPayload,
 } from '../command-ledger.ts';
-import { BureauError } from '../bureau-errors.ts';
+import { BureauError, ContextArchivedError } from '../bureau-errors.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import { isTopLevelTaskOrigin } from '../task-origin.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
@@ -374,6 +374,17 @@ function invalid(message: string): RequestMalformedError {
 
 function taskNotFound(taskId: string): TaskNotFoundError {
   return new TaskNotFoundError(`Task '${taskId}' was not found.`);
+}
+
+/**
+ * COR-2285 — a message to an archived context, refused as an operation the context does not
+ * support now, not as a task that is missing. A2A errors carry no reason field, so the message
+ * names the stable reason `context-archived`.
+ */
+function contextArchived(error: ContextArchivedError): UnsupportedOperationError {
+  return new UnsupportedOperationError(
+    `Context '${error.contextId}' is archived (context-archived): unarchive it to continue.`,
+  );
 }
 
 function userOf(context: ServerCallContext | undefined): BureauA2AUser {
@@ -1231,6 +1242,7 @@ export function createBureauA2ARequestHandler(
       if (error instanceof BureauError && error.code === 'NOT_FOUND') {
         throw new TaskNotFoundError(error.message);
       }
+      if (error instanceof ContextArchivedError) throw contextArchived(error);
       if (error instanceof BureauError && error.code === 'BAD_REQUEST')
         throw invalid(error.message);
       // A failure that is not a refusal may have come after the run took its row: the assets
@@ -1386,16 +1398,22 @@ export function createBureauA2ARequestHandler(
     // The incarnation the continuation was checked against travels with it: a context deleted and
     // created again between the check and the admission is not given this message.
     const stored = await bureau.internals.taskRegistry.record(view.id);
-    const outcome = await bureau.contexts.input(view.contextId, {
-      id: message.messageId,
-      principal: owner,
-      ...(stored === undefined || stored.incarnation === ''
-        ? {}
-        : { incarnation: stored.incarnation }),
-      deliveryMode: command.mode,
-      payload: (inbound.content ?? command.text) as SessionInputAdmissionRequest['payload'],
-      ...(deadline === undefined ? {} : { expiresAt: new Date(deadline).toISOString() }),
-    });
+    let outcome: Awaited<ReturnType<typeof bureau.contexts.input>>;
+    try {
+      outcome = await bureau.contexts.input(view.contextId, {
+        id: message.messageId,
+        principal: owner,
+        ...(stored === undefined || stored.incarnation === ''
+          ? {}
+          : { incarnation: stored.incarnation }),
+        deliveryMode: command.mode,
+        payload: (inbound.content ?? command.text) as SessionInputAdmissionRequest['payload'],
+        ...(deadline === undefined ? {} : { expiresAt: new Date(deadline).toISOString() }),
+      });
+    } catch (error) {
+      if (error instanceof ContextArchivedError) throw contextArchived(error);
+      throw error;
+    }
     if (outcome.outcome === 'not-found') throw taskNotFound(view.id);
     if (outcome.outcome === 'conflict') {
       throw invalid(`messageId '${message.messageId}' was already used with a different payload.`);
