@@ -80,7 +80,7 @@ const schema = {
     command: {
       type: 'string',
       description:
-        'The exact command the host was launched with, in `failed`, with a Copy button: the way back\nwhen the host that would restart itself is the one that is not answering. Left out, the line\ndoes not show.',
+        'The exact command the host was launched with, in `failed`, with a copy icon button: the way back\nwhen the host that would restart itself is the one that is not answering. Left out, the line\ndoes not show.',
     },
     commandLabel: {
       type: 'string',
@@ -89,8 +89,8 @@ const schema = {
     },
     copyLabel: {
       type: 'string',
-      description: 'Label of the button that copies `command`.',
-      default: 'Copy',
+      description: 'Accessible name of the copy icon button that copies `command`.',
+      default: 'Copy the command',
     },
     keepWaitingLabel: {
       type: 'string',

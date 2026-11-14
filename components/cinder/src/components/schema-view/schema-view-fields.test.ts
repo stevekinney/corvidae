@@ -505,3 +505,31 @@ describe('splitDescription', () => {
     });
   });
 });
+
+describe('field kinds and facts', () => {
+  test('names the kind of each value and the facts about it', () => {
+    const fields = readSchemaFields({
+      type: 'object',
+      properties: {
+        code: { type: ['string', 'null'], pattern: '^[A-Z]{3}$', minLength: 3, maxLength: 3 },
+        version: { const: 2 },
+        ratio: { type: 'number', exclusiveMinimum: 0 },
+        anything: {},
+      },
+    });
+    expect(fields.map((field) => [field.key, field.kind, field.facts])).toEqual([
+      [
+        'code',
+        'text',
+        [
+          { label: 'Or none' },
+          { label: 'Exactly 3 characters' },
+          { label: 'Matches', values: ['^[A-Z]{3}$'] },
+        ],
+      ],
+      ['version', 'choice', [{ label: 'Always', values: ['2'] }]],
+      ['ratio', 'number', [{ label: 'At least 0' }]],
+      ['anything', 'any', []],
+    ]);
+  });
+});

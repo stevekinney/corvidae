@@ -15,10 +15,62 @@ import {
   laneOutcomeBadgeVariant,
   laneOutcomeLabel,
   metadataItems,
+  railConnections,
   safeStepLinkHref,
   statusDotStatus,
   statusLabel,
 } from './run-step-timeline.utilities.ts';
+
+describe('railConnections', () => {
+  test('a flat rail links every row to the next, and the last row has no line', () => {
+    expect(railConnections([0, 0, 0])).toEqual([
+      { after: 'visible', through: [] },
+      { after: 'visible', through: [] },
+      { after: 'hidden', through: [] },
+    ]);
+  });
+
+  test("a parent's line runs past its nested rows to its next sibling", () => {
+    // plan, lane, inspect, verify, archive: the lane's line reaches archive's marker.
+    expect(railConnections([0, 0, 1, 1, 0])).toEqual([
+      { after: 'visible', through: [] },
+      { after: 'visible', through: [] },
+      { after: 'visible', through: [{ depth: 0, ends: false }] },
+      { after: 'hidden', through: [{ depth: 0, ends: false }] },
+      { after: 'hidden', through: [] },
+    ]);
+  });
+
+  test('a last parent runs its line along its nested rows and stops at the last one', () => {
+    expect(railConnections([0, 1, 1, 2])).toEqual([
+      { after: 'visible', through: [] },
+      { after: 'visible', through: [{ depth: 0, ends: false }] },
+      { after: 'visible', through: [{ depth: 0, ends: false }] },
+      {
+        after: 'hidden',
+        through: [
+          { depth: 0, ends: true },
+          { depth: 1, ends: true },
+        ],
+      },
+    ]);
+  });
+
+  test('a dedent past two levels closes both lines and the outer one reaches its sibling', () => {
+    expect(railConnections([0, 1, 2, 0])).toEqual([
+      { after: 'visible', through: [] },
+      { after: 'visible', through: [{ depth: 0, ends: false }] },
+      {
+        after: 'hidden',
+        through: [
+          { depth: 0, ends: false },
+          { depth: 1, ends: true },
+        ],
+      },
+      { after: 'hidden', through: [] },
+    ]);
+  });
+});
 
 const ALL_STATUSES: RunStepStatus[] = [
   'pending',

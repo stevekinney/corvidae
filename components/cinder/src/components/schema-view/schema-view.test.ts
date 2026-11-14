@@ -30,7 +30,7 @@ const refundSchema = {
   },
 };
 
-/** The rows of the grid, each as its label, its type, and whether it carries the required dot. */
+/** The rows of the grid, each as its label, its type mark, and whether it carries the required dot. */
 function readRows(container: HTMLElement) {
   return Array.from(
     container.querySelectorAll('[role="row"]:not(.cinder-schema-view__row--header)'),
@@ -82,7 +82,7 @@ describe('SchemaView', () => {
       },
       {
         label: 'Customer',
-        type: 'group of fields',
+        type: 'object',
         required: true,
         description: '',
         depth: '0',
@@ -112,6 +112,60 @@ describe('SchemaView', () => {
         depth: '0',
         startsOptional: true,
       },
+    ]);
+  });
+
+  test('a parent folds its nested fields away and back with its fold control', async () => {
+    const { container, getByRole } = render(SchemaView, { schema: refundSchema });
+    const fold = getByRole('button', { name: 'Hide the fields of Customer' });
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
+    await fireEvent.click(fold);
+    expect(readRows(container).map((row) => row.label)).toEqual([
+      'Order ID',
+      'Customer',
+      'Refund amount',
+    ]);
+    const show = getByRole('button', { name: 'Show the fields of Customer' });
+    expect(show.getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(show);
+    expect(readRows(container)).toHaveLength(5);
+    // A field with no nested fields has no fold control.
+    expect(container.querySelectorAll('.cinder-schema-view__fold')).toHaveLength(1);
+  });
+
+  test('each row leads with its label and a type mark of its kind', () => {
+    const { container } = render(SchemaView, { schema: refundSchema });
+    const label = requiredInstance(
+      container.querySelector('.cinder-schema-view__label'),
+      HTMLElement,
+    );
+    expect(label.textContent).toBe('Order ID');
+    const marks = Array.from(container.querySelectorAll('.cinder-schema-view__type')).map((mark) =>
+      mark.getAttribute('data-cinder-kind'),
+    );
+    expect(marks).toEqual(['text', 'object', 'text', 'text', 'number']);
+  });
+
+  test('shows allowed values, the default, the format and the limits as quiet facts', () => {
+    const { container } = render(SchemaView, {
+      schema: {
+        type: 'object',
+        properties: {
+          mode: { type: 'string', enum: ['quick', 'thorough'], default: 'quick' },
+          when: { type: 'string', format: 'date-time' },
+          count: { type: 'integer', minimum: 1, maximum: 5 },
+          tags: { type: 'array', items: { type: 'string' }, maxItems: 3 },
+        },
+      },
+    });
+    const facts = Array.from(container.querySelectorAll('.cinder-schema-view__facts')).map(
+      (element) => element.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+    expect(facts).toEqual([
+      'One of quick, thorough Default quick',
+      'Format: date and time',
+      'Whole number 1 to 5',
+      'Holds text At most 3 items',
     ]);
   });
 
@@ -158,12 +212,12 @@ describe('SchemaView', () => {
       'If signal: Signal name',
     ]);
     expect(rows.map((row) => row.type)).toEqual([
-      'list of steps',
+      'list',
       'text',
       'text',
-      'one of: activity, wait',
+      'choice',
       'text',
-      'one of: schedule, signal, manual',
+      'choice',
       'text',
       'text',
       'yes or no',
@@ -171,8 +225,8 @@ describe('SchemaView', () => {
       'text',
       'text',
       'text',
-      'JSON schema',
-      'JSON schema',
+      'any',
+      'any',
       'yes or no',
     ]);
   });
@@ -260,12 +314,16 @@ describe('SchemaView', () => {
     });
     const rows = readRows(container);
     expect(rows.map((row) => [row.label, row.type, row.required, row.description])).toEqual([
-      ['Notify', 'one of: email, slack, webhook', true, 'Where the summary goes.'],
+      ['Notify', 'choice', true, 'Where the summary goes.'],
       ['If email: Address', 'text', true, 'Who receives it.'],
       ['If slack: Channel', 'text', true, 'The channel name, such as #refunds.'],
       ['If webhook: URL', 'text', true, 'Called with the summary as JSON.'],
       ['If webhook: Secret', 'text', false, 'Sent as a header. Never shown again.'],
     ]);
+    // The choice names its branches as a quiet fact after its description.
+    expect(
+      container.querySelector('[role="row"]:nth-child(1) .cinder-schema-view__facts')?.textContent,
+    ).toContain('One of email, slack, webhook');
     expect(rows.slice(1).every((row) => row.depth === '1')).toBe(true);
     expect(container.querySelector('.cinder-schema-view__caption')?.textContent).toContain(
       'Only the chosen branch’s required dots apply.',
@@ -287,10 +345,10 @@ describe('SchemaView', () => {
 
   test('a value with no spaces is the cell’s text, which the stylesheet lets break anywhere', async () => {
     const { container } = render(SchemaView, { schema: longValuesSchema });
-    const types = Array.from(container.querySelectorAll('.cinder-schema-view__type')).map(
-      (type) => type.textContent,
+    const values = Array.from(container.querySelectorAll('.cinder-schema-view__value')).map(
+      (value) => value.textContent,
     );
-    expect(types[1]).toContain('QmVkS3Jvbm9z');
+    expect(values[0]).toContain('QmVkS3Jvbm9z');
     const css = await Bun.file(new URL('./schema-view.css', import.meta.url)).text();
     const cell = /\.cinder-schema-view__cell\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
     expect(cell).toContain('overflow-wrap: anywhere');

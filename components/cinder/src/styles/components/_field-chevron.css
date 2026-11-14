@@ -1,0 +1,46 @@
+/* INTERNAL: the chevron at the inline end of a closed select field. Select (both
+ * presentations), Combobox and MultiSelect draw this one glyph, so the chevron sits at the same
+ * size, inset and height in every one of them.
+ *
+ * The chevron is absolutely positioned inside the field's positioned control, 12px in from the
+ * field's outer inline-end edge and centred on its block axis, and it takes no pointer events, so
+ * a click on it lands on the field. Each field reserves room for it with its own inline-end
+ * padding, and keeps its own state rules (disabled colour, read-only, ghost size, open rotation).
+ * The glyph is painted with a mask and `currentColor`, so it follows `--cinder-text-muted`
+ * through theme switches.
+ */
+@layer cinder.components {
+  .cinder-_field-chevron {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: var(--cinder-space-3);
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+    transform: translateY(-50%);
+    pointer-events: none;
+    z-index: 1;
+
+    color: var(--cinder-text-muted);
+    background-color: currentColor;
+
+    --_cinder-field-chevron-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+
+    -webkit-mask-image: var(--_cinder-field-chevron-mask);
+    mask-image: var(--_cinder-field-chevron-mask);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: 1.125rem 1.125rem;
+    mask-size: 1.125rem 1.125rem;
+  }
+
+  /* Forced Colors Mode suppresses `background-color: currentColor`, which would leave the masked
+   * glyph invisible. Opt the glyph out and paint it with a system colour that survives. */
+  @media (forced-colors: active) {
+    .cinder-_field-chevron {
+      forced-color-adjust: none;
+      background-color: ButtonText;
+    }
+  }
+}

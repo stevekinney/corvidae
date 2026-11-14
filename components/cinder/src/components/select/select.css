@@ -183,34 +183,10 @@
 
   /* ----------------------------------------
  * Decorative chevron
- * Painted with `mask-image` + `background-color: currentColor` so the icon
- * color tracks the `--cinder-text-muted` token through theme switches.
+ * The glyph, its size and its inset are the shared field chevron
+ * (`styles/components/_field-chevron.css`), so Select, Combobox and MultiSelect
+ * put it in the same place. The state rules below stay Select's own.
  * ---------------------------------------- */
-
-  .cinder-select-field__chevron {
-    position: absolute;
-    inset-block-start: 50%;
-    inset-inline-end: var(--cinder-space-3);
-    inline-size: 1.125rem;
-    block-size: 1.125rem;
-    transform: translateY(-50%);
-    pointer-events: none;
-    z-index: 1;
-
-    color: var(--cinder-text-muted);
-    background-color: currentColor;
-
-    --_cinder-select-chevron-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
-
-    -webkit-mask-image: var(--_cinder-select-chevron-mask);
-    mask-image: var(--_cinder-select-chevron-mask);
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
-    -webkit-mask-position: center;
-    mask-position: center;
-    -webkit-mask-size: 1.125rem 1.125rem;
-    mask-size: 1.125rem 1.125rem;
-  }
 
   .cinder-select:disabled + .cinder-select-field__chevron {
     color: var(--cinder-text-disabled);
@@ -220,17 +196,10 @@
     opacity: 0.5;
   }
 
-  /* Forced Colors Mode override — UA suppresses `background-color: currentColor`,
- * so the masked chevron becomes invisible. Opt out of forced-color adjustment
- * for the glyph and paint with a system color that survives the override.
- * Disabled selects use the conventional `GrayText` system color to match how
- * the rest of the disabled control reads in High Contrast. */
+  /* Forced Colors Mode: the shared chevron paints with ButtonText; a disabled
+ * select uses the conventional `GrayText` system color to match how the rest of
+ * the disabled control reads in High Contrast. */
   @media (forced-colors: active) {
-    .cinder-select-field__chevron {
-      forced-color-adjust: none;
-      background-color: ButtonText;
-    }
-
     .cinder-select:disabled + .cinder-select-field__chevron {
       background-color: GrayText;
     }

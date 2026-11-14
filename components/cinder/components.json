@@ -4618,7 +4618,7 @@
       "exportName": "RestartState",
       "category": "overlay",
       "status": "beta",
-      "purpose": "Modal state that takes over the page while its host restarts: progress by step, the reconnect attempt count with Retry now, and a failure that says what to check and how to start the host again.",
+      "purpose": "The screen people see while the Interborough host restarts: a page takeover with the steps, the reconnect attempts with Retry now, and what to check and run if it fails.",
       "tags": ["overlay", "restart", "progress"],
       "useWhen": [
         "The person confirmed a restart and the page must say what is happening while the host stops answering.",
@@ -4765,7 +4765,7 @@
       "exportName": "SchemaView",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Read-only view of a JSON Schema as one aligned grid of Field, Type and Description: required fields first with a red dot, nested fields indented, plain-word types, a raw-document disclosure.",
+      "purpose": "Read-only view of a JSON Schema: one row per field with its label, a coloured type mark, a required dot, the description and facts, nested fields folding.",
       "tags": ["schema", "json-schema", "read-only", "data-display"],
       "useWhen": [
         "Showing the shape of a workflow input or output, a tool input, or a signal or update payload without a raw JSON dump.",
