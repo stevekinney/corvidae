@@ -515,7 +515,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(details?.hasAttribute('hidden')).toBe(true);
     await fireEvent.click(getByRole('button', { name: 'Details' }));
     expect(squash(details?.textContent)).toContain(
-      'Your note Refund it through the original card instead',
+      'Your note: Refund it through the original card instead',
     );
   });
 
@@ -564,7 +564,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
 
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(details?.hasAttribute('hidden')).toBe(false);
-    expect(squash(details?.textContent)).toContain('Your note Checked the order first');
+    expect(squash(details?.textContent)).toContain('Your note: Checked the order first');
     expect(squash(details?.textContent)).toContain('Result: Refunded $42.00 to the original card.');
     expect(squash(details?.querySelector('.cinder-approval-card__command')?.textContent)).toContain(
       'refund --order 4471 --amount 42.00',

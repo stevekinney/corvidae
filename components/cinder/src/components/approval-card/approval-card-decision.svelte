@@ -270,7 +270,7 @@
         <div id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
           {#if hasNote}
             <p class="cinder-approval-card__decision-note">
-              <span class="cinder-approval-card__decision-note-label">Your note</span>
+              <span class="cinder-approval-card__decision-note-label">Your note:</span>
               <span class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</span
               >
             </p>
