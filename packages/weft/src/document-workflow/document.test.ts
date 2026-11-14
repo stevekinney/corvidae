@@ -167,6 +167,7 @@ describe('validateWorkflowDocument()', () => {
       'outputSchema',
       'steps',
       'trigger',
+      'workflowVersions',
     ]);
     expect(issuesOf(document({ owner: 'steve' })).map((issue) => issue.path)).toEqual(['']);
   });
