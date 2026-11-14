@@ -18,12 +18,14 @@
     color: var(--cinder-text-default);
   }
 
+  /* The fill a Card has on the same page, inside a hairline: the view reads as one light sheet,
+     not a dark well. */
   .cinder-schema-view__frame {
     min-inline-size: 0;
     overflow: hidden;
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
   }
 
   /* Rows share the grid's three columns through subgrid, so every row's columns line up. The
@@ -48,17 +50,18 @@
     border-block-start: 1px solid var(--cinder-border-muted);
   }
 
+  /* The column names are small quiet words on the sheet's own fill, not a darker band. */
   .cinder-schema-view__row--header {
     border-block-start: 0;
-    border-block-end: 1px solid var(--cinder-border-muted);
-    font-weight: var(--cinder-font-semibold);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    color: var(--cinder-text-muted);
   }
 
-  /* The one hairline between the required rows and the rest. It is a little stronger than the row
-   * dividers, and it has no heading. */
+  /* The one hairline between the required rows and the rest: the row divider's weight, one step
+   * stronger in colour, with no heading. */
   .cinder-schema-view__row[data-cinder-group-start] {
-    border-block-start-color: var(--cinder-border-strong);
-    border-block-start-width: 2px;
+    border-block-start-color: var(--cinder-border);
   }
 
   .cinder-schema-view__cell {
@@ -71,39 +74,84 @@
     padding-block: var(--cinder-space-2);
   }
 
-  /* The label truncates on one line, and the required dot stays after the truncated name. */
+  /* The field name truncates on one line, and the required dot stays after the truncated name.
+   * Nesting is indentation under the parent's fold control: no rule in the indent, so nothing in
+   * a row is a vertical line that a tall row could leave short. Every row keeps a fold-sized slot
+   * at its start, so names line up whether or not a row can fold. */
   .cinder-schema-view__field {
-    position: relative;
+    --_cinder-schema-view-fold: 1.25rem;
     display: flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
+    align-items: baseline;
+    gap: var(--cinder-space-1-5);
     padding-inline-start: calc(
-      var(--cinder-space-4) + var(--_cinder-schema-view-depth, 0) * 1.75rem
+      var(--cinder-space-3) + var(--_cinder-schema-view-depth, 0) * 1.25rem
     );
   }
 
-  /* A nested row carries a hairline in its indent, so the children read as belonging to a parent. */
-  .cinder-schema-view__row:not([data-cinder-depth='0']) .cinder-schema-view__field::before {
+  .cinder-schema-view__field:not(:has(> .cinder-schema-view__fold))::before {
     content: '';
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: calc(
-      var(--cinder-space-4) + (var(--_cinder-schema-view-depth, 1) - 1) * 1.75rem + 0.875rem
-    );
-    border-inline-start: 1px solid var(--cinder-border-muted);
+    flex: none;
+    inline-size: var(--_cinder-schema-view-fold);
   }
 
+  .cinder-schema-view__fold {
+    position: relative;
+    flex: none;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--_cinder-schema-view-fold);
+    block-size: var(--_cinder-schema-view-fold);
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-muted);
+    cursor: pointer;
+  }
+
+  .cinder-schema-view__fold > svg {
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-schema-view__fold[aria-expanded='true'] > svg {
+    transform: rotate(90deg);
+  }
+
+  .cinder-schema-view__fold:dir(rtl)[aria-expanded='false'] > svg {
+    transform: scaleX(-1);
+  }
+
+  @media (hover: hover) {
+    .cinder-schema-view__fold:hover {
+      background: var(--cinder-surface-hover);
+      color: var(--cinder-text-default);
+    }
+  }
+
+  .cinder-schema-view__fold:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-schema-view__fold::after {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
+  /* The field's label, in sentence case: the name a person reads first in the row. */
   .cinder-schema-view__label {
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-default);
-  }
-
-  .cinder-schema-view__row[data-cinder-depth='0'] .cinder-schema-view__label {
     font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
   }
 
   /* The required marker is a small red dot after the label, never the word "required". */
@@ -115,12 +163,74 @@
     background: var(--cinder-status-danger-solid);
   }
 
+  /* The type mark: a short word on a light wash of its kind's hue, with a dot of the full hue.
+   * The word is the default text colour, so it reads whatever the hue. Each kind keeps one hue
+   * everywhere: text green, number blue, yes or no amber, object violet, list teal, choice pink. */
   .cinder-schema-view__type {
+    --_cinder-schema-view-hue: var(--cinder-text-subtle);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    padding: 0 var(--cinder-space-1-5);
+    border-radius: var(--cinder-radius-full);
+    background: color-mix(in oklch, var(--_cinder-schema-view-hue) 14%, transparent);
     color: var(--cinder-text-default);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    line-height: 1.375rem;
+    white-space: nowrap;
+  }
+
+  .cinder-schema-view__type::before {
+    content: '';
+    flex: none;
+    inline-size: 0.4375rem;
+    block-size: 0.4375rem;
+    border-radius: var(--cinder-radius-full);
+    background: var(--_cinder-schema-view-hue);
+  }
+
+  .cinder-schema-view__type[data-cinder-kind='text'] {
+    --_cinder-schema-view-hue: var(--cinder-terminal-ansi-bright-green);
+  }
+
+  .cinder-schema-view__type[data-cinder-kind='number'] {
+    --_cinder-schema-view-hue: var(--cinder-terminal-ansi-bright-blue);
+  }
+
+  .cinder-schema-view__type[data-cinder-kind='boolean'] {
+    --_cinder-schema-view-hue: var(--cinder-terminal-ansi-bright-yellow);
+  }
+
+  .cinder-schema-view__type[data-cinder-kind='object'] {
+    --_cinder-schema-view-hue: var(--cinder-accent-solid);
+  }
+
+  .cinder-schema-view__type[data-cinder-kind='list'] {
+    --_cinder-schema-view-hue: var(--cinder-terminal-ansi-bright-cyan);
+  }
+
+  .cinder-schema-view__type[data-cinder-kind='choice'] {
+    --_cinder-schema-view-hue: var(--cinder-terminal-ansi-bright-magenta);
   }
 
   .cinder-schema-view__about {
+    color: var(--cinder-text-default);
+  }
+
+  /* Allowed values, the default, the format and the limits: quiet facts after the description. */
+  .cinder-schema-view__facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-0-5) var(--cinder-space-3);
+    margin-block-start: var(--cinder-space-1);
     color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-schema-view__value {
+    font-family: var(--cinder-font-mono);
+    color: var(--cinder-text-default);
   }
 
   /* More and Less read as a link inside the description's own line. */
@@ -160,13 +270,13 @@
     font-size: var(--cinder-text-xs);
   }
 
-  /* A schema with no fields is one line in a bordered box, not an empty grid. */
+  /* A schema with no fields is one line on the same light sheet as the grid, not an empty grid. */
   .cinder-schema-view__empty {
     margin: 0;
     padding: var(--cinder-space-3) var(--cinder-space-4);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
     color: var(--cinder-text-default);
   }
 
@@ -206,8 +316,10 @@
     .cinder-schema-view__about {
       grid-area: about;
       padding-block-start: var(--cinder-space-1);
+      /* Under the field name: past the indent, the fold slot and the gap after it. */
       padding-inline-start: calc(
-        var(--cinder-space-4) + var(--_cinder-schema-view-depth, 0) * 1.75rem
+        var(--cinder-space-3) + var(--_cinder-schema-view-depth, 0) * 1.25rem + 1.25rem +
+          var(--cinder-space-1-5)
       );
     }
   }
@@ -215,6 +327,19 @@
   @media (forced-colors: active) {
     .cinder-schema-view__required {
       background: CanvasText;
+    }
+
+    .cinder-schema-view__type {
+      border: 1px solid CanvasText;
+    }
+
+    .cinder-schema-view__type::before {
+      background: CanvasText;
+    }
+
+    .cinder-schema-view__fold:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 1px;
     }
 
     .cinder-schema-view__toggle:focus-visible {
