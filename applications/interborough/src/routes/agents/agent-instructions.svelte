@@ -16,6 +16,7 @@
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { listAgentVersions, type AgentDetail } from '../../lib/agent-definitions.ts';
+  import { agentTabPath } from '../../lib/agent-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -31,9 +32,26 @@
     plugin: string | null;
     /** The agent as the Bureau shows it, once read. */
     detail: AgentDetail | undefined;
+    /** The plugin's title, as Settings › Plugins shows it, for the line that names the plugin. */
+    pluginTitle?: string;
+    /** Whether the agent's plugin is disabled. */
+    unavailable?: boolean;
+    /**
+     * Whether the page changes the agent through overrides (COR-2229): its instructions are
+     * shown here, with the overrides applied, and changed on the Settings tab.
+     */
+    overridable?: boolean;
   }
 
-  let { id, editPath, plugin, detail }: Props = $props();
+  let {
+    id,
+    editPath,
+    plugin,
+    detail,
+    pluginTitle = '',
+    unavailable = false,
+    overridable = false,
+  }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.instructions;
 
@@ -73,11 +91,31 @@
     event.preventDefault();
     router.navigate(editPath);
   }
+
+  const settingsPath = $derived(agentTabPath(id, 'settings'));
+
+  function goToSettings(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(settingsPath);
+  }
 </script>
 
 {#snippet addInstructions()}
   <Button href={router.href(editPath)} variant="primary" size="sm" onclick={goToEditor}
     >{copy.emptyAction}</Button
+  >
+{/snippet}
+
+{#snippet addOnSettings()}
+  <Button
+    href={router.href(settingsPath)}
+    variant="primary"
+    size="sm"
+    data-testid="agent-instructions-settings"
+    onclick={goToSettings}>{copy.emptyAction}</Button
   >
 {/snippet}
 
@@ -92,8 +130,22 @@
     </div>
   {:else}
     <section class="ib-agent-section" aria-label={copy.heading}>
-      {#if plugin !== null}
-        <AgentPluginNote {plugin} />
+      {#if overridable}
+        <AgentPluginNote {plugin} title={pluginTitle} mode="editable" />
+        <!-- With none to change, the empty state's own action is the way to Settings: one statement, not three. -->
+        {#if html !== ''}
+          <p class="ib-agent-note" data-testid="agent-instructions-settings">
+            {copy.changeBefore}<a href={router.href(settingsPath)} onclick={goToSettings}
+              >{copy.changeSettings}</a
+            >{copy.changeAfter}
+          </p>
+        {/if}
+      {:else if plugin !== null}
+        <AgentPluginNote
+          {plugin}
+          title={pluginTitle}
+          mode={unavailable ? 'unavailable' : 'read-only'}
+        />
       {:else if !isFile}
         <p class="ib-agent-note" data-testid="agent-built-in">{copy.builtIn}</p>
       {/if}
@@ -108,6 +160,15 @@
           title={copy.emptyTitle}
           description={copy.emptyDescription}
           action={addInstructions}
+        />
+      {:else if html === '' && overridable}
+        <EmptyState
+          kind="first-use"
+          size="compact"
+          headingLevel={3}
+          title={copy.emptyTitle}
+          description={copy.emptyDescription}
+          action={addOnSettings}
         />
       {:else if html === ''}
         <EmptyState

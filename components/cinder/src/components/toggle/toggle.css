@@ -274,6 +274,56 @@
   }
 
   /* ----------------------------------------
+ * Pending
+ * ---------------------------------------- */
+
+  /* A pending switch is inert (`aria-disabled`) but not dimmed: it keeps its value and its colour
+   * while a spinner in the thumb says the setting is being read or changed. This follows the
+   * disabled rule, so the grey filter it sets is taken off again. */
+  .cinder-toggle[data-cinder-pending] {
+    cursor: progress;
+    filter: none;
+  }
+
+  .cinder-toggle[data-cinder-pending] ~ .cinder-toggle-field__label,
+  .cinder-toggle[data-cinder-pending] ~ .cinder-toggle-field__state {
+    cursor: progress;
+  }
+
+  /* The spinner: a ring with one gap, drawn inside the thumb in the accent, turning. */
+  .cinder-toggle[data-cinder-pending] .cinder-toggle__thumb::after {
+    content: '';
+    position: absolute;
+    inset: 0.125rem;
+    box-sizing: border-box;
+    border: 1.5px solid var(--cinder-toggle-track-on, var(--cinder-accent-solid));
+    border-block-start-color: transparent;
+    border-radius: 50%;
+    animation: cinder-toggle-spin var(--cinder-duration-spin) linear infinite;
+  }
+
+  @keyframes cinder-toggle-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* A still ring under reduced motion, which still reads as a switch that is waiting. */
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-toggle[data-cinder-pending]
+      .cinder-toggle__thumb::after {
+      animation: none;
+    }
+  }
+
+  :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on'])
+    .cinder-toggle[data-cinder-pending]
+    .cinder-toggle__thumb::after {
+    animation: none;
+  }
+
+  /* ----------------------------------------
  * Thumb
  * ---------------------------------------- */
 

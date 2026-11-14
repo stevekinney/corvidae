@@ -61,13 +61,16 @@
     clashCounterpart,
     isShadowed,
     listKey,
+    NO_RUNS,
     providerOf,
     restartBackWords,
     sourceWord,
     statusOf,
     unavailableAfterDisable,
+    type InFlightRuns,
   } from './plugin-presentation.ts';
   import { revertPlugins } from './plugin-revert.ts';
+  import { readInFlightRuns } from './plugin-runs.ts';
   import { RestartFlow } from './restart-flow.svelte.ts';
   import SecretDialog, { type SecretTarget } from './secret-dialog.svelte';
   import UnloadedFolders from './unloaded-folders.svelte';
@@ -128,6 +131,10 @@
   onDestroy(() => flow.dispose());
 
   let disabling = $state<PluginStanding | null>(null);
+  /** The runs of the plugin's agents that are going, read before its disable question opens. */
+  let disablingRuns = $state<InFlightRuns>(NO_RUNS);
+  /** The plugin whose runs are being read, so its switch waits and a second press asks nothing. */
+  let checking = $state<string | null>(null);
   let enabling = $state<PluginStanding | null>(null);
   let secret = $state<SecretTarget | null>(null);
   let connecting = $state<string | null>(null);
@@ -246,6 +253,21 @@
       ? []
       : drafts.pendingWrites(snapshot).filter((change) => change.name !== target.descriptor.name);
   });
+
+  /**
+   * Pressing a plugin's switch off reads the runs its agents have going first, then opens the one
+   * question with the answer (COR-2235). A read that fails still opens it, and says so.
+   */
+  async function askDisable(target: PluginStanding): Promise<void> {
+    if (checking !== null) return;
+    checking = target.descriptor.name;
+    try {
+      disablingRuns = await readInFlightRuns(queryClient, target);
+    } finally {
+      checking = null;
+    }
+    disabling = target;
+  }
 
   /** Turns the plugin off or on, as the person confirmed, and restarts so the host loads what is left. */
   function confirmSwitch(plugin: PluginStanding, enabled: boolean): void {
@@ -436,7 +458,8 @@
               {plugin}
               {drafts}
               locked={locked || isShadowed(snapshot, plugin)}
-              onDisable={(target) => (disabling = target)}
+              onDisable={(target) => void askDisable(target)}
+              checking={checking === plugin.descriptor.name}
               onEnable={(target) => (enabling = target)}
               problemsListed={attention.length > 0}
               onSecret={(target, key) => (secret = { plugin: target.descriptor.name, key })}
@@ -486,6 +509,7 @@
 
 <DisableDialog
   plugin={disabling}
+  runs={disablingRuns}
   {otherChanges}
   onConfirm={(plugin) => confirmSwitch(plugin, false)}
   onCancel={() => (disabling = null)}

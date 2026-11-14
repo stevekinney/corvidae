@@ -360,7 +360,8 @@
  * full width, rounded top corners, a grabber, a height capped so the body scrolls inside the sheet
  * instead of the sheet outgrowing the screen, and a lift above the on-screen keyboard
  * (`--_cinder-keyboard-inset`, published while it is open). The footer's actions stack at full
- * width and 44px with the last one, the confirmation, on top; DOM order is unchanged, so the
+ * width at the button's painted height (the hit area reaches 44px) with the last one, the
+ * confirmation, on top; DOM order is unchanged, so the
  * first action keeps initial focus. Physical properties, as in drawer.css, because the sheet is
  * physically bottom anchored in every writing mode.
  * ---------------------------------------- */
@@ -406,9 +407,11 @@
     inline-size: 100%;
   }
 
-  /* Footer buttons and the body's fields are full 44px targets in the sheet. The selector repeats the button's own
-   * attribute so it outranks the compact height without a cross-component custom property. */
-  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer .cinder-button[data-cinder-size],
+  /* The body's fields are full 44px targets in the sheet. The selector repeats the input's own class
+   * so it outranks the compact height without a cross-component custom property. The footer's
+   * buttons are not: a phone button is drawn at its painted height and reaches 44px through the
+   * Button's own hit area (`data-cinder-hit-target`), so two of them never take a quarter of the
+   * screen. */
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__body .cinder-input.cinder-input {
     min-height: var(--cinder-touch-target-min);
   }

@@ -85,6 +85,8 @@ export const queryKeys = {
     definitions: () => ['agents', 'definitions'] as const,
     /** One agent as `bureau.agents.definitions.get` shows it. */
     definition: (id: string) => ['agents', 'definition', id] as const,
+    /** What a person changed on one code agent, and the hash a save names (`bureau.agents.overrides.get`). */
+    overrides: (id: string) => ['agents', 'overrides', id] as const,
     /** The versions of one agent that have run (`bureau.agents.definitions.revisions`). */
     revisions: (id: string) => ['agents', 'revisions', id] as const,
     /** The saved versions of one agent (`bureau.agents.versions.list`). */
@@ -327,6 +329,8 @@ export const queryKeys = {
   hostProviderAgents: (provider: string) => ['host', 'providers', 'agents', provider] as const,
   /** The plugins the host loaded, what they add, and their secrets (`/host/plugins`). */
   hostPlugins: () => ['host', 'plugins'] as const,
+  /** The runs a plugin's agents have in flight, read as the question to turn it off opens (COR-2235). */
+  hostPluginRuns: (plugin: string) => ['host', 'plugins', 'runs', plugin] as const,
   /** The plugin panels the host serves, which the run page mounts (`/host/panels`). */
   hostPanels: () => ['host', 'panels'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */

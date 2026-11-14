@@ -27,7 +27,7 @@
           "const": false
         }
       ],
-      "description": "Viewport width below which the modal opens as a bottom sheet instead of a centred card: it\ndocks to the bottom edge with a grabber and rounded top corners, its footer actions stack at\nfull width and 44px with the last action (the confirmation) first, and it rides above the\non-screen keyboard and the bottom safe area. A CSS length such as `\"640px\"`, or `false` for the\ncentred card at every width. Ignored for `chrome=\"none\"`.",
+      "description": "Viewport width below which the modal opens as a bottom sheet instead of a centred card: it\ndocks to the bottom edge with a grabber and rounded top corners, its footer actions stack at\nfull width, drawn at the button's painted height with the 44px reached through its hit area,\nwith the last action (the confirmation) first, and it rides above the\non-screen keyboard and the bottom safe area. A CSS length such as `\"640px\"`, or `false` for the\ncentred card at every width. Ignored for `chrome=\"none\"`.",
       "default": false
     },
     "class": {

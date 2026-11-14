@@ -594,3 +594,67 @@ describe('EmptyState illustration slot (COR-2325)', () => {
     expect(wrapper.get('max-inline-size')).toBe('100%');
   });
 });
+
+describe('EmptyState details under the action (COR-2415)', () => {
+  const button = createRawSnippet(() => ({
+    render: () => '<button type="button" data-testid="connect">Connect a provider</button>',
+  }));
+  const steps = createRawSnippet(() => ({
+    render: () =>
+      '<div><p data-testid="by-hand">Or set it up by hand:</p><ol><li>One</li></ol></div>',
+  }));
+
+  test('draws the children after the action, in a block of their own, so the action stays buttons', () => {
+    const { container } = render(EmptyState, {
+      props: { title: 'Connect a provider', action: button, children: steps },
+    });
+    const order = [...(rootOf(container)?.children ?? [])].map((child) => child.className);
+    expect(order).toEqual([
+      'cinder-empty-state-title',
+      'cinder-empty-state-action',
+      'cinder-empty-state-details',
+    ]);
+    const action = container.querySelector('.cinder-empty-state-action');
+    const details = container.querySelector('.cinder-empty-state-details');
+    expect(action?.querySelector('[data-testid="connect"]')).not.toBeNull();
+    expect(action?.querySelector('ol')).toBeNull();
+    expect(details?.querySelector('[data-testid="by-hand"]')).not.toBeNull();
+    expect(
+      action!.compareDocumentPosition(details!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test('draws them with no action at all when the state has none, and draws nothing without them', () => {
+    const only = render(EmptyState, { props: { title: 'Connect a provider', children: steps } });
+    expect(only.container.querySelector('.cinder-empty-state-action')).toBeNull();
+    expect(only.container.querySelector('.cinder-empty-state-details')).not.toBeNull();
+    cleanup();
+    const none = render(EmptyState, { props: { title: 'Connect a provider' } });
+    expect(none.container.querySelector('.cinder-empty-state-details')).toBeNull();
+  });
+
+  test('a row or an inline state ignores them', () => {
+    for (const layout of ['row', 'inline'] as const) {
+      const { container } = render(EmptyState, {
+        props: { title: 'No runs yet', layout, children: steps },
+      });
+      expect(container.querySelector('.cinder-empty-state-details')).toBeNull();
+      cleanup();
+    }
+  });
+
+  test('the stylesheet gives them the full width under the action, a step apart, and draws no box', () => {
+    const details = declarationsFor(emptyStateCss, '.cinder-empty-state-details');
+    expect(details.get('inline-size')).toBe('100%');
+    expect(details.get('margin-block-start')).toBe('var(--cinder-space-4)');
+    // No measure of the description's, no border and no background of its own.
+    expect(details.has('max-inline-size')).toBe(false);
+    expect(details.has('border')).toBe(false);
+    expect(details.has('background')).toBe(false);
+    const compact = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-details",
+    );
+    expect(compact.get('margin-block-start')).toBe('var(--cinder-space-3)');
+  });
+});

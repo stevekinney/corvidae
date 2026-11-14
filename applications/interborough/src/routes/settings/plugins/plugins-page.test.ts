@@ -126,11 +126,14 @@ function mount(
     agents?: AgentListing[];
     skills?: { name: string; plugin: string }[];
     pendingSettings?: string[];
+    /** Other Bureau operations a test answers, such as the runs in flight. */
+    answers?: Record<string, (params: Record<string, unknown>) => unknown>;
   } = {},
 ) {
-  const { agents = [], skills = [], pendingSettings = [], ...hostOptions } = options;
+  const { agents = [], skills = [], pendingSettings = [], answers = {}, ...hostOptions } = options;
   const served = servedSettings({ pendingRestart: new Set(pendingSettings) });
   stub = installSettingsBureau(served, {
+    ...answers,
     'bureau.agents.definitions.list': () => ({
       agents: agents.map((agent) => ({
         ...agent,
@@ -705,6 +708,240 @@ describe('disabling a plugin', () => {
     ]);
     expect(back.textContent).toContain(RESTART_COPY.back.disabled('Linear'));
     expect(back.textContent).toContain(RESTART_COPY.back.enableAgain);
+  });
+});
+
+describe('disabling a plugin whose agents have runs in flight (COR-2235)', () => {
+  /** A running Demo with two agents, one of whose runs waits on a person. */
+  const demoRunning = (): PluginFixture[] => [
+    ...fixtures().filter((plugin) => plugin.name !== 'demo'),
+    {
+      name: 'demo',
+      title: 'Demo',
+      description: 'Sample tools and agents.',
+      contributions: [
+        contribution('agent', 'demo:echo'),
+        contribution('agent', 'demo:request-human-input', { waitingRuns: 1 }),
+      ],
+    },
+  ];
+  const task = (
+    id: string,
+    status: string,
+    agentName: string,
+    openWaits: unknown[] = [],
+  ): Record<string, unknown> => ({
+    id,
+    contextId: `session-${id}`,
+    agentName,
+    owner: 'anonymous:local',
+    actor: null,
+    kind: 'chat',
+    origin: { kind: 'chat' },
+    status,
+    finishReason: null,
+    statusMessage: null,
+    createdAt: `2026-11-13T09:00:0${id.slice(-1)}.000Z`,
+    updatedAt: '2026-11-13T09:05:00.000Z',
+    cleanup: null,
+    openWaits,
+  });
+  const context = (contextId: string, title: string | null) => ({
+    id: contextId,
+    owner: 'anonymous:local',
+    agentName: 'demo:echo',
+    title,
+    lastMessagePreview: null,
+    parentContextId: null,
+    forkedFromMessageId: null,
+    model: null,
+    effort: null,
+    permissionMode: 'on-changes',
+    configVersion: 0,
+    messageCount: 1,
+    createdAt: '2026-11-13T09:00:00.000Z',
+    updatedAt: '2026-11-13T09:05:00.000Z',
+    activity: 'idle',
+  });
+  const tasksOf = (byStatus: Record<string, Record<string, unknown>[]>) => ({
+    'bureau.tasks.list': (params: Record<string, unknown>) => ({
+      tasks: byStatus[String(params['status'])] ?? [],
+      nextPageToken: null,
+    }),
+  });
+  const pressDisable = (getByRole: ReturnType<typeof open>['getByRole']) =>
+    fireEvent.click(getByRole('switch', { name: PLUGINS_COPY.enabled }));
+
+  test('lists the runs, named by their chats, ahead of what else depends on the plugin, and says they fail', async () => {
+    const { container, getByRole } = open('demo', demoRunning(), {
+      answers: {
+        ...tasksOf({
+          working: [task('run-1', 'working', 'demo:echo')],
+          'input-required': [
+            task('run-2', 'input-required', 'demo:request-human-input', [
+              { kind: 'human-wait', reviewId: 'review-1', signalName: 'answer' },
+            ]),
+            task('run-3', 'input-required', 'other:agent'),
+          ],
+        }),
+        'bureau.contexts.get': (params) =>
+          context(
+            String(params['contextId']),
+            params['contextId'] === 'session-run-1' ? 'Weekly changelog' : null,
+          ),
+      },
+    });
+    await loaded(container, 'demo');
+
+    await pressDisable(getByRole);
+
+    const dialog = await bodyOf(container).findByRole('dialog');
+    const items = [...dialog.querySelectorAll('li')];
+    // The runs of Demo's agents come first; another plugin's run is not named.
+    expect(items[0]?.getAttribute('data-impact')).toBe('inFlightRuns');
+    expect(items[0]?.textContent).toContain(PLUGINS_COPY.counts.inFlightRuns(2));
+    expect(items[0]?.textContent).toContain('Weekly changelog');
+    expect(items[0]?.textContent).toContain('run-2');
+    expect(items[0]?.textContent).not.toContain('run-3');
+    expect(items[0]?.textContent).toContain('marked failed when Interborough restarts');
+    // The run that waits on a person is counted once: the waiting run it was is not a second row.
+    expect(dialog.querySelector('[data-impact="waitingRuns"]')).toBeNull();
+    // Failing work cannot be got back, and the note no longer says everything works as before.
+    expect(dialog.textContent).toContain(PLUGINS_COPY.disable.reassuranceWithRuns);
+    expect(dialog.textContent).not.toContain(PLUGINS_COPY.disable.reassurance);
+    expect(
+      within(dialog)
+        .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
+        .getAttribute('data-cinder-variant'),
+    ).toBe('danger');
+    // Cinder draws the list: it sits directly in the dialog's options, with no wrapper of the page's.
+    expect(
+      dialog.querySelector('[data-testid="plugin-disable-impacts"]')?.parentElement?.className,
+    ).toContain('cinder-confirm-dialog__options');
+    expect(writes()).toEqual([]);
+  });
+
+  test('the switch is busy, not disabled, while the runs are read, and takes a press again once the question opens', async () => {
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { container, getByRole } = open('demo', demoRunning(), {
+      answers: {
+        'bureau.tasks.list': async () => {
+          await held;
+          return { tasks: [], nextPageToken: null };
+        },
+      },
+    });
+    await loaded(container, 'demo');
+    const toggle = getByRole('switch', { name: PLUGINS_COPY.enabled }) as HTMLButtonElement;
+
+    await fireEvent.click(toggle);
+
+    // The read is in flight: a pending switch (busy, a spinner in its thumb), never a dimmed one.
+    await waitFor(() => expect(toggle.getAttribute('aria-busy')).toBe('true'));
+    expect(toggle.getAttribute('aria-disabled')).toBe('true');
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.hasAttribute('data-cinder-pending')).toBe(true);
+    expect(bodyOf(container).queryByRole('dialog')).toBeNull();
+
+    release();
+    await bodyOf(container).findByRole('dialog');
+    await waitFor(() => expect(toggle.hasAttribute('aria-busy')).toBe(false));
+    expect(toggle.hasAttribute('aria-disabled')).toBe(false);
+  });
+
+  test('names five runs and then how many more', async () => {
+    const many = ['1', '2', '3', '4', '5', '6', '7'].map((n) =>
+      task(`run-${n}`, 'working', 'demo:echo'),
+    );
+    const { container, getByRole } = open('demo', demoRunning(), {
+      answers: {
+        ...tasksOf({ working: many }),
+        'bureau.contexts.get': (params) =>
+          context(String(params['contextId']), `Chat ${String(params['contextId']).slice(-1)}`),
+      },
+    });
+    await loaded(container, 'demo');
+
+    await pressDisable(getByRole);
+
+    const dialog = await bodyOf(container).findByRole('dialog');
+    const row = dialog.querySelector('[data-impact="inFlightRuns"]')!;
+    expect(row.textContent).toContain(PLUGINS_COPY.counts.inFlightRuns(7));
+    expect(row.textContent).toContain('Chat 5');
+    expect(row.textContent).not.toContain('Chat 6');
+    expect(row.textContent).toContain('2 more');
+  });
+
+  test('asks nothing extra when no run is in flight: the question is as it was', async () => {
+    const { container, getByRole } = open('demo', demoRunning(), {
+      answers: tasksOf({}),
+    });
+    await loaded(container, 'demo');
+
+    await pressDisable(getByRole);
+
+    const dialog = await bodyOf(container).findByRole('dialog');
+    expect(dialog.querySelector('[data-impact="inFlightRuns"]')).toBeNull();
+    expect(dialog.querySelector('[data-impact="waitingRuns"]')).not.toBeNull();
+    expect(dialog.textContent).toContain(PLUGINS_COPY.disable.reassurance);
+    expect(dialog.textContent).not.toContain(PLUGINS_COPY.disable.reassuranceWithRuns);
+    expect(
+      within(dialog)
+        .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
+        .getAttribute('data-cinder-variant'),
+    ).toBe('primary');
+    // One question, which confirms with the one press: no second step.
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
+    );
+    await backBanner(container);
+  });
+
+  test('reads no runs for a plugin that adds no agent', async () => {
+    const { container, getByRole } = open('linear');
+    await loaded(container, 'linear');
+
+    await pressDisable(getByRole);
+
+    await bodyOf(container).findByRole('dialog');
+    expect(stub?.calls.some((call) => call.method === 'bureau.tasks.list')).toBe(false);
+  });
+
+  test('still opens when the runs cannot be read, and says any run that is going will fail', async () => {
+    const { container, getByRole } = open('demo', demoRunning(), {
+      answers: {
+        'bureau.tasks.list': () => {
+          throw new Error('The server did not answer.');
+        },
+      },
+    });
+    await loaded(container, 'demo');
+
+    await pressDisable(getByRole);
+
+    const dialog = await bodyOf(container).findByRole('dialog');
+    const row = dialog.querySelector('[data-impact="inFlightRuns"]')!;
+    expect(row.textContent).toContain(PLUGINS_COPY.disable.inFlightRunsUnknownLead);
+    expect(row.textContent).toContain('could not be checked');
+    // One fate for the runs: the note agrees with the row and no waiting run is told another.
+    expect(dialog.textContent).toContain(PLUGINS_COPY.disable.reassuranceRunsUnknown);
+    expect(dialog.textContent).not.toContain(PLUGINS_COPY.disable.reassurance);
+    expect(dialog.textContent).not.toContain('works as before');
+    expect(dialog.querySelector('[data-impact="waitingRuns"]')).toBeNull();
+    // It fails runs it cannot name, so the confirmation is destructive.
+    expect(
+      within(dialog)
+        .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
+        .getAttribute('data-cinder-variant'),
+    ).toBe('danger');
+    // Disabling is never blocked on a read: the question still confirms.
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
+    );
+    await backBanner(container);
   });
 });
 

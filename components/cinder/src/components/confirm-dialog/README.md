@@ -4,7 +4,7 @@ Pre-wired modal dialog for user-initiated binary decisions: "proceed" or "cancel
 
 See the [dialog preset boundary](https://github.com/stevekinney/cinder/blob/main/docs/decisions/dialog-presets.md) for the preserved role, acknowledgement, and dismissal contract.
 
-Below 640px (`sheetBelow`, which accepts any CSS length, or `false` for the centred dialog) the dialog is a bottom sheet: a grabber, the confirmation first and Cancel under it, both full width at 44px. Cancel keeps initial focus, the corner close button is not drawn, and Escape still closes it.
+Below 640px (`sheetBelow`, which accepts any CSS length, or `false` for the centred dialog) the dialog is a bottom sheet: a grabber, a compact Cancel beside the confirmation, which fills the rest of the row (above Cancel when the two do not fit), both drawn at the button's painted height and reaching 44px through its hit area. Cancel keeps initial focus, the corner close button is not drawn, and Escape still closes it.
 
 ## Dialog model
 
@@ -113,10 +113,10 @@ Put what each choice does in `options`. A plain `<ul>` as a direct child is draw
 | `closeOnConfirm` | `boolean` | no | `true` | Whether the dialog closes itself when the confirm button is pressed. Set `false` when the confirmed work can fail and the page needs the dialog to stay open to show it: the page then closes the dialog with `open = false` once the work succeeds. |
 | `confirmLabel` | `string` | yes | — | Confirm button label. Required — no default. Name the action being confirmed: - Destructive: "Delete", "Discard changes", "Remove from organization". - Non-destructive: "Save", "Continue", "Publish". Never use "OK" or "Confirm" in production — they don't describe the action. |
 | `destructive` | `boolean` | no | — | When true, the confirm button uses variant="danger". The cancel button still receives default focus regardless — color is never the sole destructive signal. |
-| `error` | `string` | no | — | Why the confirmed work failed, in a danger callout in the footer, directly above the actions and outside the scrolling body, so it stays in view on a short phone, announced as it appears: "Nothing was deleted." The dialog stays open, the typed text stays, and the confirm button stays armed under its own label, so pressing it again is the retry. Clear it to hide the callout. |
+| `error` | `string` | no | — | Why the confirmed work failed, in a danger callout between the body and the actions that is announced as it appears: "Nothing was deleted." The dialog stays open, the typed text stays, and the confirm button stays armed under its own label, so pressing it again is the retry. Clear it to hide the callout. |
 | `errorTitle` | `string` | no | — | Bold lead sentence of the failure, such as "Couldn’t delete the agent.", set before `error`. Shown only with `error`. |
 | `open` | `boolean` | yes | — | Controls visibility. Bindable. |
-| `sheetBelow` | `string` \| `false` | no | `"640px"` | Viewport width below which the dialog is a bottom sheet: a grabber, the confirmation first and Cancel under it, both full width at 44px, with Cancel keeping initial focus. A CSS length such as `"640px"`, or `false` for the centred dialog at every width. |
+| `sheetBelow` | `string` \| `false` | no | `"640px"` | Viewport width below which the dialog is a bottom sheet: a grabber, a compact Cancel beside the confirmation, which fills the rest of the row (above Cancel when the two do not fit), both drawn at the button's painted height and reaching 44px through its hit area, with Cancel keeping initial focus. A CSS length such as `"640px"`, or `false` for the centred dialog at every width. |
 | `title` | `string` | yes | — | Modal title; passed through to <Modal>. |
 | `typeToConfirm` | `string` | no | — | When set, renders a labelled text input and disables the confirm button until the trimmed input matches this value case-insensitively. |
 | `typeToConfirmLabel` | `string` | no | — | Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. |
