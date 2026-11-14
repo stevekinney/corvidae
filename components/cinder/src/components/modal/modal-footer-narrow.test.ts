@@ -70,4 +70,20 @@ describe('Modal footer at 320px with three buttons', () => {
     expect(footerDeclaration('justify-content')).toBe('flex-end');
     expect(footerDeclaration('gap')).toBe('var(--cinder-space-3)');
   });
+
+  test('keeps the bottom sheet’s stacked footer one column, so the row wrap never reaches it', () => {
+    const sheetFooter: Record<string, string> = {};
+    parse(modalCss).walkRules((rule) => {
+      if (
+        !rule.selectors.includes(".cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer")
+      ) {
+        return;
+      }
+      rule.walkDecls((declaration) => {
+        sheetFooter[declaration.prop] = declaration.value;
+      });
+    });
+    expect(sheetFooter['flex-direction']).toBe('column-reverse');
+    expect(sheetFooter['flex-wrap']).toBe('nowrap');
+  });
 });

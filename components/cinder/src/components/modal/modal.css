@@ -402,6 +402,9 @@
 
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {
     flex-direction: column-reverse;
+    /* The stack is one column: the footer's row wrap (which keeps three buttons on a narrow dialog
+       from overflowing) would make a column container lay its actions out in more than one column. */
+    flex-wrap: nowrap;
     align-items: stretch;
   }
 

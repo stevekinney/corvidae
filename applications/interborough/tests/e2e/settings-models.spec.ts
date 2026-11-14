@@ -53,7 +53,9 @@ async function showListOpen(page: Page, select: Locator) {
   await expect(select).toHaveAttribute('aria-expanded', 'false');
   await select.click();
   await expect(select).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('listbox')).toBeVisible();
+  // The `listbox` element is an empty owner of the options, which are drawn beside it (`aria-owns`),
+  // so it has no box and is never "visible": the options are what is on screen.
+  await expect(page.getByRole('option').first()).toBeVisible();
 }
 
 const providerRow = (page: Page, name: string) => page.locator(`[data-provider="${name}"]`);
@@ -268,8 +270,14 @@ test.describe('Settings › Models, provider connected', () => {
 
   test('Decisions, the rows that can answer did not load: the row warns with its own Try again, and both selects wait', async ({
     page,
+    pageErrors,
     checkA11y,
   }) => {
+    pageErrors.expect({
+      pattern: loggedFailedResponse(503, /\/bureau\/jsonrpc/),
+      reason:
+        'the test answers the read of the rows that can answer decisions with a 503, to see what the row shows',
+    });
     await withSampleCatalog(page);
     await withDecisionRows(page);
     let failing = true;
@@ -606,8 +614,13 @@ test.describe('Settings › Models, connect dialogs', () => {
 
   test('Connect, a refused setting: the host’s words at the field it names, and the key stays unsaved', async ({
     page,
+    pageErrors,
     checkA11y,
   }) => {
+    pageErrors.expect({
+      pattern: loggedFailedResponse(400, /\/host\/plugins\/openai/),
+      reason: 'the test makes the host refuse the provider’s configuration with a 400',
+    });
     await withBaseUrlSetting(page, 'openai');
     await mockKeyRoutes(page, { ok: true, models: 1 });
     await page.route('**/host/plugins/openai', (route) =>
