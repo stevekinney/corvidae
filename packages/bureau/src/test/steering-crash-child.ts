@@ -36,6 +36,7 @@ import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const COMMANDS = {
   pause: { id: 'crash-cmd-1', principal: 'alice', requestedValue: { target: 'pause' } },
@@ -75,6 +76,7 @@ if (
 }
 
 const bureau = await createBureau<AgentDefinitions>({
+  models: { catalog: createVendorCatalog().descriptors },
   agents: {
     default: createAgent({
       allowedCandidates: STEERABLE_MODELS,

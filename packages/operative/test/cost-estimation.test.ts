@@ -1,55 +1,68 @@
 import { describe, expect, it } from 'bun:test';
-import { assertDefined } from './assert-defined';
 
 import {
   type CostEstimate,
-  defaultPricingTable,
+  type CostEstimationOptions,
   estimateCacheHitRate,
-  estimateCost,
-  getModelPricing,
+  estimateCost as estimateCostWith,
+  getModelPricing as getModelPricingWith,
   type ModelPricing,
 } from '../src/cost-estimation.ts';
-import { ANTHROPIC_LIMITS } from '../src/providers/model-catalog-data.ts';
+import { fixturePricing } from '../src/testing/model-catalog.test-support.ts';
+
+// Operative holds no price of its own, so these tests price from the neutral fixture's prices,
+// passed the way a host passes its own. A price a test gives wins over the fixture's.
+function withFixturePricing(options?: CostEstimationOptions): CostEstimationOptions {
+  return { customPricing: { ...fixturePricing, ...options?.customPricing } };
+}
+const estimateCost = (
+  usage: Parameters<typeof estimateCostWith>[0],
+  model: string,
+  options?: CostEstimationOptions,
+  scope?: Parameters<typeof estimateCostWith>[3],
+): CostEstimate => estimateCostWith(usage, model, withFixturePricing(options), scope);
+const getModelPricing = (model: string, options?: CostEstimationOptions) =>
+  getModelPricingWith(model, withFixturePricing(options));
 
 describe('estimateCost', () => {
   it('computes correct cost for a known Anthropic model', () => {
-    // claude-sonnet-4-20250514: prompt=$3/M, completion=$15/M
+    // alpha-medium: prompt=$3/M, completion=$15/M
     const result: CostEstimate = estimateCost(
       { prompt: 1000, completion: 500, total: 1500 },
-      'claude-sonnet-4-20250514',
+      'alpha-medium',
     );
 
     expect(result.promptCost).toBe((1000 / 1_000_000) * 3);
     expect(result.completionCost).toBe((500 / 1_000_000) * 15);
     expect(result.totalCost).toBe(0.003 + 0.0075);
-    expect(result.model).toBe('claude-sonnet-4-20250514');
+    expect(result.model).toBe('alpha-medium');
     expect(result.usage).toEqual({ prompt: 1000, completion: 500, total: 1500 });
   });
 
   it('computes correct cost for a known OpenAI model', () => {
-    // gpt-4o: prompt=$2.50/M, completion=$10/M
+    // beta-standard: prompt=$2.50/M, completion=$10/M
     const result: CostEstimate = estimateCost(
       { prompt: 2000, completion: 1000, total: 3000 },
-      'gpt-4o',
+      'beta-standard',
     );
 
     expect(result.promptCost).toBe((2000 / 1_000_000) * 2.5);
     expect(result.completionCost).toBe((1000 / 1_000_000) * 10);
     expect(result.totalCost).toBe(0.005 + 0.01);
-    expect(result.model).toBe('gpt-4o');
+    expect(result.model).toBe('beta-standard');
   });
 
   it('computes correct cost for a known Gemini model', () => {
-    // gemini-2.5-pro: prompt=$1.25/M, completion=$10/M
+    // gamma-pro: prompt=$1.25/M, completion=$10/M
     const result: CostEstimate = estimateCost(
       { prompt: 4000, completion: 2000, total: 6000 },
-      'gemini-2.5-pro',
+      'gamma-pro',
     );
 
     expect(result.promptCost).toBe((4000 / 1_000_000) * 1.25);
     expect(result.completionCost).toBe((2000 / 1_000_000) * 10);
     expect(result.totalCost).toBe(0.005 + 0.02);
-    expect(result.model).toBe('gemini-2.5-pro');
+    expect(result.model).toBe('gamma-pro');
   });
 
   it('throws for an unknown model', () => {
@@ -60,17 +73,15 @@ describe('estimateCost', () => {
 
   it('uses custom pricing to override defaults for a known model', () => {
     const customPricing: Record<string, ModelPricing> = {
-      'claude-sonnet-4-20250514': {
+      'alpha-medium': {
         promptCostPerMillionTokens: 5,
         completionCostPerMillionTokens: 20,
       },
     };
 
-    const result = estimateCost(
-      { prompt: 1000, completion: 500, total: 1500 },
-      'claude-sonnet-4-20250514',
-      { customPricing },
-    );
+    const result = estimateCost({ prompt: 1000, completion: 500, total: 1500 }, 'alpha-medium', {
+      customPricing,
+    });
 
     expect(result.promptCost).toBe((1000 / 1_000_000) * 5);
     expect(result.completionCost).toBe((500 / 1_000_000) * 20);
@@ -98,7 +109,7 @@ describe('estimateCost', () => {
   });
 
   it('returns zero cost for zero usage', () => {
-    const result = estimateCost({ prompt: 0, completion: 0, total: 0 }, 'claude-sonnet-4-20250514');
+    const result = estimateCost({ prompt: 0, completion: 0, total: 0 }, 'alpha-medium');
 
     expect(result.promptCost).toBe(0);
     expect(result.completionCost).toBe(0);
@@ -106,7 +117,7 @@ describe('estimateCost', () => {
   });
 
   it('prices Anthropic cache writes at 1.25x and cache reads at 0.1x the prompt rate', () => {
-    // claude-sonnet-4-20250514: prompt=$3/M → write=$3.75/M, read=$0.30/M
+    // alpha-medium: prompt=$3/M → write=$3.75/M, read=$0.30/M
     const result = estimateCost(
       {
         prompt: 1000,
@@ -115,7 +126,7 @@ describe('estimateCost', () => {
         cacheCreationTokens: 2000,
         cacheReadTokens: 5000,
       },
-      'claude-sonnet-4-20250514',
+      'alpha-medium',
     );
 
     expect(result.cacheWriteCost).toBeCloseTo((2000 / 1_000_000) * 3.75, 10);
@@ -127,10 +138,10 @@ describe('estimateCost', () => {
   });
 
   it('prices OpenAI cache reads at 0.5x the prompt rate with no cache-write charge', () => {
-    // gpt-4o: prompt=$2.50/M → read=$1.25/M; no cache-write pricing defined.
+    // beta-standard: prompt=$2.50/M → read=$1.25/M; no cache-write pricing defined.
     const result = estimateCost(
       { prompt: 1000, completion: 0, total: 1000, cacheReadTokens: 4000 },
-      'gpt-4o',
+      'beta-standard',
     );
 
     expect(result.cacheReadCost).toBeCloseTo((4000 / 1_000_000) * 1.25, 10);
@@ -157,7 +168,7 @@ describe('estimateCost', () => {
   });
 
   it('omits cache cost entirely (cost 0) when usage has no cache token fields', () => {
-    const result = estimateCost({ prompt: 1000, completion: 500, total: 1500 }, 'gpt-4o');
+    const result = estimateCost({ prompt: 1000, completion: 500, total: 1500 }, 'beta-standard');
 
     expect(result.cacheWriteCost).toBe(0);
     expect(result.cacheReadCost).toBe(0);
@@ -170,7 +181,7 @@ describe('estimateCost: Claude Haiku 5.5 long-prompt tier', () => {
   it('prices a request at or below 100,000 input tokens at the base tier', () => {
     const estimate = estimateCost(
       { prompt: 100_000, completion: 1_000_000, total: 1_100_000 },
-      'claude-haiku-5-5',
+      'alpha-small',
     );
     expect(estimate.promptCost).toBeCloseTo(0.01, 10);
     expect(estimate.completionCost).toBeCloseTo(0.5, 10);
@@ -185,7 +196,7 @@ describe('estimateCost: Claude Haiku 5.5 long-prompt tier', () => {
         cacheReadTokens: 50_000,
         cacheCreationTokens: 50_000,
       },
-      'claude-haiku-5-5',
+      'alpha-small',
     );
     expect(estimate.promptCost).toBeCloseTo(0.5 / 1_000_000, 12);
     expect(estimate.completionCost).toBeCloseTo(2.5, 10);
@@ -196,7 +207,7 @@ describe('estimateCost: Claude Haiku 5.5 long-prompt tier', () => {
   it('keeps the base tier for an aggregate estimate, where input totals are not request sizes', () => {
     const estimate = estimateCost(
       { prompt: 500_000, completion: 0, total: 500_000 },
-      'claude-haiku-5-5',
+      'alpha-small',
       undefined,
       'aggregate',
     );
@@ -206,7 +217,7 @@ describe('estimateCost: Claude Haiku 5.5 long-prompt tier', () => {
 
 describe('getModelPricing', () => {
   it('returns pricing for a known model', () => {
-    const pricing = getModelPricing('gpt-4o');
+    const pricing = getModelPricing('beta-standard');
 
     expect(pricing).toBeDefined();
     expect(pricing!.promptCostPerMillionTokens).toBe(2.5);
@@ -221,111 +232,17 @@ describe('getModelPricing', () => {
 
   it('respects custom pricing over defaults', () => {
     const customPricing: Record<string, ModelPricing> = {
-      'gpt-4o': {
+      'beta-standard': {
         promptCostPerMillionTokens: 99,
         completionCostPerMillionTokens: 199,
       },
     };
 
-    const pricing = getModelPricing('gpt-4o', { customPricing });
+    const pricing = getModelPricing('beta-standard', { customPricing });
 
     expect(pricing).toBeDefined();
     expect(pricing!.promptCostPerMillionTokens).toBe(99);
     expect(pricing!.completionCostPerMillionTokens).toBe(199);
-  });
-});
-
-describe('defaultPricingTable', () => {
-  it('is frozen', () => {
-    expect(Object.isFrozen(defaultPricingTable)).toBe(true);
-  });
-
-  it('gives every Claude model 5-minute cache writes at 1.25x and its published cache-read rate', () => {
-    // Anthropic's pricing page: cache hits cost 0.025x input on Fable 5.1 / Mythos 5.1, 0.05x on
-    // Opus 5.5 / Sonnet 5.5, and 0.1x on every other model.
-    const readMultipliers: Record<string, number> = {
-      'claude-fable-5-1': 0.025,
-      'claude-mythos-5-1': 0.025,
-      'claude-opus-5-5': 0.05,
-      'claude-sonnet-5-5': 0.05,
-    };
-    for (const [model, pricing] of Object.entries(defaultPricingTable)) {
-      if (!model.startsWith('claude-')) continue;
-      expect(pricing.cacheWriteCostPerMillionTokens).toBe(
-        pricing.promptCostPerMillionTokens * 1.25,
-      );
-      expect(pricing.cacheReadCostPerMillionTokens).toBeCloseTo(
-        pricing.promptCostPerMillionTokens * (readMultipliers[model] ?? 0.1),
-        10,
-      );
-    }
-  });
-
-  it('prices every Claude model in the Anthropic model catalog', () => {
-    // A model Operative can resolve but not price makes the cost budget monitor throw on the
-    // first step and leaves every cost estimate empty.
-    for (const model of Object.keys(ANTHROPIC_LIMITS)) {
-      expect({ model, priced: defaultPricingTable[model] !== undefined }).toEqual({
-        model,
-        priced: true,
-      });
-    }
-  });
-
-  it('prices the current Claude models at Anthropic list prices', () => {
-    const listPrices: Record<string, [input: number, output: number, cacheRead: number]> = {
-      'claude-fable-5-1': [10, 50, 0.25],
-      'claude-mythos-5-1': [10, 50, 0.25],
-      'claude-fable-5': [10, 50, 1],
-      'claude-mythos-5': [10, 50, 1],
-      'claude-opus-5-5': [4, 20, 0.2],
-      'claude-opus-5': [5, 25, 0.5],
-      'claude-opus-4-8': [5, 25, 0.5],
-      'claude-opus-4-7': [5, 25, 0.5],
-      'claude-opus-4-6': [5, 25, 0.5],
-      'claude-opus-4-5': [5, 25, 0.5],
-      'claude-sonnet-5-5': [2, 10, 0.1],
-      'claude-sonnet-5': [2, 10, 0.2],
-      'claude-sonnet-4-6': [3, 15, 0.3],
-      'claude-haiku-5-5': [0.1, 0.5, 0.01],
-      'claude-haiku-4-5': [1, 5, 0.1],
-    };
-    for (const [model, [input, output, cacheRead]] of Object.entries(listPrices)) {
-      const pricing = assertDefined(defaultPricingTable[model]);
-      expect(pricing.promptCostPerMillionTokens).toBe(input);
-      expect(pricing.completionCostPerMillionTokens).toBe(output);
-      expect(pricing.cacheReadCostPerMillionTokens).toBeCloseTo(cacheRead, 10);
-    }
-  });
-
-  it('gives every OpenAI GPT/o-series model cache-read pricing but no cache-write pricing', () => {
-    const openAIModels = [
-      'gpt-4o',
-      'gpt-4o-mini',
-      'gpt-4.1',
-      'gpt-4.1-mini',
-      'gpt-4.1-nano',
-      'o3',
-      'o3-mini',
-      'o4-mini',
-    ];
-    for (const model of openAIModels) {
-      const pricing = defaultPricingTable[model];
-      expect(pricing).toBeDefined();
-      expect(assertDefined(pricing).cacheReadCostPerMillionTokens).toBe(
-        assertDefined(pricing).promptCostPerMillionTokens * 0.5,
-      );
-      expect(assertDefined(pricing).cacheWriteCostPerMillionTokens).toBeUndefined();
-    }
-  });
-
-  it('gives Gemini models no cache pricing', () => {
-    for (const model of ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash']) {
-      const pricing = defaultPricingTable[model];
-      expect(pricing).toBeDefined();
-      expect(assertDefined(pricing).cacheReadCostPerMillionTokens).toBeUndefined();
-      expect(assertDefined(pricing).cacheWriteCostPerMillionTokens).toBeUndefined();
-    }
   });
 });
 

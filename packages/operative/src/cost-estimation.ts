@@ -59,155 +59,12 @@ export interface AccumulatedCost {
 
 export interface CostEstimationOptions {
   /**
-   * Prices that win over the built-in table, by model name. A name set to `null` states that the
-   * model has no price: the built-in table is not consulted for it, so a host that prices from its
-   * own catalog can say a model is unpriced even when the table happens to know it (COR-1921).
-   * `null`, not `undefined`, so the statement survives JSON.
+   * Prices by model name: Operative holds none of its own, so a model is priced only when named
+   * here (a host prices from its catalog rows, COR-1921). A name set to `null` states that the
+   * model has no price. `null`, not `undefined`, so the statement survives JSON.
    */
   customPricing?: Record<string, ModelPricing | null> | undefined;
 }
-
-/**
- * Cache pricing multipliers, applied to a model's `promptCostPerMillionTokens`
- * below. Anthropic prices a 5-minute prompt-cache write at 1.25x the base
- * input rate and a cache read at 0.1x; OpenAI prices a cached-input hit at
- * 0.5x with no separate write charge. Source: Anthropic's and OpenAI's
- * published pricing pages (prompt caching / cached input sections).
- */
-const ANTHROPIC_CACHE_WRITE_MULTIPLIER = 1.25;
-const ANTHROPIC_CACHE_READ_MULTIPLIER = 0.1;
-/** Anthropic prices cache reads on Claude Fable 5.1 and Claude Mythos 5.1 at 0.025x input. */
-const ANTHROPIC_FABLE_5_1_CACHE_READ_MULTIPLIER = 0.025;
-/** Anthropic prices cache reads on Claude Opus 5.5 and Claude Sonnet 5.5 at 0.05x input. */
-const ANTHROPIC_5_5_CACHE_READ_MULTIPLIER = 0.05;
-const OPENAI_CACHE_READ_MULTIPLIER = 0.5;
-
-function anthropicCachePricing(
-  promptCostPerMillionTokens: number,
-  cacheReadMultiplier = ANTHROPIC_CACHE_READ_MULTIPLIER,
-) {
-  return {
-    cacheWriteCostPerMillionTokens: promptCostPerMillionTokens * ANTHROPIC_CACHE_WRITE_MULTIPLIER,
-    cacheReadCostPerMillionTokens: promptCostPerMillionTokens * cacheReadMultiplier,
-  };
-}
-
-function anthropicPricing(
-  promptCostPerMillionTokens: number,
-  completionCostPerMillionTokens: number,
-  cacheReadMultiplier?: number,
-): ModelPricing {
-  return {
-    promptCostPerMillionTokens,
-    completionCostPerMillionTokens,
-    ...anthropicCachePricing(promptCostPerMillionTokens, cacheReadMultiplier),
-  };
-}
-
-function openAICachePricing(promptCostPerMillionTokens: number) {
-  return {
-    cacheReadCostPerMillionTokens: promptCostPerMillionTokens * OPENAI_CACHE_READ_MULTIPLIER,
-  };
-}
-
-export const defaultPricingTable: Readonly<Record<string, ModelPricing>> = Object.freeze({
-  // Anthropic current models, at the first-party list prices on Anthropic's pricing page
-  // (platform.claude.com/docs/en/about-claude/pricing, read 2026-10-13). Cache writes use the
-  // 5-minute rate; consumers on the 1-hour TTL (2x input) can override via `customPricing`.
-  // Claude Haiku 5.5 moves to $0.50 / $2.50 for a request over 100K input tokens (`longContext`).
-  'claude-fable-5-1': anthropicPricing(10, 50, ANTHROPIC_FABLE_5_1_CACHE_READ_MULTIPLIER),
-  'claude-mythos-5-1': anthropicPricing(10, 50, ANTHROPIC_FABLE_5_1_CACHE_READ_MULTIPLIER),
-  'claude-fable-5': anthropicPricing(10, 50),
-  'claude-mythos-5': anthropicPricing(10, 50),
-  'claude-opus-5-5': anthropicPricing(4, 20, ANTHROPIC_5_5_CACHE_READ_MULTIPLIER),
-  'claude-opus-5': anthropicPricing(5, 25),
-  'claude-opus-4-8': anthropicPricing(5, 25),
-  'claude-opus-4-7': anthropicPricing(5, 25),
-  'claude-opus-4-6': anthropicPricing(5, 25),
-  'claude-opus-4-5': anthropicPricing(5, 25),
-  'claude-sonnet-5-5': anthropicPricing(2, 10, ANTHROPIC_5_5_CACHE_READ_MULTIPLIER),
-  'claude-sonnet-5': anthropicPricing(2, 10),
-  'claude-sonnet-4-6': anthropicPricing(3, 15),
-  'claude-haiku-5-5': {
-    ...anthropicPricing(0.1, 0.5),
-    longContext: { inputTokensAbove: 100_000, ...anthropicPricing(0.5, 2.5) },
-  },
-  'claude-haiku-4-5': anthropicPricing(1, 5),
-
-  // Anthropic Claude 4 / 3.5 dated snapshots
-  'claude-opus-4-20250514': {
-    promptCostPerMillionTokens: 15,
-    completionCostPerMillionTokens: 75,
-    ...anthropicCachePricing(15),
-  },
-  'claude-sonnet-4-20250514': {
-    promptCostPerMillionTokens: 3,
-    completionCostPerMillionTokens: 15,
-    ...anthropicCachePricing(3),
-  },
-  'claude-haiku-4-20250506': {
-    promptCostPerMillionTokens: 0.8,
-    completionCostPerMillionTokens: 4,
-    ...anthropicCachePricing(0.8),
-  },
-  'claude-3-5-sonnet-20241022': {
-    promptCostPerMillionTokens: 3,
-    completionCostPerMillionTokens: 15,
-    ...anthropicCachePricing(3),
-  },
-  'claude-3-5-haiku-20241022': {
-    promptCostPerMillionTokens: 0.8,
-    completionCostPerMillionTokens: 4,
-    ...anthropicCachePricing(0.8),
-  },
-
-  // OpenAI GPT-4o / 4.1 / o3 / o4-mini
-  'gpt-4o': {
-    promptCostPerMillionTokens: 2.5,
-    completionCostPerMillionTokens: 10,
-    ...openAICachePricing(2.5),
-  },
-  'gpt-4o-mini': {
-    promptCostPerMillionTokens: 0.15,
-    completionCostPerMillionTokens: 0.6,
-    ...openAICachePricing(0.15),
-  },
-  'gpt-4.1': {
-    promptCostPerMillionTokens: 2,
-    completionCostPerMillionTokens: 8,
-    ...openAICachePricing(2),
-  },
-  'gpt-4.1-mini': {
-    promptCostPerMillionTokens: 0.4,
-    completionCostPerMillionTokens: 1.6,
-    ...openAICachePricing(0.4),
-  },
-  'gpt-4.1-nano': {
-    promptCostPerMillionTokens: 0.1,
-    completionCostPerMillionTokens: 0.4,
-    ...openAICachePricing(0.1),
-  },
-  o3: {
-    promptCostPerMillionTokens: 10,
-    completionCostPerMillionTokens: 40,
-    ...openAICachePricing(10),
-  },
-  'o3-mini': {
-    promptCostPerMillionTokens: 1.1,
-    completionCostPerMillionTokens: 4.4,
-    ...openAICachePricing(1.1),
-  },
-  'o4-mini': {
-    promptCostPerMillionTokens: 1.1,
-    completionCostPerMillionTokens: 4.4,
-    ...openAICachePricing(1.1),
-  },
-
-  // Google Gemini 2.5 / 2.0
-  'gemini-2.5-pro': { promptCostPerMillionTokens: 1.25, completionCostPerMillionTokens: 10 },
-  'gemini-2.5-flash': { promptCostPerMillionTokens: 0.15, completionCostPerMillionTokens: 0.6 },
-  'gemini-2.0-flash': { promptCostPerMillionTokens: 0.1, completionCostPerMillionTokens: 0.4 },
-});
 
 /**
  * Estimate a prompt-cache hit rate from a {@link TokenUsage}.
@@ -250,8 +107,8 @@ export function getModelPricing(
   options?: CostEstimationOptions,
 ): ModelPricing | undefined {
   const custom = options?.customPricing;
-  if (custom !== undefined && Object.hasOwn(custom, model)) return custom[model] ?? undefined;
-  return Object.hasOwn(defaultPricingTable, model) ? defaultPricingTable[model] : undefined;
+  if (custom === undefined || !Object.hasOwn(custom, model)) return undefined;
+  return custom[model] ?? undefined;
 }
 
 /**

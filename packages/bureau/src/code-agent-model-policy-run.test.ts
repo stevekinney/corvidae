@@ -9,7 +9,6 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import {
   type BackendDescriptor,
   createAgent,
-  createModelCatalog,
   type DurableRunDeps,
   type GenerateFunction,
   withBackendDescriptors,
@@ -29,8 +28,9 @@ import { createSteppedGenerate, noopTool } from './testing/model-override.test-s
 import { waitForTaskState } from './test';
 import { startTaskFrom } from './test/task-start-request.ts';
 import type { Bureau } from './bureau-types/facade';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
-const rows = createModelCatalog().descriptors;
+const rows = createVendorCatalog().descriptors;
 const row = (provider: string, model: string): BackendDescriptor => {
   const found = rows.find(
     (candidate) => candidate.provider === provider && candidate.model === model,
@@ -76,6 +76,7 @@ async function openBureau(options: {
 }) {
   const bureau = await createBureau<AgentDefinitions>({
     agents: { coder: createAgent({ name: 'coder', generate: options.generate }) },
+    models: { catalog: createVendorCatalog().descriptors },
     storage: new MemoryStorage(),
     ...(options.durable ? { durable: true } : {}),
     modelPolicy: options.modelPolicy,
@@ -341,6 +342,7 @@ describe('a session of a selectable code agent steered to a model', () => {
   it('fails at its next step, before the provider is called, once the policy forbids that model', async () => {
     const stepped = createSteppedGenerate();
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         picker: createAgent({
           name: 'picker',
@@ -425,6 +427,7 @@ describe('a session of a fixed code agent carrying a model steer', () => {
     // of a fixed agent is built for its row and ignores the steer, so the step runs that row.
     const calls: string[] = [];
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: { coder: createAgent({ name: 'coder', generate: fixedGenerate(OPUS_5_5, calls) }) },
       storage: new MemoryStorage(),
       durable: true,

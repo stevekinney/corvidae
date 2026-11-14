@@ -7,7 +7,6 @@ import {
   type BackendDescriptor,
   BudgetExceededError,
   createActiveRun,
-  createModelCatalog,
   type GenerateContext,
   type GenerateFunction,
   noToolCalls,
@@ -28,8 +27,9 @@ import {
   REPLY_MODEL_METADATA_KEY,
 } from './file-agent-generate';
 import { modelPolicyDenialOf } from './model-policy';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
-const rows = createModelCatalog().descriptors;
+const rows = createVendorCatalog().descriptors;
 const row = (provider: string, model: string): BackendDescriptor => {
   const found = rows.find(
     (candidate) => candidate.provider === provider && candidate.model === model,

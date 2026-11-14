@@ -21,6 +21,7 @@ import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './test/process-crash-work-integrity-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const CHILD_WAIT_CALL_ID = 'parent-child-wait-call';
@@ -61,6 +62,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       agents: {},
       agentSource: agentFileDirectory(agentsPath),
       models: {
+        catalog: createVendorCatalog().descriptors,
         generate:
           () =>
           async ({ step, conversation }) => {
@@ -216,6 +218,7 @@ async function unobservableScenario(scope: ScenarioScope): Promise<void> {
     };
     const createRecoveryBureau = async (owner: (typeof ownerRuns)[number]) =>
       createBureau({
+        models: { catalog: createVendorCatalog().descriptors },
         agents: {
           planner: createAgent({
             name: 'planner',

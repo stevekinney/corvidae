@@ -1,22 +1,25 @@
 <script lang="ts">
   /**
-   * Home's Needs you card: the reviews waiting on you (approvals, questions and workflow reviews,
-   * the ones Reviews lists and its badge counts), oldest first, each with a secondary button that
-   * opens it in Reviews: Answer for a question, Review for the rest. Line two says what kind of
-   * review it is first, then who asked, then whether the call can be undone, then how long it has
-   * waited. With nothing waiting the card says so, and the link to Reviews stays.
+   * Home's Needs you section: the reviews waiting on you (approvals, questions and workflow reviews,
+   * the ones Reviews lists and its badge counts), oldest first, as one Cinder `GroupedList`, each row
+   * ending in a secondary button that opens it in Reviews: Answer for a question, Review for the
+   * rest. The subtitle says what kind of review it is first, then who asked, then whether the call
+   * can be undone, then how long it has waited. With nothing waiting the section says so, and the
+   * link to Reviews stays. More than Home lists ends the list in one more row, a link to Reviews.
    *
-   * It reads the same list as Reviews (`waitingReviewsQuery`), so the two cannot disagree. A read
-   * that fails is that card's own failure, said in the card with a Try again, and no other card is
-   * held; while it has not answered the card holds placeholder rows in the rows' own shape. On a
-   * phone each action is a full-width button under the row's text, and while the server does not
-   * answer each is held like every control that changes something.
+   * It reads the same list as Reviews (`waitingReviewsQuery`), and the Spotlight above reads it too,
+   * so none of them can disagree. A read that fails is this section's own failure, said in place
+   * with a Try again, and no other section is held; while it has not answered the section holds
+   * Cinder's grouped placeholder rows in the rows' own shape. On a phone each button is full width
+   * under the row's text, and while the server does not answer each is held like every control
+   * that changes something.
    */
-  import { DataList, EmptyState, StackedListItem } from '@lostgradient/cinder';
+  import { EmptyState, GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
+  import { followLinks } from '../../lib/follow-links.ts';
   import { waitedFor } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -25,7 +28,7 @@
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
   import HomeLink from './home-link.svelte';
-  import HomeSkeletonRows from './home-skeleton-rows.svelte';
+  import { openInApplication } from './home-navigation.ts';
   import { useAgentList } from './home-queries.svelte.ts';
   import { NEEDS_YOU_ROW_LIMIT, needsYouRows } from './home-rows.ts';
 
@@ -45,15 +48,6 @@
     needsYouRows(reviews.data ?? [], { agents: agents.data, tools: catalog.data?.tools }),
   );
   const shown = $derived(rows.slice(0, NEEDS_YOU_ROW_LIMIT));
-
-  /** Opens `path` in place, and leaves a modified click to the browser. */
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <!-- With nothing waiting the link to Reviews moves into the empty state, at the end of its line. -->
@@ -69,7 +63,7 @@
       onRetry={() => void reviews.refetch()}
     />
   {:else if reviews.data === undefined}
-    <HomeSkeletonRows rows={2} action />
+    <Skeleton variant="grouped" rows={2} action />
   {:else if rows.length === 0}
     <EmptyState
       kind="done"
@@ -82,42 +76,34 @@
         <HomeLink path="/reviews" label={copy.link} />
       {/snippet}
     </EmptyState>
-  {:else if shown.length > 0}
-    <DataList items={shown} key={(row) => row.key} aria-label={copy.listLabel}>
-      {#snippet children(row)}
-        <StackedListItem
-          data-review={row.key}
-          lines
-          phoneActions="buttons"
-          actions={[
-            {
-              label: row.action,
-              href: router.href(row.href),
-              onclick: (event) => open(event, row.href),
-              changes: true,
-            },
-          ]}
-        >
-          {#snippet title()}{row.title}{/snippet}
-          {#snippet meta()}
-            {row.kind}{#if row.agent !== undefined}, {row.agent}{/if}{#if row.cantBeUndone}, {copy.cantBeUndone}{/if},
-            {waitedFor(row.requestedAt, clock())}
-          {/snippet}
-        </StackedListItem>
-      {/snippet}
-    </DataList>
-    {#if rows.length > shown.length}
-      <p class="ib-home-more">
-        <HomeLink path="/reviews" label={copy.more(rows.length - shown.length)} />
-      </p>
-    {/if}
+  {:else}
+    <div {@attach followLinks}>
+      <GroupedList aria-label={copy.listLabel}>
+        {#each shown as row (row.key)}
+          <GroupedListItem
+            data-review={row.key}
+            actions={[
+              {
+                label: row.action,
+                href: router.href(row.href),
+                onclick: (event) => openInApplication(event, row.href),
+                changes: true,
+              },
+            ]}
+          >
+            {#snippet title()}{row.title}{/snippet}
+            {#snippet subtitle()}
+              {row.kind}{#if row.agent !== undefined}, {row.agent}{/if}{#if row.cantBeUndone}, {copy.cantBeUndone}{/if},
+              {waitedFor(row.requestedAt, clock())}
+            {/snippet}
+          </GroupedListItem>
+        {/each}
+        {#if rows.length > shown.length}
+          <GroupedListItem data-more href={router.href('/reviews')}>
+            {#snippet title()}{copy.more(rows.length - shown.length)}{/snippet}
+          </GroupedListItem>
+        {/if}
+      </GroupedList>
+    </div>
   {/if}
 </HomeCard>
-
-<style>
-  .ib-home-more {
-    margin: 0;
-    padding: var(--cinder-space-3) var(--cinder-space-4);
-    font-size: var(--cinder-text-sm);
-  }
-</style>

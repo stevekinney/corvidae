@@ -67,6 +67,7 @@ import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { textValueStore } from '@lostgradient/storage';
 import { reviewDecisionKey } from '../review-decision-record';
 import { agentFileDirectory } from '../sources/agent-file-directory';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -126,6 +127,7 @@ function createNextTool() {
 async function parkAfterStepZero(): Promise<void> {
   let reachedStepOne = false;
   const bureau = await createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       default: createAgent({
         generate: async ({ step }) => {
@@ -377,6 +379,7 @@ async function relaunchRecover(): Promise<void> {
   let stepZeroCalls = 0;
   let laterStepCalls = 0;
   const bureau = await createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       default: createAgent({
         generate: async ({ step }) => {
@@ -564,6 +567,7 @@ async function childWaitParked(): Promise<void> {
     },
     agentSource: agentFileDirectory(agentsPath),
     models: {
+      catalog: createVendorCatalog().descriptors,
       generate:
         () =>
         async ({ step }) => {
@@ -683,6 +687,7 @@ async function childWaitRunning(): Promise<void> {
     },
   });
   const bureau = await createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       planner: createAgent({
         name: 'planner',

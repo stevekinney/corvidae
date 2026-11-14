@@ -16,8 +16,6 @@ import {
   type PartDelta,
   ProviderContractError,
   ProviderError,
-  resolveAnthropicEffort,
-  resolveAnthropicModel,
   resolveCommonParameters,
   type StreamingGenerateFunction,
   type StreamingHandle,
@@ -26,6 +24,7 @@ import {
   withInputLineage,
 } from '@lostgradient/operative/provider-kit';
 import { ANTHROPIC_CONTROL_EVENT_TYPES, anthropicOpeningState } from './anthropic-blocks.ts';
+import { resolveAnthropicEffort, resolveAnthropicModel } from './anthropic-catalog.ts';
 import { createAnthropicSdkClient, isAnthropicStreamingClient } from './anthropic-sdk.ts';
 import {
   anthropicDescriptorsFor,

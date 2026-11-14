@@ -564,6 +564,7 @@ export type { GroupedListProps } from './components/grouped-list/index.ts';
 
 export { default as GroupedListItem } from './components/grouped-list-item/index.ts';
 export type {
+  GroupedListItemAction,
   GroupedListItemLeadUnit,
   GroupedListItemLeadingKind,
   GroupedListItemProps,

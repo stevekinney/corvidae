@@ -43,22 +43,6 @@ export function useAttentionItems(): CreateQueryResult<readonly AttentionItem[]>
 }
 
 /**
- * The same problems again, for the count that sums the missed runs. Home's counts row has its own
- * reads, so the Missed schedule runs count reads as it did when the Needs attention card cannot
- * be read (and the card reads as it did when a count cannot). Call it while a component
- * initializes.
- */
-export function useAttentionCountItems(): CreateQueryResult<readonly AttentionItem[]> {
-  return createQuery(() => ({
-    queryKey: queryKeys.bureauAttention.homeCounts(),
-    queryFn: ({ signal }: { signal: AbortSignal }) => listAttentionItems({ signal }),
-    // poll-reason: fallback
-    refetchInterval: ATTENTION_POLL_MILLISECONDS,
-    retry: false,
-  }));
-}
-
-/**
  * The agents, for the name each row says an agent by. The catalog is shared with every page that
  * shows one; a row falls back to the identifier until it arrives. Call it while a component
  * initializes.

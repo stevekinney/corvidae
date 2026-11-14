@@ -40,7 +40,7 @@
  * `CorruptHistoricalRecordError`, which the command reports as exit 65.
  */
 import { sha256Hex } from '@lostgradient/cryptography';
-import { createModelCatalog } from '@lostgradient/operative';
+import type { BackendDescriptor } from '@lostgradient/operative';
 import { z } from 'zod';
 
 import {
@@ -251,6 +251,11 @@ export interface PromotionContext {
     name: string,
     revision: string,
   ) => string | undefined | Promise<string | undefined>;
+  /**
+   * The catalog rows a judge model is looked up in, to bind its provider. Operative holds no row of
+   * its own, so the caller passes the rows of the providers it runs.
+   */
+  readonly modelCatalog: readonly BackendDescriptor[];
   /** Milliseconds since the epoch. Defaults to `Date.now`. */
   readonly now?: (() => number) | undefined;
 }
@@ -288,9 +293,12 @@ export async function latestGateDecision(
 }
 
 /** The catalog backend `model` names, by its provider-native id or an alias. */
-function modelBinding(judge: JudgeConfiguration): PromotionBindings['model'] {
+function modelBinding(
+  judge: JudgeConfiguration,
+  catalog: readonly BackendDescriptor[],
+): PromotionBindings['model'] {
   if (judge.kind !== 'model') return null;
-  const backend = createModelCatalog().descriptors.find(
+  const backend = catalog.find(
     (descriptor) =>
       descriptor.model === judge.model ||
       descriptor.aliases.some((alias) => alias.alias === judge.model),
@@ -341,7 +349,7 @@ async function currentBindings(
   const { configuration, dataset } = await loadConfiguration(module, context);
   return {
     package: { name: packageName, sourceRevision: packageRevision },
-    model: modelBinding(configuration.judge),
+    model: modelBinding(configuration.judge, context.modelCatalog),
     promptVersion: configuration.promptVersion,
     dataset: { id: dataset.id, version: dataset.version },
     evaluator: await evaluatorIdentity(configuration),

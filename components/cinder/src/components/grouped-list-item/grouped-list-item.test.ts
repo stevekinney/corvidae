@@ -109,6 +109,83 @@ describe('GroupedListItem', () => {
     expect(container.querySelector('li')?.getAttribute('aria-current')).toBe('true');
   });
 
+  // COR-2329: Home's review and problem rows end in the button that is their point.
+  test('draws each text action as a secondary small button, a link when it has href', () => {
+    const { container } = render(GroupedListItem, {
+      props: {
+        title: text('Refund order 4471?'),
+        actions: [
+          { label: 'Review', href: '/reviews/1', changes: true },
+          { label: 'Dismiss', onclick: () => {} },
+        ],
+      },
+    });
+    const row = container.querySelector('li');
+    expect(row?.classList.contains('cinder-grouped-list-item--actions')).toBe(true);
+    const buttons = [...container.querySelectorAll('.cinder-grouped-list-item__actions > *')];
+    expect(buttons.map((button) => button.tagName)).toEqual(['A', 'BUTTON']);
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Review', 'Dismiss']);
+    expect(buttons[0]?.getAttribute('href')).toBe('/reviews/1');
+    expect(buttons[0]?.hasAttribute('data-changes')).toBe(true);
+    expect(buttons[1]?.hasAttribute('data-changes')).toBe(false);
+    for (const button of buttons) {
+      expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    }
+  });
+
+  test('a row with no actions draws no actions part and no actions modifier', () => {
+    const { container } = render(GroupedListItem, { props: { title: text('A'), actions: [] } });
+    expect(container.querySelector('.cinder-grouped-list-item__actions')).toBeNull();
+    expect(
+      container.querySelector('li')?.classList.contains('cinder-grouped-list-item--actions'),
+    ).toBe(false);
+  });
+
+  test('a disabled action keeps focus, says why, and does nothing when chosen', () => {
+    let chosen = 0;
+    const { container } = render(GroupedListItem, {
+      props: {
+        title: text('A'),
+        actions: [
+          {
+            label: 'Review',
+            onclick: () => {
+              chosen += 1;
+            },
+            disabled: true,
+            disabledReason: 'Off until it’s back',
+          },
+        ],
+      },
+    });
+    const button = container.querySelector<HTMLButtonElement>(
+      '.cinder-grouped-list-item__actions button',
+    );
+    expect(button?.getAttribute('aria-disabled')).toBe('true');
+    expect(button?.hasAttribute('disabled')).toBe(false);
+    const reasonId = button?.getAttribute('aria-describedby') ?? '';
+    expect(container.querySelector(`[id="${reasonId}"]`)?.textContent).toBe('Off until it’s back');
+    button?.click();
+    expect(chosen).toBe(0);
+  });
+
+  test('stylesheet lifts the actions over the row link and stacks them full width in a narrow row', () => {
+    const css = readFileSync(new URL('./grouped-list-item.css', import.meta.url), 'utf8')
+      .replace(/\s+/g, ' ')
+      .replace(/\/\*.*?\*\//g, '');
+    expect(css).toMatch(/\.cinder-grouped-list-item__actions \{[^}]*z-index: 1/);
+    // The row measures its own width (a container query), never the viewport's.
+    expect(css).toMatch(
+      /\.cinder-grouped-list-item--actions \{ container: cinder-grouped-list-item \/ inline-size; \}/,
+    );
+    expect(css).not.toMatch(/@media \(width/);
+    const phone =
+      /@container cinder-grouped-list-item \(width < 26rem\) \{(.*?)\} \}/.exec(css)?.[1] ?? '';
+    expect(phone).toContain('flex-wrap: wrap');
+    expect(phone).toMatch(/__actions \{[^}]*flex: 1 0 100%[^}]*flex-direction: column/);
+    expect(phone).toMatch(/__actions > \.cinder-button \{ inline-size: 100%;/);
+  });
+
   test('stylesheet insets the separator, fixes the action column, and styles by class only', () => {
     const css = readFileSync(new URL('./grouped-list-item.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.cinder-grouped-list-item__content \{[^}]*border-block-end/);

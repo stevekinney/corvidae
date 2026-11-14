@@ -1,6 +1,7 @@
 /** The shared provider contract, run against the OpenAI definition. */
 import type { ProviderDefinition } from '@lostgradient/operative/provider-kit';
 import { runProviderContract } from '@lostgradient/operative/provider-testing';
+import { openAIRows } from '../src/openai-catalog.ts';
 import { openaiProvider, type OpenAIProviderConfiguration } from '../src/openai-definition.ts';
 import type { OpenAIChatCompletionCreateRequest } from '../src/openai-types.ts';
 import { openAIStreamTextChunks, openAITextResponse } from '../src/test/openai-fixtures.ts';
@@ -38,6 +39,7 @@ runProviderContract<OpenAIChatCompletionCreateRequest>({
   },
   fixtures: {
     name: 'openai',
+    rows: openAIRows(),
     model: 'gpt-4o',
     unknownModel: 'gpt-does-not-exist-in-the-seed',
     text: 'Hello from OpenAI!',

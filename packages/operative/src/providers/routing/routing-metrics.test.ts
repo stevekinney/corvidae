@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createFixtureCatalog } from '../../testing/model-catalog.test-support.ts';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../backend-descriptor-attachment.ts';
-import { createModelCatalog } from '../model-catalog.ts';
 import { withRoutingMetrics } from './routing-metrics.ts';
 import { makeContext } from './strategies/test-helpers.ts';
 import type { ModelRoute } from './types.ts';
@@ -198,7 +198,7 @@ describe('withRoutingMetrics', () => {
 
 describe('withRoutingMetrics — backend descriptor propagation (AB-64, AB-245)', () => {
   it('propagates the union of the underlying routes’ attached descriptors onto the metrics-tracking wrapper', () => {
-    const descriptor = createModelCatalog().descriptors.find((d) => d.provider === 'anthropic');
+    const descriptor = createFixtureCatalog().descriptors.find((d) => d.provider === 'alpha');
     if (!descriptor) throw new Error('expected at least one anthropic seed descriptor');
 
     const { generate } = withRoutingMetrics({
