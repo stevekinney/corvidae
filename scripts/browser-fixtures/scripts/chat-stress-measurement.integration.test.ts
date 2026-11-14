@@ -12,6 +12,8 @@ import {
   readIconCentreProblems,
   readIconSizeProblems,
   readLabelFitProblems,
+  readNarrationFoldProblems,
+  readNarrationStyleProblems,
   readQuestionStepsProblems,
   readRepeatedSummaryProblems,
   readStepRowSpacing,
@@ -1369,6 +1371,120 @@ describe('chat stress visual measurement', () => {
       expect(
         await spacingFor(transcript(14).replace('aria-expanded="false"', 'aria-expanded="true"')),
       ).toBeUndefined();
+    });
+  });
+
+  describe('narration fold guard', () => {
+    const lines = ['Reading the refund policy first.', 'Now the recent orders.'];
+    // The real mechanism of the settled turn: one step row whose list holds the lines (hidden while
+    // the row is closed), then the answer as a message of its own.
+    const turn = (parts: { rows?: number; outside?: string; inside?: boolean }): string => {
+      const timeline = `
+        <section class="chat-tool-call-timeline">
+          <button class="chat-tool-call-toggle" aria-expanded="false">2 steps</button>
+          <ol class="chat-tool-call-list" hidden>
+            ${parts.inside === false ? '' : lines.map((line) => `<li class="chat-tool-call-narration">${line}</li>`).join('')}
+            <li class="chat-tool-call-item">a step</li>
+          </ol>
+        </section>`;
+      return `
+        <main data-testid="chat-stress-shell">
+          ${parts.outside ?? ''}
+          ${timeline.repeat(parts.rows ?? 1)}
+          <div class="chat-message-wrapper" data-role="assistant"><div class="chat-message-body">All of them agree.</div></div>
+        </main>`;
+    };
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 400 } });
+        await page.setContent(markup);
+        return await readNarrationFoldProblems(page, lines);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes one step row that holds every line, with none shown outside it', async () => {
+      expect(await problemsFor(turn({}))).toEqual([]);
+    });
+
+    it('fails a line still shown as a message outside the step row', async () => {
+      const outside = `<div class="chat-message-wrapper" data-narration><div class="chat-message-body">${lines[0]}</div></div>`;
+      expect(await problemsFor(turn({ outside }))).toEqual([
+        `the narration "${lines[0]}" is visible outside the step row`,
+      ]);
+    });
+
+    it('does not count a line that is hidden outside the step row as shown', async () => {
+      const outside = `<div hidden>${lines[0]}</div><div style="display:none">${lines[1]}</div>`;
+      expect(await problemsFor(turn({ outside }))).toEqual([]);
+    });
+
+    it('fails a turn with two step rows', async () => {
+      expect(await problemsFor(turn({ rows: 2 }))).toContain(
+        'a settled turn shows 2 step rows, not one',
+      );
+    });
+
+    it('fails a line that is in neither the step row nor the page', async () => {
+      expect(await problemsFor(turn({ inside: false }))).toEqual([
+        `the narration "${lines[0]}" is not inside the step row`,
+        `the narration "${lines[1]}" is not inside the step row`,
+      ]);
+    });
+  });
+
+  describe('narration style guard', () => {
+    // The real mechanism: narration is muted and 13px inside the opened row; the answer is body
+    // colour at 14px.
+    const opened = (narrationStyle: string, hidden = false): string => `
+      <style>
+        body { margin: 0; font: 14px/20px sans-serif; color: rgb(20, 20, 20); }
+        .chat-tool-call-narration { ${narrationStyle} }
+      </style>
+      <section class="chat-tool-call-timeline">
+        <ol class="chat-tool-call-list"${hidden ? ' hidden' : ''}>
+          <li class="chat-tool-call-narration"><p>Reading the refund policy first.</p></li>
+        </ol>
+      </section>
+      <div class="chat-message-wrapper"><div class="chat-message-body"><p>All of them agree.</p></div></div>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await readNarrationStyleProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes narration that is muted and one step smaller than the answer', async () => {
+      expect(await problemsFor(opened('color: rgb(110, 110, 110); font-size: 13px;'))).toEqual([]);
+    });
+
+    it("fails narration in the answer's colour", async () => {
+      const problems = await problemsFor(opened('font-size: 13px;'));
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain("has the answer's colour");
+    });
+
+    it("fails narration at the answer's size, and larger", async () => {
+      const same = await problemsFor(opened('color: rgb(110, 110, 110);'));
+      expect(same).toHaveLength(1);
+      expect(same[0]).toContain("has the answer's size 14px");
+      const larger = await problemsFor(opened('color: rgb(110, 110, 110); font-size: 16px;'));
+      expect(larger).toHaveLength(1);
+      expect(larger[0]).toContain("larger than the answer's 14px");
+    });
+
+    it('fails when no line is visible, as in a closed row', async () => {
+      expect(
+        await problemsFor(opened('color: rgb(110, 110, 110); font-size: 13px;', true)),
+      ).toEqual(['no narration line is visible in the opened step row']);
     });
   });
 

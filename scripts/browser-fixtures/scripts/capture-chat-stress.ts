@@ -2196,6 +2196,13 @@ async function measure(
   if (stressCase.id === 48 || stressCase.id === 78) {
     problems.push(...(await readFailureSummaryProblems(opened.page)));
   }
+  const foldedNarration = stressCase.params['narration'];
+  if (Array.isArray(foldedNarration)) {
+    problems.push(...(await readNarrationFoldProblems(opened.page, foldedNarration.map(String))));
+  }
+  if (stressCase.slug === 'narration-folded-open') {
+    problems.push(...(await readNarrationStyleProblems(opened.page)));
+  }
   problems.push(...(await readActionRowProblems(opened.page)));
   problems.push(...(await readLabelFitProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
@@ -3103,6 +3110,85 @@ export function stepRowSpacingProblems(spacing: StepRowSpacing | undefined): str
     : [
         `the answer is ${spacing.stepToAnswer.toFixed(2)}px under the step row's text but a message's text is ${spacing.betweenParts.toFixed(2)}px above its time`,
       ];
+}
+
+/**
+ * A settled turn is its step row and its answer (owner decision of 2026-11-13): the agent's lines
+ * between steps live inside the row. Proves it from the page: exactly one step row, every line of
+ * `narration` present inside that row, and none of them visible anywhere outside it.
+ */
+export async function readNarrationFoldProblems(
+  page: Page,
+  narration: readonly string[],
+): Promise<string[]> {
+  return page.evaluate((lines) => {
+    const problems: string[] = [];
+    const rows = document.querySelectorAll('.chat-tool-call-timeline').length;
+    if (rows !== 1) problems.push(`a settled turn shows ${rows} step rows, not one`);
+    for (const line of lines) {
+      let inside = 0;
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        const holder = node.parentElement;
+        if (holder === null || !(node.textContent ?? '').includes(line)) continue;
+        if (holder.closest('.chat-tool-call-timeline') !== null) {
+          inside += 1;
+        } else if (
+          holder.closest('.cinder-sr-only, [role="tooltip"]') === null &&
+          holder.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true })
+        ) {
+          problems.push(`the narration "${line}" is visible outside the step row`);
+        }
+      }
+      if (inside === 0) problems.push(`the narration "${line}" is not inside the step row`);
+    }
+    return problems;
+  }, narration);
+}
+
+/**
+ * In the opened step row, narration reads quieter than the answer: its text colour and its size
+ * differ from the answer's, and it is the smaller. Compared on the elements that hold the letters,
+ * so a wrapper's inherited value cannot stand in for what is painted.
+ */
+export async function readNarrationStyleProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const textHolder = (root: Element): HTMLElement | undefined => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if ((node.textContent ?? '').trim() !== '') return node.parentElement ?? undefined;
+      }
+      return undefined;
+    };
+    const narration = [...document.querySelectorAll('.chat-tool-call-narration')].filter((line) =>
+      line.checkVisibility({ visibilityProperty: true }),
+    );
+    if (narration.length === 0) return ['no narration line is visible in the opened step row'];
+    const answerBody = [...document.querySelectorAll('.chat-message-body')]
+      .filter((body) => body.closest('.chat-tool-call-timeline') === null)
+      .at(-1);
+    const answer = answerBody === undefined ? undefined : textHolder(answerBody);
+    if (answer === undefined) return ['the answer has no text to compare the narration with'];
+    const answerStyle = getComputedStyle(answer);
+    const problems: string[] = [];
+    for (const line of narration) {
+      const holder = textHolder(line);
+      if (holder === undefined) continue;
+      const style = getComputedStyle(holder);
+      const label = (line.textContent ?? '').trim().slice(0, 40);
+      if (style.color === answerStyle.color) {
+        problems.push(`the narration "${label}" has the answer's colour ${style.color}`);
+      }
+      if (style.fontSize === answerStyle.fontSize) {
+        problems.push(`the narration "${label}" has the answer's size ${style.fontSize}`);
+      } else if (parseFloat(style.fontSize) > parseFloat(answerStyle.fontSize)) {
+        problems.push(
+          `the narration "${label}" is ${style.fontSize}, larger than the answer's ${answerStyle.fontSize}`,
+        );
+      }
+    }
+    return problems;
+  });
 }
 
 interface RunState {
