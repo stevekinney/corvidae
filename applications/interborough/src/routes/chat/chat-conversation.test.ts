@@ -1705,7 +1705,7 @@ describe('attachments', () => {
       'a.zip. Can’t attach: ZIP files aren’t supported. Use PNG, JPG.',
     ]);
     expect(container.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
-      "2 files didn't upload",
+      "1 file is over the 3 MB limit. 1 file can't be attached.",
     );
     expect(state.methods).toEqual([]);
   });

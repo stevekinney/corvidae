@@ -172,8 +172,6 @@ export interface AttachmentFailureReason {
   readonly count: number;
   /** The limit a too large file went over, when its host named one. */
   readonly maxFileSize?: number;
-  /** What the composer took when it refused a file for its type. */
-  readonly acceptedTypes?: readonly string[];
 }
 
 /**
@@ -212,7 +210,6 @@ export function attachmentFailureLine(
           kind,
           count: sharing.length,
           ...(first.maxFileSize === undefined ? {} : { maxFileSize: first.maxFileSize }),
-          ...(first.acceptedTypes === undefined ? {} : { acceptedTypes: first.acceptedTypes }),
         },
       ];
     }),

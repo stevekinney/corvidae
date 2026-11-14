@@ -197,11 +197,12 @@ describe('the committed Chat stress cases', () => {
     });
     expect(uploadsOf(many?.steps).length).toBeGreaterThan(10);
 
-    // One failure of each kind has its own line and action; several are counted.
+    // One failure of each kind has its own line and action; several say one short sentence for each
+    // reason, and offer only what can work.
     const failures = findStressCase(cases, 62);
     expect(stripOf(failures?.steps)).toMatchObject({
       failed: 2,
-      line: "1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file. 1 file didn't upload.",
+      line: "1 file can't be attached. 1 file didn't upload.",
       lineAction: 'Remove failed + Retry 1',
     });
     const lines = Object.fromEntries(
@@ -214,12 +215,12 @@ describe('the committed Chat stress cases', () => {
       network: ["network-fail-1.pdf didn't upload. Check your connection.", 'Retry'],
       'too-large': ['too-large-fail-1.pdf is over the 25 MB limit.', 'Remove'],
       'unsupported-type': [
-        "unsupported-1.exe can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+        "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or another kind of file.",
         'Remove',
       ],
       unknown: ["upload-fail-1.pdf didn't upload.", 'Retry'],
       'none-can-retry': [
-        "1 file is over the 25 MB limit. 1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+        "1 file is over the 25 MB limit. 1 file can't be attached.",
         'Remove all failed',
       ],
     });

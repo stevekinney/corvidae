@@ -184,7 +184,7 @@ describe('failures', () => {
       reasons: [
         { kind: 'network', count: 2 },
         { kind: 'too-large', count: 1, maxFileSize: 2048 },
-        { kind: 'unsupported-type', count: 1, acceptedTypes: ['.csv'] },
+        { kind: 'unsupported-type', count: 1 },
       ],
     });
   });

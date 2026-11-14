@@ -101,7 +101,7 @@ describe('Chat attachments', () => {
     expect(previewStates()).toEqual(['ready', 'error', 'error']);
     expect(target.querySelector('.chat-input-attachment-more')).toBeNull();
     expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
-      "1 file is over the 8 B limit. 1 file can't be attached. Attach an image.",
+      "1 file is over the 8 B limit. 1 file can't be attached.",
     );
     unmount(instance);
   });

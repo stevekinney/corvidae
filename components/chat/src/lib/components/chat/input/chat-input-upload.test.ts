@@ -491,6 +491,28 @@ describe('the failure line under the strip', () => {
     unmount(instance);
   });
 
+  test('every worded action of the notice is the compact secondary Button, never a bare accent link', async () => {
+    for (const errors of [
+      [new TypeError('offline'), new TypeError('offline')],
+      [new TypeError('offline'), new ChatAttachmentUploadError('unsupported-type')],
+      [
+        new ChatAttachmentUploadError('unsupported-type'),
+        new ChatAttachmentUploadError('too-large'),
+      ],
+    ]) {
+      const { target, instance } = await settleFailures(errors);
+      const buttons = [
+        ...target.querySelectorAll<HTMLButtonElement>('.chat-input-attachment-reason button'),
+      ];
+      expect(buttons.length).toBeGreaterThan(0);
+      for (const button of buttons) {
+        expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+        expect(button.getAttribute('data-cinder-size')).toBe('sm');
+      }
+      unmount(instance);
+    }
+  });
+
   test('files that failed for different reasons read as one sentence for each reason', async () => {
     const { target, instance } = await settleFailures([
       new TypeError('offline'),
@@ -583,9 +605,8 @@ describe('the failure line under the strip', () => {
       new ChatAttachmentUploadError('unsupported-type'),
       new ChatAttachmentUploadError('too-large'),
     ]);
-    expect(lineText(target)).toBe(
-      "1 file is over the limit. 1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
-    );
+    // Several files: one short sentence for each reason; only a single file is told what to attach.
+    expect(lineText(target)).toBe("1 file is over the limit. 1 file can't be attached.");
     expect(lineActions(target)).toEqual([{ text: 'Remove all failed', name: 'Remove all failed' }]);
     await fireEvent.click(lineAction(target)!);
     await tick();

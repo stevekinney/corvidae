@@ -82,13 +82,14 @@ export type ChatLabels = {
   attachmentFailureUnsupported: (name: string, accepted: string) => string;
   attachmentFailureUnknown: (name: string) => string;
   /**
-   * The same four reasons for `count` files that failed for it. Several files with one shared
-   * reason read as that one sentence; files that failed for different reasons read as one
-   * sentence for each reason, in the same notice.
+   * The same four reasons for `count` files that failed for it, each one short sentence. Several
+   * files with one shared reason read as that one sentence; files that failed for different
+   * reasons read as one sentence for each reason, in the same notice. Only a single refused file
+   * is told what to attach instead (`attachmentFailureUnsupported`).
    */
   attachmentFailureNetworkMany: (count: number) => string;
   attachmentFailureTooLargeMany: (count: number, limit: string | undefined) => string;
-  attachmentFailureUnsupportedMany: (count: number, accepted: string) => string;
+  attachmentFailureUnsupportedMany: (count: number) => string;
   attachmentFailureUnknownMany: (count: number) => string;
   /** The action when every failed file can be tried again. Default `Retry all`. */
   retryAllAttachments: string;
@@ -213,8 +214,8 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
     `${count} ${count === 1 ? 'file' : 'files'} didn't upload. Check your connection.`,
   attachmentFailureTooLargeMany: (count, limit) =>
     `${count} ${count === 1 ? 'file is' : 'files are'} over the ${limit === undefined ? '' : `${limit} `}limit.`,
-  attachmentFailureUnsupportedMany: (count, accepted) =>
-    `${count} ${count === 1 ? 'file' : 'files'} can't be attached. Attach ${accepted}.`,
+  attachmentFailureUnsupportedMany: (count) =>
+    `${count} ${count === 1 ? 'file' : 'files'} can't be attached.`,
   attachmentFailureUnknownMany: (count) =>
     `${count} ${count === 1 ? 'file' : 'files'} didn't upload.`,
   retryAllAttachments: 'Retry all',

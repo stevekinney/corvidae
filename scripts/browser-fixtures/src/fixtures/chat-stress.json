@@ -1461,7 +1461,7 @@
         "total": 5,
         "uploading": 1,
         "failed": 2,
-        "line": "1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file. 1 file didn't upload.",
+        "line": "1 file can't be attached. 1 file didn't upload.",
         "lineAction": "Remove failed + Retry 1"
       }
     ],
@@ -1480,7 +1480,7 @@
             "action": "expect-attachment-strip",
             "total": 2,
             "failed": 2,
-            "line": "1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file. 1 file didn't upload.",
+            "line": "1 file can't be attached. 1 file didn't upload.",
             "lineAction": "Remove failed + Retry 1"
           },
           { "action": "click", "role": "button", "name": "Why unsupported-1.exe failed" },
@@ -1488,7 +1488,7 @@
             "action": "expect-attachment-strip",
             "total": 2,
             "failed": 2,
-            "line": "unsupported-1.exe can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+            "line": "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or another kind of file.",
             "lineAction": "Remove"
           }
         ]
@@ -2062,7 +2062,7 @@
         "action": "expect-attachment-strip",
         "total": 2,
         "failed": 2,
-        "line": "1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file. 1 file didn't upload.",
+        "line": "1 file can't be attached. 1 file didn't upload.",
         "lineAction": "Remove failed + Retry 1"
       }
     ],
@@ -2117,7 +2117,7 @@
             "action": "expect-attachment-strip",
             "total": 1,
             "failed": 1,
-            "line": "unsupported-1.exe can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+            "line": "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or another kind of file.",
             "lineAction": "Remove"
           }
         ]
@@ -2157,7 +2157,7 @@
             "action": "expect-attachment-strip",
             "total": 2,
             "failed": 2,
-            "line": "1 file is over the 25 MB limit. 1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+            "line": "1 file is over the 25 MB limit. 1 file can't be attached.",
             "lineAction": "Remove all failed"
           }
         ]

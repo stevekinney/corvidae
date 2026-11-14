@@ -630,18 +630,16 @@
   const failureLine = $derived(attachmentFailureLine(attachments, pickedFailureId));
   const failureLineText = $derived.by((): string | undefined => {
     if (failureLine === undefined) return undefined;
-    // What the composer took when it refused the file, from the host's accept list when it gives
-    // one: the words keep to what was true then, as the rest of the file's failure does.
+    // What one refused file is told to attach instead: what the composer took when it refused the
+    // file, from the host's accept list when it gives one, so the words keep to what was true then.
     const acceptedFor = (kept: readonly string[] | undefined) =>
       acceptedKindsText(kept ?? acceptedTypes);
     if (failureLine.type === 'many') {
-      // One sentence for each kind of reason: a shared reason reads as that one sentence.
+      // One short sentence for each kind of reason: a shared reason reads as that one sentence.
       return failureLine.reasons
-        .map(({ kind, count, maxFileSize: limit, acceptedTypes: kept }) => {
+        .map(({ kind, count, maxFileSize: limit }) => {
           if (kind === 'network') return labels.attachmentFailureNetworkMany(count);
-          if (kind === 'unsupported-type') {
-            return labels.attachmentFailureUnsupportedMany(count, acceptedFor(kept));
-          }
+          if (kind === 'unsupported-type') return labels.attachmentFailureUnsupportedMany(count);
           if (kind === 'unknown') return labels.attachmentFailureUnknownMany(count);
           return labels.attachmentFailureTooLargeMany(
             count,
