@@ -1347,10 +1347,17 @@ describe('chat stress visual measurement', () => {
     ).text();
     const glyph =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
-    const notice = (options: { action?: boolean; icon?: boolean; wide?: boolean }) => {
+    const notice = (options: {
+      action?: boolean;
+      icon?: boolean;
+      title?: boolean;
+      wide?: boolean;
+    }) => {
       const icon = options.icon === false ? '' : `<div class="cinder-callout__icon">${glyph}</div>`;
-      const content =
-        '<div class="cinder-callout__content"><p style="margin:0">Restored your unsent draft from yesterday at 4:12 PM.</p></div>';
+      const title = options.title
+        ? '<p class="cinder-callout__title" style="font-weight:600">This answer is incomplete.</p>'
+        : '';
+      const content = `<div class="cinder-callout__content">${title}<p style="margin:0">Restored your unsent draft from yesterday at 4:12 PM.</p></div>`;
       const action = '<div class="cinder-callout__action"><button>Discard draft</button></div>';
       const classes = [
         'cinder-callout',
@@ -1388,6 +1395,10 @@ describe('chat stress visual measurement', () => {
         notice({ action: true, wide: true }),
         notice({ icon: false }),
         notice({ icon: false, action: true }),
+        notice({ title: true }),
+        notice({ title: true, icon: false }),
+        notice({ title: true, action: true }),
+        notice({ title: true, icon: false, action: true, wide: true }),
       ]) {
         const insets = await insetsFor(markup);
         expect(insets).toHaveLength(1);
@@ -1498,11 +1509,14 @@ describe('chat stress visual measurement', () => {
       '<div class="chat-turn-outcome"><p>Stopped before an answer.</p></div><div class="chat-message-line"><time>9:01 AM</time></div>',
     );
 
-    const problemsFor = async (markup: string): Promise<string[]> => {
+    // The rows of a transcript stand one row gap apart, 12px at this width.
+    const problemsFor = async (markup: string, gap = 12): Promise<string[]> => {
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage({ viewport: { width: 400, height: 400 } });
-        await page.setContent(`<main>${markup}</main>`);
+        await page.setContent(
+          `<style>p { margin: 0 }</style><main style="display:flex;flex-direction:column;gap:${gap}px">${markup}</main>`,
+        );
         return await readStoppedTurnOrderProblems(page);
       } finally {
         await browser.close();
@@ -1511,6 +1525,13 @@ describe('chat stress visual measurement', () => {
 
     it('passes the narration, the step row, then the notice with its time', async () => {
       expect(await problemsFor(narration + stepRow + notice)).toEqual([]);
+    });
+
+    it('fails a notice crowded under the step row, as the answer’s pull would leave it', async () => {
+      expect(await problemsFor(narration + stepRow + notice, 2)).toEqual([
+        expect.stringContaining('crowded against it'),
+      ]);
+      expect(await problemsFor(narration + stepRow + notice, 8)).toEqual([]);
     });
 
     it('fails a step row that comes after the notice', async () => {

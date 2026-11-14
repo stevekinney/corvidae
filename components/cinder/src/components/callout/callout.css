@@ -74,6 +74,10 @@
   }
 
   /* The first line is the title's, which has its own leading. */
+  .cinder-callout:has(.cinder-callout__title) {
+    --_cinder-callout-first-air: calc((1em * var(--cinder-leading-snug, 1.3) - 1cap) / 2);
+  }
+
   .cinder-callout--with-icon:has(.cinder-callout__title) {
     --_cinder-callout-first-air: calc(
       (1em * var(--cinder-leading-snug, 1.3) - var(--_cinder-callout-icon-size)) / 2 +

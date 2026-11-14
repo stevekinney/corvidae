@@ -1068,6 +1068,7 @@
   data-streaming={streaming || undefined}
   data-narration={transcript && narration && message.role === 'assistant' ? '' : undefined}
   data-ends-in-punctuation={endsInTerminalPunctuation ? '' : undefined}
+  data-section={section === 'whole' ? undefined : section}
   data-turn-state={turn.kind === 'complete' ? undefined : turn.kind}
   data-role={message.role}
   data-message-direction={messageDirection}

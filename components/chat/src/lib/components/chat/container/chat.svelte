@@ -3586,8 +3586,12 @@
    * round the capitals, rounded down), and the gap to the answer is these terms less the row gap
    * the timeline puts between rows. The timeline takes the time's size for this one gap, so
    * `1cap` in it is the time's capitals. Only a collapsed row with nothing after it in its group
-   * is spaced this way: an open row ends in a step's own box, not in the row's text. */
-  .chat-tool-call-group:has(+ :global(.chat-message-wrapper))
+   * is spaced this way, and only above an assistant's text: an open row ends in a step's own box,
+   * not in the row's text, and the notice that ends a stopped turn is a box with no leading above
+   * its first ink, and the next person's message a bubble, so those keep the row gap. */
+  .chat-tool-call-group:has(
+      + :global(.chat-message-wrapper[data-role='assistant']:not([data-section='outcome']))
+    )
     > :global(.chat-tool-call-timeline):has(
       :global(.chat-tool-call-toggle[aria-expanded='false'])
     ):has(+ .chat-approval-group-rows:empty:last-child)
@@ -3595,7 +3599,9 @@
     margin-block-end: calc(round(down, (1lh - 1cap) / 2, 1px) * -1);
   }
 
-  .chat-tool-call-group:has(+ :global(.chat-message-wrapper))
+  .chat-tool-call-group:has(
+      + :global(.chat-message-wrapper[data-role='assistant']:not([data-section='outcome']))
+    )
     > :global(.chat-tool-call-timeline):has(
       :global(.chat-tool-call-toggle[aria-expanded='false'])
     ):has(+ .chat-approval-group-rows:empty:last-child) {

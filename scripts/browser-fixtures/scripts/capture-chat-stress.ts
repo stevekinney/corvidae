@@ -2257,7 +2257,13 @@ async function measure(
   problems.push(...(await readActionRowProblems(opened.page)));
   problems.push(...(await readLabelFitProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
-  problems.push(...(await readCalloutInsetProblems(opened.page)));
+  const insets = await readCalloutInsets(opened.page);
+  for (const inset of insets) {
+    console.log(
+      `case ${stressCase.id} at ${profile.name}: notice "${inset.label}" ink ${inset.top.toFixed(2)}px under its top border, ${inset.bottom.toFixed(2)}px over its bottom border`,
+    );
+  }
+  problems.push(...calloutInsetProblems(insets));
   problems.push(...(await readIconSizeProblems(opened.page)));
   problems.push(...(await readAttachmentStripProblems(opened.page)));
   problems.push(...(await readEdgeFadeProblems(opened.page)));
@@ -2852,11 +2858,6 @@ export function calloutInsetProblems(insets: readonly CalloutInsets[]): string[]
     );
 }
 
-/** The notices on the page whose top and bottom ink insets differ by more than a pixel. */
-export async function readCalloutInsetProblems(page: Page): Promise<string[]> {
-  return calloutInsetProblems(await readCalloutInsets(page));
-}
-
 /** How far a glyph may exceed the line height of the text beside it, in pixels. */
 export const ICON_SIZE_TOLERANCE = 0.5;
 
@@ -3423,6 +3424,14 @@ export async function readStoppedTurnOrderProblems(page: Page): Promise<string[]
       problems.push('the step row comes after the notice, so it reads as a new turn');
     }
     if (time!.top < notice!.bottom) problems.push('the time is above the notice');
+    // The notice is a box with no leading above its first ink, so the step row's spacing to an
+    // answer's text (a pull of its own) must not reach it: it keeps at least a row gap.
+    const crowding = notice!.top - stepRow!.bottom;
+    if (stepRow!.top < notice!.top && crowding < 6) {
+      problems.push(
+        `the notice is ${crowding.toFixed(1)}px under the step row, crowded against it`,
+      );
+    }
     return problems;
   });
 }
