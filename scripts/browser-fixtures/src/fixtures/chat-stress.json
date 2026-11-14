@@ -1488,7 +1488,7 @@
             "action": "expect-attachment-strip",
             "total": 2,
             "failed": 2,
-            "line": "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or one of 4 other kinds.",
+            "line": "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or one of 5 other kinds.",
             "lineAction": "Remove"
           }
         ]
@@ -2117,7 +2117,7 @@
             "action": "expect-attachment-strip",
             "total": 1,
             "failed": 1,
-            "line": "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or one of 4 other kinds.",
+            "line": "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or one of 5 other kinds.",
             "lineAction": "Remove"
           }
         ]

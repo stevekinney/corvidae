@@ -215,7 +215,7 @@ describe('the committed Chat stress cases', () => {
       network: ["network-fail-1.pdf didn't upload. Check your connection.", 'Retry'],
       'too-large': ['too-large-fail-1.pdf is over the 25 MB limit.', 'Remove'],
       'unsupported-type': [
-        "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or one of 4 other kinds.",
+        "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or one of 5 other kinds.",
         'Remove',
       ],
       unknown: ["upload-fail-1.pdf didn't upload.", 'Retry'],
