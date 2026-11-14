@@ -975,7 +975,9 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
       await using recovered = new Engine({ storage });
       await registerWorkflowDocuments(recovered, host, { active: [document] });
       const [handle] = await recovered.recoverAll();
-      expect(await resultOnceTimersFire(handle!.result())).toEqual({
+      expect(
+        await resultOnceTimersFire(recovered, 'legacy-retry-round-run', handle!.result()),
+      ).toEqual({
         a: 'F',
         b: lockstepRoundEntry(2, [
           { status: 'rejected', reason: { name: 'Error', message: 'flaky once' } },
@@ -990,18 +992,30 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
 });
 
 /**
- * The value `result` settles with, moving the fake clock an hour at a time until it does: a
- * recovered run arms its timers when it reaches them, which may be after any one advance.
+ * The value `result` settles with once the fake clock has passed the recovered run's timers. The
+ * run arms them as its replay reaches them, so each hour is moved only once the run shows an
+ * operation running. The clock moves outside `waitUntil`: under fake timers its hang guard counts
+ * the moved time as awake time.
  */
-async function resultOnceTimersFire<Value>(result: Promise<Value>): Promise<Value> {
+async function resultOnceTimersFire<Value>(
+  engine: Engine,
+  id: string,
+  result: Promise<Value>,
+): Promise<Value> {
   let settled = false;
   const observed = result.finally(() => {
     settled = true;
   });
-  await waitUntil(async () => {
+  const running = async () => {
+    const timeline = await engine.getTimeline(id);
+    return timeline.some((entry) => entry.status === 'running');
+  };
+  while (!settled) {
+    await waitUntil(async () => settled || (await running()), {
+      message: 'the recovered run to reach its timer',
+    });
     if (!settled) await advanceTimersByTime(3_600_000);
-    return settled;
-  });
+  }
   return observed;
 }
 
@@ -1053,7 +1067,7 @@ describe('a batch map restarted after its first round (matrix row D16)', () => {
       await using restarted = new Engine({ storage });
       await registerWorkflowDocuments(restarted, host, { active: [document] });
       const [handle] = await restarted.recoverAll();
-      expect(await resultOnceTimersFire(handle!.result())).toEqual([
+      expect(await resultOnceTimersFire(restarted, id, handle!.result())).toEqual([
         null,
         lockstepRoundEntry(3, [
           { status: 'fulfilled', value: null },

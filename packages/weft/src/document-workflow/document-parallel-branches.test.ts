@@ -331,15 +331,18 @@ describe('a timed wait in a branch of a parallel step', () => {
       message: 'the sibling to wait',
     });
     await handle!.signal('go', 'signalled');
-    // The sleeps are armed when the recovered branch reaches them: move the clock until it ends.
+    // The sleeps are armed when the recovered branch reaches them: move the clock, outside
+    // `waitUntil` (whose hang guard would count the moved time), until the run ends.
     let settled = false;
     const result = handle!.result().finally(() => {
       settled = true;
     });
-    await waitUntil(async () => {
+    while (!settled) {
+      await waitUntil(async () => settled || (await hasRunningOperation(restarted, id)), {
+        message: 'the recovered run to reach its sleeps',
+      });
       if (!settled) await advanceTimersByTime(60 * 60 * 1000);
-      return settled;
-    });
+    }
     expect(await result).toEqual({
       m: [
         'x',
@@ -396,6 +399,11 @@ describe('a timed wait in a branch of a parallel step', () => {
     expect(await handle!.result()).toEqual({ a: { timedOut: true }, b: 'B' });
   });
 });
+
+async function hasRunningOperation(engine: Engine, id: string): Promise<boolean> {
+  const timeline = await engine.getTimeline(id);
+  return timeline.some((entry) => entry.status === 'running');
+}
 
 /** Whether branch `index` of the run's committed parallel step holds at least `count` results. */
 async function hasCommittedSteps(
