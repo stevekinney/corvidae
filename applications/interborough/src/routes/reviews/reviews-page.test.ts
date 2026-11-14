@@ -244,6 +244,14 @@ describe('deciding a Bureau tool approval', () => {
     await findByText(REVIEWS_COPY.noteDescription);
   });
 
+  test('labels the note Note, never Note (optional)', async () => {
+    const { container, findByLabelText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    expect(await findByLabelText('Note')).not.toBeNull();
+    expect(container.textContent).not.toContain('(optional)');
+  });
+
   test('says the approval was not remembered when the Bureau could not store the grant', async () => {
     const { container, findByRole, findByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -816,7 +824,8 @@ describe('an engine review', () => {
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Submit decision' })).toBeNull();
     expect(queryByLabelText(/Reviewer/)).toBeNull();
-    expect(getByLabelText(REVIEWS_COPY.noteLabel)).not.toBeNull();
+    expect(getByLabelText('Note')).not.toBeNull();
+    expect(container.textContent).not.toContain('(optional)');
     expect(getByText(REVIEWS_COPY.workflow.noteDescription)).not.toBeNull();
     expect(getByText(REVIEWS_COPY.workflow.footer)).not.toBeNull();
     expect(getByText(REVIEWS_COPY.workflowEyebrow)).not.toBeNull();
