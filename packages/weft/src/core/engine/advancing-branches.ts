@@ -134,13 +134,35 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     }
   };
 
-  /** Run one operation of a branch to its outcome. */
+  /**
+   * Run `section` after every section before it. A step settles in one: finalizing a wait
+   * branch's envelope stages the consume of its signal record into the next commit, which must be
+   * the commit that makes this step's result durable, not one a sibling's step opens meanwhile.
+   * A section never rejects.
+   */
+  const inOrder = <Result>(section: () => Promise<Result>): Promise<Result> => {
+    const result = chain.then(section);
+    chain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+
+  /** Run one operation of a branch to its raw outcome: a wait's value is still its envelope. */
   const settleRequest = async (request: ContextOperationRequest): Promise<BranchOutcome> => {
     try {
-      // Finalizing a wait branch's envelope stages the consume of its signal record into the
-      // next commit, the one that makes this step's result durable.
-      const raw = await run.execute(request, controller.signal);
-      return { status: 'fulfilled', value: await finalizeAndUnwrap(raw) };
+      return { status: 'fulfilled', value: await run.execute(request, controller.signal) };
+    } catch (error) {
+      return { status: 'rejected', error };
+    }
+  };
+
+  /** The outcome with a fulfilled value finalized: the consume of a wait's signal is staged. */
+  const finalizeOutcome = async (settled: BranchOutcome): Promise<BranchOutcome> => {
+    if (settled.status === 'rejected') return settled;
+    try {
+      return { status: 'fulfilled', value: await finalizeAndUnwrap(settled.value) };
     } catch (error) {
       return { status: 'rejected', error };
     }
@@ -191,25 +213,38 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     return false;
   };
 
+  /**
+   * Settle one operation of a branch: finalize it, resume the branch with it, and, when the step
+   * succeeded, commit what the branch has done. Returns where the branch stands, or `undefined` for
+   * a branch that is over.
+   */
+  const settleStep = async (
+    index: number,
+    request: ContextOperationRequest,
+    settled: BranchOutcome,
+  ): Promise<BranchStep | undefined> => {
+    if (mustStop(index)) return undefined;
+    const outcome = await finalizeOutcome(settled);
+    if (mustStop(index)) return undefined;
+    active.delete(index);
+    if (outcome.status === 'fulfilled') {
+      recordSettledStep(run.internals, run.workflowId, requestCompletion(request, outcome.value));
+    }
+    const next = resumeBranch(index, outcome);
+    if (next === undefined || !placeBranch(index, next)) return undefined;
+    if (outcome.status === 'fulfilled') await commitProgress();
+    return next;
+  };
+
   const runBranch = async (index: number): Promise<void> => {
     let step: BranchStep = drivers[index]!.first;
     // A run that was cancelled, or replaced, while a sibling still waited starts nothing more.
     while (!step.done && !mustStop(index)) {
       const request = step.request;
-      const outcome = await settleRequest(request);
-      if (mustStop(index)) return;
-      active.delete(index);
-      if (outcome.status === 'fulfilled') {
-        recordSettledStep(run.internals, run.workflowId, requestCompletion(request, outcome.value));
-      }
-      const next = resumeBranch(index, outcome);
-      if (next === undefined || !placeBranch(index, next)) return;
+      const settled = await settleRequest(request);
+      const next = await inOrder(() => settleStep(index, request, settled));
+      if (next === undefined) return;
       step = next;
-      // A step that settled changed what the branch has done: commit it, in order with the rest.
-      if (outcome.status === 'fulfilled') {
-        chain = chain.then(commitProgress);
-        await chain;
-      }
     }
   };
 

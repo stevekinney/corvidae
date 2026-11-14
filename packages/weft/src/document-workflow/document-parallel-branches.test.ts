@@ -3,9 +3,14 @@
  * activity that retries, a child workflow, a parallel step of its own, and a `map`. Each is
  * checked beside a sibling that waits, across a restart that comes after the branch's step.
  */
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import {
+  advanceTimersByTime,
+  restoreRealTimers,
+  useFakeTimers,
+} from '@lostgradient/testing/fake-timers';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
 import { deserializeCheckpoint } from '../core/checkpoint.ts';
@@ -13,6 +18,8 @@ import { isParallelOperationCacheEntry } from '../core/context/parallel-cache-en
 import { Engine } from '../core/engine/index.ts';
 import { workflow, type WorkflowContext } from '../core/types.ts';
 import { KEYS } from '../storage/keys.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
+import { TestEngine } from '../testing/test-engine.ts';
 import type { DocumentWorkflowHost } from './document.ts';
 import { registerWorkflowDocuments } from './register.ts';
 
@@ -157,4 +164,93 @@ describe('what a branch of a parallel step may hold', () => {
     );
     expect(result).toEqual({ a: { x: 'x', y: 'y' }, m: ['x', 'y'], b: 'signalled' });
   });
+
+  it('runs branches of uneven length, each to its own last step', async () => {
+    calls.length = 0;
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    engine.register(child);
+    await registerWorkflowDocuments(engine, host, {
+      active: [
+        doc('branch-uneven', [
+          parallel({
+            long: [
+              { kind: 'activity', handler: 'count', input: 'l1' },
+              { kind: 'activity', handler: 'count', input: 'l2' },
+              { kind: 'activity', handler: 'count', input: 'l3' },
+            ],
+            short: [{ kind: 'activity', handler: 'count', input: 's1' }],
+          }),
+        ]),
+      ],
+    });
+    const run = await engine.start('branch-uneven', null, { id: 'branch-uneven-run' });
+    expect(await run.result()).toEqual({ long: 'l3', short: 's1' });
+    // Each branch's steps run in their own order.
+    expect(calls.filter((call) => call.startsWith('l'))).toEqual(['l1', 'l2', 'l3']);
+  });
+
+  it('times out a run waiting in a parallel step, as it does one waiting at the top level', async () => {
+    const engine = new TestEngine();
+    await registerWorkflowDocuments(engine, host, {
+      active: [doc('branch-execution-timeout', [parallel({ a: [wait('one')], b: [wait('two')] })])],
+    });
+    const run = await engine.start('branch-execution-timeout', null, {
+      id: 'branch-execution-timeout-run',
+      executionTimeout: '1 second',
+    });
+    run.result().catch(() => undefined);
+    await settleInlineLaunches();
+    await engine.advanceTime('2 seconds');
+    await settleInlineLaunches();
+    const state = await engine.get(run.id);
+    expect(state?.status).toBe('timed-out');
+    engine[Symbol.dispose]();
+  });
 });
+
+describe('a timed wait in a branch of a parallel step', () => {
+  afterEach(() => {
+    restoreRealTimers();
+  });
+
+  it('stops waiting for its signal when the timeout wins, across a restart, while a sibling waits on', async () => {
+    useFakeTimers(0);
+    const storage = new MemoryStorage();
+    const id = 'branch-timed-wait-run';
+    const document = doc('branch-timed-wait', [
+      parallel({
+        a: [{ kind: 'await-signal', signal: 'go', timeout: '1h' }],
+        b: [wait('two')],
+      }),
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      await original.start('branch-timed-wait', null, { id });
+      await waitUntil(async () => (await waitingNames(original, id)).length === 2, {
+        message: 'both branches to wait',
+      });
+      await advanceTimersByTime(60 * 60 * 1000);
+      await waitUntil(async () => (await waitingNames(original, id)).toString() === 'two', {
+        message: 'the timed wait to stop',
+      });
+      await waitUntil(async () => hasFulfilledSlot(storage, id), {
+        message: 'the branch whose timeout won to be committed',
+      });
+    }
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [handle] = await restarted.recoverAll();
+    await waitUntil(async () => isWaitingOn(restarted, id, 'two'), {
+      message: 'the sibling to wait again',
+    });
+    expect(await waitingNames(restarted, id)).toEqual(['two']);
+    await handle!.signal('two', 'B');
+    expect(await handle!.result()).toEqual({ a: { timedOut: true }, b: 'B' });
+  });
+});
+
+async function waitingNames(engine: Engine, id: string): Promise<readonly string[]> {
+  const state = await engine.get(id);
+  return state?.waitingForSignals ?? [];
+}

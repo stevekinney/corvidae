@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 
 import { documentActivityOperation } from '../../document-workflow/interpreter.ts';
 import { advanceBranchesOf } from '../context/advancing-operations.ts';
@@ -13,6 +13,7 @@ import { Context } from '../context/index.ts';
 import type { ContextOperationRequest } from '../context/operation-request.ts';
 import type { ParallelOperationCacheEntry } from '../context/parallel-cache-entry.ts';
 import type { MidOperationCommitReport } from './checkpoint-io.ts';
+import { createDeferredConsumeEnvelope } from './deferred-consume-envelope.ts';
 import { stagedCoordinatorCompletion } from './file-workflow-completion-events.ts';
 import type { EngineInternals } from './internals.ts';
 import { processParallelOperation } from './operations-coordination.ts';
@@ -42,6 +43,11 @@ function advancingHarness(
     (function* () {
       let last: unknown;
       for (const [position, activityName] of shape[name]!.entries()) {
+        // `~go` waits for the signal `go`; any other name is an activity of that name.
+        if (activityName.startsWith('~')) {
+          last = yield* ctx.waitForSignal(activityName.slice(1));
+          continue;
+        }
         const run = ctx.run(
           Object.defineProperty(async () => activityName, 'name', { value: activityName }),
         );
@@ -85,17 +91,33 @@ function advancingHarness(
   let inFlight = 0;
   let overlapped = false;
   let outcome: { value?: unknown; error?: unknown } = {};
+  /** Names of the signal waits whose consume was finalized, in order, with the commits so far. */
+  const finalized: string[] = [];
+  let heldCommit: PromiseWithResolvers<void> | undefined;
   const done = processParallelOperation(internals, WORKFLOW_ID, request, {
     executeSubOperation: async (_id, operation, signal) => {
-      if (operation.type !== 'activity') throw new Error(`unexpected ${operation.type}`);
-      executed.push(operation.activityName);
-      let gate = gates.get(operation.activityName);
+      const name =
+        operation.type === 'wait-signal'
+          ? `~${operation.signalName}`
+          : operation.type === 'activity'
+            ? operation.activityName
+            : undefined;
+      if (name === undefined) throw new Error(`unexpected ${operation.type}`);
+      executed.push(name);
+      let gate = gates.get(name);
       if (gate === undefined) {
         gate = Promise.withResolvers();
-        gates.set(operation.activityName, gate);
+        gates.set(name, gate);
       }
       signal?.addEventListener('abort', () => gate.reject(signal.reason), { once: true });
-      return gate.promise;
+      const settled = await gate.promise;
+      // A wait resolves with a deferred-consume envelope, which stages its consume when finalized.
+      return operation.type === 'wait-signal'
+        ? createDeferredConsumeEnvelope(async () => {
+            finalized.push(`finalize ${name}`);
+            return settled;
+          })
+        : settled;
     },
     runOperationWithResult: async (_id, _operation, execute) => {
       try {
@@ -117,6 +139,12 @@ function advancingHarness(
         report,
       });
       await Promise.resolve();
+      if (heldCommit !== undefined) {
+        const held = heldCommit;
+        heldCommit = undefined;
+        await held.promise;
+      }
+      finalized.push('commit written');
       inFlight -= 1;
       if (options.persistFailure !== undefined) throw options.persistFailure;
     },
@@ -139,6 +167,13 @@ function advancingHarness(
     },
     fail(activityName: string, error: Error) {
       gates.get(activityName)!.reject(error);
+    },
+    finalized,
+    /** Hold the next commit open until `release` is called. */
+    holdNextCommit(): () => void {
+      const held = Promise.withResolvers<void>();
+      heldCommit = held;
+      return () => held.resolve();
     },
     /** Make the run that began the step no longer the current one. */
     replaceRun() {
@@ -222,6 +257,28 @@ describe('the engine side of an advancing parallel step', () => {
       ]);
     });
   }
+
+  it('stages the consume of a settled wait into the commit of its own step, never one a sibling opened first', async () => {
+    // A commit takes every consume staged for the workflow when it writes. A wait whose step
+    // settles while a sibling's commit is still being assembled must not stage its consume into
+    // that commit: the signal would go with a checkpoint that does not hold the wait's result.
+    const harness = advancingHarness({ a: ['A1', 'A2'], b: ['~go', 'B2'] });
+    await waitUntil(async () => harness.executed.length === 2);
+    const release = harness.holdNextCommit();
+    await harness.settle('A1');
+    await waitUntil(async () => harness.commits.length === 1);
+    await harness.settle('~go', 'payload');
+    await quietFor(20);
+    // The wait's step queues behind the sibling's commit: nothing is finalized yet.
+    expect(harness.finalized).toEqual([]);
+    release();
+    await waitUntil(async () => harness.commits.length === 2);
+    expect(harness.finalized.slice(0, 2)).toEqual(['commit written', 'finalize ~go']);
+    await harness.settle('A2');
+    await harness.settle('B2');
+    await harness.done;
+    expect(harness.outcome()).toEqual({ value: ['a2', 'b2'] });
+  });
 
   it('never overlaps two commits when branches settle together', async () => {
     const harness = advancingHarness({ a: ['A1', 'A2'], b: ['B1', 'B2'], c: ['C1'] });

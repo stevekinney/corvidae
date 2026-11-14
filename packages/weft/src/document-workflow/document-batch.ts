@@ -1,5 +1,6 @@
 /**
- * Lockstep rounds over the item generators of a `map` batch or a `parallel` step.
+ * Lockstep rounds over the item generators of a `map` batch, and of a `parallel` step a run began
+ * before its branches advanced on their own (see `runParallel` in the interpreter).
  *
  * @module document-workflow/document-batch
  */

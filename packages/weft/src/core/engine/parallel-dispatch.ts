@@ -20,10 +20,12 @@
  * Persistence model in the callers: the engine writes the partial entry
  * into `context.accumulatedResults` in place at the operation's parent
  * step; the existing checkpoint-persistence path picks it up on the
- * next yield boundary. This trades some durability under hard process
- * crashes for a much smaller blast radius into the engine's
- * checkpoint-write machinery — see the `parallel-execution.md` guide
- * for the precise durability contract.
+ * next yield boundary. A `ctx.all` branch that settles while a sibling
+ * is still pending commits its slot at once (`onSlotSettled`), so a
+ * branch that finished is not run again when a sibling keeps waiting;
+ * a failure with every branch settled still persists at the boundary,
+ * which trades some durability under hard process crashes for a much
+ * smaller blast radius into the engine's checkpoint-write machinery.
  */
 
 import type {

@@ -1277,6 +1277,68 @@ describe('a settled ctx.all branch is committed durably (COR-2416)', () => {
     });
   }
 
+  it('resumes without a restart with the same result, the activity run once (matrix row E2)', async () => {
+    let executions = 0;
+    const name = 'all-slot-commit-resume';
+    const id = `${name}-run`;
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    engine.register(
+      workflow({ name }).execute(async function* (ctx) {
+        return yield* ctx.all([
+          ctx.run(async () => {
+            executions += 1;
+            return 'A';
+          }),
+          ctx.waitForSignal<string>('go'),
+        ]);
+      }),
+    );
+    const handle = await engine.start(name, null, { id });
+    await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](id);
+    await handle.signal('go', 'yes');
+    expect(await handle.result()).toEqual(['A', 'yes']);
+    expect(executions).toBe(1);
+  });
+
+  it('commits a nested ctx.all as one branch of the outer one (matrix row E11)', async () => {
+    // A nested coordinator is a single operation of its outer branch: durability is the outer
+    // `ctx.all`'s, so the nested activities run again only if the nested branch did not settle.
+    const executions = { inner: 0 };
+    const name = 'all-nested-slot-commit';
+    const id = `${name}-run`;
+    const define = () =>
+      workflow({ name }).execute(async function* (ctx) {
+        const inner = ctx.all([
+          ctx.run(async () => {
+            executions.inner += 1;
+            return 'x';
+          }),
+          ctx.run(async () => {
+            executions.inner += 1;
+            return 'y';
+          }),
+        ]);
+        return yield* ctx.all([inner, ctx.waitForSignal<string>('go')]);
+      });
+    const storage = new MemoryStorage();
+    {
+      await using original = new Engine({ storage });
+      original.register(define());
+      await original.start(name, null, { id });
+      await original[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](id);
+      await waitUntil(async () => (await committedParallelEntry(storage, id)) !== undefined, {
+        message: 'the nested branch to be committed',
+      });
+    }
+    await using restarted = new Engine({ storage });
+    restarted.register(define());
+    const [handle] = await restarted.recoverAll();
+    await restarted[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](id);
+    await restarted.signal(id, 'go', 'yes');
+    expect(await handle!.result()).toEqual([['x', 'y'], 'yes']);
+    expect(executions.inner).toBe(2);
+  });
+
   it('commits a fulfilled wait slot together with its signal consume, and takes the signal once across a restart', async () => {
     // AC7: the consume of a fulfilled wait slot is staged into the same batch that checkpoints the
     // slot, so no commit holds the slot without the delete, or the delete without the slot.
