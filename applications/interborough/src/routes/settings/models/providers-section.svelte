@@ -2,11 +2,13 @@
   /**
    * The Providers part of Settings › Models (board SettingsShell, "Models, /settings/models" and
    * "Models, provider connected"): each provider that has a plugin, in the order Anthropic, OpenAI,
-   * Gemini, with what its models are called under its name. A provider with no key shows only
-   * Connect; one with a key shows a Connected dot and Manage, which opens the dialog that replaces or
-   * removes its key. There is no banner and no "Not
-   * connected" badge: while none is connected, the description says why agents cannot answer. A
-   * host that keeps its configuration in its deployment cannot save a key, and says so.
+   * Gemini, with what its models are called under its name. A provider that needs a key it lacks
+   * shows only Connect; a connected one shows a Connected dot and Manage, which opens the dialog
+   * that replaces or removes its key and edits its plugin's settings. A provider that declares no
+   * secret (a local Ollama) is connected with no key: its Manage holds only its settings, and with
+   * none it shows the Connected dot alone. There is no banner and no "Not connected" badge: while
+   * none is connected, the description says why agents cannot answer. A host that keeps its
+   * configuration in its deployment cannot save a key, and says so.
    */
   import { Alert, Button, FormSection, StatusDot } from '@lostgradient/cinder';
 

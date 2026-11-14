@@ -209,9 +209,48 @@ describe('bureau.decisions.decide', () => {
   });
 });
 
-const seed = createModelCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
+/**
+ * The frozen base of every row below: each capability is written out, so no vendor catalog or
+ * Operative default is relied on (COR-2151).
+ */
+const seed: BackendDescriptor = Object.freeze({
+  provider: 'acme',
+  endpoint: 'https://models.example.test',
+  model: 'seed',
+  aliases: [],
+  lifecycle: 'stable',
+  modalities: {
+    text: { input: true, output: true, sourceForms: ['inline'] },
+    image: { input: false, output: false, sourceForms: [] },
+    audio: { input: false, output: false, sourceForms: [] },
+    video: { input: false, output: false, sourceForms: [] },
+    document: { input: false, output: false, sourceForms: [] },
+    file: { input: false, output: false, sourceForms: [] },
+  },
+  mimeFamilies: [],
+  mediaLimits: [],
+  mediaCounts: [],
+  providerFetchesRemoteUrls: false,
+  contextWindowTokens: 100_000,
+  maxOutputTokens: 4_000,
+  streaming: true,
+  tools: true,
+  parallelTools: false,
+  structuredOutput: true,
+  parameterCompatibility: [],
+  caching: false,
+  batchInference: false,
+  explicitThinkingRequest: false,
+  serverSideTokenCounting: false,
+  effort: { portable: [], nativeMapping: 'unsupported', degradesTo: {} },
+  pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 5, currency: 'USD' },
+  availability: 'available',
+  health: 'healthy',
+  source: 'static',
+  freshness: '2026-11-01T00:00:00.000Z',
+});
 
-/** A catalog row with explicit capability and price: no vendor catalog is relied on (COR-2151). */
+/** A catalog row with explicit capability and price. */
 function row(
   provider: string,
   model: string,

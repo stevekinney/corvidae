@@ -209,6 +209,53 @@ test.describe('Settings › Models, provider connected', () => {
     await expect(page.locator('table')).toBeVisible();
     await expect(failed).toHaveCount(0);
   });
+
+  test('Decisions, the decision model open: every row the Bureau lists by provider, a row that needs setup marked', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withSampleCatalog(page);
+    await withDecisionRows(page);
+    await open(page, E2E_BASE_URL);
+    const model = page.locator('[data-setting="decisions.model"]');
+    await model.getByRole('combobox').click();
+    // The listbox draws its options through `aria-owns`, so they are found from the page.
+    await expect(page.getByRole('option', { name: /GPT 5/ })).toContainText(
+      MODELS_COPY.decisions.needsSetup,
+    );
+    await expect(page.getByRole('option', { name: /Claude Haiku 5.5/ })).not.toContainText(
+      MODELS_COPY.decisions.needsSetup,
+    );
+    await checkA11y('settings models, decision model open, at 1280px');
+    await captureAtEveryWidth(page, 'decision-model-open');
+  });
+
+  test('Decisions, a stored decision model the Bureau set aside: a warning on its row, not an error', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withSampleCatalog(page);
+    await withDecisionRows(page);
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method !== 'bureau.settings.get') return route.fallback();
+      const response = await route.fetch();
+      const answer = (await response.json()) as {
+        result: { keys: Record<string, Record<string, unknown>> };
+      };
+      answer.result.keys['decisions.model'] = {
+        ...answer.result.keys['decisions.model'],
+        problem: 'the stored value names the retired catalog row',
+      };
+      return route.fulfill({ response, json: answer });
+    });
+    await open(page, E2E_BASE_URL);
+    const model = page.locator('[data-setting="decisions.model"]');
+    await expect(model).toContainText(MODELS_COPY.decisions.model.dropped);
+    await expect(model).not.toContainText('the stored value names the retired catalog row');
+    await checkA11y('settings models, decision model dropped, at 1280px');
+    await captureAtEveryWidth(page, 'decision-model-dropped');
+  });
 });
 
 /** A key shaped like Anthropic's, which only ever goes to a mocked route here. */
@@ -317,6 +364,58 @@ test.describe('Settings › Models, connect dialogs', () => {
     await expect(dialog.getByRole('button', { name: copy.connect })).toBeEnabled();
     await checkA11y('settings models, connect empty, at 1280px');
     await captureAtEveryWidth(page, 'connect-empty');
+  });
+
+  test('Connect, with settings: the plugin’s own fields below the key field, under one heading, and no box of their own', async ({
+    page,
+    checkA11y,
+  }) => {
+    // OpenAI's plugin takes no settings on this host, so the Bureau's list of provider contributions
+    // gives it a `baseURL`, as a plugin that fronts a gateway would.
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
+      const response = await route.fetch();
+      const reply = (await response.json()) as {
+        result: { providers: { name: string; configuration: unknown }[] };
+      };
+      return route.fulfill({
+        response,
+        json: {
+          ...reply,
+          result: {
+            ...reply.result,
+            providers: reply.result.providers.map((provider) =>
+              provider.name === 'openai'
+                ? {
+                    ...provider,
+                    configuration: {
+                      ...OLLAMA_SCHEMA,
+                      properties: {
+                        baseURL: { type: 'string', description: 'Where the gateway listens.' },
+                      },
+                    },
+                  }
+                : provider,
+            ),
+          },
+        },
+      });
+    });
+    await open(page, E2E_SHOWCASE_URL);
+    await providerRow(page, 'openai')
+      .getByRole('button', { name: /Connect/ })
+      .click();
+    const dialog = page.getByRole('dialog', { name: copy.title('OpenAI') });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel(copy.keyLabel)).toBeVisible();
+    await expect(
+      dialog.getByRole('heading', { name: MODELS_COPY.configuration.heading }),
+    ).toBeVisible();
+    await expect(dialog.getByLabel(/base ?url/i)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: copy.connect })).toBeEnabled();
+    await checkA11y('settings models, connect with settings, at 1280px');
+    await captureAtEveryWidth(page, 'connect-with-settings');
   });
 
   test('Connect, testing: the masked key, a status with a spinner, a disabled Testing… and an enabled Cancel', async ({
@@ -552,14 +651,15 @@ async function withKeylessOllama(page: Page) {
   await page.route('**/host/plugins', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
     const response = await route.fetch();
-    const body = (await response.json()) as { plugins: unknown[] };
+    const body = (await response.json()) as { plugins: { descriptor: { name: string } }[] };
     const configuration = { baseURL: 'http://localhost:11434' };
     return route.fulfill({
       response,
       json: {
         ...body,
         plugins: [
-          ...body.plugins,
+          // The host lists its own Ollama plugin, switched off: this one stands in for it, running.
+          ...body.plugins.filter((plugin) => plugin.descriptor.name !== 'ollama'),
           {
             descriptor: {
               name: 'ollama',
@@ -589,7 +689,9 @@ async function withKeylessOllama(page: Page) {
     const body = route.request().postDataJSON() as { method?: string } | null;
     if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
     const response = await route.fetch();
-    const reply = (await response.json()) as { result: { providers: unknown[] } };
+    const reply = (await response.json()) as {
+      result: { providers: { plugin: string }[] };
+    };
     return route.fulfill({
       response,
       json: {
@@ -597,7 +699,7 @@ async function withKeylessOllama(page: Page) {
         result: {
           ...reply.result,
           providers: [
-            ...reply.result.providers,
+            ...reply.result.providers.filter((provider) => provider.plugin !== 'ollama'),
             { plugin: 'ollama', name: 'ollama', configuration: OLLAMA_SCHEMA },
           ],
         },
