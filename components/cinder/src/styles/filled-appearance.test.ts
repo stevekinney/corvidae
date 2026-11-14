@@ -41,6 +41,7 @@ function flatten(path: string): string {
 const inputCss = flatten('../components/input/input.css');
 const textareaCss = flatten('../components/textarea/textarea.css');
 const selectCss = flatten('../components/select/select.css');
+const fieldChevronCss = flatten('./components/_field-chevron.css');
 
 /** The density default selector: a field with no explicit outlined appearance in a comfortable subtree. */
 function densityDefault(component: string): string {
@@ -316,7 +317,7 @@ describe('Select chevron and inline variant', () => {
     const body = ruleBody(selectCss, '.cinder-select');
     expect(body).toContain('appearance: none;');
     expect(body).toContain('padding-inline: var(--cinder-space-3) var(--cinder-space-10);');
-    const chevron = ruleBody(selectCss, '.cinder-select-field__chevron');
+    const chevron = ruleBody(fieldChevronCss, '.cinder-_field-chevron');
     expect(chevron).toContain('inset-inline-end: var(--cinder-space-3);');
     expect(chevron).toContain('inline-size: 1.125rem;');
     expect(chevron).toContain('block-size: 1.125rem;');

@@ -269,6 +269,48 @@ describe('a new agent', () => {
     expect(container.textContent).toContain(AGENT_EDITOR_COPY.remote.noProvider.secretStep);
   });
 
+  test('puts only the Connect button in the action, and the lines and the steps under it in reading order (COR-2415)', async () => {
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }) });
+    const { findByRole, getByTestId, container } = mountEditor();
+
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+
+    const action = container.querySelector('.cinder-empty-state-action');
+    expect(action?.querySelector('[data-testid="agent-connect-provider"]')).not.toBeNull();
+    // The action is a row of buttons: no list and no column wrapper inside it.
+    expect(action?.querySelector('ol, ul, p, .weft-no-provider__connect')).toBeNull();
+    expect(action?.children).toHaveLength(1);
+    const details = container.querySelector('.cinder-empty-state-details');
+    expect(details?.querySelector('ol.weft-no-provider__steps')).not.toBeNull();
+    // Description, Connect a provider, the line under it, "Or set it up by hand:", then the steps.
+    const description = container.querySelector('.cinder-empty-state-description')!;
+    const connect = getByTestId('agent-connect-provider');
+    const blocked = getByTestId('agent-no-provider-blocked');
+    const byHand = [...container.querySelectorAll('p')].find(
+      (line) => line.textContent?.trim() === AGENT_EDITOR_COPY.noProvider.byHand,
+    )!;
+    const steps = container.querySelector('ol.weft-no-provider__steps')!;
+    const inOrder = [description, connect, blocked, byHand, steps];
+    for (const [index, node] of inOrder.entries()) {
+      const next = inOrder[index + 1];
+      if (next === undefined) continue;
+      expect(node.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  test('draws no action at all where the host keeps its keys in its deployment, and the steps still follow the description (COR-2415)', async () => {
+    bureau({ catalog: catalogFixture({ models: unkeyedModelFixtures() }), hostMode: 'remote' });
+    const { findByRole, container } = mountEditor();
+
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+
+    expect(container.querySelector('.cinder-empty-state-action')).toBeNull();
+    expect(
+      container.querySelector('.cinder-empty-state-details ol.weft-no-provider__steps'),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-testid="agent-no-provider-blocked"]')).toBeNull();
+  });
+
   test('builds the form when a provider has been added and the page is reloaded', async () => {
     let catalog = catalogFixture({ models: unkeyedModelFixtures() });
     bureau({ catalog: () => catalog });

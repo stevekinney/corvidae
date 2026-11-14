@@ -14,6 +14,59 @@ function assertNever(value: never): never {
   throw new Error(`Unexpected exhaustive value: ${String(value)}`);
 }
 
+/** An ancestor's line where it runs past a nested row. */
+export type RailThrough = {
+  /** The ancestor's depth, which places the line. */
+  depth: number;
+  /**
+   * Whether the line stops at this row's marker: the ancestor has no later sibling and this is
+   * the last of its nested rows. Otherwise it runs on into the next row.
+   */
+  ends: boolean;
+};
+
+/** How one row of the rail joins the rows after it. */
+export type RailConnection = {
+  /**
+   * Whether a line leaves this row's marker: toward its next sibling (the next row at the same
+   * depth before any shallower row), or along its nested rows when it has them.
+   */
+  after: 'hidden' | 'visible';
+  /** The shallower depths whose line runs past this row. */
+  through: RailThrough[];
+};
+
+/**
+ * The rail's connections, from each row's depth in display order. A parent's line runs past its
+ * nested rows to its next sibling, and with no later sibling it runs along its nested rows and
+ * stops at the last one's marker. A last child with no nested rows has no line below it. Every
+ * row the line runs past carries the parent's depth in `through`.
+ */
+export function railConnections(depths: readonly number[]): RailConnection[] {
+  const sibling: boolean[] = Array.from({ length: depths.length }, () => false);
+  // Walking up from the end: whether a row at each depth follows with no shallower row between.
+  const followed: boolean[] = [];
+  for (let index = depths.length - 1; index >= 0; index -= 1) {
+    const depth = depths[index] ?? 0;
+    sibling[index] = followed[depth] === true;
+    followed[depth] = true;
+    followed.length = depth + 1;
+  }
+  // Walking down: which ancestors' lines are still open when each row starts.
+  const open: boolean[] = [];
+  return depths.map((depth, index) => {
+    const nextDepth = depths[index + 1] ?? -1;
+    const through: RailThrough[] = [];
+    for (let level = 0; level < depth; level += 1) {
+      if (open[level] === true) through.push({ depth: level, ends: nextDepth < level });
+    }
+    const visible = sibling[index] === true || nextDepth > depth;
+    open[depth] = visible;
+    open.length = depth + 1;
+    return { after: visible ? 'visible' : 'hidden', through };
+  });
+}
+
 /**
  * Relocate resolved compensation steps immediately after the subtree of the
  * sibling they reverse. Unresolved, self-referential, and cyclic links retain

@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = "A workflow file's schema";
   export const description =
-    'Field, Type and Description on one grid. Required fields come first, marked by a red dot after the label, with one hairline before the rest. Types are plain words, nested rows indent under their parent, and More opens the model-facing text in place.';
+    'Field, Type and Description on one grid. Required fields come first, marked by a red dot after the label, with one hairline before the rest. Each type is a coloured mark with its facts (allowed values, default, format, limits) under the description, nested rows indent under their parent, and More opens the model-facing text in place.';
 </script>
 
 <script lang="ts">

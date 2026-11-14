@@ -80,7 +80,7 @@ export type RestartStateProps = {
    */
   detailsLabel?: string;
   /**
-   * The exact command the host was launched with, in `failed`, with a Copy button: the way back
+   * The exact command the host was launched with, in `failed`, with a copy icon button: the way back
    * when the host that would restart itself is the one that is not answering. Left out, the line
    * does not show.
    */
@@ -91,8 +91,8 @@ export type RestartStateProps = {
    */
   commandLabel?: string;
   /**
-   * Label of the button that copies `command`.
-   * @default "Copy"
+   * Accessible name of the copy icon button that copies `command`.
+   * @default "Copy the command"
    */
   copyLabel?: string;
   /**

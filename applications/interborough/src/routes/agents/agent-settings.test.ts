@@ -69,6 +69,7 @@ const version = (
   savedAt: '2026-10-19T09:00:00.000Z',
   savedBy: 'anonymous:local',
   definition: { ...DEFINITION, ...definition },
+  overrides: null,
   changedKeys,
 });
 

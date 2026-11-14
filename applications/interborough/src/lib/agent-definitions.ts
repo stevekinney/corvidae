@@ -267,6 +267,92 @@ const detailSchema = z.object({
 /** One agent as `bureau.agents.definitions.get` shows it. */
 export type AgentDetail = z.infer<typeof detailSchema>;
 
+/**
+ * What a person changed on a code agent the catalog runs (`bureau.agents.overrides.get`, COR-2009
+ * and COR-2228): every key is `null` when it is not overridden and the agent's own value applies.
+ * The key set is the Bureau's `agentOverridesOutputSchema`, which the browser cannot import.
+ */
+const overridesSchema = z.object({
+  instructions: z.string().nullable().default(null),
+  tools: z.array(z.string()).nullable().default(null),
+  approvals: z.record(z.string(), z.enum(TOOL_APPROVALS)).nullable().default(null),
+  guardrails: z.array(guardrailEntrySchema).nullable().default(null),
+  interceptors: z.array(z.string()).nullable().default(null),
+  escalations: z.array(z.string()).nullable().default(null),
+  limits: z
+    .object({
+      steps: z.number().int().nullable().optional(),
+      cost: z
+        .object({
+          run: z.number(),
+          chat: z.number().optional(),
+          warn: z.array(z.number()).optional(),
+        })
+        .nullable()
+        .optional(),
+      tools: z
+        .object({ calls: z.number().optional(), seconds: z.number().optional() })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .default(null),
+  model: z.string().nullable().default(null),
+  models: z.array(z.string()).nullable().default(null),
+  effort: z.enum(EFFORTS).nullable().default(null),
+});
+
+/** A code agent's saved overrides, every key present and `null` when not overridden. */
+export type AgentOverrides = z.infer<typeof overridesSchema>;
+
+/**
+ * What a save of overrides sends: the whole set, a key left out or `null` is not overridden, and a
+ * limit left out of `limits` is not overridden.
+ */
+export type AgentOverridesInput = {
+  readonly instructions?: string | null | undefined;
+  readonly tools?: readonly string[] | null | undefined;
+  readonly approvals?: Readonly<Record<string, ToolApproval>> | null | undefined;
+  readonly guardrails?: readonly AgentGuardrailEntry[] | null | undefined;
+  readonly interceptors?: readonly string[] | null | undefined;
+  readonly escalations?: readonly string[] | null | undefined;
+  readonly limits?:
+    | {
+        readonly steps?: number | null | undefined;
+        readonly cost?:
+          | {
+              readonly run: number;
+              readonly chat?: number | undefined;
+              readonly warn?: readonly number[] | undefined;
+            }
+          | null
+          | undefined;
+        readonly tools?:
+          | { readonly calls?: number | undefined; readonly seconds?: number | undefined }
+          | null
+          | undefined;
+      }
+    | null
+    | undefined;
+  readonly model?: string | null | undefined;
+  readonly models?: readonly string[] | null | undefined;
+  readonly effort?: Effort | null | undefined;
+};
+
+const overridesStateSchema = z.object({
+  id: z.string(),
+  /** The hash of the overrides in force, which a save and a restore name as `expectedHash`. */
+  hash: z.string(),
+  /** The newest version, or `null` for an agent nobody changed, which has no versions. */
+  version: z.number().int().nullable().default(null),
+  overrides: overridesSchema,
+  /** The tools the agent states itself, before any override: what a removed tool is added back from. */
+  ownTools: z.array(z.string()).default([]),
+});
+
+/** A code agent's overrides, the version they were saved as, their hash and the agent's own tools. */
+export type AgentOverridesState = z.infer<typeof overridesStateSchema>;
+
 const revisionsSchema = z.object({
   revisions: z.array(z.object({ hash: z.string(), firstRunAt: z.string(), lastRunAt: z.string() })),
 });
@@ -283,6 +369,8 @@ const versionsSchema = z.object({
       savedBy: z.string().nullable(),
       /** The definition a file agent's version holds; `null` for a built-in agent's, which holds overrides (COR-2009). */
       definition: definitionSchema.nullable(),
+      /** The overrides a code agent's version holds (COR-2229); `null` for a file agent's. */
+      overrides: overridesSchema.nullable().default(null),
       changedKeys: z.array(z.string()),
     }),
   ),
@@ -452,6 +540,44 @@ export async function getAgentOverrideModel(id: string, options?: Options): Prom
     .object({ overrides: z.object({ model: z.string().nullable().default(null) }) })
     .parse(await callBureau('bureau.agents.overrides.get', { id }, options));
   return answer.overrides.model;
+}
+
+/**
+ * What a person changed on a code agent the catalog runs, a built-in agent or a running plugin's
+ * (`bureau.agents.overrides.get`). An identifier that is no such agent is a `NotFound` fault.
+ */
+export async function getAgentOverrides(
+  id: string,
+  options?: Options,
+): Promise<AgentOverridesState> {
+  return overridesStateSchema.parse(
+    await callBureau('bureau.agents.overrides.get', { id }, options),
+  );
+}
+
+const overridesWriteSchema = z.object({
+  id: z.string(),
+  hash: z.string(),
+  version: z.number().int().nullable().default(null),
+});
+
+/** What a save of overrides answers: the hash now in force and the version it made. */
+export type AgentOverridesWriteResult = z.infer<typeof overridesWriteSchema>;
+
+/**
+ * Saves `overrides` as the next version of a code agent (`bureau.agents.overrides.update`), if the
+ * overrides in force still hash to `expectedHash`. The set replaces the one in force: a key left
+ * out or `null` is no longer overridden.
+ */
+export async function updateAgentOverrides(
+  id: string,
+  expectedHash: string,
+  overrides: AgentOverridesInput,
+  options?: Options,
+): Promise<AgentOverridesWriteResult> {
+  return overridesWriteSchema.parse(
+    await callBureau('bureau.agents.overrides.update', { id, expectedHash, overrides }, options),
+  );
 }
 
 /** The versions of the agent that have run, most recently run first. */
