@@ -52,7 +52,8 @@ describe('a blocked composer', () => {
 
   test('on a phone-width composer the actions stay at the row’s end at their own width, never a full-width bar (COR-2327 B1)', async () => {
     const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
-    const actions = /\.chat-input-blocked-actions \{([^}]*)\}/u.exec(source)?.[1];
+    // The rule of its own, not the archived or read-only bar's (`.chat-input-notice ...`).
+    const actions = /\n {2}\.chat-input-blocked-actions \{([^}]*)\}/u.exec(source)?.[1];
 
     expect(actions).toContain('flex: none;');
     expect(actions).toContain('margin-inline-start: auto;');
