@@ -298,7 +298,8 @@
     position: relative;
     z-index: 1;
     align-self: start;
-    padding-block: var(--cinder-space-2-5);
+    /* Little padding, so a line that wraps to two lines on a phone still fits the first row. */
+    padding-block: var(--cinder-space-1);
   }
 
   .cinder-skeleton-group[data-cinder-variant='grouped'] > .cinder-skeleton-status {

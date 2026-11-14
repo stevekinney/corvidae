@@ -29,6 +29,17 @@
       onCancel={() => {}}
     />
   </div>
+  <!-- The list variant slow: on a phone the line wraps, and still fits the first row. -->
+  <div data-testid="skeleton-list-slow">
+    <Skeleton
+      variant="list"
+      rows={3}
+      label="Loading runs"
+      stillLoadingAfter={0}
+      stillLoadingLabel="Still loading runs. This is taking longer than usual."
+      onCancel={() => {}}
+    />
+  </div>
   <!-- A page's own placeholder whose first block holds the line, beside the same page before the
        line appears: the real text and the blocks after it are in the same places. -->
   <div style="display: flex; gap: 1rem;">

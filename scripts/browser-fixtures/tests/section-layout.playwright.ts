@@ -156,6 +156,15 @@ test.describe('GroupedList layout', () => {
     await expect(
       slow.locator('.cinder-skeleton-grouped-row').first().locator('.cinder-skeleton').first(),
     ).toHaveCSS('visibility', 'hidden');
+    // The list variant's line, wrapped on a phone, still fits inside the first row.
+    for (const width of [1024, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      const list = page.getByTestId('skeleton-list-slow');
+      const listLine = await list.locator('.cinder-skeleton-status').boundingBox();
+      const second = await list.locator('.cinder-skeleton-row').nth(1).boundingBox();
+      expect(listLine!.y + listLine!.height, `list at ${width}`).toBeLessThanOrEqual(second!.y + 1);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
     // A page's own placeholder: the block that holds the line keeps the page where it was.
     const pageTops = async (testId: string) => {
       const group = await page.getByTestId(testId).boundingBox();
