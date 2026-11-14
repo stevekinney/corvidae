@@ -649,6 +649,22 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: { children: s0(true) },
   },
 
+  spotlight: {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      status: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      statusLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+    },
+    snippets: {
+      caveat: s0(true),
+      // COR-2329: the value's action, at the end of its first line ("Open Reviews ›").
+      action: s0(true),
+    },
+  },
+
   spinner: {
     kind: 'literal',
     props: {

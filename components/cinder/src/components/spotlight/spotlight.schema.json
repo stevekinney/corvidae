@@ -34,6 +34,11 @@
   "metadata": {
     "unsupportedProps": [
       {
+        "name": "action",
+        "reason": "function-or-snippet",
+        "description": "The value's action, such as a `Link` in its `more` form to the page that holds the rest\n(\"Open Reviews\"), when the value is the title of what follows it. It sits at the end of the\nvalue's first line, centred on it, as a section's action sits beside its heading, and drops to\nthe next line only when the two do not fit side by side."
+      },
+      {
         "name": "caveat",
         "reason": "function-or-snippet",
         "description": "Staleness or a caution, such as \"Updated 12 min ago\", drawn in warning text directly under the value."

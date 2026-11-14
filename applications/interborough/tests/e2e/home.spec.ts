@@ -125,7 +125,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     page,
   }) => {
     await openHome(page);
-    const spotlight = page.getByTestId('home-spotlight');
+    const spotlight = page.getByTestId('home-spotlight').locator('.cinder-spotlight__value');
     await expect(spotlight).toHaveText('2 need you');
     const counts = page.getByTestId('home-counts');
     await expect(counts.locator('.cinder-statistic')).toHaveText([/Failed in 24 hours\s*0/]);
@@ -315,7 +315,9 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     checkA11y,
   }) => {
     await openHome(page);
-    await expect(page.getByTestId('home-spotlight')).toHaveText('Nothing needs you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      'Nothing needs you',
+    );
     const counts = page.getByTestId('home-counts');
     await expect(counts.locator('.cinder-statistic')).toHaveText([/Failed in 24 hours\s*0/]);
     await expect(counts.locator('[data-cinder-attention]')).toHaveCount(0);
@@ -827,7 +829,9 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
     await expect(card.getByRole('link')).toHaveCount(0);
     await expect(card.getByRole('listitem')).toHaveCount(0);
     // The Spotlight and the count have reads of their own and are unchanged.
-    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      '2 need you',
+    );
     await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
       /Failed in 24 hours\s*0/,
     ]);
@@ -898,7 +902,9 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(date!.y);
 
     // Old data keeps full contrast (never dimmed with opacity), and nothing is zeroed.
-    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      '2 need you',
+    );
     await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
       /Failed in 24 hours\s*0/,
     ]);
@@ -1011,7 +1017,9 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
       'Monday, Nov 2. Times show in Central time (CST).',
     );
     // The Spotlight, then one count under it with no dot while nothing failed.
-    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      '2 need you',
+    );
     const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
     await expect(stats).toHaveText([/Failed in 24 hours\s*0/]);
     await expect(stats.locator('xpath=self::*[@data-cinder-attention]')).toHaveCount(0);
@@ -1122,7 +1130,9 @@ test.describe('Home on a tablet (05s)', () => {
     await expect(
       page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ }),
     ).toContainText('2');
-    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      '2 need you',
+    );
     const rows = needsYou(page).getByRole('listitem');
     for (const [index, name] of [
       [0, 'Answer'],

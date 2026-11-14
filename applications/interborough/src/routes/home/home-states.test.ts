@@ -271,7 +271,11 @@ describe('One card that cannot be read (01n, 01o)', () => {
     expect(within(card).queryByRole('link')).toBeNull();
     expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
     // The Spotlight and the count have reads of their own: they are unchanged.
-    await waitFor(() => expect(words(getByTestId('home-spotlight'))).toBe('2 need you'));
+    await waitFor(() =>
+      expect(
+        words(getByTestId('home-spotlight').querySelector('.cinder-spotlight__value') as Element),
+      ).toBe('2 need you'),
+    );
     await waitFor(() =>
       expect(
         [...getByTestId('home-counts').querySelectorAll('.cinder-statistic')].map(words),

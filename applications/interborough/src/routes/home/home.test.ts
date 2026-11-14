@@ -108,7 +108,11 @@ describe('Home', () => {
   test('leads with a Spotlight that says how many reviews wait on you, and one count under it', async () => {
     const { getByTestId } = await open();
     await waitFor(() =>
-      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('2 need you'),
+      expect(
+        getByTestId('home-spotlight')
+          .querySelector('.cinder-spotlight__value')
+          ?.textContent?.trim(),
+      ).toBe('2 need you'),
     );
     const counts = getByTestId('home-counts');
     expect(counts.getAttribute('data-cinder-variant')).toBe('plain');
@@ -157,7 +161,11 @@ describe('Home', () => {
   test('keeps the Spotlight and the count when the problems cannot be read, and never claims all is well', async () => {
     const { container, getByTestId } = await open(sampleHomeWorld({ attentionRefused: true }));
     await waitFor(() =>
-      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('2 need you'),
+      expect(
+        getByTestId('home-spotlight')
+          .querySelector('.cinder-spotlight__value')
+          ?.textContent?.trim(),
+      ).toBe('2 need you'),
     );
     await waitFor(() =>
       expect(getByTestId('home-counts').textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
@@ -195,7 +203,10 @@ describe('Home', () => {
     const link = within(focus).getByRole('link', { name: 'Open Reviews' });
     expect(link.getAttribute('href')).toBe('/reviews');
     expect(link.getAttribute('data-variant')).toBe('more');
-    expect(link.parentElement?.contains(getByTestId('home-spotlight'))).toBe(true);
+    // It is the Spotlight's own action (COR-2329 round two: the page copied Section's header).
+    expect(link.closest('.cinder-spotlight__action')).not.toBeNull();
+    expect(getByTestId('home-spotlight').contains(link)).toBe(true);
+    expect(container.querySelector('.ib-home-focus__lead')).toBeNull();
     expect(within(container).getAllByRole('link', { name: 'Open Reviews' })).toHaveLength(1);
     expect(within(container).queryByRole('heading', { name: 'Needs you' })).toBeNull();
     await fireEvent.click(link);
@@ -215,7 +226,11 @@ describe('Home', () => {
       sampleHomeWorld({ world: emptyBureauWorld({ reviews }) }),
     );
     await waitFor(() =>
-      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('7 need you'),
+      expect(
+        getByTestId('home-spotlight')
+          .querySelector('.cinder-spotlight__value')
+          ?.textContent?.trim(),
+      ).toBe('7 need you'),
     );
     const card = cardOf(container, 'Needs you');
     await waitFor(() => expect(card.querySelectorAll('li[data-review]')).toHaveLength(5));
@@ -344,7 +359,11 @@ describe('Home with nothing waiting on you and a provider connected', () => {
   test('says nothing needs you in the Spotlight, and reads zero with no dot (01s)', async () => {
     const { getByTestId } = await open(calm());
     await waitFor(() =>
-      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('Nothing needs you'),
+      expect(
+        getByTestId('home-spotlight')
+          .querySelector('.cinder-spotlight__value')
+          ?.textContent?.trim(),
+      ).toBe('Nothing needs you'),
     );
     const counts = getByTestId('home-counts');
     await waitFor(() =>
@@ -356,7 +375,11 @@ describe('Home with nothing waiting on you and a provider connected', () => {
   test('lets "Nothing needs you" stand alone with the link to Reviews beside it, and no second line says it (01t)', async () => {
     const { container, getByTestId } = await open(calm());
     await waitFor(() =>
-      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('Nothing needs you'),
+      expect(
+        getByTestId('home-spotlight')
+          .querySelector('.cinder-spotlight__value')
+          ?.textContent?.trim(),
+      ).toBe('Nothing needs you'),
     );
     const link = within(getByTestId('home-focus')).getByRole('link', { name: 'Open Reviews' });
     expect(link.getAttribute('href')).toBe('/reviews');
@@ -824,7 +847,11 @@ describe('Home’s Running now (01w, 01x)', () => {
     const waiting = taskFixture({ id: 'run-waiting', status: 'input-required' });
     const { container, getByTestId } = await open(running([waiting]));
     await waitFor(() =>
-      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('Nothing needs you'),
+      expect(
+        getByTestId('home-spotlight')
+          .querySelector('.cinder-spotlight__value')
+          ?.textContent?.trim(),
+      ).toBe('Nothing needs you'),
     );
     expect(container.querySelector('[data-home-card="Running now"]')).toBeNull();
   });
