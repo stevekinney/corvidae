@@ -225,7 +225,7 @@ describe('bureau.workflows.catalog', () => {
     );
     expect(wire.error).toBeUndefined();
     expect(wire.result).toEqual(fromTool);
-    expect((wire.result?.['workflows'] as unknown[]).length).toBe(2);
+    expect(wire.result?.['workflows']).toHaveLength(2);
   });
 });
 

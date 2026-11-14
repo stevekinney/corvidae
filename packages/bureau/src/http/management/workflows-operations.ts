@@ -835,7 +835,7 @@ export const workflowsCatalogOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: ({ host, principal }) => {
+  invoke: async ({ host, principal }) => {
     if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
       throw {
         code: 'Forbidden',
@@ -843,7 +843,8 @@ export const workflowsCatalogOperation = defineOperation<
         data: { reason: 'missing scope bureau.workflows:read' },
       } satisfies OperationFault;
     }
-    return workflowsOf(host).catalog();
+    // The catalog's members are read-only; the wire shape is plain data, so it takes a copy.
+    return structuredClone(workflowsOf(host).catalog()) as z.infer<typeof catalogOutput>;
   },
 });
 
