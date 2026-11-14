@@ -12,6 +12,7 @@ import {
   dayAndTime,
   dayStamp,
   rowTime,
+  shortDate,
   timesShowIn,
   viewerTimeZone,
   waitedFor,
@@ -47,6 +48,17 @@ describe('dayStamp', () => {
   test('says the weekday, the day and the clock, for today and for any other day', () => {
     expect(dayStamp(Date.parse('2026-11-02T10:30:00-06:00'), ZONE)).toBe('Mon, Nov 2, 10:30 AM');
     expect(dayStamp(Date.parse('2026-10-30T10:07:00-05:00'), ZONE)).toBe('Fri, Oct 30, 10:07 AM');
+  });
+});
+
+describe('shortDate', () => {
+  test('says the month and day this year, and the year too for another', () => {
+    expect(shortDate(Date.parse('2026-11-01T09:00:00-06:00'), NOW, ZONE)).toBe('Nov 1');
+    expect(shortDate(Date.parse('2025-12-30T09:00:00-06:00'), NOW, ZONE)).toBe('Dec 30, 2025');
+  });
+
+  test('reads the day the zone is in, not the one the instant is in at UTC', () => {
+    expect(shortDate(Date.parse('2026-11-03T03:30:00Z'), NOW, ZONE)).toBe('Nov 2');
   });
 });
 

@@ -5,7 +5,8 @@
  *
  * A blocked row says the first of these that holds, because each makes the ones after it moot:
  * the server is unreachable (Retry lives in the banner, so the row has no action), the host is
- * restarting after a plugin was enabled, the chat's agent comes from a disabled plugin, the host
+ * restarting after a plugin was enabled, the chat is archived (Chat's neutral Archived bar, with New
+ * chat and the primary Unarchive), the chat's agent comes from a disabled plugin, the host
  * stopped the chat when it restarted, a chat started from Workflows has no agent that can create
  * workflows, or no provider is connected for an agent that needs a model.
  * Otherwise the line under the box is, in this order, the reconnect count, a queued follow-up, a
@@ -25,12 +26,25 @@ export interface UnavailableAgent {
   readonly enable: () => void;
 }
 
+/** An archived chat: when it was archived, and the way back. */
+export interface ArchivedChat {
+  /** When the chat was archived, in words, such as `Nov 3`. */
+  readonly when: string;
+  /** Unarchives the chat, so the composer comes back. */
+  readonly unarchive: () => void;
+}
+
 /** What the page knows that decides the composer's status. */
 export interface ComposerFacts {
   /** The server does not answer. */
   readonly unreachable: boolean;
   /** The host is restarting after the person enabled a plugin. */
   readonly restarting: boolean;
+  /**
+   * The chat is archived, so it takes no message until it is unarchived. Unarchive is a write, so
+   * the unreachable and restarting rows come first, as they do for every other write.
+   */
+  readonly archived?: ArchivedChat | undefined;
   /** The chat's agent, when it comes from a plugin that is disabled. */
   readonly unavailable?: UnavailableAgent | undefined;
   /** The host stopped the chat when it restarted, so its run cannot continue. */
@@ -66,6 +80,14 @@ const COPY = CHAT_COPY.composer;
 export function composerStatusOf(facts: ComposerFacts): ChatComposerStatus | undefined {
   if (facts.unreachable) return { kind: 'blocked', reason: COPY.unreachable };
   if (facts.restarting) return { kind: 'blocked', reason: COPY.restarting };
+  if (facts.archived !== undefined) {
+    return {
+      kind: 'archived',
+      when: facts.archived.when,
+      newChat: { label: COPY.newChat, href: facts.newChatHref },
+      unarchive: { label: COPY.unarchive, onclick: facts.archived.unarchive, primary: true },
+    };
+  }
   if (facts.unavailable !== undefined) {
     return {
       kind: 'blocked',

@@ -101,6 +101,7 @@
   import { getProviders } from '../../lib/host-providers.ts';
   import { answerUndoMilliseconds } from '../../lib/answer-undo.ts';
   import { uploadAsset } from '../../lib/bureau-assets.ts';
+  import { shortDate } from '../../lib/format/clock.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { NEW_CHAT_FROM_WORKFLOWS } from '../../lib/new-chat-address.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
@@ -122,6 +123,7 @@
   import ChatApproval from './chat-approval.svelte';
   import { branchPointIds } from './branch-points.ts';
   import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
+  import { setChatArchived } from './chat-archive.ts';
   import ChatAssets from './chat-assets.svelte';
   import {
     CHAT_EXPORT_TYPE,
@@ -219,6 +221,8 @@
     // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
     closed: () => gone,
     onNotFound: () => void context.refetch(),
+    // Another window archived the chat: reading it again turns the composer into the Archived bar.
+    onArchived: () => void context.refetch(),
     onGrantNotLoosened: (notice) => grantNotLoosened(notice),
     discardUnstarted: () => choosing,
     onRunStarted: () => {
@@ -490,10 +494,41 @@
       : SETTINGS.applies.nextRun(name, value);
   }
 
+  // An archived chat (COR-2285 V5) takes no message until it is unarchived: Chat's neutral Archived
+  // bar stands in for the composer, with New chat and the primary Unarchive, and the conversation
+  // stays readable. Archive is refused while a run goes or waits on the person, so no approval or
+  // question can wait under the bar.
+  const archivedAt = $derived(choosing ? null : (context.data?.archivedAt ?? null));
+  let archiving = $state(false);
+  /**
+   * Archives the chat or unarchives it (`chat-archive.ts`). Unarchived from the bar, the composer
+   * comes back with the focus in its box, where the person was about to write.
+   */
+  async function setArchived(archive: boolean, focusComposer: boolean): Promise<void> {
+    if (archiving) return;
+    archiving = true;
+    try {
+      const done = await setChatArchived(queryClient, sessionId, archive);
+      if (done && !archive && focusComposer) {
+        await tick();
+        chat?.focusInput();
+      }
+    } finally {
+      archiving = false;
+    }
+  }
+
   const composerStatus = $derived(
     composerStatusOf({
       unreachable: connection.unreachable,
       restarting: restart.running,
+      archived:
+        archivedAt === null
+          ? undefined
+          : {
+              when: shortDate(epochOf(archivedAt) ?? clock(), clock()),
+              unarchive: () => void setArchived(false, true),
+            },
       unavailable: agentUnavailable
         ? {
             agent: unavailableName,
@@ -540,7 +575,9 @@
         },
       };
     }
-    if (noProvider && composerStatus?.kind !== 'blocked') {
+    // An archived chat's bar outranks the missing provider: nothing can be sent until it is
+    // unarchived, and Unarchive is the way back.
+    if (noProvider && composerStatus?.kind !== 'blocked' && composerStatus?.kind !== 'archived') {
       return { kind: 'unconfigured', onConnect: () => router.navigate('/settings/models') };
     }
     return undefined;
@@ -548,7 +585,7 @@
 
   // An open chat with no message yet is Chat's first-use state (COR-2285 V1): the agent's own
   // description, and the prompts it suggests as buttons that send. None is offered while a prompt
-  // could not be sent: the composer is a blocked row, paused, or the chat is gone.
+  // could not be sent: the composer is a blocked row or the Archived bar, paused, or the chat is gone.
   const listedAgent = $derived(agents.data?.find((entry) => entry.name === agent));
   const emptyDescription = $derived(
     listedAgent?.description ?? CHAT_COPY.emptyTranscript.description,
@@ -556,6 +593,7 @@
   const emptyPrompts = $derived(
     listedAgent === undefined ||
       composerStatus?.kind === 'blocked' ||
+      composerStatus?.kind === 'archived' ||
       noProvider ||
       session.disconnected ||
       connection.unreachable ||
@@ -1891,8 +1929,10 @@
     branchTarget={lastBranchTarget}
     {branching}
     canExport={hasExportableText(shown)}
+    archived={archivedAt !== null}
     onBranch={(messageId) => void branchThrough(messageId)}
     onExport={exportChat}
+    onArchive={(archive) => void setArchived(archive, false)}
   />
 {/snippet}
 
@@ -2001,7 +2041,7 @@
         id={`chat-${sessionId}`}
         conversation={choosing ? unstartedConversation : shown}
         adapter={chatAdapter}
-        onRegenerate={regenerateAnswer}
+        onRegenerate={archivedAt === null ? regenerateAnswer : undefined}
         messageStatus={regenerationStatus}
         {availability}
         {...choosing ? { empty: newChatEmpty } : {}}

@@ -109,6 +109,22 @@ export function dayStamp(at: number, zone: string = viewerTimeZone()): string {
   return `${day}, ${clockTime(at, zone)}`;
 }
 
+/**
+ * The day of an instant and nothing else, for a line that says when something was put away: "Nov 3"
+ * this year, and "Nov 3, 2025" for another year, by the zone's calendar.
+ */
+export function shortDate(at: number, now: number, zone: string = viewerTimeZone()): string {
+  const sameYear =
+    partOf(at, zone, { year: 'numeric' }, 'year') ===
+    partOf(now, zone, { year: 'numeric' }, 'year');
+  return new Intl.DateTimeFormat(LOCALE, {
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? {} : { year: 'numeric' }),
+    timeZone: zone,
+  }).format(at);
+}
+
 /** An instant written in UTC, for the tooltip of a time shown in the viewer's zone: "Nov 11, 2026, 7:42 PM UTC". */
 export function utcStamp(at: number): string {
   return `${new Intl.DateTimeFormat(LOCALE, {

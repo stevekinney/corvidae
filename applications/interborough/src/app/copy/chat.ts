@@ -503,6 +503,8 @@ export const CHAT_COPY = {
     },
     ended: 'This chat has ended. The server stopped it when it restarted.',
     newChat: 'New chat',
+    /** The primary action of an archived chat's bar, which brings the composer back. */
+    unarchive: 'Unarchive',
     /** The composer's placeholder while a question that draws choices waits. */
     answerPlaceholder: 'Choose an answer above, or type your own…',
     noProvider: 'Connect a model provider to chat',
@@ -605,6 +607,21 @@ export const CHAT_COPY = {
     /** Said as the hint on Export when the chat has no messages. */
     nothingToExport: 'There is nothing in this chat to export yet.',
     exportFault: 'The chat could not be exported.',
+    /** Archive puts the chat away, out of the list, until it is unarchived; an archived chat's menu offers Unarchive. */
+    archive: 'Archive',
+    unarchive: 'Unarchive',
+    /** What archiving or unarchiving says when it did not happen. */
+    archiving: {
+      /** The chat is working or waiting on an approval or an answer, so it was not archived. */
+      busy: 'This chat is still working or waiting on an answer. Stop it or answer it, then archive it.',
+      /** A goal writes to its own chat, so that chat cannot be archived. */
+      notArchivable: 'This chat belongs to a goal, so it can’t be archived.',
+      archiveFault: 'The chat could not be archived.',
+      unarchiveFault: 'The chat could not be unarchived.',
+      /** The Bureau answered not-found, and a read of the chat shows it is still there. */
+      refused: 'The chat was not changed: the change was refused.',
+      gone: 'This chat no longer exists.',
+    },
     delete: 'Delete',
     /** The rename dialog. */
     renameDialog: {
