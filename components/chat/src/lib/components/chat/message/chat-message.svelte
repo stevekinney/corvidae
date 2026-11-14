@@ -48,7 +48,7 @@
      * `'body'` is the text alone, and `'outcome'` the notice, the line under it and the run's notes.
      * Default `'whole'`, all of it in one.
      */
-    part?: 'whole' | 'body' | 'outcome';
+    section?: 'whole' | 'body' | 'outcome';
     /** The words of a message's "Not sent" popover, for the transcript presentation. */
     notSent?: ChatNotSent | undefined;
     /** Whether the "Not sent" popover is open. Bindable; it opens from the red icon. */
@@ -276,7 +276,7 @@
     onRetry,
     presentation = 'default',
     narration = false,
-    part = 'whole',
+    section = 'whole',
     notSent,
     notSentOpen = $bindable(false),
     onRemoveQueued,
@@ -1079,10 +1079,10 @@
   data-cinder-rollback-discarded={rollbackDiscarded || undefined}
   {...rest}
 >
-  {#if message.role === 'assistant' && part !== 'outcome'}
+  {#if message.role === 'assistant' && section !== 'outcome'}
     <span class="cinder-sr-only" role="status">{sourceAnnouncement}</span>
   {/if}
-  {#if part !== 'outcome'}
+  {#if section !== 'outcome'}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <article
       bind:this={articleElement}
@@ -1245,11 +1245,11 @@
     </article>
   {/if}
 
-  {#if !isEditing && part !== 'body'}
+  {#if !isEditing && section !== 'body'}
     {@render turnOutcome()}
   {/if}
 
-  {#if transcript && part !== 'body'}
+  {#if transcript && section !== 'body'}
     <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
          line again, and so does an empty one, which carries its time there. -->
@@ -1263,7 +1263,7 @@
     {/if}
   {/if}
 
-  {#if hasMetadata && !transcript && part !== 'outcome'}
+  {#if hasMetadata && !transcript && section !== 'outcome'}
     <div class="chat-message-metadata">
       {#if createdAtValue && formattedCreatedAt && !timeInNotice}
         <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>

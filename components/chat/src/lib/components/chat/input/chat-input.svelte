@@ -637,7 +637,7 @@
     if (failureLine.type === 'many') {
       // One sentence for each kind of reason: a shared reason reads as that one sentence.
       return failureLine.reasons
-        .map(({ kind, count, maxFileSize, acceptedTypes: kept }) => {
+        .map(({ kind, count, maxFileSize: limit, acceptedTypes: kept }) => {
           if (kind === 'network') return labels.attachmentFailureNetworkMany(count);
           if (kind === 'unsupported-type') {
             return labels.attachmentFailureUnsupportedMany(count, acceptedFor(kept));
@@ -645,7 +645,7 @@
           if (kind === 'unknown') return labels.attachmentFailureUnknownMany(count);
           return labels.attachmentFailureTooLargeMany(
             count,
-            maxFileSize === undefined ? undefined : formatBytes(maxFileSize),
+            limit === undefined ? undefined : formatBytes(limit),
           );
         })
         .join(' ');

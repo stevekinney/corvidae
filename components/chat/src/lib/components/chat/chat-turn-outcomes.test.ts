@@ -241,14 +241,16 @@ describe('Chat — run outcomes on the turn', () => {
     expect(retryStep).toHaveBeenCalledWith('source-2');
   });
 
-  test.each([
-    ['stopped', { kind: 'stopped' } as ChatTurnState, 'Stopped before an answer.'],
+  const narrationOnlyEndings: [string, ChatTurnState, string][] = [
+    ['stopped', { kind: 'stopped' }, 'Stopped before an answer.'],
     [
       'failed',
-      { kind: 'failed', cause: 'The provider dropped the connection.' } as ChatTurnState,
+      { kind: 'failed', cause: 'The provider dropped the connection.' },
       'Failed before an answer.',
     ],
-  ])(
+  ];
+
+  test.each(narrationOnlyEndings)(
     'a %s turn that only narrated reads text, step row, then its notice and time',
     async (_name, state, words) => {
       let conversation = appendUserMessage(createConversationHistory({ id: 'narrated' }), 'Check');

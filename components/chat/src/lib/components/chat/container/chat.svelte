@@ -720,7 +720,9 @@
   const renderRows = $derived(transcript.renderRows);
   // The messages whose notice is drawn after their step row, as a row of its own.
   const deferredOutcomeIds = $derived(
-    new Set(renderRows.flatMap((row) => (row.type === 'turn-outcome' ? [row.message.id] : []))),
+    new Set(
+      renderRows.flatMap((entry) => (entry.type === 'turn-outcome' ? [entry.message.id] : [])),
+    ),
   );
   let selectedArtifactId = $state<string | undefined>(undefined);
   const resolvedArtifactsById = $derived.by(() => {
@@ -2539,7 +2541,7 @@
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           presentation={variant === 'transcript' ? 'transcript' : 'default'}
           narration={assistantTextRoles.get(message.id) === 'narration'}
-          part={rowPart === 'outcome'
+          section={rowPart === 'outcome'
             ? 'outcome'
             : deferredOutcomeIds.has(message.id)
               ? 'body'
