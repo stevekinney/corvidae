@@ -266,6 +266,10 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     const statusBox = await state.locator('.chat-availability-status').boundingBox();
     const composerBox = await loading.getByRole('textbox', { name: 'Message' }).boundingBox();
     expect(statusBox!.y + statusBox!.height).toBeLessThanOrEqual(composerBox!.y);
+    // The accessibility check settles the paint on animation frames, which a stopped clock never
+    // delivers, so the clock runs again from here (as `chat-new-states.spec.ts` does). The read
+    // stays slow: its count only goes up.
+    await page.clock.resume();
     await checkA11y('a slow chat read');
     await captureForDesignReview(page, {
       route: '/chats/:chat',
@@ -291,7 +295,6 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
 
     holding = false;
     release();
-    await page.clock.resume();
     await canceled.getByRole('button', { name: 'Retry' }).click();
     await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
     await expect(page.getByTestId('chat-unavailable')).toHaveCount(0);
