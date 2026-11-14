@@ -637,6 +637,25 @@
       attachment.maxFileSize === undefined ? undefined : formatBytes(attachment.maxFileSize),
     );
   });
+  /**
+   * The line's words around the file's name, so the name can be drawn as the thing it is and not as
+   * prose: the same face as the chip above it, on one line, shortening before the sentence wraps.
+   * A host's own label that leaves the name out is drawn as plain words.
+   */
+  const failureLineParts = $derived.by(
+    (): { before: string; name: string; after: string } | undefined => {
+      if (failureLineText === undefined || failureLine === undefined) return undefined;
+      if (failureLine.type === 'many') return undefined;
+      const fileName = failureLine.attachment.file.name;
+      const at = fileName === '' ? -1 : failureLineText.indexOf(fileName);
+      if (at === -1) return undefined;
+      return {
+        before: failureLineText.slice(0, at),
+        name: fileName,
+        after: failureLineText.slice(at + fileName.length),
+      };
+    },
+  );
   const failureLineActionLabel = $derived(
     failureLine === undefined
       ? undefined
@@ -1908,7 +1927,14 @@
           {#if failureLine !== undefined}
             <p class="chat-input-attachment-reason">
               <span id={attachmentReasonId} class="chat-input-attachment-reason-text" dir="auto"
-                >{failureLineText}</span
+                >{#if failureLineParts}{#if failureLineParts.before}<span
+                      class="chat-input-attachment-reason-words">{failureLineParts.before}</span
+                    >{/if}<span
+                    class="chat-input-attachment-reason-name"
+                    title={failureLineParts.name}>{failureLineParts.name}</span
+                  >{#if failureLineParts.after}<span class="chat-input-attachment-reason-words"
+                      >{failureLineParts.after}</span
+                    >{/if}{:else}{failureLineText}{/if}</span
               >
               <Button
                 type="button"
@@ -2364,10 +2390,42 @@
     color: var(--cinder-status-danger-text);
   }
 
+  /* The words flow as a sentence around the file's name. When the sentence needs two lines its
+   * lines are evened out, so it does not break after its first two words and leave one behind. */
   .chat-input-attachment-reason-text {
     flex: 1 1 auto;
     min-inline-size: 0;
-    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+
+  /* The file's name is a thing, not prose: the chip's own face (body colour, medium weight, a quiet
+   * fill), always whole on one line, shortening to an ellipsis only when it is wider than the line
+   * itself. It never breaks in the middle the way a long word in a sentence would. */
+  .chat-input-attachment-reason-name {
+    display: inline-block;
+    max-inline-size: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+    margin-inline-end: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-1);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* An inline block that clips takes its bottom edge as its baseline; this puts its text back on
+     * the sentence's line. */
+    vertical-align: bottom;
+  }
+
+  /* What is said about the file stays together: it sits beside the name when it fits there, and
+   * otherwise moves under the name whole, so the break falls between the name and the sentence and
+   * never inside "didn't upload". Only a sentence longer than the line itself wraps. */
+  .chat-input-attachment-reason-words {
+    display: inline-block;
+    max-inline-size: 100%;
+    vertical-align: bottom;
   }
 
   .chat-input-attachment-reason :global(.chat-input-attachment-reason-action) {
