@@ -227,8 +227,9 @@
   <!-- The tag comes first, so it is read before the question. With one question the tag and the
        question share a row when the question fits on one line beside it (the question at the
        leading end, the tag at the trailing end), and otherwise the tag takes the line above and the
-       question the full width. With several, the tag and the progress with its buttons share the
-       top line and the question has the line under them. -->
+       question the full width. With several, the row is the same, and the progress with its
+       buttons is a trailing slot of its own: it wraps onto the line above first, at the trailing
+       end, and the tag follows it there only when the question does not fit beside it. -->
   <div
     class="chat-question-dock-heading"
     data-chat-question-heading

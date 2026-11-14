@@ -644,10 +644,18 @@
     overflow-wrap: anywhere;
   }
 
-  .cinder-approval-card__decision-note-label {
-    margin-inline-end: var(--cinder-space-1);
+  /* The same label as "Result:": one weight and ink, and the one space the markup leaves after it
+   * is the whole gap, so a note and a result under it start their words the same distance in. */
+  .cinder-approval-card__decision-note-label,
+  .cinder-approval-card__result-label {
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-semibold);
+  }
+
+  /* In a receipt's details the note and the result read as one list: both values in the default
+   * ink, the labels carrying the difference. */
+  .cinder-approval-card__receipt-details .cinder-approval-card__decision-note {
+    color: var(--cinder-text-default);
   }
 
   .cinder-approval-card__decision-note-caption {

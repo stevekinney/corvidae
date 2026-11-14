@@ -2753,3 +2753,30 @@ describe('ApprovalCard on a phone', () => {
     );
   });
 });
+
+describe('ApprovalCard receipt details', () => {
+  const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+    /\s+/gu,
+    ' ',
+  );
+
+  test('the note and the result share one label style and one gap after it', () => {
+    // One rule for both labels: the same ink and weight, and no margin of its own, so the single
+    // space the markup leaves after each is the whole gap.
+    expect(css).toMatch(
+      /\.cinder-approval-card__decision-note-label, \.cinder-approval-card__result-label \{ color: var\(--cinder-text-default\); font-weight: var\(--cinder-font-semibold\); \}/u,
+    );
+    const label = /\.cinder-approval-card__decision-note-label \{([^}]*)\}/u.exec(css);
+    expect(label).toBeNull();
+  });
+
+  test('both values are in the default ink in the details, whatever the note is elsewhere', () => {
+    expect(css).toMatch(
+      /\.cinder-approval-card__receipt-details \.cinder-approval-card__decision-note \{ color: var\(--cinder-text-default\); \}/u,
+    );
+    // Outside the details the note stays muted.
+    expect(css).toMatch(
+      /\.cinder-approval-card__decision-note \{[^}]*color: var\(--cinder-text-muted\);/u,
+    );
+  });
+});

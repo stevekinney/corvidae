@@ -571,6 +571,36 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     );
   });
 
+  test('writes "Your note:" and "Result:" as one label followed by one space each', async () => {
+    const { container, getByRole } = render(ApprovalCard, {
+      props: decisionCard({
+        state: 'approved',
+        decidedBy: 'you',
+        decidedAt: '2026-11-02T10:46:00.000Z',
+        decisionNote: 'Approved after confirming the duplicate charge.',
+        result: 'Refund completed successfully.',
+      }),
+    });
+    await fireEvent.click(getByRole('button', { name: 'Details' }));
+    const details = container.querySelector('.cinder-approval-card__receipt-details')!;
+    const note = details.querySelector('.cinder-approval-card__decision-note');
+    const result = details.querySelector('.cinder-approval-card__result');
+    expect(squash(note?.textContent)).toBe(
+      'Your note: Approved after confirming the duplicate charge.',
+    );
+    expect(squash(result?.textContent)).toBe('Result: Refund completed successfully.');
+    // The same classed label leads each, and each is followed by exactly one space.
+    for (const [block, label] of [
+      [note, 'decision-note-label'],
+      [result, 'result-label'],
+    ] as const) {
+      const span = block?.querySelector(`.cinder-approval-card__${label}`);
+      expect(span).not.toBeNull();
+      expect(span?.nextSibling?.textContent?.startsWith(' ')).toBe(true);
+      expect(span?.nextSibling?.textContent?.startsWith('  ')).toBe(false);
+    }
+  });
+
   test('offers no disclosure when there is nothing more to show', () => {
     const { queryByRole } = render(ApprovalCard, {
       props: decisionCard({

@@ -84,6 +84,20 @@ describe('ChatInput layout CSS', () => {
     expect(base).not.toContain('overflow-y');
   });
 
+  test('keeps the date with the word in "Archived Nov 3", so a narrow bar moves the actions before it breaks the phrase', async () => {
+    const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
+    const archived = cssBlocks(
+      chatInputSource,
+      ".chat-input-notice[data-chat-composer-status='archived'] .chat-input-blocked-reason {",
+    )[0];
+    expect(archived).toBeDefined();
+    expectDeclaration(archived ?? '', 'white-space', 'nowrap');
+    // The read-only bar keeps its words breaking between words.
+    expect(chatInputSource).not.toMatch(
+      /data-chat-composer-status='read-only'\] \.chat-input-blocked-reason \{[^}]*nowrap/,
+    );
+  });
+
   test('keeps the editor as tall as Send and centres its first line, trimming only surrounding inset', async () => {
     const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
     const editor = cssBlocks(chatInputSource, '.chat-input-editor {')[0] ?? '';
