@@ -57,12 +57,16 @@ describe('JsonEditor — CodeMirror runtime', () => {
     expect(editor.state.doc.toString()).toBe('{"a":1}');
     expect(view.container.querySelector('.cm-lineNumbers')).not.toBeNull();
     expect(view.container.querySelector('.cm-foldGutter')).not.toBeNull();
-    // The editor sits inside the frame, under the toolbar: the frame owns border, radius and ring.
+    // The editor sits inside the frame, which owns border, radius and ring. There is no header
+    // band: the status and Format float in the frame's corner, ahead of the text in tab order.
     const frame = requiredInstance(
       view.container.querySelector('.cinder-json-editor__input'),
       HTMLElement,
     );
-    expect(frame.firstElementChild?.classList.contains('cinder-json-editor__toolbar')).toBe(true);
+    expect(frame.querySelector('.cinder-json-editor__toolbar')).toBeNull();
+    expect(frame.querySelector('.cinder-json-editor__tag')).toBeNull();
+    expect(frame.firstElementChild?.classList.contains('cinder-json-editor__actions')).toBe(true);
+    expect(frame.querySelector('.cinder-json-editor__actions [role="status"]')).not.toBeNull();
     expect(frame.querySelector('.cm-editor')).not.toBeNull();
     // The textarea stays in the form so the value still posts, but no longer shows.
     expect(textareaOf(view).hidden).toBe(true);
@@ -381,7 +385,7 @@ describe('JsonEditor — toolbar status (rows 29q, 29u, 29v)', () => {
     expect(view.container.querySelector('.cm-content')?.textContent).toContain('"mode"');
   });
 
-  test('disabled keeps the JSON tag and the Valid JSON status, with Format off and no focus', async () => {
+  test('disabled keeps the Valid JSON status, with Format off and no focus', async () => {
     const view = render(JsonEditor, {
       id: 'payload',
       label: 'Payload',
@@ -390,7 +394,6 @@ describe('JsonEditor — toolbar status (rows 29q, 29u, 29v)', () => {
     });
     const editor = await mountedView(view);
 
-    expect(view.container.querySelector('.cinder-json-editor__tag')?.textContent).toBe('JSON');
     expect(view.getByRole('status').textContent?.trim()).toBe('Valid JSON');
     expect((view.getByRole('button', { name: 'Format' }) as HTMLButtonElement).disabled).toBe(true);
     expect(view.container.querySelector('.cinder-json-editor__input--disabled')).not.toBeNull();

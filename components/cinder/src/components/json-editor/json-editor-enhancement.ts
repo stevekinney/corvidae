@@ -95,6 +95,7 @@ const singleLineClass = 'cinder-json-editor__cm--single-line';
 const problemLineClass = 'cinder-json-editor__line--problem';
 const problemGutterClass = 'cinder-json-editor__gutter--problem';
 const problemMessageClass = 'cinder-json-editor__problem';
+const problemBarWidth = '3px';
 
 const highlightStyle = HighlightStyle.define([
   { tag: tags.propertyName, color: 'var(--cinder-accent-text)' },
@@ -112,7 +113,7 @@ const contentHeight = (rows: string): string => `calc(${rows} * 1.5em + 2 * var(
 
 // CodeMirror injects its own rules without a cascade layer, and an unlayered rule beats anything
 // inside `@layer cinder.components`, so the editor is themed here and not in `json-editor.css`.
-// The frame (border, radius, focus ring, toolbar) is the component's own element around the
+// The frame (border, radius, focus ring, status and Format) is the component's own element around the
 // editor, so this theme draws no border of its own: the frame clips the gutter to its radius.
 const theme = EditorView.theme({
   '&': {
@@ -179,10 +180,16 @@ const theme = EditorView.theme({
     backgroundColor: 'transparent',
     outline: '1px solid var(--cinder-text-muted)',
   },
-  // A marked line: the row is tinted, its number turns red, and the message sits under it.
-  [`.${problemLineClass}`]: { backgroundColor: 'var(--cinder-status-danger-background)' },
-  [`.cm-gutterElement.${problemGutterClass}`]: {
+  // A marked line and the message under it are one tinted rectangle the width of the text area,
+  // with a red bar down its inline start; the gutter takes no fill, so the mark is never a stepped
+  // shape, and only the line's number turns red. The bar takes its width out of the line's own
+  // inline-start padding, so it moves no text.
+  [`.${problemLineClass}, .${problemMessageClass}`]: {
     backgroundColor: 'var(--cinder-status-danger-background)',
+    borderInlineStart: `${problemBarWidth} solid var(--cinder-status-danger-solid)`,
+    paddingInlineStart: `calc(var(--cinder-space-2) - ${problemBarWidth})`,
+  },
+  [`.cm-gutterElement.${problemGutterClass}`]: {
     color: 'var(--cinder-status-danger-text)',
     fontWeight: '600',
   },
@@ -195,8 +202,9 @@ const theme = EditorView.theme({
     display: 'flex',
     alignItems: 'flex-start',
     gap: 'var(--cinder-space-1-5)',
-    padding: '0 var(--cinder-space-2)',
-    backgroundColor: 'var(--cinder-status-danger-background)',
+    // The inline-start padding is the marked line's, set with its bar above.
+    paddingInlineEnd: 'var(--cinder-space-2)',
+    paddingBlockEnd: 'var(--cinder-space-1)',
     color: 'var(--cinder-status-danger-text)',
     fontFamily: 'var(--cinder-font-sans)',
     fontSize: 'var(--cinder-text-xs)',

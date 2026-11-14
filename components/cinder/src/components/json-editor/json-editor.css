@@ -53,17 +53,18 @@
     font-size: var(--cinder-text-sm);
   }
 
-  /* The frame: one bordered, rounded box around the toolbar and the editor. It clips its
-     children, so the line-number gutter takes the frame's radius, and it carries the focus ring,
-     so the ring wraps the toolbar too. */
+  /* The frame: one bordered, rounded box around the editor, with the status and Format floating in
+     its top inline-end corner. It clips its children, so the line-number gutter takes the frame's
+     radius, and it carries the focus ring. */
   .cinder-json-editor__input {
+    --_cinder-json-editor-surface: var(--cinder-control-background);
     position: relative;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-control-radius);
-    background: var(--cinder-control-background);
+    background: var(--_cinder-json-editor-surface);
     min-inline-size: 0;
   }
 
@@ -72,10 +73,9 @@
   }
 
   /* A disabled editor takes the disabled control surface and loses its colour, never an opacity
-     fade: the highlighted code keeps its own contrast, and the JSON tag and the status stay
-     readable. */
+     fade: the highlighted code keeps its own contrast, and the status stays readable. */
   .cinder-json-editor__input--disabled {
-    background: var(--cinder-control-background-disabled);
+    --_cinder-json-editor-surface: var(--cinder-control-background-disabled);
     filter: grayscale(0.8);
   }
 
@@ -91,39 +91,63 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  /* A slim bar inside the frame: the JSON tag at the start, the status and Format at the end. */
-  .cinder-json-editor__toolbar {
+  /* The status and Format float over the editor's top inline-end corner, with no band, border or
+     fill of their own: the editor's surface fades in behind them, so a long first line slides
+     under them instead of colliding. They clear the vertical scrollbar, never cover the gutter,
+     and let a click anywhere else in the corner through to the code. */
+  .cinder-json-editor__actions {
+    position: absolute;
+    z-index: 1;
+    /* Close to the top edge, so the corner ends before the first line does and never covers the
+       second. */
+    inset-block-start: var(--cinder-space-0-5);
+    inset-inline-end: calc(var(--cinder-scrollbar-size) + var(--cinder-space-1));
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-3);
-    padding: var(--cinder-space-1) var(--cinder-space-2) var(--cinder-space-1) var(--cinder-space-3);
-    border-block-end: 1px solid var(--cinder-control-border);
-    background: var(--cinder-surface-raised);
+    gap: var(--cinder-space-1);
+    max-inline-size: calc(100% - var(--cinder-scrollbar-size) - 4rem);
+    padding-inline-start: var(--cinder-space-4);
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--_cinder-json-editor-surface) var(--cinder-space-4)
+    );
+    pointer-events: none;
   }
 
-  .cinder-json-editor__tag {
-    color: var(--cinder-text-muted);
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-xs);
-    font-weight: var(--cinder-font-semibold);
-    letter-spacing: var(--cinder-tracking-wide);
+  .cinder-json-editor__actions:dir(rtl) {
+    background: linear-gradient(
+      to left,
+      transparent,
+      var(--_cinder-json-editor-surface) var(--cinder-space-4)
+    );
   }
 
-  .cinder-json-editor__toolbar-end {
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
-    min-inline-size: 0;
+  .cinder-json-editor__actions > * {
+    pointer-events: auto;
+  }
+
+  .cinder-json-editor__actions > :last-child {
+    flex: none;
   }
 
   .cinder-json-editor__status {
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-1-5);
+    gap: var(--cinder-space-1);
     min-inline-size: 0;
     color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
+    font-size: var(--cinder-text-xs);
+    white-space: nowrap;
+  }
+
+  /* A status longer than the corner allows is cut with an ellipsis; the live region still holds the
+     whole text, so it is announced in full. */
+  .cinder-json-editor__status-text,
+  .cinder-json-editor__status-action {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .cinder-json-editor__status--success {
@@ -166,10 +190,12 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
+  /* Its own stacking context, so CodeMirror's sticky gutter and layers stay under the actions. */
   .cinder-json-editor__body {
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
+    isolation: isolate;
   }
 
   /* CodeMirror themes itself (see json-editor-enhancement.ts) because its injected rules are

@@ -3138,7 +3138,7 @@
       "exportName": "JsonEditor",
       "category": "form",
       "status": "stable",
-      "purpose": "Controlled free-form JSON editor in one frame: a toolbar with validity status and Format over a lazily loaded CodeMirror view with marked problem lines, backed by a native textarea.",
+      "purpose": "Controlled free-form JSON editor in one frame: validity status and Format float at the top inline-end corner of a lazily loaded CodeMirror view with marked problem lines, backed by a native textarea.",
       "tags": ["form", "json", "editor"],
       "useWhen": [
         "Editing arbitrary JSON source while preserving the exact string in parent-owned state.",

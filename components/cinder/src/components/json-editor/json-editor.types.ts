@@ -40,7 +40,8 @@ export interface JsonEditorSchema {
 /**
  * A problem a caller found in the JSON, marked at one line of the editor.
  *
- * The editor marks the line (a tinted row and a red line number) and shows `message` under it. Use
+ * The editor marks the line (one tinted rectangle with a red bar at its start, around the line and
+ * its message, and a red line number) and shows `message` under it. Use
  * it for what the parser cannot know, such as a valid document that names an agent which is
  * unavailable. JSON that does not parse is marked by the editor itself.
  */
@@ -69,13 +70,13 @@ export type JsonEditorProps = Omit<
   rows?: number;
   /** Disables the editor. A disabled field is not posted with its form. */
   disabled?: boolean;
-  /** Makes the editor read-only. The toolbar reads "Read only" and has no Format button. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted. */
+  /** Makes the editor read-only. The status reads "Read only" and there is no Format button. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted. */
   readonly?: boolean;
   /** Marks the editor as required. An empty value is valid and reads "Not set" unless the field is required. */
   required?: boolean;
   /** Whether valid JSON should render an announced success message. Defaults to true. @default true */
   validFeedbackVisible?: boolean;
-  /** Replaces the toolbar's "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status. */
+  /** Replaces the "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status. */
   statusLabel?: string;
   /** Problems the caller found at specific lines of a document that parses. Each line is marked and shows its message under it. */
   diagnostics?: readonly JsonEditorDiagnostic[];
