@@ -228,6 +228,33 @@ describe('Skeleton loading timing', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  test('the Still loading status leads every group, before the placeholders (COR-2329)', () => {
+    const placeholder = createRawSnippet(() => ({
+      render: () => '<div class="page-placeholder">Needs attention</div>',
+    }));
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ['lines', { lines: 3 }, '.cinder-skeleton-lines'],
+      ['list', { variant: 'list' }, '.cinder-skeleton-list'],
+      ['grouped', { variant: 'grouped', action: true }, '.cinder-skeleton-grouped'],
+      ['children', { children: placeholder }, '.page-placeholder'],
+    ];
+    for (const [name, props, placeholderSelector] of cases) {
+      const { container } = mountUnderFakeTimers({ stillLoadingAfter: 10_000, ...props });
+      advance(10_000);
+      const status = container.querySelector('.cinder-skeleton-status');
+      const first = container.querySelector(placeholderSelector);
+      expect(status?.textContent, name).toContain('Still loading.');
+      expect(first, name).not.toBeNull();
+      expect(
+        status!.compareDocumentPosition(first!) & Node.DOCUMENT_POSITION_FOLLOWING,
+        `${name}: the status comes first`,
+      ).toBeTruthy();
+      cleanup();
+    }
+    // Nothing centres the line under the placeholders any more: it starts at the inline start.
+    expect(skeletonCss).not.toMatch(/> \.cinder-skeleton-status \{\s*justify-content: center/);
+  });
+
   test('the Still loading status is outside the aria-hidden placeholder', () => {
     const { container } = mountUnderFakeTimers({ stillLoadingAfter: 10_000 });
     advance(10_000);
@@ -566,15 +593,9 @@ describe('Skeleton list variant timing', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
-  test('the slow-loading line is centred under a page’s own placeholder, as under a list', () => {
-    expect(skeletonCss).toMatch(
-      /\[data-cinder-variant='custom'\] > \.cinder-skeleton-status\s*\{[^}]*justify-content: center/,
-    );
-  });
-
-  test('the slow-loading line is centred under the list', () => {
-    expect(skeletonCss).toMatch(
-      /\[data-cinder-variant='list'\] > \.cinder-skeleton-status\s*\{[^}]*justify-content: center/,
+  test('the slow-loading line starts at the inline start over a list or a page’s own placeholder', () => {
+    expect(skeletonCss).not.toMatch(
+      /\[data-cinder-variant='(custom|list|grouped)'\] > \.cinder-skeleton-status\s*\{[^}]*justify-content/,
     );
   });
 
@@ -597,7 +618,7 @@ describe('Skeleton list variant timing', () => {
       ).toBeNull();
     });
 
-    test('wait for the delay, and the status line follows them at stillLoadingAfter with Cancel', () => {
+    test('wait for the delay, and the status line leads them at stillLoadingAfter with Cancel', () => {
       const onCancel = jest.fn();
       const { container, getByRole } = mountUnderFakeTimers({
         children: placeholder(),
@@ -615,9 +636,11 @@ describe('Skeleton list variant timing', () => {
       expect(container.querySelector('[role="status"]')?.textContent).toContain(
         'Still loading Home. This is taking longer than usual.',
       );
-      // The status comes after the placeholder.
+      // The status comes before the placeholder (COR-2329: under a page of placeholders it was
+      // drawn below the fold).
       const group = container.querySelector('.cinder-skeleton-group');
-      expect(group?.lastElementChild?.getAttribute('role')).toBe('status');
+      expect(group?.firstElementChild?.getAttribute('role')).toBe('status');
+      expect(group?.lastElementChild?.getAttribute('role')).not.toBe('status');
       getByRole('button', { name: 'Cancel' }).click();
       expect(onCancel).toHaveBeenCalledTimes(1);
     });

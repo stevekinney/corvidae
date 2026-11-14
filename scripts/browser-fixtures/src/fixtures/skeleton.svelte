@@ -17,4 +17,15 @@
   <div data-testid="skeleton-grouped">
     <Skeleton variant="grouped" rows={2} action label="Loading reviews" />
   </div>
+  <!-- A slow load (COR-2329): the status line leads the placeholders, above them. -->
+  <div data-testid="skeleton-still-loading">
+    <Skeleton
+      variant="grouped"
+      rows={2}
+      label="Loading reviews"
+      stillLoadingAfter={0}
+      stillLoadingLabel="Still loading reviews. This is taking longer than usual."
+      onCancel={() => {}}
+    />
+  </div>
 </div>

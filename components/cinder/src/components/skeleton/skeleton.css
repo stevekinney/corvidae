@@ -187,10 +187,6 @@
     }
   }
 
-  .cinder-skeleton-group[data-cinder-variant='list'] > .cinder-skeleton-status {
-    justify-content: center;
-  }
-
   /* Grouped variant: the placeholder for a grouped list. The same rounded raised surface the
    * list draws, no border, and rows whose separator is the bottom edge of their content, so it
    * starts at the text as the real rows' does. Each row holds two text bars and, for a list whose
@@ -275,21 +271,14 @@
     }
   }
 
-  .cinder-skeleton-group[data-cinder-variant='grouped'] > .cinder-skeleton-status {
-    justify-content: center;
-  }
-
-  /* A page's own placeholder has its status line centred under it as well. */
-  .cinder-skeleton-group[data-cinder-variant='custom'] > .cinder-skeleton-status {
-    justify-content: center;
-  }
-
   .cinder-skeleton-heading {
     height: 1.25em;
     width: 40%;
     margin-block-end: var(--cinder-space-1);
   }
 
+  /* The status line leads its group, at the inline start, above the placeholders: after a long
+   * wait it is the first thing in view, never cut off below a page of placeholders (COR-2329). */
   .cinder-skeleton-status {
     display: flex;
     align-items: center;

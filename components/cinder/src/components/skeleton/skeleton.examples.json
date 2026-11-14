@@ -30,7 +30,7 @@
     {
       "id": "list-loading",
       "title": "List loading and slow loading",
-      "description": "The list variant keeps each row’s status column reserved, then draws two text bars and a time bar, with no circle, so nothing shifts when the data arrives. The region is announced as \"Loading agents\" with no spinner. After the slow-loading time its own status line and a ghost Cancel appear below the rows; it is not a banner.",
+      "description": "The list variant keeps each row’s status column reserved, then draws two text bars and a time bar, with no circle, so nothing shifts when the data arrives. The region is announced as \"Loading agents\" with no spinner. After the slow-loading time its own status line and a ghost Cancel appear above the rows; it is not a banner.",
       "code": "<script lang=\"ts\">\n  import { Skeleton } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-column\" style=\"gap: var(--cinder-space-6)\">\n  <Skeleton variant=\"list\" rows={3} dayBand label=\"Loading agents\" />\n  <Skeleton\n    variant=\"list\"\n    rows={3}\n    label=\"Loading agents\"\n    stillLoadingAfter={0}\n    stillLoadingLabel=\"Still loading agents. This is taking longer than usual.\"\n    onCancel={() => {}}\n  />\n</div>\n"
     }
   ]

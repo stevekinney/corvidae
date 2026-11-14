@@ -111,6 +111,20 @@ test.describe('GroupedList layout', () => {
     expect(Math.abs(block!.x - text!.x)).toBeLessThanOrEqual(1);
   });
 
+  test('a slow load’s status line sits above the first placeholder, not under them (COR-2329)', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
+    const group = page.getByTestId('skeleton-still-loading');
+    const status = group.locator('.cinder-skeleton-status');
+    await expect(status).toContainText('Still loading reviews.');
+    const line = await status.boundingBox();
+    const first = await group.locator('.cinder-skeleton-grouped-row').first().boundingBox();
+    expect(line!.y + line!.height).toBeLessThanOrEqual(first!.y);
+    // It starts at the inline start, with the placeholders.
+    expect(Math.abs(line!.x - first!.x)).toBeLessThanOrEqual(1);
+  });
+
   test('text actions trail their row on a wide screen (COR-2329)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 800 });
     const rows = page.getByTestId('grouped-list-actions').locator('.cinder-grouped-list-item');

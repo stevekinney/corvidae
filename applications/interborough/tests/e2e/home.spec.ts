@@ -672,11 +672,13 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
       'data-cinder-variant',
       'ghost',
     );
-    // It is the skeleton's own line below the placeholders, not a banner.
+    // It is the skeleton's own line above the placeholders, in view, not a banner (COR-2329: under
+    // them it was cut off at the bottom of the viewport).
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
-    const placeholders = await page.locator('[data-home-card="Recent chats"]').boundingBox();
+    const firstPlaceholder = await page.getByTestId('home-date').boundingBox();
     const line = await status.boundingBox();
-    expect(line!.y).toBeGreaterThan(placeholders!.y + placeholders!.height - 1);
+    expect(line!.y + line!.height).toBeLessThanOrEqual(firstPlaceholder!.y);
+    await expect(status).toBeInViewport();
     await captureForDesignReview(page, { route: '/', state: 'still loading', source: SOURCE });
 
     await status.getByRole('button', { name: 'Cancel' }).click();
