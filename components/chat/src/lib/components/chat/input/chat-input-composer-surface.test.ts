@@ -446,6 +446,34 @@ describe('attachments', () => {
     unmount(instance);
   });
 
+  test('the upload failure is the standard danger notice: its glyph, the name as a token, the action in its slot', async () => {
+    const { target, instance } = mountInput({ maxFileSize: 100 });
+    instance.addFiles([png('photo.png')]);
+    await tick();
+
+    const notice = target.querySelector<HTMLElement>('.chat-input-attachment-reason')!;
+    // The same Callout every chat notice is, in its danger tone, under the chips and not live.
+    expect(notice.classList.contains('cinder-callout')).toBe(true);
+    expect(notice.getAttribute('data-cinder-variant')).toBe('danger');
+    expect(notice.getAttribute('role')).toBe('note');
+    expect(notice.hasAttribute('aria-live')).toBe(false);
+    expect(notice.querySelector('.cinder-callout__icon svg')).not.toBeNull();
+    const list = target.querySelector('[aria-label="Attached files"]')!;
+    expect(list.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The file's name is the inset token inside the words, and the words around it are text.
+    const token = notice.querySelector('.chat-input-attachment-reason-name')!;
+    expect(token.textContent).toBe('photo.png');
+    expect(token.getAttribute('title')).toBe('photo.png');
+    expect(notice.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
+      'photo.png is over the 100 B limit.',
+    );
+    // The action is in the Callout's action slot, a glyph named for the file.
+    const action = notice.querySelector<HTMLButtonElement>('.cinder-callout__action button')!;
+    expect(action.getAttribute('aria-label')).toBe('Remove photo.png');
+    expect(action.textContent?.trim()).toBe('');
+    unmount(instance);
+  });
+
   test('several failures say how many, in one line under the strip, and no file is counted (C#16)', async () => {
     const { target, instance } = mountInput({ maxFileSize: 1024 });
     instance.addFiles([png('small.png', 10), png('big.png'), png('bigger.png')]);

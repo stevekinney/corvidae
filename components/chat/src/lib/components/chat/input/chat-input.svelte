@@ -240,6 +240,7 @@
     Paperclip,
     ListOrdered,
     RotateCcw,
+    scrollEdgeFade,
     SendHorizontal,
     Square,
     Callout,
@@ -1888,6 +1889,7 @@
             id={attachmentListId}
             class="chat-input-attachments"
             aria-label={labels.attachedFiles}
+            {@attach scrollEdgeFade('inline')}
           >
             {#each attachments as attachment (attachment.id)}
               <li
@@ -1926,52 +1928,62 @@
             {/each}
           </ul>
           {#if failureLine !== undefined}
-            <p class="chat-input-attachment-reason">
+            <!-- The failure is the standard danger notice, the same Callout every other chat notice
+                 is: its glyph, the words with the file's name as the token the chip above has, and
+                 the action at the trailing end. It is not a live region; the composer's live
+                 region tells it once. -->
+            <Callout
+              variant="danger"
+              semantic="note"
+              class="chat-input-attachment-reason"
+              data-chat-attachment-failure
+            >
+              {#snippet icon()}
+                <TriangleAlert class="cinder-icon-sm" aria-hidden="true" />
+              {/snippet}
               <span id={attachmentReasonId} class="chat-input-attachment-reason-text" dir="auto"
-                >{#if failureLineParts}{#if failureLineParts.before}<span
-                      class="chat-input-attachment-reason-words">{failureLineParts.before}</span
-                    >{/if}<span
+                >{#if failureLineParts}{failureLineParts.before}<span
                     class="chat-input-attachment-reason-name"
                     title={failureLineParts.name}>{failureLineParts.name}</span
-                  >{#if failureLineParts.after}<span class="chat-input-attachment-reason-words"
-                      >{failureLineParts.after}</span
-                    >{/if}{:else}{failureLineText}{/if}</span
+                  >{failureLineParts.after}{:else}{failureLineText}{/if}</span
               >
-              {#if failureLine.type !== 'many' && (failureLine.action === 'retry' || failureLine.action === 'remove')}
-                <!-- One file, one obvious act: a glyph says it, the way the chip's own remove does.
-                     Its name says which file, so it is not only "Remove" to a screen reader. -->
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  quiet
-                  iconOnly
-                  class="chat-input-attachment-reason-action"
-                  label={failureLineActionLabel ?? ''}
-                  aria-label={failureLine.action === 'retry'
-                    ? labels.retryAttachmentAccessible(failureLine.attachment.file.name)
-                    : labels.removeAttachmentAccessible(failureLine.attachment.file.name)}
-                  onclick={runFailureLineAction}
-                >
-                  {#if failureLine.action === 'retry'}
-                    <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
-                  {:else}
-                    <X class="cinder-icon-xs" aria-hidden="true" />
-                  {/if}
-                </Button>
-              {:else}
-                <Button
-                  type="button"
-                  variant="ghost-accent"
-                  size="xs"
-                  quiet
-                  class="chat-input-attachment-reason-action"
-                  onclick={runFailureLineAction}
-                >
-                  {failureLineActionLabel}
-                </Button>
-              {/if}
-            </p>
+              {#snippet action()}
+                {#if failureLine.type !== 'many' && (failureLine.action === 'retry' || failureLine.action === 'remove')}
+                  <!-- One file, one obvious act: a glyph says it, the way the chip's own remove does.
+                       Its name says which file, so it is not only "Remove" to a screen reader. -->
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    quiet
+                    iconOnly
+                    class="chat-input-attachment-reason-action"
+                    label={failureLineActionLabel ?? ''}
+                    aria-label={failureLine.action === 'retry'
+                      ? labels.retryAttachmentAccessible(failureLine.attachment.file.name)
+                      : labels.removeAttachmentAccessible(failureLine.attachment.file.name)}
+                    onclick={runFailureLineAction}
+                  >
+                    {#if failureLine.action === 'retry'}
+                      <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
+                    {:else}
+                      <X class="cinder-icon-xs" aria-hidden="true" />
+                    {/if}
+                  </Button>
+                {:else}
+                  <Button
+                    type="button"
+                    variant="ghost-accent"
+                    size="xs"
+                    quiet
+                    class="chat-input-attachment-reason-action"
+                    onclick={runFailureLineAction}
+                  >
+                    {failureLineActionLabel}
+                  </Button>
+                {/if}
+              {/snippet}
+            </Callout>
           {/if}
         </div>
       {/if}
@@ -2354,8 +2366,9 @@
     overflow-x: auto;
     overscroll-behavior-inline: contain;
     scrollbar-width: none;
-    /* A chip scrolled to either edge stops where its remove control's hit area is not clipped. */
-    scroll-padding-inline: var(--cinder-space-2);
+    /* Where chips are hidden past an edge that edge fades (Cinder's `scrollEdgeFade`), and a chip
+     * scrolled to an edge stops clear of the fade, so its remove control is neither clipped nor
+     * dimmed. */
   }
 
   .chat-input-attachments::-webkit-scrollbar {
@@ -2383,13 +2396,13 @@
     /* The line's action reaches 44px by a hit area that overhangs it, over the chips above, so the
      * line paints above them and the action keeps every tap on it. The line's words answer no tap,
      * so the hit areas of the chips above reach under them. */
-    .chat-input-attachment-reason {
+    :global(.chat-input-attachment-reason) {
       position: relative;
       z-index: 1;
       pointer-events: none;
     }
 
-    .chat-input-attachment-reason :global(.chat-input-attachment-reason-action) {
+    :global(.chat-input-attachment-reason .chat-input-attachment-reason-action) {
       pointer-events: auto;
     }
   }
@@ -2404,34 +2417,15 @@
     max-inline-size: min(70%, 14rem);
   }
 
-  /* The one line a failure that blocks Send gets, with its action at the trailing end. */
-  .chat-input-attachment-reason {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-2);
-    margin: 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-status-danger-text);
-  }
-
-  /* The words flow as a sentence around the file's name. When the sentence needs two lines its
-   * lines are evened out, so it does not break after its first two words and leave one behind. */
-  .chat-input-attachment-reason-text {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    text-wrap: balance;
-  }
-
-  /* The file's name is a thing, not prose: the chip's own face (body colour, medium weight, a quiet
-   * fill), always whole on one line, shortening to an ellipsis only when it is wider than the line
-   * itself. It never breaks in the middle the way a long word in a sentence would. */
+  /* The failure is Cinder's danger Callout: its box, glyph, tone and action slot are the notice's
+   * own. Only the file's name is Chat's: a thing, not prose, so it takes the chip's own face (body
+   * colour, medium weight, a quiet fill), stays whole on one line, and shortens to an ellipsis
+   * only when it is wider than the notice itself. */
   .chat-input-attachment-reason-name {
     display: inline-block;
     max-inline-size: 100%;
     overflow: hidden;
     box-sizing: border-box;
-    margin-inline-end: var(--cinder-space-1);
     padding-inline: var(--cinder-space-1);
     border-radius: var(--cinder-radius-sm);
     background: var(--cinder-surface-inset);
@@ -2442,19 +2436,6 @@
     /* An inline block that clips takes its bottom edge as its baseline; this puts its text back on
      * the sentence's line. */
     vertical-align: bottom;
-  }
-
-  /* What is said about the file stays together: it sits beside the name when it fits there, and
-   * otherwise moves under the name whole, so the break falls between the name and the sentence and
-   * never inside "didn't upload". Only a sentence longer than the line itself wraps. */
-  .chat-input-attachment-reason-words {
-    display: inline-block;
-    max-inline-size: 100%;
-    vertical-align: bottom;
-  }
-
-  .chat-input-attachment-reason :global(.chat-input-attachment-reason-action) {
-    flex: none;
   }
 
   /* Editor container */
