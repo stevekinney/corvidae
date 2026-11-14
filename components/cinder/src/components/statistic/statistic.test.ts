@@ -48,6 +48,21 @@ describe('Statistic loading', () => {
     );
   });
 
+  // COR-2329: a fixed 28px bar made the plain variant's 22px value line 6px taller while loading,
+  // so the page moved when the number arrived.
+  test('the placeholder is one line of the figure, in its own size, with a bar sized from it', () => {
+    const css = readFileSync(new URL('./statistic.css', import.meta.url), 'utf8');
+    const block = /\.cinder-statistic__value--loading \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(block).toContain('block-size: 1lh');
+    expect(block).not.toContain('min-block-size');
+    const { container } = render(Statistic, { label: 'Running now', value: 0, loading: true });
+    const loading = container.querySelector('.cinder-statistic__value--loading');
+    // The block carries the value's own class, so its line is the value's line.
+    expect(loading?.classList.contains('cinder-statistic__value')).toBe(true);
+    const bar = loading?.querySelector<HTMLElement>('.cinder-skeleton');
+    expect(bar?.getAttribute('style')).toContain('height: 0.8em');
+  });
+
   test('is off by default: the value shows and the tile is not busy', () => {
     const { container } = render(Statistic, { label: 'Running now', value: 0 });
     expect(container.querySelector('.cinder-statistic')?.hasAttribute('aria-busy')).toBe(false);

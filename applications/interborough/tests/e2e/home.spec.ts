@@ -672,6 +672,17 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
 
     // The page, once it has its answers, is laid out as the placeholders were.
     const before = await page.locator('[data-home-card="Start a chat"]').boundingBox();
+    // COR-2329: the Spotlight's and the count's placeholders were taller than the text they stand
+    // for, so every section moved up about 7px when the data arrived.
+    const sectionTops = async () =>
+      Promise.all(
+        [
+          needsYou(page),
+          page.getByRole('heading', { level: 2, name: 'Needs attention' }),
+          page.getByRole('heading', { level: 2, name: 'Start a chat' }),
+        ].map(async (locator) => (await locator.boundingBox())!.y),
+      );
+    const topsWhileLoading = await sectionTops();
     release();
     await expect(page.getByTestId('home-counts')).toBeVisible();
     await expect(homeBody(page)).toHaveAttribute('data-mode', 'overview');
@@ -679,6 +690,14 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     const after = await page.locator('[data-home-card="Start a chat"]').boundingBox();
     expect(Math.round(after!.x)).toBe(Math.round(before!.x));
     expect(Math.round(after!.width)).toBe(Math.round(before!.width));
+    await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
+    const topsLoaded = await sectionTops();
+    for (const [index, name] of ['Needs you', 'Needs attention', 'Start a chat'].entries()) {
+      expect(
+        Math.abs(topsLoaded[index]! - topsWhileLoading[index]!),
+        `${name} starts where its placeholder did`,
+      ).toBeLessThanOrEqual(1);
+    }
   });
 
   test('after 10 s the skeleton’s own status line offers Cancel, and Cancel says Loading canceled (02e, 02f)', async ({

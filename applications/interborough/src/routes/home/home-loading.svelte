@@ -38,7 +38,9 @@
     {#snippet date()}{dateLine(clock())}. {timesShowIn(clock())}.{/snippet}
     {#snippet focus()}
       <Stack gap="var(--cinder-space-4)" data-testid="home-loading-focus">
-        <Skeleton width="11rem" height="2.25rem" radius="var(--cinder-radius-md)" />
+        <!-- One line of the Spotlight (32px type at its 1.1 leading), so nothing moves when it
+             arrives. -->
+        <Skeleton width="11rem" height="2.2rem" radius="var(--cinder-radius-md)" />
         <StatisticGroup
           label={HOME_COPY.countsLabel}
           columns={1}
