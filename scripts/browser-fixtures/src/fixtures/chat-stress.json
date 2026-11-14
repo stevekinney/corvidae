@@ -1548,7 +1548,22 @@
       },
       { "action": "expect-question-dock", "choices": 7 }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "choices-top",
+        "steps": [
+          { "action": "expect-question-dock", "choices": 7 },
+          { "action": "scroll-list", "target": "question-choices", "to": "start" }
+        ]
+      },
+      {
+        "name": "choices-end",
+        "steps": [
+          { "action": "expect-question-dock", "choices": 7 },
+          { "action": "scroll-list", "target": "question-choices", "to": "end" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -1936,6 +1951,84 @@
           { "action": "expect", "role": "button", "name": "Remove receipt-12.pdf" },
           { "action": "expect", "role": "button", "name": "Remove receipt-13.pdf" },
           { "action": "expect", "role": "button", "name": "Remove receipt-14.pdf" }
+        ]
+      },
+      {
+        "name": "fade-start",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "receipt-01.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-02.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-03.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-04.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-05.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-06.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-07.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-08.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-09.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-10.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-11.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-12.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-13.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-14.pdf", "mimeType": "application/pdf", "bytes": 2048 }
+            ]
+          },
+          { "action": "expect-attachment-strip", "total": 14, "failed": 0, "cut": true },
+          { "action": "scroll-list", "target": "attachment-strip", "to": "start" }
+        ]
+      },
+      {
+        "name": "fade-middle",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "receipt-01.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-02.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-03.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-04.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-05.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-06.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-07.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-08.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-09.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-10.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-11.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-12.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-13.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-14.pdf", "mimeType": "application/pdf", "bytes": 2048 }
+            ]
+          },
+          { "action": "expect-attachment-strip", "total": 14, "failed": 0, "cut": true },
+          { "action": "scroll-list", "target": "attachment-strip", "to": "middle" }
+        ]
+      },
+      {
+        "name": "fade-end",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "receipt-01.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-02.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-03.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-04.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-05.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-06.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-07.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-08.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-09.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-10.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-11.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-12.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-13.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-14.pdf", "mimeType": "application/pdf", "bytes": 2048 }
+            ]
+          },
+          { "action": "expect-attachment-strip", "total": 14, "failed": 0, "cut": true },
+          { "action": "scroll-list", "target": "attachment-strip", "to": "end" }
         ]
       }
     ],
