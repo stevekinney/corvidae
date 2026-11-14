@@ -239,6 +239,7 @@
     List,
     Paperclip,
     ListOrdered,
+    RotateCcw,
     SendHorizontal,
     Square,
     Callout,
@@ -1936,16 +1937,40 @@
                       >{failureLineParts.after}</span
                     >{/if}{:else}{failureLineText}{/if}</span
               >
-              <Button
-                type="button"
-                variant="ghost-accent"
-                size="xs"
-                quiet
-                class="chat-input-attachment-reason-action"
-                onclick={runFailureLineAction}
-              >
-                {failureLineActionLabel}
-              </Button>
+              {#if failureLine.type !== 'many' && (failureLine.action === 'retry' || failureLine.action === 'remove')}
+                <!-- One file, one obvious act: a glyph says it, the way the chip's own remove does.
+                     Its name says which file, so it is not only "Remove" to a screen reader. -->
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  quiet
+                  iconOnly
+                  class="chat-input-attachment-reason-action"
+                  label={failureLineActionLabel ?? ''}
+                  aria-label={failureLine.action === 'retry'
+                    ? labels.retryAttachmentAccessible(failureLine.attachment.file.name)
+                    : labels.removeAttachmentAccessible(failureLine.attachment.file.name)}
+                  onclick={runFailureLineAction}
+                >
+                  {#if failureLine.action === 'retry'}
+                    <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
+                  {:else}
+                    <X class="cinder-icon-xs" aria-hidden="true" />
+                  {/if}
+                </Button>
+              {:else}
+                <Button
+                  type="button"
+                  variant="ghost-accent"
+                  size="xs"
+                  quiet
+                  class="chat-input-attachment-reason-action"
+                  onclick={runFailureLineAction}
+                >
+                  {failureLineActionLabel}
+                </Button>
+              {/if}
             </p>
           {/if}
         </div>

@@ -1714,7 +1714,19 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
           step.line,
         );
         if (step.lineAction !== undefined) {
-          await expectAttachment(line.getByRole('button')).toHaveText(step.lineAction);
+          // One file's action is a glyph whose name starts with the act and then names the file
+          // ("Remove report.pdf"); an action for several files is its words ("Retry all").
+          const action = line.getByRole('button');
+          const single = step.lineAction === 'Retry' || step.lineAction === 'Remove';
+          if (single) {
+            await expectAttachment(action).toHaveAccessibleName(
+              new RegExp(`^${step.lineAction} \\S`, 'u'),
+            );
+            await expectAttachment(action.locator('svg')).toHaveCount(1);
+            await expectAttachment(action).toHaveText('');
+          } else {
+            await expectAttachment(action).toHaveText(step.lineAction);
+          }
         }
       }
       // A fine pointer's remove control is 24px painted. A coarse pointer's is compact and reaches
