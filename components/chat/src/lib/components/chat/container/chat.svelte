@@ -3430,19 +3430,15 @@
     }
   }
 
+  /* A narrow conversation, however wide the screen (a tablet's pane beside the list), gives the
+     composer the transcript's own inset: the wrapper takes the whole width and the input area's
+     narrow padding matches the timeline's, so the two share one left edge (COR-2327 B4). */
   @container (max-width: 480px) {
     .chat-input-wrapper,
     .chat-container[data-composer-placement='centered'] .chat-input-wrapper,
     .chat-container[data-surface-mode='default'] .chat-input-wrapper,
     .chat-container[data-surface-mode='default'] > :global(.chat-availability) {
       inline-size: 100%;
-    }
-  }
-
-  @media (min-width: 481px) and (max-width: 64rem) {
-    .chat-input-wrapper,
-    .chat-container[data-composer-placement='centered'] .chat-input-wrapper {
-      inline-size: calc(100% - 2rem);
     }
   }
 

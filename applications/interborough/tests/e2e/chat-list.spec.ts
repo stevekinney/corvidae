@@ -210,6 +210,80 @@ test.describe('the chat list hidden beside an open chat (COR-2327 AC1)', () => {
   });
 });
 
+test.describe('one left edge for the open chat (COR-2327 B4)', () => {
+  const refund = 'Please refund order 4471, it arrived damaged.';
+
+  /**
+   * The left edges of the title, the runs line and each alert when drawn, the transcript's content
+   * and the composer's, read in one pass so a scroll or a late layout cannot fall between them.
+   */
+  const leftEdges = (page: Page) =>
+    page.evaluate(() => {
+      const region = document.querySelector('[aria-label="Open chat"]') ?? document;
+      const left = (element: Element | null, inner = false): number | null => {
+        if (element === null) return null;
+        const box = element.getBoundingClientRect();
+        if (box.width === 0 && box.height === 0) return null;
+        return inner
+          ? box.left + Number.parseFloat(getComputedStyle(element).paddingLeft)
+          : box.left;
+      };
+      const edges: Record<string, number | null> = {
+        title: left(region.querySelector('h1.cinder-page-header__title')),
+        runs: left(region.querySelector('.weft-chat-strip')),
+        transcript: left(region.querySelector('.chat-timeline'), true),
+        composer: left(region.querySelector('.chat-input-area'), true),
+      };
+      region
+        .querySelectorAll('.weft-chat-head > .cinder-alert, .weft-chat-head > [role="alert"]')
+        .forEach((alert, index) => (edges[`alert ${index}`] = left(alert)));
+      return edges;
+    });
+
+  async function expectOneEdge(page: Page, label: string): Promise<void> {
+    await expect(
+      page
+        .getByRole('region', { name: 'Open chat' })
+        .getByRole('heading', { level: 1, name: refund }),
+    ).toBeVisible();
+    await expect(page.locator('.chat-timeline').first()).toBeVisible();
+    const edges = await leftEdges(page);
+    const drawn = Object.entries(edges).filter(
+      (entry): entry is [string, number] => entry[1] !== null,
+    );
+    expect(
+      drawn.map(([name]) => name),
+      label,
+    ).toEqual(expect.arrayContaining(['title', 'transcript', 'composer']));
+    const title = drawn.find(([name]) => name === 'title')![1];
+    for (const [name, edge] of drawn) {
+      expect(
+        Math.abs(edge - title),
+        `${label}: ${name} at ${edge}, title at ${title}`,
+      ).toBeLessThanOrEqual(1);
+    }
+  }
+
+  test('the title, runs line, alerts, transcript and composer share one left edge at 375, 768 and 1280, with the list shown and hidden', async ({
+    page,
+  }) => {
+    for (const width of [768, 1280]) {
+      await openChats(page, width);
+      await row(page, refund).getByRole('link').first().click();
+      await expectOneEdge(page, `${width}, list shown`);
+      await list(page).locator('header').getByRole('button', { name: 'Hide chats' }).click();
+      await expect(list(page)).toHaveCount(0);
+      await expectOneEdge(page, `${width}, list hidden`);
+      await page.getByRole('button', { name: 'Show chats' }).click();
+      await expect(page.locator('[data-chat]')).toHaveCount(CHAT_COUNT);
+    }
+    // A phone shows the chat as a screen of its own.
+    await openChats(page, 375);
+    await row(page, refund).getByRole('link').first().click();
+    await expectOneEdge(page, '375');
+  });
+});
+
 test.describe('the chat list at other widths', () => {
   test('in a pane dragged wide names today’s date, and the agent before each message (11g, 11h)', async ({
     page,

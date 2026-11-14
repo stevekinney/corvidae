@@ -55,8 +55,9 @@
   <VisuallyHidden><h1>{CHAT_COPY.load.crumb}</h1></VisuallyHidden>
   {#if shown}
     {#if availability.kind === 'loading'}
-      <!-- Where the chat's heading will be, so nothing moves when it arrives. -->
-      <div class="ib-chat-unavailable__heading" aria-hidden="true">
+      <!-- Where the chat's heading will be, in the conversation's column at its inset, so nothing
+           moves when it arrives. -->
+      <div class="weft-chat-head ib-chat-unavailable__heading" aria-hidden="true">
         <Skeleton height="1.5rem" width="16rem" />
       </div>
     {/if}
@@ -75,9 +76,9 @@
 </section>
 
 <style>
-  /* The conversation's own inset: the heading row is padded and its rule runs edge to edge. */
+  /* The column gives the heading its inset; the row is padded as the loaded header's title is. */
   .ib-chat-unavailable__heading {
-    padding: var(--cinder-space-5) var(--cinder-space-4);
+    padding-block-end: var(--cinder-space-5);
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 </style>

@@ -173,6 +173,40 @@
   margin-inline: auto;
 }
 
+/* The header, the runs line and the alerts above the conversation stand in the same column, inset
+ * as Chat insets its transcript and composer: 16px, and 12px once the column is 480px or narrower
+ * (Chat's `--cinder-chat-timeline-padding` and `--cinder-chat-narrow-padding` at the default
+ * density). So the title, each line under it, the transcript and the composer share one left edge
+ * at every width (COR-2327 B4). The route is the container the width is read from: the column is
+ * the route's width up to 760px, the same width Chat's own container query reads. */
+.weft-chat-route {
+  container: weft-chat-route / inline-size;
+}
+
+.weft-chat-head {
+  --_ib-chat-inset: var(--cinder-space-4);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  box-sizing: border-box;
+  inline-size: calc(100% - 2 * var(--_ib-chat-inset));
+  max-inline-size: calc(47.5rem - 2 * var(--_ib-chat-inset));
+  margin-inline: auto;
+  padding-block-start: var(--cinder-space-3);
+}
+
+/* A new chat has no header, and nothing else may be up there: then the column takes no room. */
+.weft-chat-head:not(:has(*)) {
+  display: none;
+}
+
+@container weft-chat-route (max-width: 480px) {
+  .weft-chat-head {
+    --_ib-chat-inset: var(--cinder-space-3);
+  }
+}
+
 .weft-chat-approval__title,
 .weft-chat-approval__message {
   margin: 0;
@@ -284,10 +318,9 @@
   color: inherit;
 }
 
-/* One sentence about the chat's runs, under the header, at the header's own inset. */
+/* One sentence about the chat's runs, under the header, at the column's inset (`.weft-chat-head`). */
 .weft-chat-strip {
   margin: 0;
-  padding-inline: var(--cinder-space-4);
   font-size: var(--cinder-text-sm);
 }
 

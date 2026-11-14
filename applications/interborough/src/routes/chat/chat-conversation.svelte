@@ -1926,73 +1926,79 @@
     bind:this={route}
   >
     {#snippet markdownTitle()}<InlineMarkdown text={displayTitle} />{/snippet}
-    <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
-       contrast, and the shared restart preset says what is happening above the heading (row 20e):
-       no action while the restart is asked for, Retry now once the host stopped answering. A
-       restart that never came back is the shared failed dialog below (`RestartDialog`). -->
-    {#if restart.running}
-      <Banner
-        preset={restart.phase === 'starting' ? 'reconnecting' : 'restarting'}
-        attempt={restart.attempt === 0 ? undefined : restart.attempt}
-        retryInSeconds={restart.retryInSeconds}
-        onRetry={() => restart.retryNow()}
-        data-testid="chat-restart-banner"
-      />
-    {/if}
-    <!-- A new chat has no header: the breadcrumb names the page, and its greeting is the one title. -->
-    {#if !choosing}
-      <PageHeader
-        data-testid="chat-header"
-        title={markdownTitle}
-        headingLevel={1}
-        {...context.data?.parentContextId ? { description: details } : {}}
-        actions={headerActions}
-        status={headerStatus}
-        statusPlacement="inline"
-      />
-    {/if}
-    <!-- A chat the server ended says why under its last reply, so the strip of runs adds nothing. -->
-    {#if !choosing && !endedByRestart}
-      <SessionTasks
-        {sessionId}
-        streaming={session.streaming}
-        headerSaysWaiting={chatStatus === CHAT_COPY.status.waiting}
-      />
-    {/if}
-
-    {#if session.failure !== undefined && !failureShownInTranscript && !choosing && !(session.disconnected && !session.historySettled)}
-      <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
-        <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
-        <p class="weft-chat-approval__message">{session.failure}</p>
-      </Alert>
-    {/if}
-
-    <!-- While Interborough cannot be reached the shell's banner is the one account of it: a dropped
-       stream gets no banner of its own (design row 18e). -->
-    {#if session.disconnected && session.historySettled && !connection.unreachable}
-      <Alert variant="warning">
-        <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
-        <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>
-        <Button
-          size="sm"
-          variant="secondary"
-          label={CHAT_COPY.disconnected.reconnect}
-          onclick={() => void session.reconnect()}
+    <!-- The header, the runs line and the alerts sit in the conversation's own column, at the
+         transcript's inset, so the title, each line under it, the transcript and the composer share
+         one left edge at every width (COR-2327 B4). -->
+    <div class="weft-chat-head">
+      <!-- While the host restarts for this chat's plugin the conversation stays on screen at full
+         contrast, and the shared restart preset says what is happening above the heading (row 20e):
+         no action while the restart is asked for, Retry now once the host stopped answering. A
+         restart that never came back is the shared failed dialog below (`RestartDialog`). -->
+      {#if restart.running}
+        <Banner
+          preset={restart.phase === 'starting' ? 'reconnecting' : 'restarting'}
+          attempt={restart.attempt === 0 ? undefined : restart.attempt}
+          retryInSeconds={restart.retryInSeconds}
+          onRetry={() => restart.retryNow()}
+          data-testid="chat-restart-banner"
         />
-      </Alert>
-    {/if}
+      {/if}
+      <!-- A new chat has no header: the breadcrumb names the page, and its greeting is the one title. -->
+      {#if !choosing}
+        <PageHeader
+          data-testid="chat-header"
+          title={markdownTitle}
+          headingLevel={1}
+          flush
+          {...context.data?.parentContextId ? { description: details } : {}}
+          actions={headerActions}
+          status={headerStatus}
+          statusPlacement="inline"
+        />
+      {/if}
+      <!-- A chat the server ended says why under its last reply, so the strip of runs adds nothing. -->
+      {#if !choosing && !endedByRestart}
+        <SessionTasks
+          {sessionId}
+          streaming={session.streaming}
+          headerSaysWaiting={chatStatus === CHAT_COPY.status.waiting}
+        />
+      {/if}
 
-    {#if branchFailure !== undefined}
-      <Alert
-        variant="danger"
-        dismissible
-        onDismiss={() => {
-          branchFailure = undefined;
-        }}
-      >
-        <p class="weft-chat-approval__message">{branchFailure}</p>
-      </Alert>
-    {/if}
+      {#if session.failure !== undefined && !failureShownInTranscript && !choosing && !(session.disconnected && !session.historySettled)}
+        <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
+          <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
+          <p class="weft-chat-approval__message">{session.failure}</p>
+        </Alert>
+      {/if}
+
+      <!-- While Interborough cannot be reached the shell's banner is the one account of it: a dropped
+       stream gets no banner of its own (design row 18e). -->
+      {#if session.disconnected && session.historySettled && !connection.unreachable}
+        <Alert variant="warning">
+          <p class="weft-chat-approval__title">{CHAT_COPY.disconnected.title}</p>
+          <p class="weft-chat-approval__message">{CHAT_COPY.disconnected.description}</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            label={CHAT_COPY.disconnected.reconnect}
+            onclick={() => void session.reconnect()}
+          />
+        </Alert>
+      {/if}
+
+      {#if branchFailure !== undefined}
+        <Alert
+          variant="danger"
+          dismissible
+          onDismiss={() => {
+            branchFailure = undefined;
+          }}
+        >
+          <p class="weft-chat-approval__message">{branchFailure}</p>
+        </Alert>
+      {/if}
+    </div>
 
     <!-- A decision made on another page, said once to a screen reader; the row itself changes in place. -->
     <VisuallyHidden role="status" aria-live="polite" data-testid="chat-decision-announcement">
@@ -2422,7 +2428,9 @@
       description={CHAT_COPY.composer.enableDialog.description}
       confirmLabel={CHAT_COPY.composer.enableDialog.confirm}
       onConfirm={() =>
-        void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
+        void restart.run([{ name: pluginName, enabled: true }], false, {
+          changes: [pluginTitle],
+        })}
     />
     <RestartDialog flow={restart} failedOnly />
   </section>
