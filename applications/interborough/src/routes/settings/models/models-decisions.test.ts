@@ -216,7 +216,7 @@ describe('the rows of the decision model and the fallback model', () => {
     await ready(container);
 
     // A row is chosen in each select (the fixture stores a fallback), and the empty option stays
-    // first: the description promises "Leave it empty".
+    // first, so a person can clear either setting.
     expect(served.values['decisions.fallbackModel']).toBe('anthropic/claude-haiku-5-5');
     const modelOptions = await optionsOf(container, 'decisions.model');
     expect(modelOptions).toHaveLength(4);
@@ -643,7 +643,7 @@ describe('a fallback model the Bureau’s fallback never uses', () => {
 });
 
 describe('the read of the rows that can answer decisions', () => {
-  test('failing says so in place of the description, with a quiet Try again, and leaves both selects unable to choose', async () => {
+  test('failing says so as the row’s load error, with its quiet Try again, and leaves both selects unable to choose', async () => {
     const served = servedSettings();
     served.values['decisions.model'] = 'anthropic/claude-haiku-5-5';
     let failing = true;
@@ -659,7 +659,8 @@ describe('the read of the rows that can answer decisions', () => {
     await waitFor(() =>
       expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
     );
-    expect(row(container, 'decisions.model').textContent).not.toContain(copy.model.description);
+    // The description stays what it is; the failure is the row's own warning with the row's Retry.
+    expect(row(container, 'decisions.model').textContent).toContain(copy.model.description);
     for (const key of ['decisions.model', 'decisions.fallbackModel']) {
       expect(trigger(container, key).hasAttribute('disabled'), key).toBe(true);
     }
@@ -667,8 +668,19 @@ describe('the read of the rows that can answer decisions', () => {
     expect(trigger(container, 'decisions.model').textContent).not.toContain(
       'anthropic/claude-haiku-5-5',
     );
-    // The failure is on the description, not in the row's error tier.
+    // The failure is an advisory in the warning tier, not in the row's error tier.
     expect(row(container, 'decisions.model').querySelector('[aria-invalid="true"]')).toBeNull();
+    const warning = row(container, 'decisions.model').querySelector<HTMLElement>(
+      '.cinder-form-field__warning',
+    )!;
+    expect(warning.textContent).toContain(copy.model.loadFailed);
+    expect(warning.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe(
+      copy.model.tryAgain,
+    );
+    // No button sits in the description: the row's own quiet retry is the only one.
+    expect(
+      row(container, 'decisions.model').querySelector('.cinder-form-field__description button'),
+    ).toBeNull();
 
     failing = false;
     await fireEvent.click(
@@ -684,6 +696,74 @@ describe('the read of the rows that can answer decisions', () => {
         name: copy.model.tryAgain,
       }),
     ).toBeNull();
+  });
+
+  test('failing leaves a saved decision model and a saved fallback reading as themselves', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-sonnet-5-5';
+    served.values['decisions.fallbackModel'] = 'openai/gpt-5';
+    const { container, findByRole } = open({
+      served,
+      rowsFor: () => {
+        throw new StubFault('Unavailable', 503, 'The rows did not come back.');
+      },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
+    );
+
+    expect(trigger(container, 'decisions.model').textContent?.trim()).toBe('Claude Sonnet 5.5');
+    expect(trigger(container, 'decisions.fallbackModel').textContent?.trim()).toBe('GPT 5');
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      const text = trigger(container, key).textContent ?? '';
+      expect(text, key).not.toContain('(default)');
+      expect(text, key).not.toContain('/');
+    }
+  });
+
+  test('failing with nothing saved keeps the empty label of each select', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.model'];
+    delete served.values['decisions.fallbackModel'];
+    const { container, findByRole } = open({
+      served,
+      rowsFor: () => {
+        throw new StubFault('Unavailable', 503, 'The rows did not come back.');
+      },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
+    );
+
+    expect(trigger(container, 'decisions.model').textContent).toContain(SETTINGS_COPY.notSet);
+    expect(trigger(container, 'decisions.fallbackModel').textContent).toContain(
+      SETTINGS_COPY.notSet,
+    );
+  });
+
+  test('pending leaves a saved decision model and a saved fallback reading as themselves', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-sonnet-5-5';
+    served.values['decisions.fallbackModel'] = 'openai/gpt-5';
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { container, findByRole } = open({ served, hold: held });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(row(container, 'decisions.model')).not.toBeNull());
+
+    expect(trigger(container, 'decisions.model').textContent?.trim()).toBe('Claude Sonnet 5.5');
+    expect(trigger(container, 'decisions.fallbackModel').textContent?.trim()).toBe('GPT 5');
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      const text = trigger(container, key).textContent ?? '';
+      expect(text, key).not.toContain('(default)');
+      expect(text, key).not.toContain('/');
+    }
+    release?.();
+    await ready(container);
   });
 
   test('pending leaves both selects unable to choose and does not show the stored id as an option', async () => {

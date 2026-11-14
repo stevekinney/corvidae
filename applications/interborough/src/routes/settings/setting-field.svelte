@@ -93,6 +93,11 @@
     statusNote?: string | undefined;
     /** A quiet link after the description, such as "Connect TypeSafe"; it joins the row's `aria-describedby`. */
     descriptionAction?: Snippet | undefined;
+    /**
+     * Says that what the row's select offers did not load, in the row's own warning tone with its
+     * quiet retry (the row's `loadError`), such as the decision rows the page reads.
+     */
+    loadFailure?: { message: string; retry: () => void; retryLabel: string } | undefined;
   }
 
   let {
@@ -116,6 +121,7 @@
     disabled = false,
     statusNote,
     descriptionAction,
+    loadFailure,
   }: Props = $props();
 
   const id = $derived(`weft-setting-${name.replaceAll('.', '-')}`);
@@ -262,7 +268,14 @@
     {...statusLabel === undefined ? {} : { statusLabel }}
     {...error === undefined ? {} : { error }}
     {...advisory === undefined ? {} : { warning: advisory }}
-    {...retriable ? { onRetry: () => void autosave.retry(name) } : {}}
+    {...loadFailure === undefined
+      ? {}
+      : { loadError: loadFailure.message, retryLabel: loadFailure.retryLabel }}
+    {...retriable
+      ? { onRetry: () => void autosave.retry(name) }
+      : loadFailure === undefined
+        ? {}
+        : { onRetry: loadFailure.retry }}
     {...locked ? { managed: { message: SETTINGS_COPY.lockedMessage } } : {}}
     {...controlWidth === undefined ? {} : { controlWidth }}
     disabled={inert}

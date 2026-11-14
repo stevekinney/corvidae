@@ -257,7 +257,7 @@ test.describe('Settings › Models, provider connected', () => {
     await expect(page.getByRole('option', { name: /Jev/ })).toHaveCount(0);
   });
 
-  test('Decisions, the rows that can answer did not load: the description says so with Try again, and both selects wait', async ({
+  test('Decisions, the rows that can answer did not load: the row warns with its own Try again, and both selects wait', async ({
     page,
     checkA11y,
   }) => {
@@ -286,6 +286,73 @@ test.describe('Settings › Models, provider connected', () => {
     await model.getByRole('button', { name: MODELS_COPY.decisions.model.tryAgain }).click();
     await expect(model).not.toContainText(MODELS_COPY.decisions.model.loadFailed);
     await expect(model.getByRole('combobox')).toBeEnabled();
+  });
+
+  test('Decisions, the rows that can answer are still loading: each select is disabled and names what is saved', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withSampleCatalog(page);
+    await withDecisionRows(page);
+    // A route added later answers first: it holds the read of the rows until the test lets it go.
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method !== 'bureau.decisions.models') return route.fallback();
+      await held;
+      return route.fallback();
+    });
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method !== 'bureau.settings.get') return route.fallback();
+      const response = await route.fetch();
+      const answer = (await response.json()) as { result: { values: Record<string, unknown> } };
+      answer.result.values['decisions.model'] = 'anthropic/claude-sonnet-5-5';
+      answer.result.values['decisions.fallbackModel'] = 'anthropic/claude-haiku-5-5';
+      return route.fulfill({ response, json: answer });
+    });
+    await open(page, E2E_BASE_URL);
+    const model = page.locator('[data-setting="decisions.model"]');
+    const fallback = page.locator('[data-setting="decisions.fallbackModel"]');
+    // Each trigger says what is saved, not "(default)" or "Not set" and not a bare id.
+    await expect(model.getByRole('combobox')).toBeDisabled();
+    await expect(model.getByRole('combobox')).toContainText('Claude Sonnet 5.5');
+    await expect(model.getByRole('combobox')).not.toContainText('(default)');
+    await expect(fallback.getByRole('combobox')).toBeDisabled();
+    await expect(fallback.getByRole('combobox')).toContainText('Claude Haiku 5.5');
+    await expect(fallback.getByRole('combobox')).not.toContainText('Not set');
+    await checkA11y('settings models, decision rows pending, at 1280px');
+    await captureAtEveryWidth(page, 'decision-rows-pending');
+
+    release?.();
+    await expect(model.getByRole('combobox')).toBeEnabled();
+  });
+
+  test('Decisions, a stored fallback the Bureau’s fallback never uses: a warning on the fallback row', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withSampleCatalog(page);
+    await withDecisionRows(page);
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method !== 'bureau.settings.get') return route.fallback();
+      const response = await route.fetch();
+      const answer = (await response.json()) as { result: { values: Record<string, unknown> } };
+      answer.result.values['decisions.fallbackModel'] = 'typesafe/jev';
+      return route.fulfill({ response, json: answer });
+    });
+    await open(page, E2E_BASE_URL);
+    const fallback = page.locator('[data-setting="decisions.fallbackModel"]');
+    await expect(fallback).toContainText(
+      MODELS_COPY.decisions.fallbackModel.unusable('typesafe/jev'),
+    );
+    await expect(fallback.locator('[aria-invalid="true"]')).toHaveCount(0);
+    await checkA11y('settings models, fallback model unusable, at 1280px');
+    await captureAtEveryWidth(page, 'fallback-unusable');
   });
 
   test('Decisions, a stored decision model the Bureau set aside: a warning on its row, not an error', async ({

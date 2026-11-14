@@ -35,6 +35,7 @@
     statusLabel,
     onRetry,
     retryLabel = 'Retry',
+    loadError,
     required,
     disabled,
     managed,
@@ -100,7 +101,8 @@
     {label}
     {description}
     {descriptionAction}
-    {warning}
+    warning={loadError || warning}
+    warningAction={loadError && !error && onRetry ? retryAction : undefined}
     {error}
     errorAction={onRetry ? retryAction : undefined}
     {required}

@@ -165,6 +165,53 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
     expect(container.querySelector('.cinder-setting-row__retry')).toBeNull();
   });
 
+  test('a load error is an advisory in the warning tone with the same quiet Retry, and marks nothing invalid', async () => {
+    const onRetry = mock();
+    const { container } = render(Fixture, {
+      props: { loadError: 'Couldn’t load the models.', onRetry, warning: 'Another advisory.' },
+    });
+    const warning = requiredInstance(
+      container.querySelector('.cinder-setting-row__field > .cinder-form-field__warning'),
+      HTMLElement,
+    );
+    expect(warning.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Couldn’t load the models. Retry',
+    );
+    expect(container.textContent).not.toContain('Another advisory.');
+    expect(container.querySelector('[aria-invalid="true"]')).toBeNull();
+    expect(
+      container.querySelector('.cinder-form-field__error')?.hasAttribute('data-cinder-error'),
+    ).toBe(false);
+    const input = requiredInstance(container.querySelector('input'), HTMLInputElement);
+    expect(input.getAttribute('aria-describedby')).toContain(warning.id);
+    await fireEvent.click(requiredInstance(warning.querySelector('button'), HTMLButtonElement));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(warning.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe('Retry');
+  });
+
+  test('a load error without onRetry has no Retry, and retryLabel renames it when there is one', () => {
+    const plain = render(Fixture, { props: { loadError: 'Couldn’t load the models.' } });
+    expect(plain.container.querySelector('.cinder-setting-row__retry')).toBeNull();
+    plain.unmount();
+    const { container } = render(Fixture, {
+      props: { loadError: 'Couldn’t load.', onRetry: () => undefined, retryLabel: 'Try again' },
+    });
+    expect(container.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe(
+      'Try again',
+    );
+  });
+
+  test('with an error as well, the Retry stays beside the error alone', () => {
+    const { container } = render(Fixture, {
+      props: { loadError: 'Couldn’t load.', error: 'Couldn’t save.', onRetry: () => undefined },
+    });
+    expect(container.querySelectorAll('.cinder-setting-row__retry')).toHaveLength(1);
+    expect(
+      container.querySelector('.cinder-form-field__error .cinder-setting-row__retry'),
+    ).not.toBeNull();
+    expect(container.querySelector('.cinder-form-field__warning button')).toBeNull();
+  });
+
   test('a locked setting says why with the lock glyph, and its control is read-only', () => {
     const { container } = render(Fixture, {
       props: {

@@ -15,10 +15,11 @@
    * no longer lists, or one that needs setup), with a quiet link to Connect TypeSafe while its plugin
    * waits for a key (said inside the warning, with no link, while the row also warns), and warns, as
    * an advisory and not an error, when the Bureau set a stored value aside or the stored row is not
-   * in the list. While the read of the rows fails the description says so with a quiet Try again, and
-   * both selects stay unable to choose until the rows load.
+   * in the list. While the rows are pending or their read failed, both selects stay unable to
+   * choose and each shows what is saved as its one option, named as a person says its model; a
+   * failed read is the decision model row's load error, in its warning tone with its quiet Try again.
    */
-  import { Button, FormSection, Link, type SelectOption } from '@lostgradient/cinder';
+  import { FormSection, Link, type SelectOption } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
@@ -115,7 +116,6 @@
 
   /** What the decision model row says: what it is, or which row answers in its place. */
   const modelDescription = $derived.by(() => {
-    if (failed) return copy.model.loadFailed;
     if (!fallbackAnswers) return copy.model.description;
     return answering === undefined
       ? copy.model.nothingAnswers
@@ -153,13 +153,19 @@
 
   /**
    * One option per row, grouped by its provider; a row that needs setup is marked and still chosen.
-   * None while the rows are not here: the stored name is not offered as a bare option in their place.
+   * While the rows are not here (pending, or their read failed) the one option is the stored value,
+   * named as a person says its model, with no provider and no "(default)", so the disabled trigger
+   * says what is saved; a key that holds nothing has none, and keeps its empty label.
    */
   function optionsFor(
     offered: readonly DecisionModelRow[] | undefined,
     current: unknown,
   ): SelectOption[] {
-    if (offered === undefined) return [];
+    if (offered === undefined) {
+      if (typeof current !== 'string' || current === '') return [];
+      const slash = current.indexOf('/');
+      return [{ value: current, label: modelDisplayName(current.slice(slash + 1)) }];
+    }
     const options = offered.map((row): SelectOption => {
       const provider = providerTitle(row.provider);
       return {
@@ -200,18 +206,13 @@
   >
 {/snippet}
 
-{#snippet retryRows()}
-  <Button variant="ghost" size="sm" onclick={() => void rows.refetch()}
-    >{copy.model.tryAgain}</Button
-  >
-{/snippet}
-
 {#snippet field(
   key: string,
   label: string,
   description: string,
   extra: {
     descriptionAction?: typeof connectTypesafe | undefined;
+    loadFailure?: { message: string; retry: () => void; retryLabel: string } | undefined;
     rowChoices?: readonly SelectOption[];
     emptyLabel?: string;
     warning?: string | undefined;
@@ -233,6 +234,7 @@
       descriptionOverride={description}
       labelOverride={label}
       descriptionAction={extra.descriptionAction}
+      loadFailure={extra.loadFailure}
       rowChoices={extra.rowChoices}
       emptyLabel={extra.emptyLabel}
       warning={extra.warning}
@@ -249,11 +251,15 @@
 >
   <FormSection grouped heading={copy.heading} description={copy.description}>
     {@render field('decisions.model', copy.model.label, modelDescription, {
-      descriptionAction: failed
-        ? retryRows
-        : connectOffered && modelWarning === undefined
-          ? connectTypesafe
-          : undefined,
+      descriptionAction:
+        connectOffered && modelWarning === undefined && !failed ? connectTypesafe : undefined,
+      loadFailure: failed
+        ? {
+            message: copy.model.loadFailed,
+            retry: () => void rows.refetch(),
+            retryLabel: copy.model.tryAgain,
+          }
+        : undefined,
       rowChoices: optionsFor(listed, form.draft('decisions.model')),
       warning: modelWarning,
       disabled: choosing,

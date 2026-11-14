@@ -185,8 +185,7 @@ export const MODELS_COPY = {
       'The model that makes quick judgments for the app, apart from the models agents chat with.',
     model: {
       label: 'Decision model',
-      description:
-        'Answers yes-or-no and classification questions for Interborough. Leave it empty to let the fallback model answer.',
+      description: 'Answers yes-or-no and classification questions for Interborough.',
       /** Said instead while the chosen row is empty, missing or needs setup: the row that answers, named by the Bureau. */
       fallbackAnswers: (model: string) => `${model} answers until a decision model is ready.`,
       /**
@@ -197,8 +196,8 @@ export const MODELS_COPY = {
         'None of your connected models can answer decisions. Connect a provider whose models can.',
       connect: 'Connect TypeSafe',
       /**
-       * Said in place of the description while the rows that can answer decisions did not load, with
-       * a quiet Try again: the selects cannot offer a row until they do.
+       * Said as the row's load error while the rows that can answer decisions did not load, with
+       * the row's quiet Try again: the selects cannot offer a row until they do.
        */
       loadFailed: 'Couldn’t load the models that can answer decisions.',
       tryAgain: 'Try again',
