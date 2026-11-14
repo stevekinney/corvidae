@@ -322,8 +322,11 @@ async function claimPlaces(
  * Waits, in arrival order, until the dispatch holds a place for its worker and one for its
  * coordinator when that coordinator holds none, or until the wait limit passes.
  */
-export async function admitWorker(options: AdmitOptions): Promise<Admission> {
-  const { directory, request, now } = options;
+export async function admitWorker(input: AdmitOptions): Promise<Admission> {
+  // Snapshotted, so a caller that changes its options after an await cannot change this dispatch.
+  const options = { ...input };
+  const request: PlaceRequest = { ...input.request };
+  const { directory, now } = options;
   const cap = options.cap ?? hostPlaceCap;
   const limit = options.waitLimitMilliseconds ?? placeWaitLimitMilliseconds;
   const started = now();
