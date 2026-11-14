@@ -102,7 +102,6 @@ export const MODELS_COPY = {
   manageDialog: {
     /** The title while no provider is chosen, which a closed dialog still carries. */
     fallbackTitle: 'Provider',
-    subtitle: 'Connected',
     connected: 'Connected',
     models: (count: number): string => `${String(count)} ${count === 1 ? 'model' : 'models'}`,
     removeKey: 'Remove key',
@@ -191,11 +190,16 @@ export const MODELS_COPY = {
       /** Said instead while the chosen row is empty, missing or needs setup: the row that answers, named by the Bureau. */
       fallbackAnswers: (model: string) => `${model} answers until a decision model is ready.`,
       /** Said while the Bureau reports no row that can answer. */
-      nothingAnswers: 'Nothing can answer decisions until you connect a provider or TypeSafe.',
+      nothingAnswers:
+        'None of your connected models can answer decisions. Connect TypeSafe, or a provider whose models can.',
       connect: 'Connect TypeSafe',
-      /** The Bureau dropped the stored value and records why; the row warns in these words, not the Bureau's. */
+      /**
+       * The Bureau dropped the stored value and records why; the row warns in these words, not the
+       * Bureau's. It names no row that answers, so it cannot be read as a claim about the value the
+       * trigger shows (which is the default while the stored one is set aside).
+       */
       dropped:
-        'The saved decision model no longer exists, so the fallback answers. Choose another.',
+        'Your earlier decision model was retired, so this shows the default. Choose another.',
       /** The stored value names a row the Bureau does not list as able to answer. */
       missing: (name: string) => `“${name}” can’t answer decisions. Choose another.`,
     },

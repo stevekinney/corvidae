@@ -9,7 +9,7 @@
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
-  import { queryKeys } from '../../../lib/query.ts';
+  import { refreshAfterConfigurationSave } from './provider-cache.ts';
   import { providerTitle, type ProviderConfigurationSource } from './provider-configuration.ts';
   import ProviderConfiguration from './provider-configuration.svelte';
   import { ProviderConfigurationDraft } from './provider-configuration.svelte.ts';
@@ -46,7 +46,7 @@
 
   const configuration = new ProviderConfigurationDraft({
     source: () => (provider === null ? undefined : configurations.get(provider)),
-    onSaved: () => queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() }),
+    onSaved: () => refreshAfterConfigurationSave(queryClient),
   });
 
   const displayName = $derived(provider === null ? '' : providerTitle(provider, configurations));
@@ -70,12 +70,7 @@
   }
 </script>
 
-<Modal
-  {open}
-  title={displayName === '' ? copy.fallbackTitle : displayName}
-  description={copy.subtitle}
-  onDismiss={close}
->
+<Modal {open} title={displayName === '' ? copy.fallbackTitle : displayName} onDismiss={close}>
   {#snippet children()}
     <div class="ib-manage">
       <div class="ib-manage__status" data-testid="provider-manage-body">

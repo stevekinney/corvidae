@@ -31,6 +31,38 @@ export function sampleCatalogModels() {
   ];
 }
 
+/**
+ * Answers the host's providers as if a local Ollama, which declares no secret, were loaded: its
+ * provider is connected with no key saved and offers one model, beside the sample world's three.
+ */
+export async function withKeylessProvider(page: Page): Promise<void> {
+  await page.route('**/host/providers', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const response = await route.fetch();
+    const body = (await response.json()) as { providers: { name: string }[] };
+    return route.fulfill({
+      response,
+      json: {
+        ...body,
+        providers: [
+          ...body.providers,
+          { name: 'ollama', configured: false, hasKey: false, connected: true },
+        ],
+        models: [
+          ...sampleCatalogModels(),
+          sampleModel('llama-3-2', {
+            provider: 'ollama',
+            contextWindowTokens: 128_000,
+            maxOutputTokens: 8_000,
+            structuredOutput: false,
+            images: false,
+          }),
+        ],
+      },
+    });
+  });
+}
+
 /** Answers the host's providers with Anthropic connected and the sample world's three models. */
 export async function withSampleCatalog(page: Page): Promise<void> {
   await page.route('**/host/providers', async (route) => {

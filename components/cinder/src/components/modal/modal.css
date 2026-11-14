@@ -317,6 +317,9 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    /* Wrap, so three buttons that do not fit one line (a 320px dialog) start another line at the
+       end edge instead of overflowing and clipping the first. */
+    flex-wrap: wrap;
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-3) var(--cinder-space-5);
     border-block-start: 1px solid var(--cinder-border-muted);

@@ -3,7 +3,9 @@
  * SettingsShell, "Connect" and "Replace key, in progress"). The key is tested first, with one
  * request of one token that stores nothing (`POST /host/providers/<name>/test`), and saved
  * (`PUT /host/providers/<name>`) only once the provider has accepted it, so a key that fails is
- * never in use and the key already saved keeps working until the new one passes.
+ * never in use and the key already saved keeps working until the new one passes. A dialog that
+ * edits the provider's configuration stores it before the test (`beforeTest`), because the host
+ * probes with the configuration it holds: a refused key leaves that configuration stored.
  *
  * The key is held in `key` for as long as the person is working on it, which is also how the field
  * keeps showing what they pasted after a refusal. It is cleared when the host has saved it and when
@@ -40,11 +42,14 @@ export type KeyFlowOptions = {
   /** Called once the host has saved the key, with the provider and how many models its test counted. */
   readonly onSaved: (provider: string, models: number) => void;
   /**
-   * Called once the provider has accepted the key and before the host is asked to save it, such as
-   * to store the provider's configuration first (as `interborough providers connect` does). It
-   * resolves `false` after showing why it could not, which stops the save and leaves the key unsaved.
+   * Called before the provider is asked about the key, such as to store the provider's
+   * configuration first (as `interborough providers connect` does): the host probes the key with the
+   * configuration it holds, so a drafted base URL has to be stored for the probe to reach it, and a
+   * key that passes is then the key tested against what will stay stored. It resolves `refused`
+   * after showing why it could not, which stops the sequence; `stored` when it changed what the
+   * host holds, which makes an earlier passing test of this key stale; and `unchanged` otherwise.
    */
-  readonly beforeSave?: () => Promise<boolean>;
+  readonly beforeTest?: () => Promise<'stored' | 'unchanged' | 'refused'>;
 };
 
 /** The test-then-save sequence of one key field. Create one per dialog. */
@@ -122,6 +127,24 @@ export class KeyFlow {
     const generation = ++this.#generation;
     this.fieldError = '';
     this.failure = '';
+    if (this.#options.beforeTest !== undefined) {
+      this.phase = 'testing';
+      let prepared: 'stored' | 'unchanged' | 'refused';
+      try {
+        prepared = await this.#options.beforeTest();
+      } catch (error) {
+        if (generation !== this.#generation) return;
+        this.failure = failureWords(error);
+        this.phase = 'idle';
+        return;
+      }
+      if (generation !== this.#generation) return;
+      if (prepared === 'refused') {
+        this.phase = 'idle';
+        return;
+      }
+      if (prepared === 'stored') this.#tested = null;
+    }
     if (this.#tested !== key) {
       this.phase = 'testing';
       const controller = new AbortController();
@@ -142,11 +165,6 @@ export class KeyFlow {
     }
     this.phase = 'saving';
     try {
-      if (this.#options.beforeSave !== undefined && !(await this.#options.beforeSave())) {
-        if (generation === this.#generation) this.phase = 'idle';
-        return;
-      }
-      if (generation !== this.#generation) return;
       await connectProvider(provider, key);
     } catch (error) {
       if (generation !== this.#generation) return;

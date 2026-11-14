@@ -47,6 +47,10 @@ let pluginHost: FakePluginHost | undefined;
 let restoreSpy: (() => void) | undefined;
 /** Every write to the host, in the order it was made, across both routes. */
 let order: string[] = [];
+/** The configuration the host held at each key test, in the order the tests were made. */
+let probes: { provider: string; configuration: unknown }[] = [];
+/** How many times the page asked the Bureau which rows can answer decisions. */
+let decisionReads = 0;
 
 afterEach(() => {
   cleanup();
@@ -69,11 +73,21 @@ function open(
     keyless?: string[];
     /** The address the page is opened at; `/settings/models` unless given. */
     at?: string;
+    /** Called once the host has stored a plugin's configuration, as the host applies it live. */
+    afterPluginWrite?: (plugin: string) => void;
+    /** Answers a key test in place of the host, from the configuration the host holds at that moment. */
+    probeAnswer?: (configuration: unknown) => Response | undefined;
   } = {},
 ) {
   order = [];
+  probes = [];
+  decisionReads = 0;
   stub = installSettingsBureau(servedSettings(), {
     'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+    'bureau.decisions.models': () => {
+      decisionReads += 1;
+      return { rows: [] };
+    },
     'bureau.plugins.contributions': () => ({
       providers: options.providers ?? [
         { plugin: 'openai', name: 'openai', configuration: OPENAI_SCHEMA },
@@ -112,7 +126,21 @@ function open(
     if (method !== 'GET' && path.startsWith('/host/') && !path.endsWith('/test')) {
       order.push(`${method} ${path}`);
     }
-    return underneath(input, init);
+    if (method === 'POST' && path.endsWith('/test')) {
+      // The host probes with the configuration it holds when the test arrives.
+      const name = path.slice('/host/providers/'.length, -'/test'.length);
+      probes.push({
+        provider: name,
+        configuration: structuredClone(pluginHost?.stored[name]?.configuration),
+      });
+      const answered = options.probeAnswer?.(pluginHost?.stored[name]?.configuration);
+      if (answered !== undefined) return answered;
+    }
+    const response = await underneath(input, init);
+    if (method === 'PUT' && path.startsWith('/host/plugins/') && response.ok) {
+      options.afterPluginWrite?.(decodeURIComponent(path.slice('/host/plugins/'.length)));
+    }
+    return response;
   });
   landAt(options.at ?? '/settings/models');
   return render(RouteOutletHarness, {
@@ -221,6 +249,89 @@ describe('connecting a provider whose plugin has settings', () => {
     );
     expect(pluginWrites()).toEqual([]);
     expect(order).toEqual(['PUT /host/providers/openai']);
+  });
+
+  test('tests the key against the drafted settings: they are stored before the host probes the key', async () => {
+    const { container } = open();
+    await loaded(container);
+    const dialog = await beginConnect(container);
+
+    await fireEvent.input(baseUrlField(dialog), { target: { value: 'http://localhost:1234/v1' } });
+    await fireEvent.input(within(dialog).getByLabelText(copy.keyLabel), {
+      target: { value: KEY },
+    });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect }));
+
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('provider-connect-success')).toBeDefined(),
+    );
+    // The host probes with the configuration it holds, so the probe reached the drafted endpoint.
+    expect(probes).toEqual([
+      { provider: 'openai', configuration: { baseURL: 'http://localhost:1234/v1' } },
+    ]);
+    expect(order).toEqual(['PUT /host/plugins/openai', 'PUT /host/providers/openai']);
+  });
+
+  test('does not report Connected for a valid key when the drafted endpoint is the one that refuses it', async () => {
+    const { container } = open({
+      probeAnswer: (configuration) =>
+        JSON.stringify(configuration).includes('mistyped')
+          ? Response.json({ ok: false, status: 502 })
+          : undefined,
+    });
+    await loaded(container);
+    const dialog = await beginConnect(container);
+
+    await fireEvent.input(baseUrlField(dialog), {
+      target: { value: 'http://mistyped.invalid/v1' },
+    });
+    await fireEvent.input(within(dialog).getByLabelText(copy.keyLabel), {
+      target: { value: KEY },
+    });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect }));
+
+    await waitFor(() => expect(probes).toHaveLength(1));
+    expect(probes[0]?.configuration).toEqual({ baseURL: 'http://mistyped.invalid/v1' });
+    await waitFor(() => expect(dialog.textContent).toContain('502'));
+    expect(within(dialog).queryByTestId('provider-connect-success')).toBeNull();
+    expect(keyWrites()).toEqual([]);
+
+    // The key was probed at the endpoint a person typed, so fixing it and connecting probes again.
+    await fireEvent.input(baseUrlField(dialog), { target: { value: 'http://localhost:1234/v1' } });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect }));
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('provider-connect-success')).toBeDefined(),
+    );
+    expect(probes.map((probe) => probe.configuration)).toEqual([
+      { baseURL: 'http://mistyped.invalid/v1' },
+      { baseURL: 'http://localhost:1234/v1' },
+    ]);
+  });
+
+  test('probes again when the settings change after a Test passed, so Connect never rests on an older endpoint', async () => {
+    const { container } = open();
+    await loaded(container);
+    const dialog = await beginConnect(container);
+
+    await fireEvent.input(baseUrlField(dialog), { target: { value: 'http://localhost:1111/v1' } });
+    await fireEvent.input(within(dialog).getByLabelText(copy.keyLabel), {
+      target: { value: KEY },
+    });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.test }));
+    await waitFor(() => expect(probes).toHaveLength(1));
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('provider-connect-success')).toBeDefined(),
+    );
+    expect(keyWrites()).toEqual([]);
+
+    await fireEvent.input(baseUrlField(dialog), { target: { value: 'http://localhost:2222/v1' } });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect }));
+
+    await waitFor(() => expect(keyWrites()).toHaveLength(1));
+    expect(probes.map((probe) => probe.configuration)).toEqual([
+      { baseURL: 'http://localhost:1111/v1' },
+      { baseURL: 'http://localhost:2222/v1' },
+    ]);
   });
 
   test('shows a value the host refuses at its field, and saves neither the settings nor the key', async () => {
@@ -358,6 +469,35 @@ describe('managing a provider whose plugin has settings', () => {
     await within(dialog).findByRole('button', { name: copy.done });
     expect(within(dialog).queryByRole('button', { name: copy.save })).toBeNull();
     expect(keyWrites()).toEqual([]);
+  });
+
+  test('reads the providers, the Models table and the decision rows again once the settings are saved', async () => {
+    // A saved `models` allowlist applies live, so the provider offers different models at once.
+    const { container } = open({
+      afterPluginWrite: () => {
+        host!.offered['anthropic'] = [
+          model('anthropic', 'claude-sonnet-5'),
+          model('anthropic', 'claude-opus-5'),
+        ];
+      },
+    });
+    await loaded(container);
+    await waitFor(() =>
+      expect(container.querySelector('[data-model="anthropic/claude-sonnet-5"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-model="anthropic/claude-opus-5"]')).toBeNull();
+    await waitFor(() => expect(decisionReads).toBeGreaterThan(0));
+    const readsBefore = decisionReads;
+    const dialog = await beginManage(container);
+
+    await fireEvent.input(baseUrlField(dialog), { target: { value: 'https://proxy.example/v1' } });
+    await fireEvent.click(await within(dialog).findByRole('button', { name: copy.save }));
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-model="anthropic/claude-opus-5"]')).not.toBeNull(),
+    );
+    expect(dialog.textContent).toContain(copy.models(2));
+    await waitFor(() => expect(decisionReads).toBeGreaterThan(readsBefore));
   });
 
   test('shows a refused value at its field, saves nothing and keeps Save for another try', async () => {

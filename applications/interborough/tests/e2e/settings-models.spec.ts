@@ -256,6 +256,30 @@ test.describe('Settings › Models, provider connected', () => {
     await checkA11y('settings models, decision model dropped, at 1280px');
     await captureAtEveryWidth(page, 'decision-model-dropped');
   });
+
+  test('Decisions, a stored decision model the Bureau does not list: a warning, with its own name still the option', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withSampleCatalog(page);
+    await withDecisionRows(page);
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method !== 'bureau.settings.get') return route.fallback();
+      const response = await route.fetch();
+      const answer = (await response.json()) as {
+        result: { values: Record<string, unknown> };
+      };
+      answer.result.values['decisions.model'] = 'acme/vanished';
+      return route.fulfill({ response, json: answer });
+    });
+    await open(page, E2E_BASE_URL);
+    const model = page.locator('[data-setting="decisions.model"]');
+    await expect(model).toContainText(MODELS_COPY.decisions.model.missing('acme/vanished'));
+    await expect(model.getByRole('combobox')).toContainText('acme/vanished');
+    await checkA11y('settings models, decision model missing, at 1280px');
+    await captureAtEveryWidth(page, 'decision-model-missing');
+  });
 });
 
 /** A key shaped like Anthropic's, which only ever goes to a mocked route here. */
@@ -333,6 +357,43 @@ async function withAnthropicConnected(page: Page) {
   });
 }
 
+/**
+ * Answers the Bureau's list of provider contributions as if `provider`'s plugin took a `baseURL`, as
+ * a plugin that fronts a gateway would, so its Connect and Manage dialogs draw a field.
+ */
+async function withBaseUrlSetting(page: Page, provider: string) {
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as { method?: string } | null;
+    if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
+    const response = await route.fetch();
+    const reply = (await response.json()) as {
+      result: { providers: { name: string; configuration: unknown }[] };
+    };
+    return route.fulfill({
+      response,
+      json: {
+        ...reply,
+        result: {
+          ...reply.result,
+          providers: reply.result.providers.map((entry) =>
+            entry.name === provider
+              ? {
+                  ...entry,
+                  configuration: {
+                    ...OLLAMA_SCHEMA,
+                    properties: {
+                      baseURL: { type: 'string', description: 'Where the gateway listens.' },
+                    },
+                  },
+                }
+              : entry,
+          ),
+        },
+      },
+    });
+  });
+}
+
 test.describe('Settings › Models, connect dialogs', () => {
   const copy = MODELS_COPY.connectDialog;
 
@@ -370,38 +431,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     page,
     checkA11y,
   }) => {
-    // OpenAI's plugin takes no settings on this host, so the Bureau's list of provider contributions
-    // gives it a `baseURL`, as a plugin that fronts a gateway would.
-    await page.route('**/bureau/jsonrpc', async (route) => {
-      const body = route.request().postDataJSON() as { method?: string } | null;
-      if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
-      const response = await route.fetch();
-      const reply = (await response.json()) as {
-        result: { providers: { name: string; configuration: unknown }[] };
-      };
-      return route.fulfill({
-        response,
-        json: {
-          ...reply,
-          result: {
-            ...reply.result,
-            providers: reply.result.providers.map((provider) =>
-              provider.name === 'openai'
-                ? {
-                    ...provider,
-                    configuration: {
-                      ...OLLAMA_SCHEMA,
-                      properties: {
-                        baseURL: { type: 'string', description: 'Where the gateway listens.' },
-                      },
-                    },
-                  }
-                : provider,
-            ),
-          },
-        },
-      });
-    });
+    await withBaseUrlSetting(page, 'openai');
     await open(page, E2E_SHOWCASE_URL);
     await providerRow(page, 'openai')
       .getByRole('button', { name: /Connect/ })
@@ -416,6 +446,40 @@ test.describe('Settings › Models, connect dialogs', () => {
     await expect(dialog.getByRole('button', { name: copy.connect })).toBeEnabled();
     await checkA11y('settings models, connect with settings, at 1280px');
     await captureAtEveryWidth(page, 'connect-with-settings');
+  });
+
+  test('Connect, a refused setting: the host’s words at the field it names, and the key stays unsaved', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withBaseUrlSetting(page, 'openai');
+    await mockKeyRoutes(page, { ok: true, models: 1 });
+    await page.route('**/host/plugins/openai', (route) =>
+      route.request().method() === 'PUT'
+        ? route.fulfill({
+            status: 400,
+            json: {
+              error: 'invalid',
+              field: 'configuration.baseURL',
+              message: 'baseURL must be a URL.',
+            },
+          })
+        : route.fallback(),
+    );
+    await open(page, E2E_SHOWCASE_URL);
+    await providerRow(page, 'openai')
+      .getByRole('button', { name: /Connect/ })
+      .click();
+    const dialog = page.getByRole('dialog', { name: copy.title('OpenAI') });
+    await dialog.getByLabel(/base ?url/i).fill('not a url');
+    await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
+    await dialog.getByRole('button', { name: copy.connect }).click();
+
+    await expect(dialog).toContainText('baseURL must be a URL.');
+    await expect(dialog.getByLabel(/base ?url/i)).toHaveAttribute('aria-invalid', 'true');
+    await expect(dialog.getByTestId('provider-connect-success')).toHaveCount(0);
+    await checkA11y('settings models, connect with a refused setting, at 1280px');
+    await captureAtEveryWidth(page, 'connect-refused-setting');
   });
 
   test('Connect, testing: the masked key, a status with a spinner, a disabled Testing… and an enabled Cancel', async ({
@@ -534,14 +598,45 @@ test.describe('Settings › Models, manage, replace and remove', () => {
   }) => {
     const dialog = await openManage(page);
 
-    await expect(dialog).toContainText(MODELS_COPY.manageDialog.subtitle);
-    await expect(dialog).toContainText(MODELS_COPY.manageDialog.connected);
+    // Said once, by the status beside the model count: the dialog has no description to say it again.
+    await expect(dialog.getByText(MODELS_COPY.manageDialog.connected, { exact: true })).toHaveCount(
+      1,
+    );
     await expect(dialog).toContainText(MODELS_COPY.manageDialog.models(3));
     // The saved key is never shown again: no key field. The plugin's own settings are fields here.
     await expect(dialog.getByLabel(MODELS_COPY.connectDialog.keyLabel)).toHaveCount(0);
     await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
     await checkA11y('settings models, manage, at 1280px');
     await captureAtEveryWidth(page, 'manage');
+  });
+
+  test('Manage, with a setting changed: Remove key, Replace key and Save stay inside the dialog at 320', async ({
+    page,
+  }) => {
+    // The plugin takes a `baseURL` here, so changing it turns Done into Save beside both key buttons.
+    await withBaseUrlSetting(page, 'anthropic');
+    const dialog = await openManage(page);
+    await dialog.getByLabel(/base ?url/i).fill('https://proxy.example/v1');
+    const buttons = [
+      MODELS_COPY.manageDialog.removeKey,
+      MODELS_COPY.manageDialog.replaceKey,
+      MODELS_COPY.manageDialog.save,
+    ].map((name) => dialog.getByRole('button', { name, exact: true }));
+    await page.setViewportSize({ width: 320, height: 640 });
+    const panel = await dialog.boundingBox();
+    for (const button of buttons) {
+      await expect(button).toBeVisible();
+      const box = await button.boundingBox();
+      // Whole inside the dialog, so the footer wrapped to a second line instead of clipping one.
+      expect(box!.x).toBeGreaterThanOrEqual(panel!.x);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(panel!.x + panel!.width + 1);
+    }
+    await captureForDesignReview(page, {
+      route: ROUTE,
+      state: 'manage-save-and-key-buttons',
+      source: SOURCE,
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
   });
 
   test('Replace key, in progress: the new key tests while the old one stays in use', async ({
@@ -611,7 +706,7 @@ const OLLAMA_SCHEMA = {
  * provider is connected with no key saved, its plugin holds a `baseURL`, and the Bureau reports the
  * provider with that schema. No bundled plugin is keyless, so the showcase host has none of its own.
  */
-async function withKeylessOllama(page: Page) {
+async function withKeylessOllama(page: Page, schema: Record<string, unknown> = OLLAMA_SCHEMA) {
   await page.route('**/host/providers', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
     const response = await route.fetch();
@@ -676,7 +771,7 @@ async function withKeylessOllama(page: Page) {
             contributions: [],
             enabled: true,
             configuration,
-            configurationSchema: OLLAMA_SCHEMA,
+            configurationSchema: schema,
             running: { enabled: true, configuration },
             secrets: [],
             restartRequired: false,
@@ -700,7 +795,7 @@ async function withKeylessOllama(page: Page) {
           ...reply.result,
           providers: [
             ...reply.result.providers.filter((provider) => provider.plugin !== 'ollama'),
-            { plugin: 'ollama', name: 'ollama', configuration: OLLAMA_SCHEMA },
+            { plugin: 'ollama', name: 'ollama', configuration: schema },
           ],
         },
       },
@@ -739,5 +834,26 @@ test.describe('Settings › Models, a keyless provider', () => {
     await expect(dialog.getByRole('button', { name: MODELS_COPY.manageDialog.done })).toBeVisible();
     await checkA11y('settings models, keyless manage, at 1280px');
     await captureAtEveryWidth(page, 'keyless-manage');
+  });
+
+  test('with no settings and no key, its row is only Connected: no button and no dialog to open', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withKeylessOllama(page, {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    });
+    await open(page, E2E_SHOWCASE_URL);
+    const ollama = providerRow(page, 'ollama');
+    await expect(ollama).toContainText(MODELS_COPY.providers.connected);
+    await expect(ollama.getByRole('button')).toHaveCount(0);
+    await expect(page.getByRole('table', { name: MODELS_COPY.models.tableLabel })).toContainText(
+      'llama-3-2',
+    );
+    await checkA11y('settings models, keyless provider with no settings, at 1280px');
+    await captureAtEveryWidth(page, 'keyless-no-fields');
   });
 });

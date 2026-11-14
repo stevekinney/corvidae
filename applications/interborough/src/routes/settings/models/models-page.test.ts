@@ -745,7 +745,8 @@ describe('managing a connected provider', () => {
     const dialog = await manage(container);
 
     expect(within(dialog).getByRole('heading', { name: 'Anthropic' })).toBeDefined();
-    expect(dialog.textContent).toContain(copy.subtitle);
+    // Said once, by the status: the dialog has no description to say it again.
+    expect(dialog.textContent?.split(copy.connected)).toHaveLength(2);
     expect(within(dialog).getByTestId('provider-manage-body').textContent).toContain(
       copy.connected,
     );

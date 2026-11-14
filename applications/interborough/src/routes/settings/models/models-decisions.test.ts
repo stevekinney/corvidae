@@ -23,7 +23,9 @@ import {
 import {
   installSettingsBureau,
   servedSettings,
+  settingsStream,
   type SettingsServed,
+  type SettingsStream,
 } from '../settings-fixtures.test-support.ts';
 import { installFakeHost, model, type FakeHost } from './models-host.test-support.ts';
 
@@ -67,25 +69,35 @@ const JEV = decisionRow('typesafe', 'jev', { decisionOnly: true });
 function open(
   options: {
     rows?: readonly DecisionModelRow[];
+    /** The rows as the Bureau reports them now, read from the settings it holds at each request. */
+    rowsFor?: (served: SettingsServed) => readonly DecisionModelRow[];
     served?: SettingsServed;
     plugins?: PluginFixture[];
+    stream?: SettingsStream;
   } = {},
 ) {
-  stub = installSettingsBureau(options.served ?? servedSettings(), {
-    'bureau.agents.catalog': () => ({ models: [], tools: [] }),
-    'bureau.decisions.models': () => ({ rows: options.rows ?? [HAIKU, GPT, JEV] }),
-    // The plugins' titles name the groups of rows: TypeSafe is no chat provider and is not in the
-    // host's providers list, but its plugin is.
-    'bureau.plugins.contributions': () => ({
-      providers: ['anthropic', 'openai', 'typesafe'].map((name) => ({
-        plugin: name,
-        name,
-        configuration: null,
-      })),
-      triggers: [],
-      reactions: [],
-    }),
-  });
+  const served = options.served ?? servedSettings();
+  stub = installSettingsBureau(
+    served,
+    {
+      'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+      'bureau.decisions.models': () => ({
+        rows: options.rowsFor?.(served) ?? options.rows ?? [HAIKU, GPT, JEV],
+      }),
+      // The plugins' titles name the groups of rows: TypeSafe is no chat provider and is not in the
+      // host's providers list, but its plugin is.
+      'bureau.plugins.contributions': () => ({
+        providers: ['anthropic', 'openai', 'typesafe'].map((name) => ({
+          plugin: name,
+          name,
+          configuration: null,
+        })),
+        triggers: [],
+        reactions: [],
+      }),
+    },
+    options.stream,
+  );
   host = installFakeHost({
     keys: { anthropic: true, openai: false, gemini: false },
     offered: { anthropic: [model('anthropic', 'claude-haiku-5-5')], openai: [], gemini: [] },
@@ -315,6 +327,106 @@ describe('the decision model row', () => {
     expect(
       within(row(container, 'decisions.model')).queryByRole('link', { name: copy.model.connect }),
     ).toBeNull();
+  });
+});
+
+/**
+ * The Bureau's marks follow the settings it holds: the stored decision model answers while it is
+ * available, else the stored fallback does, else Haiku; the fallback mark is the stored fallback,
+ * else Jev.
+ */
+function marksFollowSettings(served: SettingsServed): DecisionModelRow[] {
+  const stored = (key: string): string | undefined => {
+    const value = served.values[key];
+    return typeof value === 'string' && value !== '' ? value : undefined;
+  };
+  const rows = [HAIKU, GPT, JEV];
+  const nameOf = (entry: DecisionModelRow) => `${entry.provider}/${entry.model}`;
+  const isAvailable = (name: string | undefined) =>
+    rows.some((entry) => nameOf(entry) === name && entry.availability === 'available');
+  const decisionModel = stored('decisions.model');
+  const fallbackModel = stored('decisions.fallbackModel');
+  const answering = isAvailable(decisionModel)
+    ? decisionModel
+    : isAvailable(fallbackModel)
+      ? fallbackModel
+      : 'anthropic/claude-haiku-5-5';
+  return rows.map((entry) => ({
+    ...entry,
+    answering: nameOf(entry) === answering,
+    fallback: nameOf(entry) === (fallbackModel ?? 'typesafe/jev'),
+  }));
+}
+
+describe('a save moves the rows the Bureau marks (the rows are read again)', () => {
+  test('the decision model row names the new answering row after another available row is chosen', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.model'];
+    const { container, findByRole } = open({ served, rowsFor: marksFollowSettings });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+
+    const options = await optionsOf(container, 'decisions.model');
+    await fireEvent.click(options.find((option) => option.textContent?.includes('Jev'))!);
+
+    await waitFor(() => expect(served.values['decisions.model']).toBe('typesafe/jev'));
+    // The chosen row now answers, so the row stops saying another one does.
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.description),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain('answers until');
+    expect(section(container).dataset['waiting']).toBeUndefined();
+  });
+
+  test('the decision model row names the row the new fallback is while no decision model is chosen', async () => {
+    // With no decision model, the fallback answers: choosing another fallback moves the answerer.
+    const served = servedSettings();
+    delete served.values['decisions.model'];
+    const { container, findByRole } = open({ served, rowsFor: marksFollowSettings });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+
+    const options = await optionsOf(container, 'decisions.fallbackModel');
+    await fireEvent.click(options.find((option) => option.textContent?.includes('Jev'))!);
+
+    await waitFor(() => expect(served.values['decisions.fallbackModel']).toBe('typesafe/jev'));
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Jev'),
+      ),
+    );
+  });
+
+  test('the decision model row follows a change made elsewhere that the settings events announce', async () => {
+    // A save from another client reaches the page as a newer revision of the settings, not as an edit.
+    const served = servedSettings();
+    delete served.values['decisions.model'];
+    const stream = settingsStream();
+    const { container, findByRole } = open({ served, rowsFor: marksFollowSettings, stream });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(stream.opened).toEqual([undefined]));
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+
+    served.values['decisions.model'] = 'typesafe/jev';
+    served.revision += 1;
+    stream.push(served.revision, ['decisions.model']);
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.description),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain('answers until');
   });
 });
 

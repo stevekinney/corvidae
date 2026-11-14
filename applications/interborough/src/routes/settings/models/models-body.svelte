@@ -175,6 +175,21 @@
   });
   onDestroy(() => revert.dispose());
 
+  // Which row answers decisions, and which is the fallback, follow the decision settings the Bureau
+  // holds. Every save (autosave, an undo, another tab's change arriving through the settings events)
+  // reads the settings again and moves the revision, so the rows are read again with it; the rows'
+  // own query has a fixed key and would otherwise keep the previous answerer until a remount.
+  let decisionRowsRevision: string | undefined;
+  $effect(() => {
+    const revision = snapshot.revision;
+    untrack(() => {
+      if (decisionRowsRevision !== undefined && decisionRowsRevision !== revision) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.decisionModels() });
+      }
+      decisionRowsRevision = revision;
+    });
+  });
+
   // The settings were read again: every setting not being edited takes them.
   $effect(() => {
     const latest = snapshot;

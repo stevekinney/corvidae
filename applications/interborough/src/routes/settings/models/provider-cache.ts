@@ -37,3 +37,18 @@ export function refreshAfterKeyChange(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.agents.catalog() });
   void queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() });
 }
+
+/**
+ * Reads again what a saved provider configuration moved. A provider's configuration applies live,
+ * so a `models` allowlist or a base URL changes the providers, the Models table and its count, the
+ * rows that can answer decisions, the agent editor's model choices and the plugin that holds it.
+ * Resolves once they have been read.
+ */
+export async function refreshAfterConfigurationSave(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.decisionModels() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.agents.catalog() }),
+  ]);
+}

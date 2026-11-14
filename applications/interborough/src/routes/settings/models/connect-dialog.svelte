@@ -13,10 +13,13 @@
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
-  import { queryKeys } from '../../../lib/query.ts';
   import { maskedKey, providerKeyPage } from './format-model.ts';
   import { KeyFlow } from './key-flow.svelte.ts';
-  import { markConnected, refreshAfterKeyChange } from './provider-cache.ts';
+  import {
+    markConnected,
+    refreshAfterConfigurationSave,
+    refreshAfterKeyChange,
+  } from './provider-cache.ts';
   import { providerTitle, type ProviderConfigurationSource } from './provider-configuration.ts';
   import ProviderConfiguration from './provider-configuration.svelte';
   import { ProviderConfigurationDraft } from './provider-configuration.svelte.ts';
@@ -36,7 +39,7 @@
   /** The provider's plugin settings, saved before the key once the key has passed its test. */
   const configuration = new ProviderConfigurationDraft({
     source: () => (provider === null ? undefined : configurations.get(provider)),
-    onSaved: () => queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() }),
+    onSaved: () => refreshAfterConfigurationSave(queryClient),
   });
 
   const flow = new KeyFlow({
@@ -45,7 +48,11 @@
       markConnected(queryClient, name);
       refreshAfterKeyChange(queryClient);
     },
-    beforeSave: () => configuration.save(),
+    beforeTest: async () => {
+      const changed = configuration.dirty;
+      if (!(await configuration.save())) return 'refused';
+      return changed ? 'stored' : 'unchanged';
+    },
   });
 
   const displayName = $derived(provider === null ? '' : providerTitle(provider, configurations));
