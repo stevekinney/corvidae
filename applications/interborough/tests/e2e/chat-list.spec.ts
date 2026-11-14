@@ -323,6 +323,19 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
       });
     });
     await page.route('**/ag-ui/threads/**', (route) => route.fulfill({ status: 403, body: '' }));
+    // With no provider key, an unread chat is the Connect a model provider state in place of the
+    // transcript and the composer; with one, the transcript and the composer are drawn to measure.
+    await page.route('**/host/providers', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { providers: { hasKey: boolean }[] };
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          providers: body.providers.map((provider) => ({ ...provider, hasKey: true })),
+        },
+      });
+    });
     const expected = ['title', 'runs', 'alert 0', 'alert 1', 'transcript', 'composer'];
     for (const width of [1280, 375]) {
       await openChats(page, width);
