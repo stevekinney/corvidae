@@ -2260,7 +2260,7 @@ async function measure(
   const insets = await readCalloutInsets(opened.page);
   for (const inset of insets) {
     console.log(
-      `case ${stressCase.id} at ${profile.name}: notice "${inset.label}" ink ${inset.top.toFixed(2)}px under its top border, ${inset.bottom.toFixed(2)}px over its bottom border`,
+      `case ${stressCase.id} at ${profile.name}: notice "${inset.label}" ink ${inset.top.toFixed(2)}px under its top border, ${inset.bottom.toFixed(2)}px over its bottom border${inset.glyph === undefined ? '' : `, glyph ${inset.glyph.toFixed(2)}px from a border`}`,
     );
   }
   problems.push(...calloutInsetProblems(insets));
@@ -2769,27 +2769,34 @@ export const CALLOUT_INSET_TOLERANCE = 1;
 /** One notice's distance from its border to the first ink and from the last ink to its border. */
 export interface CalloutInsets {
   readonly label: string;
-  /** From the inside of the top border to the highest ink: capitals, a glyph's drawing or a button face. */
+  /** From the inside of the top border to the highest ink: capitals or a button face. */
   readonly top: number;
-  /** From the lowest ink, a baseline, a glyph's drawing, a button face or the progress line, to the inside of the bottom border. */
+  /** From the lowest ink, a baseline, a button face or the progress line, to the inside of the bottom border. */
   readonly bottom: number;
+  /** The least distance from the glyph's drawing to the inside of either border, when there is a glyph. */
+  readonly glyph?: number;
 }
+
+/** How near a border a notice's glyph may stand, in pixels: it is taller than the letters, so it overhangs them. */
+export const CALLOUT_GLYPH_CLEARANCE = 8;
 
 /**
  * Measures, for every visible notice, how far its ink stands from its border above and below
  * (owner review of 2026-11-14: a notice read heavier on top). Ink is what is drawn: a line of
  * text runs from the top of its capitals to its baseline (read from the font's ascent and the
- * height of an `H`, as {@link readStepRowSpacing} does); a glyph runs over its own drawing, from
- * its `getBBox` with the stroke; a button is its face, and its label is not measured again; the
- * progress line is its bar. The dismiss button is a corner control and is left out. A box's air
- * (the leading of a line, the room round a glyph) is not ink.
+ * height of an `H`, as {@link readStepRowSpacing} does); a button is its face, and its label is
+ * not measured again; the progress line is its bar. The dismiss button is a corner control and is
+ * left out. A box's air (the leading of a line, the room round a glyph) is not ink. The glyph
+ * beside the letters (its drawing, from `getBBox` with the stroke, or the box of a spinner) is
+ * taller than they are and overhangs them above and below, so it is measured on its own: it
+ * must not come within {@link CALLOUT_GLYPH_CLEARANCE} of a border.
  */
 export async function readCalloutInsets(page: Page): Promise<CalloutInsets[]> {
   return page.evaluate(() => {
     const canvas = document.createElement('canvas').getContext('2d');
     if (canvas === null) return [];
     const skipped = '.cinder-sr-only, [role="tooltip"], [hidden], .cinder-callout__dismiss';
-    const result: { label: string; top: number; bottom: number }[] = [];
+    const result: { label: string; top: number; bottom: number; glyph?: number }[] = [];
     for (const callout of document.querySelectorAll<HTMLElement>('.cinder-callout')) {
       const box = callout.getBoundingClientRect();
       if (box.height === 0 || getComputedStyle(callout).display === 'none') continue;
@@ -2809,6 +2816,7 @@ export async function readCalloutInsets(page: Page): Promise<CalloutInsets[]> {
         const face = bar.getBoundingClientRect();
         spans.push([face.top, face.bottom]);
       }
+      const glyphs: [number, number][] = [];
       for (const glyph of callout.querySelectorAll<SVGSVGElement>('svg')) {
         if (!visible(glyph) || glyph.closest('button, a, [role="progressbar"]') !== null) continue;
         const drawn = glyph.getBBox({ fill: true, stroke: true });
@@ -2816,7 +2824,15 @@ export async function readCalloutInsets(page: Page): Promise<CalloutInsets[]> {
         const view = glyph.viewBox.baseVal;
         const scale = view.height > 0 ? frame.height / view.height : 1;
         const top = frame.top + (drawn.y - view.y) * scale;
-        spans.push([top, top + drawn.height * scale]);
+        glyphs.push([top, top + drawn.height * scale]);
+      }
+      // A glyph that is not an `svg`, such as a spinner, is its box.
+      for (const wrapper of callout.querySelectorAll<HTMLElement>(
+        '.cinder-callout__icon > :not(svg)',
+      )) {
+        if (!visible(wrapper)) continue;
+        const face = wrapper.getBoundingClientRect();
+        glyphs.push([face.top, face.bottom]);
       }
       const walker = document.createTreeWalker(callout, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
@@ -2838,10 +2854,15 @@ export async function readCalloutInsets(page: Page): Promise<CalloutInsets[]> {
       if (spans.length === 0) continue;
       const highest = Math.min(...spans.map(([top]) => top));
       const lowest = Math.max(...spans.map(([, bottom]) => bottom));
+      const glyphInset =
+        glyphs.length === 0
+          ? undefined
+          : Math.min(...glyphs.flatMap(([top, bottom]) => [top - innerTop, innerBottom - bottom]));
       result.push({
         label: (callout.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40),
         top: highest - innerTop,
         bottom: innerBottom - lowest,
+        ...(glyphInset === undefined ? {} : { glyph: glyphInset }),
       });
     }
     return result;
@@ -2850,12 +2871,20 @@ export async function readCalloutInsets(page: Page): Promise<CalloutInsets[]> {
 
 /** A notice's ink stands as far under its top border as over its bottom one. */
 export function calloutInsetProblems(insets: readonly CalloutInsets[]): string[] {
-  return insets
-    .filter((inset) => Math.abs(inset.top - inset.bottom) > CALLOUT_INSET_TOLERANCE)
-    .map(
-      (inset) =>
+  return insets.flatMap((inset) => {
+    const problems: string[] = [];
+    if (Math.abs(inset.top - inset.bottom) > CALLOUT_INSET_TOLERANCE) {
+      problems.push(
         `notice "${inset.label}" has ${inset.top.toFixed(1)}px from its top border to the first ink but ${inset.bottom.toFixed(1)}px from the last ink to its bottom border`,
-    );
+      );
+    }
+    if (inset.glyph !== undefined && inset.glyph < CALLOUT_GLYPH_CLEARANCE) {
+      problems.push(
+        `notice "${inset.label}" has its glyph ${inset.glyph.toFixed(1)}px from a border, nearer than ${CALLOUT_GLYPH_CLEARANCE}px`,
+      );
+    }
+    return problems;
+  });
 }
 
 /** How far a glyph may exceed the line height of the text beside it, in pixels. */
@@ -3054,7 +3083,8 @@ export async function readAttachmentStripProblems(page: Page): Promise<string[]>
       });
     }
     for (const line of document.querySelectorAll<HTMLElement>('.chat-input-attachment-reason')) {
-      const action = line.querySelector<HTMLElement>('button');
+      // The trailing-most action, the last one drawn: with Remove failed and Retry N it is Retry N.
+      const action = [...line.querySelectorAll<HTMLElement>('button')].at(-1) ?? null;
       if (action === null) {
         problems.push('the attachment failure line has no action');
         continue;

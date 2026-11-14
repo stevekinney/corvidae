@@ -2,6 +2,7 @@ import { chromium } from '@playwright/test';
 import { describe, expect, it } from 'bun:test';
 
 import {
+  CALLOUT_GLYPH_CLEARANCE,
   calloutInsetProblems,
   locate,
   measureInPage,
@@ -1406,20 +1407,33 @@ describe('chat stress visual measurement', () => {
       }
     });
 
-    it('measures the glyph, the letters and the button face, not their boxes', async () => {
+    it('measures the letters and the button face, not their boxes, and the glyph apart from them', async () => {
       const [stacked] = await insetsFor(notice({ action: true }));
-      // The button face is the last ink, at the inset; the glyph's drawing is the first.
+      // The button face is the last ink, at the inset; the capitals are the first.
       expect(Math.abs(stacked!.bottom - 12)).toBeLessThan(0.5);
       expect(Math.abs(stacked!.top - 12)).toBeLessThan(1);
+      // The glyph overhangs the capitals, so it stands nearer the border than the letters do.
+      expect(stacked!.glyph).toBeGreaterThan(CALLOUT_GLYPH_CLEARANCE);
+      expect(stacked!.glyph).toBeLessThan(stacked!.top);
     });
 
     it('fails a notice that pads every side alike, whose first line stands lower than its last ink', async () => {
       const heavy = `.cinder-callout { padding-block: 12px !important; }
         .cinder-callout__message { margin-block: 0 !important; }`;
-      for (const markup of [notice({}), notice({ action: true })]) {
+      for (const markup of [
+        notice({ action: true }),
+        notice({ title: true, action: true }),
+        notice({ icon: false, action: true, wide: true, title: true }),
+      ]) {
         const problems = calloutInsetProblems(await insetsFor(markup, heavy));
         expect(problems).toEqual([expect.stringContaining('from its top border to the first ink')]);
       }
+    });
+
+    it('fails a glyph that crowds the border', async () => {
+      const crowded = '.cinder-callout { padding-block-start: 4px !important; }';
+      const problems = calloutInsetProblems(await insetsFor(notice({ action: true }), crowded));
+      expect(problems).toContainEqual(expect.stringContaining('has its glyph'));
     });
 
     it('fails a notice whose last line of text has more air under it than its first has above', async () => {
@@ -1957,6 +1971,23 @@ describe('chat stress visual measurement', () => {
       );
       expect(await problemsFor(short)).toContainEqual(
         expect.stringContaining('ends 6.00px from the trailing edge'),
+      );
+    });
+
+    it('judges the trailing-most action when the line has two: Remove failed first, Retry last', async () => {
+      const two = strip().replace(
+        '<button>Retry</button>',
+        '<button>Remove failed</button><button>Retry 1</button>',
+      );
+      // Retry 1, drawn last, ends at the trailing edge, so the line passes though the first
+      // action does not.
+      expect(await problemsFor(two)).toEqual([]);
+      const short = two.replace(
+        '.chat-input-attachment-reason button { width: 60px;',
+        '.chat-input-attachment-reason button:last-child { margin-inline-end: 7px } .chat-input-attachment-reason button { width: 60px;',
+      );
+      expect(await problemsFor(short)).toContainEqual(
+        expect.stringContaining('ends 7.00px from the trailing edge'),
       );
     });
 

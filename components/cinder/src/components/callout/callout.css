@@ -54,12 +54,11 @@
  * The first ink sits as far under the top border as the last ink sits over the bottom one. A line
  * box has air round its letters (half of what its height leaves beside the capitals), so a plain
  * inset reads heavier above than below: the air above the first line and the air under the last
- * baseline are taken out of the inset, and `1cap` and `1lh` follow the text's own size. With a
- * glyph, the glyph is the first ink (it is taller than the capitals), so its air stands in: the
- * line's height less the glyph's, halved, and a twenty-fourth of the glyph for the inset its own
- * stroke leaves. The last ink is a button face or the progress line when there is one; those are
- * boxes with no air to take out. The 3px or so that a glyph is taller than the capitals stands
- * above the first line of letters.
+ * baseline are taken out of the inset, and `1cap` and `1lh` follow the text's own size. The ink is
+ * the letters: the glyph beside them is 3px or so taller than the capitals, so it stands that far
+ * past the letters at each end of a one-line notice, evenly above and below, as a symbol stands in
+ * a line of text. The last ink is a button face or the progress line when there is one; those are
+ * boxes with no air to take out.
  * ---------------------------------------- */
 
   .cinder-callout {
@@ -67,22 +66,9 @@
     --_cinder-callout-last-air: calc((1lh - 1cap) / 2);
   }
 
-  .cinder-callout--with-icon {
-    --_cinder-callout-first-air: calc(
-      (1lh - var(--_cinder-callout-icon-size)) / 2 + var(--_cinder-callout-icon-size) / 24
-    );
-  }
-
   /* The first line is the title's, which has its own leading. */
   .cinder-callout:has(.cinder-callout__title) {
     --_cinder-callout-first-air: calc((1em * var(--cinder-leading-snug, 1.3) - 1cap) / 2);
-  }
-
-  .cinder-callout--with-icon:has(.cinder-callout__title) {
-    --_cinder-callout-first-air: calc(
-      (1em * var(--cinder-leading-snug, 1.3) - var(--_cinder-callout-icon-size)) / 2 +
-        var(--_cinder-callout-icon-size) / 24
-    );
   }
 
   /* Stacked, or with no action: the glyph and the text start the callout's content. */
@@ -91,7 +77,7 @@
   }
 
   .cinder-callout:not(
-    :has(> .cinder-callout__body, > .cinder-callout__action, .cinder-callout__progress)
+    :has(> .cinder-callout__body, > .cinder-callout__action:not(:empty), .cinder-callout__progress)
   ) {
     padding-block-end: calc(var(--_cinder-callout-inset) - var(--_cinder-callout-last-air));
   }
@@ -391,7 +377,9 @@
     }
 
     /* The action drops under the message, so the message is not the last ink: the button is. */
-    .cinder-callout:not(.cinder-callout--beside-action, .cinder-callout--fit-action)
+    .cinder-callout:not(.cinder-callout--beside-action, .cinder-callout--fit-action):has(
+        > .cinder-callout__body > .cinder-callout__action:not(:empty)
+      )
       .cinder-callout__body
       > .cinder-callout__message {
       margin-block-end: 0;
