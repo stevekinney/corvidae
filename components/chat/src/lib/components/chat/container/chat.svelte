@@ -1490,15 +1490,13 @@
   const composerWaitsForHistory = $derived(
     availability?.kind === 'loading' ? availabilityLabels(availability).sendWaits : undefined,
   );
+  // A canceled read is said once, by the state that stands in the transcript's place with its Retry:
+  // the composer draws no notice of its own, and the reason Send is off sits beside Send
+  // (COR-2327 B6).
+  const composerSendDisabledReason = $derived(
+    availability?.kind === 'canceled' ? availabilityLabels(availability).sendBlocked : undefined,
+  );
   const availabilityComposerStatus = $derived.by<ChatComposerStatus | undefined>(() => {
-    if (availability?.kind === 'canceled') {
-      return {
-        kind: 'drawer-notice',
-        text: availabilityLabels(availability).canceledComposer,
-        tone: 'neutral',
-        sendDisabledReason: availabilityLabels(availability).sendBlocked,
-      };
-    }
     if (availability?.kind === 'unconfigured' && unconfiguredWithHistory) {
       const words = availabilityLabels(availability);
       return {
@@ -2855,6 +2853,7 @@
           disabled={streaming && (!followUpsEnabled || composerCompact)}
           paused={disabled}
           {pausedReason}
+          sendDisabledReason={composerSendDisabledReason}
           sending={composerSending}
           starting={composerStarting ?? composerWaitsForHistory}
           clearOnSubmit={clearComposerOnSubmit}

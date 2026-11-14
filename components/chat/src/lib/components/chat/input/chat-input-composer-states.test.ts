@@ -243,6 +243,25 @@ describe('generic drawer notices', () => {
     );
   });
 
+  test('with only a send-disabled reason, keeps typing open, turns Send off and says why beside it, with no notice (COR-2327 B6)', async () => {
+    const { container } = render(ChatInput, {
+      id: 'state-send-disabled',
+      sendDisabledReason: 'Retry to send messages.',
+    });
+    const editor = editorOf(container);
+    expect(editor.readOnly).toBe(false);
+    await fireEvent.input(editor, { target: { value: 'Keep this draft.' } });
+    await tick();
+    expect(editor.value).toBe('Keep this draft.');
+
+    const send = sendOf(container);
+    expect(send.disabled).toBe(true);
+    const reason = container.querySelector('.chat-input-paused-reason');
+    expect(reason?.textContent).toBe('Retry to send messages.');
+    expect(send.getAttribute('aria-describedby')).toContain(reason?.id ?? 'missing-reason');
+    expect(container.querySelector('[data-chat-composer-drawer]')).toBeNull();
+  });
+
   test('keeps a notice action in Callout’s dedicated action slot', () => {
     const { container } = render(ChatInput, {
       id: 'state-notice-action',

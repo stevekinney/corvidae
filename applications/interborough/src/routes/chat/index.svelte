@@ -148,7 +148,6 @@
         labels: {
           canceledTitle: CHAT_COPY.load.canceledTitle,
           canceledDescription: CHAT_COPY.load.canceledDescription,
-          canceledComposer: CHAT_COPY.load.canceledComposer,
           sendBlocked: CHAT_COPY.load.sendBlocked,
         },
       };

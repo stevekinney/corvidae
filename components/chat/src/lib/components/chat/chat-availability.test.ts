@@ -233,13 +233,12 @@ describe('a canceled read', () => {
     expect(editor.readOnly).toBe(false);
     const send = buttonNamed(container, 'Send message')!;
     expect(send.disabled).toBe(true);
-    const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
-    expect(drawer.textContent).toContain('Conversation loading stopped.');
-    expect(drawer.textContent).toContain('Load the conversation to send messages.');
-    expect(drawer.textContent?.match(/Conversation loading stopped\./gu)).toHaveLength(1);
-    expect(drawer.textContent?.match(/Load the conversation to send messages\./gu)).toHaveLength(1);
-    const reason = drawer.querySelector('.chat-input-drawer-reason');
-    expect(reason?.textContent?.trim()).toBe('Load the conversation to send messages.');
+    // The state says what happened once (COR-2327 B6): no notice over the composer, and the reason
+    // Send is off beside Send, named by it, in words that point to the Retry that exists.
+    expect(container.querySelector('[data-chat-composer-drawer]')).toBeNull();
+    const reason = container.querySelector('.chat-input-paused-reason');
+    expect(reason?.textContent?.trim()).toBe('Retry to send messages.');
+    expect(container.textContent?.match(/Retry to send messages\./gu)).toHaveLength(1);
     expect(send.getAttribute('aria-describedby')).toContain(reason?.id ?? 'missing-reason');
 
     await fireEvent.click(retry);
@@ -247,20 +246,15 @@ describe('a canceled read', () => {
     expect(calls).toEqual(['retry', 'list']);
   });
 
-  test('lets the host replace the visible canceled composer state and disabled-send reason separately', () => {
+  test('lets the host replace the disabled-send reason', () => {
     const { container } = mountWith('availability-canceled-labels', {
       kind: 'canceled',
       onRetry: () => undefined,
-      labels: {
-        canceledComposer: 'History is paused.',
-        sendBlocked: 'Load history before sending.',
-      },
+      labels: { sendBlocked: 'Load history before sending.' },
     });
 
-    const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
-    expect(drawer.textContent).toContain('History is paused.');
-    expect(drawer.textContent).toContain('Load history before sending.');
-    expect(drawer.querySelector('.chat-input-drawer-reason')?.textContent?.trim()).toBe(
+    expect(container.querySelector('[data-chat-composer-drawer]')).toBeNull();
+    expect(container.querySelector('.chat-input-paused-reason')?.textContent?.trim()).toBe(
       'Load history before sending.',
     );
   });

@@ -57,6 +57,13 @@
      * named by Send's `aria-describedby`, so a screen reader hears the reason on the button.
      */
     pausedReason?: string | undefined;
+    /**
+     * Why Send is off while the editor stays open, such as a conversation whose read was canceled:
+     * the person may keep typing, and the reason shows as muted text beside Send, named by Send's
+     * `aria-describedby`. No notice is drawn above the composer. A `pausedReason` shown while
+     * `paused` takes its place.
+     */
+    sendDisabledReason?: string | undefined;
     /** Whether a submission is in progress */
     sending?: boolean;
     /**
@@ -402,6 +409,7 @@
     paused = false,
     compact = false,
     pausedReason,
+    sendDisabledReason,
     sending = false,
     allowFollowUp = false,
     queueing = false,
@@ -517,6 +525,7 @@
   const sendBlocked = $derived(
     (sending && !allowFollowUp) ||
       starting !== undefined ||
+      sendDisabledReason !== undefined ||
       (drawerStatus?.kind === 'drawer-notice' && drawerStatus.sendDisabledReason !== undefined),
   );
   // Names the key the composer's `submitOn` actually listens for, so a
@@ -666,8 +675,13 @@
   const drawerReasonId = $derived(`${drawerId}-reason`);
   const attachmentReasonId = $derived(`${id}-attachment-reason`);
   const attachmentListId = $derived(`${id}-attachments`);
-  /** The reason Send is off, while the host has paused the composer and said why. */
-  const shownPausedReason = $derived(paused && pausedReason ? pausedReason : undefined);
+  /**
+   * The reason Send is off, beside Send: the host paused the composer and said why, or Send alone is
+   * off (`sendDisabledReason`) while typing goes on.
+   */
+  const shownPausedReason = $derived(
+    paused && pausedReason ? pausedReason : sendDisabledReason || undefined,
+  );
   const isWhitespaceOnly = $derived(value.trim().length === 0);
   const hasPendingAttachments = $derived(
     attachments.some((a) => a.status === 'pending' || a.status === 'uploading'),

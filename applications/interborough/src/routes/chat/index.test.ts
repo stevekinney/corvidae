@@ -272,6 +272,14 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     expect(container.textContent).toContain(CHAT_COPY.load.canceledTitle);
     const back = await findByRole('button', { name: CHAT_COPY.load.allConversations });
     expect(back.getAttribute('data-cinder-variant')).toBe('secondary');
+    // Said once (COR-2327 B6): no notice over the composer, and the reason Send is off beside it.
+    expect(container.querySelector('[data-chat-composer-drawer]')).toBeNull();
+    const send = container.querySelector<HTMLButtonElement>('button[data-chat-send]')!;
+    expect(send.disabled).toBe(true);
+    const reason = container.querySelector('.chat-input-paused-reason');
+    expect(reason?.textContent?.trim()).toBe(CHAT_COPY.load.sendBlocked);
+    expect(send.getAttribute('aria-describedby')).toContain(reason?.id ?? 'missing-reason');
+    expect(container.querySelector<HTMLTextAreaElement>('textarea')?.readOnly).toBe(false);
     const asked = answers;
     await fireEvent.click(await findByRole('button', { name: 'Retry' }));
     await until(() => expect(answers).toBeGreaterThan(asked));

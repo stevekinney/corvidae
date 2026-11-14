@@ -286,6 +286,11 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
       'primary',
     );
     await expect(canceled.getByRole('button', { name: 'All conversations' })).toBeVisible();
+    // Said once (COR-2327 B6): no notice over the composer, only the reason beside Send.
+    await expect(loading.locator('[data-chat-composer-drawer]')).toHaveCount(0);
+    await expect(loading.locator('.chat-input-paused-reason')).toHaveText(
+      'Retry to send messages.',
+    );
     await checkA11y('a canceled chat read');
     await captureForDesignReview(page, {
       route: '/chats/:chat',
