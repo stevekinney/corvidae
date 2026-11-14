@@ -311,6 +311,7 @@
         <Select
           {id}
           {label}
+          // hidden-label-allowed: the SettingRow beside the select draws its label, name and description
           labelVisible={false}
           presentation="listbox"
           placeholder={emptyOption}

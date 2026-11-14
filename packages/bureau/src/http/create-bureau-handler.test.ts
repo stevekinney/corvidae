@@ -628,6 +628,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.contexts.steer',
         'bureau.contexts.window',
         'bureau.decisions.decide',
+        'bureau.decisions.models',
         'bureau.deployment.get',
         'bureau.deployments.get',
         'bureau.deployments.promote',

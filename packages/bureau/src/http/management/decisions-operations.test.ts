@@ -213,7 +213,7 @@ describe('bureau.decisions.decide', () => {
  * The frozen base of every row below: each capability is written out, so no vendor catalog or
  * Operative default is relied on (COR-2151).
  */
-const seed: BackendDescriptor = Object.freeze({
+const seed = Object.freeze<BackendDescriptor>({
   provider: 'acme',
   endpoint: 'https://models.example.test',
   model: 'seed',
