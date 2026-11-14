@@ -63,7 +63,10 @@ jobs:
   capture:
     name: Capture
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The four end-to-end shards take 12 to 23 minutes each (about 65 in all, on `main.yml` runs of
+    # 2026-11-14) for one pass of the whole suite; a default capture runs most of it twice on one
+    # worker. The capture step stops earlier than the job so the upload still runs after an overrun.
+    timeout-minutes: 120
     # The image ships the Chromium the lockfile's Playwright launches, so there is no browser install.
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-jammy
@@ -84,6 +87,8 @@ jobs:
       # `GITHUB_WORKSPACE`; the upload step names it relative to the workspace.
       - name: Capture
         working-directory: applications/interborough
+        shell: bash
+        timeout-minutes: 105
         env:
           CAPTURE_GREP: ${{ inputs.grep }}
           CAPTURE_SCHEME: ${{ inputs.scheme }}
