@@ -33,6 +33,12 @@ export const AG_UI_ERROR_CODES = [
   'REVIEW_ROUND_CHANGED',
   /** COR-1986: the thread was deleted, so a start or resume on its id is refused and stores nothing. */
   'THREAD_DELETED',
+  /**
+   * COR-2285: the thread is archived, so a start on it is refused and stores nothing, until it is
+   * unarchived (`bureau.contexts.unarchive`). Only its owner is told: anyone else is told
+   * `THREAD_NOT_FOUND`.
+   */
+  'THREAD_ARCHIVED',
 ] as const;
 
 export type AgUiErrorCode = (typeof AG_UI_ERROR_CODES)[number];

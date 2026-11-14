@@ -24,6 +24,11 @@ import type {
   SteeringCommandRequest,
 } from '../steering';
 import type {
+  ContextArchivedError,
+  ContextBusyError,
+  ContextNotArchivableError,
+} from '../bureau-errors';
+import type {
   EventHistoryDeletedAggregateOutcome,
   EventHistoryNotFoundOutcome,
   EventHistoryUnsupportedOutcome,
@@ -124,6 +129,49 @@ export interface BureauContexts {
     title: string | null,
     options?: { readonly incarnation?: string | undefined },
   ): Promise<AgentSession | undefined>;
+
+  /**
+   * Archives a context (COR-2285): records when, on the runtime clock, in its metadata
+   * (`SESSION_ARCHIVED_AT_METADATA_KEY`). An archived context accepts no new work: a task started
+   * in it, input, a steering command, a regenerated answer and a schedule's fire into it are
+   * refused with a {@link ContextArchivedError}. Reading, renaming, deleting, forking, forgetting
+   * grants and the window keep working. Archiving does not count as activity: `updatedAt`, and so
+   * the context's place in a listing, does not move.
+   *
+   * A context with a live task (running, or waiting on an approval or an answer) is refused with a
+   * {@link ContextBusyError}, and nothing is stored. A goal's session is refused with a
+   * {@link ContextNotArchivableError}: its goal writes to it through its own path. The decision is
+   * fenced on the session revision it was made from. A task start saves the session in the write
+   * that starts its run, and a schedule's fire saves it after each step; each of those writes
+   * refuses a context archived meanwhile (a fire that has already written once goes on, since the
+   * archive found it live). So an archive and a start, or a fire, racing on one context never both
+   * commit. Input and steering are refused on a read made before they are admitted, which an archive
+   * can follow: input admitted that way finds no run to take it and is cancelled, but a steering
+   * command can be logged.
+   * Archiving an archived context is not an error: it answers `changed: false` and the time it was
+   * first archived. With `options.incarnation` it archives only that incarnation.
+   *
+   * Resolves `undefined` when this Bureau holds no such context (or none of that incarnation). It
+   * does not authorize the caller, and throws a `BureauShuttingDownError` when Bureau is shutting
+   * down.
+   */
+  archive(
+    contextId: string,
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextArchiveOutcome | undefined>;
+
+  /**
+   * Unarchives a context (COR-2285): removes the archive record, so it accepts work again.
+   * Unarchiving a context that is not archived is not an error: it answers `changed: false`. It
+   * does not count as activity. With `options.incarnation` it unarchives only that incarnation.
+   * Resolves `undefined` when this Bureau holds no such context (or none of that incarnation). It
+   * does not authorize the caller, and throws a `BureauShuttingDownError` when Bureau is shutting
+   * down.
+   */
+  unarchive(
+    contextId: string,
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextArchiveOutcome | undefined>;
 
   /**
    * Deliver a fire-and-forget signal to a session's current in-flight durable run.
@@ -389,6 +437,16 @@ export interface BureauContexts {
     options?: DurableEventHistorySubscribeOptions,
   ): Subscription;
 }
+/** What {@link BureauContexts.archive} and {@link BureauContexts.unarchive} did (COR-2285). */
+export interface ContextArchiveOutcome {
+  /** The context. */
+  readonly contextId: string;
+  /** Whether this call changed it: `false` for one that was already as asked. */
+  readonly changed: boolean;
+  /** When the context was archived, as an ISO 8601 timestamp, or `null` when it is not archived. */
+  readonly archivedAt: string | null;
+}
+
 /** What {@link BureauContexts.delete} did (COR-1481). */
 export interface ContextDeletionReport {
   /** Whether a session existed and was deleted. */

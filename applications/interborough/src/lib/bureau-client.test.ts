@@ -3,6 +3,7 @@ import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import {
+  archiveContext,
   callBureau,
   chatContextSchema,
   type ContextWindow,
@@ -23,6 +24,7 @@ import {
   sendContextInput,
   steerContext,
   type SteerOutcome,
+  unarchiveContext,
 } from './bureau-client.ts';
 import { classifyFault } from './faults.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
@@ -775,6 +777,71 @@ describe('the lists and details the chat and agents views read', () => {
     const error = await failureOf(getThreadMessages('nope', { fetch: stub }));
 
     expect(error).toMatchObject({ status: 404 });
+  });
+});
+
+describe('archiving a session', () => {
+  async function withStub<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
+    const restore = installFetchImplementation(stub);
+    try {
+      return await body();
+    } finally {
+      restore();
+    }
+  }
+
+  test('archiveContext sends the session and returns the receipt', async () => {
+    const receipt = { id: 'c1', changed: true, archivedAt: '2026-11-13T10:00:00.000Z' };
+    const stub = answering(result(receipt));
+
+    const archived = await withStub(stub.fetch, () => archiveContext('c1'));
+
+    expect(archived).toEqual(receipt);
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.contexts.archive',
+      params: { contextId: 'c1' },
+    });
+  });
+
+  test('unarchiveContext sends the session and returns the receipt', async () => {
+    const stub = answering(result({ id: 'c1', changed: false, archivedAt: null }));
+
+    const unarchived = await withStub(stub.fetch, () => unarchiveContext('c1'));
+
+    expect(unarchived).toEqual({ id: 'c1', changed: false, archivedAt: null });
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.contexts.unarchive',
+      params: { contextId: 'c1' },
+    });
+  });
+
+  test('archiveContext throws the busy refusal, whose reason the caller can read', async () => {
+    const stub = answering(
+      fault(409, 'Conflict', 'The chat has a run going.', { reason: 'context-busy' }),
+    );
+
+    const error = await withStub(stub.fetch, () => failureOf(archiveContext('c1')));
+
+    expect(error).toBeInstanceOf(HttpClientError);
+    expect(forkRefusalReason(error)).toBe('context-busy');
+  });
+
+  test('listContexts passes the archived filter on', async () => {
+    const stub = answering(result({ contexts: [], nextOffset: null }));
+
+    await withStub(stub.fetch, () => listContexts({ archived: 'exclude', limit: 5 }));
+
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.contexts.list',
+      params: { archived: 'exclude', limit: 5 },
+    });
+  });
+
+  test('a session reads when it was archived, null when it is not, and nothing from a Bureau that does not say', () => {
+    const archivedAt = chatContextSchema.shape.archivedAt;
+    expect(archivedAt.parse('2026-11-13T10:00:00.000Z')).toBe('2026-11-13T10:00:00.000Z');
+    expect(archivedAt.parse(null)).toBeNull();
+    expect(archivedAt.parse(undefined)).toBeUndefined();
   });
 });
 

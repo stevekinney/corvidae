@@ -19,6 +19,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * | `not-found`              | `NotFound`    | none (`data.resource`)   |
  * | `conflict`               | `Conflict`    | `input-conflict`         |
  * | `session-terminal`       | `Conflict`    | `session-terminal`       |
+ * | archived (COR-2285)      | `Conflict`    | `context-archived`       |
  * | `unsupported-capability` | `Unavailable` | `unsupported-capability` |
  * | `backlog-exhausted`      | `Unavailable` | `backlog-exhausted`      |
  *
@@ -34,7 +35,8 @@ import { type SessionInputAdmissionOutcome, sessionOwnerOf } from '@lostgradient
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError } from '../../bureau-errors.ts';
+import { BureauError, ContextArchivedError } from '../../bureau-errors.ts';
+import { contextArchivedFault } from './contexts-archive-operation.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import type { BureauInternals } from '../../bureau-types/facade.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -144,7 +146,7 @@ export const contextsInputOperation = defineOperation<
   mcpExposable: true,
   summary: 'Send input to a context',
   description:
-    'Admits `input` (an `id` of the caller’s choosing and a `payload`: text, or a list of parts) to one of the caller’s own contexts, to be delivered to the context’s run at its next step boundary. The `outcome` is `admitted`, or `replayed` for an exact retry of an `id` already admitted; the `receipt` says where the input stands (`accepted` while it waits, `promoted` once the run took it into the conversation, `canceled` if the run ended or the context had no run to take it). An input is answered by the run it was admitted to or not at all: one that a run ends without delivering is cancelled and must be sent again. Another owner’s context, and a missing one, answer `NotFound`. A different input under an `id` already used is a `Conflict` with reason `input-conflict`, a context that has ended is a `Conflict` with reason `session-terminal`, a Bureau that cannot take input is `Unavailable` with reason `unsupported-capability`, and a context with too much input waiting is `Unavailable` with reason `backlog-exhausted`.',
+    'Admits `input` (an `id` of the caller’s choosing and a `payload`: text, or a list of parts) to one of the caller’s own contexts, to be delivered to the context’s run at its next step boundary. The `outcome` is `admitted`, or `replayed` for an exact retry of an `id` already admitted; the `receipt` says where the input stands (`accepted` while it waits, `promoted` once the run took it into the conversation, `canceled` if the run ended or the context had no run to take it). An input is answered by the run it was admitted to or not at all: one that a run ends without delivering is cancelled and must be sent again. Another owner’s context, and a missing one, answer `NotFound`. A different input under an `id` already used is a `Conflict` with reason `input-conflict`, a context that has ended is a `Conflict` with reason `session-terminal`, an archived context (`bureau.contexts.archive`) is a `Conflict` with reason `context-archived`, a Bureau that cannot take input is `Unavailable` with reason `unsupported-capability`, and a context with too much input waiting is `Unavailable` with reason `backlog-exhausted`.',
   destructive: true,
   tags: ['Contexts'],
   inputSchema: contextsInputInput,
@@ -201,6 +203,8 @@ export const contextsInputOperation = defineOperation<
           },
         } satisfies OperationFault;
       }
+      // Before the generic `CONFLICT` below, which is a Bureau shutting down.
+      if (error instanceof ContextArchivedError) throw contextArchivedFault(error.message);
       if (error instanceof BureauError && error.code === 'CONFLICT') {
         throw {
           code: 'Unavailable',
