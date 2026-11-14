@@ -1762,7 +1762,12 @@ describe('attachments', () => {
       'photo.png. Can’t attach: this agent does not take files.',
     ]);
     // A file that needs attention holds Send until it is retried or removed (COR-2277).
-    await fireEvent.click(await findByRole('button', { name: 'Remove photo.png' }));
+    // The chip's cross and the line's glyph action carry the same name; the line's is the one asked.
+    await fireEvent.click(
+      container.querySelector<HTMLButtonElement>(
+        '.chat-input-attachment-reason button[aria-label="Remove photo.png"]',
+      )!,
+    );
     await sendMessage(container, 'Hello');
     await waitFor(() => expect(state.runs).toHaveLength(1));
     expect(state.runs[0]?.messages[0]?.content).toBe('Hello');
