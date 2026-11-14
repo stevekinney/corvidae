@@ -197,7 +197,8 @@ describe('Home while it loads slowly (02e, 02f)', () => {
     jest.advanceTimersByTime(1);
     flushSync();
 
-    // The status line is Cinder skeleton's own, below the placeholders, and not a banner.
+    // The status line is Cinder skeleton's own, above the placeholders (COR-2329: below them it was
+    // drawn under the fold), and not a banner.
     const status = [...container.querySelectorAll('[role="status"]')].find((element) =>
       element.textContent?.includes('Still loading Home.'),
     );
@@ -205,8 +206,11 @@ describe('Home while it loads slowly (02e, 02f)', () => {
       'Still loading Home. This is taking longer than usual.',
     );
     expect(container.querySelector('.cinder-banner')).toBeNull();
-    const group = container.querySelector('.cinder-skeleton-group');
-    expect(group?.lastElementChild).toBe(status ?? null);
+    const page = container.querySelector('[data-mode="loading"]');
+    expect(
+      (status as Element).compareDocumentPosition(page as Element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     const cancel = within(status as HTMLElement).getByRole('button', { name: 'Cancel' });
     expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
 
@@ -299,9 +303,14 @@ describe('One card that cannot be read (01n, 01o)', () => {
     });
     const { container } = render(HomeHarness, { props: { client: installed.client } } as never);
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
-    expect(
-      words(await within(cardOf(container, 'Needs you')).findByTestId('home-card-error')),
-    ).toBe('Couldn’t load what needs you. The rest of Home is live. Try again');
+    // The section is a new element once it fails (it takes its heading back), so it is looked up
+    // again on every try.
+    const needsYouFailure = await waitFor(() =>
+      within(cardOf(container, 'Needs you')).getByTestId('home-card-error'),
+    );
+    expect(words(needsYouFailure)).toBe(
+      'Couldn’t load what needs you. The rest of Home is live. Try again',
+    );
     // No Spotlight stands over the failure, so the section takes its own heading back.
     expect(container.querySelector('[data-testid="home-spotlight"]')).toBeNull();
     expect(

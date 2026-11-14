@@ -197,7 +197,7 @@ describe('Home', () => {
     expect(link.getAttribute('data-variant')).toBe('more');
     expect(link.parentElement?.contains(getByTestId('home-spotlight'))).toBe(true);
     expect(within(container).getAllByRole('link', { name: 'Open Reviews' })).toHaveLength(1);
-    expect(container.textContent?.match(/needs? you/gi)).toHaveLength(1);
+    expect(within(container).queryByRole('heading', { name: 'Needs you' })).toBeNull();
     await fireEvent.click(link);
     expect(router.current.route?.pattern).toBe('/reviews');
   });

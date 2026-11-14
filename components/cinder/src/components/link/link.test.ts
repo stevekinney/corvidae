@@ -119,7 +119,7 @@ describe('Link variant prop (COR-2329)', () => {
     const { container } = render(Link, {
       props: {
         href: '/reviews',
-        variant: 'loud' as unknown as 'more',
+        variant: 'loud',
         children: textSnippet('Open Reviews'),
       },
     });

@@ -243,7 +243,7 @@ test.describe('an open chat while it loads (17j, 17y)', () => {
     await expect(loading).toBeAttached();
     await page.clock.runFor(10_000);
 
-    // Cinder skeleton's own status line, under the placeholders and above the composer, not a banner.
+    // Cinder skeleton's own status line, above the placeholders and the composer, not a banner.
     const status = loading.locator('.cinder-skeleton-status');
     await expect(status).toContainText('Still loading this chat…');
     await expect(status).toHaveAttribute('role', 'status');

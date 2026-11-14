@@ -35,13 +35,21 @@ test.describe('Link more form', () => {
     await page.goto(fixtureRoute('link'), { waitUntil: 'load' });
     const row = page.getByTestId('link-more');
     const link = row.getByRole('link', { name: 'Open Reviews' });
-    await expect(link).toHaveCSS('font-size', '14px');
+    const smallText = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.fontSize = 'var(--cinder-text-sm)';
+      document.body.append(probe);
+      const size = getComputedStyle(probe).fontSize;
+      probe.remove();
+      return size;
+    });
+    await expect(link).toHaveCSS('font-size', smallText);
     await expect(link).toHaveCSS('font-weight', '400');
     await expect(link).toHaveCSS('white-space', 'nowrap');
     const headingSize = await row
       .getByRole('heading', { name: 'Needs you' })
       .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
-    expect(headingSize).toBeGreaterThan(14);
+    expect(headingSize).toBeGreaterThan(Number.parseFloat(smallText));
     const [words, chevron] = await Promise.all([
       link.evaluate((element) => {
         const range = document.createRange();

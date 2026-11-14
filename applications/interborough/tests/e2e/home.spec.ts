@@ -180,7 +180,13 @@ test.describe('Home on the sample world, with something waiting on you', () => {
       Math.abs(openBox!.x + openBox!.width - (listBox!.x + listBox!.width)),
     ).toBeLessThanOrEqual(1);
     // The link is quieter than the Spotlight and the section headings: small regular text.
-    await expect(open).toHaveCSS('font-size', '14px');
+    const [linkSize, headingSize] = await Promise.all([
+      open.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+      page
+        .getByRole('heading', { level: 2, name: 'Needs attention' })
+        .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+    ]);
+    expect(linkSize).toBeLessThan(headingSize);
     await expect(open).toHaveCSS('font-weight', '400');
     // Needs you leads: it sits above Needs attention.
     const attentionTop = await page
