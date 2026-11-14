@@ -12,6 +12,7 @@ setupHappyDom();
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: Skeleton } = await import('./skeleton.svelte');
+const { default: StatusPlaceHarness } = await import('./skeleton-status-place-harness.test.svelte');
 
 const skeletonCss = await Bun.file(new URL('./skeleton.css', import.meta.url)).text();
 
@@ -644,6 +645,63 @@ describe('Skeleton list variant timing', () => {
       getByRole('button', { name: 'Cancel' }).click();
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
+
+    // COR-2329 round two: a line inserted above the page moved it 40px when it appeared and again
+    // when the data arrived. The block marked `holdsStatusLine` takes the line in its own place.
+    test('a block that holds the line takes it in its place, and the group draws none above', () => {
+      const onCancel = jest.fn();
+      jest.useFakeTimers();
+      const { container, getByRole } = render(StatusPlaceHarness, { props: { onCancel } });
+      flushSync();
+      const place = container.querySelector('.cinder-skeleton-status-place');
+      expect(place?.getAttribute('style')).toBe('block-size: 2.2rem');
+      // The live region is the block's, in the DOM from the first pass, empty until 10 s.
+      const statuses = container.querySelectorAll('[role="status"]');
+      expect(statuses).toHaveLength(1);
+      expect(place?.contains(statuses[0] ?? null)).toBe(true);
+      expect(statuses[0]?.textContent?.trim()).toBe('');
+      expect(place?.querySelector('.cinder-skeleton')?.getAttribute('style')).toBe(
+        'width: 11rem; height: 2.2rem',
+      );
+      // The real text before it is not displaced: the group's first element is the page's own.
+      const group = container.querySelector('.cinder-skeleton-group');
+      expect(group?.firstElementChild?.hasAttribute('data-real-text')).toBe(true);
+      jest.advanceTimersByTime(10_000);
+      flushSync();
+      expect(statuses[0]?.textContent).toContain(
+        'Still loading Home. This is taking longer than usual.',
+      );
+      expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
+      getByRole('button', { name: 'Cancel' }).click();
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      // The bar gives way to the line in the same box.
+      expect(skeletonCss).toMatch(
+        /\.cinder-skeleton-status-place:has\(> \.cinder-skeleton-status:not\(:empty\)\) > \.cinder-skeleton \{\s*display: none;/,
+      );
+    });
+
+    test('a block that holds the line, with no group showing one, is the plain block it always was', () => {
+      const held = render(Skeleton, {
+        props: { width: '11rem', height: '2.2rem', holdsStatusLine: true },
+      }).container.innerHTML;
+      cleanup();
+      const plain = render(Skeleton, { props: { width: '11rem', height: '2.2rem' } }).container
+        .innerHTML;
+      expect(held).toBe(plain);
+    });
+  });
+});
+
+describe('Skeleton grouped and list status line (COR-2329)', () => {
+  test('lies over the first row, whose bars give way, instead of pushing the rows down', () => {
+    const flat = skeletonCss.replace(/\s+/g, ' ');
+    expect(flat).toMatch(
+      /\.cinder-skeleton-group:is\(\[data-cinder-variant='grouped'\], \[data-cinder-variant='list'\]\) \{ display: grid;/,
+    );
+    expect(flat).toMatch(
+      /> :is\(\.cinder-skeleton-status, \.cinder-skeleton-grouped, \.cinder-skeleton-list\) \{ grid-area: 1 \/ 1; \}/,
+    );
+    expect(flat).toMatch(/\.cinder-skeleton-grouped-row:first-child \.cinder-skeleton,/);
   });
 });
 

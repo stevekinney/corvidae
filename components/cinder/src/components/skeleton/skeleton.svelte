@@ -16,6 +16,8 @@
 </script>
 
 <script lang="ts">
+  import { getContext, setContext, untrack, type Snippet } from 'svelte';
+
   import type { SkeletonProps } from './skeleton.types.ts';
   import Button from '../button/button.svelte';
   import VisuallyHidden from '../visually-hidden/visually-hidden.svelte';
@@ -40,8 +42,29 @@
     onCancel,
     stillLoadingLabel = 'Still loading. This is taking longer than usual.',
     cancelLabel = 'Cancel',
+    holdsStatusLine = false,
     children,
   }: SkeletonProps = $props();
+
+  /**
+   * What a group with a "Still loading" line tells the placeholders inside its `children`: one of
+   * them (`holdsStatusLine`) can take the line in its own place, so the line appears where that
+   * placeholder was and nothing around it moves.
+   */
+  interface StatusPlace {
+    readonly active: boolean;
+    readonly stillLoading: boolean;
+    readonly line: Snippet;
+    claim(): () => void;
+  }
+
+  const STATUS_PLACE = 'cinder-skeleton-status-place';
+  // Read before this skeleton provides its own, so a placeholder sees its group's.
+  const statusHolder = untrack(() => holdsStatusLine)
+    ? getContext<StatusPlace | undefined>(STATUS_PLACE)
+    : undefined;
+  /** How many placeholders inside have taken the line; while one has, the group draws none. */
+  let statusClaims = $state(0);
 
   const MAXIMUM_LINES = 20;
 
@@ -113,10 +136,44 @@
       .filter((part): part is string => part !== null)
       .join('; '),
   );
+
+  setContext<StatusPlace>(STATUS_PLACE, {
+    get active() {
+      return stillLoadingThreshold !== undefined;
+    },
+    get stillLoading() {
+      return stillLoading;
+    },
+    line: statusLine,
+    // Untracked: the placeholder claims from its own effect, which must not come to depend on
+    // the count it changes.
+    claim() {
+      untrack(() => (statusClaims += 1));
+      return () => {
+        untrack(() => (statusClaims -= 1));
+      };
+    },
+  });
+
+  // A placeholder that holds its group's line tells the group, which then draws none of its own.
+  $effect(() => (statusHolder?.active ? statusHolder.claim() : undefined));
 </script>
 
+<!-- The group's line, drawn by the placeholder that holds it: the same live region as the group's
+     own, in the placeholder's place. -->
+{#snippet statusLine()}
+  <div class="cinder-skeleton-status" role="status">
+    {#if stillLoading}
+      <span class="cinder-skeleton-status-label">{stillLoadingLabel}</span>
+      {#if onCancel}
+        <Button variant="ghost" size="sm" label={cancelLabel} onclick={() => onCancel()} />
+      {/if}
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet stillLoadingStatus()}
-  {#if stillLoadingThreshold !== undefined}
+  {#if stillLoadingThreshold !== undefined && statusClaims === 0}
     <div class="cinder-skeleton-status" role="status">
       {#if stillLoading}
         <span class="cinder-skeleton-status-label">{stillLoadingLabel}</span>
@@ -240,6 +297,16 @@
           {/each}
         </div>
       {/if}
+    </div>
+  {:else if statusHolder?.active}
+    <!-- The group's "Still loading" line takes this placeholder's place: a box this tall holds the
+         bar, then the line in its stead, so nothing around it moves when the line appears. -->
+    <div
+      class="cinder-skeleton-status-place"
+      style={height === undefined ? undefined : `block-size: ${height}`}
+    >
+      {@render statusHolder.line()}
+      <div class={classNames('cinder-skeleton', className)} aria-hidden="true" {style}></div>
     </div>
   {:else}
     <div class={classNames('cinder-skeleton', className)} aria-hidden="true" {style}></div>

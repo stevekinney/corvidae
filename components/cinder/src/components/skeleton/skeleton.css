@@ -277,8 +277,62 @@
     margin-block-end: var(--cinder-space-1);
   }
 
-  /* The status line leads its group, at the inline start, above the placeholders: after a long
-   * wait it is the first thing in view, never cut off below a page of placeholders (COR-2329). */
+  /* The status line leads its group, at the inline start: after a long wait it is the first thing
+   * in view, never cut off below a page of placeholders. It takes the place of the group's first
+   * placeholder rather than being inserted above it, so nothing moves when it appears or when the
+   * data arrives (COR-2329). In a grouped or list placeholder it lies over the first row, whose bars
+   * give way to it; in a page's own placeholder the block marked `holdsStatusLine` draws it in its
+   * own box. A group of bars, a card or a form has no row tall enough, so its line leads it. */
+  .cinder-skeleton-group:is([data-cinder-variant='grouped'], [data-cinder-variant='list']) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cinder-skeleton-group:is([data-cinder-variant='grouped'], [data-cinder-variant='list'])
+    > :is(.cinder-skeleton-status, .cinder-skeleton-grouped, .cinder-skeleton-list) {
+    grid-area: 1 / 1;
+  }
+
+  .cinder-skeleton-group:is([data-cinder-variant='grouped'], [data-cinder-variant='list'])
+    > .cinder-skeleton-status {
+    position: relative;
+    z-index: 1;
+    align-self: start;
+    padding-block: var(--cinder-space-2-5);
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='grouped'] > .cinder-skeleton-status {
+    padding-inline: var(--cinder-space-4) var(--cinder-space-2);
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='list'] > .cinder-skeleton-status {
+    padding-inline: var(--cinder-space-3-5);
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='grouped']:has(> .cinder-skeleton-status:not(:empty))
+    .cinder-skeleton-grouped-row:first-child
+    .cinder-skeleton,
+  .cinder-skeleton-group[data-cinder-variant='list']:has(> .cinder-skeleton-status:not(:empty))
+    :is(
+      .cinder-skeleton-list > :first-child,
+      .cinder-skeleton-list > .cinder-skeleton-day-band + .cinder-skeleton-row
+    )
+    .cinder-skeleton {
+    visibility: hidden;
+  }
+
+  /* A page's own placeholder that holds the line: a box as tall as the placeholder, which shows
+   * the bar until the line appears and then the line in its stead. */
+  .cinder-skeleton-status-place {
+    display: flex;
+    align-items: center;
+    min-inline-size: 0;
+  }
+
+  .cinder-skeleton-status-place:has(> .cinder-skeleton-status:not(:empty)) > .cinder-skeleton {
+    display: none;
+  }
+
   .cinder-skeleton-status {
     display: flex;
     align-items: center;

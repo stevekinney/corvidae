@@ -128,14 +128,50 @@ test.describe('GroupedList layout', () => {
     page,
   }) => {
     await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
-    const group = page.getByTestId('skeleton-still-loading');
-    const status = group.locator('.cinder-skeleton-status');
+    // COR-2329 round two: the line takes the first row's place; a line inserted above moved the
+    // rows when it appeared and again when the data arrived.
+    const slow = page.getByTestId('skeleton-still-loading');
+    const status = slow.locator('.cinder-skeleton-status');
     await expect(status).toContainText('Still loading reviews.');
+    const rowTops = async (testId: string) => {
+      const group = await page.getByTestId(testId).boundingBox();
+      const rows = page.getByTestId(testId).locator('.cinder-skeleton-grouped-row');
+      return Promise.all(
+        [0, 1].map(async (index) => (await rows.nth(index).boundingBox())!.y - group!.y),
+      );
+    };
+    // The rows sit where the same rows sit with no line.
+    const [withLine, withoutLine] = await Promise.all([
+      rowTops('skeleton-still-loading'),
+      rowTops('skeleton-grouped'),
+    ]);
+    for (const index of [0, 1]) {
+      expect(Math.abs(withLine[index]! - withoutLine[index]!)).toBeLessThanOrEqual(1);
+    }
+    // The line lies inside the first row, which shows no bars under it.
     const line = await status.boundingBox();
-    const first = await group.locator('.cinder-skeleton-grouped-row').first().boundingBox();
-    expect(line!.y + line!.height).toBeLessThanOrEqual(first!.y);
-    // It starts at the inline start, with the placeholders.
-    expect(Math.abs(line!.x - first!.x)).toBeLessThanOrEqual(1);
+    const first = await slow.locator('.cinder-skeleton-grouped-row').first().boundingBox();
+    expect(line!.y).toBeGreaterThanOrEqual(first!.y - 1);
+    expect(line!.y + line!.height).toBeLessThanOrEqual(first!.y + first!.height + 1);
+    await expect(
+      slow.locator('.cinder-skeleton-grouped-row').first().locator('.cinder-skeleton').first(),
+    ).toHaveCSS('visibility', 'hidden');
+    // A page's own placeholder: the block that holds the line keeps the page where it was.
+    const pageTops = async (testId: string) => {
+      const group = await page.getByTestId(testId).boundingBox();
+      return (
+        (await page.getByTestId(testId).getByTestId('after-place').boundingBox())!.y - group!.y
+      );
+    };
+    await expect(
+      page.getByTestId('skeleton-page-slow').locator('.cinder-skeleton-status'),
+    ).toContainText('Still loading Home.');
+    await expect(
+      page.getByTestId('skeleton-page-waiting').locator('.cinder-skeleton-status'),
+    ).toHaveText('');
+    expect(
+      Math.abs((await pageTops('skeleton-page-slow')) - (await pageTops('skeleton-page-waiting'))),
+    ).toBeLessThanOrEqual(1);
   });
 
   test('an empty row’s and a failed row’s actions end on the list buttons’ edge (COR-2329)', async ({

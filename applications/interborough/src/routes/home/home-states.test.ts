@@ -112,8 +112,10 @@ describe('Home while it loads (02c, 02d)', () => {
       'Monday, Nov 2. Times show in Central time (CST).',
     );
     // The Spotlight is a placeholder block, and the count under it a label over a placeholder.
+    // It holds the slow-load line, so the line takes its place after 10 s and nothing moves.
     const focus = getByTestId('home-loading-focus');
-    expect(focus.firstElementChild?.classList.contains('cinder-skeleton')).toBe(true);
+    expect(focus.firstElementChild?.classList.contains('cinder-skeleton-status-place')).toBe(true);
+    expect(focus.firstElementChild?.querySelector('.cinder-skeleton')).not.toBeNull();
     const stats = [...getByTestId('home-loading-counts').querySelectorAll('.cinder-statistic')];
     expect(
       stats.map((stat) => words(stat.querySelector('.cinder-statistic__label') as Element)),
@@ -199,8 +201,9 @@ describe('Home while it loads slowly (02e, 02f)', () => {
     jest.advanceTimersByTime(1);
     flushSync();
 
-    // The status line is Cinder skeleton's own, above the placeholders (COR-2329: below them it was
-    // drawn under the fold), and not a banner.
+    // The status line is Cinder skeleton's own, not a banner, in the Spotlight placeholder's place
+    // (COR-2329: under the placeholders it was drawn under the fold; inserted above the page it
+    // moved everything when it appeared).
     const status = [...container.querySelectorAll('[role="status"]')].find((element) =>
       element.textContent?.includes('Still loading Home.'),
     );
@@ -208,11 +211,10 @@ describe('Home while it loads slowly (02e, 02f)', () => {
       'Still loading Home. This is taking longer than usual.',
     );
     expect(container.querySelector('.cinder-banner')).toBeNull();
-    const page = container.querySelector('[data-mode="loading"]');
-    expect(
-      (status as Element).compareDocumentPosition(page as Element) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(getByTestId('home-loading-focus').firstElementChild?.contains(status as Element)).toBe(
+      true,
+    );
+    expect(container.querySelectorAll('.cinder-skeleton-status')).toHaveLength(1);
     const cancel = within(status as HTMLElement).getByRole('button', { name: 'Cancel' });
     expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
 

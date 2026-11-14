@@ -642,6 +642,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
         default: L('Still loading. This is taking longer than usual.'),
       },
       cancelLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Cancel') },
+      // COR-2329: a block in a page's own placeholder that takes its group's "Still loading" line.
+      holdsStatusLine: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       statusMarker: { optional: true, type_kind: 'TSTypeReference', default: L('bar') },
     },
     snippets: { children: s0(true) },

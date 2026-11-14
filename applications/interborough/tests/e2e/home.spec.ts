@@ -645,7 +645,10 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(counts.locator('.cinder-statistic__label')).toHaveText(['Failed in 24 hours']);
     // The Spotlight, the value, the rows and the composer are placeholders.
     await expect(
-      page.getByTestId('home-loading-focus').locator('> .cinder-skeleton').first(),
+      page
+        .getByTestId('home-loading-focus')
+        .locator('> .cinder-skeleton-status-place > .cinder-skeleton')
+        .first(),
     ).toBeVisible();
     await expect(counts.locator('.cinder-statistic__value .cinder-skeleton')).toHaveCount(1);
     await expect(counts.locator('.cinder-statistic__value')).toHaveText(['']);
@@ -717,6 +720,16 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeAttached();
     await page.clock.runFor(300);
     await expect(homeBody(page)).toHaveAttribute('data-mode', 'loading');
+    // Where the real content is before the line: the date line, the count's label and a heading.
+    const contentTops = async () =>
+      Promise.all(
+        [
+          page.getByTestId('home-date'),
+          page.getByTestId('home-loading-counts').locator('.cinder-statistic__label'),
+          page.getByRole('heading', { level: 2, name: 'Needs attention' }),
+        ].map(async (locator) => (await locator.boundingBox())!.y),
+      );
+    const beforeLine = await contentTops();
     await page.clock.runFor(9_699);
     await expect(page.getByText('Still loading Home.')).toHaveCount(0);
     await page.clock.runFor(1);
@@ -726,13 +739,23 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
       'data-cinder-variant',
       'ghost',
     );
-    // It is the skeleton's own line above the placeholders, in view, not a banner (COR-2329: under
-    // them it was cut off at the bottom of the viewport).
+    // It is the skeleton's own line, in view, not a banner. It takes the Spotlight placeholder's
+    // place, so nothing on the page moves when it appears (COR-2329 round two: inserted above the
+    // page it moved the date line 40px, and again when the data arrived).
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
-    const firstPlaceholder = await page.getByTestId('home-date').boundingBox();
-    const line = await status.boundingBox();
-    expect(line!.y + line!.height).toBeLessThanOrEqual(firstPlaceholder!.y);
     await expect(status).toBeInViewport();
+    const withLine = await contentTops();
+    for (const [index, name] of ['the date line', 'the count', 'Needs attention'].entries()) {
+      expect(Math.abs(withLine[index]! - beforeLine[index]!), `${name} stays`).toBeLessThanOrEqual(
+        1,
+      );
+    }
+    const date = await page.getByTestId('home-date').boundingBox();
+    const line = await status.boundingBox();
+    expect(line!.y).toBeGreaterThanOrEqual(date!.y + date!.height - 1);
+    await expect(
+      page.getByTestId('home-loading-focus').locator('.cinder-skeleton-status-place'),
+    ).toContainText('Still loading Home.');
     await captureForDesignReview(page, { route: '/', state: 'still loading', source: SOURCE });
 
     await status.getByRole('button', { name: 'Cancel' }).click();
