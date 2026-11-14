@@ -191,7 +191,8 @@ const LISTING_PAGE_SIZE = 100;
 export async function listWorkflowFiles(
   options?: Options & { readonly includeRuns?: boolean },
 ): Promise<readonly WorkflowFileListing[]> {
-  return (await listWorkflowEntries(options)).files;
+  const { files } = await listWorkflowEntries(options);
+  return files;
 }
 
 /**
@@ -201,7 +202,8 @@ export async function listWorkflowFiles(
 export async function listCodeWorkflows(
   options?: Options,
 ): Promise<readonly CodeWorkflowListing[]> {
-  return (await listWorkflowEntries(options)).code;
+  const { code } = await listWorkflowEntries(options);
+  return code;
 }
 
 /** Everything `bureau.workflows.list` answers: the files, and the code workflows plugins contributed. */

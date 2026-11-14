@@ -36,19 +36,25 @@ const area = (page: Page) => page.locator('[data-view="workflows"]');
 const creator = (page: Page) => page.locator('[data-page="workflow-creator"]');
 const editor = (page: Page) => page.locator('[data-page="workflow-editor"]');
 
-/** A button under "Add a step", by its exact words: "Wait" is also the start of two others. */
-const addButton = (root: Locator, label: string) =>
-  root
-    .getByRole('group', { name: BUILDER.addLabel })
-    .getByRole('button', { name: label, exact: true });
+/** The name of a top-level step in a label: "step 1". */
+const step = BUILDER.where.step;
+
+/**
+ * Adds a step by its exact words in the menu of "Add a step", which opens from the one button under
+ * the steps: "Wait" is also the start of two other items.
+ */
+async function addStep(root: Locator, label: string): Promise<void> {
+  await root.getByRole('button', { name: BUILDER.addLabel, exact: true }).click();
+  await root.page().getByRole('menuitem', { name: label, exact: true }).click();
+}
 
 /**
  * Replaces the new workflow's empty agent step with a wait, so an untouched form becomes a file
  * the Bureau accepts without naming an agent.
  */
 async function waitInsteadOfAgent(root: Locator): Promise<void> {
-  await addButton(root, BUILDER.add.wait).click();
-  await root.getByRole('button', { name: BUILDER.remove(1) }).click();
+  await addStep(root, BUILDER.add.wait);
+  await root.getByRole('button', { name: BUILDER.remove(step(1)) }).click();
 }
 
 /** Identifiers this file's specs create, removed after each spec. */
@@ -89,10 +95,10 @@ test.describe('a workflow built from cards', () => {
     await root.getByRole('radio', { name: BUILDER.triggers.signal }).click();
     await root.getByLabel(BUILDER.signalNameLabel).fill('e2e-built-go');
     // The empty agent step goes, and a signal wait takes its place.
-    await addButton(root, BUILDER.add.signal).click();
-    await root.getByRole('button', { name: BUILDER.remove(1) }).click();
-    await root.getByLabel(BUILDER.signalLabel(1)).fill('e2e-built-wait');
-    await root.getByLabel(BUILDER.stepName(1)).fill('Wait for the go-ahead');
+    await addStep(root, BUILDER.add.signal);
+    await root.getByRole('button', { name: BUILDER.remove(step(1)) }).click();
+    await root.getByLabel(BUILDER.signalLabel(step(1))).fill('e2e-built-wait');
+    await root.getByLabel(BUILDER.stepName(step(1))).fill('Wait for the go-ahead');
     await expect(root.getByTestId('workflow-builder-summary')).toContainText(
       'Each time e2e-built-go is sent, wait for e2e-built-wait.',
     );
@@ -123,8 +129,8 @@ test.describe('a workflow built from cards', () => {
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const root = creator(page);
     await root.getByLabel(BUILDER.titleLabel, { exact: true }).fill('Morning Briefing');
-    await addButton(root, BUILDER.add.person).click();
-    await root.getByLabel(BUILDER.stepName(2)).fill('Review the briefing');
+    await addStep(root, BUILDER.add.person);
+    await root.getByLabel(BUILDER.stepName(step(2))).fill('Review the briefing');
     await expect(root.locator('[data-step-kind="person"]')).toContainText(
       BUILDER.personDescription,
     );
@@ -152,7 +158,7 @@ test.describe('a workflow built from cards', () => {
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
 
     await root.getByLabel(BUILDER.idLabel, { exact: true }).fill('e2e-synced');
-    await addButton(root, BUILDER.add.wait).click();
+    await addStep(root, BUILDER.add.wait);
     await openJsonTab(root);
     const json = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
     const document = JSON.parse(await jsonEditorSource(json)) as {
@@ -165,9 +171,9 @@ test.describe('a workflow built from cards', () => {
     document.steps = [{ kind: 'sleep', duration: '45s' }];
     await json.fill(JSON.stringify(document, null, 2));
     await openTab(root, BUILDER.builderTab);
-    await expect(root.getByLabel(BUILDER.durationLabel(1))).toHaveValue('45');
-    await expect(root.getByLabel(BUILDER.unitLabel(1))).toHaveValue('seconds');
-    await expect(root.getByLabel(BUILDER.agentLabel(1))).toHaveCount(0);
+    await expect(root.getByLabel(BUILDER.durationLabel(step(1)))).toHaveValue('45');
+    await expect(root.getByLabel(BUILDER.unitLabel(step(1)))).toHaveValue('seconds');
+    await expect(root.getByLabel(BUILDER.agentLabel(step(1)))).toHaveCount(0);
   });
 
   test('saves with ⌘Enter from a field', async ({ page, request }) => {
@@ -218,7 +224,7 @@ test.describe('the builder’s fields', () => {
     const name = root.getByLabel(BUILDER.idLabel, { exact: true });
     await name.fill(id);
     await name.press('Enter');
-    await root.getByLabel(BUILDER.durationLabel(1)).press('Enter');
+    await root.getByLabel(BUILDER.durationLabel(step(1))).press('Enter');
     await expect(
       root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }),
     ).toBeEnabled();
@@ -239,15 +245,15 @@ test.describe('the builder’s fields', () => {
     const root = creator(page);
     await root.getByLabel(BUILDER.idLabel, { exact: true }).fill(id);
     // The first agent the host lists, after the placeholder that chooses none.
-    await root.getByLabel(BUILDER.agentLabel(1)).selectOption({ index: 1 });
-    await root.getByLabel(BUILDER.messageLabel(1)).fill(message);
+    await root.getByLabel(BUILDER.agentLabel(step(1))).selectOption({ index: 1 });
+    await root.getByLabel(BUILDER.messageLabel(step(1))).fill(message);
     await root.getByLabel(BUILDER.descriptionLabel, { exact: true }).fill('Multi-line.');
-    await expect(root.getByLabel(BUILDER.messageLabel(1))).toHaveValue(message);
+    await expect(root.getByLabel(BUILDER.messageLabel(step(1)))).toHaveValue(message);
 
     await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}$`));
     await page.goto(`/workflows/${id}/edit`);
-    await expect(editor(page).getByLabel(BUILDER.messageLabel(1))).toHaveValue(message);
+    await expect(editor(page).getByLabel(BUILDER.messageLabel(step(1)))).toHaveValue(message);
   });
 });
 
@@ -281,10 +287,10 @@ test.describe('the editor’s builder', () => {
       },
     });
 
-    await root.getByLabel(BUILDER.durationLabel(1)).fill('5');
+    await root.getByLabel(BUILDER.durationLabel(step(1))).fill('5');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root.getByText(WORKFLOW_COPY.editor.changedOnDisk.title)).toBeVisible();
-    await expect(root.getByLabel(BUILDER.durationLabel(1))).toHaveValue('5');
+    await expect(root.getByLabel(BUILDER.durationLabel(step(1)))).toHaveValue('5');
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/edit$`));
   });
 });

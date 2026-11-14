@@ -1,3 +1,8 @@
+/** `text` with its first letter capitalized, to open a sentence: "step 3" reads "Step 3". */
+function capitalized(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
 /** The words the Workflows area uses outside its view states (`/workflows` and under it). */
 export const WORKFLOW_COPY = {
   /** The badge on every workflow the Bureau holds a file for. */
@@ -590,25 +595,45 @@ export const WORKFLOW_COPY = {
       'This file’s steps are not a list the builder can read. Fix them in the JSON tab.',
     notAnObject: 'This is not an object',
     otherStepNote: 'The builder cannot edit this step. Change it in the JSON tab.',
-    /** What each card is, at its top beside its number. */
+    /**
+     * What each card is, at its top beside its number. A card for an activity reads the activity's
+     * own title; `activity` is what it reads before the catalog says.
+     */
     stepKinds: {
       agent: 'Ask an agent',
       person: 'Wait for a person',
       signal: 'Wait for a signal',
       wait: 'Wait',
+      activity: 'Run an activity',
+      workflow: 'Run a workflow',
+      branch: 'Choose a path by a value',
+      parallel: 'Run side by side',
+      map: 'Repeat for each item',
       other: 'Another kind of step',
+    },
+    /**
+     * Where a step is, in the words the labels below put in a name: "step 3" for a top-level step,
+     * and "step 1 of the approved case of step 3" for one inside it.
+     */
+    where: {
+      step: (position: number): string => `step ${String(position)}`,
+      nested: (position: number, list: string): string => `step ${String(position)} of ${list}`,
+      caseOf: (value: string, step: string): string => `the ${value} case of ${step}`,
+      otherwiseOf: (step: string): string => `the otherwise path of ${step}`,
+      branchOf: (name: string, step: string): string => `the ${name} list of ${step}`,
+      bodyOf: (step: string): string => `the repeated steps of ${step}`,
     },
     /** A step's optional name, its `title`; empty, its placeholder is the step's kind. */
     stepNameLabel: 'Step name',
-    stepName: (position: number): string => `Name of step ${String(position)}`,
+    stepName: (where: string): string => `Name of ${where}`,
     agentFieldLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
-    agentLabel: (position: number): string => `Agent for step ${String(position)}`,
+    agentLabel: (where: string): string => `Agent for ${where}`,
     /** Under an agent that needs a model while no provider is connected. The workflow still saves. */
     needsProvider: 'Won’t run until a provider is connected.',
     messageFieldLabel: 'Message',
     messagePlaceholder: 'What should the agent do?',
-    messageLabel: (position: number): string => `Message for step ${String(position)}`,
+    messageLabel: (where: string): string => `Message for ${where}`,
     /** The one line a "Wait for a person" card shows under its name. */
     personDescription:
       'It shows in Reviews while it waits, titled with the step name, and the run reads Waiting on you.',
@@ -616,26 +641,107 @@ export const WORKFLOW_COPY = {
     signalPlaceholder: 'Signal name',
     signalDescription:
       'The run reads Waiting, with this signal named, until it arrives. It doesn’t show in Reviews.',
-    signalLabel: (position: number): string => `Signal step ${String(position)} waits for`,
+    signalLabel: (where: string): string => `Signal ${where} waits for`,
     amountFieldLabel: 'For',
     unitFieldLabel: 'Unit',
-    unitLabel: (position: number): string => `Unit of the wait in step ${String(position)}`,
+    unitLabel: (where: string): string => `Unit of the wait in ${where}`,
     units: { seconds: 'seconds', minutes: 'minutes', hours: 'hours', days: 'days' },
     /** A wait whose duration For and Unit cannot say, such as a bare number of milliseconds. */
     durationFieldLabel: 'How long',
     durationDescription: 'A bare number is milliseconds. Or write 30s, 5m, 1h.',
     /** The wait's For field, or its How long field when For and Unit cannot say its duration. */
-    durationLabel: (position: number): string => `How long step ${String(position)} waits`,
-    moveEarlier: (position: number): string => `Move step ${String(position)} earlier`,
-    moveLater: (position: number): string => `Move step ${String(position)} later`,
-    remove: (position: number): string => `Remove step ${String(position)}`,
-    /** The row of buttons under the steps, one per kind of step. */
+    durationLabel: (where: string): string => `How long ${where} waits`,
+    /**
+     * A wait for a person or a signal can give up: after the limit the run goes on without it. The
+     * number and unit are the wait's own For and Unit; clearing the number removes the limit.
+     */
+    timeoutLabel: 'Stop waiting after',
+    timeoutDescription: 'If nothing arrives, the run goes on without it.',
+    timeoutAmountLabel: (where: string): string => `How long ${where} waits before it stops`,
+    timeoutUnitLabel: (where: string): string => `Unit of the limit on the wait in ${where}`,
+    timeoutText: (where: string): string => `Limit on the wait in ${where}`,
+    timeoutTextDescription:
+      'A bare number is milliseconds. Or write 30s, 5m, 1h. Empty, there is no limit.',
+    moveEarlier: (where: string): string => `Move ${where} earlier`,
+    moveLater: (where: string): string => `Move ${where} later`,
+    remove: (where: string): string => `Remove ${where}`,
+    /** The one control that adds a step to a list, and its menu. */
     addLabel: 'Add a step',
+    addTo: (where: string): string => `Add a step to ${where}`,
     add: {
       agent: 'Ask an agent',
       person: 'Wait for a person',
       signal: 'Wait for a signal',
       wait: 'Wait',
+      branch: 'Choose a path by a value',
+      parallel: 'Run side by side',
+      map: 'Repeat for each item',
+    },
+    /** The groups of the add menu that the Bureau's catalog fills. */
+    addMenu: {
+      activitiesHeading: 'Activities',
+      workflowsHeading: 'Workflows',
+      loadingActivities: 'Loading activities…',
+      activitiesFailed: 'Couldn’t load activities. Try again',
+      loadingWorkflows: 'Loading workflows…',
+      workflowsFailed: 'Couldn’t load workflows. Try again',
+    },
+    /** An activity or workflow card, whose fields the catalog describes. */
+    activity: {
+      /** The kind label while the catalog has no title for the activity. */
+      untitled: (handler: string): string => `Run ${handler}`,
+      checking: (handler: string): string => `Checking the activity ${handler}…`,
+      failed: (handler: string): string =>
+        `The activity ${handler} is kept as the file has it, but the list of activities did not load, so its input cannot be shown.`,
+      unavailable: (handler: string): string =>
+        `No running plugin provides the activity ${handler}. Change it in the JSON tab.`,
+      noSchema: 'Its input is edited in the JSON tab.',
+      noInput: 'It takes no input.',
+      inputNotObject: 'Its input is not an object. It is edited in the JSON tab.',
+      retry: 'Try again',
+    },
+    workflowCard: {
+      field: 'Workflow',
+      placeholder: 'Choose a workflow',
+      /** A workflow the file names that no running plugin lists, kept selectable under its own id. */
+      missing: (id: string): string => `${id} (no running plugin provides it)`,
+      checking: 'Checking the workflows…',
+      failed:
+        'The list of workflows did not load, so the one this step runs is kept as the file has it.',
+      retry: 'Try again',
+      label: (where: string): string => `Workflow for ${where}`,
+      noSchema: 'Its input is edited in the JSON tab.',
+      inputNotObject: 'Its input is not an object. It is edited in the JSON tab.',
+    },
+    /** The control-flow cards, in the person's words. */
+    controlFlow: {
+      onLabel: 'Look at',
+      onDescription: 'A property of the step before, such as status.',
+      onLabelFor: (where: string): string => `Property ${where} looks at`,
+      caseLabel: 'When it is',
+      caseLabelFor: (where: string): string => `Value of ${where}`,
+      addCase: 'Add a case',
+      removeCase: (value: string): string => `Remove the ${value} case`,
+      caseTaken: 'Another case already has this value.',
+      caseHeading: (value: string): string => `When it is ${value}`,
+      otherwiseHeading: 'Otherwise',
+      addOtherwise: 'Add otherwise',
+      removeOtherwise: 'Remove otherwise',
+      branchLabel: 'List name',
+      branchLabelFor: (where: string): string => `Name of ${where}`,
+      addBranch: 'Add a list',
+      removeBranch: (name: string): string => `Remove the ${name} list`,
+      branchTaken: 'Another list already has this name.',
+      branchHeading: (name: string): string => `List: ${name}`,
+      overLabel: 'Items in',
+      overDescription: 'A property of the step before that holds a list, such as files.',
+      overLabelFor: (where: string): string => `Property ${where} repeats over`,
+      concurrencyLabel: 'At most at once',
+      concurrencyDescription: 'Leave it empty to let the run decide.',
+      concurrencyLabelFor: (where: string): string => `How many of ${where} run at once`,
+      bodyHeading: (over: string): string =>
+        over.trim() === '' ? 'For each item' : `For each item in ${over}`,
+      emptyList: 'No steps yet.',
     },
     noSteps: 'Add at least one step.',
     inputHeading: 'Input',
@@ -673,9 +779,28 @@ export const WORKFLOW_COPY = {
         task === '' ? `ask ${agent}` : `ask ${agent} to ${task}`,
       anAgent: 'an agent',
       person: 'wait for a person to review it',
+      personWithin: (limit: string): string => `wait up to ${limit} for a person to review it`,
       waitForSignal: (signal: string): string => `wait for ${signal}`,
       anySignalWait: 'wait for a signal',
+      signalWithin: (signal: string, limit: string): string => `wait up to ${limit} for ${signal}`,
+      anySignalWithin: (limit: string): string => `wait up to ${limit} for a signal`,
       wait: (duration: string): string => `wait ${duration}`,
+      runActivity: (name: string): string => `run ${name}`,
+      runWorkflow: (name: string): string => `run the workflow ${name}`,
+      anyWorkflow: 'run a workflow',
+      /** One clause that never says what the cases hold: "choose a path by status (2 cases)". */
+      choosePath: (on: string, count: number): string =>
+        `choose a path by ${on.trim() === '' ? 'a value' : on}${
+          count === 0 ? ' (no cases yet)' : ` (${String(count)} ${count === 1 ? 'case' : 'cases'})`
+        }`,
+      sideBySide: (count: number): string =>
+        count === 0
+          ? 'run lists side by side'
+          : `run ${String(count)} ${count === 1 ? 'list' : 'lists'} side by side`,
+      repeat: (count: number, over: string): string =>
+        `repeat ${count === 0 ? 'the steps' : `${String(count)} ${count === 1 ? 'step' : 'steps'}`} for each item${
+          over.trim() === '' ? '' : ` in ${over}`
+        }`,
       other: 'run a step the builder can’t describe',
       next: 'then',
     },
@@ -704,6 +829,12 @@ export const WORKFLOW_COPY = {
       message: 'Write what to ask the agent.',
       signal: 'Name the signal to wait for.',
       duration: 'Say how long to wait.',
+      workflow: 'Choose a workflow.',
+      on: 'Say which property to look at.',
+      over: 'Say which property holds the items.',
+      emptyList: 'Add a step.',
+      noCases: 'Add a case.',
+      noBranches: 'Add a list.',
       startSignal: 'Name the signal that starts it.',
       schedule: 'Say how often it runs.',
       /** The line above the footer, from two problems: "2 things to fix: Step 2: name the signal. …". */
@@ -713,11 +844,17 @@ export const WORKFLOW_COPY = {
         idTaken: 'ID: choose another.',
         schedule: 'Starts: say how often it runs.',
         startSignal: 'Starts: name the signal.',
-        agent: (position: number): string => `Step ${String(position)}: choose an agent.`,
-        message: (position: number): string =>
-          `Step ${String(position)}: write what to ask the agent.`,
-        signal: (position: number): string => `Step ${String(position)}: name the signal.`,
-        duration: (position: number): string => `Step ${String(position)}: say how long to wait.`,
+        agent: (where: string): string => `${capitalized(where)}: choose an agent.`,
+        message: (where: string): string => `${capitalized(where)}: write what to ask the agent.`,
+        signal: (where: string): string => `${capitalized(where)}: name the signal.`,
+        duration: (where: string): string => `${capitalized(where)}: say how long to wait.`,
+        workflow: (where: string): string => `${capitalized(where)}: choose a workflow.`,
+        on: (where: string): string => `${capitalized(where)}: say which property to look at.`,
+        over: (where: string): string =>
+          `${capitalized(where)}: say which property holds the items.`,
+        emptyList: (where: string): string => `${capitalized(where)}: add a step.`,
+        noCases: (where: string): string => `${capitalized(where)}: add a case.`,
+        noBranches: (where: string): string => `${capitalized(where)}: add a list.`,
         steps: 'Steps: add a step.',
       },
     },

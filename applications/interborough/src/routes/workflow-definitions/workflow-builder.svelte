@@ -6,7 +6,10 @@
    * workflow back in one sentence beside the page's Cancel and primary action. The page owns the
    * file's text. The builder reads it and writes a changed copy back through `onTextChange`, and
    * the JSON tab edits the same text, so each view shows the other's edits and neither can lose
-   * what the other wrote (`workflow-builder-model.ts`). Below 640 pixels the
+   * what the other wrote (`workflow-builder-model.ts`). The steps are drawn by
+   * `workflow-step-list.svelte`, one list at any depth (a case, an otherwise path, side-by-side
+   * lists, a repeat's steps), which reads the text, the catalogs and the one way to change the text
+   * from the host this component provides (`workflow-builder-host.ts`). Below 640 pixels the
    * builder is read-only (its fields, its JSON and its actions; the tabs still switch) and says to
    * open it on a larger screen, beside a link back (row 05n).
    *
@@ -30,12 +33,12 @@
     JsonSchemaEditor,
     Segment,
     SegmentedControl,
-    Select,
     Tabs,
     Textarea,
+    humanizeIdentifier,
     type JsonSchemaValue,
   } from '@lostgradient/cinder';
-  import { ArrowDown, ArrowUp, Plus, Trash2 } from '@lucide/svelte';
+  import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
   import { tick, untrack, type Snippet } from 'svelte';
 
@@ -44,41 +47,44 @@
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
+  import { readWorkflowCatalog } from '../../lib/bureau-workflow-catalog.ts';
   import ContributedConfigurationForm from '../../lib/contributed-configuration-form.svelte';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
+  import { listCodeWorkflows } from '../../lib/workflow-files.ts';
   import { loadModelAgents } from '../schedules/schedule-row-context.ts';
+  import { ROOT_ADDRESS } from './workflow-builder-addresses.ts';
   import {
-    addStep,
+    provideBuilderHost,
+    type BuilderHost,
+    type BuilderOption,
+    type CatalogState,
+  } from './workflow-builder-host.ts';
+  import {
+    forEachStep,
     identifierFromTitle,
-    moveStep,
     readBuilder,
-    removeStep,
+    ROOT_LIST,
     setContributedTrigger,
     setDescription,
     setName,
     setSchema,
-    setStepField,
-    setStepTitle,
     setTitle,
     setTitleDerivingName,
     setTrigger,
-    setWaitDuration,
-    WAIT_UNITS,
     type BuilderSchema,
-    type BuilderStepKind,
     type SchemaKey,
-    type WaitUnit,
   } from './workflow-builder-model.ts';
   import {
     problemSummary,
-    stepFieldId,
     workflowProblems,
     type WorkflowProblem,
   } from './workflow-builder-problems.ts';
   import { locateJsonProblem } from './workflow-source.ts';
+  import WorkflowStepList from './workflow-step-list.svelte';
+  import { StepKeys } from './workflow-step-keys.svelte.ts';
 
   interface Props {
     /** The file's text, which the page owns. */
@@ -178,9 +184,96 @@
     retry: false,
   }));
 
+  /**
+   * The activities a step can call (`bureau.workflows.catalog`), and the plugin code workflows a
+   * `workflow` step can start (the `code` entries of `bureau.workflows.list`). Each answers once for
+   * every list of steps on the page. A failed read keeps what the file holds and offers a retry; it
+   * never says that nothing is provided.
+   */
+  let catalogsRequested = $state(false);
+  /** A card of an activity or a workflow is drawn from the catalogs, so a file that has one reads them. */
+  const stepsNeedCatalogs = $derived.by(() => {
+    let needed = false;
+    // Read without names, so the read-back's own use of the catalogs cannot make this wait on them.
+    forEachStep(readBuilder(text)?.steps ?? [], (step) => {
+      if (step.kind === 'activity' || step.kind === 'workflow') needed = true;
+    });
+    return needed;
+  });
+  const catalogsEnabled = $derived(catalogsRequested || stepsNeedCatalogs);
+
+  const activitiesQuery = createQuery(() => ({
+    queryKey: queryKeys.workflows.builderActivities(),
+    queryFn: ({ signal }: { signal: AbortSignal }) => readWorkflowCatalog({ signal }),
+    enabled: catalogsEnabled,
+    retry: false,
+  }));
+  const workflowsQuery = createQuery(() => ({
+    queryKey: queryKeys.workflows.builderCodeWorkflows(),
+    queryFn: ({ signal }: { signal: AbortSignal }) => listCodeWorkflows({ signal }),
+    enabled: catalogsEnabled,
+    retry: false,
+  }));
+
+  function catalogState<Entry>(query: {
+    isError: boolean;
+    data: readonly Entry[] | undefined;
+    refetch: () => unknown;
+  }): CatalogState<Entry> {
+    if (query.isError) return { status: 'failed', retry: () => void query.refetch() };
+    return query.data === undefined
+      ? { status: 'loading' }
+      : { status: 'ready', entries: query.data };
+  }
+
+  const activities = $derived(catalogState(activitiesQuery));
+  const codeWorkflows = $derived(catalogState(workflowsQuery));
+
+  /** What a person reads for an activity or a workflow: the title the catalog gives, else the id in words. */
+  function titleOfActivity(handler: string): string {
+    const found =
+      activities.status === 'ready'
+        ? activities.entries.find((entry) => entry.id === handler)
+        : undefined;
+    return found?.title ?? humanizeIdentifier(handler, { casing: 'sentence' });
+  }
+  function titleOfWorkflow(id: string): string {
+    const found =
+      codeWorkflows.status === 'ready'
+        ? codeWorkflows.entries.find((entry) => entry.id === id)
+        : undefined;
+    return found?.title ?? humanizeIdentifier(id, { casing: 'sentence' });
+  }
+
   const view = $derived(
-    readBuilder(text, { agentName: (identifier) => agentLabel(identifier, agents.data) }),
+    readBuilder(text, {
+      agentName: (identifier) => agentLabel(identifier, agents.data),
+      activityName: titleOfActivity,
+      workflowName: titleOfWorkflow,
+    }),
   );
+
+  /**
+   * The text this builder last wrote. A text that is another was written by something else (the JSON
+   * tab, a file that changed on disk), which the steps' keys cannot follow, so they start over.
+   */
+  // svelte-ignore state_referenced_locally
+  let lastWritten = text;
+  const keys = new StepKeys();
+
+  $effect.pre(() => {
+    if (text === lastWritten) return;
+    lastWritten = text;
+    untrack(() => keys.reset());
+  });
+
+  /** Writes the text an edit made. `follow` moves the keys as the edit moved the steps. */
+  function write(next: string, follow?: () => void): void {
+    if (next === text) return;
+    lastWritten = next;
+    follow?.();
+    onTextChange(next);
+  }
 
   /**
    * The builder cannot draw text that is not a JSON object, so its tab is off with the reason and
@@ -212,9 +305,9 @@
     const problem = problemAt(fieldId);
     return problem === undefined ? {} : { error: problem.message };
   }
-  /** Whether a step has something to fix, which outlines its card. */
-  function stepHasProblem(position: number): boolean {
-    return visible.some((problem) => problem.position === position);
+  /** Whether the step at an address has something to fix, which outlines its card. */
+  function stepHasProblem(address: string): boolean {
+    return visible.some((problem) => problem.address === address);
   }
   /** The ID's problem, when the page has asked to show it and the ID is the Bureau's to refuse. */
   const idProblem = $derived(
@@ -245,16 +338,14 @@
     document.getElementById(first.fieldId)?.focus();
   }
 
-  /** The agents the steps name, each once and in order, for the provider check. */
-  const namedAgents = $derived(
-    [
-      ...new Set(
-        (view?.steps ?? []).flatMap((step) =>
-          step.kind === 'agent' && step.agent !== '' ? [step.agent] : [],
-        ),
-      ),
-    ].sort(),
-  );
+  /** The agents the steps name at any depth, each once and in order, for the provider check. */
+  const namedAgents = $derived.by(() => {
+    const names = new Set<string>();
+    forEachStep(view?.steps ?? [], (step) => {
+      if (step.kind === 'agent' && step.agent !== '') names.add(step.agent);
+    });
+    return [...names].sort();
+  });
 
   /**
    * The named agents that need a model while no provider is connected, so they won't run until one
@@ -330,20 +421,11 @@
     return trigger.kind === 'contributed' ? trigger.id : trigger.kind;
   });
 
-  const ADD_ACTIONS: readonly { kind: BuilderStepKind; label: string }[] = [
-    { kind: 'agent', label: copy.add.agent },
-    { kind: 'person', label: copy.add.person },
-    { kind: 'signal', label: copy.add.signal },
-    { kind: 'wait', label: copy.add.wait },
-  ];
-
-  const UNIT_OPTIONS = WAIT_UNITS.map((unit) => ({ value: unit, label: copy.units[unit] }));
-
   function changeTriggerKind(kind: string): void {
     if (kind === 'manual' || kind === 'schedule' || kind === 'signal') {
-      onTextChange(setTrigger(text, kind, ''));
+      write(setTrigger(text, kind, ''));
     } else if (triggers.some((candidate) => candidate.id === kind)) {
-      onTextChange(setContributedTrigger(text, kind, {}));
+      write(setContributedTrigger(text, kind, {}));
     }
   }
 
@@ -368,16 +450,16 @@
   );
 
   function changeTitle(next: string): void {
-    onTextChange(mode === 'create' ? setTitleDerivingName(text, next) : setTitle(text, next));
+    write(mode === 'create' ? setTitleDerivingName(text, next) : setTitle(text, next));
   }
 
   function useDerivedId(): void {
-    onTextChange(setName(text, derivedId));
+    write(setName(text, derivedId));
     idOpen = false;
   }
 
   /** The agents a step's select offers: the catalog, and the one the file names when it is not there. */
-  function agentOptions(current: string): { value: string; label: string; disabled?: boolean }[] {
+  function agentOptions(current: string): BuilderOption[] {
     const catalog = agents.data ?? [];
     return [
       { value: '', label: copy.agentPlaceholder, disabled: true },
@@ -387,6 +469,37 @@
       ...catalog.map((agent) => ({ value: agent.name, label: agentLabel(agent.name, catalog) })),
     ];
   }
+
+  /** What every step card reads: the text, the one way to change it, and the Bureau's catalogs. */
+  const host: BuilderHost = {
+    get text() {
+      return text;
+    },
+    get locked() {
+      return locked;
+    },
+    keys,
+    commit: write,
+    errorOf,
+    hasProblem: stepHasProblem,
+    get agentsFailed() {
+      return agents.isError;
+    },
+    agentOptions,
+    agentNeedsProvider: (agent) => blockedAgents.has(agent),
+    requestCatalogs: () => {
+      catalogsRequested = true;
+    },
+    get activities() {
+      return activities;
+    },
+    get workflows() {
+      return codeWorkflows;
+    },
+    activityTitle: titleOfActivity,
+    workflowTitle: titleOfWorkflow,
+  };
+  provideBuilderHost(host);
 
   /** What "Add a field" opened: an empty schema shown in the editor, not yet written to the file. */
   let schemaOpened = $state<Record<SchemaKey, boolean>>({
@@ -424,7 +537,7 @@
     if (current.kind !== 'schema' && JSON.stringify(record) === JSON.stringify(EMPTY_SCHEMA)) {
       return shown;
     }
-    onTextChange(setSchema(text, key, record));
+    write(setSchema(text, key, record));
     return next;
   }
 
@@ -534,7 +647,7 @@
                 required
                 {...idProblem?.kind === 'id' ? { error: idProblem.message } : {}}
                 value={view.name}
-                onValueChange={(next) => onTextChange(setName(text, next))}
+                onValueChange={(next) => write(setName(text, next))}
               />
             {:else}
               <Input
@@ -546,7 +659,7 @@
                 required
                 {...idProblem?.kind === 'id' ? { error: idProblem.message } : {}}
                 value={view.name}
-                onValueChange={(next) => onTextChange(setName(text, next))}
+                onValueChange={(next) => write(setName(text, next))}
               >
                 {#snippet descriptionAction()}
                   {' '}<code>{copy.idFile(view.name)}</code>{copy.idChangedDescription.after}
@@ -576,7 +689,7 @@
               placeholder={copy.descriptionPlaceholder}
               rows={2}
               value={view.description}
-              oninput={(event) => onTextChange(setDescription(text, event.currentTarget.value))}
+              oninput={(event) => write(setDescription(text, event.currentTarget.value))}
             />
           </FormSection>
 
@@ -607,7 +720,7 @@
                 required
                 {...errorOf('workflow-builder-trigger-field')}
                 value={view.trigger.name}
-                onValueChange={(next) => onTextChange(setTrigger(text, 'signal', next))}
+                onValueChange={(next) => write(setTrigger(text, 'signal', next))}
               />
             {:else if view.trigger?.kind === 'contributed' && contributedTrigger !== undefined}
               <div class="weft-workflow-builder__contributed" data-testid="contributed-trigger">
@@ -616,8 +729,9 @@
                   kindId={contributedTrigger.id}
                   schema={contributedTrigger.configuration}
                   value={view.trigger.configuration}
+                  hosted
                   onChange={(next) =>
-                    onTextChange(setContributedTrigger(text, contributedTrigger.id, next))}
+                    write(setContributedTrigger(text, contributedTrigger.id, next))}
                 />
               </div>
             {:else if view.trigger?.kind === 'contributed' && contributed.isPending}
@@ -651,7 +765,7 @@
                 required
                 {...errorOf('workflow-builder-trigger-field')}
                 value={view.trigger.spec}
-                onValueChange={(next) => onTextChange(setTrigger(text, 'schedule', next))}
+                onValueChange={(next) => write(setTrigger(text, 'schedule', next))}
               />
             {/if}
           </FormSection>
@@ -669,187 +783,8 @@
                 <p class="weft-workflow-builder__note" data-testid="workflow-builder-no-steps">
                   {copy.noSteps}
                 </p>
-              {:else}
-                <ol class="weft-workflow-builder__cards">
-                  {#each view.steps as step, index (index)}
-                    {@const position = index + 1}
-                    {@const id = `workflow-builder-step-${String(position)}`}
-                    <li
-                      class="weft-workflow-builder__card"
-                      data-step-kind={step.kind}
-                      data-problem={stepHasProblem(position) ? '' : undefined}
-                    >
-                      <div class="weft-workflow-builder__card-head">
-                        <span class="weft-workflow-builder__position">{position}</span>
-                        <span class="weft-workflow-builder__kind">{copy.stepKinds[step.kind]}</span>
-                        <span class="weft-workflow-builder__card-actions">
-                          {#if index > 0}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={copy.moveEarlier(position)}
-                              onclick={() => onTextChange(moveStep(text, index, -1))}
-                              ><ArrowUp aria-hidden="true" /></Button
-                            >
-                          {/if}
-                          {#if index < view.steps.length - 1}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={copy.moveLater(position)}
-                              onclick={() => onTextChange(moveStep(text, index, 1))}
-                              ><ArrowDown aria-hidden="true" /></Button
-                            >
-                          {/if}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={copy.remove(position)}
-                            onclick={() => onTextChange(removeStep(text, index))}
-                            ><Trash2 aria-hidden="true" /></Button
-                          >
-                        </span>
-                      </div>
-                      {#if step.kind === 'other'}
-                        <p class="weft-workflow-builder__other">{step.label}</p>
-                        <p class="weft-workflow-builder__note">{copy.otherStepNote}</p>
-                      {:else}
-                        <Input
-                          id={`${id}-title`}
-                          label={copy.stepNameLabel}
-                          aria-label={copy.stepName(position)}
-                          placeholder={copy.stepKinds[step.kind]}
-                          size="sm"
-                          value={step.title}
-                          onValueChange={(next) => onTextChange(setStepTitle(text, index, next))}
-                        />
-                      {/if}
-                      {#if step.kind === 'agent'}
-                        {#if agents.isError}
-                          <Input
-                            id={`${id}-agent`}
-                            label={copy.agentFieldLabel}
-                            aria-label={copy.agentLabel(position)}
-                            placeholder={copy.agentPlaceholder}
-                            size="sm"
-                            variant="code"
-                            required
-                            {...errorOf(stepFieldId(position, 'agent'))}
-                            value={step.agent}
-                            onValueChange={(next) =>
-                              onTextChange(setStepField(text, index, 'agent', next))}
-                          />
-                        {:else}
-                          <Select
-                            id={`${id}-agent`}
-                            label={copy.agentFieldLabel}
-                            aria-label={copy.agentLabel(position)}
-                            size="sm"
-                            required
-                            {...errorOf(stepFieldId(position, 'agent'))}
-                            value={step.agent}
-                            options={agentOptions(step.agent)}
-                            {...blockedAgents.has(step.agent)
-                              ? { description: copy.needsProvider }
-                              : {}}
-                            onValueChange={(next: string) =>
-                              onTextChange(setStepField(text, index, 'agent', next))}
-                          />
-                        {/if}
-                        <Textarea
-                          id={`${id}-message`}
-                          label={copy.messageFieldLabel}
-                          aria-label={copy.messageLabel(position)}
-                          placeholder={copy.messagePlaceholder}
-                          size="sm"
-                          rows={3}
-                          required
-                          {...errorOf(stepFieldId(position, 'message'))}
-                          value={step.message}
-                          oninput={(event) =>
-                            onTextChange(
-                              setStepField(text, index, 'message', event.currentTarget.value),
-                            )}
-                        />
-                      {:else if step.kind === 'person'}
-                        <p class="weft-workflow-builder__note">{copy.personDescription}</p>
-                      {:else if step.kind === 'signal'}
-                        <Input
-                          id={`${id}-signal`}
-                          label={copy.signalFieldLabel}
-                          aria-label={copy.signalLabel(position)}
-                          placeholder={copy.signalPlaceholder}
-                          description={copy.signalDescription}
-                          size="sm"
-                          variant="code"
-                          required
-                          {...errorOf(stepFieldId(position, 'signal'))}
-                          value={step.signal}
-                          onValueChange={(next) =>
-                            onTextChange(setStepField(text, index, 'signal', next))}
-                        />
-                      {:else if step.kind === 'wait' && step.parts !== null}
-                        {@const parts = step.parts}
-                        <div class="weft-workflow-builder__wait">
-                          <Input
-                            id={`${id}-duration`}
-                            label={copy.amountFieldLabel}
-                            aria-label={copy.durationLabel(position)}
-                            type="number"
-                            min="0"
-                            size="sm"
-                            required
-                            {...errorOf(stepFieldId(position, 'duration'))}
-                            value={parts.amount}
-                            onValueChange={(next) =>
-                              onTextChange(setWaitDuration(text, index, next, parts.unit))}
-                          />
-                          <Select
-                            id={`${id}-unit`}
-                            label={copy.unitFieldLabel}
-                            aria-label={copy.unitLabel(position)}
-                            size="sm"
-                            required
-                            value={parts.unit}
-                            options={UNIT_OPTIONS}
-                            onValueChange={(unit: WaitUnit) =>
-                              onTextChange(setWaitDuration(text, index, parts.amount, unit))}
-                          />
-                        </div>
-                      {:else if step.kind === 'wait'}
-                        <Input
-                          id={`${id}-duration`}
-                          label={copy.durationFieldLabel}
-                          aria-label={copy.durationLabel(position)}
-                          description={copy.durationDescription}
-                          size="sm"
-                          variant="code"
-                          required
-                          value={step.duration}
-                          onValueChange={(next) =>
-                            onTextChange(setStepField(text, index, 'duration', next))}
-                        />
-                      {/if}
-                    </li>
-                  {/each}
-                </ol>
               {/if}
-              <div class="weft-workflow-builder__add" role="group" aria-label={copy.addLabel}>
-                <span class="weft-workflow-builder__add-label" aria-hidden="true"
-                  >{copy.addLabel}</span
-                >
-                {#each ADD_ACTIONS as action (action.kind)}
-                  <Button
-                    id={`workflow-builder-add-${action.kind}`}
-                    variant="secondary"
-                    size="sm"
-                    onclick={() => onTextChange(addStep(text, action.kind))}
-                  >
-                    {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
-                    {action.label}
-                  </Button>
-                {/each}
-              </div>
+              <WorkflowStepList steps={view.steps} list={ROOT_LIST} address={ROOT_ADDRESS} />
             {/if}
           </FormSection>
 
@@ -985,30 +920,6 @@
     overflow-wrap: anywhere;
   }
 
-  .weft-workflow-builder__cards {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .weft-workflow-builder__card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-    padding: var(--cinder-space-3);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-    min-width: 0;
-  }
-
-  /* A step with something to fix is outlined, so it is found without reading its fields. */
-  .weft-workflow-builder__card[data-problem] {
-    border-color: var(--cinder-status-danger-border);
-  }
-
   .weft-workflow-builder__field-error {
     margin: 0;
     color: var(--cinder-status-danger-text);
@@ -1020,62 +931,6 @@
     margin: 0;
     color: var(--cinder-status-danger-text);
     font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
-  }
-
-  .weft-workflow-builder__card-head {
-    display: flex;
-    gap: var(--cinder-space-2);
-    align-items: center;
-  }
-
-  .weft-workflow-builder__position {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .weft-workflow-builder__kind {
-    flex: 1 1 auto;
-    font-weight: 600;
-    min-width: 0;
-  }
-
-  .weft-workflow-builder__card-actions,
-  .weft-workflow-builder__add {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-1);
-    align-items: center;
-  }
-
-  /* One group under the steps at full width: its lines stack at the top, never stretched across a taller parent. */
-  .weft-workflow-builder__add {
-    align-content: flex-start;
-    align-self: start;
-    inline-size: 100%;
-    margin-top: var(--cinder-space-2);
-  }
-
-  .weft-workflow-builder__add-label {
-    margin-right: var(--cinder-space-1);
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-  }
-
-  .weft-workflow-builder__wait {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-  }
-
-  .weft-workflow-builder__wait > :global(*) {
-    flex: 1 1 8rem;
-    min-width: 0;
-  }
-
-  .weft-workflow-builder__other {
-    margin: 0;
     overflow-wrap: anywhere;
   }
 

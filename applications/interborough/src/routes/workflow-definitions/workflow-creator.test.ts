@@ -166,7 +166,7 @@ describe('the new-workflow editor', () => {
     await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-name'));
     const lines = container.querySelector('[data-testid="workflow-builder-problems"]');
     expect(lines?.textContent?.trim()).toBe(
-      `${BUILDER.problems.summaryLead(3)} ${BUILDER.problems.summary.id} ${BUILDER.problems.summary.agent(1)} ${BUILDER.problems.summary.message(1)}`,
+      `${BUILDER.problems.summaryLead(3)} ${BUILDER.problems.summary.id} ${BUILDER.problems.summary.agent(BUILDER.where.step(1))} ${BUILDER.problems.summary.message(BUILDER.where.step(1))}`,
     );
   });
 
@@ -314,6 +314,33 @@ describe('the builder', () => {
     await waitFor(() => expect(field(container, 'workflow-builder-title')).toBeTruthy());
   }
 
+  /** The name of a top-level step in a label: "step 3". */
+  const step = BUILDER.where.step;
+
+  /** The items of the add menu opened by `trigger`, which names its menu in `aria-controls`. */
+  async function menuItemsOf(trigger: HTMLElement): Promise<HTMLElement[]> {
+    await fireEvent.click(trigger);
+    return waitFor(() => {
+      const menu = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+      expect(menu).toBeTruthy();
+      const items = [...(menu as HTMLElement).querySelectorAll<HTMLElement>('[role="menuitem"]')];
+      expect(items.length).toBeGreaterThan(0);
+      return items;
+    });
+  }
+
+  /** Adds a step with the add menu at the end of a list (the workflow's own steps by default). */
+  async function addStep(
+    container: HTMLElement,
+    label: string,
+    trigger = 'workflow-builder-add',
+  ): Promise<void> {
+    const items = await menuItemsOf(field(container, trigger));
+    const item = items.find((candidate) => candidate.textContent?.trim() === label);
+    expect(item).toBeTruthy();
+    await fireEvent.click(item as HTMLElement);
+  }
+
   /** Waits until the agent select of a step offers `agent`, then chooses it. */
   async function chooseAgent(container: HTMLElement, position: number, agent: string) {
     const id = `workflow-builder-step-${String(position)}-agent`;
@@ -354,25 +381,42 @@ describe('the builder', () => {
     expect(field(container, 'workflow-builder-step-1-message').placeholder).toBe(
       BUILDER.messagePlaceholder,
     );
-    expect(button(container, BUILDER.remove(1))).toBeTruthy();
-    expect(button(container, BUILDER.moveEarlier(1))).toBeUndefined();
-    expect(button(container, BUILDER.moveLater(1))).toBeUndefined();
+    expect(button(container, BUILDER.remove(step(1)))).toBeTruthy();
+    expect(button(container, BUILDER.moveEarlier(step(1)))).toBeUndefined();
+    expect(button(container, BUILDER.moveLater(step(1)))).toBeUndefined();
 
     expect(container.textContent).toContain(BUILDER.inputEmpty);
     expect(container.textContent).toContain(BUILDER.outputEmpty);
     expect(summary(container)).toContain('Fill in step 1 to see what this workflow does.');
   });
 
-  test('offers the four kinds of step, each with a plus, under the steps', async () => {
+  test('adds a step with one menu under the steps: the built-in kinds, and nothing from a catalog that lists none', async () => {
     const { container } = open();
     await ready(container);
-    const group = container.querySelector(`[role="group"][aria-label="${BUILDER.addLabel}"]`);
-    expect(
-      [...(group?.querySelectorAll('button') ?? [])].map((candidate) =>
-        candidate.textContent?.trim(),
-      ),
-    ).toEqual([BUILDER.add.agent, BUILDER.add.person, BUILDER.add.signal, BUILDER.add.wait]);
-    expect(group?.querySelectorAll('button svg')).toHaveLength(4);
+    const trigger = field(container, 'workflow-builder-add');
+    expect(trigger.textContent?.trim()).toBe(BUILDER.addLabel);
+    expect(trigger.getAttribute('aria-label')).toBe(BUILDER.addLabel);
+    // One control, never a row of one button per kind.
+    expect(container.querySelectorAll('button[id^="workflow-builder-add"]')).toHaveLength(1);
+    expect(trigger.querySelector('svg')).toBeTruthy();
+    await menuItemsOf(trigger);
+    await waitFor(() =>
+      expect(
+        [
+          ...(
+            document.getElementById(trigger.getAttribute('aria-controls') ?? '') as HTMLElement
+          ).querySelectorAll('[role="menuitem"]'),
+        ].map((item) => item.textContent?.trim()),
+      ).toEqual([
+        BUILDER.add.agent,
+        BUILDER.add.person,
+        BUILDER.add.signal,
+        BUILDER.add.wait,
+        BUILDER.add.branch,
+        BUILDER.add.parallel,
+        BUILDER.add.map,
+      ]),
+    );
   });
 
   test('makes the ID from the title, collapses it to a line with Change, and opens it again', async () => {
@@ -432,13 +476,13 @@ describe('the builder', () => {
     await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
       target: { value: 'Write it.' },
     });
-    await fireEvent.click(button(container, BUILDER.add.wait));
-    await fireEvent.click(button(container, BUILDER.add.signal));
-    await fireEvent.click(button(container, BUILDER.add.person));
+    await addStep(container, BUILDER.add.wait);
+    await addStep(container, BUILDER.add.signal);
+    await addStep(container, BUILDER.add.person);
     await fireEvent.input(field(container, 'workflow-builder-step-3-signal'), {
       target: { value: 'approved' },
     });
-    await fireEvent.click(button(container, BUILDER.moveEarlier(3)));
+    await fireEvent.click(button(container, BUILDER.moveEarlier(step(3))));
     await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
 
     await waitFor(() => expect(router.pathname).toBe('/workflows/built-here'));
@@ -467,17 +511,18 @@ describe('the builder', () => {
     });
   });
 
-  test('a wait for a person shows only its name and what happens while it waits', async () => {
+  test('a wait for a person shows its name, what happens while it waits, and an optional limit', async () => {
     const { container } = open();
     await ready(container);
-    await fireEvent.click(button(container, BUILDER.add.person));
+    await addStep(container, BUILDER.add.person);
     const card = await waitFor(() => {
       const found = container.querySelector('[data-step-kind="person"]');
       expect(found).toBeTruthy();
       return found as HTMLElement;
     });
     expect(card.textContent).toContain(BUILDER.personDescription);
-    expect(card.querySelectorAll('input, textarea, select')).toHaveLength(1);
+    // Its name, then the limit's number and unit.
+    expect(card.querySelectorAll('input, textarea, select')).toHaveLength(3);
     expect(card.querySelector('#workflow-builder-step-2-title')).toBeTruthy();
     expect(summary(container)).toContain('Fill in step 1');
   });
@@ -485,8 +530,8 @@ describe('the builder', () => {
   test('a wait is For a number of a Unit, and a wait in milliseconds keeps a field of its own', async () => {
     const { container } = open();
     await ready(container);
-    await fireEvent.click(button(container, BUILDER.remove(1)));
-    await fireEvent.click(button(container, BUILDER.add.wait));
+    await fireEvent.click(button(container, BUILDER.remove(step(1))));
+    await addStep(container, BUILDER.add.wait);
     await waitFor(() => expect(field(container, 'workflow-builder-step-1-duration')).toBeTruthy());
     expect(field(container, 'workflow-builder-step-1-duration').value).toBe('1');
     expect(field(container, 'workflow-builder-step-1-unit').value).toBe('minutes');
@@ -518,8 +563,8 @@ describe('the builder', () => {
   test('a wait keeps its Unit while For is empty, whether For is cleared and retyped or a Unit is chosen first', async () => {
     const { container } = open();
     await ready(container);
-    await fireEvent.click(button(container, BUILDER.remove(1)));
-    await fireEvent.click(button(container, BUILDER.add.wait));
+    await fireEvent.click(button(container, BUILDER.remove(step(1))));
+    await addStep(container, BUILDER.add.wait);
     await waitFor(() => expect(field(container, 'workflow-builder-step-1-unit')).toBeTruthy());
     await fireEvent.change(field(container, 'workflow-builder-step-1-unit'), {
       target: { value: 'hours' },
@@ -647,8 +692,7 @@ describe('the builder', () => {
     await typeInto(container, JSON.stringify({ name: 'odd', steps: 'later' }));
     await fireEvent.click(builderTab(container));
     await findByTestId('workflow-builder-steps-unreadable');
-    expect(button(container, BUILDER.add.agent)).toBeUndefined();
-    expect(button(container, BUILDER.add.wait)).toBeUndefined();
+    expect(field(container, 'workflow-builder-add')).toBeNull();
     await openJson(container);
     expect(JSON.parse(textarea(container).value)).toEqual({ name: 'odd', steps: 'later' });
   });
@@ -723,11 +767,11 @@ describe('the builder', () => {
   test('removes a step, says the list needs one, and adds an agent step that names no agent', async () => {
     const { container, findByText } = open(listed('notes'));
     await ready(container);
-    await fireEvent.click(button(container, BUILDER.remove(1)));
+    await fireEvent.click(button(container, BUILDER.remove(step(1))));
 
     await findByText(BUILDER.noSteps);
     expect(summary(container)).toContain(BUILDER.readBack.noSteps);
-    await fireEvent.click(button(container, BUILDER.add.agent));
+    await addStep(container, BUILDER.add.agent);
     await waitFor(() =>
       expect(container.querySelectorAll('[data-step-kind="agent"]')).toHaveLength(1),
     );
@@ -886,8 +930,8 @@ describe('the builder', () => {
     await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
       target: { value: 'Summarize yesterday.' },
     });
-    await fireEvent.click(button(container, BUILDER.add.signal));
-    await fireEvent.click(button(container, BUILDER.add.agent));
+    await addStep(container, BUILDER.add.signal);
+    await addStep(container, BUILDER.add.agent);
     await chooseAgent(container, 3, 'demo:assistant');
     expect(container.querySelector('[data-problem]')).toBeNull();
     expect(container.textContent).not.toContain(BUILDER.problems.signal);
@@ -906,7 +950,7 @@ describe('the builder', () => {
     expect(
       container.querySelector('[data-testid="workflow-builder-problems"]')?.textContent?.trim(),
     ).toBe(
-      `${BUILDER.problems.summaryLead(2)} ${BUILDER.problems.summary.signal(2)} ${BUILDER.problems.summary.message(3)}`,
+      `${BUILDER.problems.summaryLead(2)} ${BUILDER.problems.summary.signal(step(2))} ${BUILDER.problems.summary.message(step(3))}`,
     );
     // The ID the title made never fails for its capitals.
     expect(
@@ -934,15 +978,15 @@ describe('the builder', () => {
     await fireEvent.input(field(container, 'workflow-builder-name'), {
       target: { value: 'no-steps' },
     });
-    await fireEvent.click(button(container, BUILDER.remove(1)));
+    await fireEvent.click(button(container, BUILDER.remove(step(1))));
     await waitFor(() => expect(container.textContent).toContain(BUILDER.noSteps));
     expect(summary(container)).toContain(BUILDER.readBack.noSteps);
-    expect(button(container, BUILDER.add.agent)).toBeTruthy();
+    expect(field(container, 'workflow-builder-add')).toBeTruthy();
 
     const create = getByRole('button', { name: WORKFLOW_COPY.creator.saveAction });
     expect(create.hasAttribute('disabled')).toBe(false);
     await fireEvent.click(create);
-    await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-add-agent'));
+    await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-add'));
     expect(container.textContent?.split(BUILDER.noSteps)).toHaveLength(2);
     expect(container.querySelector('[data-testid="workflow-builder-problems"]')).toBeNull();
     expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
@@ -1002,7 +1046,7 @@ describe('the builder', () => {
   });
 
   test('says a create that could not write above the footer, keeps everything typed, and has no Try again', async () => {
-    const { container, getByRole, findByText } = open(listed('demo:assistant'));
+    const { container, getByRole, getAllByRole, findByText } = open(listed('demo:assistant'));
     const reason =
       '~/.interborough/workflows/morning-briefing.json couldn’t be written: permission denied.';
     stub?.on('bureau.workflows.create', () => {
@@ -1012,7 +1056,10 @@ describe('the builder', () => {
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
 
     await findByText(reason);
-    const alert = getByRole('alert');
+    // The steps' lists each hold a live region of their own, which says nothing until a step moves.
+    const alert = getAllByRole('alert').find((candidate) =>
+      candidate.textContent?.includes(WORKFLOW_COPY.creator.saveFailed),
+    ) as HTMLElement;
     expect(alert.textContent).toContain(WORKFLOW_COPY.creator.saveFailed);
     expect(alert.textContent).toContain(WORKFLOW_COPY.creator.nothingSaved);
     expect(container.querySelector('footer')?.previousElementSibling?.contains(alert)).toBe(true);

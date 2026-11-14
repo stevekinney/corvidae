@@ -48,6 +48,32 @@ describe('the form of a contributed kind', () => {
     expect(received.every((value) => typeof value['limit'] !== 'string')).toBe(true);
   });
 
+  test('draws no Submit button, hosted or not: the page saves what the form reports', () => {
+    for (const hosted of [false, true]) {
+      const { container } = render(ContributedConfigurationForm, {
+        props: { kindId: 'inbox:message', schema: SCHEMA, hosted, onChange: () => undefined },
+      });
+      expect(container.querySelector('button[type="submit"]')).toBeNull();
+      // A form hosted in the page's own form is a group, never a form in a form.
+      expect(container.querySelector('form') === null).toBe(hosted);
+      cleanup();
+    }
+  });
+
+  test('leaves the draft it shows at mount unreported when asked, so opening a step writes nothing', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'demo:echo',
+        schema: { type: 'object', properties: { loud: { type: 'boolean' } } },
+        reportInitialDraft: false,
+        onChange: (next) => received.push(next),
+      },
+    });
+    await quietFor(100);
+    expect(received).toEqual([]);
+  });
+
   test('says so when the kind takes no settings', () => {
     const { getByText } = render(ContributedConfigurationForm, {
       props: {

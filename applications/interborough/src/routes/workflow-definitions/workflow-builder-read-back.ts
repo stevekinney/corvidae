@@ -4,9 +4,17 @@
  * Assistant to summarize what happened yesterday, wait for a person to review it, then wait 15
  * minutes." A step the builder cannot read is said as one it cannot describe, never dropped.
  */
+import { humanizeIdentifier } from '@lostgradient/cinder';
+
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import { agentLabel } from '../../lib/agent-label.ts';
-import type { BuilderStep, BuilderTrigger, WaitUnit } from './workflow-builder-model.ts';
+import type {
+  BuilderStep,
+  BuilderTrigger,
+  DurationView,
+  WaitParts,
+  WaitUnit,
+} from './workflow-builder-model.ts';
 
 /** What the read-back needs besides the file: how agents are named, and the clock. */
 export interface ReadBackOptions {
@@ -15,6 +23,10 @@ export interface ReadBackOptions {
    * to the identifier in words.
    */
   readonly agentName?: (identifier: string) => string;
+  /** The name a person reads for an activity (its catalog `title`). Defaults to its `id` in words. */
+  readonly activityName?: (identifier: string) => string;
+  /** The name a person reads for a code workflow (its listed `title`). Defaults to its `id` in words. */
+  readonly workflowName?: (identifier: string) => string;
   /** The instant whose zone abbreviation a schedule names (CST in winter, CDT in summer). Defaults to now. */
   readonly now?: number;
 }
@@ -137,7 +149,10 @@ function taskOf(message: string): string {
 }
 
 /** How long a wait lasts in words: "15 minutes", "5000 ms", or the duration as written. */
-function durationWords(step: Extract<BuilderStep, { kind: 'wait' }>): string {
+function durationWords(step: {
+  readonly duration: string;
+  readonly parts: WaitParts | null;
+}): string {
   if (step.parts !== null) {
     // An empty "For" is written as its unit's letter alone, which says no length yet.
     if (step.parts.amount === '') return '';
@@ -147,22 +162,55 @@ function durationWords(step: Extract<BuilderStep, { kind: 'wait' }>): string {
   return /^\d+$/.test(step.duration) ? `${step.duration} ms` : step.duration;
 }
 
-function stepPhrase(step: BuilderStep, agentName: (identifier: string) => string): string {
+/** The words that say a person's review waits, with its limit when it has one. */
+function reviewPhrase(timeout: DurationView | null): string {
+  const limit = timeout === null ? '' : durationWords(timeout);
+  return limit === '' ? copy.person : copy.personWithin(limit);
+}
+
+/** The words that say a signal is waited for, with its limit when it has one. */
+function signalPhrase(signal: string, timeout: DurationView | null): string {
+  const limit = timeout === null ? '' : durationWords(timeout);
+  if (limit === '') return signal === '' ? copy.anySignalWait : copy.waitForSignal(signal);
+  return signal === '' ? copy.anySignalWithin(limit) : copy.signalWithin(signal, limit);
+}
+
+/** What a step reads as in its own words. A control-flow step is one clause that never says what it holds. */
+function stepPhrase(step: BuilderStep, names: ReadBackNames): string {
   switch (step.kind) {
     case 'agent':
       return copy.ask(
-        step.agent === '' ? copy.anAgent : agentName(step.agent),
+        step.agent === '' ? copy.anAgent : names.agentName(step.agent),
         taskOf(step.message),
       );
     case 'person':
-      return copy.person;
+      return reviewPhrase(step.timeout);
     case 'signal':
-      return step.signal === '' ? copy.anySignalWait : copy.waitForSignal(step.signal);
+      return signalPhrase(step.signal, step.timeout);
     case 'wait':
       return copy.wait(durationWords(step));
+    case 'activity':
+      return copy.runActivity(names.activityName(step.handler));
+    case 'workflow':
+      return step.workflow === ''
+        ? copy.anyWorkflow
+        : copy.runWorkflow(names.workflowName(step.workflow));
+    case 'branch':
+      return copy.choosePath(step.on, step.cases.length);
+    case 'parallel':
+      return copy.sideBySide(step.branches.length);
+    case 'map':
+      return copy.repeat(step.steps.length, step.over);
     case 'other':
       return copy.other;
   }
+}
+
+/** How a step's names read: agents, activities and workflows by their titles. */
+interface ReadBackNames {
+  readonly agentName: (identifier: string) => string;
+  readonly activityName: (identifier: string) => string;
+  readonly workflowName: (identifier: string) => string;
 }
 
 /**
@@ -180,11 +228,15 @@ export function readBackOf(
     (step) => step.kind === 'agent' && step.agent === '' && step.message.trim() === '',
   );
   if (unfilled !== -1) return copy.fillIn(unfilled + 1);
-  const agentName =
-    options.agentName ?? ((identifier: string) => agentLabel(identifier, undefined));
+  const inWords = (identifier: string) => humanizeIdentifier(identifier, { casing: 'sentence' });
+  const names: ReadBackNames = {
+    agentName: options.agentName ?? ((identifier) => agentLabel(identifier, undefined)),
+    activityName: options.activityName ?? inWords,
+    workflowName: options.workflowName ?? inWords,
+  };
   const now = options.now ?? Date.now();
   const phrases = steps.map((step, index) => {
-    const phrase = stepPhrase(step, agentName);
+    const phrase = stepPhrase(step, names);
     const last = index > 0 && index === steps.length - 1;
     // A manual start reads "Run it when you press Start run, then ask …".
     const afterManual = index === 0 && trigger?.kind === 'manual';

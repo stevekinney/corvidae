@@ -51,11 +51,22 @@
     unavailableText = PLUGIN_KINDS_COPY.fieldsUnavailable,
   }: Props = $props();
 
+  // The form takes its schema as the key of a remount (a new schema starts it over), so the schema it
+  // draws must change only when the kind or the schema does, never because a host passed the same
+  // ones through an object that was made again (a step's `handler` is read through the step, which
+  // is a new object after every edit). These two hold the value, and only a different one changes them.
+  // The form takes its schema as the key of a remount (a new schema starts it over), so the schema it
+  // draws must change only when the kind or the schema does, never because a host passed the same
+  // ones through an object that was made again (a step's `handler` is read through the step, which
+  // is a new object after every edit). These two hold the value, and only a different one changes them.
+  const kind = $derived(kindId);
+  const source = $derived(schema);
+
   /** The schema as the form reads it, without the dialect marker Zod writes. */
   const formSchema = $derived.by(() => {
-    if (schema === null) return undefined;
-    const { $schema: _dialect, ...rest } = schema;
-    return formSchemaOf(kindId, rest);
+    if (source === null) return undefined;
+    const { $schema: _dialect, ...rest } = source;
+    return formSchemaOf(kind, rest);
   });
 
   /**

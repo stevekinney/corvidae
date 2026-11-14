@@ -14,22 +14,38 @@ import {
   SHOWCASE_TRIAGE_INBOX_FILE,
 } from '../../../fixtures/showcase-content.ts';
 import {
+  addBranch,
+  addCase,
+  addOtherwise,
   addStep,
+  forEachStep,
   identifierFromTitle,
   moveStep,
   readBuilder,
+  removeBranch,
+  removeCase,
+  removeOtherwise,
   removeStep,
+  ROOT_LIST,
+  setBranchName,
+  setCaseValue,
   setContributedTrigger,
   setDescription,
   setName,
   setSchema,
+  setStepConcurrency,
   setStepField,
+  setStepInput,
+  setStepTimeout,
   setStepTitle,
+  setTimeoutDuration,
   setTitle,
   setTitleDerivingName,
   setTrigger,
   setWaitDuration,
   waitPartsOf,
+  type BuilderStep,
+  type ListPath,
 } from './workflow-builder-model.ts';
 
 const FILE = {
@@ -81,6 +97,34 @@ const MORNING_BRIEFING = `{
 const BY_HAND = `{"name":"by-hand","trigger":{"kind":"manual"},
 "steps":[{"kind":"sleep","duration":60000},{"kind":"await-signal","signal":"go"}]}`;
 
+/**
+ * One of every kind of step the builder draws, by hand and not as `JSON.stringify` spaces it: an
+ * activity whose input holds a `kind` of its own, a code workflow, a wait for a signal and one for a
+ * person (each with its limit, one written as milliseconds), a branch with an otherwise path, side
+ * by side steps, and a repeat that holds a branch.
+ */
+const EVERY_KIND = `{
+  "name": "every-kind",
+  "title": "Every kind",
+  "trigger": { "kind": "manual" },
+  "steps": [
+    { "kind": "activity", "handler": "demo:echo-input", "input": { "text": "hi", "kind": "loud" } },
+    { "kind": "workflow", "workflow": "demo:echo-workflow", "input": { "count": 1 } },
+    { "kind": "await-signal", "signal": "go", "timeout": "2h" },
+    { "kind": "await-signal", "signal": "review-1", "review": true, "timeout": 7200000 },
+    { "kind": "branch", "on": "status",
+      "cases": { "approved": [ { "kind": "sleep", "duration": "1m" } ], "rejected": [] },
+      "otherwise": [ { "kind": "await-signal", "signal": "later" } ] },
+    { "kind": "parallel", "branches": {
+      "notify": [ { "kind": "activity", "handler": "agent",
+        "input": { "agent": "assistant", "message": "Tell them." } } ],
+      "log": [ { "kind": "sleep", "duration": "1s" } ] } },
+    { "kind": "map", "over": "files", "concurrency": 2, "steps": [
+      { "kind": "branch", "on": "ok", "cases": { "yes": [ { "kind": "sleep", "duration": 5 } ] } } ] }
+  ]
+}
+`;
+
 /** The valid files a person may open in the builder, each as the bytes on disk. */
 const VALID_FILES: readonly { readonly id: string; readonly text: string }[] = [
   SHOWCASE_RELEASE_NOTES_FILE,
@@ -88,6 +132,7 @@ const VALID_FILES: readonly { readonly id: string; readonly text: string }[] = [
   SHOWCASE_ORDER_REFUND_VALID_FILE,
   { id: 'morning-briefing', text: MORNING_BRIEFING },
   { id: 'by-hand', text: BY_HAND },
+  { id: 'every-kind', text: EVERY_KIND },
 ];
 
 /** Reads `file` in the builder and writes every field it read back, as unchanged edits. */
@@ -100,24 +145,60 @@ function writeBack(file: string): string {
   if (view.trigger?.kind === 'manual') next = setTrigger(next, 'manual');
   if (view.trigger?.kind === 'schedule') next = setTrigger(next, 'schedule', view.trigger.spec);
   if (view.trigger?.kind === 'signal') next = setTrigger(next, 'signal', view.trigger.name);
-  view.steps.forEach((step, index) => {
-    next = setStepTitle(next, index, step.title);
-    if (step.kind === 'agent') {
-      next = setStepField(next, index, 'agent', step.agent);
-      next = setStepField(next, index, 'message', step.message);
-    } else if (step.kind === 'person' || step.kind === 'signal') {
-      next = setStepField(next, index, 'signal', step.signal);
-    } else if (step.kind === 'wait') {
-      next =
-        step.parts === null
-          ? setStepField(next, index, 'duration', step.duration)
-          : setWaitDuration(next, index, step.parts.amount, step.parts.unit);
-    }
-  });
+  next = writeSteps(next, view.steps, ROOT_LIST);
   for (const key of ['inputSchema', 'outputSchema'] as const) {
     const schema = view[key];
     if (schema.kind === 'schema') next = setSchema(next, key, schema.schema);
   }
+  return next;
+}
+
+/** Writes every field of `steps`, and of the steps inside them, back as unchanged edits. */
+function writeSteps(file: string, steps: readonly BuilderStep[], list: ListPath): string {
+  let next = file;
+  steps.forEach((step, index) => {
+    const path = [...list, index];
+    next = setStepTitle(next, path, step.title);
+    if (step.kind === 'agent') {
+      next = setStepField(next, path, 'agent', step.agent);
+      next = setStepField(next, path, 'message', step.message);
+    } else if (step.kind === 'person' || step.kind === 'signal') {
+      next = setStepField(next, path, 'signal', step.signal);
+      next = setStepTimeout(next, path, step.timeout?.duration ?? null);
+    } else if (step.kind === 'wait') {
+      next =
+        step.parts === null
+          ? setStepField(next, path, 'duration', step.duration)
+          : setWaitDuration(next, path, step.parts.amount, step.parts.unit);
+    } else if (step.kind === 'activity' || step.kind === 'workflow') {
+      if (step.kind === 'workflow') next = setStepField(next, path, 'workflow', step.workflow);
+      if (step.input !== null && Object.keys(step.input).length > 0) {
+        next = setStepInput(next, path, step.input);
+      }
+    } else if (step.kind === 'branch') {
+      next = setStepField(next, path, 'on', step.on);
+      for (const entry of step.cases) {
+        next = setCaseValue(next, path, entry.value, entry.value);
+        next = writeSteps(next, entry.steps, [...path, 'cases', entry.value]);
+      }
+      if (step.otherwise !== null) {
+        next = writeSteps(next, step.otherwise, [...path, 'otherwise']);
+      }
+    } else if (step.kind === 'parallel') {
+      for (const entry of step.branches) {
+        next = setBranchName(next, path, entry.name, entry.name);
+        next = writeSteps(next, entry.steps, [...path, 'branches', entry.name]);
+      }
+    } else if (step.kind === 'map') {
+      next = setStepField(next, path, 'over', step.over);
+      next = setStepConcurrency(
+        next,
+        path,
+        step.concurrency === '' ? null : Number(step.concurrency),
+      );
+      next = writeSteps(next, step.steps, [...path, 'steps']);
+    }
+  });
   return next;
 }
 
@@ -257,6 +338,7 @@ describe('readBuilder', () => {
     expect(view?.steps[3]).toEqual({
       kind: 'signal',
       signal: 'notes-approved',
+      timeout: null,
       title: 'Wait for approval',
     });
     expect(readBuilder(SHOWCASE_ORDER_REFUND_VALID_FILE.text)?.steps[1]?.kind).toBe('person');
@@ -274,11 +356,32 @@ describe('readBuilder', () => {
 
   test('shows a step it has no control for as a label, and a trigger it does not know', () => {
     const view = readBuilder(
-      text({ trigger: { kind: 'webhook' }, steps: [{ kind: 'activity', handler: 'other' }, 5] }),
+      text({
+        trigger: { kind: 'webhook' },
+        steps: [{ kind: 'activity', handler: '' }, { kind: 'banana' }, 5],
+      }),
     );
     expect(view?.trigger).toEqual({ kind: 'other', label: 'A webhook trigger' });
-    expect(view?.steps[0]).toEqual({ kind: 'other', label: 'Run the activity other', title: '' });
+    expect(view?.steps[0]?.kind).toBe('other');
     expect(view?.steps[1]?.kind).toBe('other');
+    expect(view?.steps[2]?.kind).toBe('other');
+  });
+
+  test('reads an activity a plugin provides by its handler, and its input as an object or as left to the JSON tab', () => {
+    const view = readBuilder(
+      text({
+        steps: [
+          { kind: 'activity', handler: 'demo:echo-input', input: { text: 'hi' } },
+          { kind: 'activity', handler: 'demo:echo-input' },
+          { kind: 'activity', handler: 'demo:echo-input', input: 'not an object' },
+        ],
+      }),
+    );
+    expect(view?.steps).toEqual([
+      { kind: 'activity', handler: 'demo:echo-input', input: { text: 'hi' }, title: '' },
+      { kind: 'activity', handler: 'demo:echo-input', input: {}, title: '' },
+      { kind: 'activity', handler: 'demo:echo-input', input: null, title: '' },
+    ]);
   });
 
   test('reads a file with no trigger or steps as empty, and a wait in milliseconds as written', () => {
@@ -500,10 +603,10 @@ describe('the edits', () => {
     const built = addStep(text({ trigger: { kind: 'signal', name: 'go' }, steps: [] }), 'signal');
     const typed = built.replace('"signal": ""', '"signal": "typed-in-json"');
     expect(readBuilder(typed)?.steps).toEqual([
-      { kind: 'signal', signal: 'typed-in-json', title: '' },
+      { kind: 'signal', signal: 'typed-in-json', timeout: null, title: '' },
     ]);
     expect(readBuilder(setStepField(typed, 0, 'signal', 'back'))?.steps).toEqual([
-      { kind: 'signal', signal: 'back', title: '' },
+      { kind: 'signal', signal: 'back', timeout: null, title: '' },
     ]);
   });
 });
@@ -608,5 +711,281 @@ describe('a trigger a plugin contributes', () => {
   test('leaves a trigger that is not an object alone, as setTrigger does', () => {
     const before = text('nope');
     expect(setContributedTrigger(before, 'inbox:message', {})).toBe(before);
+  });
+});
+
+/** The steps of `value`'s document, as plain data. */
+const stepsIn = (value: string): Record<string, unknown>[] =>
+  parsed(value)['steps'] as Record<string, unknown>[];
+
+describe('a plugin activity, a code workflow and the control-flow kinds', () => {
+  const BASE = text({
+    name: 'flow',
+    trigger: { kind: 'manual' },
+    steps: [{ kind: 'sleep', duration: '1m' }],
+  });
+
+  test('are added as the shapes the engine reads, the three containers with the one list they need', () => {
+    expect(
+      stepsIn(
+        addStep(BASE, 'activity', { handler: 'demo:echo-input', input: { text: '', loud: false } }),
+      )[1],
+    ).toEqual({ kind: 'activity', handler: 'demo:echo-input', input: { text: '', loud: false } });
+    expect(stepsIn(addStep(BASE, 'activity', { handler: 'demo:echo-input' }))[1]).toEqual({
+      kind: 'activity',
+      handler: 'demo:echo-input',
+    });
+    expect(stepsIn(addStep(BASE, 'workflow', { workflow: 'demo:echo-workflow' }))[1]).toEqual({
+      kind: 'workflow',
+      workflow: 'demo:echo-workflow',
+    });
+    expect(stepsIn(addStep(BASE, 'branch'))[1]).toEqual({
+      kind: 'branch',
+      on: '',
+      cases: { 'value-1': [] },
+    });
+    expect(stepsIn(addStep(BASE, 'parallel'))[1]).toEqual({
+      kind: 'parallel',
+      branches: { 'branch-1': [] },
+    });
+    expect(stepsIn(addStep(BASE, 'map'))[1]).toEqual({ kind: 'map', over: '', steps: [] });
+  });
+
+  test('read as the cards draw them, a container with its lists and a malformed one as a step to leave to the JSON tab', () => {
+    const view = readBuilder(
+      text({
+        steps: [
+          {
+            kind: 'branch',
+            on: 'status',
+            cases: { approved: [{ kind: 'sleep', duration: '1m' }], rejected: [] },
+            otherwise: [],
+          },
+          { kind: 'parallel', branches: { a: [], b: [{ kind: 'await-signal', signal: 's' }] } },
+          { kind: 'map', over: 'files', concurrency: 2, steps: [] },
+          { kind: 'branch', on: 'x', cases: 'nope' },
+          { kind: 'map', over: 'x', steps: 'nope' },
+          { kind: 'parallel', branches: { a: 'nope' } },
+          { kind: 'await-signal', signal: 'go', timeout: { not: 'a duration' } },
+        ],
+      }),
+    );
+    expect(view?.steps.map((step) => step.kind)).toEqual([
+      'branch',
+      'parallel',
+      'map',
+      'other',
+      'other',
+      'other',
+      'other',
+    ]);
+    const [branch, parallel, map] = view?.steps ?? [];
+    expect(branch).toMatchObject({
+      on: 'status',
+      cases: [
+        { value: 'approved', steps: [{ kind: 'wait' }] },
+        { value: 'rejected', steps: [] },
+      ],
+      otherwise: [],
+    });
+    expect(parallel).toMatchObject({ branches: [{ name: 'a' }, { name: 'b' }] });
+    expect(map).toMatchObject({ over: 'files', concurrency: '2', steps: [] });
+  });
+
+  test('add into a nested list, and a new review signal never repeats one a nested step already waits on', () => {
+    const nested = text({
+      steps: [
+        {
+          kind: 'branch',
+          on: 'x',
+          cases: { a: [{ kind: 'await-signal', signal: 'review-fixed' }] },
+        },
+      ],
+    });
+    const added = addStep(nested, 'person', {
+      into: ['steps', 0, 'cases', 'a'],
+      reviewSignal: 'review-fixed',
+    });
+    const inside = (stepsIn(added)[0] as { cases: { a: { signal: string }[] } }).cases.a;
+    expect(inside.map((step) => step.signal)).toEqual(['review-fixed', 'review-fixed-2']);
+    expect(addStep(nested, 'wait', { into: ['steps', 0, 'cases', 'missing'] })).toBe(nested);
+    expect(addStep(nested, 'wait', { into: ['steps', 5, 'steps'] })).toBe(nested);
+  });
+
+  test('every edit reaches a nested step by its path, and nothing else in the file moves', () => {
+    const base = text({
+      name: 'flow',
+      trigger: { kind: 'manual' },
+      steps: [
+        {
+          kind: 'map',
+          over: 'files',
+          steps: [
+            { kind: 'await-signal', signal: 'a', note: 'kept' },
+            { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'm' } },
+          ],
+        },
+      ],
+    });
+    const path = ['steps', 0, 'steps', 0] as const;
+    const edited = setStepField(setStepTitle(base, path, 'Named'), path, 'signal', 'b');
+    expect(stepsIn(edited)[0]).toEqual({
+      kind: 'map',
+      over: 'files',
+      steps: [
+        { title: 'Named', kind: 'await-signal', signal: 'b', note: 'kept' },
+        { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'm' } },
+      ],
+    });
+    const moved = moveStep(base, path, 1);
+    expect(
+      (stepsIn(moved)[0] as { steps: { kind: string }[] }).steps.map((step) => step.kind),
+    ).toEqual(['activity', 'await-signal']);
+    expect(moveStep(base, path, -1)).toBe(base);
+    const removed = removeStep(base, ['steps', 0, 'steps', 1]);
+    expect((stepsIn(removed)[0] as { steps: unknown[] }).steps).toHaveLength(1);
+    expect(removeStep(base, ['steps', 0, 'steps', 9])).toBe(base);
+    // A top-level step is still its own index.
+    expect(setStepField(base, 0, 'over', 'rows')).toContain('"over": "rows"');
+    expect(setStepField(base, path, 'over', 'rows')).toBe(base);
+  });
+
+  test('a step with no timeout writes none, a limit writes one, and clearing it removes the key', () => {
+    const waiting = text({ steps: [{ kind: 'await-signal', signal: 'go' }] });
+    expect(stepsIn(waiting)[0]).not.toHaveProperty('timeout');
+    const limited = setTimeoutDuration(waiting, 0, '2', 'hours');
+    expect(stepsIn(limited)[0]).toEqual({ kind: 'await-signal', signal: 'go', timeout: '2h' });
+    expect(readBuilder(limited)?.steps[0]).toMatchObject({
+      timeout: { duration: '2h', parts: { amount: '2', unit: 'hours' } },
+    });
+    expect(stepsIn(setTimeoutDuration(limited, 0, '', 'hours'))[0]).toEqual({
+      kind: 'await-signal',
+      signal: 'go',
+    });
+    expect(stepsIn(setStepTimeout(limited, 0, null))[0]).not.toHaveProperty('timeout');
+    // A bare number is milliseconds, as a wait's is; no other kind of step takes a limit.
+    expect(stepsIn(setStepTimeout(waiting, 0, '60000'))[0]?.['timeout']).toBe(60000);
+    const sleeping = text({ steps: [{ kind: 'sleep', duration: '1m' }] });
+    expect(setStepTimeout(sleeping, 0, '5m')).toBe(sleeping);
+  });
+
+  test('concurrency is a positive whole number or no key', () => {
+    const repeating = text({ steps: [{ kind: 'map', over: 'files', steps: [] }] });
+    expect(stepsIn(setStepConcurrency(repeating, 0, 3))[0]?.['concurrency']).toBe(3);
+    const limited = setStepConcurrency(repeating, 0, 3);
+    for (const bad of [null, 0, -1, 1.5]) {
+      expect(stepsIn(setStepConcurrency(limited, 0, bad))[0]).not.toHaveProperty('concurrency');
+    }
+    const other = text({ steps: [{ kind: 'sleep', duration: '1m' }] });
+    expect(setStepConcurrency(other, 0, 2)).toBe(other);
+  });
+
+  test('cases and lists are added, renamed in place, never merged or emptied, and removed with their steps', () => {
+    const branching = text({
+      steps: [
+        {
+          kind: 'branch',
+          on: 'status',
+          cases: { approved: [{ kind: 'sleep', duration: '1m' }], rejected: [] },
+        },
+        { kind: 'parallel', branches: { a: [], b: [] } },
+      ],
+    });
+    const keysOf = (value: string, index: number, container: 'cases' | 'branches') =>
+      Object.keys((stepsIn(value)[index] as Record<string, object>)[container] ?? {});
+    const added = addCase(branching, 0);
+    expect(keysOf(added, 0, 'cases')).toEqual(['approved', 'rejected', 'value-1']);
+    expect(keysOf(addCase(added, 0), 0, 'cases')).toContain('value-2');
+    expect(keysOf(setCaseValue(added, 0, 'approved', 'ok'), 0, 'cases')).toEqual([
+      'ok',
+      'rejected',
+      'value-1',
+    ]);
+    expect(setCaseValue(added, 0, 'approved', 'rejected')).toBe(added);
+    expect(setCaseValue(added, 0, 'approved', '')).toBe(added);
+    expect(setCaseValue(added, 0, 'missing', 'x')).toBe(added);
+    expect(setCaseValue(added, 0, 'approved', 'approved')).toBe(added);
+    expect(keysOf(removeCase(added, 0, 'approved'), 0, 'cases')).toEqual(['rejected', 'value-1']);
+
+    expect(keysOf(addBranch(branching, 1), 1, 'branches')).toEqual(['a', 'b', 'branch-1']);
+    expect(keysOf(setBranchName(branching, 1, 'a', 'first'), 1, 'branches')).toEqual([
+      'first',
+      'b',
+    ]);
+    expect(setBranchName(branching, 1, 'a', 'b')).toBe(branching);
+    expect(keysOf(removeBranch(branching, 1, 'a'), 1, 'branches')).toEqual(['b']);
+    // A kind's own containers only: a case on a parallel and a branch on a branch change nothing.
+    expect(addCase(branching, 1)).toBe(branching);
+    expect(addBranch(branching, 0)).toBe(branching);
+  });
+
+  test('otherwise is added empty once and removed with its steps', () => {
+    const branching = text({
+      steps: [
+        { kind: 'branch', on: 'x', cases: { a: [] } },
+        { kind: 'sleep', duration: '1m' },
+      ],
+    });
+    const withOtherwise = addOtherwise(branching, 0);
+    expect(stepsIn(withOtherwise)[0]).toMatchObject({ otherwise: [] });
+    expect(addOtherwise(withOtherwise, 0)).toBe(withOtherwise);
+    expect(stepsIn(removeOtherwise(withOtherwise, 0))[0]).not.toHaveProperty('otherwise');
+    expect(removeOtherwise(branching, 0)).toBe(branching);
+    expect(addOtherwise(branching, 1)).toBe(branching);
+  });
+
+  test('an input is written as the form reported it, with the keys the schema does not name kept, and `kind` is only a key', () => {
+    const file = text({
+      steps: [
+        {
+          kind: 'activity',
+          handler: 'demo:echo-input',
+          input: { text: 'old', gone: true, kind: 'shout', extra: 1 },
+        },
+        { kind: 'activity', handler: 'agent', input: { agent: 'a', message: 'm' } },
+        { kind: 'activity', handler: 'demo:echo-input', input: 'not an object' },
+      ],
+    });
+    const schema = { type: 'object', properties: { text: {}, gone: {} } };
+    const edited = setStepInput(file, 0, { text: 'new' }, schema);
+    // `gone` was named by the schema and the form left it out, so it is removed; the rest stay.
+    expect(stepsIn(edited)[0]?.['input']).toEqual({ kind: 'shout', extra: 1, text: 'new' });
+    // Without a schema that names fields the form's draft is the whole input.
+    expect(stepsIn(setStepInput(file, 0, { only: 1 }))[0]?.['input']).toEqual({ only: 1 });
+    // An agent step has fields of its own, and an input that is not an object is the JSON tab's.
+    expect(setStepInput(file, 1, { agent: 'b' }, schema)).toBe(file);
+    expect(setStepInput(file, 2, { text: 'x' }, schema)).toBe(file);
+  });
+
+  test('a file with every kind is lossless: edits and their undoes leave the document as it was', () => {
+    const original = parsed(EVERY_KIND);
+    let next = addStep(EVERY_KIND, 'wait', { into: ['steps', 4, 'cases', 'approved'] });
+    next = removeStep(next, ['steps', 4, 'cases', 'approved', 1]);
+    next = setTimeoutDuration(next, 2, '', 'hours');
+    next = setTimeoutDuration(next, 2, '2', 'hours');
+    const notify = ['steps', 5, 'branches', 'notify', 0] as const;
+    next = moveStep(moveStep(next, notify, 1), notify, -1);
+    next = setStepConcurrency(setStepConcurrency(next, 6, null), 6, 2);
+    expect(parsed(next)).toEqual(original);
+  });
+
+  test('visits every step at every depth, parents before the steps they hold', () => {
+    const kinds: string[] = [];
+    forEachStep(readBuilder(EVERY_KIND)?.steps ?? [], (step) => kinds.push(step.kind));
+    expect(kinds).toEqual([
+      'activity',
+      'workflow',
+      'signal',
+      'person',
+      'branch',
+      'wait',
+      'signal',
+      'parallel',
+      'agent',
+      'wait',
+      'map',
+      'branch',
+      'wait',
+    ]);
   });
 });

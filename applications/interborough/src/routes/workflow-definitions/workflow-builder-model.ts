@@ -18,9 +18,26 @@ import { stepLabel, triggerLabel } from './workflow-presentation.ts';
 
 /**
  * The kinds of step the builder adds: an agent step, a wait for a person (an `await-signal` with
- * `review: true`, which shows in Reviews), a wait for an outside signal, and a wait (`sleep`).
+ * `review: true`, which shows in Reviews), a wait for an outside signal, a wait (`sleep`), a call of
+ * a plugin's activity (`activity`) or of its code workflow (`workflow`), and the three control-flow
+ * kinds: `branch` (choose a path by a value), `parallel` (run lists of steps side by side) and `map`
+ * (repeat steps for each item).
  */
-export type BuilderStepKind = 'agent' | 'person' | 'signal' | 'wait';
+export type BuilderStepKind =
+  'agent' | 'person' | 'signal' | 'wait' | 'activity' | 'workflow' | 'branch' | 'parallel' | 'map';
+
+/**
+ * Where a step is: the keys and indices from the document down to it, such as
+ * `['steps', 2, 'cases', 'approved', 0]` (the first step of the `approved` case of the third step).
+ * A number is a top-level step, so `2` is `['steps', 2]`.
+ */
+export type StepPath = number | readonly (string | number)[];
+
+/** Where a list of steps is: {@link ROOT_LIST}, or a case, `otherwise`, branch or map body of a step. */
+export type ListPath = readonly (string | number)[];
+
+/** The workflow's own steps. */
+export const ROOT_LIST: ListPath = ['steps'];
 
 /** The kinds of trigger the builder sets: started by hand (`manual`), on a schedule, or by a signal. */
 export type BuilderTriggerKind = 'manual' | 'schedule' | 'signal';
@@ -38,20 +55,85 @@ export interface WaitParts {
   readonly unit: WaitUnit;
 }
 
+/** A duration as the file writes it, and as a number and a unit when those can say it. */
+export interface DurationView {
+  /** The duration as written: `15m`, `2 hours`, or a bare number of milliseconds as text. */
+  readonly duration: string;
+  /** The duration as a number and a unit, or `null` for one those cannot say (a bare number, a fraction). */
+  readonly parts: WaitParts | null;
+}
+
+/** One case of a `branch`: the value it matches, and the steps it runs. */
+export interface BuilderCase {
+  readonly value: string;
+  readonly steps: readonly BuilderStep[];
+}
+
+/** One list of a `parallel` step: its name, and the steps it runs. */
+export interface BuilderBranch {
+  readonly name: string;
+  readonly steps: readonly BuilderStep[];
+}
+
 /**
  * One step as the builder shows it: its kind, the fields of that kind, and its `title` (`''` when
  * it has none). `other` is a step the builder only moves and removes.
  */
 export type BuilderStep = (
   | { readonly kind: 'agent'; readonly agent: string; readonly message: string }
-  /** An `await-signal` with `review: true`. Its signal is generated when it is added, and kept. */
-  | { readonly kind: 'person'; readonly signal: string }
-  | { readonly kind: 'signal'; readonly signal: string }
+  /**
+   * An `await-signal` with `review: true`. Its signal is generated when it is added, and kept.
+   * `timeout` is how long it waits before the run goes on without it, or `null` for no limit.
+   */
+  | {
+      readonly kind: 'person';
+      readonly signal: string;
+      readonly timeout: DurationView | null;
+    }
+  | {
+      readonly kind: 'signal';
+      readonly signal: string;
+      readonly timeout: DurationView | null;
+    }
   /**
    * A `sleep`. `parts` is its duration as a number and a unit, or `null` for a duration those
    * cannot say (a bare number of milliseconds, a fraction), which is edited as written.
    */
   | { readonly kind: 'wait'; readonly duration: string; readonly parts: WaitParts | null }
+  /**
+   * A call of an activity other than `agent`. `input` is its object (`{}` when it has none), or
+   * `null` for an `input` that is not an object, which the builder leaves to the JSON tab.
+   */
+  | {
+      readonly kind: 'activity';
+      readonly handler: string;
+      readonly input: Readonly<Record<string, unknown>> | null;
+    }
+  /** A plugin's code workflow started as a child; `workflow` is its `plugin:name`. */
+  | {
+      readonly kind: 'workflow';
+      readonly workflow: string;
+      readonly input: Readonly<Record<string, unknown>> | null;
+    }
+  /** Chooses a path by the value of `on`, a property of the previous step's result. */
+  | {
+      readonly kind: 'branch';
+      readonly on: string;
+      readonly cases: readonly BuilderCase[];
+      /** The steps that run when no case matches, or `null` when there is no such path. */
+      readonly otherwise: readonly BuilderStep[] | null;
+    }
+  | { readonly kind: 'parallel'; readonly branches: readonly BuilderBranch[] }
+  /**
+   * Runs `steps` for each item of `over`, a property of the previous step's result. `concurrency` is
+   * how many run at once, as text, or `''` for the engine's default.
+   */
+  | {
+      readonly kind: 'map';
+      readonly over: string;
+      readonly concurrency: string;
+      readonly steps: readonly BuilderStep[];
+    }
   | { readonly kind: 'other'; readonly label: string }
 ) & { readonly title: string };
 
@@ -224,20 +306,68 @@ export function waitDurationOf(amount: string, unit: WaitUnit): string {
   return `${amount.trim()}${UNIT_LETTERS[unit]}`;
 }
 
+/** A duration key as the builder shows it, or `undefined` for a value that is neither text nor a number. */
+function durationOf(value: unknown): DurationView | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const duration = asText(value);
+  // A bare number is milliseconds, which "For" and "Unit" cannot say; it is edited as written.
+  return { duration, parts: typeof value === 'number' ? null : waitPartsOf(duration) };
+}
+
+/** A list of steps as the builder shows it, or `undefined` when the value is not a list. */
+function stepListOf(value: unknown): BuilderStep[] | undefined {
+  return Array.isArray(value) ? value.map(stepOf) : undefined;
+}
+
+/**
+ * The named lists of a `branch`'s `cases` or a `parallel`'s `branches`, in the file's order, or
+ * `undefined` when the value is not an object of lists.
+ */
+function namedListsOf(value: unknown): { name: string; steps: BuilderStep[] }[] | undefined {
+  if (!isRecord(value)) return undefined;
+  const lists: { name: string; steps: BuilderStep[] }[] = [];
+  for (const [name, list] of Object.entries(value)) {
+    const steps = stepListOf(list);
+    if (steps === undefined) return undefined;
+    lists.push({ name, steps });
+  }
+  return lists;
+}
+
 function stepOf(step: unknown): BuilderStep {
   if (!isRecord(step))
     return { kind: 'other', label: WORKFLOW_COPY.builder.notAnObject, title: '' };
   const kind = asText(step['kind']);
   const title = asText(step['title']);
-  if (kind === 'activity' && step['handler'] === 'agent') {
+  const other = (): BuilderStep => ({ kind: 'other', label: stepLabel({ ...step, kind }), title });
+  if (kind === 'activity') {
+    const handler = step['handler'];
     // An `input` that is not an object (a string, say) has no agent or message to show, and an
     // edit would replace it, so the step is left to the JSON tab like any other it cannot read.
-    if (!hasObjectInput(step)) return { kind: 'other', label: stepLabel({ ...step, kind }), title };
-    const input = isRecord(step['input']) ? step['input'] : {};
+    if (handler === 'agent') {
+      if (!hasObjectInput(step)) return other();
+      const input = isRecord(step['input']) ? step['input'] : {};
+      return {
+        kind: 'agent',
+        agent: asText(input['agent']),
+        message: asText(input['message']),
+        title,
+      };
+    }
+    if (typeof handler !== 'string' || handler === '') return other();
     return {
-      kind: 'agent',
-      agent: asText(input['agent']),
-      message: asText(input['message']),
+      kind: 'activity',
+      handler,
+      input: hasObjectInput(step) ? (isRecord(step['input']) ? step['input'] : {}) : null,
+      title,
+    };
+  }
+  if (kind === 'workflow') {
+    if (typeof step['workflow'] !== 'string') return other();
+    return {
+      kind: 'workflow',
+      workflow: step['workflow'],
+      input: hasObjectInput(step) ? (isRecord(step['input']) ? step['input'] : {}) : null,
       title,
     };
   }
@@ -249,11 +379,42 @@ function stepOf(step: unknown): BuilderStep {
   }
   if (kind === 'await-signal') {
     const signal = asText(step['signal']);
+    const timeout = Object.hasOwn(step, 'timeout') ? durationOf(step['timeout']) : null;
+    // A `timeout` that is neither text nor a number is a file the Bureau refuses; an edit would replace it.
+    if (timeout === undefined) return other();
     return step['review'] === true
-      ? { kind: 'person', signal, title }
-      : { kind: 'signal', signal, title };
+      ? { kind: 'person', signal, timeout, title }
+      : { kind: 'signal', signal, timeout, title };
   }
-  return { kind: 'other', label: stepLabel({ ...step, kind }), title };
+  if (kind === 'branch') {
+    const cases = namedListsOf(step['cases']);
+    const otherwise = Object.hasOwn(step, 'otherwise') ? stepListOf(step['otherwise']) : null;
+    if (cases === undefined || otherwise === undefined) return other();
+    return {
+      kind: 'branch',
+      on: asText(step['on']),
+      cases: cases.map((entry) => ({ value: entry.name, steps: entry.steps })),
+      otherwise,
+      title,
+    };
+  }
+  if (kind === 'parallel') {
+    const branches = namedListsOf(step['branches']);
+    if (branches === undefined) return other();
+    return { kind: 'parallel', branches, title };
+  }
+  if (kind === 'map') {
+    const steps = stepListOf(step['steps']);
+    if (steps === undefined) return other();
+    return {
+      kind: 'map',
+      over: asText(step['over']),
+      concurrency: asText(step['concurrency']),
+      steps,
+      title,
+    };
+  }
+  return other();
 }
 
 /** Whether a trigger's `kind` is a plugin's: `plugin:name`, each part a lowercase identifier. */
@@ -280,6 +441,24 @@ function schemaOf(document: Json, key: SchemaKey): BuilderSchema {
   if (!Object.hasOwn(document, key)) return { kind: 'none' };
   const schema = document[key];
   return isRecord(schema) ? { kind: 'schema', schema } : { kind: 'unreadable' };
+}
+
+/** Calls `visit` for each step of `steps` and, inside it, each step it holds, depth first. */
+export function forEachStep(
+  steps: readonly BuilderStep[],
+  visit: (step: BuilderStep) => void,
+): void {
+  for (const step of steps) {
+    visit(step);
+    if (step.kind === 'branch') {
+      for (const entry of step.cases) forEachStep(entry.steps, visit);
+      if (step.otherwise !== null) forEachStep(step.otherwise, visit);
+    } else if (step.kind === 'parallel') {
+      for (const entry of step.branches) forEachStep(entry.steps, visit);
+    } else if (step.kind === 'map') {
+      forEachStep(step.steps, visit);
+    }
+  }
 }
 
 /**
@@ -403,6 +582,30 @@ export function setContributedTrigger(
   });
 }
 
+/** The steps a step holds, in every one of its lists: cases, `otherwise`, branches, and a map's body. */
+function childLists(step: Json): unknown[][] {
+  const lists: unknown[][] = [];
+  for (const key of ['cases', 'branches'] as const) {
+    const named = step[key];
+    if (isRecord(named)) {
+      for (const list of Object.values(named)) if (Array.isArray(list)) lists.push(list);
+    }
+  }
+  for (const key of ['otherwise', 'steps'] as const) {
+    if (Array.isArray(step[key])) lists.push(step[key]);
+  }
+  return lists;
+}
+
+/** Adds the signal of every step in `steps`, at any depth, to `taken`. */
+function collectSignals(steps: readonly unknown[], taken: Set<string>): void {
+  for (const step of steps) {
+    if (!isRecord(step)) continue;
+    if (typeof step['signal'] === 'string') taken.add(step['signal']);
+    for (const list of childLists(step)) collectSignals(list, taken);
+  }
+}
+
 /** Eight random hexadecimal digits, which make a new review signal unlike any other workflow's. */
 function randomSuffix(): string {
   return globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, 8);
@@ -417,9 +620,7 @@ function randomSuffix(): string {
  */
 function reviewSignalFor(document: Json, steps: readonly unknown[], base: string): string {
   const taken = new Set<string>();
-  for (const step of steps) {
-    if (isRecord(step) && typeof step['signal'] === 'string') taken.add(step['signal']);
-  }
+  collectSignals(steps, taken);
   const trigger = document['trigger'];
   if (isRecord(trigger) && typeof trigger['name'] === 'string') taken.add(trigger['name']);
   let signal = base;
@@ -433,115 +634,408 @@ export interface AddStepOptions {
   readonly agent?: string;
   /** The signal a new "Wait for a person" step waits on. Defaults to `review-` and random digits. */
   readonly reviewSignal?: string;
+  /** The list the step goes at the end of. Defaults to the workflow's own steps ({@link ROOT_LIST}). */
+  readonly into?: ListPath;
+  /** The activity a new `activity` step calls: its `id` in the Bureau's catalog. */
+  readonly handler?: string;
+  /** The code workflow a new `workflow` step starts: its `plugin:name`. */
+  readonly workflow?: string;
+  /**
+   * What a new `activity` or `workflow` step starts with as its `input`: the draft its form shows,
+   * so a field with a default is written when the step is added, and opening the file later is not
+   * an edit. Left out, the step has no `input`.
+   */
+  readonly input?: Readonly<Record<string, unknown>>;
 }
 
-/** `text` with a new step of `kind` at the end. */
-export function addStep(text: string, kind: BuilderStepKind, options: AddStepOptions = {}): string {
-  return edit(text, (document) => {
-    // A `steps` that is not a list stays as it is: adding would replace it.
-    if (document['steps'] !== undefined && !Array.isArray(document['steps'])) return undefined;
-    const steps = stepsOf(document);
-    if (kind === 'agent') {
-      steps.push({
+/** The first of `base-1`, `base-2` and so on that `taken` does not hold. */
+function freshName(taken: Readonly<Record<string, unknown>>, base: string): string {
+  let count = 1;
+  while (Object.hasOwn(taken, `${base}-${String(count)}`)) count += 1;
+  return `${base}-${String(count)}`;
+}
+
+/** The step a new `kind` starts as. `document` finds a review signal no other step uses. */
+function newStep(kind: BuilderStepKind, options: AddStepOptions, document: Json): Json {
+  switch (kind) {
+    case 'agent':
+      return {
         kind: 'activity',
         handler: 'agent',
         input: { agent: options.agent ?? '', message: '' },
-      });
-    } else if (kind === 'person') {
+      };
+    case 'person': {
+      // A signal is unique across the whole file, nested steps included.
       const base = options.reviewSignal ?? `review-${randomSuffix()}`;
-      steps.push({
+      return {
         kind: 'await-signal',
-        signal: reviewSignalFor(document, steps, base),
+        signal: reviewSignalFor(document, allSteps(document), base),
         review: true,
-      });
-    } else if (kind === 'signal') {
-      steps.push({ kind: 'await-signal', signal: '' });
-    } else {
-      steps.push({ kind: 'sleep', duration: '1m' });
+      };
     }
-    return withKey(document, 'steps', steps);
-  });
+    case 'signal':
+      return { kind: 'await-signal', signal: '' };
+    case 'wait':
+      return { kind: 'sleep', duration: '1m' };
+    case 'activity':
+      return {
+        kind: 'activity',
+        handler: options.handler ?? '',
+        ...(options.input === undefined ? {} : { input: options.input }),
+      };
+    case 'workflow':
+      return {
+        kind: 'workflow',
+        workflow: options.workflow ?? '',
+        ...(options.input === undefined ? {} : { input: options.input }),
+      };
+    // A branch, a parallel and a map start with the one list the engine needs, empty: the page says
+    // to add a step to it, rather than saving a file the Bureau refuses.
+    case 'branch':
+      return { kind: 'branch', on: '', cases: { 'value-1': [] } };
+    case 'parallel':
+      return { kind: 'parallel', branches: { 'branch-1': [] } };
+    case 'map':
+      return { kind: 'map', over: '', steps: [] };
+  }
 }
 
-/** `text` without the step at `index`. */
-export function removeStep(text: string, index: number): string {
-  return edit(text, (document) => {
-    if (document['steps'] !== undefined && !Array.isArray(document['steps'])) return undefined;
-    const steps = stepsOf(document);
-    if (index < 0 || index >= steps.length) return undefined;
-    steps.splice(index, 1);
-    return withKey(document, 'steps', steps);
-  });
-}
-
-/** `text` with the step at `index` moved by `offset` places (−1 earlier, 1 later), within the list. */
-export function moveStep(text: string, index: number, offset: -1 | 1): string {
-  return edit(text, (document) => {
-    if (document['steps'] !== undefined && !Array.isArray(document['steps'])) return undefined;
-    const steps = stepsOf(document);
-    const target = index + offset;
-    if (index < 0 || index >= steps.length || target < 0 || target >= steps.length) {
-      return undefined;
-    }
-    const [moved] = steps.splice(index, 1);
-    steps.splice(target, 0, moved);
-    return withKey(document, 'steps', steps);
-  });
+/** The workflow's own steps, which hold every other step: a review signal is unique across them all. */
+function allSteps(document: Json): readonly unknown[] {
+  return Array.isArray(document['steps']) ? (document['steps'] as unknown[]) : [];
 }
 
 /**
- * `text` with the step at `index` named `value`, its `title`, or without one when it is blank. A
- * new title leads the step, as the format's files write it.
+ * `document` after `change` edits the list at `listPath` (a copy of the workflow's own steps, or the
+ * nested list in place), or `undefined` when there is no such list or `change` returns `false`.
+ * Absent `steps` is an empty workflow's list; any other value is a file the builder leaves alone.
  */
-export function setStepTitle(text: string, index: number, value: string): string {
-  return edit(text, (document) => {
+function withList(
+  document: Json,
+  listPath: ListPath,
+  change: (list: unknown[]) => boolean | void,
+): Json | undefined {
+  if (listPath.length === 1 && listPath[0] === 'steps') {
+    if (document['steps'] !== undefined && !Array.isArray(document['steps'])) return undefined;
     const steps = stepsOf(document);
-    const step = steps[index];
-    if (!isRecord(step)) return undefined;
-    if (value.trim() === '') steps[index] = withoutKey(step, 'title');
-    else
-      steps[index] = Object.hasOwn(step, 'title')
-        ? { ...step, title: value }
-        : { title: value, ...step };
+    if (change(steps) === false) return undefined;
     return withKey(document, 'steps', steps);
+  }
+  const list = walk(document, listPath);
+  if (!Array.isArray(list)) return undefined;
+  if (change(list) === false) return undefined;
+  return document;
+}
+
+/** The value `path` leads to from `root`, or `undefined`. Only own keys are followed. */
+function walk(root: unknown, path: ListPath): unknown {
+  let current = root;
+  for (const segment of path) {
+    if (typeof segment === 'number') {
+      if (!Array.isArray(current) || segment < 0 || segment >= current.length) return undefined;
+      current = current[segment];
+    } else {
+      if (!isRecord(current) || !Object.hasOwn(current, segment)) return undefined;
+      current = current[segment];
+    }
+  }
+  return current;
+}
+
+/** A step's path as keys and indices. */
+function pathOf(path: StepPath): ListPath {
+  return typeof path === 'number' ? ['steps', path] : path;
+}
+
+/** `document` after `change` edits the step at `path` in its list, or `undefined` when there is no such step. */
+function withStep(
+  document: Json,
+  path: StepPath,
+  change: (step: Json, list: unknown[], index: number) => boolean | void,
+): Json | undefined {
+  const full = pathOf(path);
+  const index = full.at(-1);
+  if (typeof index !== 'number') return undefined;
+  return withList(document, full.slice(0, -1), (list) => {
+    const step = list[index];
+    if (!isRecord(step)) return false;
+    return change(step, list, index);
   });
 }
 
-/** The fields of a step the builder edits. */
-export type StepField = 'agent' | 'message' | 'duration' | 'signal';
+/** `text` with a new step of `kind` at the end of `options.into`, or of the workflow's own steps. */
+export function addStep(text: string, kind: BuilderStepKind, options: AddStepOptions = {}): string {
+  return edit(text, (document) =>
+    withList(document, options.into ?? ROOT_LIST, (list) => {
+      list.push(newStep(kind, options, document));
+    }),
+  );
+}
 
-/** `text` with one field of the step at `index` set; a field the step's kind does not have changes nothing. */
-export function setStepField(text: string, index: number, field: StepField, value: string): string {
-  return edit(text, (document) => {
-    const steps = stepsOf(document);
-    const step = steps[index];
-    if (!isRecord(step)) return undefined;
+/** `text` without the step at `path`. */
+export function removeStep(text: string, path: StepPath): string {
+  return edit(text, (document) =>
+    withStep(document, path, (_step, list, index) => {
+      list.splice(index, 1);
+    }),
+  );
+}
+
+/** `text` with the step at `path` moved by `offset` places (−1 earlier, 1 later), within its list. */
+export function moveStep(text: string, path: StepPath, offset: -1 | 1): string {
+  return edit(text, (document) =>
+    withStep(document, path, (_step, list, index) => {
+      const target = index + offset;
+      if (target < 0 || target >= list.length) return false;
+      const [moved] = list.splice(index, 1);
+      list.splice(target, 0, moved);
+      return true;
+    }),
+  );
+}
+
+/**
+ * `text` with the step at `path` named `value`, its `title`, or without one when it is blank. A
+ * new title leads the step, as the format's files write it.
+ */
+export function setStepTitle(text: string, path: StepPath, value: string): string {
+  return replaceStep(text, path, (step) => {
+    if (value.trim() === '') return withoutKey(step, 'title');
+    return Object.hasOwn(step, 'title') ? { ...step, title: value } : { title: value, ...step };
+  });
+}
+
+/** `text` with the step at `path` replaced by what `change` makes of it, or unchanged for `undefined`. */
+function replaceStep(
+  text: string,
+  path: StepPath,
+  change: (step: Json) => Json | undefined,
+): string {
+  return edit(text, (document) =>
+    withStep(document, path, (step, list, index) => {
+      const next = change(step);
+      if (next === undefined) return false;
+      list[index] = next;
+      return true;
+    }),
+  );
+}
+
+/** The fields of a step the builder edits. */
+export type StepField = 'agent' | 'message' | 'duration' | 'signal' | 'on' | 'over' | 'workflow';
+
+/** `text` with one field of the step at `path` set; a field the step's kind does not have changes nothing. */
+export function setStepField(
+  text: string,
+  path: StepPath,
+  field: StepField,
+  value: string,
+): string {
+  return replaceStep(text, path, (step) => {
     if (field === 'agent' || field === 'message') {
       if (step['kind'] !== 'activity' || step['handler'] !== 'agent' || !hasObjectInput(step)) {
         return undefined;
       }
       const input = isRecord(step['input']) ? step['input'] : {};
-      steps[index] = { ...step, input: { ...input, [field]: value } };
-    } else if (field === 'duration') {
+      return { ...step, input: { ...input, [field]: value } };
+    }
+    if (field === 'duration') {
       if (step['kind'] !== 'sleep') return undefined;
       // A bare number is milliseconds, as the file may already write it; the builder says so.
-      steps[index] = { ...step, duration: /^\d+$/.test(value) ? Number(value) : value };
-    } else {
-      if (step['kind'] !== 'await-signal') return undefined;
-      steps[index] = { ...step, signal: value };
+      return { ...step, duration: /^\d+$/.test(value) ? Number(value) : value };
     }
-    return withKey(document, 'steps', steps);
+    if (field === 'signal') {
+      return step['kind'] === 'await-signal' ? { ...step, signal: value } : undefined;
+    }
+    const kind = field === 'on' ? 'branch' : field === 'over' ? 'map' : 'workflow';
+    return step['kind'] === kind ? { ...step, [field]: value } : undefined;
   });
 }
 
-/** `text` with the wait at `index` lasting `amount` of `unit`, as "For" and "Unit" set it. */
+/** `text` with the wait at `path` lasting `amount` of `unit`, as "For" and "Unit" set it. */
 export function setWaitDuration(
   text: string,
-  index: number,
+  path: StepPath,
   amount: string,
   unit: WaitUnit,
 ): string {
-  return setStepField(text, index, 'duration', waitDurationOf(amount, unit));
+  return setStepField(text, path, 'duration', waitDurationOf(amount, unit));
+}
+
+/**
+ * `text` with the `await-signal` step at `path` giving up after `value` (`15m`, or a bare number of
+ * milliseconds), or waiting without a limit for `null`, which removes the key: a step with no
+ * timeout writes none. When the timeout expires the run goes on with `{ timedOut: true }`.
+ */
+export function setStepTimeout(text: string, path: StepPath, value: string | null): string {
+  return replaceStep(text, path, (step) => {
+    if (step['kind'] !== 'await-signal') return undefined;
+    if (value === null || value.trim() === '') return withoutKey(step, 'timeout');
+    return { ...step, timeout: /^\d+$/.test(value) ? Number(value) : value };
+  });
+}
+
+/** `text` with the timeout of the wait at `path` `amount` of `unit`, or none while `amount` is empty. */
+export function setTimeoutDuration(
+  text: string,
+  path: StepPath,
+  amount: string,
+  unit: WaitUnit,
+): string {
+  return setStepTimeout(text, path, amount.trim() === '' ? null : waitDurationOf(amount, unit));
+}
+
+/**
+ * `text` with the `map` at `path` running at most `value` items at once, or the engine's default
+ * for `null`, which removes the key. The engine takes a positive whole number, so anything else
+ * is left out.
+ */
+export function setStepConcurrency(text: string, path: StepPath, value: number | null): string {
+  return replaceStep(text, path, (step) => {
+    if (step['kind'] !== 'map') return undefined;
+    if (value === null || !Number.isInteger(value) || value < 1) {
+      return withoutKey(step, 'concurrency');
+    }
+    return { ...step, concurrency: value };
+  });
+}
+
+/**
+ * The properties a JSON Schema names, or `undefined` when it names none (a schema that describes
+ * free keys, or none at all), in which case a form reports every key there is.
+ */
+function declaredProperties(
+  schema: Readonly<Record<string, unknown>> | null,
+): string[] | undefined {
+  const properties = schema?.['properties'];
+  return isRecord(properties) && Object.keys(properties).length > 0
+    ? Object.keys(properties)
+    : undefined;
+}
+
+/**
+ * `text` with the `input` of the `activity` or `workflow` step at `path` set to `draft`, the whole
+ * object the step's form reports. A form reports the fields its `schema` names, so a key the schema
+ * does not name (one the file wrote by hand, or one an older version of the activity took) is kept
+ * as it is rather than dropped by an edit to another field; a field the form leaves out is removed.
+ * A step whose `input` is not an object, which the builder cannot draw, is left alone, and so is an
+ * `agent` step, whose `agent` and `message` have their own fields.
+ */
+export function setStepInput(
+  text: string,
+  path: StepPath,
+  draft: Readonly<Record<string, unknown>>,
+  schema: Readonly<Record<string, unknown>> | null = null,
+): string {
+  return replaceStep(text, path, (step) => {
+    if (step['kind'] !== 'activity' && step['kind'] !== 'workflow') return undefined;
+    if (step['kind'] === 'activity' && step['handler'] === 'agent') return undefined;
+    if (!hasObjectInput(step)) return undefined;
+    const declared = declaredProperties(schema);
+    const existing = isRecord(step['input']) ? step['input'] : {};
+    const kept =
+      declared === undefined
+        ? {}
+        : Object.fromEntries(Object.entries(existing).filter(([key]) => !declared.includes(key)));
+    return { ...step, input: { ...kept, ...draft } };
+  });
+}
+
+/** The container a `branch`'s cases or a `parallel`'s branches live in. */
+type SlotContainer = 'cases' | 'branches';
+
+/** `text` after `change` edits the `cases` object of the `branch` or the `branches` of the `parallel` at `path`. */
+function withSlots(
+  text: string,
+  path: StepPath,
+  container: SlotContainer,
+  change: (slots: Json) => Json | undefined,
+): string {
+  return replaceStep(text, path, (step) => {
+    if (step['kind'] !== (container === 'cases' ? 'branch' : 'parallel')) return undefined;
+    const slots = step[container];
+    if (!isRecord(slots)) return undefined;
+    const next = change(slots);
+    return next === undefined ? undefined : { ...step, [container]: next };
+  });
+}
+
+function addSlot(text: string, path: StepPath, container: SlotContainer): string {
+  const base = container === 'cases' ? 'value' : 'branch';
+  return withSlots(text, path, container, (slots) => ({ ...slots, [freshName(slots, base)]: [] }));
+}
+
+function removeSlot(text: string, path: StepPath, container: SlotContainer, name: string): string {
+  // The engine refuses a step with none, which the page says at the step: it is a problem to fix,
+  // not a removal to refuse.
+  return withSlots(text, path, container, (slots) =>
+    Object.hasOwn(slots, name) ? withoutKey(slots, name) : undefined,
+  );
+}
+
+function renameSlot(
+  text: string,
+  path: StepPath,
+  container: SlotContainer,
+  name: string,
+  next: string,
+): string {
+  return withSlots(text, path, container, (slots) => {
+    // A name another one holds, or an empty one, would merge or lose a list: it is not written.
+    if (!Object.hasOwn(slots, name) || next === '') return undefined;
+    if (next !== name && Object.hasOwn(slots, next)) return undefined;
+    return Object.fromEntries(
+      Object.entries(slots).map(([key, list]) => [key === name ? next : key, list]),
+    );
+  });
+}
+
+/** `text` with one more case, empty, on the `branch` at `path`, named `value-1`, `value-2` and so on. */
+export function addCase(text: string, path: StepPath): string {
+  return addSlot(text, path, 'cases');
+}
+
+/** `text` without the case `value` of the `branch` at `path`, and the steps in it. */
+export function removeCase(text: string, path: StepPath, value: string): string {
+  return removeSlot(text, path, 'cases', value);
+}
+
+/** `text` with the case `value` of the `branch` at `path` matching `next` instead, in the same place. */
+export function setCaseValue(text: string, path: StepPath, value: string, next: string): string {
+  return renameSlot(text, path, 'cases', value, next);
+}
+
+/** `text` with one more list, empty, on the `parallel` at `path`, named `branch-1`, `branch-2` and so on. */
+export function addBranch(text: string, path: StepPath): string {
+  return addSlot(text, path, 'branches');
+}
+
+/** `text` without the list `name` of the `parallel` at `path`, and the steps in it. */
+export function removeBranch(text: string, path: StepPath, name: string): string {
+  return removeSlot(text, path, 'branches', name);
+}
+
+/** `text` with the list `name` of the `parallel` at `path` named `next` instead, in the same place. */
+export function setBranchName(text: string, path: StepPath, name: string, next: string): string {
+  return renameSlot(text, path, 'branches', name, next);
+}
+
+/** `text` with an empty `otherwise` on the `branch` at `path`, the steps that run when no case matches. */
+export function addOtherwise(text: string, path: StepPath): string {
+  return replaceStep(text, path, (step) =>
+    step['kind'] === 'branch' && !Object.hasOwn(step, 'otherwise')
+      ? { ...step, otherwise: [] }
+      : undefined,
+  );
+}
+
+/** `text` without the `otherwise` of the `branch` at `path`, and the steps in it. */
+export function removeOtherwise(text: string, path: StepPath): string {
+  return replaceStep(text, path, (step) =>
+    step['kind'] === 'branch' && Object.hasOwn(step, 'otherwise')
+      ? withoutKey(step, 'otherwise')
+      : undefined,
+  );
 }
 
 /**
