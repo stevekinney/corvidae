@@ -187,6 +187,13 @@ async function addStep(
   await fireEvent.click(item);
 }
 
+/** Types a name into the field of a case or a list and leaves it, which is when the name is written. */
+async function rename(container: HTMLElement, id: string, value: string): Promise<void> {
+  const input = field(container, id);
+  await fireEvent.input(input, { target: { value } });
+  await fireEvent.blur(input);
+}
+
 /** Every id on the page is used once: nested steps never share one. */
 function expectUniqueIds(container: HTMLElement): void {
   const seen = new Set<string>();
@@ -650,9 +657,7 @@ describe('a path chosen by a value', () => {
     await fireEvent.input(field(container, 'workflow-builder-step-2-on'), {
       target: { value: 'status' },
     });
-    await fireEvent.input(field(container, 'workflow-builder-step-2-case-1'), {
-      target: { value: 'approved' },
-    });
+    await rename(container, 'workflow-builder-step-2-case-1', 'approved');
     await fireEvent.click(button(container, FLOW.addCase));
     await fireEvent.click(button(container, FLOW.addOtherwise));
     await waitFor(async () =>
@@ -705,17 +710,13 @@ describe('a path chosen by a value', () => {
 
   test('renames a case in its place, refuses a value another case has without writing it, and removes a case with its steps', async () => {
     const { container } = await openBuilder(branching());
-    await fireEvent.input(field(container, 'workflow-builder-step-2-case-1'), {
-      target: { value: 'ok' },
-    });
+    await rename(container, 'workflow-builder-step-2-case-1', 'ok');
     await waitFor(async () =>
       expect(Object.keys((stepsOf(await textOf(container))[1] as { cases: object }).cases)).toEqual(
         ['ok', 'rejected'],
       ),
     );
-    await fireEvent.input(field(container, 'workflow-builder-step-2-case-2'), {
-      target: { value: 'ok' },
-    });
+    await rename(container, 'workflow-builder-step-2-case-2', 'ok');
     await waitFor(() => expect(container.textContent).toContain(FLOW.caseTaken));
     expect(Object.keys((stepsOf(await textOf(container))[1] as { cases: object }).cases)).toEqual([
       'ok',
@@ -730,6 +731,39 @@ describe('a path chosen by a value', () => {
         cases: { rejected: [] },
       }),
     );
+  });
+
+  test('writes a name when the field is left or Enter is pressed, never while it is typed: a whole number would move its case ahead of the others', async () => {
+    const text = file([
+      {
+        kind: 'branch',
+        on: 'x',
+        cases: { approved: [], 'value-1': [{ kind: 'sleep', duration: '1m' }] },
+      },
+    ]);
+    const { container } = await openBuilder(text);
+    const second = field(container, 'workflow-builder-step-1-case-2');
+    await fireEvent.input(second, { target: { value: '2' } });
+    await fireEvent.input(second, { target: { value: '20' } });
+    // Nothing is written yet, and the field is still the one being typed in.
+    expect(field(container, 'workflow-builder-step-1-case-2')).toBe(second);
+    expect(second.value).toBe('20');
+    expect(Object.keys((stepsOf(await textOf(container))[0] as { cases: object }).cases)).toEqual([
+      'approved',
+      'value-1',
+    ]);
+
+    const again = field(container, 'workflow-builder-step-1-case-2');
+    await fireEvent.input(again, { target: { value: '20' } });
+    await fireEvent.keyDown(again, { key: 'Enter' });
+    await waitFor(async () => {
+      const cases = (stepsOf(await textOf(container))[0] as { cases: Record<string, unknown[]> })
+        .cases;
+      // JavaScript puts a key that is a whole number first; its steps went with it.
+      expect(Object.keys(cases)).toEqual(['20', 'approved']);
+      expect(cases['20']).toHaveLength(1);
+    });
+    expectUniqueIds(container);
   });
 
   test('a step nested three levels deep has its own ids and labels, and a problem there focuses that field', async () => {
@@ -791,9 +825,7 @@ describe('steps side by side', () => {
       kind: 'parallel',
       branches: { 'branch-1': [] },
     });
-    await fireEvent.input(field(container, 'workflow-builder-step-2-branch-1'), {
-      target: { value: 'notify' },
-    });
+    await rename(container, 'workflow-builder-step-2-branch-1', 'notify');
     await fireEvent.click(button(container, FLOW.addBranch));
     await addStep(container, BUILDER.add.signal, 'workflow-builder-add-2-b1');
     await waitFor(async () =>
@@ -830,9 +862,7 @@ describe('steps side by side', () => {
     );
     const notify = where.branchOf('notify', where.step(1));
     await fireEvent.click(button(container, BUILDER.moveEarlier(where.nested(2, notify))));
-    await fireEvent.input(field(container, 'workflow-builder-step-1-branch-1'), {
-      target: { value: 'tell' },
-    });
+    await rename(container, 'workflow-builder-step-1-branch-1', 'tell');
     await waitFor(async () => {
       const step = stepsOf(await textOf(container))[0] as {
         branches: Record<string, { signal: string }[]>;

@@ -213,7 +213,12 @@ for (const width of WIDTHS) {
         state: 'loading',
         source: 'workflow-builder-cards.spec.ts',
       });
-      for (const route of held) await route.abort();
+      // The held read is answered, never dropped: a request the page loses logs an error.
+      for (const route of held) {
+        await route.fulfill({
+          json: { jsonrpc: '2.0', id: 'bureau.workflows.catalog', result: CATALOG },
+        });
+      }
     });
 
     test(`workflow builder cards: the catalog failing, at ${width} pixels`, async ({
