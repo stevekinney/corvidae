@@ -96,6 +96,8 @@ const problemLineClass = 'cinder-json-editor__line--problem';
 const problemGutterClass = 'cinder-json-editor__gutter--problem';
 const problemMessageClass = 'cinder-json-editor__problem';
 const problemBarWidth = '3px';
+const metricsProbeClass = 'cinder-json-editor__metrics';
+const editorLineHeight = '1.5';
 
 const highlightStyle = HighlightStyle.define([
   { tag: tags.propertyName, color: 'var(--cinder-accent-text)' },
@@ -128,8 +130,17 @@ const theme = EditorView.theme({
   '&.cm-focused': { outline: 'none' },
   '.cm-scroller': {
     fontFamily: 'inherit',
-    lineHeight: '1.5',
+    lineHeight: editorLineHeight,
     overflow: 'auto',
+  },
+  // One line of text in the editor's font, never seen: its height is the line height.
+  [`.${metricsProbeClass}`]: {
+    position: 'absolute',
+    insetBlockStart: '0',
+    insetInlineStart: '0',
+    lineHeight: editorLineHeight,
+    visibility: 'hidden',
+    pointerEvents: 'none',
   },
   // An always-painted scrollbar, so a body that scrolls says so. Chrome and Safari draw a
   // persistent bar only from the `::-webkit-scrollbar` rules (setting `scrollbar-width` or
@@ -422,15 +433,22 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
   });
 
   // Line metrics can change after mount without the editor's box changing size: the stylesheet
-  // that sets the font size arrives after the editor chunk, or a density or theme switch. When the
-  // text's height changes, measure again, wherever the editor is.
-  const contentResize =
+  // that sets the font size arrives after the editor chunk, or a density or theme switch. The
+  // content keeps the height CodeMirror last measured as its minimum, so it cannot show the
+  // change; a hidden one-line probe in the editor's font can. When its height changes, measure
+  // again, wherever the editor is.
+  const metricsProbe = document.createElement('span');
+  metricsProbe.className = metricsProbeClass;
+  metricsProbe.setAttribute('aria-hidden', 'true');
+  metricsProbe.textContent = '0';
+  view.dom.append(metricsProbe);
+  const metricsResize =
     typeof ResizeObserver === 'function'
       ? new ResizeObserver(() => {
           view.dispatch({ effects: measureRequest(view.state.selection.main.head) });
         })
       : undefined;
-  contentResize?.observe(view.contentDOM);
+  metricsResize?.observe(metricsProbe);
 
   return {
     view,
@@ -458,7 +476,7 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
     },
     focus: () => view.focus(),
     destroy: () => {
-      contentResize?.disconnect();
+      metricsResize?.disconnect();
       view.destroy();
     },
   };
