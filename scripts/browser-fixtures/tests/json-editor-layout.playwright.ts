@@ -6,7 +6,9 @@
  * below the fold drew its line numbers from a 14px estimate with no top padding, drifting further
  * from their lines down the document until it scrolled into view (and forever in a capture beyond
  * the viewport). The `long-document` fixture is opened in a window too short to show the editor,
- * and every drawn number must sit on its line without the page scrolling.
+ * and every drawn number must sit on its line without the page scrolling. In the built fixture
+ * host the stylesheet that sets the editor's font size can land after the editor mounts, so this
+ * also covers metrics that change while the editor is off-window.
  */
 
 import { THEME_STORAGE_KEY } from '@lostgradient/testing';

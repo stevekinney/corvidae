@@ -29,8 +29,8 @@
     id="fixture-json-editor"
     label="Request payload"
     value={source}
-    {rows}
-    {diagnostics}
+    {...rows === undefined ? {} : { rows }}
+    {...diagnostics === undefined ? {} : { diagnostics }}
     onValueChange={(next) => (source = next)}
   />
 </div>
