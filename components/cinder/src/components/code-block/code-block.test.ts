@@ -418,7 +418,7 @@ describe('CodeBlock — static structure', () => {
   test("github-light's orange takes Cinder's warning text, which meets AA on the white field", async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     expect(css).toContain(
-      ".cinder-code-block :where(pre.shiki) span[style*='E36209;' i] {\n    color: var(--cinder-status-warning-text) !important;",
+      ".cinder-code-block :where(pre.shiki) span[style*='E36209;' i],\n  .cinder-code-block :where(pre.shiki) span[style$='E36209' i] {\n    color: var(--cinder-status-warning-text) !important;",
     );
   });
 
