@@ -15,6 +15,8 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import type { BureauDiagnostic } from './bureau-types/options';
+import { createBureauHandler } from './http/create-bureau-handler';
+import { authentication, rpc } from './http/management/management-fixtures.test-support';
 import { ownerRpc, serveWorkflows } from './http/management/workflows-fixtures.test-support';
 import { layeredWorkflowSource } from './sources/layered-source';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
@@ -139,6 +141,91 @@ describe('the wire listing of a plugin code workflow', () => {
         CODE_ENTRY,
       ],
     });
+  });
+});
+
+describe('bureau.workflows.catalog', () => {
+  const lookup = {
+    name: 'lookup',
+    version: '1.0.0',
+    title: 'Look something up',
+    description: 'Finds a record.',
+    inputSchema: z.object({ query: z.string() }),
+    execute: () => 'found',
+  };
+  const catalogPlugin = () => ({
+    descriptor: definePlugin({
+      name: 'kit',
+      version: '1.0.0',
+      description: 'Contributes an activity and code workflows.',
+      setup: () => ({ activities: [lookup], workflows: [sync(), wait()] }),
+    }),
+    source: 'package' as const,
+    location: '@example/kit',
+  });
+
+  it('answers the registered activities and code workflows, each with its title and input schema', async () => {
+    const served = await serveWorkflows(cleanups, { plugins: [catalogPlugin()] });
+    const response = await ownerRpc(served.owner, 'bureau.workflows.catalog', {});
+    expect(response.error).toBeUndefined();
+    const catalog = response.result as {
+      activities: Array<{ id: string; title: string | null; inputSchema: unknown }>;
+      workflows: Array<{ id: string; name: string; title: string; inputSchema: unknown }>;
+    };
+    const activity = catalog.activities.find((entry) => entry.id === 'kit:lookup');
+    expect(activity).toMatchObject({
+      title: 'Look something up',
+      description: 'Finds a record.',
+      inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+    });
+    expect(catalog.activities.map((entry) => entry.id)).toContain('agent');
+    expect(catalog.workflows).toEqual([
+      {
+        id: 'kit:sync',
+        name: 'sync',
+        title: 'Sync issues',
+        inputSchema: expect.objectContaining({
+          type: 'object',
+          properties: { team: { type: 'string' } },
+        }),
+      },
+      { id: 'kit:wait', name: 'wait', title: 'Wait', inputSchema: expect.anything() },
+    ]);
+  });
+
+  it('answers no code workflow for a Bureau with no plugin', async () => {
+    const served = await serveWorkflows(cleanups);
+    const response = await ownerRpc(served.owner, 'bureau.workflows.catalog', {});
+    expect(response.result?.['workflows']).toEqual([]);
+  });
+
+  it('refuses a caller who holds neither the read scope nor the deployment', async () => {
+    const served = await serveWorkflows(cleanups, { plugins: [catalogPlugin()] });
+    const denied = await rpc(served.keyed, 'bureau.workflows.catalog', {}, 'workflows-writer-key');
+    expect(denied.result).toBeUndefined();
+    expect(denied.error?.data?.httpStatus).toBe(403);
+    const reader = await rpc(served.keyed, 'bureau.workflows.catalog', {}, 'workflows-reader-key');
+    expect(reader.error).toBeUndefined();
+    expect(reader.result?.['workflows']).toHaveLength(2);
+  });
+
+  it('is the catalog the workflows-catalog tool returns for the same Bureau', async () => {
+    const harness = await startWorkflowToolsBureau({
+      overrides: { plugins: [catalogPlugin()] },
+    });
+    cleanups.push(() => harness.dispose());
+    const { result } = await harness.callTool('bureau__workflows-catalog', {});
+    const { status, ...fromTool } = result as { status: string } & Record<string, unknown>;
+    expect(status).toBe('ok');
+    const wire = await rpc(
+      createBureauHandler(harness.bureau, { authentication }),
+      'bureau.workflows.catalog',
+      {},
+      'workflows-reader-key',
+    );
+    expect(wire.error).toBeUndefined();
+    expect(wire.result).toEqual(fromTool);
+    expect((wire.result?.['workflows'] as unknown[]).length).toBe(2);
   });
 });
 

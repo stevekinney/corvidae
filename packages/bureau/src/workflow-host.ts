@@ -48,6 +48,16 @@ export interface WorkflowCatalog {
     readonly description: string | null;
     readonly inputSchema: Readonly<Record<string, unknown>> | null;
   }[];
+  /** The code workflows plugins contributed, which a `workflow` step starts by `id` (`plugin:name`). */
+  readonly workflows: readonly {
+    readonly id: string;
+    /** The name within the plugin. */
+    readonly name: string;
+    /** What the editor calls the workflow. */
+    readonly title: string;
+    /** The JSON Schema of the workflow's `input`, or `null` when its registration declares none. */
+    readonly inputSchema: Readonly<Record<string, unknown>> | null;
+  }[];
   readonly triggers: readonly {
     readonly id: string;
     readonly description: string;
@@ -158,7 +168,13 @@ export function workflowCatalogOf(
     description: entry.value.description,
     configuration: schemaOf(entry.value.configuration),
   }));
-  return { stepKinds, activities, triggers: [...builtInTriggers, ...pluginTriggers] };
+  const workflows = [...contributions.workflows.values()].map((code) => ({
+    id: code.id,
+    name: code.id.slice(code.id.indexOf(':') + 1),
+    title: code.title,
+    inputSchema: schemaOf(code.definition.inputSchema),
+  }));
+  return { stepKinds, activities, workflows, triggers: [...builtInTriggers, ...pluginTriggers] };
 }
 
 /** The overlap policies a `schedule` trigger may name; `skip` when it names none. */

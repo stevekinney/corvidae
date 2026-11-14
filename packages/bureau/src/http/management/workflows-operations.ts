@@ -10,7 +10,7 @@ import {
  *
  * Every workflow file belongs to the deployment's owner of record, and there is no owner field in
  * a file. A caller reaches workflows it owns without any scope; `bureau.workflows:read` grants
- * `get`, `list`, `revisions`, `history`, `impact`, `runs.list`, and `runs.get` to any caller, and
+ * `get`, `list`, `catalog`, `revisions`, `history`, `impact`, `runs.list`, and `runs.get` to any caller, and
  * `bureau.workflows:write` grants `create`, `update`, `pause`, `resume`, and `delete`, and neither
  * implies the other. A caller that may not see workflows is answered as if there were none: an
  * empty page, or `NotFound`. `create` has no workflow to hide, so a caller who may not write is
@@ -758,6 +758,92 @@ export const workflowsListOperation = defineOperation<
       ),
       nextOffset: total > offset + limit ? offset + limit : null,
     };
+  },
+});
+
+const jsonSchemaObject = z.record(z.string(), z.unknown());
+
+const catalogInput = z.object({});
+
+/** What `workflowCatalogOf` returns, which the agent tool `workflows-catalog` returns too. */
+const catalogOutput = z.object({
+  stepKinds: z.array(
+    z.object({
+      kind: z.string(),
+      fields: jsonSchemaObject.describe('The JSON Schema of each field the step kind takes.'),
+    }),
+  ),
+  activities: z.array(
+    z.object({
+      id: z
+        .string()
+        .describe('What a step `{ kind: "activity", handler }` names: `plugin:name`, or `agent`.'),
+      title: z
+        .string()
+        .nullable()
+        .describe('What an editor calls the activity; `null` when it declared none.'),
+      description: z.string().nullable(),
+      inputSchema: jsonSchemaObject
+        .nullable()
+        .describe(
+          'The JSON Schema of the step’s `input`, or `null` when the activity declares none.',
+        ),
+    }),
+  ),
+  workflows: z.array(
+    z.object({
+      id: z
+        .string()
+        .describe('`plugin:name`, which a step `{ kind: "workflow", workflow }` names.'),
+      name: z.string().describe('The name within the plugin.'),
+      title: z.string().describe('What an editor calls the workflow.'),
+      inputSchema: jsonSchemaObject
+        .nullable()
+        .describe(
+          'The JSON Schema of the workflow’s `input`, or `null` when its registration declares none.',
+        ),
+    }),
+  ),
+  triggers: z.array(
+    z.object({
+      id: z.string(),
+      description: z.string(),
+      configuration: jsonSchemaObject
+        .nullable()
+        .describe('The JSON Schema of the trigger’s configuration, or `null` when it takes none.'),
+    }),
+  ),
+});
+
+export const workflowsCatalogOperation = defineOperation<
+  typeof catalogInput,
+  typeof catalogOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.catalog',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.catalog'),
+  mcpExposable: false,
+  summary: 'List what a workflow step can call',
+  description:
+    'Lists what this deployment’s workflow files can name, as the agent tool `workflows-catalog` does: the `stepKinds` with the fields each takes, the `activities` a step `{ kind: "activity", handler, input }` can call (each with its `id`, `title`, `description` and the JSON Schema of its `input`, or `null`), the code `workflows` plugins contributed that a step `{ kind: "workflow", workflow, input }` can start (each with its `id`, `name`, `title` and the JSON Schema of its `input`, or `null`), and the `triggers`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is refused with `Forbidden`.',
+  destructive: false,
+  tags: ['Workflows'],
+  inputSchema: catalogInput,
+  outputSchema: catalogOutput,
+  producibleFaults: ['InvalidParams', 'Forbidden', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: ({ host, principal }) => {
+    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
+      throw {
+        code: 'Forbidden',
+        message: 'Reading the workflow catalog requires bureau.workflows:read',
+        data: { reason: 'missing scope bureau.workflows:read' },
+      } satisfies OperationFault;
+    }
+    return workflowsOf(host).catalog();
   },
 });
 
@@ -1539,6 +1625,7 @@ export const bureauWorkflowsOperations = [
   workflowsDeleteOperation,
   workflowsGetOperation,
   workflowsListOperation,
+  workflowsCatalogOperation,
   workflowsRevisionsOperation,
   workflowsHistoryOperation,
   workflowsImpactOperation,
