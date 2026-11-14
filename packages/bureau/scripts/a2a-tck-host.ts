@@ -29,7 +29,6 @@ import { join } from 'node:path';
 
 import {
   createAgent,
-  createModelCatalog,
   type GenerateFunction,
   type GenerateResponse,
   stopWhen,
@@ -51,6 +50,7 @@ import {
 import { createMemoryAssetStorage } from '../src/assets/storage.ts';
 import { createBureau } from '../src/create-bureau.ts';
 import { createBureauHandler } from '../src/http/create-bureau-handler.ts';
+import { vendorRows } from '../src/testing/vendor-catalog.test-support.ts';
 
 export const TCK_AGENT = 'tck-agent';
 const NAMESPACE = 'a2a-tck';
@@ -77,8 +77,7 @@ function textOf(content: unknown): string {
 }
 
 /** A model that puts documents out, which no catalog row does: the file and data scenarios need one. */
-const documentOutputDescriptors = createModelCatalog()
-  .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
+const documentOutputDescriptors = vendorRows('anthropic')
   .slice(0, 1)
   .map((descriptor) => ({
     ...descriptor,

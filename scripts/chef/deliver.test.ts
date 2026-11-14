@@ -11,6 +11,7 @@ import {
   run,
   type DeliverOptions,
 } from './deliver.ts';
+import { ledgerLine, type LedgerEntry } from './delivery-ledger.ts';
 import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
 import { LinearError, type LinearClient } from './linear.ts';
 import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
@@ -81,9 +82,14 @@ function seams(
     ended?: { pid: number; command: string; cwd: string }[];
     /** The identifier whose state change Linear rejects. */
     failState?: string;
+    /** The ledger write and the sweep throw this. */
+    ledgerFailure?: string;
+    sweepFailure?: string;
   } = {},
 ) {
   const record = {
+    ledger: [] as LedgerEntry[],
+    sweeps: [] as string[],
     merges: [] as MergeGateOptions[],
     removals: [] as string[],
     removeCalls: [] as RemoveOptions[],
@@ -155,6 +161,15 @@ function seams(
         if (overrides.usageError !== undefined) throw new UsageError(overrides.usageError);
         return { path: '/c/alpha', branch: 'b', remoteDeleted: true, ended: overrides.ended ?? [] };
       },
+      record: (entry: LedgerEntry) => {
+        if (overrides.ledgerFailure !== undefined) throw new Error(overrides.ledgerFailure);
+        record.ledger.push(entry);
+      },
+      sweep: (configPath: string) => {
+        record.sweeps.push(configPath);
+        if (overrides.sweepFailure !== undefined) throw new Error(overrides.sweepFailure);
+        return { removed: 3, kept: 5 };
+      },
       client,
     },
   };
@@ -181,11 +196,19 @@ describe('deliver', () => {
       leftOpen: [],
       acceptedReverts: [],
       worktree: { removed: true, detail: '/c/alpha' },
+      swept: { removed: 3, kept: 5 },
+      ledgerWarning: null,
     });
     expect(record.merges).toHaveLength(1);
     expect(record.merges[0]).toMatchObject({ pr: 12, dryRun: false, checkMainHealth: true });
     expect(record.merges[0]).not.toHaveProperty('gateLog');
-    expect(Object.keys(partial).toSorted()).toEqual(['client', 'merge', 'remove']);
+    expect(Object.keys(partial).toSorted()).toEqual([
+      'client',
+      'merge',
+      'record',
+      'remove',
+      'sweep',
+    ]);
   });
 
   test('a base that moved without a conflict is merged as it is', async () => {
@@ -481,6 +504,77 @@ describe('deliver', () => {
     const report = await deliver(options, partial);
     expect(report.worktree).toBeNull();
     expect(record.removals).toEqual([]);
+    expect(record.ledger).toEqual([]);
+    expect(record.sweeps).toEqual([]);
+  });
+});
+
+describe('the delivery ledger and the sweep', () => {
+  test('a pull request delivery records its number, head and merge commit', async () => {
+    const { partial, record } = seams();
+    await deliver(options, partial);
+    expect(record.ledger).toEqual([
+      { pr: 12, branch: undefined, head: HEAD, mergeCommit: MERGE_COMMIT },
+    ]);
+  });
+
+  test('a branch delivery records its branch, head and merge commit', async () => {
+    const world = branchWorld();
+    const { report, record } = await deliverBranch(world);
+    expect(report.failedStep).toBeNull();
+    expect(record.ledger).toEqual([
+      { pr: undefined, branch: BRANCH, head: HEAD, mergeCommit: SQUASH },
+    ]);
+  });
+
+  test('a ledger line is the time, the subject, the head and the merge commit', () => {
+    const time = new Date('2026-11-13T21:00:00.000Z');
+    expect(ledgerLine({ pr: 12, head: HEAD, mergeCommit: MERGE_COMMIT, time })).toBe(
+      `2026-11-13T21:00:00.000Z\tpr:12\t${HEAD}\t${MERGE_COMMIT}`,
+    );
+    expect(ledgerLine({ branch: BRANCH, head: HEAD, mergeCommit: null, time })).toBe(
+      `2026-11-13T21:00:00.000Z\tbranch:${BRANCH}\t${HEAD}\t-`,
+    );
+    expect(() => ledgerLine({ branch: BRANCH, head: 'abc', mergeCommit: null })).toThrow('SHA');
+  });
+
+  test('a ledger that cannot be written is a warning line, never a failed delivery', async () => {
+    const { partial } = seams({ ledgerFailure: 'disk full' });
+    const report = await deliver(options, partial);
+    expect(report).toMatchObject({ merged: true, failedStep: null });
+    expect(renderDeliver(report)).toContain('WARNING delivery ledger: not written (disk full)');
+  });
+
+  test('the sweep runs after a successful delivery and prints one line', async () => {
+    const { partial, record } = seams();
+    const report = await deliver(options, partial);
+    expect(record.sweeps).toEqual([options.configPath]);
+    expect(report.swept).toEqual({ removed: 3, kept: 5 });
+    expect(renderDeliver(report).split('\n')).toContain('swept: 3 removed, 5 kept');
+  });
+
+  test('the sweep runs even when the worktree is kept, and its failure never fails the delivery', async () => {
+    const { partial } = seams({ sweepFailure: 'lsof is missing' });
+    const report = await deliver({ ...options, keepWorktree: true }, partial);
+    expect(report).toMatchObject({ merged: true, failedStep: null });
+    expect(renderDeliver(report)).toContain('swept: failed (lsof is missing)');
+    expect(renderDeliver(report)).not.toContain('FAILED');
+  });
+
+  test('a failed step runs no sweep', async () => {
+    const { partial, record } = seams({ failState: 'COR-9' });
+    const report = await deliver(
+      {
+        ...options,
+        issues: ['COR-9'],
+        completionFiles: [join(sandbox, 'done.md')],
+        closes: ['COR-9'],
+      },
+      partial,
+    );
+    expect(report.failedStep).toBe('issue');
+    expect(record.ledger).toHaveLength(1);
+    expect(record.sweeps).toEqual([]);
   });
 });
 
@@ -1000,6 +1094,10 @@ describe('deliver --branch', () => {
     });
     expect(report).toMatchObject({ merged: true, mergeCommit: SQUASH, failedStep: 'delete' });
     expect(record.requests).toEqual([]);
+    // The merge happened, so its head is in the ledger although a later step failed.
+    expect(record.ledger).toEqual([
+      { pr: undefined, branch: BRANCH, head: HEAD, mergeCommit: SQUASH },
+    ]);
   });
 
   test('a branch merge without --closes comments on the issue and leaves its state alone', async () => {

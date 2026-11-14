@@ -1,21 +1,21 @@
 <script lang="ts">
   /**
-   * Home's Needs attention card: the system problems that need a person (a rule firing, a schedule
-   * that missed runs, a hook whose delivery failed, a plugin that did not load, no model provider),
-   * each a sentence, a line that says what it is, and one secondary button to the page that deals
-   * with it. They are never counted as Needs you, and the provider notice is only here: no banner
-   * across the page says it again.
+   * Home's Needs attention section: the system problems that need a person (a rule firing, a
+   * schedule that missed runs, a hook whose delivery failed, a plugin that did not load, no model
+   * provider), as one Cinder `GroupedList`, each row a sentence, a line that says what it is, and
+   * one secondary button to the page that deals with it. They are never counted as Needs you, and
+   * the provider notice is only here: no banner across the page says it again.
    *
    * While the first-run checklist shows, its first step says the provider notice, so `omitProviderNotice`
    * leaves that row out; the rest stay.
    *
-   * With nothing to show the card gives way to one line, "Nothing needs attention", and the link to
-   * Health stays. A read that failed says so in the card's own place, with a Try again and no link
-   * to Health, and never claims all is well; while it has not answered the card holds placeholder
-   * rows in the rows' own shape. While the server does not answer each row's button is held like
-   * every control that changes something.
+   * With nothing to show the section gives way to one row, Cinder's `EmptyState` in its row layout:
+   * "Nothing needs attention", and the link to Health stays. A read that failed says so in the
+   * section's own place, with a Try again and no link to Health, and never claims all is well;
+   * while it has not answered the section holds Cinder's grouped placeholder rows. While the server
+   * does not answer each row's button is held like every control that changes something.
    */
-  import { DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
+  import { EmptyState, GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -26,7 +26,7 @@
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
   import HomeLink from './home-link.svelte';
-  import HomeSkeletonRows from './home-skeleton-rows.svelte';
+  import { openInApplication } from './home-navigation.ts';
   import { useAgentList, useAttentionItems } from './home-queries.svelte.ts';
   import { attentionRows } from './home-rows.ts';
 
@@ -63,31 +63,22 @@
       },
     ),
   );
-
-  /** Opens `path` in place, and leaves a modified click to the browser. */
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#if items.data !== undefined && rows.length === 0}
-  <!-- One line on the page itself, with no box: the sections beside it draw none either. -->
-  <div class="ib-home-attention-clear" data-testid="attention-clear">
-    <div class="ib-home-attention-clear__line">
-      <!-- The sentence beside it says all of this; the dot only draws it. -->
-      <span aria-hidden="true"
-        ><StatusDot status="success" label={copy.clear.title} labelVisible={false} /></span
-      >
-      <p class="ib-home-attention-clear__words">
-        <strong>{copy.clear.title}.</strong>
-        {copy.clear.description}
-      </p>
-      <HomeLink path="/health" label={copy.link} />
-    </div>
+  <!-- One row on the page itself, with no heading over it: the sections beside it draw no box. -->
+  <div data-testid="attention-clear">
+    <EmptyState
+      kind="done"
+      layout="row"
+      headingLevel={3}
+      title={copy.clear.title}
+      description={copy.clear.description}
+    >
+      {#snippet action()}
+        <HomeLink path="/health" label={copy.link} />
+      {/snippet}
+    </EmptyState>
   </div>
 {:else}
   <HomeCard
@@ -100,49 +91,26 @@
         onRetry={() => void items.refetch()}
       />
     {:else if items.data === undefined}
-      <HomeSkeletonRows rows={3} action />
+      <Skeleton variant="grouped" rows={3} action />
     {:else if rows.length > 0}
-      <DataList items={rows} key={(row) => row.key} aria-label={copy.listLabel}>
-        {#snippet children(row)}
-          <StackedListItem
+      <GroupedList aria-label={copy.listLabel}>
+        {#each rows as row (row.key)}
+          <GroupedListItem
             data-attention={row.key}
-            lines
             actions={[
               {
                 label: row.action.label,
                 href: router.href(row.action.href),
-                onclick: (event) => open(event, row.action.href),
+                onclick: (event) => openInApplication(event, row.action.href),
                 changes: true,
               },
             ]}
           >
             {#snippet title()}{row.title}{/snippet}
-            {#snippet meta()}{row.detail ?? ''}{/snippet}
-          </StackedListItem>
-        {/snippet}
-      </DataList>
+            {#snippet subtitle()}{row.detail ?? ''}{/snippet}
+          </GroupedListItem>
+        {/each}
+      </GroupedList>
     {/if}
   </HomeCard>
 {/if}
-
-<style>
-  .ib-home-attention-clear__line {
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
-  }
-
-  .ib-home-attention-clear__words {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .ib-home-attention-clear__words strong {
-    color: var(--cinder-text-default);
-    font-size: var(--cinder-text-base);
-    font-weight: var(--cinder-font-semibold);
-  }
-</style>

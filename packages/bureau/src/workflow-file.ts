@@ -486,6 +486,26 @@ function pinActivityVersions(
 }
 
 /**
+ * `document` with the version of every plugin code workflow its `workflow` steps call written into
+ * `workflowVersions` (COR-2246), as {@link pinActivityVersions} does for activities: the file names
+ * the child as `plugin:name` and floats, and the revision Bureau registers pins what was loaded.
+ */
+function pinWorkflowVersions(
+  document: WorkflowDocument,
+  host: DocumentWorkflowHost,
+): WorkflowDocument {
+  const loaded = host.workflowVersions;
+  if (loaded === undefined) return document;
+  const pins: Record<string, string> = {};
+  for (const { step } of workflowFileStepsInCanonicalOrder(document.steps)) {
+    if (step.kind !== 'workflow') continue;
+    const weftName = weftNameOf(step.workflow);
+    if (Object.hasOwn(loaded, weftName)) pins[step.workflow] = loaded[weftName]!;
+  }
+  return Object.keys(pins).length === 0 ? document : { ...document, workflowVersions: pins };
+}
+
+/**
  * `documentInput` without the keys of the extended format (COR-2009), which Weft's strict schema
  * would refuse: a `schedule` trigger's `timezone`, `catchUp`, `name`, and `input`, and each step's `title` and
  * `review`. Each is checked here first, into `issues`, and every step's annotation is returned by
@@ -639,6 +659,13 @@ export function parseWorkflowFile(
         'a workflow file does not pin activity versions: it names an activity as plugin:name, and Bureau pins the version that is loaded when it registers the file',
     });
   }
+  if (Object.hasOwn(documentInput, 'workflowVersions')) {
+    issues.push({
+      path: 'workflowVersions',
+      message:
+        'a workflow file does not pin workflow versions: it names a workflow as plugin:name, and Bureau pins the version that is loaded when it registers the file',
+    });
+  }
   let document: WorkflowDocument | undefined;
   let unrecognizedKeys = false;
   try {
@@ -651,7 +678,7 @@ export function parseWorkflowFile(
       triggerHasUnrecognizedKeys(documentInput['trigger']);
   }
   if (document !== undefined) {
-    document = pinActivityVersions(document, host);
+    document = pinWorkflowVersions(pinActivityVersions(document, host), host);
     if (document.name !== id) {
       issues.push({ path: 'name', message: `must equal the identifier "${id}"` });
     }

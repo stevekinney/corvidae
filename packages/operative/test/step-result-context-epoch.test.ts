@@ -8,9 +8,9 @@ import { noToolCalls } from '../src/conditions/predicates';
 import { createContextEpochSealer } from '../src/context-epoch';
 import { createActiveRun } from '../src/create-run';
 import type { OperativeHookMap } from '../src/hooks';
-import { createModelCatalog } from '../src/providers/model-catalog.ts';
 import { createSelectionGate } from '../src/selection-gate';
 import { createMockGenerate } from '../src/test/index';
+import { createFixtureCatalog } from '../src/testing/model-catalog.test-support.ts';
 
 const lookup = createTool({
   name: 'lookup',
@@ -126,8 +126,8 @@ describe('StepResult.planReason and StepResult.effectiveContext', () => {
   });
 
   it('keeps the plan’s reason on the step, and pinned when the run has no plan', async () => {
-    const catalog = createModelCatalog({ now: () => NOW });
-    const anthropic = catalog.descriptors.find((row) => row.provider === 'anthropic')!;
+    const catalog = createFixtureCatalog({ now: () => NOW });
+    const anthropic = catalog.descriptors.find((row) => row.provider === 'alpha')!;
     const gate = createSelectionGate({
       request: () => ({
         agentName: 'agent',

@@ -65,6 +65,42 @@ export function writeStoredListWidth(
   }
 }
 
+/** The storage key the hidden list is remembered under: the divider's own key, with a suffix. */
+export function listCollapsedStorageKey(storageKey: string): string {
+  return `${storageKey}:list-collapsed`;
+}
+
+/**
+ * Reads whether the list was left hidden, or `null` when nothing usable is stored for
+ * `storageKey`.
+ */
+export function readStoredListCollapsed(
+  storage: ListDetailStorage | undefined,
+  storageKey: string | undefined,
+): boolean | null {
+  if (!storage || storageKey === undefined) return null;
+  try {
+    const stored = storage.getItem(listCollapsedStorageKey(storageKey));
+    return stored === 'true' ? true : stored === 'false' ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remembers whether the list is hidden. A storage that refuses the write is ignored. */
+export function writeStoredListCollapsed(
+  storage: ListDetailStorage | undefined,
+  storageKey: string | undefined,
+  collapsed: boolean,
+): void {
+  if (!storage || storageKey === undefined) return;
+  try {
+    storage.setItem(listCollapsedStorageKey(storageKey), String(collapsed));
+  } catch {
+    // The list still hides; the choice is just not remembered.
+  }
+}
+
 /** Reads and writes the selection through `window.location` and `history.replaceState`. */
 export function createBrowserSelectionLocation(): ListDetailSelectionLocation {
   return {

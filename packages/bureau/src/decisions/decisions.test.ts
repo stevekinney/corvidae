@@ -6,7 +6,6 @@ import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type BackendDescriptor,
   createMockGenerate,
-  createModelCatalog,
   type DecisionKind,
   type DecisionModel,
   DecisionSchemaError,
@@ -22,13 +21,14 @@ import type { Bureau } from '../bureau-types/facade.ts';
 import type { BureauOptions } from '../bureau-types/options.ts';
 import { hosted } from './hosted-decisions.test-support.ts';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const bureaus: Bureau[] = [];
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
 });
 
-const seed = createModelCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
+const seed = createVendorCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
 
 /** A catalog row that differs from the seed in what a test varies. */
 function row(
@@ -79,7 +79,8 @@ async function open(
     storage: new MemoryStorage(),
     durable: true,
     models: {
-      ...(options.catalog === undefined ? {} : { catalog: options.catalog }),
+      // The vendors' rows unless a test brings its own: Bureau holds none.
+      catalog: options.catalog ?? createVendorCatalog().descriptors,
       ...(options.withoutGenerate === true
         ? {}
         : {

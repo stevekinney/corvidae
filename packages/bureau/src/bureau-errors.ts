@@ -185,6 +185,66 @@ export class BureauShuttingDownError extends BureauError {
 }
 
 /**
+ * New work refused because its context is archived (COR-2285): a task started in it, input sent
+ * to it, a steering command for it, a regenerated answer, or a schedule's fire into it. It is a
+ * `CONFLICT` `BureauError` with the stable `reason` `context-archived`, so a caller tells it apart
+ * from a missing context, which is `NOT_FOUND`. Nothing was stored. Unarchiving the context lets
+ * the same request through.
+ */
+export class ContextArchivedError extends BureauError {
+  /** The stable reason a client branches on. */
+  readonly reason = 'context-archived' as const;
+  /** The archived context. */
+  readonly contextId: string;
+
+  constructor(contextId: string) {
+    super(`Context "${contextId}" is archived: unarchive it to continue.`, 'CONFLICT');
+    this.name = 'ContextArchivedError';
+    this.contextId = contextId;
+  }
+}
+
+/**
+ * An archive refused because the context has a live task (COR-2285): one running, or one waiting
+ * on an approval or an answer. It is a `CONFLICT` `BureauError` with the stable `reason`
+ * `context-busy`; nothing was stored. Stopping the task, or answering it, lets the archive through.
+ */
+export class ContextBusyError extends BureauError {
+  /** The stable reason a client branches on. */
+  readonly reason = 'context-busy' as const;
+  /** The context that has a live task. */
+  readonly contextId: string;
+
+  constructor(contextId: string) {
+    super(
+      `Context "${contextId}" has a task running or waiting on an answer: stop or answer it before archiving.`,
+      'CONFLICT',
+    );
+    this.name = 'ContextBusyError';
+    this.contextId = contextId;
+  }
+}
+
+/**
+ * An archive refused because the context is not one a person archives (COR-2285): a goal's
+ * session, which the goal keeps writing to through its own path whatever the session records. It
+ * is a `CONFLICT` `BureauError` with the stable `reason` `context-not-archivable`; nothing was
+ * stored. A goal is stopped with `goals.cancel`.
+ */
+export class ContextNotArchivableError extends BureauError {
+  /** The stable reason a client branches on. */
+  readonly reason = 'context-not-archivable' as const;
+  /** The context that cannot be archived. */
+  readonly contextId: string;
+
+  constructor(contextId: string) {
+    super(`Context "${contextId}" is a goal's session and cannot be archived.`, 'CONFLICT');
+    this.name = 'ContextNotArchivableError';
+    this.contextId = contextId;
+  }
+}
+
+/**
  * A refusal of {@link BureauTasks.respond}, made before anything took effect. It is a
  * `BureauError` (`NOT_FOUND`, `CONFLICT`, or `BAD_REQUEST`) that also says which request `field`
  * a `BAD_REQUEST` is about, or the short `reason` an addressed wait cannot take the answer, so the

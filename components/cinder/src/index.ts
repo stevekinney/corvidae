@@ -16,7 +16,6 @@ export type { AccordionContext, AccordionProps } from './components/accordion/in
 export { default as ActionRow } from './components/action-row/index.ts';
 export type {
   ActionRowCurrentValue,
-  ActionRowDensity,
   ActionRowProps,
   ActionRowSelectedState,
 } from './components/action-row/index.ts';
@@ -565,6 +564,7 @@ export type { GroupedListProps } from './components/grouped-list/index.ts';
 
 export { default as GroupedListItem } from './components/grouped-list-item/index.ts';
 export type {
+  GroupedListItemAction,
   GroupedListItemLeadUnit,
   GroupedListItemLeadingKind,
   GroupedListItemProps,
@@ -701,6 +701,7 @@ export type { LocaleProviderProps, TextDirection } from './components/locale-pro
 
 export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
+  ListDetailHeaderContext,
   ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,

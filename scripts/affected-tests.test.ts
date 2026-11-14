@@ -22,6 +22,7 @@ import {
 import { selectTests, type Selection } from './affected-tests-selection.ts';
 import {
   discoverWorkspaces,
+  excludeTests,
   explain,
   planInvocations,
   touchesIsolatedTest,
@@ -558,6 +559,24 @@ describe('selection modes and reporting', () => {
     const result = select(baseFiles, ['packages/alpha/src/extra.ts']);
     expect(result.mode('@scope/beta')).toBe('partial');
     expect(result.mode('@scope/alpha')).toBe('none');
+  });
+
+  test('excluding a test file narrows its workspace and keeps the others', () => {
+    const { selection } = select(baseFiles, [
+      'packages/gamma/src/index.ts',
+      'packages/alpha/src/deep.ts',
+    ]);
+    const narrowed = excludeTests(selection, ['packages/gamma/src/gamma.test.ts']);
+    const gamma = narrowed.workspaces.find((candidate) => candidate.name === '@scope/gamma');
+    expect(gamma?.mode).toBe('none');
+    const beta = narrowed.workspaces.find((candidate) => candidate.name === '@scope/beta');
+    expect([...(beta?.tests.keys() ?? [])]).toContain('packages/beta/src/uses-alpha.test.ts');
+    const both = select(baseFiles, ['packages/alpha/src/deep.ts', 'packages/alpha/src/other.ts']);
+    const alphaOnly = excludeTests(both.selection, ['packages/alpha/src/deep.test.ts']);
+    const alpha = alphaOnly.workspaces.find((candidate) => candidate.name === '@scope/alpha');
+    expect(alpha?.tests.has('packages/alpha/src/deep.test.ts')).toBe(false);
+    expect(alpha?.mode).toBe('partial');
+    expect(excludeTests(selection, [])).toBe(selection);
   });
 
   test('explain says why each file was selected', () => {

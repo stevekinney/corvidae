@@ -2,7 +2,6 @@ import {
   createAgent,
   createDefaultRuntimeServices,
   createMockGenerate,
-  createModelCatalog,
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -10,9 +9,14 @@ import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { type AnyRunnableAgent, createAgentCatalog } from './agent-catalog';
+import {
+  type AnyRunnableAgent,
+  createAgentCatalog,
+  type DroppedCodeAgentBehavior,
+} from './agent-catalog';
 import { AgentFileError, type AgentFileDefinitionInput } from './agent-file';
 import type { AgentFileCatalog } from './agent-file-catalog';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 function agent(name: string) {
   return createAgent({ generate: createMockGenerate([]), name });
@@ -144,7 +148,7 @@ describe('createAgentCatalog', () => {
 
 describe('createAgentCatalog: generationProfile (AB-64/AB-247/mod-02e)', () => {
   const FIXED_NOW = '2026-09-02T12:00:00.000Z';
-  const seedDescriptors = createModelCatalog({ now: () => FIXED_NOW }).descriptors;
+  const seedDescriptors = createVendorCatalog({ now: () => FIXED_NOW }).descriptors;
   function requireDescriptor(provider: (typeof seedDescriptors)[number]['provider']) {
     const descriptor = seedDescriptors.find((d) => d.provider === provider);
     if (!descriptor) throw new Error(`expected at least one seed descriptor for ${provider}`);
@@ -335,7 +339,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
   });
 
   it('copies one with its plugin’s tools named as the catalog holds them and the first catalog model', async () => {
-    const descriptors = createModelCatalog().descriptors;
+    const descriptors = createVendorCatalog().descriptors;
     const helper = Object.create(agent('tool-runner'), {
       toolNames: { value: ['lookup-order', 'shared-tool'] },
     }) as ReturnType<typeof agent>;
@@ -364,7 +368,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
   });
 
   it('keeps a tool of the disabled plugin as plugin:tool, and leaves one no plugin contributes as it is (COR-2236)', async () => {
-    const descriptors = createModelCatalog().descriptors;
+    const descriptors = createVendorCatalog().descriptors;
     const helper = Object.create(agent('tool-runner'), {
       toolNames: { value: ['lookup-order', 'mystery'] },
     }) as ReturnType<typeof agent>;
@@ -399,7 +403,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
         {},
         {
           files: withDuplicate,
-          descriptors: () => createModelCatalog().descriptors,
+          descriptors: () => createVendorCatalog().descriptors,
           unavailable: [{ id: 'demo:tool-runner', plugin: 'demo', agent: plugin, unavailable }],
         },
       );
@@ -432,7 +436,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
     it('names nothing for a code agent with none of them, and for a copy of a file agent', async () => {
       const plain = withBackendDescriptors(
         createMockGenerate([]),
-        createModelCatalog().descriptors.slice(0, 1),
+        createVendorCatalog().descriptors.slice(0, 1),
       );
       const result = await duplicatorOf(
         createAgent({ name: 'tool-runner', generate: plain }),
@@ -443,8 +447,108 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
     });
   });
 
+  describe('what a copy loses, stated before any write (COR-2232)', () => {
+    const structured = () =>
+      createAgent({
+        name: 'tool-runner',
+        generate: createMockGenerate([]),
+        output: z.object({ answer: z.string() }),
+        guardrails: false,
+        stopWhen: [stopWhen.noToolCalls()],
+      });
+
+    it('answers the same dropped list on the source’s detail as the duplicate result, for a disabled and a running agent', async () => {
+      const { files } = recordingFiles([]);
+      const catalog = createAgentCatalog(
+        { 'demo:running': structured() },
+        {
+          files: { ...files, detail: async () => undefined } as unknown as AgentFileCatalog,
+          descriptors: () => createVendorCatalog().descriptors,
+          unavailable: [
+            { id: 'demo:tool-runner', plugin: 'demo', agent: structured(), unavailable },
+          ],
+        },
+      );
+      const disabled = await catalog.detail('demo:tool-runner');
+      const expected: DroppedCodeAgentBehavior[] = [
+        'generate',
+        'stopWhen',
+        'outputSchema',
+        'guardrails',
+      ];
+      expect([...(disabled?.dropped ?? [])]).toEqual(expected);
+      const copied = await catalog.duplicate('demo:tool-runner');
+      expect(copied.dropped).toEqual(expected);
+      const running = await catalog.detail('demo:running');
+      expect([...(running?.dropped ?? [])]).toEqual(expected);
+    });
+
+    it('answers nothing dropped for a built-in code agent', async () => {
+      const catalog = createAgentCatalog({ assistant: structured() });
+      const builtIn = await catalog.detail('assistant');
+      expect(builtIn?.dropped ?? []).toEqual([]);
+    });
+  });
+
+  describe('where a copy of a code agent came from (COR-2234)', () => {
+    const descriptors = createVendorCatalog().descriptors;
+    const helper = () => agent('tool-runner');
+    function catalogWith(details: Parameters<typeof createAgentCatalog>[1] = {}) {
+      const { files, created } = recordingFiles([]);
+      return {
+        created,
+        catalog: createAgentCatalog(
+          {},
+          {
+            files,
+            descriptors: () => descriptors,
+            unavailable: [{ id: 'demo:tool-runner', plugin: 'demo', agent: helper(), unavailable }],
+            ...details,
+          },
+        ),
+      };
+    }
+
+    it('records the version drift pinning compares: the agent’s own, or else its plugin’s', async () => {
+      const { catalog, created } = catalogWith({
+        details: { 'demo:tool-runner': { plugin: 'demo', version: '2.1.0' } },
+      });
+      await catalog.duplicate('demo:tool-runner');
+      expect(created[0]?.definition.from).toEqual({ agent: 'demo:tool-runner', version: '2.1.0' });
+    });
+
+    it('writes no from for a code agent with no version', async () => {
+      const { catalog, created } = catalogWith();
+      await catalog.duplicate('demo:tool-runner');
+      expect(created[0]?.definition.from).toBeUndefined();
+    });
+
+    it('answers the version of a code source now, and null when it is not loaded, on the copy’s detail', async () => {
+      const { files } = recordingFiles([]);
+      const copy = (agentId: string) => ({
+        id: 'tool-runner',
+        definition: { from: { agent: agentId, version: '1.0.0' } },
+      });
+      const catalog = createAgentCatalog(
+        { 'demo:running': helper() },
+        {
+          files: {
+            ...files,
+            detail: async (id: string) =>
+              id === 'tool-runner' ? copy('demo:running') : copy('demo:gone'),
+          } as unknown as AgentFileCatalog,
+          details: { 'demo:running': { plugin: 'demo', version: '2.0.0' } },
+        },
+      );
+      const loaded = await catalog.detail('tool-runner');
+      expect(loaded?.fromNow).toBe('2.0.0');
+      const gone = await catalog.detail('other');
+      expect(gone?.fromNow).toBeNull();
+    });
+  });
+
   it('copies one onto the first model whose provider can be called, passing over an unavailable row (COR-2143)', async () => {
-    const all = createModelCatalog().descriptors;
+    const all = createVendorCatalog().descriptors;
     const unusable = all.find((row) => row.lifecycle !== 'retired');
     const usable = all.find(
       (row) => row.lifecycle !== 'retired' && row.provider !== unusable?.provider,

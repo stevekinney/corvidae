@@ -21,11 +21,42 @@
     color: var(--cinder-text-default);
   }
 
-  /* The description, the options, the typed field and the failure are one column, a step apart.
-   * The failure region is always mounted so a failure is announced, and takes no room until it has
-   * one. */
+  /* The description, the options and the typed field are one column, a step apart. */
   .cinder-confirm-dialog .cinder-modal__body > * + *:not(:empty) {
     margin-block-start: var(--cinder-space-4);
+  }
+
+  /* The footer holds the failure above the actions, outside the scrolling body, so a failure is
+   * always in view with the buttons under it. */
+  .cinder-confirm-dialog__footer {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  /* The failure region is always mounted so a failure is announced, and takes no room until it has
+   * one. */
+  .cinder-confirm-dialog__failure:not(:empty) {
+    margin-block-end: var(--cinder-space-3);
+  }
+
+  .cinder-confirm-dialog__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--cinder-space-3);
+  }
+
+  /* As a sheet the actions stack at full width, the confirmation first (Modal's own footer rule,
+   * which now reaches only this wrapper). */
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-confirm-dialog__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-confirm-dialog__actions > * {
+    inline-size: 100%;
   }
 
   /* What each choice does: a checkbox, or the command about to run. */
@@ -34,6 +65,42 @@
     flex-direction: column;
     gap: var(--cinder-space-3);
     min-inline-size: 0;
+  }
+
+  /* A plain list in options is flat rows: no bullets, a hairline between rows, no box of its own.
+   * The first row has no rule above it. */
+  .cinder-confirm-dialog__options > ul {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-confirm-dialog__options > ul > li {
+    padding-block: var(--cinder-space-2);
+    border-block-start: 1px solid var(--cinder-border-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-confirm-dialog__options > ul > li:first-child {
+    border-block-start: 0;
+  }
+
+  /* The last row has no padding below it, so the list does not float toward the footer. */
+  .cinder-confirm-dialog__options > ul > li:last-child {
+    padding-block-end: 0;
+  }
+
+  .cinder-confirm-dialog__options > ul > li :where(strong) {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* A note in options reads as the description does: muted and small. */
+  .cinder-confirm-dialog__options > p {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
   }
 
   .cinder-confirm-dialog__failure :where(strong) {

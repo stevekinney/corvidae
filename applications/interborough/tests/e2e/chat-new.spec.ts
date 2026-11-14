@@ -2,9 +2,10 @@
  * New chat (`/chats/new`) on the sample world (`fixtures/sample-world-seed.ts`, the showcase host)
  * at the browser's sample clock, Monday, Nov 2, 10:46 AM Central time (COR-2016, design rows 23a to
  * 23r of PageNewChat): the default frame, where no provider is connected and the page starts with
- * Assistant, a scripted agent; the same page with Tool runner, a model agent, and so the blocked
- * row; and the swap back to Assistant that unblocks the composer. Each frame is captured for the
- * design review under its own name.
+ * Assistant, a scripted agent; and the same page with Tool runner, a model agent, which is Chat's
+ * Connect a model provider state in place of the greeting and the composer (COR-2285 V4, which
+ * supersedes rows 23k to 23r's blocked row and its swap to Assistant). Each frame is captured for
+ * the design review under its own name.
  */
 import type { Locator, Page } from '@playwright/test';
 
@@ -17,8 +18,7 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'chat-new.spec.ts';
 const ASSISTANT_SENTENCE = 'Answers every message with the same scripted reply.';
-const TOOL_RUNNER_SENTENCE = 'Looks an order up, then asks for approval to refund it.';
-const REASON = 'Connect a model provider to chat';
+const REASON = 'Connect a model provider';
 
 /** Opens `path` at `width` by 900 pixels on the sample clock, once New chat holds its greeting. */
 async function open(page: Page, path: string, width = 1440): Promise<void> {
@@ -199,56 +199,45 @@ test.describe('New chat on the sample world (23a, 23b, 23c, 23e, 23g, 23j)', () 
   });
 });
 
-test.describe('New chat with no model provider (23k, 23l, 23n, 23o)', () => {
-  test('greets Tool runner with its avatar and sentence over the blocked row, and no Try pills (23k, 23l, 23n)', async ({
+/** Chat's unconfigured availability state, drawn while a model provider is missing (COR-2285 V4). */
+const unconfigured = (page: Page) => page.locator('[data-chat-availability="unconfigured"]');
+
+test.describe('New chat with no model provider (COR-2285 V4)', () => {
+  test('is Chat’s Connect a model provider state, with a primary Connect provider, in place of the greeting and the composer', async ({
     page,
   }) => {
-    await open(page, '/chats/new?agent=tool-runner');
-    await expect(welcome(page).getByRole('heading', { level: 1 })).toHaveText(
-      'What should Tool runner do?',
-    );
-    await expect(welcome(page).locator('.ib-new-chat__avatar')).toHaveText('TR');
-    await expect(welcome(page).getByText(TOOL_RUNNER_SENTENCE)).toBeVisible();
-    // One compact blocked row in place of the text box: the reason, the way out, and Use Assistant.
-    const row = blockedRow(page);
-    await expect(row.getByText(REASON)).toBeVisible();
-    await expect(row.getByRole('link', { name: 'Connect a provider' })).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Use Assistant' })).toBeVisible();
-    await expect(composerBox(page)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
-    // The Try pills are hidden, because they would fill a box that cannot send; the agents stay.
-    await expect(prompts(page)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Please refund order 4471' })).toHaveCount(0);
-    expect(await agentsIn(others(page))).toEqual([
-      'A Assistant',
-      'RH Request human input',
-      'WA Workflow author',
-      'E Echo',
-      'MS Model switcher',
-    ]);
-    // The row sits under the sentence and the agents under the row.
-    const sentence = await boxOf(welcome(page).getByText(TOOL_RUNNER_SENTENCE));
-    const blocked = await boxOf(row);
-    const agents = await boxOf(others(page));
-    expect(blocked.y).toBeGreaterThan(sentence.y + sentence.height);
-    expect(agents.y).toBeGreaterThan(blocked.y + blocked.height - 1);
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/chats/new?agent=tool-runner');
+    const state = unconfigured(page);
+    await expect(state.getByRole('heading', { level: 2 })).toHaveText('Connect a model provider');
+    const connect = state.getByRole('button', { name: 'Connect provider' });
+    await expect(connect).toHaveAttribute('data-cinder-variant', 'primary');
+    // An empty chat has nothing to keep readable, so the greeting and the composer give way.
+    await expect(welcome(page)).toBeHidden();
+    await expect(composerBox(page)).toBeHidden();
+    await expect(blockedRow(page)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeHidden();
     expect(await scrollsSideways(page)).toBe(false);
     await captureForDesignReview(page, {
       route: '/chats/new',
       state: 'no provider, Tool runner',
       source: SOURCE,
     });
+
+    await connect.click();
+    await expect(page).toHaveURL(/\/settings\/models$/);
   });
 
   test('draws no provider banner on the page, and leaves the notice to Health and its sidebar dot (23o)', async ({
     page,
   }) => {
-    await open(page, '/chats/new?agent=tool-runner');
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/chats/new?agent=tool-runner');
+    await expect(unconfigured(page)).toBeVisible();
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     await expect(page.getByRole('alert').filter({ hasText: /provider/i })).toHaveCount(0);
-    // The only words about a provider are the blocked row's own, where sending is blocked.
-    await expect(page.locator('main').getByText(/provider/i)).toHaveCount(2);
-    await expect(blockedRow(page).getByText(/provider/i)).toHaveCount(2);
     // Health carries the rest, with the amber dot in the sidebar.
     const health = page.getByRole('navigation', { name: 'Views' }).getByRole('link', {
       name: /Health/,
@@ -257,78 +246,5 @@ test.describe('New chat with no model provider (23k, 23l, 23n, 23o)', () => {
       'data-cinder-status',
       'warning',
     );
-  });
-});
-
-test.describe('Choosing Assistant unblocks the composer (23p, 23q, 23r)', () => {
-  /** Counts the requests that would start a run, so a swap can be shown to send nothing. */
-  function watchRuns(page: Page): string[] {
-    const sent: string[] = [];
-    page.on('request', (request) => {
-      if (request.method() === 'POST' && /ag-ui|\/run/.test(request.url())) {
-        sent.push(request.url());
-      }
-    });
-    return sent;
-  }
-
-  /** Whether the page now shows Assistant's greeting, live composer and Try pill. */
-  async function expectAssistant(page: Page): Promise<void> {
-    await expect(welcome(page).getByRole('heading', { level: 1 })).toHaveText(
-      'What should Assistant do?',
-    );
-    await expect(welcome(page).locator('.ib-new-chat__avatar')).toHaveText('A');
-    await expect(welcome(page).getByText(ASSISTANT_SENTENCE)).toBeVisible();
-    await expect(blockedRow(page)).toHaveCount(0);
-    await expect(composerBox(page)).toBeEnabled();
-    const send = page.getByRole('button', { name: 'Send message' });
-    await expect(send).toHaveAttribute('data-cinder-variant', 'secondary');
-    await expect(send).toBeDisabled();
-    await composerBox(page).fill('Hello');
-    await expect(send).toBeEnabled();
-    await composerBox(page).fill('');
-    await expect(prompts(page).getByRole('button')).toHaveText(['Say hello']);
-    // Only Permissions: no Model, no Effort.
-    await expect(page.getByRole('combobox', { name: 'Model' })).toHaveCount(0);
-    await expect(page.getByRole('combobox', { name: 'Effort' })).toHaveCount(0);
-    await expect(page.getByRole('combobox', { name: /Permissions/ })).toBeVisible();
-    expect(await agentsIn(others(page))).toEqual([
-      'TR Tool runner',
-      'RH Request human input',
-      'WA Workflow author',
-      'E Echo',
-      'MS Model switcher',
-    ]);
-  }
-
-  test('"Use Assistant" swaps the agent, replaces the blocked row with the live composer and sends nothing (23q, 23r)', async ({
-    page,
-  }) => {
-    const sent = watchRuns(page);
-    await open(page, '/chats/new?agent=tool-runner');
-    await expect(blockedRow(page)).toBeVisible();
-
-    await blockedRow(page).getByRole('button', { name: 'Use Assistant' }).click();
-
-    await expectAssistant(page);
-    await expect(page).toHaveURL(/\/chats\/new\?agent=assistant$/);
-    expect(sent).toEqual([]);
-    await captureForDesignReview(page, {
-      route: '/chats/new',
-      state: 'Assistant chosen from the blocked row',
-      source: SOURCE,
-    });
-  });
-
-  test('choosing Assistant in "Or chat with" does the same (23q)', async ({ page }) => {
-    const sent = watchRuns(page);
-    await open(page, '/chats/new?agent=tool-runner');
-
-    await others(page)
-      .getByRole('button', { name: /Assistant/ })
-      .click();
-
-    await expectAssistant(page);
-    expect(sent).toEqual([]);
   });
 });

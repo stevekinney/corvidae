@@ -3,7 +3,7 @@
  * reaches it. The provider key is a fixture written for the test.
  */
 import { openBungalow } from '@lostgradient/bungalow';
-import { createModelCatalog } from '@lostgradient/operative';
+import { anthropicRows } from '@lostgradient/operative-anthropic';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -81,8 +81,8 @@ describe('Host.diagnostics', () => {
     const index = await stat(join(build, 'index.html'));
     expect(reading.build).toEqual({ directory: build, indexModifiedAt: index.mtimeMs });
 
-    const anthropic = createModelCatalog()
-      .descriptors.filter(
+    const anthropic = anthropicRows()
+      .filter(
         (descriptor) => descriptor.provider === 'anthropic' && descriptor.lifecycle !== 'retired',
       )
       .map((descriptor) => descriptor.model);

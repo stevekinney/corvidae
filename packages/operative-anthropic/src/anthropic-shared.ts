@@ -4,10 +4,9 @@ import {
   type ResolvedCommonParameters,
   type ToolChoice,
   anthropicSamplingSupport,
-  createModelCatalog,
   ProviderError,
-  resolveAnthropicEffort,
 } from '@lostgradient/operative/provider-kit';
+import { anthropicRows, resolveAnthropicEffort } from './anthropic-catalog.ts';
 import {
   anthropicDisabledThinkingRule,
   anthropicRejectsManualThinking,
@@ -409,7 +408,7 @@ export function buildAnthropicUsage(
  * reports `mode: 'opaque'` rather than an invented descriptor.
  */
 export function anthropicDescriptorsFor(model: string) {
-  return createModelCatalog().descriptors.filter(
+  return anthropicRows().filter(
     (descriptor) => descriptor.provider === 'anthropic' && descriptor.model === model,
   );
 }

@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'The panel for each kind of call';
   export const description =
-    'A done call shows its Input and its Result as fields with secondary "Copy input" and "Copy result". The waiting call carries a "Note (optional)" field with its description, a secondary Deny and the only primary, Approve. A running call shows its Input and a Result that reads "The result appears when the call finishes." The three panels are the same width.';
+    'A done call shows its Input and its Result as fields with secondary "Copy input" and "Copy result". The waiting call carries a quiet "Add a note" at the start of its last row, which opens a "Note" field and moves focus into it, then a secondary Deny and the only primary, Approve, at the row\'s end. A running call shows its Input and a Result that reads "The result appears when the call finishes." The three panels are the same width.';
 </script>
 
 <script lang="ts">

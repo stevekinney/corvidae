@@ -2848,15 +2848,16 @@
       "exportName": "GroupedListItem",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Row of a grouped list with leading icon, avatar, thumbnail or control, a fixed lead column, title, subtitle, and trailing value, photo, chevron and action; the whole row is the link.",
+      "purpose": "Row of a grouped list with leading icon, avatar, thumbnail or control, a fixed lead column, title, subtitle, and trailing value, photo, chevron, action and text actions; the whole row is the link.",
       "tags": ["list", "row"],
       "useWhen": [
         "Listing entities inside a grouped list, each with a leading glyph, a title and a secondary line.",
-        "Linking each row to a detail view by passing href, which makes the whole row one link."
+        "Linking each row to a detail view by passing href, which makes the whole row one link.",
+        "Ending a row with the button that is its point, such as Review on an approval, which stays a button on a phone."
       ],
       "avoidWhen": [
         {
-          "reason": "Showing a status-first run or approval row with details — use stacked-list-item."
+          "reason": "Showing a row with a fixed status column, details or a disclosure — use stacked-list-item."
         },
         {
           "reason": "Comparing values across columns — use table."
@@ -5847,11 +5848,12 @@
       "tags": ["data-display", "dashboard"],
       "useWhen": [
         "Showing a row of related statistic tiles such as the top metrics of a dashboard.",
-        "Giving a cluster of statistic entries a single accessible group label."
+        "Giving a cluster of statistic entries a single accessible group label.",
+        "Setting one quiet stat in the page flow under a spotlight, with variant plain."
       ],
       "avoidWhen": [
         {
-          "reason": "Rendering exactly one metric — use statistic on its own."
+          "reason": "Rendering exactly one metric at full size — use statistic on its own."
         },
         {
           "reason": "Building a freeform card grid unrelated to numeric metrics — compose surface or grid-list directly."

@@ -58,6 +58,7 @@ import {
   agentCostLimitSchema,
   agentReferencesSchema,
   agentContributionIdsSchema,
+  agentFileFromSchema,
   agentGuardrailSelectionsSchema,
   storedAgentGuardrailSelectionsSchema,
   agentRetrySchema,
@@ -238,6 +239,8 @@ const definitionOutputSchema = z.object({
   escalations: agentContributionIdsSchema.nullable(),
   /** When each tool asks a person first; `null` when the file sets none and every tool asks on changes. */
   approvals: agentToolApprovalSchema.nullable(),
+  /** Where a copy came from (COR-2234): the agent Duplicate copied and its version then (a file agent's `hash`, a code agent's version); `null` for a file that is not a copy. */
+  from: agentFileFromSchema.nullable(),
   instructions: z.string(),
 });
 
@@ -260,6 +263,17 @@ const agentDetailSchema = agentListingSchema.extend({
   definition: definitionOutputSchema.nullable(),
   /** A code-defined agent's own statement of itself; `null` for a file agent. */
   codeDefinition: codeDefinitionSchema.nullable(),
+  /**
+   * What a copy of this agent would lose, stated before any write (COR-2232): for a plugin's code
+   * agent, the same list `duplicate` answers as `dropped`; empty for a file agent and a built-in agent.
+   */
+  dropped: z.array(z.enum(DROPPED_CODE_AGENT_BEHAVIORS)),
+  /**
+   * For a copy, the version of the agent it was copied from as that agent is now (COR-2234): a
+   * code agent's own `version` else its plugin's, or a file agent's `hash`, which `definition.from.version`
+   * is compared with. `null` when the file is not a copy, or its source is not loaded.
+   */
+  fromNow: z.string().nullable(),
   text: z.string().nullable(),
   /**
    * The size in bytes of each reference document a ready file agent read, in the order its
@@ -374,6 +388,11 @@ const definitionInputSchema = z
      * none and an update keeps the file's; `null` or an empty map removes the file's.
      */
     approvals: agentToolApprovalSchema.nullable().optional(),
+    /**
+     * Where a copy came from (COR-2234), accepted so a definition a read answered can go back as an
+     * update, and ignored: only Duplicate writes `from`, and a write keeps the file's.
+     */
+    from: agentFileFromSchema.nullable().optional(),
     instructions: z.string(),
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
@@ -387,7 +406,7 @@ const definitionInputSchema = z
  * list.
  */
 function definitionOf(input: z.infer<typeof definitionInputSchema>): AgentFileDefinitionInput {
-  const { models, ...rest } = input;
+  const { models, from: _from, ...rest } = input;
   return { ...rest, ...(models == null ? {} : { models }) } as AgentFileDefinitionInput;
 }
 
@@ -486,6 +505,7 @@ function definitionView(definition: AgentFileDefinition) {
     interceptors: definition.interceptors === undefined ? null : [...definition.interceptors],
     escalations: definition.escalations === undefined ? null : [...definition.escalations],
     approvals: definition.approvals === undefined ? null : { ...definition.approvals },
+    from: definition.from === undefined ? null : { ...definition.from },
     instructions: definition.instructions,
   };
 }
@@ -510,6 +530,8 @@ function detailView(host: BureauAgentDefinitionsOperationHost, detail: AgentFile
     definition: detail.definition === null ? null : definitionView(detail.definition),
     codeDefinition:
       detail.codeDefinition === undefined ? null : codeDefinitionView(detail.codeDefinition),
+    dropped: [...(detail.dropped ?? [])],
+    fromNow: detail.fromNow ?? null,
     text: detail.text,
     referenceSizes:
       detail.referenceSizes === undefined
@@ -911,7 +933,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
-    'Returns one agent: whether it is `ready`, `invalid` (with the `problem` that makes it so), or `unavailable` (a code agent of a disabled plugin, with the `unavailable` reason, such as `Plugin Demo is disabled`, and the `plugin`; it can be read and duplicated, and no run can start on it), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. A ready file agent with reference documents also has `referenceSizes`, each document’s `path` and its `size` in bytes (its text as UTF-8), in the order its `references` lists them; it is `null` for a code agent, a file with no references, and a file that is not ready. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only, with a code agent’s saved overrides in force applied (`bureau.agents.overrides.get` reads them apart): its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `card`. A file agent has `codeDefinition: null`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns one agent: whether it is `ready`, `invalid` (with the `problem` that makes it so), or `unavailable` (a code agent of a disabled plugin, with the `unavailable` reason, such as `Plugin Demo is disabled`, and the `plugin`; it can be read and duplicated, and no run can start on it), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition` (its `from`, COR-2234, is the agent a copy was made from and its version then, a file agent’s `hash` or a code agent’s version, `null` for a file that is not a copy). A ready file agent with reference documents also has `referenceSizes`, each document’s `path` and its `size` in bytes (its text as UTF-8), in the order its `references` lists them; it is `null` for a code agent, a file with no references, and a file that is not ready. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only, with a code agent’s saved overrides in force applied (`bureau.agents.overrides.get` reads them apart): its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `card`. A file agent has `codeDefinition: null`. `dropped` states, before any write, what a copy of the agent would lose, from the same function `bureau.agents.definitions.duplicate` answers its own `dropped` from (`generate` where a code agent names no model, `stopWhen`, `approvals`, `outputSchema`, `guardrails`, each only when the agent has it); it is empty for a file agent and a built-in agent. `fromNow`, for a copy whose file records a source (`definition.from`), is the version that source is at now (a code agent’s own `version` else its plugin’s, or a file agent’s `hash`), which `definition.from.version` is compared with; it is `null` when the file is not a copy or its source is not loaded. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,

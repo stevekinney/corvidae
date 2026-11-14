@@ -8,7 +8,8 @@
    * @tag dashboard
    * @useWhen Showing a row of related statistic tiles such as the top metrics of a dashboard.
    * @useWhen Giving a cluster of statistic entries a single accessible group label.
-   * @avoidWhen Rendering exactly one metric — use statistic on its own.
+   * @useWhen Setting one quiet stat in the page flow under a spotlight, with variant plain.
+   * @avoidWhen Rendering exactly one metric at full size — use statistic on its own.
    * @avoidWhen Building a freeform card grid unrelated to numeric metrics — compose surface or grid-list directly.
    * @related statistic
    */

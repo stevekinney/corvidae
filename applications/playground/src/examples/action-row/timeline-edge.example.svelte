@@ -40,7 +40,6 @@
       selected={currentEdge === edge.id}
       selectedState="current"
       currentValue="step"
-      density="condensed"
       onclick={() => {
         currentEdge = edge.id;
       }}

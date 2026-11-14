@@ -5,7 +5,11 @@ import type {
   SessionStore,
   Store,
 } from '@lostgradient/operative';
-import { createAgentSession, SESSION_OWNER_METADATA_KEY } from '@lostgradient/operative';
+import {
+  createAgentSession,
+  SESSION_OWNER_METADATA_KEY,
+  sessionArchivedAtOf,
+} from '@lostgradient/operative';
 import {
   Conversation,
   type ConversationHistory,
@@ -20,6 +24,7 @@ import {
   SessionOwnerConflictError,
 } from './session-authority';
 import type { DiagnosticSink } from './bureau-types/options';
+import { ContextArchivedError } from './bureau-errors';
 
 const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
@@ -296,6 +301,11 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
     // after a store error, must not make a newer run's session read as an older run's
     // outcome. Every other field is written as before.
     markerRunId?: string,
+    // COR-2285: the save that starts a run refuses a session that is archived, decided inside the
+    // atomic update, so an archive and a start racing on the session cannot both commit: the
+    // archive is fenced on the revision this save moves. Every other save (a terminal save, a
+    // recovery) lands on an archived session as on any other.
+    startsRun?: boolean,
   ): Promise<AgentSession | undefined> {
     if (!sessionStore) return undefined;
     const candidateRunId = metadata['lastRunId'];
@@ -322,6 +332,13 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
         resolveSessionOwner(existingSession.metadata) !== incomingOwner
       ) {
         throw new SessionOwnerConflictError(sessionId);
+      }
+      if (
+        startsRun === true &&
+        existingSession !== undefined &&
+        sessionArchivedAtOf(existingSession.metadata) !== null
+      ) {
+        throw new ContextArchivedError(sessionId);
       }
       const nextSession =
         existingSession ??

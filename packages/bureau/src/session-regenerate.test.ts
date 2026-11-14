@@ -8,7 +8,6 @@ import {
   conversationThroughRun,
   createAgent,
   createAgentSession,
-  createModelCatalog,
   GuardrailTripwireError,
   type AgentSession,
   type BackendDescriptor,
@@ -50,6 +49,7 @@ import { approvalToolbox } from './http/management/management-fixtures.test-supp
 import { OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
 import type { Bureau } from './bureau-types/facade';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -118,6 +118,7 @@ function scriptedAgent(script: Script) {
 
 async function openBureau(script: Script, storage: Storage = new MemoryStorage()) {
   const bureau = await createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: { agent: scriptedAgent(script) },
     storage,
     durable: true,
@@ -522,6 +523,7 @@ describe('a regeneration refused before the model is asked', () => {
     const charges: number[] = [];
     let generations = 0;
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           generate: async () => {
@@ -869,7 +871,7 @@ describe('a regeneration command', () => {
   });
 });
 
-const catalogRows = createModelCatalog().descriptors;
+const catalogRows = createVendorCatalog().descriptors;
 
 /** The default catalog's row for `choice`: the one row a fixed agent's generate reports. */
 function catalogRow(choice: {
@@ -894,6 +896,7 @@ async function openFixedBureau(
   calls: string[],
 ) {
   const bureau = await createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       agent: createAgent({
         name: 'agent',
@@ -979,6 +982,7 @@ describe('a regeneration under the Bureau’s invariants', () => {
   it('asks a first step’s answer again with the Bureau’s identity prompt, as the run asked it', async () => {
     const script = newScript();
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: { agent: scriptedAgent(script) },
       storage: new MemoryStorage(),
       durable: true,

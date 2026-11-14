@@ -9,7 +9,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
-  createModelCatalog,
   type GenerateContext,
   stopWhen,
   waitForCondition,
@@ -27,6 +26,7 @@ import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './bureau-types/facade';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -35,7 +35,7 @@ afterEach(async () => {
   await yieldToPortableEventLoop();
 });
 
-const anthropicDescriptors = createModelCatalog().descriptors.filter(
+const anthropicDescriptors = createVendorCatalog().descriptors.filter(
   (descriptor) => descriptor.provider === 'anthropic',
 );
 const png = pngBytes(4, 3);
