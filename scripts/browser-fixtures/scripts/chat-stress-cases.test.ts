@@ -250,7 +250,36 @@ describe('the committed Chat stress cases', () => {
     expect(assistant.content).toBe('Yes, the order was charged twice.');
   });
 
-  it('holds exactly the 81 cases the board requires, numbered 1 to 81', () => {
+  it('seeds the four narration situations: working with dots, settled twice over, and stopped', () => {
+    const messagesOf = (id: number) =>
+      Object.values(buildStressSetup(findStressCase(cases, id)!).conversation.messages);
+    const textsOf = (id: number) =>
+      messagesOf(id)
+        .filter((message) => message.role === 'assistant')
+        .map((message) => message.content);
+
+    const working = buildStressSetup(findStressCase(cases, 82)!);
+    expect(working.streaming).toBe(true);
+    expect(textsOf(82)).toEqual(['Reading the refund policy first.']);
+
+    for (const id of [83, 84]) {
+      expect(buildStressSetup(findStressCase(cases, id)!).streaming).toBe(false);
+      expect(textsOf(id)).toEqual([
+        'Reading the refund policy first.',
+        'Now the recent orders.',
+        'The policy and the orders agree on the 4471 refund.',
+      ]);
+    }
+    // The open case presses the step row's own toggle, so the lines are proved visible by a click.
+    expect(findStressCase(cases, 84)?.steps[0]).toMatchObject({ action: 'click', role: 'button' });
+
+    const stopped = buildStressSetup(findStressCase(cases, 85)!);
+    expect(stopped.streaming).toBe(false);
+    expect(stopped.turnStates[0]).toEqual({ kind: 'stopped' });
+    expect(textsOf(85)).toEqual(['Reading the refund policy first.']);
+  });
+
+  it('holds exactly the 85 cases the board requires, numbered 1 to 85', () => {
     expect(cases).toHaveLength(STRESS_CASE_COUNT);
     expect(cases.map((stressCase) => stressCase.id)).toEqual(
       Array.from({ length: STRESS_CASE_COUNT }, (_, index) => index + 1),

@@ -2773,5 +2773,80 @@
       }
     ],
     "focusSweep": false
+  },
+  {
+    "id": 82,
+    "slug": "narration-working",
+    "title": "While the agent works, its line before a step is muted and one step smaller than an answer, and the working dots sit under the last part.",
+    "provenance": "issue-named",
+    "source": "2026-11-13 owner review: visually distinguish thinking from the final answer; narration is muted and smaller while the agent works.",
+    "rows": ["M2"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "narration-working"
+    },
+    "steps": [
+      { "action": "expect-text", "text": "Reading the refund policy first." },
+      { "action": "expect", "role": "status", "name": "Assistant is typing" }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 83,
+    "slug": "narration-folded",
+    "title": "A settled turn of a line, a step, a line, a step and the answer reads as one closed step row and the answer; the lines are inside the row.",
+    "provenance": "issue-named",
+    "source": "2026-11-13 owner review: when the answer arrives, the narration folds into the step row above it.",
+    "rows": ["M2"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "narration-settled",
+      "narration": ["Reading the refund policy first.", "Now the recent orders."]
+    },
+    "steps": [
+      { "action": "expect-text", "text": "The policy and the orders agree on the 4471 refund." },
+      { "action": "expect", "role": "button", "name": "2 steps" }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 84,
+    "slug": "narration-folded-open",
+    "title": "The same settled turn with its step row open: each line shows between the steps, muted and 13px, on the steps' text edge.",
+    "provenance": "issue-named",
+    "source": "2026-11-13 owner review: when the answer arrives, the narration folds into the step row above it.",
+    "rows": ["M2"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "narration-settled",
+      "narration": ["Reading the refund policy first.", "Now the recent orders."]
+    },
+    "steps": [
+      { "action": "click", "role": "button", "name": "2 steps" },
+      { "action": "expect-text", "text": "Reading the refund policy first." },
+      { "action": "expect-text", "text": "Now the recent orders." }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 85,
+    "slug": "narration-stopped",
+    "title": "A run stopped after a line and a step, before any answer, keeps the line visible and muted above the notice.",
+    "provenance": "issue-named",
+    "source": "2026-11-13 owner review: if a turn stops short with only narration, the narration stays visible, muted, with the notice.",
+    "rows": ["M2", "R4"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "narration-stopped"
+    },
+    "steps": [
+      { "action": "expect-text", "text": "Reading the refund policy first." },
+      { "action": "expect-text", "text": "Stopped by you" }
+    ],
+    "variants": [],
+    "focusSweep": false
   }
 ]
