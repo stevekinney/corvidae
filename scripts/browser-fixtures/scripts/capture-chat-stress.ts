@@ -2523,7 +2523,7 @@ export async function readIconCentreProblems(page: Page): Promise<string[]> {
       while (
         block !== null &&
         block !== container &&
-        /^inline/.test(getComputedStyle(block).display) &&
+        getComputedStyle(block).display.startsWith('inline') &&
         !/^inline-(flex|grid)$/.test(getComputedStyle(block).display)
       ) {
         block = block.parentElement;

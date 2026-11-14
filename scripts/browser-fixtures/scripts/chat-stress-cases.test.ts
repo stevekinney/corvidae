@@ -167,7 +167,9 @@ describe('the committed Chat stress cases', () => {
   it('keeps the attachment strip witnesses to the files each case uploads', () => {
     const uploadsOf = (steps: readonly { action: string; files?: readonly unknown[] }[] = []) =>
       steps.find((step) => step.action === 'upload')?.files ?? [];
-    const stripOf = (steps: readonly { action: string }[] = []) =>
+    const stripOf = (
+      steps: readonly { action: string }[] = [],
+    ): Record<string, unknown> | undefined =>
       steps.find((step) => step.action === 'expect-attachment-strip');
 
     const ready = findStressCase(cases, 50);
