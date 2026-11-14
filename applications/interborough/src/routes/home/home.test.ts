@@ -127,6 +127,21 @@ describe('Home', () => {
     expect(needsYou & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  test('reads the recent chats without the archived ones, which are put away (COR-2285 V5)', async () => {
+    const asked: Record<string, unknown>[] = [];
+    installed = installHome(sampleHomeWorld());
+    const world = sampleHomeWorld();
+    installed.stub.on('bureau.contexts.list', (params) => {
+      asked.push(params);
+      return { contexts: world.chats, nextOffset: null };
+    });
+    const { findByTestId } = render(HomeHarness, { props: { client: installed.client } } as never);
+    await findByTestId('home-date');
+
+    expect(asked.length).toBeGreaterThan(0);
+    for (const params of asked) expect(params).toMatchObject({ archived: 'exclude' });
+  });
+
   test('puts a dot before the count when runs failed in the last day', async () => {
     const { getByTestId } = await open(sampleHomeWorld({ failedRuns: 3 }));
     const counts = getByTestId('home-counts');

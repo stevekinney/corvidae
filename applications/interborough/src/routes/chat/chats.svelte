@@ -3,7 +3,8 @@
    * `/chats`, `/chats/:chat` and `/chats/new`: the chats the caller started as a list with the open
    * chat beside it (ListDetail). The list is the pane's own, header and all: "Chats" with a
    * secondary "+" icon button that starts a chat, a "Search chats" field and the status segments
-   * (All, Waiting on you, Done, each with its count) under it, then the chats newest first under
+   * (All, Waiting on you, Done, each with its count, and Archived where the pane has room for it)
+   * under it, then the chats newest first under
    * their days, each day band naming the zone its times are in. A row is the chat's title and the
    * time it last changed on line one, and on line two its status (the one fixed column, so the
    * latest messages line up) and its latest message, or the question it asks while it waits on the
@@ -23,6 +24,10 @@
    * is read on its own when its page is not loaded, so Waiting on you holds every waiting chat, and
    * a chat whose latest run failed says Failed (`recent-tasks.ts`, the same reading the
    * notification bell uses).
+   *
+   * An archived chat (COR-2285 V5) is in none of the status segments: the list leaves archived
+   * chats out, and Archived lists them alone, read only when it is chosen. An archived chat opened
+   * by its address keeps its pane without a row in All.
    */
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -65,9 +70,10 @@
     matchingRows,
     pendingQuestions,
     segmentCounts,
+    isArchivedChat,
     sessionRow,
     waitingChatIds,
-    type ChatSegment,
+    type ChatListSegment,
     type SessionRow,
   } from './session-groups.ts';
 
@@ -76,6 +82,12 @@
   const WIDE_PANE_WIDTH = 480;
   /** The header's width under which the status segments no longer fit on one line. */
   const SEGMENTS_MINIMUM_WIDTH = 236;
+  /**
+   * The header's width under which Archived no longer fits on the line after the three status
+   * segments. The list's default width (280 pixels, 248 inside its padding) is under it, so Archived
+   * shows only in a pane dragged wider (COR-2285 V5).
+   */
+  const ARCHIVED_SEGMENT_MINIMUM_WIDTH = 316;
 
   // The outlet mounts a new route for each page, so the draft is named once. A new chat has no
   // session until its first run: the client names the thread now, and its row stands for it until
@@ -88,11 +100,16 @@
   const isNew = $derived(router.current.route?.pattern === '/chats/new');
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
+  // The chats that are not archived. The archived ones are their own list, read only while the
+  // Archived segment is chosen, so a chat put away leaves All, Waiting on you and Done.
   const sessions = createInfiniteQuery(
     () => ({
       queryKey: queryKeys.contexts.list(null),
       queryFn: ({ pageParam, signal }) =>
-        listContexts({ origin: 'chat', limit: PAGE_SIZE, offset: pageParam }, { signal }),
+        listContexts(
+          { origin: 'chat', archived: 'exclude', limit: PAGE_SIZE, offset: pageParam },
+          { signal },
+        ),
       initialPageParam: 0,
       getNextPageParam: (last) => last.nextOffset ?? undefined,
       retry: false,
@@ -179,14 +196,23 @@
 
   const questions = $derived(pendingQuestions(reviews.data ?? []));
   const failedChats = $derived(chatsWithFailedRun(tasks.data?.tasks ?? []));
-  /** Every chat the list holds, whatever the search and the segments leave. */
+  /** The open chat as a row, when it is on no loaded page: an old chat, or an archived one. */
+  const openRow = $derived(
+    open.data === undefined || openIsListed
+      ? undefined
+      : sessionRow(open.data, questions, failedChats),
+  );
+  /**
+   * Every chat the list holds that is not archived, whatever the search and the segments leave. An
+   * open chat that is archived is not listed with them: it keeps its pane, not a row in All.
+   */
   const allRows = $derived(
     chatListRows(
       combinePages(
         [
           loaded,
           missingWaiting.length > 0 ? (waiting.data ?? []) : [],
-          open.data !== undefined && !openIsListed ? [open.data] : [],
+          open.data !== undefined && !openIsListed && !isArchivedChat(open.data) ? [open.data] : [],
         ],
         (contexts) => contexts,
         (context) => context.id,
@@ -202,17 +228,55 @@
   // that, as the long turn's frame draws it (row 21p), they give way to the search, and what was
   // chosen narrows nothing, like on a phone. An unmeasured pane shows them.
   const segmentsFit = $derived(paneWidth === 0 || paneWidth >= SEGMENTS_MINIMUM_WIDTH);
+  const archivedFits = $derived(paneWidth === 0 || paneWidth >= ARCHIVED_SEGMENT_MINIMUM_WIDTH);
 
   // A phone's list is a screen of its own with no search or segments (row 06l), so what was typed
   // or chosen on a wider screen narrows nothing there, and comes back when the screen is wide again.
   let typed = $state('');
-  let chosen = $state<ChatSegment>('all');
+  let chosen = $state<ChatListSegment>('all');
   const search = $derived(phone.current ? '' : typed);
-  const segment = $derived<ChatSegment>(phone.current || !segmentsFit ? 'all' : chosen);
+  // Archived needs room beside the three status segments; in a pane too narrow for it, it is not
+  // drawn, and choosing it narrows nothing, as the segments do in a pane too narrow for them.
+  const segment = $derived<ChatListSegment>(
+    phone.current || !segmentsFit || (chosen === 'archived' && !archivedFits) ? 'all' : chosen,
+  );
+  const showingArchived = $derived(segment === 'archived');
+  // The archived chats, read only while their segment is chosen: a list of their own, newest first,
+  // that the status segments never count.
+  const archived = createInfiniteQuery(
+    () => ({
+      queryKey: queryKeys.contexts.archived(),
+      queryFn: ({ pageParam, signal }) =>
+        listContexts(
+          { origin: 'chat', archived: 'only', limit: PAGE_SIZE, offset: pageParam },
+          { signal },
+        ),
+      initialPageParam: 0,
+      getNextPageParam: (last) => last.nextOffset ?? undefined,
+      enabled: showingArchived,
+      retry: false,
+    }),
+    undefined,
+  );
+  const archivedRows = $derived(
+    chatListRows(
+      combinePages(
+        archived.data?.pages,
+        (page) => page.contexts,
+        (context) => context.id,
+      ).map((context) => sessionRow(context, questions, failedChats)),
+    ),
+  );
+  /** The list the chosen segment reads: the archived chats, or the rest. */
+  const shownList = $derived(showingArchived ? archived : sessions);
   const searched = $derived(matchingRows(allRows, search, agentName));
   // The segments count what the search leaves, so each says how many it would show.
   const counts = $derived(segmentCounts(searched));
-  const visible = $derived(searched.filter((row) => inSegment(row, segment)));
+  const visible = $derived(
+    showingArchived
+      ? matchingRows(archivedRows, search, agentName)
+      : searched.filter((row) => inSegment(row, segment === 'archived' ? 'all' : segment)),
+  );
   const searching = $derived(search.trim() !== '');
 
   // The open chat always has a row to open it in, so its pane is shown even when the Bureau has not
@@ -222,22 +286,24 @@
     openId === null || visible.some((row) => row.id === openId)
       ? visible
       : [
-          allRows.find((row) => row.id === openId) ?? {
-            id: openId,
-            title: CHAT_COPY.untitled,
-            snippet: '',
-            agentName: '',
-            updatedAt: null,
-            status: 'Done',
-          },
+          allRows.find((row) => row.id === openId) ??
+            archivedRows.find((row) => row.id === openId) ??
+            (openRow?.id === openId ? openRow : undefined) ?? {
+              id: openId,
+              title: CHAT_COPY.untitled,
+              snippet: '',
+              agentName: '',
+              updatedAt: null,
+              status: 'Done',
+            },
           ...visible,
         ],
   );
   const listState = $derived.by<'loading' | 'failed' | 'first-use' | 'no-match' | 'none' | 'rows'>(
     () => {
-      if (sessions.data === undefined) return sessions.isError ? 'failed' : 'loading';
+      if (shownList.data === undefined) return shownList.isError ? 'failed' : 'loading';
       if (visible.length > 0) return 'rows';
-      if (allRows.length === 0) return 'first-use';
+      if (!showingArchived && allRows.length === 0) return 'first-use';
       return searching ? 'no-match' : 'none';
     },
   );
@@ -297,12 +363,12 @@
 {/snippet}
 
 {#snippet loadMore()}
-  {#if sessions.hasNextPage || sessions.isFetchingNextPage}
+  {#if shownList.hasNextPage || shownList.isFetchingNextPage}
     <LoadMore
-      hasMore={sessions.hasNextPage}
-      loading={sessions.isFetchingNextPage}
+      hasMore={shownList.hasNextPage}
+      loading={shownList.isFetchingNextPage}
       onLoadMore={async () => {
-        await sessions.fetchNextPage();
+        await shownList.fetchNextPage();
       }}
       buttonLabel={CHAT_COPY.loadMore}
       endOfListMessage=""
@@ -361,7 +427,7 @@
       headingLevel={3}
       title={CHAT_COPY.list.failedTitle}
       description={CHAT_COPY.list.failedDescription}
-      onRetry={() => void sessions.refetch()}
+      onRetry={() => void shownList.refetch()}
     />
   {:else if listState === 'first-use'}
     <EmptyState
@@ -399,7 +465,10 @@
       {/snippet}
     </EmptyState>
   {:else}
-    {@const empty = CHAT_COPY.list.segmentEmpty[segment === 'done' ? 'done' : 'waiting']}
+    {@const empty =
+      CHAT_COPY.list.segmentEmpty[
+        segment === 'done' ? 'done' : segment === 'archived' ? 'archived' : 'waiting'
+      ]}
     <EmptyState
       kind="filtered"
       size="compact"
@@ -465,7 +534,7 @@
               labelVisible={false}
               size="sm"
               value={segment}
-              onValueChange={(next: ChatSegment) => (chosen = next)}
+              onValueChange={(next: ChatListSegment) => (chosen = next)}
             >
               {#each CHAT_SEGMENTS as option (option)}
                 <Segment
@@ -475,6 +544,11 @@
                   {CHAT_COPY.list.segments[option]}
                 </Segment>
               {/each}
+              <!-- The archived chats are a list of their own, read when this is chosen, so it has
+                   no count to give. -->
+              {#if archivedFits}
+                <Segment value="archived">{CHAT_COPY.list.segments.archived}</Segment>
+              {/if}
             </SegmentedControl>
           {/if}
         {/if}

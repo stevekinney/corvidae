@@ -105,6 +105,21 @@ describe('the More menu', () => {
     expect(view.queryByRole('menuitem', { name: MORE.archive })).toBeNull();
   });
 
+  test('Unarchive in the menu brings the composer back', async () => {
+    const served = serveArchivable(ARCHIVED_AT);
+    const view = mount();
+    await untilArchived(view);
+
+    await openMenu(view);
+    await fireEvent.click(view.getByRole('menuitem', { name: MORE.unarchive }));
+
+    await waitFor(() => expect(composer(view)).not.toBeNull());
+    expect(callsTo(served, 'bureau.contexts.unarchive').map((call) => call.params)).toEqual([
+      { contextId: 'session-1' },
+    ]);
+    expect(archivedBar(view)).toBeNull();
+  });
+
   test('says a chat that is working or waiting cannot be archived yet, and keeps its composer', async () => {
     serve(TURNS, {
       'bureau.contexts.archive': () => {

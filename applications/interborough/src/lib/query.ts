@@ -51,6 +51,8 @@ export const queryKeys = {
     row: (contextId: string) => ['contexts', 'row', contextId] as const,
     /** The caller's sessions, all of them or one agent's. */
     list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
+    /** The caller's archived chats, which the chat list's Archived segment lists apart from the rest. */
+    archived: () => ['contexts', 'archived'] as const,
     /** One agent's chats under the filters of its page, so pages read under one filter never merge with another's. */
     filtered: (agentName: string, filters: Readonly<Record<string, string>>) =>
       ['contexts', 'list', agentName, filters] as const,

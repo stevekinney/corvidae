@@ -112,6 +112,8 @@ describe('the Chats tab', () => {
     await waitFor(() =>
       expect(lastListed(served)).toMatchObject({ activity: 'awaiting-input', offset: 0 }),
     );
+    // An archived chat is put away: the agent's chats leave it out (COR-2285 V5).
+    expect(lastListed(served)).toMatchObject({ archived: 'exclude' });
   });
 
   test('asks for a title when the search is submitted', async () => {

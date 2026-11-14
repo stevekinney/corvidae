@@ -88,7 +88,7 @@ export const CHAT_COPY = {
     searchPlaceholder: 'Search chats',
     /** The status segments over the list; the count is part of each one's accessible name. */
     segmentsLabel: 'Status',
-    segments: { all: 'All', waiting: 'Waiting on you', done: 'Done' },
+    segments: { all: 'All', waiting: 'Waiting on you', done: 'Done', archived: 'Archived' },
     /** First use: no chat has been started, and the one primary New chat is here. */
     emptyTitle: 'No chats yet',
     emptyDescription: 'Start one with an agent.',
@@ -105,6 +105,10 @@ export const CHAT_COPY = {
       done: {
         title: 'No finished chats yet',
         description: 'A chat is done once its latest reply is in.',
+      },
+      archived: {
+        title: 'No archived chats',
+        description: 'Archive a chat from its menu to put it away here.',
       },
     },
     showAll: 'Show all chats',

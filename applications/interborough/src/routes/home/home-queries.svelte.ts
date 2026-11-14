@@ -81,7 +81,8 @@ export function useRecentChats(): CreateQueryResult<ContextPage> {
   return createQuery(() => ({
     queryKey: queryKeys.contexts.recent(RECENT_CHAT_LIMIT),
     queryFn: ({ signal }: { signal: AbortSignal }) =>
-      listContexts({ origin: 'chat', limit: RECENT_CHAT_LIMIT }, { signal }),
+      // An archived chat is put away, so Recent chats leaves it out (COR-2285 V5).
+      listContexts({ origin: 'chat', archived: 'exclude', limit: RECENT_CHAT_LIMIT }, { signal }),
     retry: false,
   }));
 }

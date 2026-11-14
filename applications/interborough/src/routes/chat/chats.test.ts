@@ -58,6 +58,8 @@ describe('the list of sessions', () => {
     expect(served.calls.find((call) => call.method === 'bureau.contexts.list')?.params).toEqual({
       // Only the chats a person started: a goal's or a schedule's session is reached from its run.
       origin: 'chat',
+      // An archived chat is listed by the Archived segment alone (COR-2285 V5).
+      archived: 'exclude',
       limit: 20,
       offset: 0,
     });
