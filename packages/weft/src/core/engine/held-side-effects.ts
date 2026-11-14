@@ -41,22 +41,23 @@ export class HeldSideEffects {
   };
 
   /**
-   * Take everything held, for a commit about to run, with a function that puts it back should the
-   * commit fail. `undefined` when nothing is held.
+   * Run `commit` with everything held, which it writes in its batch (none, possibly). What it took
+   * is held again should it throw, and the error rethrown.
    */
-  take(): { sideEffects: AtomicWorkflowCommitSideEffects; restore: () => void } | undefined {
-    if (this.#held.length === 0) return undefined;
+  async commitWith(
+    commit: (sideEffects: AtomicWorkflowCommitSideEffects) => Promise<void>,
+  ): Promise<void> {
     const taken = this.#held;
     this.#held = [];
-    return {
-      sideEffects: {
+    try {
+      await commit({
         conditions: taken.flatMap((entry) => entry.sideEffects.conditions),
         operations: taken.flatMap((entry) => entry.sideEffects.operations),
-      },
-      restore: () => {
-        this.#held = [...taken, ...this.#held];
-      },
-    };
+      });
+    } catch (error) {
+      this.#held = [...taken, ...this.#held];
+      throw error;
+    }
   }
 
   /** Hand what is still held to the workflow's staged buffer, as the consume would have staged it. */

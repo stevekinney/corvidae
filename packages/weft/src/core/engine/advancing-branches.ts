@@ -38,10 +38,17 @@ import {
   type ParallelBranchSlot,
   type ParallelOperationCacheEntry,
 } from '../context/parallel-cache-entry.ts';
+import {
+  collectWaitNames,
+  createBranchTree,
+  followParentSignal,
+  linkNestedStep,
+  type NestedLink,
+} from './advancing-branch-tree.ts';
 import type { MidOperationCommitReport } from './checkpoint-io.ts';
 import { finalizeAndUnwrap } from './deferred-consume-envelope.ts';
 import { requestCompletion } from './file-workflow-completion-events.ts';
-import { HeldSideEffects, type SideEffectHold } from './held-side-effects.ts';
+import type { SideEffectHold } from './held-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   captureFirstRejection,
@@ -52,86 +59,6 @@ import { recordSettledStep, takeSettledSteps } from './settled-step-sink.ts';
 import { assertSupportedSignalBranches } from './signal-branch-guard.ts';
 
 type ParallelOperation = Extract<ContextOperationRequest, { type: 'parallel' }>;
-
-/**
- * What every advancing step nested in one top-level step shares with it: the chain its sections
- * run on, the consumes it holds, and the operations every branch has open, at any depth.
- */
-type BranchTree = {
-  /** Run `section` after every section of the tree before it. A section never rejects. */
-  inOrder: <Result>(section: () => Promise<Result>) => Promise<Result>;
-  held: HeldSideEffects;
-  /** The operation each branch of the tree has open, by run and branch. */
-  open: Map<string, ContextOperationRequest>;
-  /** The nested steps whose runs have begun, which register their own branches' operations. */
-  started: WeakSet<ContextOperationRequest>;
-  /** Resolves the next time a branch of the tree closes an operation. */
-  changed: () => Promise<void>;
-  notifyChanged: () => void;
-  nextRunId: number;
-};
-
-function createBranchTree(): BranchTree {
-  let chain: Promise<void> = Promise.resolve();
-  let changed = Promise.withResolvers<void>();
-  return {
-    inOrder: (section) => {
-      const result = chain.then(section);
-      chain = result.then(
-        () => undefined,
-        () => undefined,
-      );
-      return result;
-    },
-    held: new HeldSideEffects(),
-    open: new Map(),
-    started: new WeakSet(),
-    changed: () => changed.promise,
-    notifyChanged: () => {
-      const previous = changed;
-      changed = Promise.withResolvers<void>();
-      previous.resolve();
-    },
-    nextRunId: 0,
-  };
-}
-
-/**
- * How an advancing step nested in a branch of another reports to it: through the tree they share,
- * by writing its progress under its own step number in the branch's results, and by committing
- * through the step that owns the branch.
- */
-export type NestedLink = {
-  tree: BranchTree;
-  /** Keep `entry`, the nested step's progress, in the results of the branch it is a step of. */
-  record: (entry: ParallelOperationCacheEntry) => void;
-  /** Commit the owning step's progress, which now carries the nested step's. Runs in a section. */
-  commit: () => Promise<void>;
-};
-
-const NESTED_LINKS = new WeakMap<ContextOperationRequest, NestedLink>();
-
-/** The link of an advancing step a branch of another runs, or `undefined` for any other. */
-export function nestedLinkOf(request: ContextOperationRequest): NestedLink | undefined {
-  return NESTED_LINKS.get(request);
-}
-
-/** Add to `names` every signal `request` waits on, through every coordinator it holds. */
-function collectWaitNames(
-  request: ContextOperationRequest,
-  started: WeakSet<ContextOperationRequest>,
-  names: Set<string>,
-): void {
-  if (request.type === 'wait-signal') {
-    names.add(request.signalName);
-    return;
-  }
-  if (request.type !== 'race' && request.type !== 'parallel') return;
-  // A nested step whose run has begun has its branches' operations open in the tree itself; its
-  // own operations are only the first of each.
-  if (started.has(request)) return;
-  for (const operation of request.operations) collectWaitNames(operation, started, names);
-}
 
 export type AdvancingRun = {
   internals: EngineInternals;
@@ -175,7 +102,10 @@ export type AdvancingResult = {
 };
 
 /** The outcome with a fulfilled value finalized: the consume of a wait's signal goes to `hold`. */
-async function finalizeOutcome(settled: BranchOutcome, hold: SideEffectHold): Promise<BranchOutcome> {
+async function finalizeOutcome(
+  settled: BranchOutcome,
+  hold: SideEffectHold,
+): Promise<BranchOutcome> {
   if (settled.status === 'rejected') return settled;
   try {
     return { status: 'fulfilled', value: await finalizeAndUnwrap(settled.value, hold) };
@@ -184,19 +114,13 @@ async function finalizeOutcome(settled: BranchOutcome, hold: SideEffectHold): Pr
   }
 }
 
-/**
- * Run every branch to its end and return the settled slots. Never rejects for a branch's failure:
- * the caller rethrows `firstError` once every branch has settled, as `ctx.all` does.
- */
-export async function runAdvancingBranches(run: AdvancingRun): Promise<AdvancingResult> {
-  const { drivers, operation } = run;
-  const tree = run.nested?.tree ?? createBranchTree();
-  const runId = tree.nextRunId++;
-  tree.started.add(operation);
-  const keyOf = (index: number) => `${String(runId)}:${String(index)}`;
-  const operationIds = drivers.map((_, index) => `${operation.operationId}:${String(index)}`);
-  const capture = createFirstRejectionCapture();
-  const slots: ParallelBranchSlot[] = drivers.map((driver, index) => {
+/** The slot of each branch once primed: finished, failed while it replayed, or still to run. */
+function primedSlots(
+  drivers: readonly BranchDriver[],
+  operationIds: readonly string[],
+  capture: ReturnType<typeof createFirstRejectionCapture>,
+): ParallelBranchSlot[] {
+  return drivers.map((driver, index) => {
     const operationId = operationIds[index]!;
     if (driver.failure !== undefined) {
       // The branch threw while its recorded steps replayed: it fails as it did before the restart.
@@ -211,6 +135,21 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
       ? { status: 'fulfilled', value: driver.first.value, operationId }
       : { status: 'pending', operationId };
   });
+}
+
+/**
+ * Run every branch to its end and return the settled slots. Never rejects for a branch's failure:
+ * the caller rethrows `firstError` once every branch has settled, as `ctx.all` does.
+ */
+export async function runAdvancingBranches(run: AdvancingRun): Promise<AdvancingResult> {
+  const { drivers, operation } = run;
+  const tree = run.nested?.tree ?? createBranchTree();
+  const runId = tree.nextRunId++;
+  tree.started.add(operation);
+  const keyOf = (index: number) => `${String(runId)}:${String(index)}`;
+  const operationIds = drivers.map((_, index) => `${operation.operationId}:${String(index)}`);
+  const capture = createFirstRejectionCapture();
+  const slots = primedSlots(drivers, operationIds, capture);
   const lastRequests: (ContextOperationRequest | undefined)[] = drivers.map((driver) =>
     driver.first.done ? undefined : driver.first.request,
   );
@@ -251,24 +190,30 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     return [...wanted].some((name) => held.has(name));
   };
 
-  // A step that starts afresh refuses branches whose first steps wait on one signal, as `main`
-  // did. A step resumed after a restart opens its branches in order and holds a later one whose
-  // wait a sibling already has open, as the run held it before the restart.
-  const firstRequests = drivers.flatMap((driver) => (driver.first.done ? [] : [driver.first.request]));
-  if (operation.resumedCacheEntry === undefined) assertSupportedSignalBranches(firstRequests);
-  for (const [index, driver] of drivers.entries()) {
-    if (driver.first.done) continue;
-    if (conflictsWithSibling(index, driver.first.request)) {
-      deferred.set(index, driver.first.request);
-    } else {
-      openBranch(index, driver.first.request);
+  /**
+   * Open each branch's first operation, or hold it back. A step that starts afresh refuses
+   * branches whose first steps wait on one signal, as `main` did. A step resumed after a restart
+   * opens its branches in order and holds a later one whose wait is already open elsewhere, as the
+   * run held it before the restart.
+   */
+  const openFirstOperations = () => {
+    const firstRequests = drivers.flatMap((driver) =>
+      driver.first.done ? [] : [driver.first.request],
+    );
+    if (operation.resumedCacheEntry === undefined) assertSupportedSignalBranches(firstRequests);
+    for (const [index, driver] of drivers.entries()) {
+      if (driver.first.done) continue;
+      if (conflictsWithSibling(index, driver.first.request)) {
+        deferred.set(index, driver.first.request);
+      } else {
+        openBranch(index, driver.first.request);
+      }
     }
-  }
+  };
+  openFirstOperations();
 
   const controller = new AbortController();
-  const abortFromParent = () => controller.abort(run.parentSignal?.reason);
-  if (run.parentSignal?.aborted === true) abortFromParent();
-  run.parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+  const stopFollowingParent = followParentSignal(run.parentSignal, controller);
 
   let fatal: AdvancingResult['fatal'];
   let commitFailure: AdvancingResult['commitFailure'];
@@ -317,21 +262,25 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
       await run.nested.commit();
       return;
     }
-    if (run.commit === undefined || commitFailure !== undefined) return;
+    if (run.commit !== undefined) await commitAsOwner(run.commit);
+  };
+
+  /** The commit of the top-level step, which writes the checkpoint itself. */
+  const commitAsOwner = async (commit: NonNullable<AdvancingRun['commit']>): Promise<void> => {
+    if (commitFailure !== undefined || run.isCurrent?.() === false) return;
     // With every branch over, the commit that settles the operation carries the step's result and
     // what the tree still holds.
     if (slots.every((slot) => slot.status !== 'pending')) return;
-    if (run.isCurrent?.() === false) return;
-    const taken = tree.held.take();
     const settled = takeSettledSteps(run.internals, run.workflowId);
     try {
-      await run.commit({ ...operation, operations: activeRequests() }, currentEntry(), {
-        settledBranchOperationIds: settled.activityOperationIds,
-        settledFileWorkflowEvents: settled.events,
-        sideEffects: taken?.sideEffects ?? { conditions: [], operations: [] },
-      });
+      await tree.held.commitWith((sideEffects) =>
+        commit({ ...operation, operations: activeRequests() }, currentEntry(), {
+          settledBranchOperationIds: settled.activityOperationIds,
+          settledFileWorkflowEvents: settled.events,
+          sideEffects,
+        }),
+      );
     } catch (error) {
-      taken?.restore();
       commitFailure = { error };
     }
   };
@@ -345,7 +294,7 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     request: ContextOperationRequest,
   ): Promise<BranchOutcome> => {
     if (request.type === 'parallel' && branchDriversOf(request) !== undefined) {
-      NESTED_LINKS.set(request, {
+      linkNestedStep(request, {
         tree,
         record: (entry) => drivers[index]!.hold(request.step, entry),
         commit: commitProgress,
@@ -467,6 +416,16 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     }
   };
 
+  /** Hand the settled step on: to its parent branch, or, at the top, to the settling commit. */
+  const handOn = (entry: ParallelOperationCacheEntry) => {
+    if (run.nested === undefined) {
+      // The commit that settles the operation writes the entry; it writes what is still held too.
+      tree.held.stageRemaining(run.internals, run.workflowId);
+    } else {
+      run.nested.record(entry);
+    }
+  };
+
   try {
     await Promise.all(
       drivers.map((_, index) =>
@@ -475,18 +434,13 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     );
     await ownTail;
   } finally {
-    run.parentSignal?.removeEventListener('abort', abortFromParent);
+    stopFollowingParent();
     controller.abort();
     for (const index of drivers.keys()) tree.open.delete(keyOf(index));
     tree.notifyChanged();
   }
   const entry = currentEntry();
-  if (run.nested === undefined) {
-    // The commit that settles the operation writes the entry; it writes what is still held too.
-    tree.held.stageRemaining(run.internals, run.workflowId);
-  } else {
-    run.nested.record(entry);
-  }
+  handOn(entry);
   return {
     slots,
     entry,

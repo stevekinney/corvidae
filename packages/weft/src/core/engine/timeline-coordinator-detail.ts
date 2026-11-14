@@ -129,6 +129,22 @@ export function captureActivityCompletionReceipts(
 }
 
 /**
+ * The activity completions the commit about to run reports: every held receipt, or, for a commit
+ * that keeps the pending entry (made while its operation still runs), only those of the branch
+ * activities it names.
+ */
+export function captureCommitReceipts(
+  internals: EngineInternals,
+  workflowId: string,
+  timeline: 'record-operation' | 'preserve-pending' | undefined,
+  settledBranchOperationIds: readonly string[] | undefined,
+): ActivityCompletionReceipt[] {
+  return timeline === 'preserve-pending'
+    ? captureSettledBranchReceipts(internals, workflowId, settledBranchOperationIds ?? [])
+    : captureActivityCompletionReceipts(internals, workflowId);
+}
+
+/**
  * The completion receipts of the named branch activities, taken out of the held set. A commit made
  * while its coordinator is still running (a settled slot, before its siblings) reports only the
  * branches it made durable: the rest stay held for the commit that settles the coordinator.

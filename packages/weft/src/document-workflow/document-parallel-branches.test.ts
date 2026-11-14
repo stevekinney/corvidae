@@ -326,7 +326,9 @@ describe('a timed wait in a branch of a parallel step', () => {
     restarted.register(child);
     await registerWorkflowDocuments(restarted, host, { active: [document] });
     const [handle] = await restarted.recoverAll();
-    await waitUntil(async () => isWaitingOn(restarted, id, 'go'), { message: 'the sibling to wait' });
+    await waitUntil(async () => isWaitingOn(restarted, id, 'go'), {
+      message: 'the sibling to wait',
+    });
     await advanceTimersByTime(60 * 60 * 1000);
     await handle!.signal('go', 'signalled');
     expect(await handle!.result()).toEqual({

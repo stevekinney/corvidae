@@ -111,8 +111,8 @@ function createSlotCommitter(
 ):
   | {
       onSlotSettled: OnSlotSettled;
-      failure: () => { error: unknown } | undefined;
-      held: HeldSideEffects;
+      /** Call once every slot has settled: hands on what is held, and reports a failed commit. */
+      settle: () => { error: unknown } | undefined;
     }
   | undefined {
   if (persistCheckpoint === undefined) return undefined;
@@ -131,7 +131,6 @@ function createSlotCommitter(
     if (failure !== undefined || slot?.status !== 'fulfilled') return;
     if (!slots.some((other) => other.status === 'pending')) return;
     if (!canPersistPartialEntry(internals, workflowId) || !isCurrent()) return;
-    let taken: ReturnType<HeldSideEffects['take']>;
     try {
       slot.value = await finalizeAndUnwrap(slot.value, held.hold);
       if (!isCurrent()) return;
@@ -152,13 +151,13 @@ function createSlotCommitter(
         operation.step,
         buildEntryFromSlots(variant, snapshot),
       );
-      taken = held.take();
-      await persistCheckpoint(workflowId, operation, {
-        settledBranchOperationIds: [slot.operationId],
-        sideEffects: taken?.sideEffects ?? { conditions: [], operations: [] },
-      });
+      await held.commitWith((sideEffects) =>
+        persistCheckpoint(workflowId, operation, {
+          settledBranchOperationIds: [slot.operationId],
+          sideEffects,
+        }),
+      );
     } catch (error) {
-      taken?.restore();
       failure = { error };
     }
   };
@@ -167,8 +166,10 @@ function createSlotCommitter(
       chain = chain.then(() => commitSlot(slots, index));
       return chain;
     },
-    failure: () => failure,
-    held,
+    settle: () => {
+      held.stageRemaining(internals, workflowId);
+      return failure;
+    },
   };
 }
 
@@ -240,13 +241,12 @@ export async function processParallelOperation(
       (index) => callbacks.executeSubOperation(workflowId, operation.operations[index]!),
       slotCommitter?.onSlotSettled,
     );
-    // Every slot is in `slots` now: the commit that settles the operation writes what is held.
-    slotCommitter?.held.stageRemaining(internals, workflowId);
     // What an advancing parallel step nested in a branch settled reports here, whatever follows.
     const nestedCompletion = takeSettledSteps(internals, workflowId);
-    // A slot commit that failed means a branch's result and its signal consume never became
-    // durable: fail the operation the way a failed checkpoint write fails it.
-    const slotCommitFailure = slotCommitter?.failure();
+    // Every slot is in `slots` now: the commit that settles the operation writes what the
+    // committer still holds. A slot commit that failed means a branch's result and its signal
+    // consume never became durable: fail the operation the way a failed checkpoint write fails it.
+    const slotCommitFailure = slotCommitter?.settle();
     if (slotCommitFailure !== undefined) throw slotCommitFailure.error;
 
     // On the failure path, decide whether this execution mode can persist the

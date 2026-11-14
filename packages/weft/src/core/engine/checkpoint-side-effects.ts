@@ -84,6 +84,27 @@ export function takePendingAtomicWorkflowCommitSideEffects(
   };
 }
 
+/**
+ * The side effects a checkpoint commit writes: the `held` ones a coordinator passes for a commit
+ * made while its operation still runs (see `held-side-effects.ts`), which leaves the staged buffer
+ * to the commit that settles the operation, or else the staged buffer itself. `fromStaged` says
+ * whether the buffer was taken, so the commit clears it once it lands.
+ */
+export function takeCommitSideEffects(
+  internals: EngineInternals,
+  workflowId: string,
+  workflowExecutionToken: string | undefined,
+  held: AtomicWorkflowCommitSideEffects | undefined,
+): { sideEffects: AtomicWorkflowCommitSideEffects | undefined; fromStaged: boolean } {
+  if (held !== undefined) return { sideEffects: held, fromStaged: false };
+  const staged = takePendingAtomicWorkflowCommitSideEffects(
+    internals,
+    workflowId,
+    workflowExecutionToken,
+  );
+  return { sideEffects: staged, fromStaged: staged !== undefined };
+}
+
 export function clearPendingAtomicWorkflowCommitSideEffects(
   internals: EngineInternals,
   workflowId: string,

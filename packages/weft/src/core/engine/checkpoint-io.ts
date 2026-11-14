@@ -39,7 +39,7 @@ import {
 } from './checkpoint-replay.ts';
 import {
   clearPendingAtomicWorkflowCommitSideEffects,
-  takePendingAtomicWorkflowCommitSideEffects,
+  takeCommitSideEffects,
   type AtomicWorkflowCommitSideEffects,
 } from './checkpoint-side-effects.ts';
 import {
@@ -54,8 +54,7 @@ import type { EngineInternals } from './internals.ts';
 import { getTimelineInputSummary, getTimelineOperationLabel } from './state-utilities.ts';
 import { buildPendingTimelineOperation } from './termination.ts';
 import {
-  captureActivityCompletionReceipts,
-  captureSettledBranchReceipts,
+  captureCommitReceipts,
   type ActivityCompletionReceipt,
 } from './timeline-coordinator-detail.ts';
 import { notifyWorkflowFeedCommit } from './workflow-feed.ts';
@@ -95,19 +94,14 @@ export type PersistCheckpointOptions = {
   settledBranchOperationIds?: readonly string[];
   /** With `preserve-pending`: the file-workflow completion events this commit records. */
   settledFileWorkflowEvents?: readonly FileWorkflowEvent[];
-  /**
-   * With `preserve-pending`: the side effects this commit writes, which the coordinator held for
-   * the results its entry now records (see `held-side-effects.ts`). Such a commit writes none of
-   * the workflow's staged side effects: one staged by a branch still running belongs to a result
-   * this commit does not hold, so it waits for the commit that settles the operation.
-   */
+  /** With `preserve-pending`: the held side effects it writes in place of the staged ones. */
   sideEffects?: AtomicWorkflowCommitSideEffects;
 };
 
 /** What a commit made while its operation is still running reports for the steps it settled. */
-export type MidOperationCommitReport = Pick<
+export type MidOperationCommitReport = Omit<
   PersistCheckpointOptions,
-  'settledBranchOperationIds' | 'settledFileWorkflowEvents' | 'sideEffects'
+  'timeline' | 'pendingStepIndex'
 >;
 
 export type PersistCheckpointCallbacks = {
@@ -431,20 +425,6 @@ function appendAttributeOperations(
   );
 }
 
-/**
- * The activity completions the commit about to run reports. A commit that keeps the pending entry
- * is made while its operation still runs, so it reports only the branch activities it names.
- */
-function captureCommitReceipts(
-  internals: EngineInternals,
-  workflowId: string,
-  options: PersistCheckpointOptions,
-): ActivityCompletionReceipt[] {
-  return options.timeline === 'preserve-pending'
-    ? captureSettledBranchReceipts(internals, workflowId, options.settledBranchOperationIds ?? [])
-    : captureActivityCompletionReceipts(internals, workflowId);
-}
-
 async function commitCheckpoint(
   internals: EngineInternals,
   workflowId: string,
@@ -453,7 +433,12 @@ async function commitCheckpoint(
   callbacks: PersistCheckpointCallbacks,
   options: PersistCheckpointOptions,
 ): Promise<void> {
-  const activityCompletionReceipts = captureCommitReceipts(internals, workflowId, options);
+  const activityCompletionReceipts = captureCommitReceipts(
+    internals,
+    workflowId,
+    options.timeline,
+    options.settledBranchOperationIds,
+  );
   dispatchCheckpointSizeWarning(internals, workflowId, commit, callbacks);
   const nextPendingTimelineEntry =
     options.timeline === 'preserve-pending'
@@ -499,14 +484,12 @@ async function commitCheckpoint(
           retentionWindow,
           commit.operations,
         );
-  const carriesHeldSideEffects = options.sideEffects !== undefined;
-  const pendingSideEffects = carriesHeldSideEffects
-    ? options.sideEffects
-    : takePendingAtomicWorkflowCommitSideEffects(
-        internals,
-        workflowId,
-        commit.checkpoint.workflowExecutionToken,
-      );
+  const { sideEffects: pendingSideEffects, fromStaged } = takeCommitSideEffects(
+    internals,
+    workflowId,
+    commit.checkpoint.workflowExecutionToken,
+    options.sideEffects,
+  );
   if (pendingSideEffects !== undefined) {
     commit.operations.push(...pendingSideEffects.operations);
   }
@@ -551,7 +534,7 @@ async function commitCheckpoint(
     commit,
     newHead,
     nextPendingTimelineEntry,
-    pendingSideEffects !== undefined && !carriesHeldSideEffects,
+    fromStaged,
   );
   for (const receipt of activityCompletionReceipts) {
     dispatchActivityCompletionReceipt(callbacks, workflowId, receipt);

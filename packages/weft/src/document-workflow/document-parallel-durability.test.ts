@@ -25,7 +25,7 @@ const calls: string[] = [];
 const host: DocumentWorkflowHost = {
   activities: {
     count: ({ input }) => {
-      calls.push(String(input));
+      calls.push(typeof input === 'string' ? input : JSON.stringify(input));
       return input;
     },
     boom: () => {
@@ -66,7 +66,8 @@ async function committedSlots(storage: MemoryStorage, id: string): Promise<Paral
 
 /** How many of its own steps branch `index` has committed, finished or not. */
 async function committedStepCount(storage: MemoryStorage, id: string, index: number) {
-  const slot = (await committedSlots(storage, id))[index];
+  const slots = await committedSlots(storage, id);
+  const slot = slots[index];
   if (slot === undefined) return 0;
   if (slot.status === 'fulfilled') return Number.POSITIVE_INFINITY;
   return 'results' in slot ? (slot.results?.length ?? 0) : 0;
@@ -124,7 +125,8 @@ describe('a signal a branch takes is committed with the progress that records it
     expect(await waitingNames(restarted, id)).toEqual(['three']);
     await handle!.signal('three', 'C');
     expect(await throwingRejectionOf(handle!.result())).toThrow('branch exploded');
-    expect((await restarted.get(id))?.status).toBe('failed');
+    const settled = await restarted.get(id);
+    expect(settled?.status).toBe('failed');
     // The failed activity runs again after the restart (at-least-once), and no later step runs.
     expect(calls).toEqual(['boom', 'boom']);
   });

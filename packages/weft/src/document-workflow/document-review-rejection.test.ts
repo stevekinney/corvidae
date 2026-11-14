@@ -279,21 +279,35 @@ describe('a rejected review (COR-2238)', () => {
         { kind: 'activity', handler: 'after' },
       ],
     };
-    const waiting = async (engine: Engine) =>
-      ((await engine.get(id))?.waitingForSignals ?? []).toSorted();
+    const waiting = async (engine: Engine): Promise<string[]> => {
+      const state = await engine.get(id);
+      return (state?.waitingForSignals ?? []).toSorted();
+    };
+    const isWaitingOn = async (engine: Engine, name: string) => {
+      const names = await waiting(engine);
+      return names.includes(name);
+    };
+    const statusOf = async (engine: Engine) => {
+      const state = await engine.get(id);
+      return state?.status;
+    };
     {
       await using original = new Engine({ storage });
       await registerWorkflowDocuments(original, hostWithHook, { active: [definition] });
       const run = await original.start(definition.name, null, { id });
-      await waitUntil(async () => (await waiting(original)).length === 3, {
-        message: 'every branch to wait',
-      });
+      await waitUntil(
+        async () =>
+          (await isWaitingOn(original, 'decision')) &&
+          (await isWaitingOn(original, 'other')) &&
+          (await isWaitingOn(original, 'third')),
+        { message: 'every branch to wait' },
+      );
       await run.signal('decision', { rejected: true, reason: 'no' });
-      await waitUntil(async () => !(await waiting(original)).includes('decision'), {
+      await waitUntil(async () => !(await isWaitingOn(original, 'decision')), {
         message: 'the review to take its decision',
       });
       await run.signal('other', 'done');
-      await waitUntil(async () => !(await waiting(original)).includes('other'), {
+      await waitUntil(async () => !(await isWaitingOn(original, 'other')), {
         message: 'the sibling to take its signal',
       });
       // The sibling's step settles in a commit: wait until the decision's consume is durable.
@@ -304,18 +318,18 @@ describe('a rejected review (COR-2238)', () => {
     await using restarted = new Engine({ storage });
     await registerWorkflowDocuments(restarted, hostWithHook, { active: [definition] });
     const [handle] = await restarted.recoverAll();
-    await waitUntil(async () => (await waiting(restarted)).includes('third'), {
+    await waitUntil(async () => isWaitingOn(restarted, 'third'), {
       message: 'the last branch to wait again',
     });
     expect(await waiting(restarted)).toEqual(['third']);
     await handle!.signal('third', 'done');
     // The review is not shown again: the run settles once its last branch has its signal.
-    await waitUntil(async () => (await restarted.get(id))?.status !== 'running', {
+    await waitUntil(async () => (await statusOf(restarted)) !== 'running', {
       message: 'the run to settle once its last branch takes its signal',
     });
     expect(await throwingRejectionOf(handle!.result())).toThrow('review-rejected');
     expect(ran).toEqual([]);
-    expect((await restarted.get(id))?.status).toBe('failed');
+    expect(await statusOf(restarted)).toBe('failed');
   });
 
   it('recovers a run at a rejected wait to the same end after a restart', async () => {

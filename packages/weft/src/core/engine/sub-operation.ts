@@ -7,7 +7,8 @@ import {
 import type { ContextOperationRequest } from '../context.ts';
 import { branchDriversOf } from '../context/branch-driver.ts';
 import type { HumanReviewOptions } from '../review/index.ts';
-import { nestedLinkOf, runAdvancingBranches } from './advancing-branches.ts';
+import { nestedLinkOf } from './advancing-branch-tree.ts';
+import { runAdvancingBranches } from './advancing-branches.ts';
 import {
   assertChildWorkflowNestingDepth,
   executeChildWorkflow,
