@@ -9,7 +9,7 @@
    * holds has its input and result here, and a run of a workflow file the engine does not hold has
    * the Bureau's record of its trigger, result and error.
    */
-  import { Badge, Button, Collapsible, VisuallyHidden } from '@lostgradient/cinder';
+  import { Badge, Button, Collapsible, Section, Stack, VisuallyHidden } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { CircleX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
@@ -127,115 +127,113 @@
   let replyOpen = $state(false);
 </script>
 
-<section class="ib-run__section" aria-labelledby="ib-run-io" data-section="input-output">
-  <h2 id="ib-run-io" class="ib-run__heading-2">{RUN_PAGE_COPY.inputOutputHeading}</h2>
-  <p class="ib-run__note">{description}</p>
-
-  {#if task !== undefined}
-    <div class="ib-run__payloads">
-      <section class="ib-run__payload-card" aria-label={scheduled ? copy.prompt : copy.messageIn}>
-        <header class="ib-run__payload-title-row">
-          <h3 class="ib-run__heading-3">{scheduled ? copy.prompt : copy.messageIn}</h3>
-          <span class="ib-run__note">{scheduled ? copy.fromSchedule : copy.fromYou}</span>
-        </header>
-        {#if messageIn !== undefined}
-          <p class="ib-run__message" data-testid="run-message-in">{messageIn}</p>
-        {:else if thread.isPending && threadToRead !== null && threadToRead !== ''}
-          <p class="ib-run__note">{copy.loadingMessage}</p>
-        {:else}
-          <p class="ib-run__note">{copy.noMessageIn}</p>
-        {/if}
-        {#if startedAt !== undefined && !scheduled}
-          <p class="ib-run__note">{copy.sentInChat(dayAndTime(startedAt, Date.now()))}</p>
-        {/if}
-      </section>
-
-      <section class="ib-run__payload-card" aria-label={scheduled ? copy.result : copy.replyOut}>
-        <header class="ib-run__payload-title-row">
-          <h3 class="ib-run__heading-3">{scheduled ? copy.result : copy.replyOut}</h3>
-          <span class="ib-run__note">{copy.fromAgent(agent)}</span>
-        </header>
-        {#if hasAnswer}
-          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-          <div
-            id="ib-run-reply"
-            class="cinder-markdown-content weft-artifact-markdown ib-run__answer"
-            data-clamped={clamps && !replyOpen ? '' : undefined}
-          >
-            {@html answerHtml}
-          </div>
-          {#if clamps}
-            <button
-              type="button"
-              class="ib-run__show-all"
-              aria-expanded={replyOpen}
-              aria-controls="ib-run-reply"
-              onclick={() => (replyOpen = !replyOpen)}
-            >
-              {replyOpen ? copy.showLess : copy.showAll}
-            </button>
+<Section title={RUN_PAGE_COPY.inputOutputHeading} {description} data-section="input-output">
+  <Stack gap="var(--cinder-space-3)">
+    {#if task !== undefined}
+      <div class="ib-run__payloads">
+        <section class="ib-run__payload-card" aria-label={scheduled ? copy.prompt : copy.messageIn}>
+          <header class="ib-run__payload-title-row">
+            <h3 class="ib-run__heading-3">{scheduled ? copy.prompt : copy.messageIn}</h3>
+            <span class="ib-run__note">{scheduled ? copy.fromSchedule : copy.fromYou}</span>
+          </header>
+          {#if messageIn !== undefined}
+            <p class="ib-run__message" data-testid="run-message-in">{messageIn}</p>
+          {:else if thread.isPending && threadToRead !== null && threadToRead !== ''}
+            <p class="ib-run__note">{copy.loadingMessage}</p>
+          {:else}
+            <p class="ib-run__note">{copy.noMessageIn}</p>
           {/if}
-          {#if answerTruncated}<p class="ib-run__note">{TASK_COPY.answerTruncated}</p>{/if}
-        {:else}
-          <p class="ib-run__note">{noReply}</p>
-        {/if}
-        {#if followState === 'unavailable'}
-          <p class="ib-run__note" role="status">{TASK_COPY.followUnavailable}</p>
-        {:else if followState === 'reconnecting'}
-          <p class="ib-run__note" role="status">{TASK_COPY.followReconnecting}</p>
-        {/if}
-        {#if hasAnswer && !scheduled}
-          <p class="ib-run__note">
-            {copy.deliveredToChat}
-            {#if onShowRaw !== undefined}
-              <Button
-                variant="ghost-accent"
-                size="sm"
-                label={copy.showRawPayloads}
-                onclick={onShowRaw}
-              />
+          {#if startedAt !== undefined && !scheduled}
+            <p class="ib-run__note">{copy.sentInChat(dayAndTime(startedAt, Date.now()))}</p>
+          {/if}
+        </section>
+
+        <section class="ib-run__payload-card" aria-label={scheduled ? copy.result : copy.replyOut}>
+          <header class="ib-run__payload-title-row">
+            <h3 class="ib-run__heading-3">{scheduled ? copy.result : copy.replyOut}</h3>
+            <span class="ib-run__note">{copy.fromAgent(agent)}</span>
+          </header>
+          {#if hasAnswer}
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+            <div
+              id="ib-run-reply"
+              class="cinder-markdown-content weft-artifact-markdown ib-run__answer"
+              data-clamped={clamps && !replyOpen ? '' : undefined}
+            >
+              {@html answerHtml}
+            </div>
+            {#if clamps}
+              <button
+                type="button"
+                class="ib-run__show-all"
+                aria-expanded={replyOpen}
+                aria-controls="ib-run-reply"
+                onclick={() => (replyOpen = !replyOpen)}
+              >
+                {replyOpen ? copy.showLess : copy.showAll}
+              </button>
             {/if}
+            {#if answerTruncated}<p class="ib-run__note">{TASK_COPY.answerTruncated}</p>{/if}
+          {:else}
+            <p class="ib-run__note">{noReply}</p>
+          {/if}
+          {#if followState === 'unavailable'}
+            <p class="ib-run__note" role="status">{TASK_COPY.followUnavailable}</p>
+          {:else if followState === 'reconnecting'}
+            <p class="ib-run__note" role="status">{TASK_COPY.followReconnecting}</p>
+          {/if}
+          {#if hasAnswer && !scheduled}
+            <p class="ib-run__note">
+              {copy.deliveredToChat}
+              {#if onShowRaw !== undefined}
+                <Button
+                  variant="ghost-accent"
+                  size="sm"
+                  label={copy.showRawPayloads}
+                  onclick={onShowRaw}
+                />
+              {/if}
+            </p>
+          {/if}
+        </section>
+      </div>
+    {/if}
+
+    {#if task === undefined || showRaw}
+      <RunPayloadCards {workflow} {record} />
+    {/if}
+
+    {#if workflow !== undefined && workflow.status === 'failed'}
+      <div class="weft-overview-tab__failure">
+        <div class="weft-overview-tab__failure-title">
+          <CircleX aria-hidden="true" size={18} />
+          <span>Failed</span>
+          {#if workflow.failureCategory !== undefined}
+            <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
+          {/if}
+        </div>
+        {#if workflow.failureCategory !== undefined}
+          <p class="weft-overview-tab__failure-explanation">
+            {failureCategoryExplanation(workflow.failureCategory)}
           </p>
         {/if}
-      </section>
-    </div>
-  {/if}
-
-  {#if task === undefined || showRaw}
-    <RunPayloadCards {workflow} {record} />
-  {/if}
-
-  {#if workflow !== undefined && workflow.status === 'failed'}
-    <div class="weft-overview-tab__failure">
-      <div class="weft-overview-tab__failure-title">
-        <CircleX aria-hidden="true" size={18} />
-        <span>Failed</span>
-        {#if workflow.failureCategory !== undefined}
-          <Badge variant="danger">{failureCategoryLabel(workflow.failureCategory)}</Badge>
+        {#if workflow.error}
+          <p class="weft-overview-tab__failure-explanation">{workflow.error}</p>
+        {/if}
+        {#if errorStack.length > 0}
+          <Collapsible variant="flat" trigger="Show full stack trace">
+            <pre class="weft-send-tab__result">{errorStack}</pre>
+          </Collapsible>
         {/if}
       </div>
-      {#if workflow.failureCategory !== undefined}
-        <p class="weft-overview-tab__failure-explanation">
-          {failureCategoryExplanation(workflow.failureCategory)}
-        </p>
+    {:else if record !== undefined && workflow === undefined}
+      {#if record.error !== undefined && record.error !== null}
+        <Section level={3} title={TASK_COPY.runRecord.error} description={record.error} />
       {/if}
-      {#if workflow.error}
-        <p class="weft-overview-tab__failure-explanation">{workflow.error}</p>
-      {/if}
-      {#if errorStack.length > 0}
-        <Collapsible variant="flat" trigger="Show full stack trace">
-          <pre class="weft-send-tab__result">{errorStack}</pre>
-        </Collapsible>
-      {/if}
-    </div>
-  {:else if record !== undefined && workflow === undefined}
-    {#if record.error !== undefined && record.error !== null}
-      <h3 class="ib-run__heading-3">{TASK_COPY.runRecord.error}</h3>
-      <p class="ib-run__note">{record.error}</p>
     {/if}
-  {/if}
+  </Stack>
 
   <VisuallyHidden aria-live="polite" data-testid="payload-view-status">
     {payloadViewPreference.announcement}
   </VisuallyHidden>
-</section>
+</Section>

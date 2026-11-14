@@ -6,7 +6,7 @@
    * own reads need, and says which one it needs when the caller lacks it, so a caller who can read
    * the timeline but not the events still has the timeline.
    */
-  import { Collapsible, EmptyState } from '@lostgradient/cinder';
+  import { Collapsible, EmptyState, Section, Stack } from '@lostgradient/cinder';
   import Lock from '@lucide/svelte/icons/lock';
   import type { WorkflowState } from '@lostgradient/weft';
 
@@ -57,48 +57,52 @@
   let checkpointsOpen = $state(false);
 </script>
 
-<section class="ib-run__section" aria-labelledby="ib-run-activity" data-section="activity">
-  <h2 id="ib-run-activity" class="ib-run__heading-2">{RUN_PAGE_COPY.activityHeading}</h2>
+<!-- Without a task to read, the note under the heading says why. -->
+<Section
+  title={RUN_PAGE_COPY.activityHeading}
+  {...task === undefined && note !== undefined ? { description: note } : {}}
+  data-section="activity"
+>
+  <Stack gap="var(--cinder-space-3)">
+    {#if task !== undefined}
+      <Section level={3} title={TASK_COPY.toolCallsHeading}>
+        <!-- A goal's attempt reads the thread of its own session, once the goals have named it; its waits show either way. -->
+        <RunToolCalls {task} threadId={taskThreadId} events={taskEvents} decide={decideApprovals} />
+      </Section>
+    {/if}
 
-  {#if task !== undefined}
-    <h3 class="ib-run__heading-3">{TASK_COPY.toolCallsHeading}</h3>
-    <!-- A goal's attempt reads the thread of its own session, once the goals have named it; its waits show either way. -->
-    <RunToolCalls {task} threadId={taskThreadId} events={taskEvents} decide={decideApprovals} />
-  {:else if note !== undefined}
-    <p class="ib-run__note">{note}</p>
-  {/if}
+    {#if engine !== undefined && workflow !== undefined}
+      <RunTimeline {engine} {workflow} />
 
-  {#if engine !== undefined && workflow !== undefined}
-    <RunTimeline {engine} {workflow} />
-
-    <div class="ib-run__disclosures">
-      <Collapsible bind:open={eventsOpen} variant="flat" trigger={RUN_PAGE_COPY.eventsHeading}>
-        {#if canReadEvents}
-          <EventsTab client={engine.client} {workflow} />
-        {:else}
-          <EmptyState
-            kind="first-use"
-            size="compact"
-            headingLevel={3}
-            title={RUN_PAGE_COPY.eventsLockedTitle}
-            description={RUN_PAGE_COPY.lockedSection('events:read')}
-          >
-            {#snippet icon()}<Lock size={24} aria-hidden="true" />{/snippet}
-          </EmptyState>
-        {/if}
-      </Collapsible>
-      <Collapsible
-        bind:open={checkpointsOpen}
-        variant="flat"
-        trigger={RUN_PAGE_COPY.checkpointsHeading}
-      >
-        <CheckpointsTab
-          client={engine.client}
-          workflowId={workflow.id}
-          workflowType={workflow.type}
-          sourceRevision={workflow.revision}
-        />
-      </Collapsible>
-    </div>
-  {/if}
-</section>
+      <div class="ib-run__disclosures">
+        <Collapsible bind:open={eventsOpen} variant="flat" trigger={RUN_PAGE_COPY.eventsHeading}>
+          {#if canReadEvents}
+            <EventsTab client={engine.client} {workflow} />
+          {:else}
+            <EmptyState
+              kind="first-use"
+              size="compact"
+              headingLevel={3}
+              title={RUN_PAGE_COPY.eventsLockedTitle}
+              description={RUN_PAGE_COPY.lockedSection('events:read')}
+            >
+              {#snippet icon()}<Lock size={24} aria-hidden="true" />{/snippet}
+            </EmptyState>
+          {/if}
+        </Collapsible>
+        <Collapsible
+          bind:open={checkpointsOpen}
+          variant="flat"
+          trigger={RUN_PAGE_COPY.checkpointsHeading}
+        >
+          <CheckpointsTab
+            client={engine.client}
+            workflowId={workflow.id}
+            workflowType={workflow.type}
+            sourceRevision={workflow.revision}
+          />
+        </Collapsible>
+      </div>
+    {/if}
+  </Stack>
+</Section>

@@ -10,6 +10,7 @@
    * and does not vanish under the person.
    */
   import type { QuestionAnswerRecord } from '@lostgradient/chat';
+  import { Section, Stack } from '@lostgradient/cinder';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
@@ -45,39 +46,38 @@
 
 {#if questions.length > 0}
   {@const unanswered = open.filter((wait) => !answers.has(wait.reviewId))}
-  <section
-    class="ib-run__section ib-run__waiting"
-    aria-labelledby="ib-run-waiting"
+  <!-- The line under the heading says how many of each wait; the wait cards are the content. -->
+  <Section
+    title={unanswered.length > 0 ? TASK_COPY.waitsHeading : TASK_COPY.waitsAnsweredHeading}
+    {...unanswered.length > 0
+      ? {
+          description: RUN_DETAIL_COPY.waits.summary(
+            unanswered.filter((wait) => wait.kind === 'human-wait').length,
+            unanswered.filter((wait) => wait.kind === 'tool-approval').length,
+          ),
+        }
+      : {}}
     data-section="waiting"
   >
-    <h2 id="ib-run-waiting" class="ib-run__heading-2">
-      {unanswered.length > 0 ? TASK_COPY.waitsHeading : TASK_COPY.waitsAnsweredHeading}
-    </h2>
-    {#if unanswered.length > 0}
-      <p class="ib-run__note">
-        {RUN_DETAIL_COPY.waits.summary(
-          unanswered.filter((wait) => wait.kind === 'human-wait').length,
-          unanswered.filter((wait) => wait.kind === 'tool-approval').length,
-        )}
-      </p>
-    {/if}
-    {#each questions as wait (wait.reviewId)}
-      <RunWait
-        taskId={task.id}
-        {wait}
-        {onAnswerHold}
-        answered={answers.get(wait.reviewId)}
-        onSending={() => {
-          if (!kept.some((entry) => entry.reviewId === wait.reviewId)) kept = [...kept, wait];
-        }}
-        onAnswered={(record) => (answers = new Map(answers).set(wait.reviewId, record))}
-        onFailed={() => {
-          // A wait that is no longer listed has nothing left to show once its answer failed.
-          if (!answers.has(wait.reviewId)) {
-            kept = kept.filter((entry) => entry.reviewId !== wait.reviewId);
-          }
-        }}
-      />
-    {/each}
-  </section>
+    <Stack gap="var(--cinder-space-3)">
+      {#each questions as wait (wait.reviewId)}
+        <RunWait
+          taskId={task.id}
+          {wait}
+          {onAnswerHold}
+          answered={answers.get(wait.reviewId)}
+          onSending={() => {
+            if (!kept.some((entry) => entry.reviewId === wait.reviewId)) kept = [...kept, wait];
+          }}
+          onAnswered={(record) => (answers = new Map(answers).set(wait.reviewId, record))}
+          onFailed={() => {
+            // A wait that is no longer listed has nothing left to show once its answer failed.
+            if (!answers.has(wait.reviewId)) {
+              kept = kept.filter((entry) => entry.reviewId !== wait.reviewId);
+            }
+          }}
+        />
+      {/each}
+    </Stack>
+  </Section>
 {/if}
