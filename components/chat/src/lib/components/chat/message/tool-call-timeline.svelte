@@ -775,6 +775,17 @@
     .chat-tool-call-item:last-child > .chat-tool-call-row::before {
       inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
+
+    /* A line of narration between two steps is text, not a control: the step beside it overhangs
+     * into it, as the last row overhangs below, so a tap on the row's 44px region is not taken by
+     * the line. The line is read, never tapped, and the overhang sits above it. */
+    .chat-tool-call-narration + .chat-tool-call-item > .chat-tool-call-row::before {
+      inset-block-start: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
+    .chat-tool-call-item:has(+ .chat-tool-call-narration) > .chat-tool-call-row::before {
+      inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
   }
 
   /* The header's phrases are fields: the step count, the tools, any failed or waiting counts and

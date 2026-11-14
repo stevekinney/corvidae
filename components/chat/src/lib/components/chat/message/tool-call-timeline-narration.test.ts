@@ -6,6 +6,8 @@
 
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -94,6 +96,16 @@ describe('ToolCallTimeline narration', () => {
       'step',
       'step',
     ]);
+  });
+
+  test('on a touch screen a step beside a narration line overhangs into it, so the line never takes the 44px region', () => {
+    const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
+    expect(source).toMatch(
+      /\.chat-tool-call-narration \+ \.chat-tool-call-item > \.chat-tool-call-row::before \{\s*inset-block-start: min\(/,
+    );
+    expect(source).toMatch(
+      /\.chat-tool-call-item:has\(\+ \.chat-tool-call-narration\) > \.chat-tool-call-row::before \{\s*inset-block-end: min\(/,
+    );
   });
 
   test('narration after the last step is kept at the end', async () => {
