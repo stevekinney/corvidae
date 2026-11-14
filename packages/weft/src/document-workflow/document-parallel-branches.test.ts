@@ -283,12 +283,13 @@ describe('a timed wait in a branch of a parallel step', () => {
     expect(await run.result()).toEqual({ short: { timedOut: true }, long: { timedOut: true } });
   });
 
-  it('finishes a map in a branch restarted after its first round as a top-level map does (map rounds after the first)', async () => {
+  it('reads a map`s later rounds one number early after a restart in a branch, as a top-level map does (finding F1, pinned until fixed)', async () => {
     // A map with no wait runs its items in lockstep rounds of its own inside the branch: its first
     // round settles and is committed in the branch, its second parks on the sleeps, and the run
     // restarts there. The first round does not run again. The map's own replay then reads its
     // second round from the numbers the first used, as a top-level map does on `main` (matrix
-    // finding F1, row D16; `map` is another step kind, out of scope here): this pins that value.
+    // finding F1, row D16): the value is wrong, and a step after the map in the branch would read
+    // a cached value too. `map` is another step kind; this pins today's value until F1 is fixed.
     useFakeTimers(0);
     calls.length = 0;
     const storage = new MemoryStorage();
@@ -329,9 +330,17 @@ describe('a timed wait in a branch of a parallel step', () => {
     await waitUntil(async () => isWaitingOn(restarted, id, 'go'), {
       message: 'the sibling to wait',
     });
-    await advanceTimersByTime(60 * 60 * 1000);
     await handle!.signal('go', 'signalled');
-    expect(await handle!.result()).toEqual({
+    // The sleeps are armed when the recovered branch reaches them: move the clock until it ends.
+    let settled = false;
+    const result = handle!.result().finally(() => {
+      settled = true;
+    });
+    await waitUntil(async () => {
+      if (!settled) await advanceTimersByTime(60 * 60 * 1000);
+      return settled;
+    });
+    expect(await result).toEqual({
       m: [
         'x',
         {

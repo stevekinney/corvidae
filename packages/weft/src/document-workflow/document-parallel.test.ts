@@ -975,9 +975,7 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
       await using recovered = new Engine({ storage });
       await registerWorkflowDocuments(recovered, host, { active: [document] });
       const [handle] = await recovered.recoverAll();
-      await advanceTimersByTime(3_600_000);
-      await advanceTimersByTime(3_600_000);
-      expect(await handle!.result()).toEqual({
+      expect(await resultOnceTimersFire(handle!.result())).toEqual({
         a: 'F',
         b: lockstepRoundEntry(2, [
           { status: 'rejected', reason: { name: 'Error', message: 'flaky once' } },
@@ -990,6 +988,22 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
     }
   });
 });
+
+/**
+ * The value `result` settles with, moving the fake clock an hour at a time until it does: a
+ * recovered run arms its timers when it reaches them, which may be after any one advance.
+ */
+async function resultOnceTimersFire<Value>(result: Promise<Value>): Promise<Value> {
+  let settled = false;
+  const observed = result.finally(() => {
+    settled = true;
+  });
+  await waitUntil(async () => {
+    if (!settled) await advanceTimersByTime(3_600_000);
+    return settled;
+  });
+  return observed;
+}
 
 /**
  * The cache entry of a lockstep round coordinated at engine step `step`, as `main` leaks it into a
@@ -1039,8 +1053,7 @@ describe('a batch map restarted after its first round (matrix row D16)', () => {
       await using restarted = new Engine({ storage });
       await registerWorkflowDocuments(restarted, host, { active: [document] });
       const [handle] = await restarted.recoverAll();
-      await advanceTimersByTime(3_600_000);
-      expect(await handle!.result()).toEqual([
+      expect(await resultOnceTimersFire(handle!.result())).toEqual([
         null,
         lockstepRoundEntry(3, [
           { status: 'fulfilled', value: null },
