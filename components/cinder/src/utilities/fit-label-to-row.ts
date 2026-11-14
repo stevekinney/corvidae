@@ -81,9 +81,7 @@ export function createLabelFit(options: LabelFitOptions): Attachment<HTMLElement
     // A web font that arrives after the first measure changes the words' width without touching
     // the row's size, so nothing else would measure again.
     let active = true;
-    void document.fonts?.ready.then(() => {
-      if (active) update();
-    });
+    void document.fonts?.ready.then(() => (active ? update() : undefined));
     return () => {
       active = false;
       observer.disconnect();
