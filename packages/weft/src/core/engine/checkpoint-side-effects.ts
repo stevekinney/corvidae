@@ -25,23 +25,8 @@ export function stageAtomicWorkflowCommitSideEffects(
     capturedSink(sideEffects, workflowExecutionToken, bindToExecutionGeneration);
     return;
   }
-
   if (bindToExecutionGeneration) {
-    internals.pendingOperationAtomicWorkflowCommitSideEffects ??= new Map();
-    const byToken =
-      internals.pendingOperationAtomicWorkflowCommitSideEffects.get(workflowId) ?? new Map();
-    const tokenKey = workflowExecutionToken ?? '';
-    const pending = byToken.get(tokenKey);
-    if (pending === undefined) {
-      byToken.set(tokenKey, {
-        conditions: [...sideEffects.conditions],
-        operations: [...sideEffects.operations],
-      });
-    } else {
-      pending.conditions.push(...sideEffects.conditions);
-      pending.operations.push(...sideEffects.operations);
-    }
-    internals.pendingOperationAtomicWorkflowCommitSideEffects.set(workflowId, byToken);
+    stageBoundSideEffects(internals, workflowId, sideEffects, workflowExecutionToken);
     return;
   }
   const pending = internals.pendingAtomicWorkflowCommitSideEffects.get(workflowId);
@@ -55,6 +40,30 @@ export function stageAtomicWorkflowCommitSideEffects(
 
   pending.conditions.push(...sideEffects.conditions);
   pending.operations.push(...sideEffects.operations);
+}
+
+/** Stage side effects bound to the run generation `workflowExecutionToken` names. */
+function stageBoundSideEffects(
+  internals: EngineInternals,
+  workflowId: string,
+  sideEffects: AtomicWorkflowCommitSideEffects,
+  workflowExecutionToken: string | undefined,
+): void {
+  internals.pendingOperationAtomicWorkflowCommitSideEffects ??= new Map();
+  const byToken =
+    internals.pendingOperationAtomicWorkflowCommitSideEffects.get(workflowId) ?? new Map();
+  const tokenKey = workflowExecutionToken ?? '';
+  const pending = byToken.get(tokenKey);
+  if (pending === undefined) {
+    byToken.set(tokenKey, {
+      conditions: [...sideEffects.conditions],
+      operations: [...sideEffects.operations],
+    });
+  } else {
+    pending.conditions.push(...sideEffects.conditions);
+    pending.operations.push(...sideEffects.operations);
+  }
+  internals.pendingOperationAtomicWorkflowCommitSideEffects.set(workflowId, byToken);
 }
 
 export function takePendingAtomicWorkflowCommitSideEffects(

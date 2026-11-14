@@ -99,7 +99,7 @@ describe('a ctx.all slot committed while a sibling waits carries its branch`s st
       workflow({ name: 'staged-receipt' })
         .activities({ charge })
         .execute(async function* (ctx: WorkflowContext) {
-          return yield* ctx.all([ctx.run(charge, null), ctx.waitForSignal('go')]);
+          return yield* ctx.all([ctx.run(charge), ctx.waitForSignal('go')]);
         });
     const storage = new MemoryStorage();
     let crashed: MemoryStorage;

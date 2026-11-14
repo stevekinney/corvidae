@@ -1037,9 +1037,8 @@ async function resultAfterDeadline<Value>(result: Promise<Value>): Promise<Value
 
 /** Whether run `id` has settled a `map` round and parked in the next one. */
 async function isParkedAfterFirstRound(engine: Engine, id: string): Promise<boolean> {
-  const rounds = (await engine.getTimeline(id)).filter(
-    (entry) => entry.operationType === 'parallel',
-  );
+  const timeline = await engine.getTimeline(id);
+  const rounds = timeline.filter((entry) => entry.operationType === 'parallel');
   return (
     rounds.some((entry) => entry.status === 'completed') &&
     rounds.some((entry) => entry.status === 'running')

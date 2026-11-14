@@ -305,14 +305,14 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     }
     // What the operation stages for the checkpoint is caught here and committed with its result.
     const staged = new HeldSideEffects();
-    const capture = captureSideEffects(run.internals, run.workflowId, staged.keep);
+    const stagedByOperation = captureSideEffects(run.internals, run.workflowId, staged.keep);
     try {
-      const value = await capture.run(() => run.execute(request, controller.signal));
+      const value = await stagedByOperation.run(() => run.execute(request, controller.signal));
       return { settled: { status: 'fulfilled', value }, staged };
     } catch (error) {
       return { settled: { status: 'rejected', error }, staged };
     } finally {
-      capture.close();
+      stagedByOperation.close();
     }
   };
 

@@ -37,7 +37,8 @@ export function forgetEarlierRoundResults(context: object, mark: RoundMark | und
   if (mark === undefined || !hasContextInternals(context)) return;
   const results = getInternals(context).accumulatedResults;
   if (results === undefined) return;
-  for (const step of [...results.keys()]) {
+  // Deleting the entry a `for...of` over a `Map` is on is safe: iteration moves to the next.
+  for (const step of results.keys()) {
     if (step < mark.next && !mark.recorded.has(step)) results.delete(step);
   }
 }
