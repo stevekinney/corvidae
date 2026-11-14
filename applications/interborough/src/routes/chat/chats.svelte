@@ -3,8 +3,7 @@
    * `/chats`, `/chats/:chat` and `/chats/new`: the chats the caller started as a list with the open
    * chat beside it (ListDetail). The list is the pane's own, header and all: "Chats" with a
    * secondary "+" icon button that starts a chat, a "Search chats" field and the status segments
-   * (All, Waiting on you, Done, each with its count, and Archived where the pane has room for it)
-   * under it, then the chats newest first under
+   * (All, Waiting on you, Done, each with its count) under it, then the chats newest first under
    * their days, each day band naming the zone its times are in. A row is the chat's title and the
    * time it last changed on line one, and on line two its status (the one fixed column, so the
    * latest messages line up) and its latest message, or the question it asks while it waits on the
@@ -26,10 +25,11 @@
    * notification bell uses).
    *
    * An archived chat (COR-2285 V5) is in none of the status segments: the list leaves archived
-   * chats out, and Archived lists them alone, read only when it is chosen. An archived chat opened
-   * by its address keeps its pane without a row in All.
+   * chats out, and while any is archived one Archived chats row at the end of the list opens them
+   * as a view of the same pane (`?view=archived`), with Chats above its title as the way back. An
+   * archived chat opened by its address keeps its pane without a row in All.
    */
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
 
   import {
@@ -47,7 +47,14 @@
     StatusDot,
     Tooltip,
   } from '@lostgradient/cinder';
-  import { MessageSquare, MessageSquarePlus, Plus } from '@lucide/svelte';
+  import {
+    Archive,
+    ChevronLeft,
+    ChevronRight,
+    MessageSquare,
+    MessageSquarePlus,
+    Plus,
+  } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
@@ -73,7 +80,7 @@
     isArchivedChat,
     sessionRow,
     waitingChatIds,
-    type ChatListSegment,
+    type ChatSegment,
     type SessionRow,
   } from './session-groups.ts';
 
@@ -82,12 +89,11 @@
   const WIDE_PANE_WIDTH = 480;
   /** The header's width under which the status segments no longer fit on one line. */
   const SEGMENTS_MINIMUM_WIDTH = 236;
-  /**
-   * The header's width under which Archived no longer fits on the line after the three status
-   * segments. The list's default width (280 pixels, 248 inside its padding) is under it, so Archived
-   * shows only in a pane dragged wider (COR-2285 V5).
-   */
-  const ARCHIVED_SEGMENT_MINIMUM_WIDTH = 316;
+  /** The query parameter that names the list's view, and its value for the archived chats. */
+  const VIEW_PARAMETER = 'view';
+  const ARCHIVED_VIEW = 'archived';
+  /** The one item of the list that holds the Archived chats row. */
+  const ARCHIVED_ENTRY = 'archived-chats';
 
   // The outlet mounts a new route for each page, so the draft is named once. A new chat has no
   // session until its first run: the client names the thread now, and its row stands for it until
@@ -100,8 +106,8 @@
   const isNew = $derived(router.current.route?.pattern === '/chats/new');
   /** The chat that is open: the address's, or the new chat's, which keeps its name once it starts. */
   const openId = $derived(router.current.params['chat'] ?? draftId);
-  // The chats that are not archived. The archived ones are their own list, read only while the
-  // Archived segment is chosen, so a chat put away leaves All, Waiting on you and Done.
+  // The chats that are not archived. The archived ones are their own list, read only while their
+  // view is shown, so a chat put away leaves All, Waiting on you and Done.
   const sessions = createInfiniteQuery(
     () => ({
       queryKey: queryKeys.contexts.list(null),
@@ -228,21 +234,35 @@
   // that, as the long turn's frame draws it (row 21p), they give way to the search, and what was
   // chosen narrows nothing, like on a phone. An unmeasured pane shows them.
   const segmentsFit = $derived(paneWidth === 0 || paneWidth >= SEGMENTS_MINIMUM_WIDTH);
-  const archivedFits = $derived(paneWidth === 0 || paneWidth >= ARCHIVED_SEGMENT_MINIMUM_WIDTH);
 
   // A phone's list is a screen of its own with no search or segments (row 06l), so what was typed
   // or chosen on a wider screen narrows nothing there, and comes back when the screen is wide again.
   let typed = $state('');
-  let chosen = $state<ChatListSegment>('all');
+  let chosen = $state<ChatSegment>('all');
   const search = $derived(phone.current ? '' : typed);
-  // Archived needs room beside the three status segments; in a pane too narrow for it, it is not
-  // drawn, and choosing it narrows nothing, as the segments do in a pane too narrow for them.
-  const segment = $derived<ChatListSegment>(
-    phone.current || !segmentsFit || (chosen === 'archived' && !archivedFits) ? 'all' : chosen,
+  /**
+   * The archived chats are a view of the list of their own (COR-2285 V5), named in the address
+   * (`?view=archived`), so it can be reloaded, opened in another tab, and kept while one of its chats
+   * is opened. The status segments are not drawn there: they count the chats that are not archived.
+   * The search narrows what is shown, so in this view it searches the archived chats.
+   */
+  const showingArchived = $derived(router.current.search.get(VIEW_PARAMETER) === ARCHIVED_VIEW);
+  const segment = $derived<ChatSegment>(
+    phone.current || !segmentsFit || showingArchived ? 'all' : chosen,
   );
-  const showingArchived = $derived(segment === 'archived');
-  // The archived chats, read only while their segment is chosen: a list of their own, newest first,
-  // that the status segments never count.
+  // Whether any chat is archived, for the Archived chats row at the end of the list: one chat is
+  // asked for, and the archived list itself is read only when it is shown.
+  const anyArchived = createQuery(
+    () => ({
+      queryKey: queryKeys.contexts.archivedAny(),
+      queryFn: ({ signal }) =>
+        listContexts({ origin: 'chat', archived: 'only', limit: 1 }, { signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const hasArchived = $derived((anyArchived.data?.contexts.length ?? 0) > 0);
+  // The archived chats, newest first, read while their view is shown.
   const archived = createInfiniteQuery(
     () => ({
       queryKey: queryKeys.contexts.archived(),
@@ -267,7 +287,7 @@
       ).map((context) => sessionRow(context, questions, failedChats)),
     ),
   );
-  /** The list the chosen segment reads: the archived chats, or the rest. */
+  /** The list the view reads: the archived chats, or the rest. */
   const shownList = $derived(showingArchived ? archived : sessions);
   const searched = $derived(matchingRows(allRows, search, agentName));
   // The segments count what the search leaves, so each says how many it would show.
@@ -275,7 +295,7 @@
   const visible = $derived(
     showingArchived
       ? matchingRows(archivedRows, search, agentName)
-      : searched.filter((row) => inSegment(row, segment === 'archived' ? 'all' : segment)),
+      : searched.filter((row) => inSegment(row, segment)),
   );
   const searching = $derived(search.trim() !== '');
 
@@ -314,6 +334,9 @@
     chosen = 'all';
   }
 
+  // The list pane, where the focus is put after a change of view.
+  let listPane = $state<HTMLElement | undefined>();
+
   function openNewChat(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
@@ -322,10 +345,53 @@
     router.navigate('/chats/new');
   }
 
+  /** The query that keeps the view: the archived chats', or none. */
+  function viewSearch(archivedView: boolean): URLSearchParams {
+    return new URLSearchParams(archivedView ? { [VIEW_PARAMETER]: ARCHIVED_VIEW } : {});
+  }
+
+  /** A chat's address in the view that is shown, so opening one keeps its list where it was. */
+  function chatPath(id: string): string {
+    return chatSessionPath(id, viewSearch(showingArchived));
+  }
+
+  /** This address in the archived view, or out of it: the open chat stays open. */
+  function viewPath(archivedView: boolean): string {
+    const parameters = new URLSearchParams(router.current.search);
+    if (archivedView) parameters.set(VIEW_PARAMETER, ARCHIVED_VIEW);
+    else parameters.delete(VIEW_PARAMETER);
+    const query = parameters.toString();
+    return query === '' ? router.pathname : `${router.pathname}?${query}`;
+  }
+
+  /**
+   * Goes into the archived view or back out of it. A plain click stays in the application, and the
+   * focus lands where the person is going on: the way back once in, the Archived chats row once out.
+   * A modified click is left to the browser.
+   */
+  async function switchView(event: MouseEvent, archivedView: boolean): Promise<void> {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    typed = '';
+    router.navigate(viewPath(archivedView));
+    await tick();
+    const target = archivedView
+      ? listPane?.querySelector<HTMLElement>('[data-chats-view-back]')
+      : listPane?.querySelector<HTMLElement>('[data-chats-archived-entry] a[href]');
+    target?.focus();
+  }
+
   /** Opens the chosen row's chat, or the list alone when Back clears the choice. */
   function openChat(key: string | null): void {
     if (key === openId) return;
-    router.navigate(key === null ? '/chats' : chatSessionPath(key));
+    if (key !== null) {
+      router.navigate(chatPath(key));
+      return;
+    }
+    const query = viewSearch(showingArchived).toString();
+    router.navigate(query === '' ? '/chats' : `/chats?${query}`);
   }
 
   /**
@@ -390,7 +456,7 @@
         <StackedListItem
           data-cinder-row-id={row.id}
           data-chat={row.id}
-          href={router.href(chatSessionPath(row.id))}
+          href={router.href(chatPath(row.id))}
           selected={row.id === openId}
           statusPlacement="line-two"
           titleLines={phone.current ? 2 : 1}
@@ -464,11 +530,28 @@
         </Button>
       {/snippet}
     </EmptyState>
+  {:else if showingArchived}
+    {@const empty = CHAT_COPY.list.archivedEmpty}
+    <EmptyState
+      kind="filtered"
+      size="compact"
+      headingLevel={3}
+      title={empty.title}
+      description={empty.description}
+    >
+      {#snippet action()}
+        <Button
+          variant="secondary"
+          size="sm"
+          href={router.href(viewPath(false))}
+          onclick={(event: MouseEvent) => void switchView(event, false)}
+        >
+          {empty.back}
+        </Button>
+      {/snippet}
+    </EmptyState>
   {:else}
-    {@const empty =
-      CHAT_COPY.list.segmentEmpty[
-        segment === 'done' ? 'done' : segment === 'archived' ? 'archived' : 'waiting'
-      ]}
+    {@const empty = CHAT_COPY.list.segmentEmpty[segment === 'done' ? 'done' : 'waiting']}
     <EmptyState
       kind="filtered"
       size="compact"
@@ -487,11 +570,40 @@
   {#if listState === 'no-match' || listState === 'none'}
     {@render loadMore()}
   {/if}
+  <!-- The way to the archived chats is one row at the end of the list, under the last chat or the
+       state that stands for none, drawn only while a chat is archived (COR-2285 V5). -->
+  {#if !showingArchived && hasArchived && listState !== 'loading' && listState !== 'failed'}
+    <!-- Cinder's row draws the link, so its click is read where it lands, as a chat row's is. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div
+      class="ib-chats__archived-entry"
+      data-chats-archived-entry
+      onclick={(event) => {
+        if (event.target instanceof Element && event.target.closest('a[href]') !== null) {
+          void switchView(event, true);
+        }
+      }}
+    >
+      <DataList
+        items={[ARCHIVED_ENTRY]}
+        key={(entry: string) => entry}
+        aria-label={CHAT_COPY.list.archivedTitle}
+      >
+        {#snippet children()}
+          <StackedListItem href={router.href(viewPath(true))}>
+            {#snippet leading()}<Archive aria-hidden="true" size={16} />{/snippet}
+            {#snippet title()}{CHAT_COPY.list.archivedTitle}{/snippet}
+            {#snippet trailing()}<ChevronRight aria-hidden="true" size={16} />{/snippet}
+          </StackedListItem>
+        {/snippet}
+      </DataList>
+    </div>
+  {/if}
 {/snippet}
 
 <!-- On a phone the top bar's "‹ Chat" is the way back to the list (design rows 04y, 06m), so the pane
      draws no second Back of its own; between 640px and the width a pane stacks at, it still does. -->
-<div class="ib-chats" data-shortcut-region="list-detail">
+<div class="ib-chats" data-shortcut-region="list-detail" bind:this={listPane}>
   <ListDetail
     {items}
     key={(row: SessionRow) => row.id}
@@ -510,9 +622,31 @@
   >
     {#snippet header({ listToggle })}
       <div class="ib-chats__controls" bind:clientWidth={paneWidth}>
+        {#if showingArchived}
+          <!-- The archived view's way back to the chats, above its title. -->
+          <div class="ib-chats__back-row">
+            <Tooltip text={CHAT_COPY.list.backToChats}>
+              <Button
+                data-chats-view-back
+                href={router.href(viewPath(false))}
+                variant="ghost"
+                size="sm"
+                aria-label={CHAT_COPY.list.backToChats}
+                onclick={(event: MouseEvent) => void switchView(event, false)}
+              >
+                <ChevronLeft aria-hidden="true" size={16} />
+                {CHAT_COPY.sessionsTitle}
+              </Button>
+            </Tooltip>
+          </div>
+        {/if}
         <div class="ib-chats__title-row">
           <svelte:element this={openId === null ? 'h1' : 'h2'} class="ib-chats__title">
-            {phone.current ? CHAT_COPY.sessionsTitlePhone : CHAT_COPY.sessionsTitle}
+            {showingArchived
+              ? CHAT_COPY.list.archivedTitle
+              : phone.current
+                ? CHAT_COPY.sessionsTitlePhone
+                : CHAT_COPY.sessionsTitle}
           </svelte:element>
           <!-- The "+" and, beside an open chat, the toggle that hides the list (COR-2327 AC1). -->
           <span class="ib-chats__title-actions">
@@ -527,14 +661,14 @@
             placeholder={CHAT_COPY.list.searchPlaceholder}
             bind:value={typed}
           />
-          {#if segmentsFit}
+          {#if segmentsFit && !showingArchived}
             <SegmentedControl
               id="chat-status"
               label={CHAT_COPY.list.segmentsLabel}
               labelVisible={false}
               size="sm"
               value={segment}
-              onValueChange={(next: ChatListSegment) => (chosen = next)}
+              onValueChange={(next: ChatSegment) => (chosen = next)}
             >
               {#each CHAT_SEGMENTS as option (option)}
                 <Segment
@@ -544,11 +678,6 @@
                   {CHAT_COPY.list.segments[option]}
                 </Segment>
               {/each}
-              <!-- The archived chats are a list of their own, read when this is chosen, so it has
-                   no count to give. -->
-              {#if archivedFits}
-                <Segment value="archived">{CHAT_COPY.list.segments.archived}</Segment>
-              {/if}
             </SegmentedControl>
           {/if}
         {/if}

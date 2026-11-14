@@ -126,12 +126,6 @@ export type ChatSegment = 'all' | 'waiting' | 'done';
 /** The segments in the order the control draws them. */
 export const CHAT_SEGMENTS: readonly ChatSegment[] = ['all', 'waiting', 'done'];
 
-/**
- * A segment of the list's control: a status segment over the chats that are not archived, or
- * `archived`, which lists the archived chats alone (COR-2285 V5), read apart from the rest.
- */
-export type ChatListSegment = ChatSegment | 'archived';
-
 /** Whether a chat is archived: the Bureau gives it the time it was archived. */
 export function isArchivedChat(context: Pick<ChatContext, 'archivedAt'>): boolean {
   return context.archivedAt !== undefined && context.archivedAt !== null;

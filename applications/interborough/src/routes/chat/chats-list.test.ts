@@ -124,7 +124,7 @@ describe('the pane header', () => {
       [...segments.querySelectorAll('[role="radio"]')].map((segment) =>
         segment.textContent?.replaceAll(/\s+/g, ' ').replace(/ ?, ?/, ', ').trim(),
       ),
-    ).toEqual(['All, 4', 'Waiting on you, 2', 'Done, 1', 'Archived']);
+    ).toEqual(['All, 4', 'Waiting on you, 2', 'Done, 1']);
   });
 
   test('narrows the list to the segment chosen, and back to All', async () => {
@@ -277,7 +277,7 @@ describe('the states of the list', () => {
       [...region.querySelectorAll('[role="radio"]')].map((segment) =>
         segment.textContent?.replaceAll(/\s+/g, ' ').trim(),
       ),
-    ).toEqual(['All, loading–', 'Waiting on you, loading–', 'Done, loading–', 'Archived']);
+    ).toEqual(['All, loading–', 'Waiting on you, loading–', 'Done, loading–']);
     // load-proof: the skeleton's own delay is a product rule (nothing before 300 ms); waiting for it to show is waiting for the rule, never for speed
     await waitFor(() => expect(region.querySelector('.cinder-skeleton-list')).not.toBeNull());
     expect(within(region).getByRole('status').textContent).toContain('Loading chats');

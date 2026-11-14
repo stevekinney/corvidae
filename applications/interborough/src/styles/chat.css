@@ -321,6 +321,12 @@
   min-inline-size: 0;
 }
 
+/* The archived view's way back sits above its title, its chevron lined up with the title's start. */
+.ib-chats__back-row {
+  display: flex;
+  margin-inline-start: calc(-1 * var(--cinder-space-2));
+}
+
 .ib-chats__title-row {
   display: flex;
   gap: var(--cinder-space-2) var(--cinder-space-3);
