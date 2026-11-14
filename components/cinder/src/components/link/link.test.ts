@@ -116,13 +116,9 @@ describe('Link variant prop (COR-2329)', () => {
   });
 
   test('an unknown variant renders as an inline link', () => {
-    const { container } = render(Link, {
-      props: {
-        href: '/reviews',
-        variant: 'loud',
-        children: textSnippet('Open Reviews'),
-      },
-    });
+    // A value outside the type, as an untyped caller could pass.
+    const props = { href: '/reviews', variant: 'loud', children: textSnippet('Open Reviews') };
+    const { container } = render(Link, { props } as never);
     expect(container.querySelector('a')?.hasAttribute('data-variant')).toBe(false);
   });
 

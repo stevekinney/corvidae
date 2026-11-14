@@ -672,14 +672,9 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     expect(await animation()).not.toBe('none');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await captureForDesignReview(page, { route: '/', state: 'loading', source: SOURCE });
-    // The page settles its paint on animation frames, which a stopped clock never delivers.
-    await page.clock.resume();
-    await checkA11y('Home loading');
-
-    // The page, once it has its answers, is laid out as the placeholders were.
-    const before = await page.locator('[data-home-card="Start a chat"]').boundingBox();
     // COR-2329: the Spotlight's and the count's placeholders were taller than the text they stand
-    // for, so every section moved up about 7px when the data arrived.
+    // for, so every section moved up about 7px when the data arrived. Measured while the clock is
+    // still stopped, before the slow-load line can appear above the placeholders.
     const sectionTops = async () =>
       Promise.all(
         [
@@ -689,6 +684,12 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
         ].map(async (locator) => (await locator.boundingBox())!.y),
       );
     const topsWhileLoading = await sectionTops();
+    // The page settles its paint on animation frames, which a stopped clock never delivers.
+    await page.clock.resume();
+    await checkA11y('Home loading');
+
+    // The page, once it has its answers, is laid out as the placeholders were.
+    const before = await page.locator('[data-home-card="Start a chat"]').boundingBox();
     release();
     await expect(page.getByTestId('home-counts')).toBeVisible();
     await expect(homeBody(page)).toHaveAttribute('data-mode', 'overview');
