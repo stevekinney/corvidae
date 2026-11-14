@@ -3,7 +3,12 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
 import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
-import { faults, readyAgent, StubFault } from '../../lib/bureau-stub.test-support.ts';
+import {
+  catalogFixture,
+  faults,
+  readyAgent,
+  StubFault,
+} from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, CONTEXT, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
@@ -317,7 +322,7 @@ describe('the Settings tab, when something goes wrong', () => {
     expect(settings.textContent).not.toContain('Spend limit');
   });
 
-  test('shows an agent in code without limits, Delete or versions', async () => {
+  test('shows an agent in code as a form saved as versions of its overrides, with no Delete (COR-2229)', async () => {
     landAt('/agents/assistant/settings');
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [AGENT] }),
@@ -337,6 +342,15 @@ describe('the Settings tab, when something goes wrong', () => {
           instructions: null,
         },
       }),
+      'bureau.agents.overrides.get': () => ({
+        id: 'assistant',
+        hash: 'hash-0',
+        version: null,
+        overrides: {},
+        ownTools: [],
+      }),
+      'bureau.agents.versions.list': () => ({ versions: [] }),
+      'bureau.agents.catalog': () => ({ models: [], tools: [] }),
       'bureau.memory.list': () => ({ memories: [], nextOffset: null }),
     });
     restore = served.restore;
@@ -344,10 +358,69 @@ describe('the Settings tab, when something goes wrong', () => {
 
     const settings = await findByTestId('agent-settings');
 
-    await waitFor(() => expect(settings.textContent).toContain('anthropic/haiku'));
+    await findByTestId('agent-settings-form');
+    await waitFor(() => expect(settings.textContent).toContain('Haiku'));
     expect(queryByRole('button', { name: 'Delete agent' })).toBeNull();
-    expect(settings.querySelector('[data-testid="agent-versions"]')).toBeNull();
-    expect(served.calls.some((call) => call.method === 'bureau.agents.versions.list')).toBe(false);
+    expect(settings.querySelector('[data-testid="agent-versions"]')).not.toBeNull();
+    // A built-in agent is a code agent like a plugin's: its note says changes are saved as versions.
+    const note = await findByTestId('agent-built-in');
+    expect(note.textContent?.trim()).toBe(AGENT_PAGE_COPY.plugin.overridable(null));
+  });
+
+  test('holds the tools, Asks and guardrails of a built-in agent, whose own policy the page cannot read (COR-2229)', async () => {
+    landAt('/agents/assistant/access');
+    const served = bureau({
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent({ id: 'assistant' }),
+        source: 'code',
+        hash: null,
+        definition: null,
+        codeDefinition: {
+          name: 'assistant',
+          description: null,
+          model: 'anthropic/sonnet',
+          models: [],
+          tools: ['lookup-order'],
+          skills: [],
+          card: [],
+          instructions: null,
+        },
+        // A built-in agent always reports nothing: the Bureau reads what a copy drops from plugins.
+        dropped: [],
+      }),
+      'bureau.agents.overrides.get': () => ({
+        id: 'assistant',
+        hash: 'hash-0',
+        version: null,
+        overrides: {},
+        ownTools: ['lookup-order'],
+      }),
+      'bureau.agents.versions.list': () => ({ versions: [] }),
+      'bureau.agents.catalog': () => catalogFixture(),
+      'bureau.guardrails.list': () => ({
+        guardrails: [
+          { id: 'demo:redact', family: 'tool', description: 'Redacts secrets.', plugin: 'demo' },
+        ],
+      }),
+      'bureau.skills.list': () => ({ skills: [], sources: [] }),
+      'bureau.memory.list': () => ({ memories: [], nextOffset: null }),
+    });
+    restore = served.restore;
+    const { findByRole, findByTestId } = mount();
+
+    const note = await findByTestId('agent-built-in');
+    await waitFor(() =>
+      expect(note.textContent).toContain(
+        'Its own tools, Asks and guardrails stay as they are here',
+      ),
+    );
+    const box = (await findByRole('checkbox', { name: /Allow Lookup order/ })) as HTMLInputElement;
+    expect(box.disabled).toBe(true);
+    await fireEvent.click(box);
+    expect(served.calls.filter((call) => call.method === 'bureau.agents.overrides.update')).toEqual(
+      [],
+    );
   });
 
   for (const [name, fault, message] of [

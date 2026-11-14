@@ -63,6 +63,7 @@ describe('parseArguments', () => {
       'tests/e2e/chat-new-states.spec.ts',
       'tests/e2e/chat-new-workflows.spec.ts',
       'tests/e2e/agent-duplicate.spec.ts',
+      'tests/e2e/agent-plugin-editing.spec.ts',
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
       'tests/e2e/responsive.spec.ts',
@@ -125,6 +126,7 @@ describe('parseArguments', () => {
       'tests/e2e/chat-new-states.spec.ts',
       'tests/e2e/chat-new-workflows.spec.ts',
       'tests/e2e/agent-duplicate.spec.ts',
+      'tests/e2e/agent-plugin-editing.spec.ts',
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
     ]);
@@ -171,6 +173,7 @@ describe('parseArguments', () => {
       'tests/e2e/chat-new-states.spec.ts',
       'tests/e2e/chat-new-workflows.spec.ts',
       'tests/e2e/agent-duplicate.spec.ts',
+      'tests/e2e/agent-plugin-editing.spec.ts',
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
       'tests/e2e/responsive.spec.ts',

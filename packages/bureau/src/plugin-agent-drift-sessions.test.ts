@@ -193,6 +193,32 @@ describe('a run parked on a human wait or a tool approval when the plugin moves 
     expect(seen).toEqual([]);
   });
 
+  it('settles failed with definition-drifted when the plugin is no longer loaded, never as missing-agent (COR-2235)', async () => {
+    const path = harness.nextDatabasePath();
+    const first = await bureauOver(path, '1.0.0', askingGenerate());
+    const run = await first.tasks.start(AGENT, 'which environment?', { principal: OWNER.alice });
+    await reviewOf(first, run.id);
+
+    // The plugin is switched off across the restart: its agent is no longer in the catalog.
+    const restarted = await harness.open({
+      storage: await harness.sqliteStorage(path),
+      plugins: [],
+    });
+    const status = await pollUntil(async () => {
+      const session = await restarted.contexts.get(run.contextId);
+      const state = session?.metadata['lastRunStatus'];
+      return state === 'running' || state === undefined ? undefined : state;
+    }, 'the parked run to settle');
+
+    expect(status).toBe('error');
+    const session = await restarted.contexts.get(run.contextId);
+    const lastError = session?.metadata['lastError'];
+    const reason = typeof lastError === 'string' ? lastError : '';
+    expect(reason).toContain('definition-drifted');
+    expect(reason).toMatch(/version was 1\.0\.0 and is now none/);
+    expect(reason).not.toContain('no longer in the catalog');
+  });
+
   // The run that raised a tool approval has already ended; its approval is what waits. So the
   // approval is what a drifted agent refuses: it is not restored, and the charge never runs.
   it('is restored and runs its charge when the plugin did not move (a tool approval)', async () => {
@@ -278,6 +304,21 @@ describe('a schedule fire recovered after the plugin or its overrides moved', ()
   it('is refused when the plugin version moved: the fire fails and runs nothing under the new version', async () => {
     const { path, fireId } = await fireDyingInStepOne();
     const restarted = await restartedAs(path, '1.1.0');
+    const status = await pollUntil(async () => {
+      const state = await durableStatus(restarted, fireId);
+      return state === 'failed' || state === 'completed' ? state : undefined;
+    }, 'the recovered fire to settle');
+    expect(status).toBe('failed');
+    const session = await restarted.contexts.get(SESSION);
+    expect(JSON.stringify(session?.conversationHistory)).not.toContain('resumed at step');
+  });
+
+  it('is refused naming the version it was at when the plugin is no longer loaded (COR-2235)', async () => {
+    const { path, fireId } = await fireDyingInStepOne();
+    const restarted = await harness.open({
+      storage: await harness.sqliteStorage(path),
+      plugins: [],
+    });
     const status = await pollUntil(async () => {
       const state = await durableStatus(restarted, fireId);
       return state === 'failed' || state === 'completed' ? state : undefined;

@@ -228,6 +228,11 @@ describe('ConfirmDialog', () => {
     const row = css.match(/\.cinder-confirm-dialog__options > ul > li \{[^}]*\}/u)?.[0] ?? '';
     expect(row).toContain('border-block-start: 1px solid var(--cinder-border-muted)');
     expect(row).toContain('overflow-wrap: anywhere');
+    // The first row has no padding above it, so the line that leads the list sits 16px above it.
+    const first =
+      css.match(/\.cinder-confirm-dialog__options > ul > li:first-child \{[^}]*\}/u)?.[0] ?? '';
+    expect(first).toContain('padding-block-start: 0');
+    expect(first).toContain('border-block-start: 0');
     // A direct note is the description's muted small treatment.
     const note = css.match(/\.cinder-confirm-dialog__options > p \{[^}]*\}/u)?.[0] ?? '';
     expect(note).toContain('var(--cinder-text-muted)');

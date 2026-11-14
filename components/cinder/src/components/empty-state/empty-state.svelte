@@ -46,6 +46,7 @@
     icon,
     illustration,
     action,
+    children,
     ...rest
   }: EmptyStateProps = $props();
 
@@ -84,6 +85,9 @@
   // stacked layout, where the state has the room; a row or an inline state keeps its disc.
   const hasIllustration = $derived(illustration !== undefined && safeLayout === 'stacked');
   const hasDisc = $derived(!hasIllustration && (icon !== undefined || safeKind !== 'first-use'));
+  // Supporting content under the action, such as steps, in the stacked layout only: a row or an
+  // inline state is one line and has no room under its action.
+  const showDetails = $derived(children !== undefined && safeLayout === 'stacked');
 </script>
 
 <div
@@ -149,6 +153,11 @@
       {#if showAction && action}
         {@render action()}
       {/if}
+    </div>
+  {/if}
+  {#if showDetails && children}
+    <div class="cinder-empty-state-details">
+      {@render children()}
     </div>
   {/if}
 </div>

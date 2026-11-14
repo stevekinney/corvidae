@@ -26,6 +26,12 @@
       "title": "Compact for tabs and panels",
       "description": "size=\"compact\" tightens the padding, disc, and type for a tab or a panel.",
       "code": "<script lang=\"ts\">\n  import { EmptyState } from '@lostgradient/cinder';\n</script>\n\n<EmptyState size=\"compact\" title=\"No comments yet\" description=\"Replies appear here.\" />\n"
+    },
+    {
+      "id": "details",
+      "title": "Details under the action",
+      "description": "The action stays buttons; supporting content such as the steps of a manual set-up goes in the children, which follow the action at the full width of the state and in its alignment.",
+      "code": "<script lang=\"ts\">\n  import { Button, EmptyState } from '@lostgradient/cinder';\n</script>\n\n<EmptyState\n  align=\"start\"\n  title=\"Connect a model provider\"\n  description=\"Agents can't answer until one is connected.\"\n>\n  {#snippet action()}\n    <Button variant=\"primary\" label=\"Connect a provider\" />\n  {/snippet}\n  <p>Or set it up by hand:</p>\n  <ol>\n    <li>Save the key in a file.</li>\n    <li>Restart the host.</li>\n  </ol>\n</EmptyState>\n"
     }
   ]
 }

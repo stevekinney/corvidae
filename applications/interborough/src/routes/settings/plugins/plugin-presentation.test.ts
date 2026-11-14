@@ -150,6 +150,7 @@ describe('what a plugin adds and what names it', () => {
     const impacts = disableImpacts(plugin);
     expect(impacts.map((impact) => impact.key)).toEqual(['agents', 'schedules', 'waitingRuns']);
     expect(impacts[0]?.sentence).toContain('linear:a, linear:b');
+    expect(impacts[0]?.key).toBe('agents');
     expect(impacts[1]?.sentence).toContain('linear:b');
     expect(impacts[1]?.sentence).not.toContain('linear:a');
     expect(impacts[2]?.sentence).toContain('linear:c');
@@ -164,8 +165,49 @@ describe('what a plugin adds and what names it', () => {
     expect(disableImpacts(one).map((impact) => impact.sentence)).toEqual([
       'uses a:x and shows as unavailable.',
       'starts runs through a:x. It stays listed and does nothing until it is back.',
-      'waits on a:x. It shows as unavailable instead of resuming.',
+      'waits on a:x. It won’t resume until the plugin is back.',
     ]);
+  });
+
+  test('puts the runs going now first, names five and then how many more, and counts a waiting run once (COR-2235)', () => {
+    const plugin = standing({
+      name: 'a',
+      title: 'Alpha',
+      contributions: [contribution('agent', 'a:x', { agents: 0, waitingRuns: 2 })],
+    });
+    const runs = ['1', '2', '3', '4', '5', '6'].map((id) => ({
+      id: `run-${id}`,
+      name: `Chat ${id}`,
+      waiting: id === '1',
+    }));
+
+    const impacts = disableImpacts(plugin, { kind: 'listed', runs });
+
+    expect(impacts.map((impact) => impact.key)).toEqual(['inFlightRuns', 'waitingRuns']);
+    expect(impacts[0]?.count).toBe('6 runs');
+    expect(impacts[0]?.sentence).toBe(
+      'of Alpha’s agents are going now: Chat 1, Chat 2, Chat 3, Chat 4, Chat 5 and 1 more. They stop and are marked failed when Interborough restarts.',
+    );
+    // One of the two waiting runs is a run going now, so one remains.
+    expect(impacts[1]?.count).toBe('1 waiting run');
+    expect(disableImpacts(plugin, { kind: 'listed', runs: [] }).map((entry) => entry.key)).toEqual([
+      'waitingRuns',
+    ]);
+  });
+
+  test('says the runs could not be checked, and keeps every other row as it was', () => {
+    const plugin = standing({
+      name: 'a',
+      title: 'Alpha',
+      contributions: [contribution('agent', 'a:x', { schedules: 1, waitingRuns: 2 })],
+    });
+
+    const impacts = disableImpacts(plugin, { kind: 'unknown' });
+
+    // The waiting runs have no line of their own: the first line says the same fate for any run.
+    expect(impacts.map((impact) => impact.key)).toEqual(['inFlightRuns', 'schedules']);
+    expect(impacts[0]?.sentence).toContain('could not be checked');
+    expect(impacts[0]?.sentence).toContain('going or waiting');
   });
 });
 
