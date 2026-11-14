@@ -987,6 +987,41 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
       restoreRealTimers();
     }
   });
+
+  it('runs a parallel step nested in a branch of a lockstep step in lockstep too, with main`s values', async () => {
+    // Round 1 settled (`a1`, `two`); round 2 holds `a`'s wait on `one` and `b`'s nested parallel
+    // step, which ran before the dump but whose round is not recorded. The nested step was
+    // numbered through the shared counter of the lockstep rounds, so it runs as they did, and the
+    // run ends with the values `main` gives it (measured on `main` from this fixture; `a` is F1's
+    // value there).
+    calls.length = 0;
+    const storage = await loadPersistedRun('legacy-nested-lockstep');
+    const id = 'legacy-nested-lockstep-run';
+    const document = doc('legacy-nested-lockstep', [
+      parallel({
+        a: [
+          { kind: 'activity', handler: 'count', input: 'a1' },
+          { kind: 'await-signal', signal: 'one' },
+        ],
+        b: [
+          { kind: 'await-signal', signal: 'two' },
+          parallel({
+            x: [{ kind: 'activity', handler: 'count', input: 'x' }],
+            y: [{ kind: 'activity', handler: 'count', input: 'y' }],
+          }),
+        ],
+      }),
+    ]);
+    await using recovered = new Engine({ storage });
+    await registerWorkflowDocuments(recovered, host, { active: [document] });
+    const [handle] = await recovered.recoverAll();
+    await waitUntil(async () => isWaitingOnSignal(recovered, id, 'one'), {
+      message: 'the recovered run to wait on its second round',
+    });
+    await handle!.signal('one', 'O');
+    expect(await handle!.result()).toEqual({ a: 'B', b: { x: 'x', y: 'y' } });
+    expect(calls.toSorted()).toEqual(['x', 'y']);
+  });
 });
 
 /**
