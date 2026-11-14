@@ -4,7 +4,7 @@ import { renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 
 import type { Bungalow } from './bungalow.ts';
-import { openAtRoot, openBungalow } from './bungalow.ts';
+import { openBungalow, openLocalAtRoot, openLocalBungalow } from './bungalow.ts';
 import type { ConfigurationSnapshot, ConfigurationWriteResult } from './configuration.ts';
 import { TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
 
@@ -14,7 +14,7 @@ const temporaryDirectory = useTemporaryDirectories();
 
 describe('local configuration revisions', () => {
   test('requires a precondition in the type contract and returns promises', async () => {
-    using home = openAtRoot(TEST_NAME, temporaryDirectory());
+    using home = await openLocalBungalow({ name: TEST_NAME, root: temporaryDirectory() });
     const read: Promise<ConfigurationSnapshot> = home.readConfiguration();
     expect(read).toBeInstanceOf(Promise);
     expect(await read).toEqual({ text: undefined, revision: null });
@@ -29,7 +29,7 @@ describe('local configuration revisions', () => {
   });
 
   test('requires explicit creation and refuses stale writes without changing the bytes', async () => {
-    using home = openAtRoot(TEST_NAME, temporaryDirectory());
+    using home = await openLocalBungalow({ name: TEST_NAME, root: temporaryDirectory() });
     expect(home.configurationWriteCapability).toBe('writable');
     const absent = await home.readConfiguration();
     expect(absent).toEqual({ text: undefined, revision: null });
@@ -53,12 +53,15 @@ describe('local configuration revisions', () => {
   });
 
   test('reports a replacement followed by a lost local acknowledgement as unknown', async () => {
-    using home = openAtRoot(TEST_NAME, temporaryDirectory(), {
-      renameConfiguration: (from, to) => {
-        renameSync(from, to);
-        throw new Error('acknowledgement lost');
+    using home = await openLocalAtRoot(
+      { name: TEST_NAME, root: temporaryDirectory() },
+      {
+        renameConfiguration: (from, to) => {
+          renameSync(from, to);
+          throw new Error('acknowledgement lost');
+        },
       },
-    });
+    );
     const result = await home.writeConfiguration('committed-bytes', { expectedRevision: null });
     expect(result.outcome).toBe('unknown');
     if (result.outcome !== 'unknown') throw new Error('expected an uncertain acknowledgement');
@@ -68,7 +71,7 @@ describe('local configuration revisions', () => {
   });
 
   test('sees hand edits and deletion before a conditional replacement', async () => {
-    using home = openAtRoot(TEST_NAME, temporaryDirectory());
+    using home = await openLocalBungalow({ name: TEST_NAME, root: temporaryDirectory() });
     expect(await home.writeConfiguration('first', { expectedRevision: null })).toEqual({
       outcome: 'committed',
     });

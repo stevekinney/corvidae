@@ -1,11 +1,16 @@
-import type { Bungalow, DatabaseWorkspaceClaim, SecretProviderFactory } from './bungalow.ts';
+import type { Bungalow, DatabaseWorkspaceClaim, OpenRemoteBungalowOptions } from './bungalow.ts';
 import type { ConfigurationSnapshot, ConfigurationWriteResult } from './configuration.ts';
 import { assertConfigurationWrite } from './configuration.ts';
+import { injectedDeploymentSecrets, type DeploymentSecrets } from './deployment-secrets.ts';
 import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
-import { secretVariable, type RemoteConfiguration } from './remote-configuration.ts';
+import {
+  secretVariable,
+  validateRemoteDescriptor,
+  type RemoteBungalowDescriptor,
+} from './remote-configuration.ts';
 import { generateUlid, isUlid } from './ulid.ts';
-import { assertDirectoryName, assertSecretKey } from './validation.ts';
+import { assertBungalowName, assertDirectoryName, assertSecretKey } from './validation.ts';
 
 /** How long a presigned request stays valid. Each request is signed just before it is sent. */
 const PRESIGN_SECONDS = 60;
@@ -195,12 +200,21 @@ async function loadDeploymentId(client: Bun.S3Client, key: string): Promise<stri
 }
 
 /**
- * The client the configuration describes. Bun refuses some endpoints in its constructor with a
- * message that quotes the endpoint, so that failure keeps only its code.
+ * The client the descriptor describes, with every option set explicitly: the bucket is the
+ * descriptor's, never `S3_BUCKET`, and requests are path-style. Bun refuses some endpoints in its
+ * constructor with a message that quotes the endpoint, so that failure keeps only its code.
  */
-function s3Client(configuration: RemoteConfiguration): Bun.S3Client {
+function s3Client(descriptor: RemoteBungalowDescriptor): Bun.S3Client {
   try {
-    return new Bun.S3Client(configuration.client);
+    return new Bun.S3Client({
+      endpoint: descriptor.endpoint,
+      region: descriptor.region,
+      accessKeyId: descriptor.accessKeyId,
+      secretAccessKey: descriptor.secretAccessKey,
+      ...(descriptor.sessionToken === undefined ? {} : { sessionToken: descriptor.sessionToken }),
+      bucket: descriptor.bucket,
+      virtualHostedStyle: false,
+    });
   } catch (error) {
     throw new BungalowInputError('The S3_ variables do not describe a usable S3 client.', {
       cause: { code: codeOf(error) },
@@ -242,10 +256,10 @@ function assertExactlyAddressed(client: Bun.S3Client, bucket: string, key: strin
  */
 function assertNoAmbientSessionToken(
   client: Bun.S3Client,
-  configuration: RemoteConfiguration,
+  descriptor: RemoteBungalowDescriptor,
   key: string,
 ): void {
-  if (configuration.client.sessionToken !== undefined) return;
+  if (descriptor.sessionToken !== undefined) return;
   let signed: boolean;
   try {
     signed = new URL(client.presign(key, { expiresIn: PRESIGN_SECONDS })).searchParams.has(
@@ -266,20 +280,52 @@ function assertNoAmbientSessionToken(
   }
 }
 
+/** The callback remote mode cannot open without, or `BungalowInputError` before any request. */
+export function requireDatabaseWorkspaceClaim(
+  claim: DatabaseWorkspaceClaim | undefined,
+): DatabaseWorkspaceClaim {
+  if (typeof claim !== 'function') {
+    throw new BungalowInputError('Remote mode requires a database workspace binding callback.');
+  }
+  return claim;
+}
+
 /**
- * Open the remote Bungalow that `configuration` describes: Postgres for the database, the bucket
- * for configuration, content, and the deployment ID, and environment variables for secrets. It
- * takes no lock, since there is no root to lock, and makes no request until every input is valid.
+ * Open the remote home an explicit descriptor names. Reads no environment: everything comes from
+ * `options`. The descriptor goes through the same validation as one `resolveBungalowDescriptor`
+ * returns (required fields, a path-safe bucket, the prefix's normalization and segment rules), so
+ * a hand-built one cannot skip a check, and every input is checked before any request. Postgres
+ * holds the database, the bucket the configuration, content, and identity, and the descriptor's
+ * `secrets` the deployment secrets. No lock is taken, since there is no root to lock.
  */
-export async function openRemoteBungalow(
-  name: string,
-  configuration: RemoteConfiguration,
-  configuredWorkspaceId: string | undefined,
-  databaseWorkspaceClaim: DatabaseWorkspaceClaim,
-  writableConfiguration = false,
-  secretProviderFactory?: SecretProviderFactory,
+export async function openRemoteBungalow(options: OpenRemoteBungalowOptions): Promise<Bungalow> {
+  assertBungalowName(options.name);
+  const descriptor = validateRemoteDescriptor(options.descriptor);
+  const databaseWorkspaceClaim = requireDatabaseWorkspaceClaim(options.databaseWorkspaceClaim);
+  return openValidatedRemoteBungalow({ ...options, descriptor, databaseWorkspaceClaim });
+}
+
+/**
+ * Open a remote home from a descriptor `validateRemoteDescriptor` already returned. Not part of
+ * the package's public surface: a test reaches the URL checks below through it with a key the
+ * descriptor validation would have refused.
+ */
+export async function openValidatedRemoteBungalow(
+  options: OpenRemoteBungalowOptions,
 ): Promise<Bungalow> {
-  const { bucket, prefix, secrets } = configuration;
+  // Every option is read here, before the first await, so a later change to the caller's object
+  // cannot change what the open does.
+  const {
+    name,
+    descriptor: configuration,
+    workspaceId: configuredWorkspaceId,
+    databaseWorkspaceClaim,
+    secretProvider: secretProviderFactory,
+    deploymentSecrets: deploymentSecretsFactory,
+  } = options;
+  const writableConfiguration = options.writableConfiguration === true;
+  const { bucket, prefix } = configuration;
+  const secrets = configuration.secrets ?? new Map<string, string>();
   const client = s3Client(configuration);
   const deploymentKey = `${prefix}deployment-id`;
   const workspaceKey = `${prefix}workspace-id`;
@@ -377,6 +423,24 @@ export async function openRemoteBungalow(
   if (secretProvider.workspaceId !== workspaceId) {
     throw new BungalowInputError('The secret provider belongs to a different workspace.');
   }
+  const deploymentSecrets: DeploymentSecrets =
+    deploymentSecretsFactory === undefined
+      ? {
+          location(key) {
+            assertOpen();
+            return secretVariable(name, key);
+          },
+          async write(key) {
+            assertOpen();
+            assertSecretKey(key);
+            throw new BungalowStateError('Deployment secrets are read-only environment inputs.');
+          },
+          async read(key) {
+            assertOpen();
+            return secrets.get(secretVariable(name, key));
+          },
+        }
+      : injectedDeploymentSecrets(deploymentSecretsFactory, { workspaceId, assertOpen });
   return {
     name,
     mode: 'remote',
@@ -439,21 +503,7 @@ export async function openRemoteBungalow(
       return reconcileConfiguration(client, configurationKey);
     },
     secretProvider,
-    deploymentSecrets: {
-      location(key) {
-        assertOpen();
-        return secretVariable(name, key);
-      },
-      async write(key) {
-        assertOpen();
-        assertSecretKey(key);
-        throw new BungalowStateError('Deployment secrets are read-only environment inputs.');
-      },
-      async read(key) {
-        assertOpen();
-        return secrets.get(secretVariable(name, key));
-      },
-    },
+    deploymentSecrets,
     close,
     [Symbol.dispose]: close,
   };

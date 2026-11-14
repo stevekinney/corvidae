@@ -21,7 +21,7 @@ import { openBungalow } from './bungalow.ts';
 import { BungalowFilesystemError, BungalowLockedError, BungalowStateError } from './errors.ts';
 import { homeEnvironment, TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
 import { startLockChild } from './lock-children.test-support.ts';
-import { acquireRootLock, systemLockOperations, type LockOperations } from './lock.ts';
+import { acquireRootLock, loadSystemLockOperations, type LockOperations } from './lock.ts';
 
 const temporaryDirectory = useTemporaryDirectories();
 
@@ -263,8 +263,8 @@ describe('acquireRootLock against a host that refuses', () => {
 });
 
 describe('the lock descriptor', () => {
-  test('is close-on-exec, so no process this one execs can hold the lock past it', () => {
-    const system = systemLockOperations();
+  test('is close-on-exec, so no process this one execs can hold the lock past it', async () => {
+    const system = await loadSystemLockOperations();
     let observed: boolean | undefined;
     const lock = acquireRootLock(temporaryDirectory(), {
       tryLock(descriptor) {
@@ -276,9 +276,9 @@ describe('the lock descriptor', () => {
     expect(observed).toBe(true);
   });
 
-  test('is released at most once, so a repeated release cannot close a recycled descriptor', () => {
+  test('is released at most once, so a repeated release cannot close a recycled descriptor', async () => {
     const root = temporaryDirectory();
-    const system = systemLockOperations();
+    const system = await loadSystemLockOperations();
     let held: number | undefined;
     const lock = acquireRootLock(root, {
       tryLock(descriptor) {
@@ -301,9 +301,9 @@ describe('the lock descriptor', () => {
 });
 
 describe('a holder that is just starting or just finishing', () => {
-  test('is waited for: a contender that finds the file empty takes the lock when the holder goes', () => {
+  test('is waited for: a contender that finds the file empty takes the lock when the holder goes', async () => {
     const root = temporaryDirectory();
-    const system = systemLockOperations();
+    const system = await loadSystemLockOperations();
     let attempts = 0;
     const lock = acquireRootLock(root, {
       tryLock(descriptor) {
