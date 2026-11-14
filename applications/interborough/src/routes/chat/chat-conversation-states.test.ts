@@ -7,7 +7,7 @@
  * closes with the run's end state. Every record is the one a capture serves
  * (`fixtures/chat-states.ts`).
  */
-import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
@@ -266,6 +266,52 @@ describe('a reply that failed partway (19p)', () => {
         'Failed',
       ),
     );
+  });
+});
+
+describe('an existing chat with no message yet (COR-2285 V1)', () => {
+  const withExamples = {
+    'bureau.agents.list': () => ({
+      agents: [
+        { ...RUNNER, description: 'Runs the tools you name.', examples: ['List the tools'] },
+        AGENT,
+      ],
+    }),
+  };
+
+  test('is Chat’s first-use state with the agent’s description and its prompts, which send', async () => {
+    serve([], { answers: withExamples });
+    const { container, findByRole, findByText } = mount();
+
+    await findByRole('heading', { level: 2, name: CHAT_COPY.emptyTranscript.title });
+    expect(await findByText('Runs the tools you name.')).not.toBeNull();
+    const prompts = await findByRole('group', { name: 'Suggested prompts' });
+    const prompt = within(prompts).getByRole('button', { name: 'List the tools' });
+
+    await fireEvent.click(prompt);
+
+    // The prompt is sent as the person's first message: it is on its row, and the box stays empty.
+    await waitFor(() =>
+      expect(container.querySelector('[data-message-role="user"]')?.textContent).toContain(
+        'List the tools',
+      ),
+    );
+    expect(container.querySelector('.chat-empty')).toBeNull();
+    expect(container.querySelector('textarea')?.value).toBe('');
+  });
+
+  test('with no provider is Chat’s Connect a model provider state, and offers no prompt (V4)', async () => {
+    serve([], { hasKey: false, answers: withExamples });
+    const { container, findByRole } = mount();
+
+    const state = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-chat-availability="unconfigured"]');
+      if (found === null) throw new Error('The unconfigured state is not drawn yet.');
+      return found;
+    });
+    expect(state.textContent).toContain('Connect a model provider');
+    expect(await findByRole('button', { name: 'Connect provider' })).not.toBeNull();
+    expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
   });
 });
 

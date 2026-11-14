@@ -62,11 +62,15 @@ describe('empty and ready (C1, C2)', () => {
     expect(send.getAttribute('aria-label')).toBe('Nachricht senden');
   });
 
-  test('the ready ring and the quiet empty Send are drawn by the composer styles', async () => {
+  test('the elevated box and the quiet empty Send are drawn by the composer styles', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
+    // COR-2327 AC2: a shadow, a large radius and no outline; a ready draft fills Send, and the box's
+    // edge says nothing of it.
     expect(source).toMatch(
-      /\.chat-input\[data-ready\]\s*\{[^}]*border-color: var\(--cinder-accent-solid\);[^}]*box-shadow: 0 0 0 3px/,
+      /\.chat-input\s*\{[^}]*border: 1px solid transparent;[^}]*border-radius: var\(--_chat-input-radius\);[^}]*box-shadow: var\(--cinder-shadow-md\);/,
     );
+    expect(source).toContain('--_chat-input-radius: calc(var(--cinder-radius-lg) * 2);');
+    expect(source).not.toMatch(/\.chat-input\[data-ready\]\s*\{/);
     expect(source).toMatch(
       /:global\(\.chat-input-send:disabled\)\s*\{[^}]*background: transparent;/,
     );

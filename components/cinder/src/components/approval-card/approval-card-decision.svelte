@@ -469,7 +469,7 @@
         <Textarea
           id={noteId}
           bind:value={note}
-          label="Note (optional)"
+          label="Note"
           description="Saved with your decision. If you deny, the agent reads it as the reason."
           placeholder="Add a note for the agent or the record"
           rows={2}
@@ -481,7 +481,11 @@
     {#if canAnswer}
       <div class="cinder-approval-card__row-actions" role="group" aria-label="Approval actions">
         {#if !noteOpen}
-          <ApprovalCardNoteToggle disabled={isBusy} onOpen={() => (noteOpen = true)} />
+          <ApprovalCardNoteToggle
+            disabled={isBusy}
+            fieldId={noteId}
+            onOpen={() => (noteOpen = true)}
+          />
         {/if}
         <span class="cinder-approval-card__row-spacer"></span>
         <Button

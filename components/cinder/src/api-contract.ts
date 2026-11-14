@@ -424,6 +424,14 @@ export const CONTRACT: Record<string, ComponentContract> = {
       defaultListWidth: { optional: true, type_kind: 'TSNumberKeyword', default: L(280) },
       maximumListWidth: { optional: true, type_kind: 'TSNumberKeyword', default: L(560) },
       flushDetail: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      listCollapsible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      listCollapsed: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      collapseListLabel: {
+        optional: true,
+        type_kind: 'TSStringKeyword',
+        default: L('Hide list'),
+      },
+      expandListLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Show list') },
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
@@ -444,7 +452,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       detail: sp(1, false),
       empty: s0(true),
       listEmpty: s0(true),
-      header: s0(true),
+      header: sp(1, true),
     },
   },
 

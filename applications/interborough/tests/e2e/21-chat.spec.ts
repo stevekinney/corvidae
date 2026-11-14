@@ -514,11 +514,17 @@ for (const width of [375, 1280] as const) {
         // The chat's own states are drawn by its pane, so the frame, and the list in it, stay up.
         await expect(frame).toHaveAttribute('data-state', 'ready');
         if (outcome === 'loading') {
-          await expect(page.getByTestId('chat-loading')).toBeVisible();
-          await expect(page.getByRole('textbox', { name: /^Message/ })).toBeDisabled();
+          // Chat's loading state keeps the editor, and Send waits for the history (COR-2285 V2).
+          await expect(page.locator('[data-chat-availability="loading"]')).toBeVisible();
+          await expect(page.getByRole('textbox', { name: /^Message/ })).toBeEditable();
+          await expect(page.getByRole('button', { name: 'Loading…' })).toBeDisabled();
+        } else if (outcome === 'error') {
+          await expect(
+            frame.locator('[data-chat-availability="error"]').getByRole('heading', { level: 2 }),
+          ).toHaveText(CHAT_COPY.load.errorTitle);
         } else {
           await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
-            outcome === 'error' ? CHAT_COPY.load.errorTitle : VIEW_COPY.chat.forbidden.title,
+            VIEW_COPY.chat.forbidden.title,
           );
         }
         // The list beside it stays live where there is room for both, with its own "+".

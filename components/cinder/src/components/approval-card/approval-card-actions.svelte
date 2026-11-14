@@ -4,6 +4,7 @@
   import Checkbox from '../checkbox/checkbox.svelte';
   import { default as JsonEditor } from '../json-editor/index.ts';
   import Textarea from '../textarea/textarea.svelte';
+  import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
   import { formatEditableArguments, parseJsonText } from './approval-card-state.ts';
   import type {
     ApprovalResolution,
@@ -49,6 +50,8 @@
   const editRegionId = $derived(`${idBase}-edit-region`);
 
   let resolutionReason = $state('');
+  // The note waits behind "Add a note"; once opened it stays open, so a typed note never hides.
+  let noteOpen = $state(false);
   let rememberResolution = $state(false);
   let editingArguments = $state(false);
   let editedArgumentsText = $state('');
@@ -67,6 +70,7 @@
     if (requestKey === previousRequestKey) return;
     previousRequestKey = requestKey;
     resolutionReason = '';
+    noteOpen = false;
     rememberResolution = false;
     // A new request must never leave a stale editor open, even if its
     // arguments happen to serialize identically to the previous request's
@@ -129,17 +133,19 @@
 </script>
 
 <div class="cinder-approval-card__actions">
-  <div class="cinder-approval-card__resolution-controls">
-    <Textarea
-      id={reasonId}
-      bind:value={resolutionReason}
-      label="Note (optional)"
-      description="Saved with your decision. If you deny, the agent reads it as the reason."
-      placeholder="Add a note for the agent or the record"
-      rows={2}
-      disabled={isBusy}
-    />
-  </div>
+  {#if noteOpen}
+    <div class="cinder-approval-card__resolution-controls">
+      <Textarea
+        id={reasonId}
+        bind:value={resolutionReason}
+        label="Note"
+        description="Saved with your decision. If you deny, the agent reads it as the reason."
+        placeholder="Add a note for the agent or the record"
+        rows={2}
+        disabled={isBusy}
+      />
+    </div>
+  {/if}
   {#if rememberScope !== undefined}
     <div class="cinder-approval-card__remember">
       <Checkbox
@@ -154,6 +160,13 @@
     <p id={disabledReasonId} class="cinder-approval-card__reason" dir="auto">{disabledReason}</p>
   {/if}
   <div class="cinder-approval-card__action-row" role="group" aria-label="Approval actions">
+    {#if !noteOpen}
+      <ApprovalCardNoteToggle
+        disabled={isBusy}
+        fieldId={reasonId}
+        onOpen={() => (noteOpen = true)}
+      />
+    {/if}
     <div class="cinder-approval-card__action-buttons">
       <Button
         type="button"
