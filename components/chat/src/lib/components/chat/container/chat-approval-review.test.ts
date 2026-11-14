@@ -242,7 +242,22 @@ describe('pendingApprovalCard', () => {
 
     expect(pendingApprovalCard(root, 'waiting')?.id).toBe('waiting-card');
     expect(pendingApprovalCard(root, 'older')?.id).toBe('older-card');
-    expect(pendingApprovalCard(root, 'missing')).toBeNull();
+  });
+
+  test('falls back to the first pending card when the waiting message draws none of its own (COR-2327 B1)', () => {
+    // A host that folds a step's calls into the step's reply draws the card under that reply, not
+    // under the call's own message, which has no article.
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <article data-message-id="reply">
+        <div class="cinder-approval-card" data-cinder-state="approved" id="decided"></div>
+        <article class="cinder-approval-card" data-cinder-state="pending" id="host-card"></article>
+      </article>
+    `;
+
+    expect(pendingApprovalCard(root, 'call-row')?.id).toBe('host-card');
+    expect(pendingApprovalCard(document.createElement('div'), 'call-row')).toBeNull();
+    expect(pendingApprovalCard(null, 'call-row')).toBeNull();
   });
 });
 

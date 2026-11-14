@@ -110,7 +110,15 @@ export function approvalActionRowShift(
   return above > 0 ? -above : 0;
 }
 
-/** Returns the pending approval card rendered by the message that is waiting. */
+const PENDING_APPROVAL_CARD = '.cinder-approval-card[data-cinder-state="pending"]';
+
+/**
+ * Returns the pending approval card rendered by the message that is waiting. A host that draws its
+ * calls in a row of its own (Interborough folds a step's calls into the step's reply) renders no
+ * card under that message, so the first pending card in the transcript stands for it: the message
+ * is the first approval still waiting, so the first pending card is the one it means. Without the
+ * fallback the reminder could never tell that the card's decision row is in view, and stayed.
+ */
 export function pendingApprovalCard(
   root: ParentNode | null | undefined,
   messageId: string,
@@ -119,7 +127,8 @@ export function pendingApprovalCard(
     `article[data-message-id="${CSS.escape(messageId)}"]`,
   );
   return (
-    message?.querySelector<HTMLElement>('.cinder-approval-card[data-cinder-state="pending"]') ??
+    message?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD) ??
+    root?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD) ??
     null
   );
 }
