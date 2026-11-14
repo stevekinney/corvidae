@@ -550,7 +550,7 @@ describe('Skeleton list variant timing', () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe('Loading runs');
   });
 
-  test('after 10 s the shared line and a ghost Cancel show below the rows, not as a banner', () => {
+  test('after 10 s the shared line and a ghost Cancel show above the rows, not as a banner', () => {
     const onCancel = jest.fn();
     const { container, getByRole } = mountUnderFakeTimers({
       variant: 'list',
@@ -564,7 +564,7 @@ describe('Skeleton list variant timing', () => {
     advance(1);
     const status = container.querySelector('.cinder-skeleton-status');
     expect(status?.textContent).toContain('Still loading runs. This is taking longer than usual.');
-    expect(status?.previousElementSibling?.classList.contains('cinder-skeleton-list')).toBe(true);
+    expect(status?.nextElementSibling?.classList.contains('cinder-skeleton-list')).toBe(true);
     expect(container.querySelector('[role="alert"], .cinder-banner')).toBeNull();
     const cancel = getByRole('button', { name: 'Cancel' });
     expect(cancel.classList.contains('cinder-button')).toBe(true);
