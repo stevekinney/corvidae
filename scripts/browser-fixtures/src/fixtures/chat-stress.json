@@ -2844,7 +2844,7 @@
     },
     "steps": [
       { "action": "expect-text", "text": "Reading the refund policy first." },
-      { "action": "expect-text", "text": "Stopped by you" }
+      { "action": "expect-text", "text": "The answer above is partial." }
     ],
     "variants": [],
     "focusSweep": false
