@@ -38,6 +38,11 @@ export interface UseChatTranscriptOptions {
    * than its text, which a fold would drop. Absent, every plain narration message may fold.
    */
   getCanFoldNarration?: (() => ((message: Message) => boolean) | undefined) | undefined;
+  /**
+   * Whether a message's stopped or failed notice moves after the step row that follows it, so the
+   * turn reads as its text, its steps, then how it ended. Absent, no notice moves.
+   */
+  getDeferOutcome?: (() => ((message: Message) => boolean) | undefined) | undefined;
 }
 
 export interface UseChatTranscriptReturn {
@@ -92,6 +97,8 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       };
       const canFoldNarration = options.getCanFoldNarration?.();
       if (canFoldNarration !== undefined) renderOptions.canFoldNarration = canFoldNarration;
+      const deferOutcome = options.getDeferOutcome?.();
+      if (deferOutcome !== undefined) renderOptions.deferOutcome = deferOutcome;
       if (options.getUngroupAllToolCalls()) {
         renderOptions.ungroupedToolCallIds = new Set(
           messages.flatMap((message) => (message.toolCall?.id ? [message.toolCall.id] : [])),

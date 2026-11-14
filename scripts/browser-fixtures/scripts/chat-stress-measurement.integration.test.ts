@@ -18,6 +18,7 @@ import {
   readQuestionStepsProblems,
   readRepeatedSummaryProblems,
   readStepRowSpacing,
+  readStoppedTurnOrderProblems,
   readWithdrawal,
   revealScrollableControls,
   runStep,
@@ -126,15 +127,18 @@ describe('chat stress visual measurement', () => {
   });
 
   describe('question steps guard', () => {
-    // The real mechanism of the dock's header with several questions: a wrapping row, the tag at
-    // the leading end, the progress with its two compact buttons pushed to the trailing end, and
-    // the question taking the full width on its own line.
+    // The real mechanism of the dock's header, one question or several: a row that wraps upwards,
+    // the question first and growing, the tag after it, and the progress with its two compact
+    // buttons last, pushed to the trailing end. The tag and the question share a line while the
+    // question fits; the progress wraps first, and the tag with it when the question does not fit.
     const dock = (options: {
       progress?: string;
       previousDisabled?: boolean;
       nextDisabled?: boolean;
       width?: number;
       stepsFirst?: boolean;
+      question?: string;
+      questionOwnLine?: boolean;
     }): string => {
       const tag =
         '<span class="chat-question-dock-needs" data-chat-question-needs>Needs you</span>';
@@ -143,16 +147,16 @@ describe('chat stress visual measurement', () => {
         <style>
           body { margin: 0; font: 13px sans-serif; }
           * { box-sizing: border-box; }
-          [data-chat-question-heading] { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; width: ${options.width ?? 296}px; }
-          .chat-question-dock-needs { flex: none; white-space: nowrap; padding: 2px 8px; }
-          .chat-question-dock-steps { display: inline-flex; margin-inline-start: auto; gap: 4px; align-items: center; }
+          [data-chat-question-heading] { display: flex; flex-wrap: wrap-reverse; align-items: center; gap: 4px 12px; width: ${options.width ?? 296}px; }
+          .chat-question-dock-needs { order: 1; flex: none; white-space: nowrap; padding: 2px 8px; }
+          .chat-question-dock-steps { order: 2; display: inline-flex; margin-inline-start: auto; gap: 4px; align-items: center; }
           .chat-question-dock-steps button { width: 28px; height: 28px; padding: 0; }
-          .chat-question-dock-question { flex: 1 0 100%; margin: 0; }
+          .chat-question-dock-question { order: 0; flex: ${options.questionOwnLine ? '1 0 100%' : '1 1 auto'}; margin: 0; }
         </style>
         <div data-chat-question-dock>
           <div data-chat-question-heading data-chat-question-several>
             ${options.stepsFirst ? steps + tag : tag + steps}
-            <p class="chat-question-dock-question">Which region?</p>
+            <p class="chat-question-dock-question">${options.question ?? 'Which region?'}</p>
           </div>
           <div role="radio" aria-checked="false">East</div>
         </div>`;
@@ -209,9 +213,26 @@ describe('chat stress visual measurement', () => {
       );
     });
 
-    it('fails when the row is too narrow and the buttons wrap below the tag', async () => {
-      expect(await problemsFor(dock({ width: 150 }))).toContain(
-        'the tag, the progress and the buttons are not on one line',
+    it('fails when the row is too narrow and the buttons are pushed off the trailing end', async () => {
+      expect(await problemsFor(dock({ width: 100 }))).toContain(
+        'the buttons are not at the trailing end',
+      );
+    });
+
+    it('passes a short question on the tag’s line, with the pager wrapped above it', async () => {
+      expect(await problemsFor(dock({ width: 296 }))).toEqual([]);
+      expect(await problemsFor(dock({ width: 1200 }))).toEqual([]);
+    });
+
+    it('passes a long question on its own line under the tag at the leading end', async () => {
+      const question =
+        'Which of the three regional warehouses should the replacement order ship from?';
+      expect(await problemsFor(dock({ question }))).toEqual([]);
+    });
+
+    it('fails a question that drops to its own line though it fits beside the tag', async () => {
+      expect(await problemsFor(dock({ width: 1200, questionOwnLine: true }))).toContain(
+        'the question fits beside the tag but the tag is not on its line',
       );
     });
   });
@@ -1372,6 +1393,48 @@ describe('chat stress visual measurement', () => {
       expect(
         await spacingFor(transcript(14).replace('aria-expanded="false"', 'aria-expanded="true"')),
       ).toBeUndefined();
+    });
+  });
+
+  describe('stopped turn order guard', () => {
+    const wrapper = (parts: string): string =>
+      `<div class="chat-message-wrapper" data-narration>${parts}</div>`;
+    const narration = wrapper(
+      '<div class="chat-message-body"><p>Reading the refund policy first.</p></div>',
+    );
+    const stepRow = '<section class="chat-tool-call-timeline"><button>1 step</button></section>';
+    const notice = wrapper(
+      '<div class="chat-turn-outcome"><p>Stopped before an answer.</p></div><div class="chat-message-line"><time>9:01 AM</time></div>',
+    );
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 400 } });
+        await page.setContent(`<main>${markup}</main>`);
+        return await readStoppedTurnOrderProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes the narration, the step row, then the notice with its time', async () => {
+      expect(await problemsFor(narration + stepRow + notice)).toEqual([]);
+    });
+
+    it('fails a step row that comes after the notice', async () => {
+      expect(await problemsFor(narration + notice + stepRow)).toEqual([
+        'the step row comes after the notice, so it reads as a new turn',
+      ]);
+    });
+
+    it('fails a step row above the narration, and names what is missing', async () => {
+      expect(await problemsFor(stepRow + narration + notice)).toContain(
+        'the step row is above the narration',
+      );
+      expect(await problemsFor(narration + notice)).toEqual([
+        'the step row not found in the stopped turn',
+      ]);
     });
   });
 

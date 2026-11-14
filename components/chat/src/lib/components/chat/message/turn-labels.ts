@@ -25,6 +25,11 @@ export type ChatTurnLabels = {
   nextTry: string;
   /** The one neutral card on a turn the person stopped. Default `Stopped. The answer above is partial.`. */
   stopped: string;
+  /**
+   * The same card when the turn said only what it was doing and wrote no answer, so it does not
+   * claim one. Default `Stopped before an answer.`.
+   */
+  stoppedBeforeAnswer: string;
   /** What Continue does, as its accessible description. Default `Pick the answer up again where it stopped.`. */
   continueDescription: string;
   /** What Discard does, as its accessible description. Default `Throw the partial answer away.`. */
@@ -35,6 +40,11 @@ export type ChatTurnLabels = {
   discard: string;
   /** The heading of the alert on a turn that failed partway. Default `This answer is incomplete.`. */
   incomplete: string;
+  /**
+   * The heading of that alert when the turn said only what it was doing and wrote no answer.
+   * Default `Failed before an answer.`.
+   */
+  failedBeforeAnswer: string;
   /** What Retry keeps, when the failed state names nothing itself. Default `Retry keeps what was written so far.`. */
   retryKeeps: string;
   /** The button that runs a failed turn again. Default `Retry`. */
@@ -82,11 +92,13 @@ export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
   retryNow: 'Retry',
   nextTry: 'Time until the next try',
   stopped: 'Stopped. The answer above is partial.',
+  stoppedBeforeAnswer: 'Stopped before an answer.',
   continueDescription: 'Pick the answer up again where it stopped.',
   discardDescription: 'Throw the partial answer away.',
   continue: 'Continue',
   discard: 'Discard',
   incomplete: 'This answer is incomplete.',
+  failedBeforeAnswer: 'Failed before an answer.',
   retryKeeps: 'Retry keeps what was written so far.',
   retry: 'Retry',
   empty: 'The agent finished without writing an answer.',

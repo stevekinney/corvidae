@@ -42,6 +42,13 @@
      * notice size. The container derives it from the turn; it changes nothing stored. Default `false`.
      */
     narration?: boolean;
+    /**
+     * Which part of a message this renders, for a turn the container draws in two places. A
+     * stopped or failed turn that said only what it was doing sits its step row between the two:
+     * `'body'` is the text alone, and `'outcome'` the notice, the line under it and the run's notes.
+     * Default `'whole'`, all of it in one.
+     */
+    part?: 'whole' | 'body' | 'outcome';
     /** The words of a message's "Not sent" popover, for the transcript presentation. */
     notSent?: ChatNotSent | undefined;
     /** Whether the "Not sent" popover is open. Bindable; it opens from the red icon. */
@@ -269,6 +276,7 @@
     onRetry,
     presentation = 'default',
     narration = false,
+    part = 'whole',
     notSent,
     notSentOpen = $bindable(false),
     onRemoveQueued,
@@ -638,6 +646,11 @@
   // (copy, edit, the Show more/less control) — the rendered body itself flows
   // through deriveMessageParts + the parts renderer below.
   const textContent = $derived(getMessageText(message));
+  // A turn that said only what it was doing wrote no answer, so its notice does not claim one.
+  const withoutAnswer = $derived(narration && message.role === 'assistant');
+  // Text that already ends where a sentence ends (a closing quote, bracket or Markdown mark may
+  // follow) shows no ellipsis after it: "first. …" says the stop twice.
+  const endsInTerminalPunctuation = $derived(/[.!?…。！？][\s"'”’)\]*_`~]*$/u.test(textContent));
   const messageDirection = $derived(/[\u0590-\u08ff]/u.test(textContent) ? 'rtl' : 'ltr');
   const roleLabel = $derived(getMessageRoleLabel(message));
   const formattedCreatedAt = $derived(formatMessageTimestamp(message.createdAt));
@@ -999,7 +1012,9 @@
         {...onDiscardTurn || onContinueTurn ? { action: stoppedTurnActions } : {}}
       >
         {#snippet icon()}<Info aria-hidden="true" />{/snippet}
-        <p class="chat-turn-text" dir="auto">{turnWords.stopped}</p>
+        <p class="chat-turn-text" dir="auto">
+          {withoutAnswer ? turnWords.stoppedBeforeAnswer : turnWords.stopped}
+        </p>
       </Callout>
     </div>
   {:else if turn.kind === 'failed'}
@@ -1008,7 +1023,7 @@
         variant="danger"
         semantic="note"
         class="chat-turn-callout chat-turn-alert"
-        title={turnWords.incomplete}
+        title={withoutAnswer ? turnWords.failedBeforeAnswer : turnWords.incomplete}
         {...onRetryTurn ? { action: retryTurnAction } : {}}
       >
         {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
@@ -1052,6 +1067,7 @@
   data-presentation={transcript ? 'transcript' : undefined}
   data-streaming={streaming || undefined}
   data-narration={transcript && narration && message.role === 'assistant' ? '' : undefined}
+  data-ends-in-punctuation={endsInTerminalPunctuation ? '' : undefined}
   data-turn-state={turn.kind === 'complete' ? undefined : turn.kind}
   data-role={message.role}
   data-message-direction={messageDirection}
@@ -1063,175 +1079,177 @@
   data-cinder-rollback-discarded={rollbackDiscarded || undefined}
   {...rest}
 >
-  {#if message.role === 'assistant'}
+  {#if message.role === 'assistant' && part !== 'outcome'}
     <span class="cinder-sr-only" role="status">{sourceAnnouncement}</span>
   {/if}
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <article
-    bind:this={articleElement}
-    id={messageId}
-    class="chat-message chat-navigation-row"
-    dir="ltr"
-    data-message-id={message.id}
-    data-message-role={message.role}
-    data-attachments-only={attachmentsOnly ? '' : undefined}
-    aria-labelledby={isToolCall && toolPair ? undefined : roleId}
-    aria-label={isToolCall && toolPair ? `Tool call: ${toolPair.call.name}` : undefined}
-    aria-busy={streaming ? 'true' : undefined}
-    {tabindex}
-  >
-    <header class="chat-message-header">
-      <span id={roleId} class="chat-message-role">{roleLabel}</span>
-    </header>
-
-    {#if systemRow}
-      <button
-        type="button"
-        class="chat-message-system-toggle"
-        aria-expanded={systemOpen}
-        aria-controls={`${messageId}-body`}
-        onclick={() => (systemOpen = !systemOpen)}
-      >
-        <ChevronRight class="chat-message-system-chevron" aria-hidden="true" />
-        Instructions
-      </button>
-    {/if}
-
-    <div
-      class="chat-message-body"
-      data-empty={bodyParts.length === 0 && !isEditing ? '' : undefined}
-      dir="auto"
-      id={systemRow ? `${messageId}-body` : undefined}
-      hidden={systemRow && !systemOpen}
+  {#if part !== 'outcome'}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <article
+      bind:this={articleElement}
+      id={messageId}
+      class="chat-message chat-navigation-row"
+      dir="ltr"
+      data-message-id={message.id}
+      data-message-role={message.role}
+      data-attachments-only={attachmentsOnly ? '' : undefined}
+      aria-labelledby={isToolCall && toolPair ? undefined : roleId}
+      aria-label={isToolCall && toolPair ? `Tool call: ${toolPair.call.name}` : undefined}
+      aria-busy={streaming ? 'true' : undefined}
+      {tabindex}
     >
-      {#if isEditing}
-        <!-- Edit mode replaces the body parts with a textarea, but attachments
+      <header class="chat-message-header">
+        <span id={roleId} class="chat-message-role">{roleLabel}</span>
+      </header>
+
+      {#if systemRow}
+        <button
+          type="button"
+          class="chat-message-system-toggle"
+          aria-expanded={systemOpen}
+          aria-controls={`${messageId}-body`}
+          onclick={() => (systemOpen = !systemOpen)}
+        >
+          <ChevronRight class="chat-message-system-chevron" aria-hidden="true" />
+          Instructions
+        </button>
+      {/if}
+
+      <div
+        class="chat-message-body"
+        data-empty={bodyParts.length === 0 && !isEditing ? '' : undefined}
+        dir="auto"
+        id={systemRow ? `${messageId}-body` : undefined}
+        hidden={systemRow && !systemOpen}
+      >
+        {#if isEditing}
+          <!-- Edit mode replaces the body parts with a textarea, but attachments
              stay visible (they were never inside the editable body). -->
-        <div class="chat-message-edit">
-          <!-- svelte-ignore a11y_autofocus -->
-          <textarea
-            class="chat-message-edit-textarea"
-            bind:value={editContent}
-            onkeydown={handleEditKeyDown}
-            dir="auto"
-            autofocus
-            aria-label="Edit message content"
-            rows={Math.min(Math.max(editContent.split('\n').length, 2), 10)}></textarea>
-          <div class="chat-message-edit-actions">
-            <Button
-              type="button"
-              class="chat-message-edit-cancel"
-              size="xs"
-              variant="secondary"
-              onclick={cancelEditing}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              class="chat-message-edit-save"
-              size="xs"
-              variant="primary"
-              aria-label="Save & Resend"
-              onclick={saveEdit}
-            >
-              Save
-            </Button>
+          <div class="chat-message-edit">
+            <!-- svelte-ignore a11y_autofocus -->
+            <textarea
+              class="chat-message-edit-textarea"
+              bind:value={editContent}
+              onkeydown={handleEditKeyDown}
+              dir="auto"
+              autofocus
+              aria-label="Edit message content"
+              rows={Math.min(Math.max(editContent.split('\n').length, 2), 10)}></textarea>
+            <div class="chat-message-edit-actions">
+              <Button
+                type="button"
+                class="chat-message-edit-cancel"
+                size="xs"
+                variant="secondary"
+                onclick={cancelEditing}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                class="chat-message-edit-save"
+                size="xs"
+                variant="primary"
+                aria-label="Save & Resend"
+                onclick={saveEdit}
+              >
+                Save
+              </Button>
+            </div>
           </div>
-        </div>
-      {:else}
-        <!-- Replaces the historical role-branch body: every body render shape
+        {:else}
+          <!-- Replaces the historical role-branch body: every body render shape
              (tool call, tool result, markdown text) flows through the cinder-
              owned parts spine. The renderer keeps stable DOM identity across
              streaming updates via per-part keys, so the markdown body never
              remounts as its text grows. Image parts render below, as a sibling
              of this body div, matching the historical structure. -->
-        <ChatMessagePartsRenderer
-          parts={bodyParts}
-          {messageId}
-          {messagePart}
-          {approvalLayout}
-          {markdownNode}
-          quoteSource={canQuote ? message.id : undefined}
-          expanded={toolCallExpanded}
-          onToggle={toggleToolCallExpanded}
-          {onApprovalResolve}
-          {onApprovalRequestAgain}
-          {onInputSubmit}
-          {reasoningExpanded}
-          {onreasoning}
-          {stepsExpanded}
-          {onsteps}
-          {onSuggestionSelect}
-          {toolActivityActive}
-          {onRetryStep}
-          {toolCallDurations}
-          {toolCallStartTimes}
-          {turnLabels}
-          labels={messageLabels}
-        />
+          <ChatMessagePartsRenderer
+            parts={bodyParts}
+            {messageId}
+            {messagePart}
+            {approvalLayout}
+            {markdownNode}
+            quoteSource={canQuote ? message.id : undefined}
+            expanded={toolCallExpanded}
+            onToggle={toggleToolCallExpanded}
+            {onApprovalResolve}
+            {onApprovalRequestAgain}
+            {onInputSubmit}
+            {reasoningExpanded}
+            {onreasoning}
+            {stepsExpanded}
+            {onsteps}
+            {onSuggestionSelect}
+            {toolActivityActive}
+            {onRetryStep}
+            {toolCallDurations}
+            {toolCallStartTimes}
+            {turnLabels}
+            labels={messageLabels}
+          />
 
-        {#if hasMarkdownBody && textContent.length > TRUNCATE_THRESHOLD}
-          <button type="button" class="chat-message-expand" onclick={toggleExpanded}>
-            {expanded ? messageLabels.showLess : messageLabels.showMore}
-          </button>
+          {#if hasMarkdownBody && textContent.length > TRUNCATE_THRESHOLD}
+            <button type="button" class="chat-message-expand" onclick={toggleExpanded}>
+              {expanded ? messageLabels.showLess : messageLabels.showMore}
+            </button>
+          {/if}
         {/if}
-      {/if}
-    </div>
+      </div>
 
-    {#if imageParts.length > 0}
-      <!-- Images render through the grouped default path (the attachment grid
+      {#if imageParts.length > 0}
+        <!-- Images render through the grouped default path (the attachment grid
            lays out by total count); they do not flow through `messagePart`. -->
-      <ChatMessagePartsRenderer parts={imageParts} {messageId} />
-    {/if}
+        <ChatMessagePartsRenderer parts={imageParts} {messageId} />
+      {/if}
 
-    {#if shownSources && !transcript}
-      <div class="chat-message-sources" dir={messageDirection} bind:this={sourcesElement}>
-        <MessageSources
-          sources={shownSources}
-          expanded={sourcesExpanded}
-          ontoggle={toggleSourcesExpanded}
-          onCitationCloseComplete={completeSourceWithdrawal}
-          labels={messageLabels}
-        />
-      </div>
-    {/if}
+      {#if shownSources && !transcript}
+        <div class="chat-message-sources" dir={messageDirection} bind:this={sourcesElement}>
+          <MessageSources
+            sources={shownSources}
+            expanded={sourcesExpanded}
+            ontoggle={toggleSourcesExpanded}
+            onCitationCloseComplete={completeSourceWithdrawal}
+            labels={messageLabels}
+          />
+        </div>
+      {/if}
 
-    {#if isPending && !transcript}
-      <div class="chat-message-pending-actions">
-        <span class="chat-message-pending-label">{messageLabels.sending}</span>
-      </div>
-    {/if}
+      {#if isPending && !transcript}
+        <div class="chat-message-pending-actions">
+          <span class="chat-message-pending-label">{messageLabels.sending}</span>
+        </div>
+      {/if}
 
-    {#if isFailed && onRetry && !transcript}
-      <div class="chat-message-failed-actions">
-        <span class="chat-message-failed-label" role="alert">Failed to send</span>
-        <Button
-          type="button"
-          class="chat-message-retry"
-          size="xs"
-          variant="ghost-danger"
-          iconOnly
-          label="Retry"
-          onclick={() => onRetry(message.id)}
-        >
-          <RotateCcw class="cinder-icon-xs" />
-        </Button>
-      </div>
-    {/if}
+      {#if isFailed && onRetry && !transcript}
+        <div class="chat-message-failed-actions">
+          <span class="chat-message-failed-label" role="alert">Failed to send</span>
+          <Button
+            type="button"
+            class="chat-message-retry"
+            size="xs"
+            variant="ghost-danger"
+            iconOnly
+            label="Retry"
+            onclick={() => onRetry(message.id)}
+          >
+            <RotateCcw class="cinder-icon-xs" />
+          </Button>
+        </div>
+      {/if}
 
-    {#if status}
-      <div class="chat-message-status">
-        {@render status()}
-      </div>
-    {/if}
-  </article>
+      {#if status}
+        <div class="chat-message-status">
+          {@render status()}
+        </div>
+      {/if}
+    </article>
+  {/if}
 
-  {#if !isEditing}
+  {#if !isEditing && part !== 'body'}
     {@render turnOutcome()}
   {/if}
 
-  {#if transcript}
+  {#if transcript && part !== 'body'}
     <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
          line again, and so does an empty one, which carries its time there. -->
@@ -1245,7 +1263,7 @@
     {/if}
   {/if}
 
-  {#if hasMetadata && !transcript}
+  {#if hasMetadata && !transcript && part !== 'outcome'}
     <div class="chat-message-metadata">
       {#if createdAtValue && formattedCreatedAt && !timeInNotice}
         <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
@@ -2462,12 +2480,13 @@
   /* An answer that stopped short ends in a muted ellipsis, on the last line of its last text block,
    * so the cut is visible where it happened and not only in the notice. It is drawn, not content:
    * it is not read aloud (the notice says the answer is partial) and is not copied. It shows only
-   * when text is the last thing in the message; a turn that ended on a step has no cut-off prose. */
+   * when text is the last thing in the message; a turn that ended on a step has no cut-off prose.
+   * Text that already ends in terminal punctuation takes none: the stop is already marked there. */
   .chat-message-wrapper:is(
       [data-turn-state='stopped'],
       [data-turn-state='failed'],
       [data-turn-state='reconnecting']
-    )
+    ):not([data-ends-in-punctuation])
     .chat-message-body
     > :global(:last-child)
     :global(.cinder-markdown-content > :is(p, h1, h2, h3, h4, h5, h6):last-child)::after,
@@ -2475,7 +2494,7 @@
       [data-turn-state='stopped'],
       [data-turn-state='failed'],
       [data-turn-state='reconnecting']
-    )
+    ):not([data-ends-in-punctuation])
     .chat-message-body
     > :global(:last-child)
     :global(.cinder-markdown-content > :is(ul, ol):last-child > li:last-child)::after {

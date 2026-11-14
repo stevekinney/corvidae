@@ -293,3 +293,90 @@ describe('approval receipt timestamp', () => {
     expect(source).toMatch(/createdAtValue\s*&&\s*formattedCreatedAt\s*&&\s*!approvalOnlyTurn/u);
   });
 });
+
+describe('a turn that said only what it was doing', () => {
+  const narration = {
+    narration: true,
+    message: reply({ content: 'Reading the refund policy first.' }),
+  };
+
+  test('a stopped one does not claim an answer', () => {
+    const { container } = mount({ ...narration, turnState: { kind: 'stopped' } });
+    expect(outcome(container)?.textContent).toContain('Stopped before an answer.');
+    expect(outcome(container)?.textContent).not.toContain('answer above');
+  });
+
+  test('a stopped one with an answer keeps the partial-answer words', () => {
+    const { container } = mount({ turnState: { kind: 'stopped' } });
+    expect(outcome(container)?.textContent).toContain('Stopped. The answer above is partial.');
+  });
+
+  test('a failed one says it failed before an answer, and a host can say both its own way', () => {
+    const { container } = mount({
+      ...narration,
+      turnState: { kind: 'failed', cause: 'The provider dropped the connection.' },
+    });
+    expect(outcome(container)?.textContent).toContain('Failed before an answer.');
+    expect(outcome(container)?.textContent).not.toContain('This answer is incomplete.');
+
+    cleanup();
+    const hosted = mount({
+      ...narration,
+      turnState: { kind: 'stopped' },
+      turnLabels: { stoppedBeforeAnswer: 'Arrete avant une reponse.' },
+    });
+    expect(outcome(hosted.container)?.textContent).toContain('Arrete avant une reponse.');
+  });
+
+  test('the body part draws the text alone and the outcome part the notice and the line alone', () => {
+    const props = { ...narration, turnState: { kind: 'stopped' } };
+    const body = mount({ ...props, part: 'body' });
+    expect(body.container.querySelector('article')).not.toBeNull();
+    expect(outcome(body.container)).toBeNull();
+    expect(body.container.querySelector('.chat-message-line')).toBeNull();
+
+    cleanup();
+    const tail = mount({ ...props, part: 'outcome' });
+    expect(tail.container.querySelector('article')).toBeNull();
+    expect(outcome(tail.container)?.getAttribute('data-kind')).toBe('stopped');
+    expect(tail.container.querySelector('.chat-message-line')).not.toBeNull();
+  });
+});
+
+describe('the stopped-short ellipsis', () => {
+  const wrapperOf = (content: string) => {
+    cleanup();
+    const { container } = mount({
+      message: reply({ content }),
+      turnState: { kind: 'stopped' },
+    });
+    return container.querySelector('.chat-message-wrapper');
+  };
+
+  test('is skipped when the text already ends where a sentence ends', () => {
+    for (const content of [
+      'Reading the refund policy first.',
+      'Is it done?',
+      'Done!',
+      'Wait…',
+      'He said "stop."',
+      'It is **done.**',
+    ]) {
+      expect(wrapperOf(content)?.hasAttribute('data-ends-in-punctuation')).toBe(true);
+    }
+  });
+
+  test('is kept when the text stops mid-sentence', () => {
+    for (const content of ['Order 4398 shipped with Parcelly on', 'The ledger has 3.5', 'First,']) {
+      expect(wrapperOf(content)?.hasAttribute('data-ends-in-punctuation')).toBe(false);
+    }
+  });
+
+  test('is drawn by a rule that the punctuation mark switches off', async () => {
+    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
+    const rule = /content: '\\2026' \/ '';/u.exec(source);
+    expect(rule).not.toBeNull();
+    // Both selectors of the rule (a text block, and the last list item) carry the switch.
+    expect(source.split(':not([data-ends-in-punctuation])')).toHaveLength(3);
+  });
+});

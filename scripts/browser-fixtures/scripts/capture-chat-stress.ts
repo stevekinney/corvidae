@@ -2239,6 +2239,9 @@ async function measure(
     }
     problems.push(...stepRowSpacingProblems(spacing));
   }
+  if (stressCase.id === 85) {
+    problems.push(...(await readStoppedTurnOrderProblems(opened.page)));
+  }
   if (stressCase.id === 48 || stressCase.id === 78) {
     problems.push(...(await readFailureSummaryProblems(opened.page)));
   }
@@ -2505,9 +2508,10 @@ export async function readActionRowProblems(
 /**
  * Measures the docked question's header when several questions were asked together: it reads
  * `Question <position> of <total>`; the tag comes first in the document, then the progress, the
- * previous button, the next button and the choices; the tag at the leading end and the progress
- * with its two compact buttons at the trailing end share the top line; the question has the full
- * width on the line under them; previous is off on the first question and next on the last.
+ * previous button, the next button and the choices; the progress with its two compact buttons
+ * share one line at the trailing end of the header; the tag shares the question's line when the
+ * question fits beside it, and otherwise the question has the full width on the line under the tag,
+ * which stands at the leading end; previous is off on the first question and next on the last.
  */
 export async function readQuestionStepsProblems(
   page: Page,
@@ -2558,11 +2562,12 @@ export async function readQuestionStepsProblems(
       }
       const rtl = getComputedStyle(dock).direction === 'rtl';
       const box = (element: HTMLElement): DOMRect => element.getBoundingClientRect();
+      const gap = (row: HTMLElement): number => parseFloat(getComputedStyle(row).columnGap) || 0;
       const headingBox = box(heading);
       const lineOf = (element: HTMLElement): number => box(element).top + box(element).height / 2;
-      const topLine = [tag, progress, previous, next];
-      if (topLine.some((element) => Math.abs(lineOf(element) - lineOf(tag)) > 2)) {
-        problems.push('the tag, the progress and the buttons are not on one line');
+      const pager = [progress, previous, next];
+      if (pager.some((element) => Math.abs(lineOf(element) - lineOf(progress)) > 2)) {
+        problems.push('the progress and the buttons are not on one line');
       }
       if (box(tag).height > 30) problems.push('the tag wraps or stretches');
       for (const button of [previous, next]) {
@@ -2570,20 +2575,37 @@ export async function readQuestionStepsProblems(
         if (face.height > 40 || face.width > 40)
           problems.push('a navigation button is not compact');
       }
-      const leadingGap = rtl ? headingBox.right - box(tag).right : box(tag).left - headingBox.left;
-      if (Math.abs(leadingGap) > 1) problems.push('the tag is not at the leading end');
       const trailingGap = rtl
         ? box(next).left - headingBox.left
         : headingBox.right - box(next).right;
       if (Math.abs(trailingGap) > 1) problems.push('the buttons are not at the trailing end');
       if (question !== null) {
-        const questionBox = box(question);
-        if (questionBox.top < box(tag).bottom - 1)
-          problems.push('the question is not under the tag');
-        if (questionBox.width < headingBox.width - 1) {
-          problems.push('the question does not use the full width');
-        }
         if ((question.textContent ?? '').trim() === '') problems.push('the question is empty');
+        // The question's own width on one line: it is held at its natural size for a moment.
+        const held = { flex: question.style.flex, width: question.style.width };
+        question.style.flex = 'none';
+        question.style.width = 'max-content';
+        const naturalWidth = box(question).width;
+        question.style.flex = held.flex;
+        question.style.width = held.width;
+        const questionBox = box(question);
+        const fits = naturalWidth + box(tag).width + gap(heading) <= headingBox.width + 0.5;
+        if (fits) {
+          if (Math.abs(lineOf(question) - lineOf(tag)) > 2) {
+            problems.push('the question fits beside the tag but the tag is not on its line');
+          }
+        } else {
+          if (questionBox.top < box(tag).bottom - 1) {
+            problems.push('the question is not under the tag');
+          }
+          if (questionBox.width < headingBox.width - 1) {
+            problems.push('the question does not use the full width');
+          }
+          const leadingGap = rtl
+            ? headingBox.right - box(tag).right
+            : box(tag).left - headingBox.left;
+          if (Math.abs(leadingGap) > 1) problems.push('the tag is not at the leading end');
+        }
       } else {
         problems.push('the question is missing');
       }
@@ -3236,6 +3258,40 @@ export function stepRowSpacingProblems(spacing: StepRowSpacing | undefined): str
     : [
         `the answer is ${spacing.stepToAnswer.toFixed(2)}px under the step row's text but a message's text is ${spacing.betweenParts.toFixed(2)}px above its time`,
       ];
+}
+
+/**
+ * A turn that stopped or failed after only narration reads in the order it happened (owner
+ * decision of 2026-11-13): the narration, the step row, then the notice with the time under it. A
+ * notice between the narration and the step row makes the step row look like a new turn. Judged by
+ * where each is painted: the step row sits below the narration and above the notice, and the time
+ * sits below the notice.
+ */
+export async function readStoppedTurnOrderProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const painted = (selector: string): DOMRect | undefined =>
+      document.querySelector(selector)?.getBoundingClientRect();
+    const narration = painted('.chat-message-wrapper[data-narration] .chat-message-body');
+    const stepRow = painted('.chat-tool-call-timeline');
+    const notice = painted('.chat-turn-outcome');
+    const time = painted('.chat-turn-outcome ~ .chat-message-line time');
+    const missing = [
+      narration === undefined ? 'the narration' : undefined,
+      stepRow === undefined ? 'the step row' : undefined,
+      notice === undefined ? 'the notice' : undefined,
+      time === undefined ? 'the time under the notice' : undefined,
+    ].filter((name) => name !== undefined);
+    if (missing.length > 0) return [`${missing.join(', ')} not found in the stopped turn`];
+    const problems: string[] = [];
+    if (stepRow!.top < narration!.bottom) {
+      problems.push('the step row is above the narration');
+    }
+    if (stepRow!.top >= notice!.top) {
+      problems.push('the step row comes after the notice, so it reads as a new turn');
+    }
+    if (time!.top < notice!.bottom) problems.push('the time is above the notice');
+    return problems;
+  });
 }
 
 /**

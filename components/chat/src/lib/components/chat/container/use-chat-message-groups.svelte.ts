@@ -60,7 +60,18 @@ export type ToolCallRunItem = {
   entries?: ToolCallRunEntry[];
 };
 
-export type ChatRenderRow = MessageWithDateItem | UnreadDividerItem | TypingItem | ToolCallRunItem;
+/**
+ * The notice, the line under it and the notes of a turn that said only what it was doing and then
+ * stopped or failed: its message draws the text, the step row follows, and this row ends the turn,
+ * so the step row reads as part of it and not as the start of a new one.
+ */
+export type TurnOutcomeItem = {
+  type: 'turn-outcome';
+  message: Message;
+};
+
+export type ChatRenderRow =
+  MessageWithDateItem | UnreadDividerItem | TypingItem | ToolCallRunItem | TurnOutcomeItem;
 
 // Re-export ToolCallPair type for convenience.
 export type { ToolCallPair } from '../conversation-model.ts';
@@ -107,6 +118,12 @@ export interface ChatRenderRowOptions {
   pendingToolCallIds?: ReadonlySet<string>;
   /** Whether a narration message may fold; false when its message draws more than its text. */
   canFoldNarration?: (message: Message) => boolean;
+  /**
+   * Whether an assistant message's outcome (a stopped or failed turn's notice) moves after the
+   * step row that follows the message. It applies only to a message that a run of tool calls
+   * follows directly, which is narration: the turn has no answer. Absent, no outcome moves.
+   */
+  deferOutcome?: (message: Message) => boolean;
 }
 
 /** Return type for the message groups helper */
@@ -318,8 +335,16 @@ export function buildChatRenderRows(
   let toolCallRun: Message[] = [];
   const folds = planTurnFolds(items, options);
 
+  // A message whose outcome waits for the step row that follows it.
+  let deferredOutcome: Message | undefined;
   const flushToolCallRun = (): void => {
-    if (toolCallRun.length > 0) rows.push({ type: 'tool-call-group', messages: toolCallRun });
+    if (toolCallRun.length > 0) {
+      rows.push({ type: 'tool-call-group', messages: toolCallRun });
+      if (deferredOutcome !== undefined) {
+        rows.push({ type: 'turn-outcome', message: deferredOutcome });
+        deferredOutcome = undefined;
+      }
+    }
     toolCallRun = [];
   };
 
@@ -344,6 +369,18 @@ export function buildChatRenderRows(
       previousMessageId = item.message.id;
       if (canGroupToolCall(item.message, options?.ungroupedToolCallIds)) {
         toolCallRun.push(item.message);
+        continue;
+      }
+      const next = items[index + 1];
+      if (
+        item.message.role === 'assistant' &&
+        next?.type === 'message' &&
+        canGroupToolCall(next.message, options?.ungroupedToolCallIds) &&
+        options?.deferOutcome?.(item.message)
+      ) {
+        flushToolCallRun();
+        rows.push(item);
+        deferredOutcome = item.message;
         continue;
       }
     }
@@ -387,6 +424,8 @@ export function chatRenderRowKey(row: ChatRenderRow): string {
       return 'typing';
     case 'tool-call-group':
       return `tool-group-${row.messages[0]?.id ?? 'empty'}`;
+    case 'turn-outcome':
+      return `outcome-${row.message.id}`;
     default:
       throw new Error(`Unknown chat render row type: ${String(row)}`);
   }

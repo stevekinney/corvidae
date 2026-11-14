@@ -677,6 +677,13 @@
               resolveMessageTurnState(message, messageTurnState)?.kind,
             )
         : () => false,
+    getDeferOutcome: () =>
+      variant === 'transcript'
+        ? (message) =>
+            ['stopped', 'failed'].includes(
+              resolveMessageTurnState(message, messageTurnState)?.kind ?? '',
+            )
+        : undefined,
   });
 
   /**
@@ -711,6 +718,10 @@
   const toolCallPairsByCallId = $derived(transcript.toolCallPairsByCallId);
   const toolResultMessagesByResult = $derived(transcript.toolResultMessagesByResult);
   const renderRows = $derived(transcript.renderRows);
+  // The messages whose notice is drawn after their step row, as a row of its own.
+  const deferredOutcomeIds = $derived(
+    new Set(renderRows.flatMap((row) => (row.type === 'turn-outcome' ? [row.message.id] : []))),
+  );
   let selectedArtifactId = $state<string | undefined>(undefined);
   const resolvedArtifactsById = $derived.by(() => {
     const artifacts = new Map<string, ResolvedChatArtifact>();
@@ -2452,6 +2463,7 @@
       messageRow: ChatMessageRenderRow,
       suppressToolCall = false,
       approvalLayout: 'decision' | 'row' = 'decision',
+      rowPart: 'whole' | 'outcome' = 'whole',
     )}
       {@const message = messageRow.message}
       {@const pairs = message.toolCall?.id
@@ -2527,6 +2539,11 @@
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           presentation={variant === 'transcript' ? 'transcript' : 'default'}
           narration={assistantTextRoles.get(message.id) === 'narration'}
+          part={rowPart === 'outcome'
+            ? 'outcome'
+            : deferredOutcomeIds.has(message.id)
+              ? 'body'
+              : 'whole'}
           {notSent}
           onRemoveQueued={commandActions.canRemoveQueued &&
           !commandActions.removingMessageIds.has(message.id)
@@ -2605,7 +2622,7 @@
             {/if}
           {/snippet}
         </ChatMessage>
-        {#if artifact}
+        {#if artifact && rowPart !== 'outcome'}
           <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">
             {@render renderArtifactAction(artifact)}
           </div>
@@ -2697,6 +2714,13 @@
             {/each}
           </div>
         {/if}
+      {:else if renderRow.type === 'turn-outcome'}
+        {@render renderMessageRow(
+          { type: 'message', message: renderRow.message },
+          false,
+          'decision',
+          'outcome',
+        )}
       {:else}
         {@render renderMessageRow(renderRow)}
       {/if}

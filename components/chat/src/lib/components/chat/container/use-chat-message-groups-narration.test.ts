@@ -296,3 +296,48 @@ describe('finding a folded message', () => {
     expect(findRenderRowIndexByMessageId(rows, 's1')).toBe(groupIndex);
   });
 });
+
+const shapeOfRows = shape;
+
+describe('a stopped turn that said only what it was doing', () => {
+  const stoppedIds = new Set(['say']);
+  const options: ChatRenderRowOptions = {
+    deferOutcome: (candidate) => stoppedIds.has(candidate.id),
+  };
+  // The turn's own rows, without the day band above them.
+  const shape = (rows: readonly ChatRenderRow[]) =>
+    shapeOfRows(rows).filter((row) => row !== 'date');
+
+  test('ends with its outcome after the step row, not between the text and the steps', () => {
+    const rows = rowsOf(
+      [person('u'), text('say', 'Reading first.'), step('s1'), step('s2')],
+      options,
+    );
+    expect(shape(rows)).toEqual(['message:u', 'message:say', 'group[s1,s2|none]', 'turn-outcome']);
+    const last = rows.at(-1);
+    expect(last?.type === 'turn-outcome' && last.message.id).toBe('say');
+    expect(chatRenderRowKey(last!)).toBe('outcome-say');
+  });
+
+  test('keeps the outcome in place when the host defers none, or when no step follows the text', () => {
+    expect(shape(rowsOf([person('u'), text('say', 'Reading first.'), step('s1')]))).toEqual([
+      'message:u',
+      'message:say',
+      'group[s1|none]',
+    ]);
+    expect(shape(rowsOf([person('u'), text('say', 'Partial answer')], options))).toEqual([
+      'message:u',
+      'message:say',
+    ]);
+  });
+
+  test('leaves a person message and a step that keeps its own row alone', () => {
+    const rows = rowsOf([person('say'), step('s1')], options);
+    expect(shape(rows)).toEqual(['message:say', 'group[s1|none]']);
+    const ungrouped = rowsOf([person('u'), text('say', 'Reading first.'), step('s1')], {
+      ...options,
+      ungroupedToolCallIds: new Set(['call-s1']),
+    });
+    expect(shape(ungrouped)).toEqual(['message:u', 'message:say', 'message:s1']);
+  });
+});

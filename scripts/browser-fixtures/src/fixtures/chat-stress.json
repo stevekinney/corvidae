@@ -2934,9 +2934,9 @@
   {
     "id": 85,
     "slug": "narration-stopped",
-    "title": "A run stopped after a line and a step, before any answer, keeps the line visible and muted above the notice.",
+    "title": "A run stopped after a line and a step, before any answer, reads as the line, the step row, then the notice with its time.",
     "provenance": "issue-named",
-    "source": "2026-11-13 owner review: if a turn stops short with only narration, the narration stays visible, muted, with the notice.",
+    "source": "2026-11-13 owner review: if a turn stops short with only narration, the narration stays visible, muted, with the notice; review round one: the step row comes before the notice, which claims no answer.",
     "rows": ["M2", "R4"],
     "scenario": "tool-group",
     "params": {
@@ -2944,7 +2944,7 @@
     },
     "steps": [
       { "action": "expect-text", "text": "Reading the refund policy first." },
-      { "action": "expect-text", "text": "The answer above is partial." }
+      { "action": "expect-text", "text": "Stopped before an answer." }
     ],
     "variants": [],
     "focusSweep": false
