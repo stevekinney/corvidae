@@ -196,13 +196,16 @@ describe('Chat focus-ring recipes', () => {
     expect(findRules(styles.input, '.chat-input-send[data-stop]:focus-visible')).toEqual([]);
   });
 
-  test('the composer focus ring is separate from its ready glow', () => {
-    const focusRule = findRules(
-      styles.input,
-      '.chat-input:has(.chat-input-editor:focus):not([data-ready])',
-    )[0];
-    expect(declarationValue(focusRule!, 'box-shadow')).toContain('var(--cinder-ring-color)');
-    expect(styles.input).toContain('.chat-input[data-ready]');
+  test('the elevated composer draws the focus ring around itself, over its shadow, and an outline under forced colours', () => {
+    const focusRules = findRules(styles.input, '.chat-input:has(.chat-input-editor:focus)');
+    const base = focusRules.find((rule) => !isUnderForcedColors(rule));
+    const shadow = declarationValue(base!, 'box-shadow');
+    expect(shadow).toContain('var(--cinder-shadow-md)');
+    expect(shadow).toContain('var(--cinder-ring-color)');
+    const fallback = focusRules.find((rule) => isUnderForcedColors(rule));
+    expect(declarationValue(fallback!, 'outline')).toContain('Highlight');
+    // No accent edge or glow says a draft is ready: Send filled with the accent does.
+    expect(styles.input).not.toContain('.chat-input[data-ready]');
   });
 
   test('attachment Remove, Retry and "more" are Cinder Buttons whose ring wraps the painted face', () => {
@@ -280,10 +283,14 @@ describe('Chat composer controls (COR-1552)', () => {
     }
   });
 
-  test('the composer frame uses the control border on the control background', () => {
-    const frame = findRules(styles.input, '.chat-input')[0];
+  test('the composer is elevated on the control background, with no outline at rest (COR-2327 AC2)', () => {
+    const frame = findRules(styles.input, '.chat-input').find((rule) => !isUnderForcedColors(rule));
     expect(declarationValue(frame!, 'background')).toBe('var(--cinder-control-background)');
-    expect(declarationValue(frame!, 'border')).toBe('1px solid var(--cinder-control-border)');
+    expect(declarationValue(frame!, 'border')).toBe('1px solid transparent');
+    expect(declarationValue(frame!, 'box-shadow')).toBe('var(--cinder-shadow-md)');
+    // Forced colours drop the shadow, so the edge is drawn there instead.
+    const forced = findRules(styles.input, '.chat-input').find((rule) => isUnderForcedColors(rule));
+    expect(declarationValue(forced!, 'border-color')).toBe('CanvasText');
   });
 
   test('Stop keeps the neutral control border; Cinder draws the quiet disabled Send', () => {

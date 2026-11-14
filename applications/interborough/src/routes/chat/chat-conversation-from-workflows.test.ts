@@ -271,37 +271,20 @@ describe('a chat started from Workflows with an agent that can create workflows'
 });
 
 describe('a chat started from Workflows with no model provider', () => {
-  test('keeps the chip over the shared blocked row, draws no banner, and holds the prefill back (24g, 24h)', async () => {
+  test('is Chat’s Connect a model provider state, draws no banner, and holds the prefill back (COR-2285 V4)', async () => {
     serve({ hasKey: false, connected: false });
     landAt('/chats/new?from=workflows');
     const { container } = mount();
-    const row = await waitFor(() => {
-      const found = blocked(container);
-      if (found === null) throw new Error('The blocked row did not appear.');
-      return found;
-    });
 
-    expect(row.textContent).toContain(CHAT_COPY.composer.noProvider);
-    expect(row.querySelector('a')?.textContent?.trim()).toBe(CHAT_COPY.composer.connectProvider);
-    expect(row.textContent).toContain(CHAT_COPY.composer.useAssistant);
-    expect(chip(container)?.textContent?.trim()).toBe('Starting from Workflows');
+    await waitFor(() =>
+      expect(container.querySelector('[data-chat-availability="unconfigured"]')).not.toBeNull(),
+    );
+    const state = container.querySelector<HTMLElement>('[data-chat-availability="unconfigured"]')!;
+    expect(state.textContent).toContain('Connect a model provider');
+    expect(blocked(container)).toBeNull();
     expect(container.querySelector('.cinder-banner')).toBeNull();
-    // No box to hold the prefill, and nothing of it anywhere on the page.
-    expect(editor(container)).toBeNull();
-    expect(container.textContent).not.toContain('Help me build a workflow');
-  });
-
-  test('puts the prefill in the box once there is one, here when the person takes Assistant (24h)', async () => {
-    serve({ hasKey: false, connected: false });
-    landAt('/chats/new?from=workflows');
-    const { container, getByRole } = mount();
-    await waitFor(() => expect(blocked(container)).not.toBeNull());
-
-    await fireEvent.click(getByRole('button', { name: CHAT_COPY.composer.useAssistant }));
-
-    const field = await box(container);
-    await waitFor(() => expect(field.value).toBe(PREFILL));
-    expect(chip(container)).not.toBeNull();
+    // The composer is out of sight until a provider is connected, so nothing of the prefill shows.
+    expect(container.querySelector<HTMLElement>('.chat-input-wrapper')?.style.display).toBe('none');
   });
 });
 

@@ -131,6 +131,46 @@ The open item's key is kept in the `selected` search parameter (`selectionParame
 
 Pass `storageKey` and the divider width is remembered under that key in `localStorage` (or in `storage`, any object with `getItem` and `setItem`). The key is yours, so two lists on a page do not share a width. A storage that is missing or throws is ignored, and the list pane starts at `defaultListWidth`. Resizing the container does not rewrite the stored width, only moving the divider does. The list pane stops growing at 560 pixels; a list that is a table, which needs wider columns, raises that with `maximumListWidth`.
 
+## Hiding the list
+
+Set `listCollapsible` and, while an item is open, `header` is given `listToggle` to place, usually at the end of the title row, so the search and the filter keep the header's full width (a list with no `header` gets one holding the toggle alone). Pressing it hides the list pane: the detail takes the whole width, and a narrow rail at the start edge holds the toggle, so the way back is always on screen. The hidden list is not drawn, so nothing in it takes focus, and focus moves to the toggle each time it flips. With no item open the list shows and there is no toggle, since the list is then all there is to choose from. `listCollapsed` is bindable, and with `storageKey` the choice is remembered under `<storageKey>:list-collapsed`, beside the divider width; a remembered choice wins on mount. `collapseListLabel` and `expandListLabel` name the toggle in each state ("Hide chats", "Show chats"). Below `pushBelow`, where one pane shows at a time, there is nothing to hide and no toggle.
+
+```svelte
+<script lang="ts">
+  import { ListDetail, SelectableRow } from '@lostgradient/cinder';
+
+  const items = [
+    { id: 'onboarding', title: 'Customer onboarding' },
+    { id: 'billing', title: 'Billing question' },
+  ];
+</script>
+
+<ListDetail
+  {items}
+  key={(chat) => chat.id}
+  label="Chats"
+  storageKey="chats"
+  listCollapsible
+  collapseListLabel="Hide chats"
+  expandListLabel="Show chats"
+>
+  {#snippet header({ listToggle })}
+    <div class="title-row">
+      <h2>Chats</h2>
+      {@render listToggle?.()}
+    </div>
+  {/snippet}
+  {#snippet list(chat, row)}
+    <SelectableRow selected={row.selected} selectedState="current" onclick={row.open}>
+      {#snippet title()}{chat.title}{/snippet}
+    </SelectableRow>
+  {/snippet}
+  {#snippet detail(chat)}
+    <h2>{chat.title}</h2>
+  {/snippet}
+</ListDetail>
+```
+
 ## Narrow layout
 
 When the component is narrower than `pushBelow` (600 pixels by default, so a tablet shows both panes and a phone shows one), it shows one pane at a time: the list, then the detail with a Back button. The pane then follows the page instead of scrolling inside a box of its own. The width is the component's own, not the viewport's, so a ListDetail in a narrow column stacks inside a wide window. Back clears the selection and returns focus to the row that was open. A width that has not been measured yet counts as wide.
@@ -166,12 +206,16 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | `backLabel` | `string` | no | `"Back"` | Label of the Back button shown above the detail below `pushBelow`. |
 | `backVisible` | `boolean` | no | `true` | Whether the Back button shows above the detail below `pushBelow`. A host whose own chrome already carries the way back to the list (a top bar's back link) turns it off, so the screen has one Back and not two. Back is also how a person returns to the list by keyboard, so the host's way back must be a link or a button, and opening an item focuses the detail region when there is no Back button to focus. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-list-detail` root element. |
+| `collapseListLabel` | `string` | no | `"Hide list"` | Accessible name and tooltip of the toggle while the list shows: what pressing it does. |
 | `defaultListWidth` | `number` | no | `280` | Width in pixels of the list pane before the divider is moved. |
 | `detailLabel` | `string` | no | `"Details"` | Accessible name of the detail region. |
 | `emptyDescription` | `string` | no | `"Choose an item from the list to see it here."` | Description of the default empty detail, used when `empty` is omitted. |
 | `emptyTitle` | `string` | no | `"Nothing selected"` | Title of the default empty detail, used when `empty` is omitted. |
+| `expandListLabel` | `string` | no | `"Show list"` | Accessible name and tooltip of the toggle while the list is hidden. |
 | `flushDetail` | `boolean` | no | `false` | Removes the detail pane's inner padding, for a detail view that lays out its own header, body and footer edge to edge (an open chat, a table, a code frame). In the stacked layout the open detail also fills the height the component is given, so what it docks at its bottom edge, such as a composer, sits at the bottom of the screen instead of after its content. |
 | `label` | `string` | yes | — | Accessible name of the list region, for example "Chats". |
+| `listCollapsed` | `boolean` | no | `false` | Whether the list pane is hidden, with `listCollapsible`. Bindable. With `storageKey`, the choice is remembered beside the divider width, and a remembered choice wins on mount. |
+| `listCollapsible` | `boolean` | no | `false` | Offers a toggle that hides the list pane while an item is open and the panes sit side by side or one above the other, so the detail takes the whole width. While the list shows, `header` is given the toggle to place (a list with no `header` gets a header holding it alone); while the list is hidden, the toggle is the only control of a narrow rail at the start edge, so it is always on screen, and focus moves to it each time it flips. With no item open the list shows and there is no toggle, and below `pushBelow`, where one pane shows at a time, there is nothing to hide. |
 | `loading` | `boolean` | no | `false` | Shows a placeholder in place of the rows and the open item while the records load: five list rows in the list pane and a block in the detail pane. Nothing shows for the first 300 milliseconds, so a fast load never flickers, and a slow one adds a "still loading" line after ten seconds. |
 | `loadingLabel` | `string` | no | `"Loading"` | What the loading region announces, politely, once the placeholder appears: "Loading memories". |
 | `maximumListWidth` | `number` | no | `560` | Widest width in pixels the divider can give the list pane, and the most a remembered or default width can be. Raise it for a list that is a table, whose columns need more than a list of rows. |
@@ -184,7 +228,7 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | `detail` | `(opaque)` | yes | — | Detail renderer for the open item. Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | Rendered in the detail pane while no item is open. A default message is shown when omitted. Not expressible in JSON Schema; see the component types for the signature. |
 | `groupBy` | `(opaque)` | no | — | Groups consecutive items under a header band, such as a source or a day. Passed to the list's `DataList`, so a group is a nested list named by its header. Not expressible in JSON Schema; see the component types for the signature. |
-| `header` | `(opaque)` | no | — | List header, above the rows: the title, the count, the create action, the search and the filter. Put the title and the create action on their own row and the filter below at full width, so the action never reads as the filter's submit button. Not expressible in JSON Schema; see the component types for the signature. |
+| `header` | `(opaque)` | no | — | List header, above the rows: the title, the count, the create action, the search and the filter. Put the title and the create action on their own row and the filter below at full width, so the action never reads as the filter's submit button. With `listCollapsible`, it is given the toggle that hides the list to place, usually at the end of the title row. Not expressible in JSON Schema; see the component types for the signature. |
 | `items` | `(opaque)` | yes | — | The records to list. Each is passed to `list` and, when selected, to `detail`. Not expressible in JSON Schema; see the component types for the signature. |
 | `key` | `(opaque)` | yes | — | Key extractor. The key identifies an item in the keyboard cursor, the selection, and the URL. Not expressible in JSON Schema; see the component types for the signature. |
 | `list` | `(opaque)` | no | — | Row renderer, called once per item inside an `<li>` that ListDetail provides. Render a `SelectableRow` with `selected={row.selected}` and `selectedState="current"`; activating its primary action opens the item. Omit it when `listBody` draws the rows. Not expressible in JSON Schema; see the component types for the signature. |

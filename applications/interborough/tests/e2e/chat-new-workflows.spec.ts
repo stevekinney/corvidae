@@ -280,37 +280,32 @@ test.describe('New chat from Workflows, provider connected (24d, 24e, 24f)', () 
   });
 });
 
-test.describe('New chat from Workflows with no provider (24g, 24h)', () => {
-  test('keeps the chip over the shared blocked row with no banner, and holds the prefill back until there is a box (24g, 24h)', async ({
+test.describe('New chat from Workflows with no provider (COR-2285 V4)', () => {
+  test('is Chat’s Connect a model provider state with no banner, and shows nothing of the prefill', async ({
     page,
   }) => {
-    await open(page, '/chats/new?from=workflows');
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/chats/new?from=workflows');
     await expectShell(page);
 
-    await expect(greeting(page)).toHaveText('What should Workflow author do?');
-    await expect(chip(page)).toHaveText('Starting from Workflows');
-    const row = blockedRow(page);
-    await expect(row.getByText('Connect a model provider to chat')).toBeVisible();
-    await expect(row.getByRole('link', { name: 'Connect a provider' })).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Use Assistant' })).toBeVisible();
+    // An empty chat with no provider is Chat's state in place of the greeting and the composer;
+    // it supersedes rows 24g and 24h's chip over the blocked row and its swap to Assistant.
+    const state = page.locator('[data-chat-availability="unconfigured"]');
+    await expect(state.getByRole('heading', { level: 2 })).toHaveText('Connect a model provider');
+    await expect(state.getByRole('button', { name: 'Connect provider' })).toHaveAttribute(
+      'data-cinder-variant',
+      'primary',
+    );
+    await expect(blockedRow(page)).toHaveCount(0);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
-    // The chip is above the blocked row.
-    const chipBox = await boxOf(chip(page));
-    const rowBox = await boxOf(row);
-    expect(chipBox.y + chipBox.height).toBeLessThanOrEqual(rowBox.y + 1);
-    // No box, so no prefill anywhere on the page.
-    await expect(field(page)).toHaveCount(0);
-    await expect(page.getByText('Help me build a workflow')).toHaveCount(0);
+    await expect(field(page)).toBeHidden();
+    await expect(page.getByText('Help me build a workflow')).toBeHidden();
     await captureForDesignReview(page, {
       route: '/chats/new',
       state: 'from Workflows, no provider',
       source: SOURCE,
     });
-
-    // The prefill appears in the first box there is: here, Assistant's.
-    await row.getByRole('button', { name: 'Use Assistant' }).click();
-    await expect(field(page)).toHaveValue(PREFILL);
-    await expect(chip(page)).toHaveText('Starting from Workflows');
   });
 });
 

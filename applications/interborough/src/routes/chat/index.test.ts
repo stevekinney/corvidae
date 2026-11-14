@@ -26,6 +26,12 @@ afterEach(() => {
 
 const mount = () => render(QueryPage, { props: { page: Chats } } as never);
 
+/** Chat's composer, when it is drawn: an availability state that replaces it hides it. */
+function queryComposer(container: HTMLElement): HTMLElement | null {
+  const wrapper = container.querySelector<HTMLElement>('.chat-input-wrapper');
+  return wrapper === null || wrapper.style.display === 'none' ? null : wrapper;
+}
+
 /** Bureau requests that answer `contexts.get` as `answer` says, counting how often it is asked. */
 function contextAnswering(answer: () => Response): { asked: () => number } {
   let asked = 0;
@@ -104,7 +110,7 @@ describe('a session whose page could not read it', () => {
 
     const { findByRole, container } = mount();
 
-    await findByRole('heading', { level: 1, name: CHAT_COPY.load.errorTitle });
+    await findByRole('heading', { level: 2, name: CHAT_COPY.load.errorTitle });
     expect(container.querySelector('[aria-busy="true"]')).toBeNull();
     const asked = context.asked();
     healthy = true;
@@ -122,11 +128,13 @@ describe('a chat that cannot be loaded (design rows 17c, 17d, 17e)', () => {
 
     const { findByRole, getByText, container } = mount();
 
-    await findByRole('heading', { level: 1, name: CHAT_COPY.load.errorTitle });
+    await findByRole('heading', { level: 2, name: CHAT_COPY.load.errorTitle });
     expect(getByText(CHAT_COPY.load.errorDescription)).not.toBeNull();
-    // Nothing is sent to a chat that did not load.
-    expect(container.querySelector('textarea')).toBeNull();
-    expect(container.querySelector('.weft-chat-surface')).toBeNull();
+    // COR-2285 V3: Chat's error state stands in the transcript's place under the page's one
+    // heading, and nothing is sent to a chat that did not load: there is no composer.
+    expect(container.querySelector('[data-chat-availability="error"]')).not.toBeNull();
+    expect(container.querySelector('h1')?.textContent).toBe(CHAT_COPY.load.crumb);
+    expect(queryComposer(container)).toBeNull();
     // The list beside it stays live.
     expect(container.querySelector('input[type="search"], [role="searchbox"]')).not.toBeNull();
     expect(breadcrumbTrail('/chats/session-1').map((item) => item.label)).toEqual([
@@ -135,15 +143,15 @@ describe('a chat that cannot be loaded (design rows 17c, 17d, 17e)', () => {
     ]);
   });
 
-  test('offers Try again as the primary action and Back to chats, which opens the list alone', async () => {
+  test('offers Try again as the primary action and All conversations, which opens the list alone', async () => {
     contextAnswering(failing);
     landAt('/chats/session-1');
     const { findByRole } = mount();
 
     const retry = await findByRole('button', { name: CHAT_COPY.load.tryAgain });
-    const back = await findByRole('button', { name: CHAT_COPY.load.backToChats });
+    const back = await findByRole('button', { name: CHAT_COPY.load.allConversations });
     expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
-    expect(back.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(back.getAttribute('data-cinder-variant')).toBe('secondary');
     await fireEvent.click(back);
 
     expect(router.current.route?.pattern).toBe('/chats');
@@ -169,7 +177,7 @@ describe('a chat that cannot be loaded (design rows 17c, 17d, 17e)', () => {
     landAt('/chats/session-1');
     const view = render(QueryPage, { props: { page: Chats, connection: monitor } } as never);
     try {
-      await view.findByRole('heading', { level: 1, name: CHAT_COPY.load.errorTitle });
+      await view.findByRole('heading', { level: 2, name: CHAT_COPY.load.errorTitle });
       await waitFor(() => expect(monitor.shownInPlace).toBe(true));
     } finally {
       cleanup();
@@ -194,26 +202,30 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     ).restore;
   }
 
-  test('draws nothing for 300 ms, then placeholders in the real layout with the composer disabled', async () => {
+  test('draws nothing for 300 ms, then Chat’s skeleton turns, with the editor kept and Send waiting (COR-2285 V2)', async () => {
     neverAnswering();
     landAt('/chats/session-1');
     jest.useFakeTimers();
-    const { container, queryByRole, getByRole } = mount();
+    const { container, getByRole } = mount();
     await settle(4);
 
     // A read that is quick never flashes a placeholder.
-    const loading = () => container.querySelector('[data-testid="chat-loading"]');
+    const loading = () => container.querySelector('[data-testid="chat-unavailable"]');
     expect(loading()?.querySelector('.cinder-skeleton')).toBeNull();
     expect(loading()?.querySelector('textarea')).toBeNull();
 
     jest.advanceTimersByTime(300);
-    await until(() => expect(loading()?.querySelector('.cinder-skeleton')).not.toBeNull());
+    await until(() =>
+      expect(loading()?.querySelector('[data-chat-availability="loading"]')).not.toBeNull(),
+    );
 
+    expect(loading()?.querySelectorAll('.cinder-skeleton').length).toBeGreaterThan(2);
+    expect(loading()?.textContent).toContain(CHAT_COPY.load.loading);
     const composer = getByRole('textbox', { name: /^Message/ });
     expect(composer.getAttribute('placeholder')).toBe('Message the agent…');
-    expect(composer.hasAttribute('disabled')).toBe(true);
-    expect(queryByRole('button', { name: 'Send message' })?.hasAttribute('disabled')).toBe(true);
-    // Not slow yet, so no status line.
+    expect(composer.hasAttribute('disabled')).toBe(false);
+    expect(getByRole('button', { name: 'Loading…' }).hasAttribute('disabled')).toBe(true);
+    // Not slow yet, so no slow line.
     expect(container.textContent).not.toContain(CHAT_COPY.load.stillLoading);
     // The breadcrumb does not show the identifier of a chat that is still being read.
     expect(breadcrumbTrail('/chats/session-1').map((item) => item.label)).toEqual([
@@ -222,24 +234,177 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     ]);
   });
 
-  test('says it is still loading after 10 s, with a ghost Cancel that returns to the chat list', async () => {
-    neverAnswering();
+  test('says it is still loading after 10 s with Cancel, and a canceled read offers Retry and All conversations', async () => {
+    let answers = 0;
+    restore = bureau(
+      { 'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }) },
+      (url, init) => {
+        if (url.endsWith('/messages') || url.includes('/threads/')) return undefined;
+        const body = typeof init?.body === 'string' ? init.body : '{}';
+        if (!body.includes('bureau.contexts.get')) return undefined;
+        answers += 1;
+        return new Response(new ReadableStream({ start() {} }));
+      },
+    ).restore;
     landAt('/chats/session-1');
     jest.useFakeTimers();
     const { container, findByRole } = mount();
     await settle(4);
 
-    jest.advanceTimersByTime(10_000);
+    // Chat counts the seconds from the clock, so the clock moves with the timers.
+    jest.advanceTimersByTime(300);
+    await until(() =>
+      expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull(),
+    );
+    jest.setSystemTime(new Date(Date.now() + 10_000));
+    jest.advanceTimersByTime(1_000);
     await until(() => expect(container.textContent).toContain(CHAT_COPY.load.stillLoading));
 
-    // It is Cinder's own status line, not a banner or an alert.
-    const status = container.querySelector('.cinder-skeleton-status');
-    expect(status?.getAttribute('role')).toBe('status');
+    // Chat's own slow notice, not a banner or an alert.
+    expect(container.querySelector('[data-chat-availability="loading"][data-slow]')).not.toBeNull();
     expect(container.querySelector('[role="alert"], .cinder-banner')).toBeNull();
-    const cancel = await findByRole('button', { name: 'Cancel' });
-    await fireEvent.click(cancel);
+    await fireEvent.click(await findByRole('button', { name: 'Cancel' }));
 
-    expect(router.current.route?.pattern).toBe('/chats');
+    await until(() =>
+      expect(container.querySelector('[data-chat-availability="canceled"]')).not.toBeNull(),
+    );
+    expect(router.current.route?.pattern).toBe('/chats/:chat');
+    expect(container.textContent).toContain(CHAT_COPY.load.canceledTitle);
+    const back = await findByRole('button', { name: CHAT_COPY.load.allConversations });
+    expect(back.getAttribute('data-cinder-variant')).toBe('secondary');
+    const asked = answers;
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await until(() => expect(answers).toBeGreaterThan(asked));
+    await until(() =>
+      expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull(),
+    );
+  });
+
+  test('stays canceled when the reads held at Cancel answer late, and reads again only on Retry', async () => {
+    // Every read of the chat is held: the pane's, and the list's read of the open chat's row.
+    const held: Array<() => void> = [];
+    let asked = 0;
+    restore = bureau(
+      { 'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }) },
+      (url, init) => {
+        if (url.endsWith('/messages') || url.includes('/threads/')) {
+          return url.endsWith('/messages')
+            ? Response.json({ threadId: 'session-1', messages: [] })
+            : undefined;
+        }
+        const body = typeof init?.body === 'string' ? init.body : '{}';
+        if (!body.includes('bureau.contexts.get')) return undefined;
+        asked += 1;
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              held.push(() => {
+                try {
+                  controller.enqueue(
+                    new TextEncoder().encode(
+                      JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: 'bureau.contexts.get',
+                        result: { ...CONTEXT, title: 'Plan the week' },
+                      }),
+                    ),
+                  );
+                  controller.close();
+                } catch {
+                  // The read was aborted: its stream is gone.
+                }
+              });
+            },
+          }),
+        );
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    jest.useFakeTimers();
+    const { container, findByRole } = mount();
+    await settle(4);
+    jest.advanceTimersByTime(300);
+    await until(() =>
+      expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull(),
+    );
+    jest.setSystemTime(new Date(Date.now() + 10_000));
+    jest.advanceTimersByTime(1_000);
+    await until(() => expect(container.textContent).toContain(CHAT_COPY.load.stillLoading));
+    await fireEvent.click(await findByRole('button', { name: 'Cancel' }));
+    await until(() =>
+      expect(container.querySelector('[data-chat-availability="canceled"]')).not.toBeNull(),
+    );
+    const canceled = container.querySelector('[data-testid="chat-unavailable"]');
+
+    // The reads that were out at Cancel answer now, as the server gets to them, and so does any
+    // read that follows from them.
+    for (let round = 0; round < 3; round += 1) {
+      for (const answer of held.splice(0)) answer();
+      await settle(8);
+      jest.advanceTimersByTime(1_000);
+      await settle(8);
+    }
+
+    // The person canceled: nothing loads the chat behind their back, and the state is the same one.
+    expect(container.querySelector('[data-testid="chat-unavailable"]')).toBe(canceled);
+    expect(container.querySelector('[data-chat-availability="canceled"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="chat-header"]')).toBeNull();
+    const readsBeforeRetry = asked;
+
+    // Retry reads it again, and the chat it answers is shown.
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await until(() => expect(asked).toBeGreaterThan(readsBeforeRetry));
+    for (const answer of held.splice(0)) answer();
+    jest.useRealTimers();
+    await findByRole('heading', { level: 1, name: 'Plan the week' });
+  });
+
+  test('keeps what the person typed while the chat was read, in the chat that replaces the placeholders', async () => {
+    let answer: (() => void) | undefined;
+    restore = bureau(
+      {
+        'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, title: 'Plan the week' }),
+      },
+      (url, init) => {
+        if (url.endsWith('/messages') || url.includes('/threads/')) {
+          return url.endsWith('/messages')
+            ? Response.json({ threadId: 'session-1', messages: [] })
+            : undefined;
+        }
+        const body = typeof init?.body === 'string' ? init.body : '{}';
+        if (!body.includes('bureau.contexts.get') || answer !== undefined) return undefined;
+        // The first read waits until the test lets it through.
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              answer = () => {
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: 'bureau.contexts.get',
+                      result: { ...CONTEXT, title: 'Plan the week' },
+                    }),
+                  ),
+                );
+                controller.close();
+              };
+            },
+          }),
+        );
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByRole } = mount();
+
+    const box = await findByRole('textbox', { name: /^Message/ });
+    await fireEvent.input(box, { target: { value: 'Before it loads' } });
+    await until(() => expect(answer).toBeDefined());
+    answer?.();
+
+    await findByRole('heading', { level: 1, name: 'Plan the week' });
+    await waitFor(() => expect(container.querySelector('textarea')?.value).toBe('Before it loads'));
   });
 
   test('shows the chat, and no placeholder, once it has loaded', async () => {
@@ -255,7 +420,7 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     const { findByRole, container } = mount();
 
     await findByRole('heading', { level: 1, name: 'Plan the week' });
-    expect(container.querySelector('[data-testid="chat-loading"]')).toBeNull();
+    expect(container.querySelector('[data-testid="chat-unavailable"]')).toBeNull();
     // Once it has loaded the breadcrumb names the chat by its title.
     expect(breadcrumbTrail('/chats/session-1').map((item) => item.label)).toEqual([
       'Chat',
