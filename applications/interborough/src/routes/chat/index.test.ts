@@ -280,6 +280,85 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
     );
   });
 
+  test('stays canceled when the reads held at Cancel answer late, and reads again only on Retry', async () => {
+    // Every read of the chat is held: the pane's, and the list's read of the open chat's row.
+    const held: Array<() => void> = [];
+    let asked = 0;
+    restore = bureau(
+      { 'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }) },
+      (url, init) => {
+        if (url.endsWith('/messages') || url.includes('/threads/')) {
+          return url.endsWith('/messages')
+            ? Response.json({ threadId: 'session-1', messages: [] })
+            : undefined;
+        }
+        const body = typeof init?.body === 'string' ? init.body : '{}';
+        if (!body.includes('bureau.contexts.get')) return undefined;
+        asked += 1;
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              held.push(() => {
+                try {
+                  controller.enqueue(
+                    new TextEncoder().encode(
+                      JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: 'bureau.contexts.get',
+                        result: { ...CONTEXT, title: 'Plan the week' },
+                      }),
+                    ),
+                  );
+                  controller.close();
+                } catch {
+                  // The read was aborted: its stream is gone.
+                }
+              });
+            },
+          }),
+        );
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    jest.useFakeTimers();
+    const { container, findByRole } = mount();
+    await settle(4);
+    jest.advanceTimersByTime(300);
+    await until(() =>
+      expect(container.querySelector('[data-chat-availability="loading"]')).not.toBeNull(),
+    );
+    jest.setSystemTime(new Date(Date.now() + 10_000));
+    jest.advanceTimersByTime(1_000);
+    await until(() => expect(container.textContent).toContain(CHAT_COPY.load.stillLoading));
+    await fireEvent.click(await findByRole('button', { name: 'Cancel' }));
+    await until(() =>
+      expect(container.querySelector('[data-chat-availability="canceled"]')).not.toBeNull(),
+    );
+    const canceled = container.querySelector('[data-testid="chat-unavailable"]');
+
+    // The reads that were out at Cancel answer now, as the server gets to them, and so does any
+    // read that follows from them.
+    for (let round = 0; round < 3; round += 1) {
+      for (const answer of held.splice(0)) answer();
+      await settle(8);
+      jest.advanceTimersByTime(1_000);
+      await settle(8);
+    }
+
+    // The person canceled: nothing loads the chat behind their back, and the state is the same one.
+    expect(container.querySelector('[data-testid="chat-unavailable"]')).toBe(canceled);
+    expect(container.querySelector('[data-chat-availability="canceled"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="chat-header"]')).toBeNull();
+    const readsBeforeRetry = asked;
+
+    // Retry reads it again, and the chat it answers is shown.
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await until(() => expect(asked).toBeGreaterThan(readsBeforeRetry));
+    for (const answer of held.splice(0)) answer();
+    jest.useRealTimers();
+    await findByRole('heading', { level: 1, name: 'Plan the week' });
+  });
+
   test('keeps what the person typed while the chat was read, in the chat that replaces the placeholders', async () => {
     let answer: (() => void) | undefined;
     restore = bureau(

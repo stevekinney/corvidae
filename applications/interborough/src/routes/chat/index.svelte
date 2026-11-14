@@ -61,11 +61,17 @@
     };
   }, undefined);
 
+  // Whether the person canceled a slow read: the chat is then not asked for until they retry.
+  let canceled = $state(false);
+
   const context = createQuery(
     () => ({
       queryKey: queryKeys.contexts.detail(sessionId),
       queryFn: ({ signal }) => getContext(sessionId, { signal }),
-      enabled: !startsNew,
+      // A read the person canceled stays canceled: nothing asks again until they press Retry.
+      // Canceling only aborts the read in flight, and the query is asked again by anything that
+      // touches it (another read of the chat landing, a refetch), so it is turned off instead.
+      enabled: !startsNew && !canceled,
       retry: false,
     }),
     undefined,
@@ -96,8 +102,6 @@
     return () => connection.setShownInPlace(false);
   });
 
-  // Whether the person canceled a slow read: the chat is then not asked for until they retry.
-  let canceled = $state(false);
   // What the person typed while the chat was read, for the conversation that replaces the stand-in.
   let draft = $state('');
 
@@ -107,8 +111,12 @@
     void queryClient.cancelQueries({ queryKey: queryKeys.contexts.detail(sessionId) });
   }
 
+  /** Reads the chat again: after Cancel, turning the query back on asks for it; after a fault, a refetch does. */
   function retryLoading(): void {
-    canceled = false;
+    if (canceled) {
+      canceled = false;
+      return;
+    }
     void context.refetch();
   }
 

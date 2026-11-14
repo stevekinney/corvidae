@@ -9,7 +9,7 @@ export const visualFixtureMetadata = {
   fixtureBudgetOverride: {
     reason:
       'The no-provider fixture (COR-2285 V4) draws two states no other fixture holds: the Connect a model provider state in place of an empty conversation, and the blocked composer row beside one with history.',
-    approvedBy: 'coordinator, relaying the COR-2285 V4 decision of 2026-11-13',
+    approvedBy: 'owner, 2026-11-13',
   },
 };
 
