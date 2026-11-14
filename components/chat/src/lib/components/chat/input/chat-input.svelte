@@ -803,6 +803,25 @@
   /** The neutral bar that replaces the composer for an archived or a read-only chat. */
   const notice = $derived(isComposerNoticeStatus(status) ? status : undefined);
   let noticeLabelRef = $state<HTMLButtonElement | null>(null);
+  // Whether the bar's actions took a row of their own under the words. CSS cannot see a flex wrap,
+  // and the bar's ink insets differ by it: on one row the buttons set the height and the words are
+  // centred on them, wrapped the words' own half-leading must come out of the top inset.
+  let noticeElement = $state<HTMLDivElement | null>(null);
+  let noticeWrapped = $state(false);
+  $effect(() => {
+    const bar = noticeElement;
+    if (bar === null || typeof ResizeObserver === 'undefined') return;
+    const measure = (): void => {
+      const message = bar.querySelector('.chat-input-blocked-message')?.getBoundingClientRect();
+      const actions = bar.querySelector('.chat-input-blocked-actions')?.getBoundingClientRect();
+      noticeWrapped =
+        message !== undefined && actions !== undefined && actions.top >= message.bottom - 0.5;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  });
   const noticeHasActions = $derived(
     notice?.kind === 'archived'
       ? notice.newChat !== undefined || notice.unarchive !== undefined
@@ -1729,6 +1748,8 @@
     <div
       class={classNames('chat-input', 'chat-input-blocked', 'chat-input-notice', className)}
       data-chat-composer-status={notice.kind}
+      data-chat-notice-wrapped={noticeWrapped ? '' : undefined}
+      bind:this={noticeElement}
       role="group"
       aria-label={notice.kind === 'archived' ? labels.chatArchived : labels.chatReadOnly}
     >
@@ -2798,6 +2819,14 @@
 
   .chat-input-notice .chat-input-blocked-actions {
     flex: none;
+  }
+
+  /* With the actions on a row of their own the words are the first thing under the border, and the
+   * line's half-leading above its capitals comes out of the top inset, as a Callout does, so the
+   * capitals stand as far under the border as the buttons stand over it. The words' own size is
+   * set on the message, so `1lh` and `1cap` are theirs. */
+  .chat-input-notice[data-chat-notice-wrapped] .chat-input-blocked-message {
+    margin-block-start: calc((1lh - 1cap) / -2);
   }
 
   .chat-input-notice-label {

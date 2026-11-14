@@ -1689,12 +1689,17 @@ describe('chat stress visual measurement', () => {
 
   describe('composer notice guard', () => {
     // The bar of `chat-input.svelte` in miniature: a glyph and its words, then the actions.
-    const bar = (parts: { reasonStyle?: string; barStyle?: string; actionsStyle?: string }) => `
+    const bar = (parts: {
+      reasonStyle?: string;
+      barStyle?: string;
+      actionsStyle?: string;
+      messageStyle?: string;
+    }) => `
       <style>
         body { margin: 0; font: 13px sans-serif; }
         .chat-input-blocked { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
           box-sizing: border-box; inline-size: 260px; padding: 8px 12px; border: 1px solid gray; }
-        .chat-input-blocked-message { display: flex; flex: 1 1 auto; min-inline-size: 0; }
+        .chat-input-blocked-message { display: flex; flex: 1 1 auto; min-inline-size: 0; ${parts.messageStyle ?? ''} }
         .chat-input-blocked-reason { margin: 0; ${parts.reasonStyle ?? ''} }
         .chat-input-blocked-actions { display: flex; flex: none; gap: 8px; ${parts.actionsStyle ?? ''} }
       </style>
@@ -1714,9 +1719,36 @@ describe('chat stress visual measurement', () => {
       }
     };
 
-    it('passes a bar whose actions took a row of their own', async () => {
+    // The wrapped bar's mechanism: the words' half-leading comes out of the top inset.
+    const wrappedInset = 'margin-block-start: calc((1lh - 1cap) / -2);';
+
+    it('passes a bar whose actions took a row of their own, its words as far under the border as the buttons are over it', async () => {
       // The words and the actions do not fit one row, so the actions wrap under them.
-      expect(await problemsFor(bar({ actionsStyle: 'margin-inline-start: auto;' }))).toEqual([]);
+      expect(
+        await problemsFor(
+          bar({ actionsStyle: 'margin-inline-start: auto;', messageStyle: wrappedInset }),
+        ),
+      ).toEqual([]);
+    });
+
+    it('fails a wrapped bar whose words keep their half-leading over the capitals', async () => {
+      const problems = await problemsFor(bar({ actionsStyle: 'margin-inline-start: auto;' }));
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toMatch(
+        /^the archived notice's ink stands [\d.]+px under its top border and [\d.]+px over its bottom one$/,
+      );
+    });
+
+    it('fails a bar whose buttons stand closer to the bottom border than the words to the top', async () => {
+      const problems = await problemsFor(
+        bar({
+          actionsStyle: 'margin-inline-start: auto;',
+          messageStyle: wrappedInset,
+          barStyle: 'padding-block-end: 2px;',
+        }),
+      );
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain("notice's ink stands");
     });
 
     it('passes a bar whose words and actions share one row', async () => {

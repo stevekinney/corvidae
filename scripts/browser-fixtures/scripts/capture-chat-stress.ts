@@ -3687,6 +3687,15 @@ export async function readComposerNoticeProblems(page: Page): Promise<string[]> 
         .filter((control) => control.closest('[role="tooltip"], .cinder-sr-only') === null)
         .map((control) => ({ control, box: control.getBoundingClientRect() }))
         .filter(({ box }) => box.width > 0 && box.height > 0);
+      // The drawn ink of the bar: the capitals of its words and the faces of its controls. The
+      // capitals of a line stand `1cap` tall about the middle of its line, so a word's ink is the
+      // line rectangle's centre plus and minus half of that, never the box of the text.
+      let inkTop = Number.POSITIVE_INFINITY;
+      let inkBottom = Number.NEGATIVE_INFINITY;
+      for (const { box } of controls) {
+        inkTop = Math.min(inkTop, box.top);
+        inkBottom = Math.max(inkBottom, box.bottom);
+      }
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
         const holder = node.parentElement;
@@ -3703,6 +3712,18 @@ export async function readComposerNoticeProblems(page: Page): Promise<string[]> 
         const lines = [...range.getClientRects()].filter(
           (rect) => rect.width > 0 && rect.height > 0,
         );
+        if (root.classList.contains('chat-input-blocked') && lines.length > 0) {
+          const probe = document.createElement('span');
+          probe.style.cssText = 'position:absolute;visibility:hidden;block-size:1cap;inline-size:0';
+          holder.append(probe);
+          const capitals = probe.getBoundingClientRect().height;
+          probe.remove();
+          for (const rect of lines) {
+            const middle = rect.top + rect.height / 2;
+            inkTop = Math.min(inkTop, middle - capitals / 2);
+            inkBottom = Math.max(inkBottom, middle + capitals / 2);
+          }
+        }
         const label = `${name} notice "${words.slice(0, 40)}"`;
         const outside = lines.some(
           (rect) =>
@@ -3733,6 +3754,15 @@ export async function readComposerNoticeProblems(page: Page): Promise<string[]> 
               .slice(0, 30);
             problems.push(`the ${label} lies under the control "${controlName}"`);
           }
+        }
+      }
+      if (root.classList.contains('chat-input-blocked') && Number.isFinite(inkTop)) {
+        const above = inkTop - rootBox.top;
+        const below = rootBox.bottom - inkBottom;
+        if (Math.abs(above - below) > 1) {
+          problems.push(
+            `the ${name} notice's ink stands ${Math.round(above * 10) / 10}px under its top border and ${Math.round(below * 10) / 10}px over its bottom one`,
+          );
         }
       }
     }
