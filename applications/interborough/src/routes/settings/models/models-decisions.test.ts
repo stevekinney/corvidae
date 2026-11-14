@@ -355,7 +355,9 @@ describe('the decision model row', () => {
     });
     expect(link.getAttribute('href')).toBe('/settings/plugins?plugin=typesafe');
     // The row says Connect TypeSafe once, as the link, not again in the sentence before it.
-    expect(row(container, 'decisions.model').textContent?.split(copy.model.connect)).toHaveLength(2);
+    expect(row(container, 'decisions.model').textContent?.split(copy.model.connect)).toHaveLength(
+      2,
+    );
   });
 
   test('leaves out Connect TypeSafe once its plugin is running', async () => {

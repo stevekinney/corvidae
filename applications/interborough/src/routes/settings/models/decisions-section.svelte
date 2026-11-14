@@ -137,7 +137,9 @@
       storedName !== undefined &&
       !listed.some((row) => decisionRowName(row) === storedName)
     ) {
-      return connectOffered ? copy.model.missingWaiting(storedName) : copy.model.missing(storedName);
+      return connectOffered
+        ? copy.model.missingWaiting(storedName)
+        : copy.model.missing(storedName);
     }
     return undefined;
   });

@@ -232,10 +232,12 @@ test.describe('Settings › Models, provider connected', () => {
       MODELS_COPY.decisions.needsSetup,
     );
     await checkA11y('settings models, decision model open, at 1280px');
-    // Each viewport change (and the capture at 320 by 640) leaves the open listbox somewhere in the
-    // outlet: scroll it into view, opening it again if the resize closed it, before the pixels.
+    // Each viewport change (and the capture at 320 by 640) can leave the select below the fold, with
+    // its listbox clipped or closed: bring the select into view, open the listbox again if the
+    // resize closed it, and scroll the listbox into view, before the pixels.
     const listbox = page.getByRole('listbox');
-    await captureAtEveryWidth(page, 'decision-model-open', async (current) => {
+    await captureAtEveryWidth(page, 'decision-model-open', async () => {
+      await model.getByRole('combobox').scrollIntoViewIfNeeded();
       if (!(await listbox.isVisible())) await model.getByRole('combobox').click();
       await expect(listbox).toBeVisible();
       await listbox.scrollIntoViewIfNeeded();
