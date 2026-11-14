@@ -1,8 +1,8 @@
 import type { ContextOperationRequest } from '../context.ts';
+import { branchDriversOf } from '../context/branch-driver.ts';
 import {
   isParallelOperationCacheEntry,
   type ParallelBranchSlot,
-  type ParallelOperationCacheEntry,
 } from '../context/parallel-cache-entry.ts';
 import {
   executeRunAllBranches,
@@ -10,13 +10,20 @@ import {
   type RunAllBranch,
   type RunAllBranchOutcome,
 } from '../engine-helpers.ts';
+import type { MidOperationCommitReport } from './checkpoint-io.ts';
 import { createKeyedRaceResultEnvelope, finalizeAndUnwrap } from './deferred-consume-envelope.ts';
+import {
+  requestCompletion,
+  stageCoordinatorCompletion,
+  type SettledRequestCompletion,
+} from './file-workflow-completion-events.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   executeActivityOperationResult as executeActivityOperationResultFromInternals,
   type ActivityFunctionWithMetadata,
   type ActivityOperationCallbacks,
 } from './operations-activity.ts';
+import { processAdvancingParallelOperation } from './operations-advancing-parallel.ts';
 import type { OperationWithCallerStack } from './operations-router.ts';
 import {
   buildEntryFromSlots,
@@ -24,6 +31,9 @@ import {
   valuesFromSlots,
   type OnSlotSettled,
 } from './parallel-dispatch.ts';
+import { canPersistPartialEntry, writePartialEntry } from './partial-entry.ts';
+import { takeSettledSteps } from './settled-step-sink.ts';
+import { assertSupportedSignalBranches } from './signal-branch-guard.ts';
 import { peekSignal } from './signals.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callActivityFunction } from './state-utilities.ts';
@@ -39,38 +49,6 @@ type WaitSignalOperation = Extract<ContextOperationRequest, { type: 'wait-signal
 type ParallelOperation = Extract<ContextOperationRequest, { type: 'parallel' }>;
 type RaceOperation = Extract<ContextOperationRequest, { type: 'race' }>;
 type RunAllOperation = Extract<ContextOperationRequest, { type: 'run-all' }>;
-
-/**
- * Reject a `ctx.race` / `ctx.all` whose branches wait on the SAME signal name,
- * recursively through nested `race` / `parallel` branches. Sibling wait-signal
- * branches share the `${workflowId}:${signalName}` waiter key, so two anywhere in
- * the coordination tree would clobber each other at registration, leaving one
- * branch permanently unreachable (the run would hang). Reject the meaningless
- * shape deterministically rather than silently dropping a branch. Distinct names
- * (the event-or-close idiom) are unaffected.
- */
-export function assertSupportedSignalBranches(
-  operations: readonly ContextOperationRequest[],
-): void {
-  const seen = new Set<string>();
-  const walk = (subOperations: readonly ContextOperationRequest[]): void => {
-    for (const subOperation of subOperations) {
-      if (subOperation.type === 'wait-signal') {
-        if (seen.has(subOperation.signalName)) {
-          throw new Error(
-            `ctx.race / ctx.all cannot have two branches waiting on the same signal "${subOperation.signalName}": ` +
-              'sibling wait-signal branches share one waiter and would clobber each other. ' +
-              'Wait on the signal once, or use distinct signal names.',
-          );
-        }
-        seen.add(subOperation.signalName);
-      } else if (subOperation.type === 'race' || subOperation.type === 'parallel') {
-        walk(subOperation.operations);
-      }
-    }
-  };
-  walk(operations);
-}
 
 export type CoordinationOperationCallbacks = {
   completeOperation: (
@@ -105,7 +83,7 @@ export type CoordinationOperationCallbacks = {
   persistCheckpoint?: (
     workflowId: string,
     operation: ContextOperationRequest,
-    settledBranchOperationIds?: readonly string[],
+    report?: MidOperationCommitReport,
   ) => Promise<void>;
 };
 
@@ -123,9 +101,10 @@ function createSlotCommitter(
   internals: EngineInternals,
   workflowId: string,
   operation: ParallelOperation,
-  persistCheckpoint: NonNullable<CoordinationOperationCallbacks['persistCheckpoint']>,
+  persistCheckpoint: CoordinationOperationCallbacks['persistCheckpoint'],
   resumedSlots: readonly ParallelBranchSlot[] | undefined,
-): { onSlotSettled: OnSlotSettled; failure: () => { error: unknown } | undefined } {
+): { onSlotSettled: OnSlotSettled; failure: () => { error: unknown } | undefined } | undefined {
+  if (persistCheckpoint === undefined) return undefined;
   const workflowExecutionToken = workflowExecutionTokenForWorkflow(internals, workflowId);
   const variant = operation.settle === 'settled' ? 'all-settled' : 'all';
   const committed = new Set<number>(
@@ -160,7 +139,9 @@ function createSlotCommitter(
         operation.step,
         buildEntryFromSlots(variant, snapshot),
       );
-      await persistCheckpoint(workflowId, operation, [slot.operationId]);
+      await persistCheckpoint(workflowId, operation, {
+        settledBranchOperationIds: [slot.operationId],
+      });
     } catch (error) {
       failure = { error };
     }
@@ -174,6 +155,31 @@ function createSlotCommitter(
   };
 }
 
+/**
+ * Hold what the branches that fulfilled completed, at any depth, for the commit that settles this
+ * operation, which reports it in place of the first-level branch details the timeline entry keeps:
+ * a document step nested in a branch (a `map` or `parallel` inside a `parallel`, a `map` inside a
+ * `map`) completes as a step at the top level does.
+ */
+function stageSettledBranchCompletions(
+  internals: EngineInternals,
+  workflowId: string,
+  operation: ParallelOperation,
+  slots: readonly ParallelBranchSlot[],
+  settled: SettledRequestCompletion,
+): void {
+  const entry = internals.pendingTimelineEntries?.get(workflowId)?.entry;
+  if (entry === undefined) return;
+  for (const [index, child] of operation.operations.entries()) {
+    const slot = slots[index];
+    if (slot?.status !== 'fulfilled') continue;
+    // Only the events: the activity completions a coordinator reports stay those of its own
+    // branches, which its timeline entry names.
+    settled.events.push(...requestCompletion(child, slot.value).events);
+  }
+  stageCoordinatorCompletion(entry, settled);
+}
+
 export async function processParallelOperation(
   internals: EngineInternals,
   workflowId: string,
@@ -183,6 +189,10 @@ export async function processParallelOperation(
     'executeSubOperation' | 'runOperationWithResult' | 'persistCheckpoint'
   >,
 ): Promise<void> {
+  const drivers = branchDriversOf(operation);
+  if (drivers !== undefined) {
+    return processAdvancingParallelOperation(internals, workflowId, operation, drivers, callbacks);
+  }
   // `ctx.all()` awaits every branch, so there's no "loser" to abort like
   // there is for `ctx.race()`. Each sub-operation runs to completion or
   // throws. We use `Promise.allSettled` semantics so successful branches'
@@ -196,16 +206,13 @@ export async function processParallelOperation(
     const operationIds = operation.operations.map((sub, i) =>
       typeof sub.operationId === 'string' ? sub.operationId : `parallel:${operation.step}:${i}`,
     );
-    const slotCommitter =
-      callbacks.persistCheckpoint === undefined
-        ? undefined
-        : createSlotCommitter(
-            internals,
-            workflowId,
-            operation,
-            callbacks.persistCheckpoint,
-            resumedSlots,
-          );
+    const slotCommitter = createSlotCommitter(
+      internals,
+      workflowId,
+      operation,
+      callbacks.persistCheckpoint,
+      resumedSlots,
+    );
     const { slots, hasFirstError, firstError } = await dispatchBranchesAllSettled(
       operationIds,
       resumedSlots,
@@ -216,6 +223,8 @@ export async function processParallelOperation(
       (index) => callbacks.executeSubOperation(workflowId, operation.operations[index]!),
       slotCommitter?.onSlotSettled,
     );
+    // What an advancing parallel step nested in a branch settled reports here, whatever follows.
+    const nestedCompletion = takeSettledSteps(internals, workflowId);
     // A slot commit that failed means a branch's result and its signal consume never became
     // durable: fail the operation the way a failed checkpoint write fails it.
     const slotCommitFailure = slotCommitter?.failure();
@@ -248,32 +257,38 @@ export async function processParallelOperation(
     // path already has.
     await finalizeFulfilledSlots(slots);
 
-    const entry = buildEntryFromSlots(operation.settle === 'settled' ? 'all-settled' : 'all', slots);
+    const entry = buildEntryFromSlots(
+      operation.settle === 'settled' ? 'all-settled' : 'all',
+      slots,
+    );
     writePartialEntry(internals, workflowId, operation.step, entry);
     recordTimelineBranches(
       internals,
       workflowId,
       parallelTimelineDetails(operation.operations, slots),
     );
+    stageSettledBranchCompletions(internals, workflowId, operation, slots, nestedCompletion);
 
     if (hasFirstError && operation.settle !== 'settled') {
       // Rethrow the original reason as-is (could be a string, number,
       // undefined, or any non-Error value) to mirror Promise.all.
       throw firstError;
     }
-    return operation.settle === 'settled'
-      ? slots.map((slot) =>
-          slot.status === 'fulfilled'
-            ? { status: 'fulfilled', value: slot.value }
-            : {
-                status: 'rejected',
-                reason:
-                  slot.status === 'rejected'
-                    ? slot.reason
-                    : { name: 'UnsettledBranch', message: 'Branch did not settle' },
-              },
-        )
-      : valuesFromSlots(slots);
+    return operation.settle === 'settled' ? settledOutcomes(slots) : valuesFromSlots(slots);
+  });
+}
+
+/** The ordered outcomes `ctx.allSettled` returns: each branch's value, or why it did not settle. */
+function settledOutcomes(slots: readonly ParallelBranchSlot[]): unknown[] {
+  return slots.map((slot) => {
+    if (slot.status === 'fulfilled') return { status: 'fulfilled', value: slot.value };
+    return {
+      status: 'rejected',
+      reason:
+        slot.status === 'rejected'
+          ? slot.reason
+          : { name: 'UnsettledBranch', message: 'Branch did not settle' },
+    };
   });
 }
 
@@ -312,38 +327,6 @@ async function finalizeFulfilledSlots(slots: ParallelBranchSlot[]): Promise<void
 function extractResumedSlots(resumedCacheEntry: unknown): ParallelBranchSlot[] | undefined {
   if (!isParallelOperationCacheEntry(resumedCacheEntry)) return undefined;
   return resumedCacheEntry.branches;
-}
-
-/**
- * Whether the current execution mode can persist a partial cache entry for this
- * workflow. Only the inline strategy exposes a context whose `accumulatedResults`
- * the next checkpoint flushes; worker mode has no inline context, so a partial
- * entry can never be written there. This read is side-effect-free, so it is safe
- * to probe on the failure path BEFORE finalizing — letting an unsupported
- * worker-mode `ctx.all` throw without first consuming a durable signal.
- */
-function canPersistPartialEntry(internals: EngineInternals, workflowId: string): boolean {
-  return internals.inlineStrategy?.getContext(workflowId) !== undefined;
-}
-
-/**
- * Mutate the workflow's `accumulatedResults` map in place at the given
- * step. The next checkpoint write — triggered by the workflow's next
- * yield — will persist the partial entry. If the workflow throws and
- * fails before yielding again, the partial entry is lost; users with
- * externally visible side effects must still use idempotency keys for
- * activities inside `ctx.all`.
- */
-function writePartialEntry(
-  internals: EngineInternals,
-  workflowId: string,
-  step: number,
-  entry: ParallelOperationCacheEntry,
-): boolean {
-  const context = internals.inlineStrategy?.getContext(workflowId);
-  if (context === undefined) return false;
-  context.accumulatedResults.set(step, entry);
-  return true;
 }
 
 function assertPartialFailurePersistenceSupported(

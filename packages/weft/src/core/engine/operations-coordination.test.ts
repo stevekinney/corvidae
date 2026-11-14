@@ -1016,7 +1016,10 @@ function slotCommitHarness(
   const internals = {
     inlineStrategy: { getContext: () => ({ accumulatedResults }) },
     durableInlineOperations: new Map([
-      [workflowId, { operationId: 'parallel:0', workflowExecutionToken: options.token ?? 'token-1' }],
+      [
+        workflowId,
+        { operationId: 'parallel:0', workflowExecutionToken: options.token ?? 'token-1' },
+      ],
     ]),
     checkpoints: new Map(),
     pendingTimelineEntries: new Map(),
@@ -1047,13 +1050,13 @@ function slotCommitHarness(
     ...(options.persist === false
       ? {}
       : {
-          persistCheckpoint: async (_id, _operation, settledBranchOperationIds) => {
+          persistCheckpoint: async (_id, _operation, report) => {
             inFlight += 1;
             overlapped ||= inFlight > 1;
             commits.push({
               cache: structuredClone(accumulatedResults.get(3)),
               finalizedBefore: [...finalized],
-              settledBranchOperationIds,
+              settledBranchOperationIds: report?.settledBranchOperationIds,
             });
             await Promise.resolve();
             inFlight -= 1;
@@ -1213,7 +1216,11 @@ describe('a ctx.all branch that settles before its siblings commits on its own (
     await harness.done;
     expect((harness.result() as Error).message).toBe('branch failed');
     const entry = harness.accumulatedResults.get(3) as { branches: { status: string }[] };
-    expect(entry.branches.map((slot) => slot.status)).toEqual(['fulfilled', 'rejected', 'fulfilled']);
+    expect(entry.branches.map((slot) => slot.status)).toEqual([
+      'fulfilled',
+      'rejected',
+      'fulfilled',
+    ]);
   });
 });
 
@@ -1241,7 +1248,7 @@ describe('a settled ctx.all branch is committed durably (COR-2416)', () => {
       const define = () =>
         workflow({ name }).execute(async function* (ctx) {
           const branches = [ctx.run(finishing), ctx.waitForSignal<string>('go')];
-          return yield* (row.coordinator === 'all' ? ctx.all(branches) : ctx.allSettled(branches));
+          return yield* row.coordinator === 'all' ? ctx.all(branches) : ctx.allSettled(branches);
         });
       const storage = new MemoryStorage();
       {

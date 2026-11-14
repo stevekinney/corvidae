@@ -134,8 +134,8 @@ export function createCoordinationOperationCallbacks<
       runOperationWithResultForEngine(engine, workflowId, operation, execute),
     executeSubOperation: (workflowId, operation, signal, speculativeState) =>
       executeSubOperationForEngine(engine, workflowId, operation, signal, speculativeState),
-    persistCheckpoint: (workflowId, operation, settledBranchOperationIds) =>
-      persistCheckpointForDataOperation(engine, workflowId, operation, settledBranchOperationIds),
+    persistCheckpoint: (workflowId, operation, report) =>
+      persistCheckpointForDataOperation(engine, workflowId, operation, report),
     getActivityOperationCallbacks: () => createActivityOperationCallbacks(engine),
   };
 }

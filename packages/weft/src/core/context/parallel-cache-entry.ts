@@ -18,7 +18,9 @@ import { WeftError } from '../weft-error.ts';
  * One slot in a {@link ParallelOperationCacheEntry}'s `branches` table.
  *
  * - `pending`: branch was dispatched but never observed to settle (e.g., the
- *   process crashed before its result was recorded). Re-dispatched on retry.
+ *   process crashed before its result was recorded). Re-dispatched on retry. A branch of an
+ *   advancing parallel step that has finished some of its steps carries their `results`, keyed by
+ *   the branch's own step numbers, so a recovered run resumes it where it stopped.
  * - `fulfilled`: branch completed successfully. Reused on retry; never re-runs.
  * - `rejected`: branch threw. Metadata only — never reused on retry; the
  *   branch re-dispatches just like a `pending` slot. The `reason` is a
@@ -28,7 +30,7 @@ import { WeftError } from '../weft-error.ts';
  *   `ctx.all`/`ctx.runAll` because they don't cancel siblings on failure.
  */
 export type ParallelBranchSlot =
-  | { status: 'pending'; operationId: string }
+  | { status: 'pending'; operationId: string; results?: [number, unknown][] }
   | { status: 'fulfilled'; value: unknown; operationId: string }
   | {
       status: 'rejected';
@@ -95,12 +97,22 @@ function isValidRejectionReason(value: unknown): boolean {
   return typeof reason['name'] === 'string' && typeof reason['message'] === 'string';
 }
 
+/** The step results a pending branch carries: absent, or a list of `[step, value]` pairs. */
+function isValidBranchResults(value: unknown): boolean {
+  if (value === undefined) return true;
+  return (
+    Array.isArray(value) &&
+    value.every((pair) => Array.isArray(pair) && pair.length === 2 && Number.isSafeInteger(pair[0]))
+  );
+}
+
 function isValidBranchSlot(value: unknown): boolean {
   if (value === null || typeof value !== 'object') return false;
   const slot = value as Record<string, unknown>;
   if (!isValidSlotStatus(slot['status'])) return false;
   if (typeof slot['operationId'] !== 'string') return false;
   if (slot['status'] === 'rejected' && !isValidRejectionReason(slot['reason'])) return false;
+  if (slot['status'] === 'pending' && !isValidBranchResults(slot['results'])) return false;
   return true;
 }
 

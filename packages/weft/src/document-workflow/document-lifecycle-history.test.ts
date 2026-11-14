@@ -195,16 +195,24 @@ describe('lifecycle history of a wait or sleep in a parallel branch', () => {
   const parallel = (branches: Record<string, unknown>) => ({ kind: 'parallel', branches });
 
   it('records a wait and a sleep branch, as the last step', async () => {
-    expect(
-      await lifecycleOf(
-        'parallel-last',
-        [parallel({ a: [{ kind: 'sleep', duration: 5 }], b: [wait] })],
-        {
-          signal: 'yes',
-        },
-      ),
-    ).toEqual([
+    // Each branch records its own steps as it settles them, so the order between two branches is
+    // the order they settled in; what is pinned is each branch's own sequence and the end.
+    const events = await lifecycleOf(
+      'parallel-last',
+      [parallel({ a: [{ kind: 'sleep', duration: 5 }], b: [wait] })],
+      { signal: 'yes' },
+    );
+    expect(events.at(-1)).toEqual(terminal);
+    const ofBranch = (address: string) =>
+      events.filter((event) => event.data['stepAddress'] === address);
+    expect(ofBranch('1#a')).toEqual([
       { type: 'file-workflow:step-started', data: { step: 1, stepAddress: '1#a', kind: 'sleep' } },
+      {
+        type: 'file-workflow:step-completed',
+        data: { step: 1, stepAddress: '1#a', kind: 'sleep' },
+      },
+    ]);
+    expect(ofBranch('2#b')).toEqual([
       {
         type: 'file-workflow:step-started',
         data: { step: 2, stepAddress: '2#b', kind: 'await-signal' },
@@ -214,10 +222,6 @@ describe('lifecycle history of a wait or sleep in a parallel branch', () => {
         data: { step: 2, stepAddress: '2#b', signal: 'go' },
       },
       {
-        type: 'file-workflow:step-completed',
-        data: { step: 1, stepAddress: '1#a', kind: 'sleep' },
-      },
-      {
         type: 'file-workflow:signal-received',
         data: { step: 2, stepAddress: '2#b', signal: 'go' },
       },
@@ -225,8 +229,8 @@ describe('lifecycle history of a wait or sleep in a parallel branch', () => {
         type: 'file-workflow:step-completed',
         data: { step: 2, stepAddress: '2#b', kind: 'await-signal' },
       },
-      terminal,
     ]);
+    expect(events).toHaveLength(7);
   });
 
   it('records the same events for a branch step with another step after it', async () => {

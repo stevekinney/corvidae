@@ -7,6 +7,7 @@ import {
   appendTimelineBatchOperations,
   persistCheckpoint,
   pruneCheckpointHistory,
+  type MidOperationCommitReport,
   type PersistCheckpointCallbacks,
 } from './checkpoint-io.ts';
 import type { Engine } from './index.ts';
@@ -67,7 +68,7 @@ export function persistCheckpointForDataOperation<
   engine: Engine<TWorkflows, TActivities>,
   workflowId: string,
   operation: ContextOperationRequest,
-  settledBranchOperationIds?: readonly string[],
+  report: MidOperationCommitReport = {},
 ): Promise<void> {
   const internals = getInternals(engine);
   return persistCheckpointAbandoningOnConflict(internals, workflowId, () =>
@@ -77,10 +78,7 @@ export function persistCheckpointForDataOperation<
       operation,
       undefined,
       createCheckpointPersistenceCallbacks(engine),
-      {
-        timeline: 'preserve-pending',
-        ...(settledBranchOperationIds === undefined ? {} : { settledBranchOperationIds }),
-      },
+      { timeline: 'preserve-pending', ...report },
     ),
   );
 }

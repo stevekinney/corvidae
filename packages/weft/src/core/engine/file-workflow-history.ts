@@ -265,12 +265,16 @@ export async function appendFileWorkflowCheckpointEvents(
   pendingStepIndex: number,
   operations: BatchOperation[],
   initialHead: EventHeadRecord,
+  settledEvents: readonly FileWorkflowEvent[] = [],
 ): Promise<EventHeadRecord> {
   if (!(await isFileWorkflow(internals, workflowId))) return initialHead;
   const existing = await existingFileWorkflowEvents(internals, workflowId);
   const pending = internals.pendingTimelineEntries.get(workflowId)?.entry;
+  // `settledEvents` are the completions a commit made while its coordinator is still running
+  // reports for the steps it has settled so far (an advancing parallel step's branches).
   const events = [
     ...pendingCompletionEvents(pending),
+    ...settledEvents,
     ...startEvents(operation, stepIndex(operation, pendingStepIndex)),
   ];
   return appendEvents(internals, workflowId, operations, events, existing, initialHead);

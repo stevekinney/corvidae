@@ -1,7 +1,9 @@
 import type { ContextOperationRequest } from '../context.ts';
 import type { ParallelBranchSlot } from '../context/parallel-cache-entry.ts';
-import type { WorkflowTimelineOperationDetail } from '../types.ts';
+import type { WorkflowTimelineEntry, WorkflowTimelineOperationDetail } from '../types.ts';
+import { stagedCoordinatorCompletion } from './file-workflow-completion-events.ts';
 import type { EngineInternals } from './internals.ts';
+import { takeSettledSteps } from './settled-step-sink.ts';
 import { getTimelineOperationLabel, summarizeTimelineValue } from './state-utilities.ts';
 import {
   MAX_TIMELINE_COORDINATOR_DETAILS,
@@ -31,6 +33,8 @@ const branchActivityReceipts = new WeakMap<
 /** Drop a workflow's held branch receipts when its run ends or is purged. */
 export function forgetBranchActivityReceipts(internals: EngineInternals, workflowId: string): void {
   branchActivityReceipts.get(internals)?.delete(workflowId);
+  // What the workflow's settled branch steps reported dies with its receipts.
+  takeSettledSteps(internals, workflowId);
 }
 
 const COORDINATOR_OPERATION_TYPES: ReadonlySet<string> = new Set(['parallel', 'race', 'run-all']);
@@ -151,16 +155,29 @@ function captureBranchCompletionReceipts(
   workflowId: string,
 ): ActivityCompletionReceipt[] {
   const receipts = branchActivityReceipts.get(internals)?.get(workflowId);
-  forgetBranchActivityReceipts(internals, workflowId);
+  branchActivityReceipts.get(internals)?.delete(workflowId);
   const pending = internals.pendingTimelineEntries.get(workflowId);
   if (receipts === undefined || pending?.entry.status !== 'completed') return [];
-  const committed: ActivityCompletionReceipt[] = [];
-  for (const branch of pending.entry.branches ?? []) {
-    if (branch.outcome !== 'fulfilled' && branch.outcome !== 'won') continue;
-    const receipt = receipts.get(branch.operationId);
-    if (receipt !== undefined) committed.push(receipt);
+  const committed = new Set<ActivityCompletionReceipt>();
+  for (const operationId of reportedActivityIds(pending.entry)) {
+    const receipt = receipts.get(operationId);
+    if (receipt !== undefined) committed.add(receipt);
   }
-  return committed;
+  return [...committed];
+}
+
+/**
+ * The activities a settled coordinator's entry reports: its fulfilled or won branches, and what an
+ * advancing parallel step staged, since its entry names only the last operation of each branch.
+ */
+function reportedActivityIds(entry: WorkflowTimelineEntry): string[] {
+  const fulfilled = (entry.branches ?? []).filter(
+    (branch) => branch.outcome === 'fulfilled' || branch.outcome === 'won',
+  );
+  return [
+    ...fulfilled.map((branch) => branch.operationId),
+    ...(stagedCoordinatorCompletion(entry)?.activityOperationIds ?? []),
+  ];
 }
 
 function boundedString(value: string): string {
