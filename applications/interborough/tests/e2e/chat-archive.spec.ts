@@ -72,10 +72,11 @@ for (const viewport of VIEWPORTS) {
         new RegExp(MORE.rename),
         new RegExp(MORE.branch),
         new RegExp(MORE.export),
-        new RegExp(MORE.archive),
+        // Anchored: "Archive" is also the end of "Unarchive".
+        new RegExp(`^\\s*${MORE.archive}\\s*$`),
         new RegExp(MORE.delete),
       ]);
-      await page.getByRole('menuitem', { name: MORE.archive }).click();
+      await page.getByRole('menuitem', { name: MORE.archive, exact: true }).click();
 
       // No question first: the chat stays open, and the composer is the Archived bar.
       await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -86,10 +87,15 @@ for (const viewport of VIEWPORTS) {
       const newChat = bar.getByRole('link', { name: CHAT_COPY.composer.newChat });
       await expect(newChat).toHaveAttribute('href', '/chats/new');
       await expect(newChat).toHaveAttribute('data-cinder-variant', 'secondary');
-      const unarchive = bar.getByRole('button', { name: CHAT_COPY.composer.unarchive });
+      const unarchive = bar.getByRole('button', {
+        name: CHAT_COPY.composer.unarchive,
+        exact: true,
+      });
       await expect(unarchive).toHaveAttribute('data-cinder-variant', 'primary');
       // The conversation is still there to read.
-      await expect(page.getByText('Hello').first()).toBeVisible();
+      await expect(
+        page.getByText('Hello', { exact: true }).filter({ visible: true }).first(),
+      ).toBeVisible();
       const stored = (await bureauCall(request, 'bureau.contexts.get', {
         contextId: threadId,
       })) as { archivedAt?: string | null };
@@ -108,11 +114,14 @@ for (const viewport of VIEWPORTS) {
 
       // An archived chat's menu offers Unarchive in place of Archive.
       await moreButton(page).click();
-      await expect(page.getByRole('menuitem', { name: MORE.unarchive })).toBeVisible();
-      await expect(page.getByRole('menuitem', { name: MORE.archive })).toHaveCount(0);
+      await expect(page.getByRole('menuitem', { name: MORE.unarchive, exact: true })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: MORE.archive, exact: true })).toHaveCount(0);
       await page.keyboard.press('Escape');
+      await expect(page.getByRole('menuitem')).toHaveCount(0);
 
-      await archivedBar(page).getByRole('button', { name: CHAT_COPY.composer.unarchive }).click();
+      await archivedBar(page)
+        .getByRole('button', { name: CHAT_COPY.composer.unarchive, exact: true })
+        .click();
       await expect(archivedBar(page)).toHaveCount(0);
       await expect(composer(page)).toBeFocused();
       const restored = (await bureauCall(request, 'bureau.contexts.get', {
@@ -130,9 +139,9 @@ for (const viewport of VIEWPORTS) {
       await openChat(page, request, 'archive-busy', 'demo:tool-runner', 'Refund order-1001');
 
       await moreButton(page).click();
-      await page.getByRole('menuitem', { name: MORE.archive }).click();
+      await page.getByRole('menuitem', { name: MORE.archive, exact: true }).click();
 
-      await expect(page.getByText(MORE.archiving.busy)).toBeVisible();
+      await expect(page.locator('.cinder-toast', { hasText: MORE.archiving.busy })).toBeVisible();
       await expect(archivedBar(page)).toHaveCount(0);
       await checkA11y(`an archive refused at ${viewport.width}px`);
       await captureForDesignReview(page, {
@@ -183,7 +192,7 @@ test('the list leaves an archived chat out, and the Archived segment lists it, a
   }));
   expect(fit).toEqual({ overflows: false, lines: 1 });
 
-  await control.getByRole('radio', { name: CHAT_COPY.list.segments.archived }).click();
+  await control.getByRole('radio', { name: CHAT_COPY.list.segments.archived, exact: true }).click();
   await expect(region.locator(`[data-chat="${archived}"]`)).toBeVisible();
   await expect(region.locator(`[data-chat="${kept}"]`)).toHaveCount(0);
   await checkA11y('the Archived segment of the chat list');

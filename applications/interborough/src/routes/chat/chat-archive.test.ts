@@ -183,7 +183,7 @@ describe('the Archived bar', () => {
     await waitFor(() => expect(composer(view)).not.toBeNull());
     expect(callsTo(served, 'bureau.contexts.unarchive')).toHaveLength(1);
     expect(archivedBar(view)).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(composer(view)));
+    await waitFor(() => expect(document.activeElement === composer(view)).toBe(true));
   });
 
   test('stays when Unarchive fails, and says so', async () => {
