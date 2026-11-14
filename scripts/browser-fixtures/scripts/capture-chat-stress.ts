@@ -2261,6 +2261,7 @@ async function measure(
     problems.push(...(await readNarrationLineProblems(opened.page, 'asking')));
   }
   problems.push(...(await readActionRowProblems(opened.page)));
+  problems.push(...(await readComposerNoticeProblems(opened.page)));
   problems.push(...(await readLabelFitProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
   const insets = await readCalloutInsets(opened.page);
@@ -3622,6 +3623,87 @@ export async function readNarrationLineProblems(
     }
     return problems;
   }, kind);
+}
+
+/**
+ * Measures that no composer notice (the blocked, archived and read-only bars, and the drawers
+ * above the composer) loses a word of its text: none is cut by the notice's own edge or by a
+ * clipping ancestor, and none lies under a control of the same notice. A drawn word is a line
+ * rectangle of its text, so a word painted behind a button or past the border is found where a box
+ * comparison would pass it ("Archived N" under a New chat button).
+ *
+ * @param page - The captured page
+ */
+export async function readComposerNoticeProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const problems: string[] = [];
+    const roots = document.querySelectorAll<HTMLElement>(
+      '.chat-input-blocked, [data-chat-composer-drawer]',
+    );
+    for (const root of roots) {
+      const rootStyle = getComputedStyle(root);
+      if (rootStyle.display === 'none' || rootStyle.visibility === 'hidden') continue;
+      const rootBox = root.getBoundingClientRect();
+      if (rootBox.width === 0 || rootBox.height === 0) continue;
+      const name =
+        root.getAttribute('data-chat-composer-status') ??
+        root.getAttribute('data-chat-composer-drawer') ??
+        'blocked';
+      const controls = [...root.querySelectorAll<HTMLElement>('button, a[href]')]
+        .filter((control) => control.closest('[role="tooltip"], .cinder-sr-only') === null)
+        .map((control) => ({ control, box: control.getBoundingClientRect() }))
+        .filter(({ box }) => box.width > 0 && box.height > 0);
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        const holder = node.parentElement;
+        const words = (node.textContent ?? '').trim();
+        if (
+          holder === null ||
+          words === '' ||
+          holder.closest('button, a[href], [role="tooltip"], .cinder-sr-only, [hidden]') !== null
+        ) {
+          continue;
+        }
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const lines = [...range.getClientRects()].filter(
+          (rect) => rect.width > 0 && rect.height > 0,
+        );
+        const label = `${name} notice "${words.slice(0, 40)}"`;
+        const outside = lines.some(
+          (rect) =>
+            rect.left < rootBox.left - 1 ||
+            rect.right > rootBox.right + 1 ||
+            rect.top < rootBox.top - 1 ||
+            rect.bottom > rootBox.bottom + 1,
+        );
+        let clipped = outside;
+        for (let up: HTMLElement | null = holder; up !== null && up !== root && !clipped;) {
+          const style = getComputedStyle(up);
+          if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+            const box = up.getBoundingClientRect();
+            clipped = lines.some((rect) => rect.right > box.right + 1 || rect.left < box.left - 1);
+          }
+          up = up.parentElement;
+        }
+        if (clipped) problems.push(`the ${label} is cut off by its own edge or a clipping parent`);
+        for (const { control, box } of controls) {
+          const covered = lines.some(
+            (rect) =>
+              Math.min(rect.right, box.right) - Math.max(rect.left, box.left) > 1 &&
+              Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top) > 1,
+          );
+          if (covered) {
+            const controlName = (control.getAttribute('aria-label') ?? control.textContent ?? '')
+              .trim()
+              .slice(0, 30);
+            problems.push(`the ${label} lies under the control "${controlName}"`);
+          }
+        }
+      }
+    }
+    return problems;
+  });
 }
 
 interface RunState {

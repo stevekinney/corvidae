@@ -292,7 +292,7 @@ describe('the draft-restored drawer (C7)', () => {
     const drawer = container.querySelector<HTMLElement>(
       '[data-chat-composer-drawer="draft-restored"]',
     )!;
-    expect(drawer.textContent).toContain('Restored your unsent draft from yesterday at 4:12 PM.');
+    expect(drawer.textContent).toContain('Restored your unsent draft from yesterday at 4:12 PM.');
     // A restored draft can still be sent.
     expect(sendOf(container).disabled).toBe(false);
 

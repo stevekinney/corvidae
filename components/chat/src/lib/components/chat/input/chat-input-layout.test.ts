@@ -84,18 +84,24 @@ describe('ChatInput layout CSS', () => {
     expect(base).not.toContain('overflow-y');
   });
 
-  test('keeps the date with the word in "Archived Nov 3", so a narrow bar moves the actions before it breaks the phrase', async () => {
+  test('moves the notice bar actions to a row of their own instead of clipping its words under them', async () => {
     const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
+    // `nowrap` on the reason let a narrow bar run its date under the buttons ("Archived N").
+    expect(chatInputSource).not.toMatch(/\.chat-input-blocked-reason \{[^}]*white-space:\s*nowrap/);
+    // The glyph and its words keep at least their longest word, so the row wraps before it squeezes.
+    const message = cssBlocks(
+      chatInputSource,
+      '.chat-input-notice .chat-input-blocked-message {',
+    )[0];
+    expect(message).toBeDefined();
+    expectDeclaration(message ?? '', 'min-inline-size', 'min-content');
+    // The archived bar asks for its whole line, so its actions leave as soon as both do not fit.
     const archived = cssBlocks(
       chatInputSource,
-      ".chat-input-notice[data-chat-composer-status='archived'] .chat-input-blocked-reason {",
+      ".chat-input-notice[data-chat-composer-status='archived'] .chat-input-blocked-message {",
     )[0];
     expect(archived).toBeDefined();
-    expectDeclaration(archived ?? '', 'white-space', 'nowrap');
-    // The read-only bar keeps its words breaking between words.
-    expect(chatInputSource).not.toMatch(
-      /data-chat-composer-status='read-only'\] \.chat-input-blocked-reason \{[^}]*nowrap/,
-    );
+    expectDeclaration(archived ?? '', 'flex-basis', 'auto');
   });
 
   test('keeps the editor as tall as Send and centres its first line, trimming only surrounding inset', async () => {

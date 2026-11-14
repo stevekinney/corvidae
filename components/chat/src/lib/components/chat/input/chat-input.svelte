@@ -2775,10 +2775,12 @@
     flex-wrap: wrap;
   }
 
-  /* The words break between words only: the reason takes what the actions leave, never narrower
-   * than its longest word, and the actions drop to their own line before it would. */
+  /* The words break between words only, and the glyph with its words is never narrower than its
+   * longest word, so the words are never squeezed under the actions: when the two do not fit on one
+   * row the actions drop to a row of their own at the trailing edge. */
   .chat-input-notice .chat-input-blocked-message {
     flex: 1 1 0;
+    min-inline-size: min-content;
   }
 
   .chat-input-notice .chat-input-blocked-reason {
@@ -2787,10 +2789,11 @@
     min-inline-size: min-content;
   }
 
-  /* "Archived Nov 3" is one phrase: the date stays with the word, so a narrow bar moves the actions
-   * to their own line before it breaks the phrase (the reason's least width is then its whole). */
-  .chat-input-notice[data-chat-composer-status='archived'] .chat-input-blocked-reason {
-    white-space: nowrap;
+  /* "Archived Nov 3" is short and reads on one line: the words ask for their whole width, so the
+   * actions leave for their own row as soon as the two do not fit together, and the date (held
+   * together with non-breaking spaces) is never cut. */
+  .chat-input-notice[data-chat-composer-status='archived'] .chat-input-blocked-message {
+    flex-basis: auto;
   }
 
   .chat-input-notice .chat-input-blocked-actions {

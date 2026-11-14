@@ -11,6 +11,7 @@ import {
   readCalloutGaps,
   readCalloutInsets,
   readCalloutSpacingProblems,
+  readComposerNoticeProblems,
   readEdgeFadeProblems,
   readFailureSummaryProblems,
   readIconCentreProblems,
@@ -1654,6 +1655,67 @@ describe('chat stress visual measurement', () => {
           'bare',
         ),
       ).toEqual(['no narration message was found on the page']);
+    });
+  });
+
+  describe('composer notice guard', () => {
+    // The bar of `chat-input.svelte` in miniature: a glyph and its words, then the actions.
+    const bar = (parts: { reasonStyle?: string; barStyle?: string; actionsStyle?: string }) => `
+      <style>
+        body { margin: 0; font: 13px sans-serif; }
+        .chat-input-blocked { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+          box-sizing: border-box; inline-size: 260px; padding: 8px 12px; border: 1px solid gray; }
+        .chat-input-blocked-message { display: flex; flex: 1 1 auto; min-inline-size: 0; }
+        .chat-input-blocked-reason { margin: 0; ${parts.reasonStyle ?? ''} }
+        .chat-input-blocked-actions { display: flex; flex: none; gap: 8px; ${parts.actionsStyle ?? ''} }
+      </style>
+      <div class="chat-input-blocked" data-chat-composer-status="archived" style="${parts.barStyle ?? ''}">
+        <div class="chat-input-blocked-message"><p class="chat-input-blocked-reason">Archived Nov 3</p></div>
+        <div class="chat-input-blocked-actions"><button>New chat</button><button>Unarchive</button></div>
+      </div>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await readComposerNoticeProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a bar whose actions took a row of their own', async () => {
+      // The words and the actions do not fit one row, so the actions wrap under them.
+      expect(await problemsFor(bar({ actionsStyle: 'margin-inline-start: auto;' }))).toEqual([]);
+    });
+
+    it('passes a bar whose words and actions share one row', async () => {
+      expect(await problemsFor(bar({ barStyle: 'inline-size: 400px;' }))).toEqual([]);
+    });
+
+    it('fails words run under a sibling control, as when `nowrap` kept them on the row with the buttons', async () => {
+      // `nowrap` and a zero-basis message: the words keep one line and the buttons sit over them.
+      const problems = await problemsFor(
+        bar({
+          reasonStyle: 'white-space: nowrap;',
+          barStyle: 'flex-wrap: nowrap; inline-size: 200px;',
+        }),
+      );
+      expect(problems.some((problem) => problem.includes('lies under the control'))).toBe(true);
+    });
+
+    it('fails words cut off by the notice edge', async () => {
+      const problems = await problemsFor(
+        bar({
+          reasonStyle: 'white-space: nowrap; overflow: hidden; inline-size: 20px;',
+        }),
+      );
+      expect(problems.some((problem) => problem.includes('cut off'))).toBe(true);
+    });
+
+    it('measures nothing on a page with no composer notice', async () => {
+      expect(await problemsFor('<p>Nothing.</p>')).toEqual([]);
     });
   });
 
