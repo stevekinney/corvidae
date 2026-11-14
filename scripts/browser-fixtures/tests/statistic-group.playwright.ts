@@ -173,4 +173,31 @@ test.describe('StatisticGroup plain variant (computed style)', () => {
       .evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
     expect(plainSize).toBeLessThan(framedSize);
   });
+
+  test('a loading stat is as tall as a loaded one, in the plain variant and the framed one (COR-2329)', async ({
+    componentPage,
+  }) => {
+    const page = await openFixture(componentPage, 'statistic-group');
+    const height = (locator: Locator) =>
+      locator.evaluate((element) => element.getBoundingClientRect().height);
+    // Plain: the placeholder block was taller than a 20px figure's line, so the page moved 6px.
+    const loaded = await height(
+      page.getByTestId('plain-group').locator('.cinder-statistic__value'),
+    );
+    const loading = await height(
+      page.getByTestId('plain-group-loading').locator('.cinder-statistic__value'),
+    );
+    expect(Math.abs(loading - loaded)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        (await height(page.getByTestId('plain-group-loading'))) -
+          (await height(page.getByTestId('plain-group'))),
+      ),
+    ).toBeLessThanOrEqual(1);
+    // The placeholder bar sits inside that line.
+    const bar = await height(
+      page.getByTestId('plain-group-loading').locator('.cinder-statistic__value .cinder-skeleton'),
+    );
+    expect(bar).toBeLessThan(loaded);
+  });
 });

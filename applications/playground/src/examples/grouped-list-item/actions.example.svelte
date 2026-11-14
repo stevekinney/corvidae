@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Text actions';
   export const description =
-    'Rows whose button is their point end in secondary small buttons. On a phone the buttons stack full width under the text instead of folding into a menu, and a status leads the subtitle as a dot and its word.';
+    'Rows whose button is their point end in secondary small buttons. On a phone the buttons drop under the text at their own width instead of folding into a menu, and a status leads the subtitle as a dot and its word.';
 </script>
 
 <script lang="ts">

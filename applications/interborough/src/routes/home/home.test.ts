@@ -197,9 +197,24 @@ describe('Home', () => {
     expect(text(rows[1]!)).toContain('Refund order 4471 for $42.00?');
     expect(text(rows[1]!)).toContain('Approval, Tool runner, Can’t be undone, 4 min ago');
     expect(within(rows[1]!).getByRole('link', { name: 'Review' })).not.toBeNull();
-    expect(within(card).getByRole('link', { name: 'Open Reviews' }).getAttribute('href')).toBe(
-      '/reviews',
-    );
+  });
+
+  // COR-2329: the page said "needs you" three times, the Spotlight over a section titled "Needs you".
+  test('titles the list with the Spotlight: the link to Reviews sits beside it and the list draws no heading', async () => {
+    const { container, getByTestId } = await open();
+    const card = cardOf(container, 'Needs you');
+    await waitFor(() => expect(within(card).getAllByRole('listitem')).toHaveLength(2));
+    expect(card.querySelector('h2, h3')).toBeNull();
+    expect(within(card).getByRole('list', { name: 'Reviews waiting on you' })).toBeDefined();
+    const focus = getByTestId('home-focus');
+    const link = within(focus).getByRole('link', { name: 'Open Reviews' });
+    expect(link.getAttribute('href')).toBe('/reviews');
+    expect(link.getAttribute('data-variant')).toBe('more');
+    expect(link.parentElement?.contains(getByTestId('home-spotlight'))).toBe(true);
+    expect(within(container).getAllByRole('link', { name: 'Open Reviews' })).toHaveLength(1);
+    expect(within(container).queryByRole('heading', { name: 'Needs you' })).toBeNull();
+    await fireEvent.click(link);
+    expect(router.current.route?.pattern).toBe('/reviews');
   });
 
   test('lists five reviews and ends the list in one row that opens the rest in Reviews', async () => {
@@ -231,6 +246,18 @@ describe('Home', () => {
       within(more as HTMLElement).getByRole('link', { name: '2 more in Reviews' }),
     );
     expect(router.current.route?.pattern).toBe('/reviews');
+  });
+
+  test('the way out to Health is Cinder’s more link, the page restyles nothing, and it opens in place', async () => {
+    const { container } = await open();
+    const card = cardOf(container, 'Needs attention');
+    const link = await within(card).findByRole('link', { name: 'Open Health' });
+    expect(link.classList.contains('cinder-link')).toBe(true);
+    expect(link.getAttribute('data-variant')).toBe('more');
+    expect(link.querySelector('.cinder-link__chevron')).not.toBeNull();
+    expect(container.querySelector('.ib-home-link')).toBeNull();
+    await fireEvent.click(link);
+    expect(router.current.route?.pattern).toBe('/health');
   });
 
   test('opens a review inside the application when its button is clicked', async () => {
@@ -341,30 +368,35 @@ describe('Home with nothing waiting on you and a provider connected', () => {
     expect(counts.querySelector('[data-cinder-attention]')).toBeNull();
   });
 
-  test('says nothing is waiting on you, with the link to Reviews at the end of its line (01t)', async () => {
-    const { container } = await open(calm());
-    const card = cardOf(container, 'Needs you');
-    const empty = await within(card).findByRole('group', { name: 'Nothing is waiting on you' });
-    expect(empty.textContent).toContain('Approvals and questions from your agents show up here.');
-    expect(empty.getAttribute('data-cinder-layout')).toBe('row');
-    expect(within(empty).getByRole('link', { name: 'Open Reviews' }).getAttribute('href')).toBe(
-      '/reviews',
+  test('lets "Nothing needs you" stand alone with the link to Reviews beside it, and no second line says it (01t)', async () => {
+    const { container, getByTestId } = await open(calm());
+    await waitFor(() =>
+      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('Nothing needs you'),
     );
-    // The link is in the line, not also in the title row.
-    expect(within(card).getAllByRole('link', { name: 'Open Reviews' })).toHaveLength(1);
+    const link = within(getByTestId('home-focus')).getByRole('link', { name: 'Open Reviews' });
+    expect(link.getAttribute('href')).toBe('/reviews');
+    expect(within(container).getAllByRole('link', { name: 'Open Reviews' })).toHaveLength(1);
+    // COR-2329: "Nothing needs you" and "Nothing is waiting on you" said it twice in a row.
+    expect(container.querySelector('[data-home-card="Needs you"]')).toBeNull();
+    expect(container.textContent).not.toContain('Nothing is waiting on you');
   });
 
-  test('collapses Needs attention to one line with the link to Health (01u)', async () => {
+  test('keeps the Needs attention heading over one line with the link to Health (01u)', async () => {
     const { container, getByTestId } = await open(calm());
     const line = await waitFor(() => getByTestId('attention-clear'));
-    // Cinder's empty state in its row layout, as Needs you's is: no line drawn by the page.
+    // Cinder's empty state in its row layout: no line drawn by the page.
     const empty = within(line).getByRole('group', { name: 'Nothing needs attention' });
     expect(empty.getAttribute('data-cinder-layout')).toBe('row');
     expect(empty.textContent).toContain('Storage, schedules, providers and hooks are fine.');
     expect(within(line).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
       '/health',
     );
-    expect(container.querySelector('[data-home-card="Needs attention"]')).toBeNull();
+    // The section's heading stays over it (COR-2329: without it the line read as part of the
+    // section above), and the link is in the line, not also beside the heading.
+    const card = cardOf(container, 'Needs attention');
+    expect(card.contains(line)).toBe(true);
+    expect(within(card).getByRole('heading', { level: 2, name: 'Needs attention' })).toBeDefined();
+    expect(within(card).getAllByRole('link', { name: 'Open Health' })).toHaveLength(1);
   });
 
   test('says each chat Done, with what happened on line two (01v)', async () => {
