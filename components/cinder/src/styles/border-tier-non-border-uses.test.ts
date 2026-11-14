@@ -286,7 +286,9 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   'components/cinder/src/components/code-block/code-block.css': [
     {
-      declaration: 'box-shadow: inset 0 0 0 1px var(--cinder-border-muted);',
+      // The block's edge in the light theme; the dark theme sets the block apart by its fill.
+      declaration:
+        'box-shadow: inset 0 0 0 1px light-dark(var(--cinder-border-muted), transparent);',
       category: 'hairline',
     },
   ],

@@ -417,8 +417,12 @@ describe('CodeBlock — static structure', () => {
 
   test('code surface background is one component-owned declaration', async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
-    expect(css).toContain('background: var(--cinder-surface-inset);');
-    expect(css).toContain('box-shadow: inset 0 0 0 1px var(--cinder-border-muted);');
+    // One surface: the root (and so the bar) takes the code's own fill, and its one edge is a
+    // hairline in the light theme only.
+    expect(css).not.toContain('background: var(--cinder-surface-inset);');
+    expect(css).toContain(
+      'box-shadow: inset 0 0 0 1px light-dark(var(--cinder-border-muted), transparent);',
+    );
     expect(css).toContain('background: var(--cinder-code-block-background);');
     expect(css).toContain('background: var(--cinder-code-block-background) !important;');
   });

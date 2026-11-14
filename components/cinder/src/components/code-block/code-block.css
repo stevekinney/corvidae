@@ -29,7 +29,8 @@
     );
 
     position: relative;
-    background: var(--cinder-surface-inset);
+    /* One surface: the bar and the code share the code's own fill, so nothing divides them. */
+    background: var(--cinder-code-block-background);
     /* A code block is a block-level PANEL, not a control: it takes the surface
      * radius, the same step cards and dialogs use. At the control radius it read
      * as a hard-cornered plate at panel width. */
@@ -38,37 +39,54 @@
     user-select: none;
   }
 
-  /* A code field is a contained panel with one quiet hairline. The edge is drawn over the
-   * content, not on the root's own background: the scroller is opaque and an inset shadow on the
-   * root would sit under it, so the edge would show only around the Copy column (a seam). */
+  /* The block stands apart from the prose by one quiet cue, never two. In the light theme the code
+   * field is white (see above) on a near-white page, so a hairline draws its edge; in the dark
+   * theme the field is a step deeper than the page and its fill alone sets it apart. The edge is
+   * drawn over the content, not on the root's own background: the scroller is opaque and an inset
+   * shadow on the root would sit under it. */
   .cinder-code-block::after {
     content: '';
     position: absolute;
     inset: 0;
     z-index: 2;
     border-radius: inherit;
-    box-shadow: inset 0 0 0 1px var(--cinder-border-muted);
+    box-shadow: inset 0 0 0 1px light-dark(var(--cinder-border-muted), transparent);
     pointer-events: none;
   }
 
-  /* The language label and copy action share one quiet row at the top of the
-   * field. It is not a bar: no border, no fill of its own, and no extra
-   * padding beyond the code's own inset, so it reads as part of the code field. */
+  /* The language and Copy share one compact row at the top of the field, 28px tall: the language
+   * small and muted at the inline start, an icon-only Copy at the inline end. It is not a bar of
+   * its own: no border and no fill, so it reads as the top of the code field. */
   .cinder-code-block__meta {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--cinder-space-2);
-    padding: var(--cinder-space-1) var(--cinder-space-2) 0 var(--cinder-code-block-padding);
+    padding: var(--cinder-space-1) var(--cinder-space-1) 0 var(--cinder-code-block-padding);
     background: transparent;
   }
 
+  /* Copy (or the streaming status) always sits at the row's inline end, with or without a language
+   * before it: the language takes the space after it, and without one the action pushes itself. */
+  .cinder-code-block__meta > :first-child:not(.cinder-code-block__language) {
+    margin-inline-start: auto;
+  }
+
+  /* Only the language gives way in a narrow block; Copy keeps its size. */
+  .cinder-code-block__meta > :not(.cinder-code-block__language) {
+    flex-shrink: 0;
+  }
+
   .cinder-code-block__language {
+    margin-inline-end: auto;
+    min-inline-size: 0;
+    overflow: hidden;
     font-size: var(--cinder-text-xs);
     font-family: var(--cinder-font-mono);
     color: var(--cinder-text-muted);
+    text-overflow: ellipsis;
     text-transform: uppercase;
     letter-spacing: var(--cinder-tracking-wide);
+    white-space: nowrap;
   }
 
   /* Stable scroll viewport shared by the first-paint plain fallback and the
@@ -265,8 +283,9 @@
   /* Quiet icon-only copy button inside the meta row: no chip, no border, just
  * the glyph with a hover wash.
  *
- * Hit target: 1.75rem (28px) square clears the WCAG 2.5.8 AA 24px floor with
- * margin. The icon stays centered via inline-flex.
+ * A 24px square: the WCAG 2.5.8 AA target on a fine pointer, and the height that keeps the bar
+ * at 28px. A coarse pointer reaches it through CopyButton's own 44px pseudo-element. The icon
+ * stays centered via inline-flex.
  *
  * Specificity bump (`.cinder-code-block .cinder-code-block__meta .cinder-copy-button`)
  * is required because copy-button.css imports AFTER code-block.css in components.css;
@@ -277,9 +296,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: 1.75rem;
-    min-block-size: 1.75rem;
-    margin-inline-start: auto;
+    inline-size: 1.5rem;
+    min-block-size: 1.5rem;
     border: 1px solid transparent;
     border-radius: var(--cinder-radius-sm);
     background: transparent;
