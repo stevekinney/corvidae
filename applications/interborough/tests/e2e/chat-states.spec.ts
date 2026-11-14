@@ -235,7 +235,7 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     });
   });
 
-  test('keeps Approve and Deny enabled, queues nothing, and says Tool runner continues once a provider is connected (19h)', async ({
+  test('keeps Approve and Deny enabled, queues nothing, and leaves the Connect prompt to the blocked row (19h, COR-2327 N4)', async ({
     page,
   }) => {
     await open(page, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
@@ -246,11 +246,12 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
       await expect(button).toBeEnabled();
       await expect(button).not.toHaveAttribute('aria-disabled', 'true');
     }
-    const note = page.locator('.weft-chat-approval__provider-note');
-    await expect(note).toHaveText('Tool runner continues once a provider is connected.');
-    // The note is muted text under the approval, outside its card.
-    const [card, line] = await Promise.all([approval.boundingBox(), note.boundingBox()]);
-    expect(line!.y).toBeGreaterThanOrEqual(card!.y + card!.height - 1);
+    // The blocked row in the composer's place carries Connect a model provider and its action, so
+    // the approval says nothing more about a provider.
+    await expect(page.locator('[data-chat-composer-status="blocked"]')).toContainText(
+      'Connect a model provider',
+    );
+    await expect(page.locator('.weft-chat-approval__provider-note')).toHaveCount(0);
     // Nothing pretends to be pending: no queued message, no "Sending" line.
     await expect(page.getByText(/^Queued/)).toHaveCount(0);
     await expect(page.getByText(/Sending…|Sending resumes/)).toHaveCount(0);

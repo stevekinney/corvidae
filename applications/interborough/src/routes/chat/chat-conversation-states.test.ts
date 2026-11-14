@@ -165,7 +165,7 @@ describe('a chat the server ended when it restarted (19b, 19c)', () => {
 describe('a chat waiting on an approval with no provider connected (19h)', () => {
   const messages = heldByPluginMessages();
 
-  test('keeps Approve and Deny enabled and says the agent continues once a provider is connected', async () => {
+  test('keeps Approve and Deny enabled, and leaves the Connect prompt to the blocked row alone (COR-2327 N4)', async () => {
     serve(messages, { hasKey: false });
     const { container, findByRole } = mount();
 
@@ -174,11 +174,15 @@ describe('a chat waiting on an approval with no provider connected (19h)', () =>
     expect((approve as HTMLButtonElement).disabled).toBe(false);
     const deny = await findByRole('button', { name: 'Deny' });
     expect(deny.getAttribute('aria-disabled')).not.toBe('true');
+    // The composer's blocked row says Connect a model provider, with the way to connect one, so
+    // the approval does not say it again.
     await waitFor(() =>
-      expect(container.querySelector('.weft-chat-approval__provider-note')?.textContent).toBe(
-        'Tool runner continues once a provider is connected.',
-      ),
+      expect(
+        container.querySelector('[data-chat-composer-status="blocked"]')?.textContent,
+      ).toContain('Connect a model provider'),
     );
+    expect(container.querySelector('.weft-chat-approval__provider-note')).toBeNull();
+    expect(container.textContent).not.toContain('continues once a provider is connected');
   });
 
   test('says nothing about a provider when one is connected', async () => {

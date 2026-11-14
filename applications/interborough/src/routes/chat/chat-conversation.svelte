@@ -2220,7 +2220,7 @@
                       unavailableReason={agentUnavailable
                         ? CHAT_COPY.approval.unavailable(unavailableName, pluginTitle)
                         : undefined}
-                      providerNote={noProvider
+                      providerNote={noProvider && availability?.kind !== 'unconfigured'
                         ? CHAT_COPY.approval.continuesOnProvider(agentShown)
                         : undefined}
                       requestedAt={asked?.requestedAt}
