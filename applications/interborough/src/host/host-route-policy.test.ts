@@ -53,7 +53,7 @@ test('fully composed host captures its routes and its engine discovery catalog',
     expect(keys).toContain('* /bureau/*');
     const bureauRoute = host.routeInventory.find((entry) => entry.key === '* /bureau/*');
     expect(bureauRoute?.resourceClass).toBeNull();
-    expect(bureauRoute?.children?.filter((entry) => entry.kind === 'operation')).toHaveLength(121);
+    expect(bureauRoute?.children?.filter((entry) => entry.kind === 'operation')).toHaveLength(122);
     expect(bureauRoute?.children?.every((entry) => entry.workspaceClass !== undefined)).toBe(true);
     expect(bureauRoute?.children?.some((entry) => entry.key === '/ag-ui')).toBe(true);
     expect(host.routeInventory.find((entry) => entry.key === '* /bureau/*')?.transports).toContain(

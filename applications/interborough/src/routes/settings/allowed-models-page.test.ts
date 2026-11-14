@@ -58,13 +58,16 @@ function open(
   options: {
     served?: SettingsServed;
     connected?: boolean;
+    /** Providers that declare no secret (a local Ollama): connected with no key saved. */
+    keyless?: Record<string, ReturnType<typeof model>[]>;
     extra?: Record<string, (params: Record<string, unknown>) => unknown>;
   } = {},
 ) {
   stub = installSettingsBureau(options.served ?? served(), options.extra ?? {});
   host = installFakeHost({
     keys: { anthropic: options.connected ?? false },
-    offered: { anthropic: [OPUS, SONNET, HAIKU] },
+    keyless: Object.keys(options.keyless ?? {}),
+    offered: { anthropic: [OPUS, SONNET, HAIKU], ...options.keyless },
   });
   landAt('/settings/allowed-models');
   return render(RouteOutletHarness, {
@@ -128,6 +131,17 @@ describe('the page', () => {
       row?.querySelector('select') as HTMLSelectElement;
     expect(select(prefer).selectedOptions[0]?.textContent).toBe('Neither');
     expect(select(effort).selectedOptions[0]?.textContent).toBe('High');
+  });
+});
+
+describe('with only a keyless provider connected (COR-2414)', () => {
+  test('lists the models of a provider that needs no key and says no provider is missing', async () => {
+    const view = await ready(open({ keyless: { ollama: [model('ollama', 'llama-3-2', {})] } }));
+    await view.findByRole('checkbox', { name: 'Llama 3.2' });
+    expect(view.container.querySelector('[data-model="ollama/llama-3-2"]')).not.toBeNull();
+    // Anthropic holds no key here, so its models are not offered.
+    expect(view.queryByRole('checkbox', { name: 'Claude Opus 5.5' })).toBeNull();
+    expect(view.queryByTestId('allowed-models-empty')).toBeNull();
   });
 });
 
