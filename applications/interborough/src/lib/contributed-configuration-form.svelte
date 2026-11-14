@@ -37,7 +37,16 @@
 
   let { kindId, schema, value, onChange, issues }: Props = $props();
 
-  const formSchema = $derived(contributedFormSchema(kindId, schema));
+  // The schema the form is drawn from keeps its identity while its content is the same: the form
+  // starts over when it is given another schema, so a read of the plugins that hands back an equal
+  // schema in a new object would otherwise throw away what a person has typed and not yet saved.
+  let drawn: Record<string, unknown> | undefined;
+  const formSchema = $derived.by(() => {
+    const next = contributedFormSchema(kindId, schema);
+    if (drawn !== undefined && next !== undefined && isSameJson(drawn, next)) return drawn;
+    drawn = next;
+    return next;
+  });
   const hasFields = $derived(contributedFormHasFields(formSchema));
 
   // The form emits no draft until an edit, so the one it shows at mount is reported here, once per
