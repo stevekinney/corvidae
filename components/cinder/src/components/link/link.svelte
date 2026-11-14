@@ -10,10 +10,11 @@
    * @avoidWhen Navigating between pages in a sidebar or nav bar — use NavigationItem.
    * @related navigation-item, button, breadcrumbs
    */
-  export type { LinkProps, LinkColor, LinkUnderline } from './link.types.ts';
+  export type { LinkProps, LinkColor, LinkUnderline, LinkVariant } from './link.types.ts';
 </script>
 
 <script lang="ts">
+  import { ChevronRight } from '@lucide/svelte';
   import type { HTMLAttributes } from 'svelte/elements';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -23,6 +24,7 @@
     href,
     underline = 'hover',
     color = 'primary',
+    variant = 'inline',
     external = false,
     disabled = false,
     target,
@@ -79,7 +81,17 @@
   });
 
   const resolvedClass = $derived(classNames('cinder-link', className));
+  // An unknown variant behaves as an inline link rather than a root attribute no rule matches.
+  const more = $derived(variant === 'more');
 </script>
+
+<!-- The "more" form ends in a chevron, which says the link leads on to a page of its own. -->
+{#snippet content()}
+  {@render children()}
+  {#if more}
+    <ChevronRight class="cinder-link__chevron" aria-hidden="true" />
+  {/if}
+{/snippet}
 
 {#if disabled}
   <!--
@@ -94,9 +106,10 @@
     data-cinder-link
     data-underline={underline}
     data-color={color}
+    data-variant={more ? 'more' : undefined}
     data-disabled
   >
-    {@render children()}
+    {@render content()}
   </span>
 {:else}
   <a
@@ -109,7 +122,8 @@
     data-cinder-link
     data-underline={underline}
     data-color={color}
+    data-variant={more ? 'more' : undefined}
   >
-    {@render children()}
+    {@render content()}
   </a>
 {/if}

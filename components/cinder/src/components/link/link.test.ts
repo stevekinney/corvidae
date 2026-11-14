@@ -83,6 +83,57 @@ describe('Link underline prop', () => {
   });
 });
 
+describe('Link variant prop (COR-2329)', () => {
+  test('an inline link has no variant attribute and no chevron', () => {
+    const { container } = render(Link, {
+      props: { href: '/reviews', children: textSnippet('Open Reviews') },
+    });
+    const anchor = container.querySelector('a');
+    expect(anchor?.hasAttribute('data-variant')).toBe(false);
+    expect(anchor?.querySelector('.cinder-link__chevron')).toBeNull();
+  });
+
+  test('the more form marks itself and ends in a hidden chevron after the words', () => {
+    const { container } = render(Link, {
+      props: { href: '/reviews', variant: 'more', children: textSnippet('Open Reviews') },
+    });
+    const anchor = container.querySelector('a');
+    expect(anchor?.getAttribute('data-variant')).toBe('more');
+    const chevron = anchor?.querySelector('svg.cinder-link__chevron');
+    expect(chevron?.getAttribute('aria-hidden')).toBe('true');
+    // The chevron comes after the words, and the accessible name is the words alone.
+    expect(anchor?.lastElementChild).toBe(chevron ?? null);
+    expect(anchor?.textContent?.trim()).toBe('Open Reviews');
+  });
+
+  test('a disabled more link keeps its form', () => {
+    const { container } = render(Link, {
+      props: { variant: 'more', disabled: true, children: textSnippet('Open Reviews') },
+    });
+    const span = container.querySelector('span[aria-disabled="true"]');
+    expect(span?.getAttribute('data-variant')).toBe('more');
+    expect(span?.querySelector('.cinder-link__chevron')).not.toBeNull();
+  });
+
+  test('an unknown variant renders as an inline link', () => {
+    const { container } = render(Link, {
+      props: {
+        href: '/reviews',
+        variant: 'loud' as unknown as 'more',
+        children: textSnippet('Open Reviews'),
+      },
+    });
+    expect(container.querySelector('a')?.hasAttribute('data-variant')).toBe(false);
+  });
+
+  test('the more form reaches a 44px hit area under a coarse pointer, with a pseudo-element', async () => {
+    const css = await Bun.file(new URL('./link.css', import.meta.url)).text();
+    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    expect(coarse).toContain(".cinder-link[data-variant='more']::before");
+    expect(coarse).toContain('var(--cinder-touch-target-min)');
+  });
+});
+
 describe('Link color prop', () => {
   test('defaults to data-color="primary"', () => {
     const { container } = render(Link, {

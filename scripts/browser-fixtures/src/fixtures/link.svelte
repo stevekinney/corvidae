@@ -21,3 +21,12 @@
   <li><Link href="/pricing" color="inherit" underline="always">Inherits text color</Link></li>
   <li><Link href="/pricing" disabled>Disabled link</Link></li>
 </ul>
+
+<!-- The more form (COR-2329): the way out of a section to the page that holds the rest. -->
+<div
+  data-testid="link-more"
+  style="display: flex; align-items: center; justify-content: space-between; max-inline-size: 24rem;"
+>
+  <h2 style="margin: 0; font-size: 1.125rem;">Needs you</h2>
+  <Link href="/reviews" variant="more">Open Reviews</Link>
+</div>
