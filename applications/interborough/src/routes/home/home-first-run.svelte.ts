@@ -1,8 +1,9 @@
 /**
  * What Home's first-run checklist knows: whether it shows, and how far the person is. It reads the
  * three answers the steps are made of (the providers that hold a key, the agents, the chats a
- * person started), each through the read the rest of Home already asks, so no card is held up and
- * nothing is asked twice. The page is `pending` until all three have answered, so the overview is
+ * person started), the first two through the reads the rest of Home already asks, so no card is held
+ * up. The chats are read on their own (`useChatHistory`), one chat, archived ones included: Recent
+ * chats leaves archived chats out, but an archived chat is still a chat that happened. The page is `pending` until all three have answered, so the overview is
  * never drawn only to be replaced by the checklist. A chat list that cannot be read says nothing
  * about whether a person has had a chat, so it shows the overview, whose own cards say what they
  * cannot read.
@@ -23,7 +24,7 @@ import {
 } from '../../app/first-run.ts';
 import { browserWorkspaceStorage } from '../../app/workspace-lifetime.ts';
 import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
-import { useAgentList, useHostProviders, useRecentChats } from './home-queries.svelte.ts';
+import { useAgentList, useChatHistory, useHostProviders } from './home-queries.svelte.ts';
 import { checklistSteps, type ChecklistStep } from './home-rows.ts';
 import { findAssistant } from './home-start-chat.ts';
 
@@ -55,7 +56,8 @@ export function useHomeFirstRun(): HomeFirstRun {
   const storage = browserWorkspaceStorage(getPrincipalStore().principal?.workspace, 'localStorage');
   const providers = useHostProviders();
   const agents = useAgentList();
-  const chats = useRecentChats();
+  // Whether a chat happened counts an archived one, which Recent chats leaves out.
+  const chats = useChatHistory();
 
   let saidHello = $state(readSaidHello(storage));
   let assistantChosen = $state(readAssistantChosen(storage));

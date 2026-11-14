@@ -138,8 +138,17 @@ describe('Home', () => {
     const { findByTestId } = render(HomeHarness, { props: { client: installed.client } } as never);
     await findByTestId('home-date');
 
-    expect(asked.length).toBeGreaterThan(0);
-    for (const params of asked) expect(params).toMatchObject({ archived: 'exclude' });
+    // Recent chats leaves archived chats out; whether a chat happened (the first-run checklist)
+    // counts them, reading one chat.
+    expect(asked).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ origin: 'chat', archived: 'exclude' }),
+        { origin: 'chat', archived: 'include', limit: 1 },
+      ]),
+    );
+    expect(asked.every((params) => params['archived'] === 'exclude' || params['limit'] === 1)).toBe(
+      true,
+    );
   });
 
   test('puts a dot before the count when runs failed in the last day', async () => {
@@ -626,6 +635,30 @@ describe('Home on a new installation (01y, 01z, 13c, 13d, 13f, 14c, 14d)', () =>
       expect(cardOf(container, 'Needs attention').textContent).toContain(
         'No model provider connected',
       ),
+    );
+  });
+
+  test('counts an archived chat as a chat that happened: no checklist, though Recent chats leaves it out (COR-2285 V5)', async () => {
+    const world = freshInstallation();
+    installed = installHome(world);
+    const archivedChat = {
+      ...sampleHomeWorld().chats[0],
+      archivedAt: '2026-11-01T12:00:00.000Z',
+    };
+    // The Bureau filters as it does: the only chat is archived.
+    installed.stub.on('bureau.contexts.list', (params) => ({
+      contexts: params['archived'] === 'exclude' ? [] : [archivedChat],
+      nextOffset: null,
+    }));
+    const { findByTestId, container } = render(HomeHarness, {
+      props: { client: installed.client },
+    } as never);
+    await findByTestId('home-counts');
+
+    expect(container.querySelector('[data-testid="home-first-run"]')).toBeNull();
+    const card = cardOf(container, 'Recent chats');
+    await waitFor(() =>
+      expect(within(card).getByRole('group', { name: 'No chats yet' })).toBeDefined(),
     );
   });
 

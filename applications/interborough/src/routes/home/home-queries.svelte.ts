@@ -73,16 +73,28 @@ export function useRunningTasks(): CreateQueryResult<readonly TaskView[]> {
 }
 
 /**
- * The chats you were last in, newest first (`bureau.contexts.list`), for the Recent chats card and
- * for whether the person has had a chat at all, which ends the first-run checklist. Call it while a
- * component initializes.
+ * The chats you were last in, newest first (`bureau.contexts.list`), for the Recent chats card. An
+ * archived chat is put away, so it is left out (COR-2285 V5). Call it while a component initializes.
  */
 export function useRecentChats(): CreateQueryResult<ContextPage> {
   return createQuery(() => ({
     queryKey: queryKeys.contexts.recent(RECENT_CHAT_LIMIT),
     queryFn: ({ signal }: { signal: AbortSignal }) =>
-      // An archived chat is put away, so Recent chats leaves it out (COR-2285 V5).
       listContexts({ origin: 'chat', archived: 'exclude', limit: RECENT_CHAT_LIMIT }, { signal }),
+    retry: false,
+  }));
+}
+
+/**
+ * Whether the person has had a chat at all, which ends the first-run checklist: the newest chat
+ * they started, archived or not, since an archived chat happened too (COR-2285 V5). Call it while a
+ * component initializes.
+ */
+export function useChatHistory(): CreateQueryResult<ContextPage> {
+  return createQuery(() => ({
+    queryKey: queryKeys.contexts.firstRun(),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      listContexts({ origin: 'chat', archived: 'include', limit: 1 }, { signal }),
     retry: false,
   }));
 }
