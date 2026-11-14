@@ -660,8 +660,8 @@ describe('Skeleton list variant timing', () => {
       expect(statuses).toHaveLength(1);
       expect(place?.contains(statuses[0] ?? null)).toBe(true);
       expect(statuses[0]?.textContent?.trim()).toBe('');
-      expect(place?.querySelector('.cinder-skeleton')?.getAttribute('style')).toBe(
-        'width: 11rem; height: 2.2rem',
+      expect(place?.querySelector('.cinder-skeleton')?.getAttribute('style')).toMatch(
+        /^width: 11rem; height: 2\.2rem;?$/,
       );
       // The real text before it is not displaced: the group's first element is the page's own.
       const group = container.querySelector('.cinder-skeleton-group');
