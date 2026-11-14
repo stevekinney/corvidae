@@ -315,6 +315,13 @@ test.describe('Home with nothing waiting and a provider connected', () => {
       'Storage, schedules, providers and hooks are fine.',
     );
     await expect(clear.getByRole('link', { name: 'Open Health' })).toBeVisible();
+    // The clear line sits under its own heading, so it never reads as part of the section above.
+    const attentionSection = page.locator('[data-home-card="Needs attention"]');
+    await expect(
+      attentionSection.getByRole('heading', { level: 2, name: 'Needs attention' }),
+    ).toBeVisible();
+    await expect(attentionSection.getByTestId('attention-clear')).toHaveCount(1);
+    await expect(attentionSection.getByRole('link', { name: 'Open Health' })).toHaveCount(1);
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
     await expect(rows.nth(0)).toContainText('Done');
     await expect(rows.nth(0)).toContainText(

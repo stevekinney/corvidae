@@ -91,7 +91,7 @@ describe('Home’s sections', () => {
     expect(page?.querySelector('.cinder-card')).toBeNull();
   });
 
-  test('says nothing needs attention as one line with no box around it', async () => {
+  test('says nothing needs attention as one line under its heading, with no box around it', async () => {
     const base = sampleHomeWorld();
     const { findByTestId } = await open(
       sampleHomeWorld({
@@ -102,6 +102,8 @@ describe('Home’s sections', () => {
     );
     const line = await findByTestId('attention-clear');
     expect(line.closest('.cinder-card')).toBeNull();
-    expect(line.closest('[data-home-card]')).toBeNull();
+    expect(line.closest('[data-home-card]')?.getAttribute('data-home-card')).toBe(
+      'Needs attention',
+    );
   });
 });

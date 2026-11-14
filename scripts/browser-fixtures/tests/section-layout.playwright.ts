@@ -125,6 +125,27 @@ test.describe('GroupedList layout', () => {
     expect(Math.abs(line!.x - first!.x)).toBeLessThanOrEqual(1);
   });
 
+  test('an empty row’s and a failed row’s actions end on the list buttons’ edge (COR-2329)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const listButton = await page
+      .getByTestId('grouped-list-actions')
+      .getByRole('link', { name: 'Answer' })
+      .boundingBox();
+    const listEdge = listButton!.x + listButton!.width;
+    const emptyAction = await page
+      .getByTestId('grouped-list-empty-row')
+      .getByRole('button', { name: 'Open Health' })
+      .boundingBox();
+    const retry = await page
+      .getByTestId('grouped-list-error-row')
+      .getByRole('button', { name: 'Try again' })
+      .boundingBox();
+    expect(Math.abs(emptyAction!.x + emptyAction!.width - listEdge)).toBeLessThanOrEqual(1);
+    expect(Math.abs(retry!.x + retry!.width - listEdge)).toBeLessThanOrEqual(1);
+  });
+
   test('text actions trail their row on a wide screen (COR-2329)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 800 });
     const rows = page.getByTestId('grouped-list-actions').locator('.cinder-grouped-list-item');

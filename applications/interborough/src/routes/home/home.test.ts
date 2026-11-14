@@ -351,17 +351,22 @@ describe('Home with nothing waiting on you and a provider connected', () => {
     expect(within(card).getAllByRole('link', { name: 'Open Reviews' })).toHaveLength(1);
   });
 
-  test('collapses Needs attention to one line with the link to Health (01u)', async () => {
+  test('keeps the Needs attention heading over one line with the link to Health (01u)', async () => {
     const { container, getByTestId } = await open(calm());
     const line = await waitFor(() => getByTestId('attention-clear'));
-    // Cinder's empty state in its row layout, as Needs you's is: no line drawn by the page.
+    // Cinder's empty state in its row layout: no line drawn by the page.
     const empty = within(line).getByRole('group', { name: 'Nothing needs attention' });
     expect(empty.getAttribute('data-cinder-layout')).toBe('row');
     expect(empty.textContent).toContain('Storage, schedules, providers and hooks are fine.');
     expect(within(line).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
       '/health',
     );
-    expect(container.querySelector('[data-home-card="Needs attention"]')).toBeNull();
+    // The section's heading stays over it (COR-2329: without it the line read as part of the
+    // section above), and the link is in the line, not also beside the heading.
+    const card = cardOf(container, 'Needs attention');
+    expect(card.contains(line)).toBe(true);
+    expect(within(card).getByRole('heading', { level: 2, name: 'Needs attention' })).toBeDefined();
+    expect(within(card).getAllByRole('link', { name: 'Open Health' })).toHaveLength(1);
   });
 
   test('says each chat Done, with what happened on line two (01v)', async () => {
