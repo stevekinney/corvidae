@@ -406,8 +406,13 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       'kind',
       'loading',
     );
+    // A conversation with no message yet is the one the unconfigured state replaces whole (COR-2285
+    // V4); with history Chat keeps the transcript and blocks the composer, which the blocked
+    // composer case holds. Every other availability stands in over a conversation with a turn.
     const setup = baseSetup(
-      plainTurn('stress-availability', 'Where did the refund go?', 'It was issued on Nov 1.'),
+      kind === 'unconfigured'
+        ? start('stress-availability')
+        : plainTurn('stress-availability', 'Where did the refund go?', 'It was issued on Nov 1.'),
     );
     if (kind === 'loading') {
       setup.availability = {
