@@ -58,7 +58,9 @@
  * the letters: the glyph beside them is 3px or so taller than the capitals, so it stands that far
  * past the letters at each end of a one-line notice, evenly above and below, as a symbol stands in
  * a line of text. The last ink is a button face or the progress line when there is one; those are
- * boxes with no air to take out.
+ * boxes with no air to take out. `text-box-trim` would trim a line to its capitals exactly, but
+ * Firefox does not ship it and only Chromium is installed to test with, so the air is derived
+ * from `cap` and `lh`, which every engine Cinder runs in has.
  * ---------------------------------------- */
 
   .cinder-callout {
