@@ -255,6 +255,65 @@ describe('a rejected review (COR-2238)', () => {
     ).toBe(true);
   });
 
+  it('keeps a rejection in a parallel branch across a restart once a sibling has committed (matrix row D14)', async () => {
+    // The rejected branch's wait took `decision`, and the sibling's later commit lands that consume:
+    // the branch's progress must be in that commit, or a restart shows the review again.
+    ran.length = 0;
+    const storage = new MemoryStorage();
+    const id = 'rejection-parallel-restart-run';
+    const definition = {
+      name: 'rejection-parallel-restart',
+      trigger: { kind: 'manual' },
+      steps: [
+        {
+          kind: 'parallel',
+          branches: {
+            review: [
+              { kind: 'await-signal', signal: 'decision' },
+              { kind: 'activity', handler: 'after' },
+            ],
+            other: [{ kind: 'await-signal', signal: 'other' }],
+            third: [{ kind: 'await-signal', signal: 'third' }],
+          },
+        },
+        { kind: 'activity', handler: 'after' },
+      ],
+    };
+    const waiting = async (engine: Engine) =>
+      ((await engine.get(id))?.waitingForSignals ?? []).toSorted();
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, hostWithHook, { active: [definition] });
+      const run = await original.start(definition.name, null, { id });
+      await waitUntil(async () => (await waiting(original)).length === 3, {
+        message: 'every branch to wait',
+      });
+      await run.signal('decision', { rejected: true, reason: 'no' });
+      await waitUntil(async () => !(await waiting(original)).includes('decision'), {
+        message: 'the review to take its decision',
+      });
+      await run.signal('other', 'done');
+      await waitUntil(async () => !(await waiting(original)).includes('other'), {
+        message: 'the sibling to take its signal',
+      });
+      // The sibling's step settles in a commit: wait until the decision's consume is durable.
+      await waitUntil(async () => (await storage.count(`sig:${id}:decision:`)) === 0, {
+        message: 'the decision to be consumed durably',
+      });
+    }
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, hostWithHook, { active: [definition] });
+    const [handle] = await restarted.recoverAll();
+    await waitUntil(async () => (await waiting(restarted)).includes('third'), {
+      message: 'the last branch to wait again',
+    });
+    expect(await waiting(restarted)).toEqual(['third']);
+    await handle!.signal('third', 'done');
+    expect(await throwingRejectionOf(handle!.result())).toThrow('review-rejected');
+    expect(ran).toEqual([]);
+    expect((await restarted.get(id))?.status).toBe('failed');
+  });
+
   it('recovers a run at a rejected wait to the same end after a restart', async () => {
     ran.length = 0;
     const storage = new MemoryStorage();
