@@ -101,6 +101,11 @@ export interface ChatAttachment {
   failureKind?: ChatAttachmentFailureKind;
   /** The limit in bytes a `too-large` attachment is over, when it is known. */
   maxFileSize?: number;
+  /**
+   * What the composer took when an `unsupported-type` attachment was refused, so the line that
+   * says what to attach instead keeps its words when the host changes the limits later.
+   */
+  acceptedTypes?: readonly string[];
   /** What the host's `uploadAttachment` hook answered, once the attachment is `ready`. */
   reference?: ChatAttachmentReference;
   /** How much of an `uploading` attachment has been sent, from 0 to 1, when the hook reports it. */

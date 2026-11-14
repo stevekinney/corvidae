@@ -1441,7 +1441,7 @@
     "slug": "attachments-mixed",
     "title": "A mixed upload keeps every file in one strip, with a ring on the one uploading and one line under it that counts the failures.",
     "provenance": "issue-named",
-    "source": "COR-2277: in a mixed upload the failed chips are outlined and the one line under the strip says how many failed, with Retry all.",
+    "source": "COR-2277: in a mixed upload the failed chips are outlined and the one line under the strip says what went wrong, with Retry for the files that can and Remove failed for the rest.",
     "rows": ["C6", "P2"],
     "scenario": "attachments",
     "params": { "mode": "mixed" },
@@ -1461,8 +1461,8 @@
         "total": 5,
         "uploading": 1,
         "failed": 2,
-        "line": "2 files didn't upload",
-        "lineAction": "Retry all"
+        "line": "1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file. 1 file didn't upload.",
+        "lineAction": "Remove failed + Retry 1"
       }
     ],
     "variants": [
@@ -1480,15 +1480,15 @@
             "action": "expect-attachment-strip",
             "total": 2,
             "failed": 2,
-            "line": "2 files didn't upload",
-            "lineAction": "Retry all"
+            "line": "1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file. 1 file didn't upload.",
+            "lineAction": "Remove failed + Retry 1"
           },
           { "action": "click", "role": "button", "name": "Why unsupported-1.exe failed" },
           {
             "action": "expect-attachment-strip",
             "total": 2,
             "failed": 2,
-            "line": "unsupported-1.exe can't be attached.",
+            "line": "unsupported-1.exe can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
             "lineAction": "Remove"
           }
         ]
@@ -2044,7 +2044,7 @@
   {
     "id": 62,
     "slug": "attachments-failures",
-    "title": "A failure says what happened in one line under the strip, with the action that fits: Retry for a connection or unknown fault, Remove for a file that cannot be attached, and a count for several.",
+    "title": "A failure says what happened in one line under the strip, with the action that fits: Retry for a connection or unknown fault, Remove for a file that cannot be attached, and for several files one sentence for each reason with only the actions that can work.",
     "provenance": "derived",
     "source": "Derived from design row C6; the failure line replaces the per-row sentence and the separate blocking line (owner, 2026-11-13).",
     "rows": ["C6"],
@@ -2062,8 +2062,8 @@
         "action": "expect-attachment-strip",
         "total": 2,
         "failed": 2,
-        "line": "2 files didn't upload",
-        "lineAction": "Retry all"
+        "line": "1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file. 1 file didn't upload.",
+        "lineAction": "Remove failed + Retry 1"
       }
     ],
     "variants": [
@@ -2117,7 +2117,7 @@
             "action": "expect-attachment-strip",
             "total": 1,
             "failed": 1,
-            "line": "unsupported-1.exe can't be attached.",
+            "line": "unsupported-1.exe can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
             "lineAction": "Remove"
           }
         ]
@@ -2157,7 +2157,7 @@
             "action": "expect-attachment-strip",
             "total": 2,
             "failed": 2,
-            "line": "2 files didn't upload",
+            "line": "1 file is over the 25 MB limit. 1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
             "lineAction": "Remove all failed"
           }
         ]

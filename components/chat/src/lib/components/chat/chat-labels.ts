@@ -74,15 +74,33 @@ export type ChatLabels = {
    * The line under the attachment strip while failed files block Send. A file that did not upload
    * for want of a connection, a file over the limit (`limit` is the limit in words, such as
    * "25 MB", or `undefined` when the host did not say), a file the composer cannot take, and a file
-   * that failed for another reason.
+   * that failed for another reason. `accepted` is what the composer takes, in words such as "an
+   * image, a PDF or a text file", so the line can say what to attach instead.
    */
   attachmentFailureNetwork: (name: string) => string;
   attachmentFailureTooLarge: (name: string, limit: string | undefined) => string;
-  attachmentFailureUnsupported: (name: string) => string;
+  attachmentFailureUnsupported: (name: string, accepted: string) => string;
   attachmentFailureUnknown: (name: string) => string;
-  /** The line when several files failed. */
-  attachmentFailureMany: (count: number) => string;
+  /**
+   * The same four reasons for `count` files that failed for it. Several files with one shared
+   * reason read as that one sentence; files that failed for different reasons read as one
+   * sentence for each reason, in the same notice.
+   */
+  attachmentFailureNetworkMany: (count: number) => string;
+  attachmentFailureTooLargeMany: (count: number, limit: string | undefined) => string;
+  attachmentFailureUnsupportedMany: (count: number, accepted: string) => string;
+  attachmentFailureUnknownMany: (count: number) => string;
+  /** The action when every failed file can be tried again. Default `Retry all`. */
   retryAllAttachments: string;
+  /** The action that tries again the `count` failed files that can be, while others cannot. Default `Retry 2`. */
+  retryAttachments: (count: number) => string;
+  /** The accessible name of that action. Default `Retry 2 failed files`. */
+  retryAttachmentsAccessible: (count: number) => string;
+  /** The action beside it that removes the failed files that cannot be tried again. Default `Remove failed`. */
+  removeFailedAttachments: string;
+  /** The accessible name of that action, for the `count` files it removes. */
+  removeFailedAttachmentsAccessible: (count: number) => string;
+  /** The action when no failed file can be tried again. Default `Remove all failed`. */
   removeAllFailedAttachments: string;
   /** Accessible name of a failed chip that shows why its file failed, when several failed. */
   showAttachmentFailureAccessible: (name: string) => string;
@@ -188,10 +206,23 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   attachmentFailureNetwork: (name) => `${name} didn't upload. Check your connection.`,
   attachmentFailureTooLarge: (name, limit) =>
     limit === undefined ? `${name} is over the limit.` : `${name} is over the ${limit} limit.`,
-  attachmentFailureUnsupported: (name) => `${name} can't be attached.`,
+  attachmentFailureUnsupported: (name, accepted) =>
+    `${name} can't be attached. Attach ${accepted}.`,
   attachmentFailureUnknown: (name) => `${name} didn't upload.`,
-  attachmentFailureMany: (count) => `${count} files didn't upload`,
+  attachmentFailureNetworkMany: (count) =>
+    `${count} ${count === 1 ? 'file' : 'files'} didn't upload. Check your connection.`,
+  attachmentFailureTooLargeMany: (count, limit) =>
+    `${count} ${count === 1 ? 'file is' : 'files are'} over the ${limit === undefined ? '' : `${limit} `}limit.`,
+  attachmentFailureUnsupportedMany: (count, accepted) =>
+    `${count} ${count === 1 ? 'file' : 'files'} can't be attached. Attach ${accepted}.`,
+  attachmentFailureUnknownMany: (count) =>
+    `${count} ${count === 1 ? 'file' : 'files'} didn't upload.`,
   retryAllAttachments: 'Retry all',
+  retryAttachments: (count) => `Retry ${count}`,
+  retryAttachmentsAccessible: (count) => `Retry ${count} failed ${count === 1 ? 'file' : 'files'}`,
+  removeFailedAttachments: 'Remove failed',
+  removeFailedAttachmentsAccessible: (count) =>
+    `Remove failed: ${count} ${count === 1 ? 'file' : 'files'} that can’t be retried`,
   removeAllFailedAttachments: 'Remove all failed',
   showAttachmentFailureAccessible: (name) => `Why ${name} failed`,
   retryAttachment: 'Retry',

@@ -134,17 +134,74 @@ describe('failures', () => {
     });
   });
 
-  test('several failures count, and retry all unless none can be retried', () => {
-    const retryable = attachment({ id: 'a', status: 'error', retryable: true });
+  test('several failures offer only what can work: retry all, retry some with remove, or remove all', () => {
+    const retryable = attachment({
+      id: 'a',
+      status: 'error',
+      failureKind: 'network',
+      retryable: true,
+    });
     const refused = attachment({ id: 'b', status: 'error', failureKind: 'unsupported-type' });
-    expect(attachmentFailureLine([retryable, refused])).toEqual({
+    expect(attachmentFailureLine([retryable, { ...retryable, id: 'c' }])).toMatchObject({
       type: 'many',
       count: 2,
+      retryable: 2,
       action: 'retry-all',
+    });
+    expect(attachmentFailureLine([retryable, refused])).toMatchObject({
+      type: 'many',
+      count: 2,
+      retryable: 1,
+      action: 'retry-some',
     });
     expect(
       attachmentFailureLine([refused, { ...refused, id: 'c' }, attachment({ id: 'd' })]),
-    ).toEqual({ type: 'many', count: 2, action: 'remove-all' });
+    ).toMatchObject({ type: 'many', count: 2, retryable: 0, action: 'remove-all' });
+  });
+
+  test('several failures name one reason for each kind, with how many files it holds', () => {
+    const offline = attachment({ id: 'a', status: 'error', failureKind: 'network' });
+    const large = attachment({
+      id: 'c',
+      status: 'error',
+      failureKind: 'too-large',
+      maxFileSize: 2048,
+    });
+    const line = attachmentFailureLine([
+      large,
+      offline,
+      { ...offline, id: 'b' },
+      attachment({
+        id: 'u',
+        status: 'error',
+        failureKind: 'unsupported-type',
+        acceptedTypes: ['.csv'],
+      }),
+    ]);
+    // In a fixed order, whatever order the files failed in.
+    expect(line).toMatchObject({
+      type: 'many',
+      reasons: [
+        { kind: 'network', count: 2 },
+        { kind: 'too-large', count: 1, maxFileSize: 2048 },
+        { kind: 'unsupported-type', count: 1, acceptedTypes: ['.csv'] },
+      ],
+    });
+  });
+
+  test('a long accept list is named by its first three kinds and "another kind of file"', () => {
+    expect(
+      acceptedKindsText([
+        'image/*',
+        'text/*',
+        'application/json',
+        'application/pdf',
+        'application/xml',
+      ]),
+    ).toBe('an image, a text file, a JSON file or another kind of file');
+    expect(acceptedKindsText(['image/*', 'text/*', 'application/json', 'application/pdf'])).toBe(
+      'an image, a text file, a JSON file or a PDF',
+    );
   });
 
   test('a picked failed file is the line’s one subject among several', () => {

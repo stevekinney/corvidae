@@ -151,12 +151,37 @@ export type AttachmentFailureLine =
       /** What its action does: a file that can be tried again is retried, any other is removed. */
       readonly action: 'retry' | 'remove';
     }
-  | { readonly type: 'many'; readonly count: number; readonly action: 'retry-all' | 'remove-all' };
+  | {
+      readonly type: 'many';
+      readonly count: number;
+      /** How many of the failed files can be tried again. */
+      readonly retryable: number;
+      /** What went wrong, one entry for each kind of reason, with how many files it holds. */
+      readonly reasons: readonly AttachmentFailureReason[];
+      /**
+       * What the action offers: `retry-all` when every failed file can be tried again,
+       * `retry-some` when only some can (Retry those, and Remove the rest), and `remove-all`
+       * when none can.
+       */
+      readonly action: 'retry-all' | 'retry-some' | 'remove-all';
+    };
+
+/** One kind of reason several files failed for, and how many of them failed for it. */
+export interface AttachmentFailureReason {
+  readonly kind: ChatAttachmentFailureKind;
+  readonly count: number;
+  /** The limit a too large file went over, when its host named one. */
+  readonly maxFileSize?: number;
+  /** What the composer took when it refused a file for its type. */
+  readonly acceptedTypes?: readonly string[];
+}
 
 /**
- * What the line under the strip says. One failed file is named, with the action that fits it. Several
- * say how many failed and offer to retry them all, or to remove them all when none can be retried.
- * When the person has picked one of several (`pickedId`), the line is about that file alone.
+ * What the line under the strip says. One failed file is named, with the action that fits it.
+ * Several say what went wrong, one sentence for each kind of reason, and offer only what can work:
+ * Retry all when every file can be tried again, Retry some with Remove for the rest when only some
+ * can, and Remove all when none can. When the person has picked one of several (`pickedId`), the
+ * line is about that file alone.
  */
 export function attachmentFailureLine(
   attachments: readonly ChatAttachment[],
@@ -173,10 +198,26 @@ export function attachmentFailureLine(
       action: canRetry(picked) ? 'retry' : 'remove',
     };
   }
+  const retryable = failed.filter(canRetry).length;
   return {
     type: 'many',
     count: failed.length,
-    action: failed.some(canRetry) ? 'retry-all' : 'remove-all',
+    retryable,
+    reasons: CHAT_ATTACHMENT_FAILURE_KINDS.flatMap((kind): AttachmentFailureReason[] => {
+      const sharing = failed.filter((entry) => failureKindOf(entry) === kind);
+      const [first] = sharing;
+      if (first === undefined) return [];
+      return [
+        {
+          kind,
+          count: sharing.length,
+          ...(first.maxFileSize === undefined ? {} : { maxFileSize: first.maxFileSize }),
+          ...(first.acceptedTypes === undefined ? {} : { acceptedTypes: first.acceptedTypes }),
+        },
+      ];
+    }),
+    action:
+      retryable === failed.length ? 'retry-all' : retryable === 0 ? 'remove-all' : 'retry-some',
   };
 }
 
@@ -189,7 +230,9 @@ export function uploadPercent(progress: number | undefined): number | undefined 
 /**
  * The kinds of file an accept list takes, in the person's words: `image/*`, `application/pdf` and
  * `text/plain` read "an image, a PDF or a text file". A type with no common name reads as its
- * subtype in capitals ("a JSON file"), and an extension as itself (".csv" reads "a CSV file").
+ * subtype in capitals ("a JSON file"), and an extension as itself (".csv" reads "a CSV file"). A
+ * list of more than four kinds names the first three and says "or another kind of file", so a long
+ * list is a sentence a person reads and not a table.
  */
 export function acceptedKindsText(acceptedTypes: readonly string[]): string {
   const kinds: string[] = [];
@@ -197,6 +240,7 @@ export function acceptedKindsText(acceptedTypes: readonly string[]): string {
     const kind = acceptedKind(type.trim().toLowerCase());
     if (kind !== undefined && !kinds.includes(kind)) kinds.push(kind);
   }
+  if (kinds.length > 4) return `${kinds.slice(0, 3).join(', ')} or another kind of file`;
   if (kinds.length <= 1) return kinds[0] ?? 'another kind of file';
   return `${kinds.slice(0, -1).join(', ')} or ${kinds.at(-1)}`;
 }

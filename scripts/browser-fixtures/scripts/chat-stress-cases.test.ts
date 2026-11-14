@@ -201,8 +201,8 @@ describe('the committed Chat stress cases', () => {
     const failures = findStressCase(cases, 62);
     expect(stripOf(failures?.steps)).toMatchObject({
       failed: 2,
-      line: "2 files didn't upload",
-      lineAction: 'Retry all',
+      line: "1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file. 1 file didn't upload.",
+      lineAction: 'Remove failed + Retry 1',
     });
     const lines = Object.fromEntries(
       (failures?.variants ?? []).map((variant) => {
@@ -213,9 +213,15 @@ describe('the committed Chat stress cases', () => {
     expect(lines).toEqual({
       network: ["network-fail-1.pdf didn't upload. Check your connection.", 'Retry'],
       'too-large': ['too-large-fail-1.pdf is over the 25 MB limit.', 'Remove'],
-      'unsupported-type': ["unsupported-1.exe can't be attached.", 'Remove'],
+      'unsupported-type': [
+        "unsupported-1.exe can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+        'Remove',
+      ],
       unknown: ["upload-fail-1.pdf didn't upload.", 'Retry'],
-      'none-can-retry': ["2 files didn't upload", 'Remove all failed'],
+      'none-can-retry': [
+        "1 file is over the 25 MB limit. 1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+        'Remove all failed',
+      ],
     });
     const mixed = findStressCase(cases, 51);
     expect(stripOf(mixed?.steps)).toMatchObject({ total: 5, uploading: 1, failed: 2 });

@@ -337,7 +337,7 @@ describe('attachments', () => {
         removeAttachmentAccessible: (name: string) => `Entfernen: ${name}`,
         attachmentFailureTooLarge: (name: string, limit: string | undefined) =>
           `${name} ist größer als ${limit ?? 'das Limit'}.`,
-        attachmentFailureMany: (count: number) => `${count} Dateien nicht hochgeladen`,
+        attachmentFailureTooLargeMany: (count: number) => `${count} Dateien nicht hochgeladen`,
         retryAllAttachments: 'Alle erneut versuchen',
         removeAllFailedAttachments: 'Alle fehlgeschlagenen entfernen',
       },
@@ -480,7 +480,7 @@ describe('attachments', () => {
     await tick();
 
     expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
-      "2 files didn't upload",
+      '2 files are over the 1 KB limit.',
     );
     expect(target.querySelectorAll('.chat-input-attachment-reason')).toHaveLength(1);
     expect(target.textContent).not.toContain('3 files');

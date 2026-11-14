@@ -268,6 +268,7 @@
   } from './composer-run-clock.ts';
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import {
+    acceptedKindsText,
     attachmentFailureLine,
     canRetry,
     classifyUploadFailure,
@@ -277,6 +278,7 @@
   } from './attachment-tile.ts';
   import { formatBytes } from '../../../utilities/format-bytes.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
+  import RetryButton from '../message/retry-button.svelte';
 
   // Per-instance fallback factory for attachments whose file metadata is unavailable
   // AND as a collision-disambiguation counter when two files share identical metadata.
@@ -628,11 +630,32 @@
   const failureLine = $derived(attachmentFailureLine(attachments, pickedFailureId));
   const failureLineText = $derived.by((): string | undefined => {
     if (failureLine === undefined) return undefined;
-    if (failureLine.type === 'many') return labels.attachmentFailureMany(failureLine.count);
+    // What the composer took when it refused the file, from the host's accept list when it gives
+    // one: the words keep to what was true then, as the rest of the file's failure does.
+    const acceptedFor = (kept: readonly string[] | undefined) =>
+      acceptedKindsText(kept ?? acceptedTypes);
+    if (failureLine.type === 'many') {
+      // One sentence for each kind of reason: a shared reason reads as that one sentence.
+      return failureLine.reasons
+        .map(({ kind, count, maxFileSize, acceptedTypes: kept }) => {
+          if (kind === 'network') return labels.attachmentFailureNetworkMany(count);
+          if (kind === 'unsupported-type') {
+            return labels.attachmentFailureUnsupportedMany(count, acceptedFor(kept));
+          }
+          if (kind === 'unknown') return labels.attachmentFailureUnknownMany(count);
+          return labels.attachmentFailureTooLargeMany(
+            count,
+            maxFileSize === undefined ? undefined : formatBytes(maxFileSize),
+          );
+        })
+        .join(' ');
+    }
     const { attachment, kind } = failureLine;
     const fileName = attachment.file.name;
     if (kind === 'network') return labels.attachmentFailureNetwork(fileName);
-    if (kind === 'unsupported-type') return labels.attachmentFailureUnsupported(fileName);
+    if (kind === 'unsupported-type') {
+      return labels.attachmentFailureUnsupported(fileName, acceptedFor(attachment.acceptedTypes));
+    }
     if (kind === 'unknown') return labels.attachmentFailureUnknown(fileName);
     return labels.attachmentFailureTooLarge(
       fileName,
@@ -667,7 +690,9 @@
           ? labels.removeAttachment
           : failureLine.action === 'retry-all'
             ? labels.retryAllAttachments
-            : labels.removeAllFailedAttachments,
+            : failureLine.action === 'retry-some'
+              ? labels.retryAttachments(failureLine.retryable)
+              : labels.removeAllFailedAttachments,
   );
   // The line is announced through the composer's live region when it appears or changes, as the
   // status line is: it is not a live region itself, and a file's failure is told once, here.
@@ -876,11 +901,11 @@
   /** What a refusal is, as the attachment keeps it: the kind that words it, and the limit. */
   function refusalDetails(
     refusal: ChatAttachmentFailure,
-  ): Pick<ChatAttachment, 'failureKind' | 'maxFileSize'> {
+  ): Pick<ChatAttachment, 'failureKind' | 'maxFileSize' | 'acceptedTypes'> {
     if (refusal.kind === 'too-large') {
       return { failureKind: 'too-large', maxFileSize: refusal.maxFileSize };
     }
-    return { failureKind: 'unsupported-type' };
+    return { failureKind: 'unsupported-type', acceptedTypes };
   }
 
   /** `attachment` as an `error` row: its upload reference is dropped, so it can never be sent. */
@@ -1037,6 +1062,7 @@
           error: message,
           failureKind: kind,
           ...(limit === undefined ? {} : { maxFileSize: limit }),
+          ...(kind === 'unsupported-type' ? { acceptedTypes } : {}),
           retryable: isRetryableFailure(kind),
         });
       } finally {
@@ -1057,6 +1083,7 @@
       reference: _reference,
       failureKind: _failureKind,
       maxFileSize: _maxFileSize,
+      acceptedTypes: _acceptedTypes,
       ...others
     } = attachment;
     const retrying: ChatAttachment = { ...others, status: 'uploading' };
@@ -1091,16 +1118,22 @@
     void focusStripAfterRemoval(before, removed);
   }
 
-  /** What the line's action does, for the failed files it speaks of. */
-  function runFailureLineAction(): void {
+  /**
+   * What the line's action does, for the failed files it speaks of. With some files that can be
+   * tried again and some that cannot, the line has two actions: `retry` tries again the files that
+   * can be, and `remove` takes away the rest.
+   */
+  function runFailureLineAction(part: 'retry' | 'remove' | undefined = undefined): void {
     const line = failureLine;
     if (line === undefined) return;
     const failed = attachments.filter(needsAttention);
     if (line.type === 'one') {
       if (line.action === 'retry') void retryFailed([line.attachment.id]);
       else removeFailed([line.attachment.id]);
-    } else if (line.action === 'retry-all') {
+    } else if (line.action === 'retry-all' || (line.action === 'retry-some' && part === 'retry')) {
       void retryFailed(failed.filter(canRetry).map((entry) => entry.id));
+    } else if (line.action === 'retry-some') {
+      removeFailed(failed.filter((entry) => !canRetry(entry)).map((entry) => entry.id));
     } else {
       removeFailed(failed.map((entry) => entry.id));
     }
@@ -1938,12 +1971,12 @@
               actionLayout={failureLine.type !== 'many' &&
               (failureLine.action === 'retry' || failureLine.action === 'remove')
                 ? 'beside'
-                : 'inline'}
+                : 'fit'}
               class="chat-input-attachment-reason"
               data-chat-attachment-failure
             >
               {#snippet icon()}
-                <TriangleAlert class="cinder-icon-sm" aria-hidden="true" />
+                <TriangleAlert aria-hidden="true" />
               {/snippet}
               <span id={attachmentReasonId} class="chat-input-attachment-reason-text" dir="auto"
                 >{#if failureLineParts}{failureLineParts.before}<span
@@ -1966,7 +1999,7 @@
                     aria-label={failureLine.action === 'retry'
                       ? labels.retryAttachmentAccessible(failureLine.attachment.file.name)
                       : labels.removeAttachmentAccessible(failureLine.attachment.file.name)}
-                    onclick={runFailureLineAction}
+                    onclick={() => runFailureLineAction()}
                   >
                     {#if failureLine.action === 'retry'}
                       <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
@@ -1974,17 +2007,45 @@
                       <X class="cinder-icon-xs" aria-hidden="true" />
                     {/if}
                   </Button>
-                {:else}
-                  <Button
-                    type="button"
-                    variant="ghost-accent"
-                    size="xs"
-                    quiet
-                    class="chat-input-attachment-reason-action"
-                    onclick={runFailureLineAction}
-                  >
-                    {failureLineActionLabel}
-                  </Button>
+                {:else if failureLine.type === 'many'}
+                  <!-- Several files: the action is its words, drawn as every notice's worded
+                       action is, a compact secondary button. It offers only what can work: Retry
+                       all when every file can be tried again, Retry N with Remove failed for the
+                       rest when only some can, and Remove all failed when none can. -->
+                  {#if failureLine.action === 'retry-some'}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      class="chat-input-attachment-reason-action"
+                      label={labels.removeFailedAttachments}
+                      aria-label={labels.removeFailedAttachmentsAccessible(
+                        failureLine.count - failureLine.retryable,
+                      )}
+                      onclick={() => runFailureLineAction('remove')}
+                    />
+                    <RetryButton
+                      class="chat-input-attachment-reason-action"
+                      label={labels.retryAttachments(failureLine.retryable)}
+                      ariaLabel={labels.retryAttachmentsAccessible(failureLine.retryable)}
+                      onclick={() => runFailureLineAction('retry')}
+                    />
+                  {:else if failureLine.action === 'retry-all'}
+                    <RetryButton
+                      class="chat-input-attachment-reason-action"
+                      label={labels.retryAllAttachments}
+                      onclick={() => runFailureLineAction()}
+                    />
+                  {:else}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      class="chat-input-attachment-reason-action"
+                      label={labels.removeAllFailedAttachments}
+                      onclick={() => runFailureLineAction()}
+                    />
+                  {/if}
                 {/if}
               {/snippet}
             </Callout>
@@ -2726,6 +2787,12 @@
     overflow-wrap: normal;
     word-break: normal;
     min-inline-size: min-content;
+  }
+
+  /* "Archived Nov 3" is one phrase: the date stays with the word, so a narrow bar moves the actions
+   * to their own line before it breaks the phrase (the reason's least width is then its whole). */
+  .chat-input-notice[data-chat-composer-status='archived'] .chat-input-blocked-reason {
+    white-space: nowrap;
   }
 
   .chat-input-notice .chat-input-blocked-actions {

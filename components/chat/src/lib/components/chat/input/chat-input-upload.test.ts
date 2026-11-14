@@ -349,7 +349,7 @@ describe('a file the composer refuses', () => {
       acceptedTypes: ['application/pdf'],
     });
     expect(target.querySelector('.chat-input-attachment-reason-text')?.textContent).toBe(
-      "photo.png can't be attached.",
+      "photo.png can't be attached. Attach a PDF.",
     );
     const action = target.querySelector('.chat-input-attachment-reason button');
     expect(action?.getAttribute('aria-label')).toBe('Remove photo.png');
@@ -395,9 +395,10 @@ describe('the failure line under the strip', () => {
   async function settleFailures(
     errors: unknown[],
     files = errors.map((_, index) => png(`file-${index + 1}.png`)),
+    props: Record<string, unknown> = {},
   ) {
     const { upload, calls } = heldUpload();
-    const { target, instance } = mountInput({ uploadAttachment: upload });
+    const { target, instance } = mountInput({ uploadAttachment: upload, ...props });
     instance.addFiles(files);
     await tick();
     errors.forEach((error, index) => calls[index]!.reject(error));
@@ -450,19 +451,107 @@ describe('the failure line under the strip', () => {
     const { target, instance } = await settleFailures([
       new ChatAttachmentUploadError('unsupported-type'),
     ]);
-    expect(lineText(target)).toBe("file-1.png can't be attached.");
+    // The next step the old line had: what the composer takes, here its default list, kept short.
+    expect(lineText(target)).toBe(
+      "file-1.png can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+    );
     expectGlyphAction(target, 'Remove file-1.png');
     unmount(instance);
   });
 
-  test('several failures are counted, retried all at once, and each file keeps its reason', async () => {
+  test('a host’s own accept list is what an unsupported file is told to attach instead', async () => {
+    const { target, instance } = await settleFailures(
+      [new ChatAttachmentUploadError('unsupported-type')],
+      undefined,
+      { acceptedTypes: ['image/*', 'application/pdf'] },
+    );
+    expect(lineText(target)).toBe("file-1.png can't be attached. Attach an image or a PDF.");
+    unmount(instance);
+  });
+
+  const lineActions = (target: HTMLElement) =>
+    [...target.querySelectorAll<HTMLButtonElement>('.chat-input-attachment-reason button')].map(
+      (button) => ({
+        text: button.textContent?.trim(),
+        name: button.getAttribute('aria-label') ?? button.textContent?.trim(),
+      }),
+    );
+
+  test('several files with one shared reason say it once, and offer Retry all when every one can be retried', async () => {
+    const { target, instance, calls } = await settleFailures([
+      new TypeError('offline'),
+      new TypeError('offline'),
+    ]);
+    expect(lineText(target)).toBe("2 files didn't upload. Check your connection.");
+    expect(lineActions(target)).toEqual([{ text: 'Retry all', name: 'Retry all' }]);
+    await fireEvent.click(lineAction(target)!);
+    await tick();
+    expect(calls).toHaveLength(4);
+    expect(stateOf(target)).toEqual(['uploading', 'uploading']);
+    unmount(instance);
+  });
+
+  test('files that failed for different reasons read as one sentence for each reason', async () => {
+    const { target, instance } = await settleFailures([
+      new TypeError('offline'),
+      new ChatAttachmentUploadError('too-large', { maxFileSize: 1024 }),
+      new TypeError('offline'),
+    ]);
+    expect(lineText(target)).toBe(
+      "2 files didn't upload. Check your connection. 1 file is over the 1 KB limit.",
+    );
+    unmount(instance);
+  });
+
+  test('when only some files can be retried the action says how many, and Remove failed takes the rest', async () => {
+    const { target, instance, calls } = await settleFailures([
+      new TypeError('offline'),
+      new ChatAttachmentUploadError('too-large', { maxFileSize: 1024 }),
+      new ChatAttachmentUploadError('unsupported-type'),
+    ]);
+    // Remove first and the recovery last: the trailing-most control is the primary one.
+    expect(lineActions(target)).toEqual([
+      { text: 'Remove failed', name: 'Remove failed: 2 files that can’t be retried' },
+      { text: 'Retry 1', name: 'Retry 1 failed file' },
+    ]);
+    const buttons = [
+      ...target.querySelectorAll<HTMLButtonElement>('.chat-input-attachment-reason button'),
+    ];
+    await fireEvent.click(buttons[0]!);
+    await tick();
+    // The two that cannot work are gone; the one that can is still failed.
+    expect(stateOf(target)).toEqual(['error']);
+    expect(lineText(target)).toBe("file-1.png didn't upload. Check your connection.");
+    expect(calls).toHaveLength(3);
+    unmount(instance);
+  });
+
+  test('Retry N tries again only the files that can be retried and leaves the rest failed', async () => {
+    const { target, instance, calls } = await settleFailures([
+      new TypeError('offline'),
+      new ChatAttachmentUploadError('too-large', { maxFileSize: 1024 }),
+    ]);
+    const retry = lineActions(target).findIndex((action) => action.text === 'Retry 1');
+    const buttons = [
+      ...target.querySelectorAll<HTMLButtonElement>('.chat-input-attachment-reason button'),
+    ];
+    await fireEvent.click(buttons[retry]!);
+    await tick();
+    expect(calls).toHaveLength(3);
+    expect(stateOf(target)).toEqual(['uploading', 'error']);
+    unmount(instance);
+  });
+
+  test('several failures are counted, retried together, and each file keeps its reason', async () => {
     const { target, instance, calls } = await settleFailures([
       new TypeError('offline'),
       new ChatAttachmentUploadError('too-large', { maxFileSize: 1024 }),
       new Error('boom'),
     ]);
-    expect(lineText(target)).toBe("3 files didn't upload");
-    expect(lineAction(target)?.textContent?.trim()).toBe('Retry all');
+    const several =
+      "1 file didn't upload. Check your connection. 1 file is over the 1 KB limit. 1 file didn't upload.";
+    expect(lineText(target)).toBe(several);
+    expect(lineActions(target).map((action) => action.text)).toEqual(['Remove failed', 'Retry 2']);
     // Activating a failed chip makes the line speak of that file alone, and again goes back.
     const chips = [...target.querySelectorAll<HTMLElement>('.chat-attachment-preview')];
     const second = chips[1]!.querySelector<HTMLButtonElement>(
@@ -475,9 +564,12 @@ describe('the failure line under the strip', () => {
     expectGlyphAction(target, 'Remove file-2.png');
     await fireEvent.click(second);
     await tick();
-    expect(lineText(target)).toBe("3 files didn't upload");
+    expect(lineText(target)).toBe(several);
 
-    await fireEvent.click(lineAction(target)!);
+    const retryTwo = [
+      ...target.querySelectorAll<HTMLButtonElement>('.chat-input-attachment-reason button'),
+    ].find((button) => button.textContent?.trim() === 'Retry 2')!;
+    await fireEvent.click(retryTwo);
     await tick();
     // Only the two that can be tried again are; the one over the limit stays failed.
     expect(calls).toHaveLength(5);
@@ -491,8 +583,10 @@ describe('the failure line under the strip', () => {
       new ChatAttachmentUploadError('unsupported-type'),
       new ChatAttachmentUploadError('too-large'),
     ]);
-    expect(lineText(target)).toBe("2 files didn't upload");
-    expect(lineAction(target)?.textContent?.trim()).toBe('Remove all failed');
+    expect(lineText(target)).toBe(
+      "1 file is over the limit. 1 file can't be attached. Attach an image, a text file, a JSON file or another kind of file.",
+    );
+    expect(lineActions(target)).toEqual([{ text: 'Remove all failed', name: 'Remove all failed' }]);
     await fireEvent.click(lineAction(target)!);
     await tick();
     expect(stateOf(target)).toEqual([]);

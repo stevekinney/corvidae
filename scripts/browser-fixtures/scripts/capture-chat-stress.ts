@@ -1751,7 +1751,9 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
             await expectAttachment(action.locator('svg')).toHaveCount(1);
             await expectAttachment(action).toHaveText('');
           } else {
-            await expectAttachment(action).toHaveText(step.lineAction);
+            // Several actions are joined with " + ", in the order they are drawn.
+            const labels = step.lineAction.split(' + ');
+            await expectAttachment(action).toHaveText(labels.length === 1 ? labels[0]! : labels);
           }
         }
       }
