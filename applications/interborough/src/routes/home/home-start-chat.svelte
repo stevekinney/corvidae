@@ -8,13 +8,14 @@
    * sends there as its first (`new-chat-handoff.ts`); with nothing typed it opens New chat with the
    * agent alone.
    *
-   * While the server does not answer, what was typed stays, and Send is disabled (and held by the
-   * shell like every control that changes something), its description and tooltip saying it is off
-   * until the server is back; the agent can still be chosen, which changes nothing. When the agents
-   * cannot be read the card says so, with a Try again.
+   * While the server does not answer, what was typed stays, and the shell holds Send as it holds
+   * every submit button (`app/shell/changing-actions.ts`): `aria-disabled`, still focusable, with
+   * the shell's reason as its title, so a keyboard user reaches the reason. The agent can still be
+   * chosen, which changes nothing. When the agents cannot be read the card says so, with a Try
+   * again.
    */
   import { ChatInput } from '@lostgradient/chat';
-  import { Button, Select, Textarea, VisuallyHidden } from '@lostgradient/cinder';
+  import { Button, Select, Textarea } from '@lostgradient/cinder';
   import { Send } from '@lucide/svelte';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -29,8 +30,6 @@
   import { newChatAddress, startChatAgents, startingAgent } from './home-start-chat.ts';
 
   const copy = HOME_COPY.startChat;
-  /** The description of Send while the server is off: why it is off. */
-  const OFF_NOTE_ID = 'home-start-chat-off';
   const connection = getConnection();
   const agents = useAgentList();
   const providers = useHostProviders();
@@ -121,21 +120,12 @@
               onValueChange={(value) => (chosen = value)}
             />
           </div>
-          <!-- While the server is off, why Send is off is its own description and tooltip, never a
-               line squeezed into the footer beside the agent (COR-2329). -->
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={selected === undefined || connection.unreachable}
-            title={connection.unreachable ? copy.offNote : undefined}
-            aria-describedby={connection.unreachable ? OFF_NOTE_ID : undefined}
-          >
+          <!-- While the server is off the shell holds Send, as it holds every submit button: it
+               stays focusable, says it is off, and carries the shell's reason as its title. -->
+          <Button type="submit" variant="primary" disabled={selected === undefined}>
             {#snippet leadingIcon()}<Send class="cinder-icon-sm" aria-hidden="true" />{/snippet}
             {copy.send}
           </Button>
-          {#if connection.unreachable}
-            <VisuallyHidden id={OFF_NOTE_ID}>{copy.offNote}</VisuallyHidden>
-          {/if}
         </div>
       </form>
     {/if}

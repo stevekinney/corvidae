@@ -913,17 +913,19 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
       'aria-disabled',
       'true',
     );
-    // The composer keeps what was typed; Assistant is still the agent, and Send is disabled, its
-    // description and tooltip saying why. No note squeezes the footer (COR-2329: at 375 it cut the
-    // agent's name short).
+    // The composer keeps what was typed; Assistant is still the agent, and the shell holds Send as
+    // it holds every submit button: aria-disabled and still focusable, with the shell's reason as
+    // its title, so a keyboard user reaches it. No note squeezes the footer (COR-2329).
     const composer = page.getByTestId('home-start-chat');
     await expect(message).toHaveValue('What did I approve yesterday?');
     await expect(composer.getByRole('combobox', { name: 'Agent' })).toContainText('Assistant');
     const send = composer.getByRole('button', { name: 'Send' });
-    await expect(send).toBeDisabled();
+    await expect(send).toHaveAttribute('aria-disabled', 'true');
+    await expect(send).not.toHaveAttribute('disabled', /.*/);
     await expect(send).toHaveAttribute('title', 'Off until it’s back');
-    await expect(send).toHaveAccessibleDescription('Off until it’s back');
-    await expect(composer.getByText('Off until it’s back')).toHaveClass(/cinder-sr-only/);
+    await send.focus();
+    await expect(send).toBeFocused();
+    await expect(composer.getByText('Off until it’s back')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/',
       state: 'couldn’t reach Interborough',

@@ -23,7 +23,9 @@ import {
 import { Window } from 'happy-dom';
 import { flushSync } from 'svelte';
 
+import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { CONNECTION_COPY } from '../../app/copy/views.ts';
+import { holdChangingActions } from '../../app/shell/changing-actions.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import HomeHarness from './home-test-harness.test-harness.svelte';
@@ -405,5 +407,42 @@ describe('Home when the server does not answer (02g to 02j)', () => {
     // The composer's Send changes something (it is a submit button), and the agent can still be chosen.
     const card = getByTestId('home-start-chat');
     expect(within(card).getByRole('button', { name: 'Send' }).getAttribute('type')).toBe('submit');
+  });
+
+  // COR-2329 round two: the page disabled Send natively and gave it a reason of its own, so a
+  // keyboard user could never reach the reason. The shell's hold is the one hold.
+  test('offline, Send is held by the shell alone: aria-disabled, focusable, with the shell’s reason', async () => {
+    installed = installHome(sampleHomeWorld());
+    const monitor = new ConnectionMonitor({
+      probe: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      probeDelayMs: () => 60_000,
+      browserOffline: false,
+    });
+    const { container, getByTestId } = render(HomeHarness, {
+      props: { client: installed.client, connection: monitor },
+    } as never);
+    await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
+    const card = getByTestId('home-start-chat');
+    await within(card).findByRole('button', { name: 'Send' });
+    monitor.reportUnreachable();
+    // What the shell does while the server does not answer (`app/shell/shell.svelte`).
+    const release = holdChangingActions(container, CONNECTION_COPY.changesOff);
+    try {
+      flushSync();
+      const send = within(card).getByRole('button', { name: 'Send' });
+      expect(send.hasAttribute('disabled')).toBe(false);
+      expect(send.getAttribute('aria-disabled')).toBe('true');
+      expect(send.getAttribute('title')).toBe(CONNECTION_COPY.changesOff);
+      expect(send.hasAttribute('aria-describedby')).toBe(false);
+      send.focus();
+      expect(document.activeElement).toBe(send);
+      // The page draws no reason of its own beside it.
+      expect(card.textContent).not.toContain(CONNECTION_COPY.changesOff);
+    } finally {
+      release();
+      monitor.dispose();
+    }
   });
 });
