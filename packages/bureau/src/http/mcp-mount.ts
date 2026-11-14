@@ -18,6 +18,8 @@ export type BureauMcpOptions = {
   readonly resources?: OperationMcpMountOptions['resources'];
   /** Metadata attached to a tool's listing, keyed by operation name, such as `ui.resourceUri`. */
   readonly toolMeta?: OperationMcpMountOptions['toolMeta'];
+  /** Metadata attached to every tool `toolMeta` does not name, such as `ui.visibility`. */
+  readonly defaultToolMeta?: OperationMcpMountOptions['defaultToolMeta'];
 };
 
 /**
@@ -44,6 +46,7 @@ export function createBureauMcpMount(
     ...(maxBodyBytes === undefined ? {} : { maxBodyBytes }),
     ...(options.resources === undefined ? {} : { resources: options.resources }),
     ...(options.toolMeta === undefined ? {} : { toolMeta: options.toolMeta }),
+    ...(options.defaultToolMeta === undefined ? {} : { defaultToolMeta: options.defaultToolMeta }),
     serverInfo: { name: 'bureau', title: 'Bureau' },
   });
 }
