@@ -368,6 +368,37 @@ describe('the hook', () => {
     ]);
   });
 
+  test('two workers that start out of order release only their own places', async () => {
+    const directory = await scratch();
+    await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));
+    await handleHookEvent(dispatch('chef-worker', 'tool-2'), context(directory));
+    const event = (name: string, agentId: string): HookInput => ({
+      hook_event_name: name,
+      session_id: 'session-A',
+      agent_id: agentId,
+      agent_type: 'chef-worker',
+    });
+    // The second dispatch starts first, so it is bound to the first dispatch's place.
+    await handleHookEvent(event('SubagentStart', 'agent-2'), context(directory));
+    await handleHookEvent(event('SubagentStart', 'agent-1'), context(directory));
+    await handleHookEvent(event('SubagentStop', 'agent-1'), context(directory));
+    const completed: HookInput = {
+      hook_event_name: 'PostToolUse',
+      session_id: 'session-A',
+      tool_name: 'Agent',
+      tool_use_id: 'tool-1',
+      tool_input: { subagent_type: 'chef-worker' },
+      tool_response: { status: 'completed', agentId: 'agent-1' },
+    };
+    await handleHookEvent(completed, context(directory));
+    await handleHookEvent(
+      { ...completed, hook_event_name: 'PostToolUseFailure', tool_response: undefined },
+      context(directory),
+    );
+    const workers = (await recordsIn(directory)).filter((record) => record.kind === 'worker');
+    expect(workers.map((record) => record.agentId)).toEqual(['agent-2']);
+  });
+
   test('denies at the cap after the wait, naming the holders, the status command and the bypass', async () => {
     const directory = await scratch();
     await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));

@@ -612,13 +612,24 @@ export async function handleHookEvent(
   } else if (event === 'PostToolUse' && isAgentCall && toolUseId !== '') {
     const status = text(field(input.tool_response, 'status'));
     const agentId = text(field(input.tool_response, 'agentId'));
+    // `SubagentStart` binds the oldest unbound place of the session, which may be another
+    // dispatch's when two start out of order: a place bound to a different agent belongs to that
+    // agent, which may still run, so only the agent's own place, or this call's unbound one, goes.
     if (status === 'completed') {
-      await releaseWorkers(context.directory, (record) => record.toolUseId === toolUseId);
+      await releaseWorkers(
+        context.directory,
+        (record) =>
+          (agentId !== '' && record.agentId === agentId) ||
+          (record.toolUseId === toolUseId && record.agentId === undefined),
+      );
     } else if (status === 'async_launched' && agentId !== '') {
       await bindAgent(context.directory, agentId, (record) => record.toolUseId === toolUseId);
     }
   } else if (event === 'PostToolUseFailure' && isAgentCall && toolUseId !== '') {
-    await releaseWorkers(context.directory, (record) => record.toolUseId === toolUseId);
+    await releaseWorkers(
+      context.directory,
+      (record) => record.toolUseId === toolUseId && record.agentId === undefined,
+    );
   }
   return undefined;
 }
