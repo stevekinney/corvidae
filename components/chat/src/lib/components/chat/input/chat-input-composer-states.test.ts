@@ -74,7 +74,7 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).not.toContain('data-offline');
     expect(source).toMatch(/\.chat-input-editor\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
     expect(source).toMatch(/\.chat-input-markdown\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
-    // No fade over a cut chip: the cut itself is the sign that the strip scrolls.
+    // The fade over a cut chip is Cinder's edge mask, not an overlay of Chat's own.
     expect(source).not.toContain('attachmentScrollFade');
     expect(source).not.toContain('.chat-input-attachments::after');
     expect(source).toContain('align-items: center;');
@@ -85,9 +85,10 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).toMatch(
       /@media \(any-pointer: coarse\)\s*\{\s*\.chat-input-attachments\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block-start:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
     );
-    expect(source).toMatch(
-      /\.chat-input-attachments\s*\{[^}]*scroll-padding-inline:\s*var\(--cinder-space-2\);/s,
-    );
+    // The strip fades where chips are cut off by Cinder's mask attachment, whose scroll padding is
+    // the fade's size, so a chip scrolled to an edge stops clear of the fade; Chat sets no padding of its own.
+    expect(source).toContain("{@attach scrollEdgeFade('inline')}");
+    expect(source).not.toMatch(/\.chat-input-attachments\s*\{[^}]*scroll-padding-inline/s);
   });
 });
 

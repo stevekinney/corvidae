@@ -3,7 +3,8 @@ import { describe, expect, test } from 'bun:test';
 const cssPath = `${import.meta.dir}/components/_scroll-edge-fade.css`;
 
 async function readCss(): Promise<string> {
-  return (await Bun.file(cssPath).text()).replace(/\/\*[\s\S]*?\*\//g, '');
+  const source = await Bun.file(cssPath).text();
+  return source.replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
 describe('scroll edge fade', () => {

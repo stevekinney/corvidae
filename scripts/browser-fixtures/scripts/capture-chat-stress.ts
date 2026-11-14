@@ -2969,8 +2969,8 @@ export async function readEdgeFadeProblems(page: Page): Promise<string[]> {
   return page.evaluate(
     async ({ known }) => {
       // The attachment measures on a frame, so a scroll or a resize is read one frame later.
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      await new Promise<void>((settled) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => settled())),
       );
       const problems: string[] = [];
       const scrollers = new Map<Element, { axis: string; name: string }>();
