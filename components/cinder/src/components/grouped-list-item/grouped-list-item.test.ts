@@ -209,7 +209,7 @@ describe('GroupedListItem', () => {
     expect(css).toMatch(/\.cinder-grouped-list-item__actions \{[^}]*z-index: 1/);
     // The row measures its own width (a container query), never the viewport's.
     expect(css).toMatch(
-      /\.cinder-grouped-list-item--actions \{ container: cinder-grouped-list-item \/ inline-size; \}/,
+      /\.cinder-grouped-list-item--actions, \.cinder-grouped-list-item--trailing \{ container: cinder-grouped-list-item \/ inline-size; \}/,
     );
     expect(css).not.toMatch(/@media \(width/);
     const phone =

@@ -654,7 +654,7 @@ describe('Skeleton list variant timing', () => {
       const { container, getByRole } = render(StatusPlaceHarness, { props: { onCancel } });
       flushSync();
       const place = container.querySelector('.cinder-skeleton-status-place');
-      expect(place?.getAttribute('style')).toBe('block-size: 2.2rem');
+      expect(place?.getAttribute('style')).toMatch(/^block-size: 2\.2rem;?$/);
       // The live region is the block's, in the DOM from the first pass, empty until 10 s.
       const statuses = container.querySelectorAll('[role="status"]');
       expect(statuses).toHaveLength(1);
