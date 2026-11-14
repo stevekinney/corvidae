@@ -12,6 +12,9 @@ Its source imports Operative only through `@lostgradient/operative/provider-kit`
 
 - `createOpenAIProvider(options)` returns a `GenerateFunction` backed by the Chat Completions API. `createOpenAIProviderStream(options)` returns the streaming counterpart.
 - `openaiProvider` is the `ProviderDefinition` a host registers by name. Its `OpenAIProviderConfiguration` is the shared `ProviderConfigurationBase` plus every factory option.
+- `openAIRows(options?)` is the provider's catalog rows, one per model and frozen. `options.freshness` stamps every row. `options.baseURL`, or an `OPENAI_BASE_URL` in the environment, makes the endpoint ambiguous: the rows then report `endpointAmbiguous`, no batch inference and an `unknown` availability, because the request may reach a server that is not OpenAI's. The OpenAI plugin passes them as its provider's `rows`.
+- `openAIPricingTable` is the list prices by model (`ModelPricing`), the source of each row's `pricing`; a host that prices a run passes it as `customPricing`.
+- `resolveOpenAIModel(model)` resolves an alias in `OPENAI_MODEL_ALIASES` to its model and passes any other name through. `resolveOpenAIEffort(tier, model)` clamps an effort tier to `high` on a reasoning model (`OPENAI_REASONING_MODELS`) and returns `undefined` for any other.
 - `createOpenAIBatchClient(options)` wraps `client.batches`.
 - `createOpenAIEmbedder(options)` returns an `Embedder` backed by the Embeddings API.
 - `normalizeOpenAIStream` turns a stream of Chat Completions chunks into Operative stream events.
@@ -114,7 +117,7 @@ const batch = await batches.create({
 const latest = await batches.retrieve(batch.id);
 ```
 
-The client has no `baseURL` option: it constructs the SDK client without one, so the SDK honors `OPENAI_BASE_URL`, and `getProviderCapabilities('openai')` in Operative reads the same variable so what it advertises and where a request lands agree.
+The client has no `baseURL` option: it constructs the SDK client without one, so the SDK honors `OPENAI_BASE_URL`. `openAIRows()` reads the same variable, so `getProviderCapabilities('openai', { descriptors: openAIRows() })` in Operative reports no batch inference while it is set, and what the rows advertise and where a request lands agree.
 
 ## Embeddings
 

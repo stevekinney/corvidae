@@ -345,8 +345,8 @@ export type PluginProvider<Configuration = unknown> = ProviderDefinition<
   Configuration
 > & {
   /**
-   * The catalog rows of the provider's models. Absent offers Operative's static rows for the
-   * definition's `name`, which is what a provider package that ships its models there wants.
+   * The catalog rows of the provider's models, which the provider's own package ships. Absent, the
+   * provider offers no model and its plugin records a `provider-empty` problem.
    */
   readonly rows?: readonly BackendDescriptor[];
   /**

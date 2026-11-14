@@ -6,8 +6,9 @@
  * clients `packages/operative-openai/test/*.test.ts` already use.
  */
 import type { BackendDescriptor } from '@lostgradient/operative/provider-kit';
-import { createModelCatalog, readBackendDescriptors } from '@lostgradient/operative/provider-kit';
+import { readBackendDescriptors } from '@lostgradient/operative/provider-kit';
 import { describe, expect, it } from 'bun:test';
+import { openAIRows } from '../src/openai-catalog.ts';
 import { createOpenAIProvider, createOpenAIProviderStream } from '../src/openai.ts';
 import { openAIStreamTextChunks, openAITextResponse } from '../src/test/openai-fixtures.ts';
 import {
@@ -16,11 +17,11 @@ import {
 } from '../src/test/openai-mock-clients.ts';
 
 // The provider factories under test read the wall clock through
-// `createModelCatalog`'s default `now`, same as this helper — so every
+// `openAIRows`'s default `freshness`, same as this helper — so every
 // comparison below strips `freshness` rather than pinning it, and asserts
 // separately that it is a well-formed ISO timestamp.
 function seedDescriptor(provider: 'anthropic' | 'openai' | 'gemini', model: string) {
-  return createModelCatalog().descriptors.find(
+  return openAIRows().find(
     (descriptor) => descriptor.provider === provider && descriptor.model === model,
   );
 }

@@ -5,12 +5,13 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { createFixtureCatalog } from '../testing/model-catalog.test-support.ts';
 import {
   GENERAL_PROJECTION_REDACTED_KEYS,
   projectCatalog,
   projectDescriptor,
 } from './model-catalog-projection.ts';
-import { type BackendDescriptor, createModelCatalog } from './model-catalog.ts';
+import { type BackendDescriptor } from './model-catalog.ts';
 
 const FIXED_NOW = '2026-09-02T12:00:00.000Z';
 const fixedNow = () => FIXED_NOW;
@@ -104,8 +105,8 @@ describe('projectDescriptor: general projection redacts exactly AC8s four things
   });
 
   it('is a no-op on an already-bare endpoint, matching the real seed rows', () => {
-    const seedDescriptor = createModelCatalog({ now: fixedNow }).descriptors.find(
-      (descriptor) => descriptor.provider === 'anthropic',
+    const seedDescriptor = createFixtureCatalog({ now: fixedNow }).descriptors.find(
+      (descriptor) => descriptor.provider === 'alpha',
     );
     if (!seedDescriptor) throw new Error('expected at least one Anthropic seed descriptor');
     const general = projectDescriptor(seedDescriptor, 'general');
@@ -206,7 +207,7 @@ describe('projectDescriptor: purity and immutability', () => {
 
 describe('projectCatalog', () => {
   it('projects every descriptor and stamps projection: general', () => {
-    const catalog = createModelCatalog({ now: fixedNow });
+    const catalog = createFixtureCatalog({ now: fixedNow });
     const general = projectCatalog(catalog, 'general');
     expect(general.projection).toBe('general');
     expect(general.descriptors.length).toBe(catalog.descriptors.length);
@@ -217,7 +218,7 @@ describe('projectCatalog', () => {
   });
 
   it('passes through revision, generatedAt, and stale unchanged', () => {
-    const catalog = createModelCatalog({ now: fixedNow });
+    const catalog = createFixtureCatalog({ now: fixedNow });
     const general = projectCatalog(catalog, 'general');
     expect(general.revision).toBe(catalog.revision);
     expect(general.generatedAt).toBe(catalog.generatedAt);
@@ -225,7 +226,7 @@ describe('projectCatalog', () => {
   });
 
   it('privileged projection is structurally equal to its input except for the projection field, dropping no field', () => {
-    const catalog = createModelCatalog({ now: fixedNow });
+    const catalog = createFixtureCatalog({ now: fixedNow });
     const privileged = projectCatalog(catalog, 'privileged');
     expect(privileged.projection).toBe('privileged');
     expect(privileged.descriptors).toEqual(catalog.descriptors);
@@ -233,7 +234,7 @@ describe('projectCatalog', () => {
   });
 
   it('returns a deeply frozen catalog', () => {
-    const catalog = createModelCatalog({ now: fixedNow });
+    const catalog = createFixtureCatalog({ now: fixedNow });
     const general = projectCatalog(catalog, 'general');
     expect(Object.isFrozen(general)).toBe(true);
     expect(Object.isFrozen(general.descriptors)).toBe(true);
@@ -243,7 +244,7 @@ describe('projectCatalog', () => {
   });
 
   it('never mutates its input catalog', () => {
-    const catalog = createModelCatalog({ now: fixedNow });
+    const catalog = createFixtureCatalog({ now: fixedNow });
     const before = JSON.parse(JSON.stringify(catalog)) as unknown;
     projectCatalog(catalog, 'general');
     expect(JSON.parse(JSON.stringify(catalog))).toEqual(before);

@@ -21,7 +21,7 @@
  * itself one of those tests, so editing one still runs it.
  *
  * Usage:
- *   bun scripts/affected-tests.ts run [--isolated] [--base <rev>] [--changed <path>...]
+ *   bun scripts/affected-tests.ts run [--isolated] [--exclude <test file>]... [--base <rev>] [--changed <path>...]
  *   bun scripts/affected-tests.ts --explain [--base <rev>] [--changed <path>...]
  *   bun scripts/affected-tests.ts --json [--base <rev>] [--changed <path>...]
  *
@@ -276,6 +276,23 @@ export interface Invocation {
 /** The file suffixes of the isolated lanes, which the quick tier skips. */
 export const ISOLATED_SUFFIXES = ['.slow.test.ts', '.integration.test.ts'] as const;
 
+/**
+ * The selection without the `excluded` test files. A workspace that loses a file but keeps others
+ * runs narrowed (`partial`); one that loses them all runs nothing (`none`).
+ */
+export function excludeTests(selection: Selection, excluded: readonly string[]): Selection {
+  if (excluded.length === 0) return selection;
+  const drop = new Set(excluded);
+  return {
+    ...selection,
+    workspaces: selection.workspaces.map((workspace) => {
+      const tests = new Map([...workspace.tests].filter(([path]) => !drop.has(path)));
+      if (tests.size === workspace.tests.size) return workspace;
+      return { ...workspace, tests, mode: tests.size === 0 ? 'none' : 'partial' };
+    }),
+  };
+}
+
 /** Whether a changed path is itself an isolated test, which the quick tier still runs. */
 export function touchesIsolatedTest(changed: readonly string[]): boolean {
   return changed.some((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)));
@@ -401,6 +418,7 @@ function parseArguments(argumentsList: readonly string[]) {
     base: null as string | null,
     changed: null as string[] | null,
     isolated: false,
+    exclude: [] as string[],
   };
   let mode: string | null = null;
   for (let index = 0; index < argumentsList.length; index += 1) {
@@ -409,6 +427,7 @@ function parseArguments(argumentsList: readonly string[]) {
     else if (token === '--explain') mode = 'explain';
     else if (token === '--json') mode = 'json';
     else if (token === '--isolated') options.isolated = true;
+    else if (token === '--exclude') options.exclude.push(argumentsList[++index] ?? '');
     else if (token === '--base') options.base = argumentsList[++index] ?? null;
     else if (token === '--changed') {
       options.changed = [];
@@ -433,7 +452,10 @@ async function main(): Promise<number> {
   const workspaces = discoverWorkspaces(root);
   const changed =
     options.changed ?? changedFiles(root, mergeBase(root, options.base ?? 'origin/main'));
-  const selection = selectTests({ changed, tree: listTree(root), workspaces });
+  const selection = excludeTests(
+    selectTests({ changed, tree: listTree(root), workspaces }),
+    options.exclude,
+  );
 
   if (options.command === 'json') {
     const view = selection.workspaces.map((workspace) => ({

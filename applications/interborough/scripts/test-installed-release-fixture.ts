@@ -29,13 +29,13 @@ export async function writeFixture(
     'export const dependencyMarker = "fixture-owned-dependency";\n',
   );
   const source = `import { definePlugin } from '@lostgradient/interborough-plugin';
-import { createModelCatalog } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { writeFile } from 'node:fs/promises';
 import { dependencyMarker } from 'fixture-dependency';
 import { z } from 'zod';
-const seed = createModelCatalog().descriptors[0];
-if (seed === undefined) throw new Error('catalog unavailable');
+const text = { input: true, output: true, sourceForms: ['inline'] };
+const none = { input: false, output: false, sourceForms: [] };
+const seed = { endpoint: 'scripted', lifecycle: 'stable', modalities: { text, image: none, document: none, audio: none, video: none, file: none }, mimeFamilies: ['text'], mediaLimits: [], mediaCounts: [], providerFetchesRemoteUrls: false, contextWindowTokens: 8192, maxOutputTokens: 1024, streaming: false, tools: true, parallelTools: false, structuredOutput: false, parameterCompatibility: ['model'], caching: false, batchInference: false, explicitThinkingRequest: false, serverSideTokenCounting: false, effort: { portable: [], nativeMapping: 'unsupported', degradesTo: {} }, availability: 'available', health: 'unknown', source: 'static', freshness: '2026-11-13T00:00:00.000Z' };
 const CALL_ID = 'installed-call-1';
 export default definePlugin({ name: 'installed-fixture', version: '1.0.0', description: 'Installed release fixture', secrets: [{ key: 'installed-fixture-key', generated: true }], content: new URL('./content/', import.meta.url), setup: () => ({
   tools: [createTool({ name: 'greet', description: 'Fixture greeting', input: z.object({ name: z.string() }), metadata: { readOnly: true }, execute: async ({ name }) => { await writeFile(${JSON.stringify(marker)}, dependencyMarker); return 'fixture greeted ' + name; } })],

@@ -6,11 +6,7 @@
  * it is called, with `UNSUPPORTED_MEDIA_TYPE`.
  */
 import { EventType, type Event } from '@ag-ui/core';
-import {
-  createModelCatalog,
-  type BackendDescriptor,
-  waitForCondition,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, waitForCondition } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { base64Of, pngBytes, wavBytes } from '../testing/asset-fixtures.test-support.ts';
@@ -24,10 +20,11 @@ import {
 } from './ag-ui-fixtures.test-support.ts';
 import { bureauMetadata, readAgUiStream, typesOf } from './ag-ui-stream.test-support.ts';
 import { listHeldTasks } from '../test';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const LOCAL = 'anonymous:local';
 
-const anthropic = createModelCatalog().descriptors.filter(
+const anthropic = createVendorCatalog().descriptors.filter(
   (descriptor) => descriptor.provider === 'anthropic',
 );
 /** A model that takes images and documents in and, unlike any catalog row, puts images out. */

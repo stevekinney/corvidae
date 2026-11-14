@@ -21,10 +21,13 @@ import {
   estimateCost,
 } from '@lostgradient/operative';
 import type { GenerateContext, GenerateResponse } from '@lostgradient/operative/provider-kit';
+import { anthropicPricingTable } from '../src/anthropic-catalog.ts';
 import { createAnthropicProvider } from '../src/anthropic.ts';
 import { createMockAnthropicClient } from '../src/test/anthropic-mock-clients.ts';
 
 const MODEL = 'claude-3-5-sonnet-20241022';
+/** Operative holds no price: the host passes its provider's table, as this test does. */
+const PRICING = { customPricing: anthropicPricingTable };
 // Roughly 2,000 tokens of unchanging system prompt — big enough that
 // re-paying full price for it every step is the expensive failure mode this
 // feature avoids, and small enough to keep the fixture readable.
@@ -103,13 +106,13 @@ describe('prompt-cache economics (deterministic bench, no live API calls)', () =
     // Cost delta: pricing a cache-read step against what it WOULD have cost
     // at full prompt price for the same 2,000 tokens shows the saving
     // `estimateCost` already prices in (Anthropic: cache read = 0.1x prompt).
-    const costWithCache = estimateCost(usage2, MODEL);
+    const costWithCache = estimateCost(usage2, MODEL, PRICING);
     const costWithoutCacheUsage = {
       prompt: usage2.prompt + (usage2.cacheReadTokens ?? 0),
       completion: usage2.completion,
       total: usage2.total,
     };
-    const costWithoutCache = estimateCost(costWithoutCacheUsage, MODEL);
+    const costWithoutCache = estimateCost(costWithoutCacheUsage, MODEL, PRICING);
 
     expect(costWithCache.totalCost).toBeLessThan(costWithoutCache.totalCost);
     // Anthropic prices a cache read at 0.1x the base prompt rate, so caching

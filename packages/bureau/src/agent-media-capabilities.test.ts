@@ -4,12 +4,13 @@
  * descriptors (a routed agent) collapse to what every one of them takes, so a client never offers
  * a file that one route would refuse.
  */
-import { createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
+import { type BackendDescriptor } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { mediaCapabilitiesOf } from './agent-catalog.ts';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
-const rows = createModelCatalog().descriptors;
+const rows = createVendorCatalog().descriptors;
 const anthropic = rows.find((row) => row.provider === 'anthropic')!;
 const gemini = rows.find((row) => row.provider === 'gemini')!;
 

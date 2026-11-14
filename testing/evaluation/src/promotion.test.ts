@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { sha256Hex } from '@lostgradient/cryptography';
+import { anthropicRows } from '@lostgradient/operative-anthropic';
+import { geminiRows } from '@lostgradient/operative-gemini';
+import { openAIRows } from '@lostgradient/operative-openai';
 
 import { fixtureConfiguration } from './fixtures/release-gate/fixture-regression';
 import { type GateDecisionRecord, parseGateDefinition } from './gate';
@@ -108,6 +111,7 @@ function context(
     currentRevision: REVISION,
     loadEvaluator: loadingWith(),
     packageSourceRevision: () => PACKAGE_TREE,
+    modelCatalog: [...anthropicRows(), ...openAIRows(), ...geminiRows()],
     now: () => Date.parse(ISSUED_AT),
     ...changes,
   };

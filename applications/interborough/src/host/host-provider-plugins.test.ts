@@ -10,7 +10,6 @@ import { definePlugin } from '@lostgradient/interborough-plugin';
 import {
   createActiveRun,
   createAgent,
-  createModelCatalog,
   MediaAdmissionError,
   readBackendDescriptors,
   withBackendDescriptors,
@@ -28,6 +27,7 @@ import { z } from 'zod';
 import { startHost, type Host } from './host.ts';
 import { workspacePlugins } from './plugins.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
+import { vendorRows } from './provider-fixtures.test-support.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -86,7 +86,7 @@ function pairsOf(host: Host): string[] {
     .toSorted();
 }
 
-const staticRows = createModelCatalog().descriptors;
+const staticRows = vendorRows();
 const KEY = 'fixture-provider-plugin-key-1';
 
 describe('a plugin that contributes a provider', () => {

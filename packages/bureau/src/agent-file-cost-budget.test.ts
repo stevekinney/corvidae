@@ -5,7 +5,6 @@
  * shows once in the run's activity (the `operative.runs.events` feed and the audit trail).
  */
 import {
-  createModelCatalog,
   estimateCost,
   getModelPricing,
   providerModelPricingKey,
@@ -32,6 +31,7 @@ import {
   TEST_CONTRIBUTIONS,
 } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const decoder = new TextDecoder();
 
@@ -249,7 +249,7 @@ describe('a stored definition', () => {
 });
 
 describe('prices from the catalog', () => {
-  const opus = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5-5')!;
+  const opus = createVendorCatalog().descriptors.find((row) => row.model === 'claude-opus-5-5')!;
 
   it('turns a catalog row into the prices a run counts at, keeping the cache rates it carries', () => {
     const pricing = usdPricingOfRow(opus);
@@ -283,7 +283,9 @@ describe('prices from the catalog', () => {
   });
 
   it('keeps tier cache rates when a legacy edit changes only long-context prices', () => {
-    const haiku = createModelCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
+    const haiku = createVendorCatalog().descriptors.find(
+      (row) => row.model === 'claude-haiku-5-5',
+    )!;
     const edited = {
       ...haiku,
       pricing: {
@@ -314,7 +316,7 @@ describe('prices from the catalog', () => {
   });
 
   it('enters a switched model with no price as unpriced, even one Operative’s table knows (COR-1921)', () => {
-    const catalog = createModelCatalog().descriptors;
+    const catalog = createVendorCatalog().descriptors;
     const known = catalog.find((row) => row.model === 'claude-opus-5')!;
     const { costEstimation } = costBudgetOptions({ run: 1 }, opus, [
       { ...known, pricing: undefined },
@@ -329,7 +331,7 @@ describe('prices from the catalog', () => {
   });
 
   it('prices a bare model name by the first row that serves it, and each provider’s row by its own key', () => {
-    const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
+    const other = createVendorCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
     const { costEstimation } = costBudgetOptions({ run: 1 }, opus, [
       { ...other, provider: 'twin', pricing: undefined },
       other,
@@ -347,7 +349,7 @@ describe('prices from the catalog', () => {
   });
 
   it('keeps a gateway row named like another provider’s model apart from that row', () => {
-    const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
+    const other = createVendorCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
     const gateway = {
       ...other,
       provider: 'gateway',
@@ -368,7 +370,7 @@ describe('prices from the catalog', () => {
   });
 
   it('counts the default model first, and a switched model at its own price', () => {
-    const other = createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
+    const other = createVendorCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!;
     const { costEstimation, costBudget } = costBudgetOptions({ run: 1, warn: [0.5] }, opus, [
       other,
       opus,
@@ -385,7 +387,7 @@ describe('prices from the catalog', () => {
 });
 
 describe('unpricedSwitchReason', () => {
-  const rows = createModelCatalog().descriptors;
+  const rows = createVendorCatalog().descriptors;
   const unpriced = rows.map((row) =>
     row.model === 'gpt-4.1' ? { ...row, pricing: undefined } : row,
   );
@@ -435,7 +437,7 @@ describe('a file whose model has no price', () => {
   });
 
   function withoutPrice(change: (row: BackendDescriptor) => BackendDescriptor) {
-    return createModelCatalog().descriptors.map((row) =>
+    return createVendorCatalog().descriptors.map((row) =>
       row.model === 'claude-opus-5-5' ? change(row) : row,
     );
   }
@@ -449,7 +451,7 @@ describe('a file whose model has no price', () => {
   const budgeted = agentFileText({ model: KNOWN_MODEL, limits: '{ cost: { run: 1 } }' });
 
   it('is usable when the model has a price in US dollars', async () => {
-    const fixture = await start(createModelCatalog().descriptors);
+    const fixture = await start(createVendorCatalog().descriptors);
     await fixture.put('helper.md', budgeted);
     await fixture.catalog.refresh();
     expect(fixture.catalog.list().find((listing) => listing.id === 'helper')?.state).toBe('ready');
