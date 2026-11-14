@@ -60,6 +60,7 @@ function lightDarkArms(value: string): [string, string] {
 const tokensCss = loadCss('../../styles/tokens-base.css');
 const colorPickerCss = loadCss('./color-picker.css');
 const colorFieldCss = loadCss('../color-field/color-field.css');
+const inputCss = loadCss('../input/input.css');
 
 test('format controls keep their intended styling after copy-button styles load', () => {
   expect(colorPickerCss).toContain('.cinder-color-picker .cinder-color-picker__format');
@@ -76,7 +77,7 @@ test('format controls are at least 24 CSS px tall (WCAG 2.5.8 target size)', () 
 });
 
 test('composed color controls aggregate their dependency styles for à-la-carte consumers', () => {
-  expect(colorFieldCss).toContain("@import '../button/button.css'");
+  expect(colorFieldCss).not.toContain("@import '../button/button.css'");
   expect(colorFieldCss).toContain("@import '../color-picker/color-picker.css'");
   expect(colorFieldCss).toContain("@import '../popover/popover.css'");
   expect(colorPickerCss).toContain("@import '../color-swatch-picker/color-swatch-picker.css'");
@@ -136,6 +137,43 @@ describe('color picker thumb contrast outline', () => {
     expect(shadow).toBe(
       '0 0 0 1px var(--_cinder-color-picker-thumb-shadow-edge), 0 0 0 2px var(--_cinder-color-picker-thumb-shadow-support)',
     );
+  });
+});
+
+describe('color field swatch trigger', () => {
+  // Owner review: the swatch is inset evenly inside the field and has no border of its own. Its
+  // height is the slot's less the slot's own inline padding above and below.
+  test('the swatch stretches to the slot with a block inset equal to the slot padding', () => {
+    const selector = '.cinder-color-field__swatch-button';
+    expect(ruleDeclarationValue(colorFieldCss, selector, 'align-self')).toBe('stretch');
+    expect(ruleDeclarationValue(colorFieldCss, selector, 'margin-block')).toBe(
+      'var(--_cinder-color-field-inset)',
+    );
+    expect(
+      ruleDeclarationValue(colorFieldCss, '.cinder-color-field', '--_cinder-color-field-inset'),
+    ).toBe('var(--cinder-space-1)');
+    // The inline inset is the interactive trailing slot's own padding, so the two must agree.
+    expect(
+      ruleDeclarationValue(
+        inputCss,
+        '.cinder-input-group__leading:not([aria-hidden]),\n  .cinder-input-group__trailing:not([aria-hidden])',
+        'padding-inline',
+      ),
+    ).toBe('var(--cinder-space-1)');
+    expect(ruleDeclarationValue(colorFieldCss, selector, 'border')).toBe('0');
+  });
+
+  test('the swatch has no border outside forced colors', () => {
+    const borders: string[] = [];
+    parse(colorFieldCss).walkRules(/cinder-color-field__swatch/, (rule) => {
+      if (rule.parent?.type === 'atrule' && (rule.parent as { name?: string }).name === 'media') {
+        return;
+      }
+      rule.walkDecls(/^border(-width|-style|-color)?$/, (declaration) => {
+        borders.push(`${rule.selector} { ${declaration.prop}: ${declaration.value} }`);
+      });
+    });
+    expect(borders).toEqual(['.cinder-color-field__swatch-button { border: 0 }']);
   });
 });
 
