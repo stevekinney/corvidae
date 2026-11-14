@@ -2091,7 +2091,7 @@
    * a queued follow-up is a dashed, pale bubble. A run's notes sit outside the bubble, full width.
    * ---------------------------------------- */
   .chat-message-wrapper[data-presentation='transcript'] {
-    gap: var(--cinder-space-1);
+    gap: var(--_cinder-chat-line-gap, var(--cinder-space-1));
   }
 
   .chat-message-wrapper[data-presentation='transcript'][data-role='assistant'] {
@@ -2145,7 +2145,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-2);
-    min-block-size: 1.5rem;
+    min-block-size: var(--_cinder-chat-line-block-size, 1.5rem);
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     /* The font's own line height, so the time's letters sit in the middle of its box. A tighter
@@ -2177,7 +2177,7 @@
   .chat-message-wrapper[data-presentation='transcript'][data-role='assistant']
     > .chat-message
     + .chat-message-line {
-    margin-block-start: calc(var(--cinder-space-1) * -1.5);
+    margin-block-start: var(--_cinder-chat-line-pull, calc(var(--cinder-space-1) * -1.5));
   }
 
   /* A bubble that ends in an attachment tile has the same inset below the tile as beside it. */

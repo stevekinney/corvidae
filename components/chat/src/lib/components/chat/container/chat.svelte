@@ -3574,12 +3574,34 @@
   }
 
   /* The answer under a collapsed step row stands as far from the row's text as a message's own
-   * text stands from the time under it (about 20px of ink), at every width. The timeline's gap
-   * between rows is 8px on a phone and 12px beyond it, so the row takes that gap back and gives the
-   * answer one small step instead of a spacing that changes with the width. */
-  .chat-tool-call-group:has(+ :global(.chat-message-wrapper)) {
+   * text stands from the time under it, measured between the letters (R06, owner decision of
+   * 2026-11-13), at every width. Between the baseline of the message's last line and the capitals
+   * of its time stand the line's gap and pull, and the part of the line's height above the
+   * time's capitals, half of what the height leaves round them. The answer's first line has the
+   * same air above its capitals as the message's last line has below its baseline, so the two
+   * cancel; the step row's own air below its last baseline is taken off its toggle (the browser
+   * puts a baseline on a whole pixel, so that air is a whole number of pixels: half the leading
+   * round the capitals, rounded down), and the gap to the answer is these terms less the row gap
+   * the timeline puts between rows. The timeline takes the time's size for this one gap, so
+   * `1cap` in it is the time's capitals. Only a collapsed row with nothing after it in its group
+   * is spaced this way: an open row ends in a step's own box, not in the row's text. */
+  .chat-tool-call-group:has(+ :global(.chat-message-wrapper))
+    > :global(.chat-tool-call-timeline):has(
+      :global(.chat-tool-call-toggle[aria-expanded='false'])
+    ):has(+ .chat-approval-group-rows:empty:last-child)
+    :global(.chat-tool-call-toggle) {
+    margin-block-end: calc(round(down, (1lh - 1cap) / 2, 1px) * -1);
+  }
+
+  .chat-tool-call-group:has(+ :global(.chat-message-wrapper))
+    > :global(.chat-tool-call-timeline):has(
+      :global(.chat-tool-call-toggle[aria-expanded='false'])
+    ):has(+ .chat-approval-group-rows:empty:last-child) {
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     margin-block-end: calc(
-      var(--cinder-space-2) + var(--cinder-space-0-5, 0.125rem) - var(--_cinder-chat-row-gap)
+      var(--_cinder-chat-line-gap, var(--cinder-space-1)) +
+        var(--_cinder-chat-line-pull, calc(var(--cinder-space-1) * -1.5)) +
+        (var(--_cinder-chat-line-block-size, 1.5rem) - 1cap) / 2 - var(--_cinder-chat-row-gap)
     );
   }
 
@@ -3588,6 +3610,12 @@
     flex-direction: column;
     gap: var(--cinder-space-3);
     min-inline-size: 0;
+  }
+
+  /* A group with no approval cards leaves no empty row at its end: the gap between its children
+   * would otherwise stand under the step row as a band no one can see. */
+  .chat-approval-group-rows:empty {
+    display: none;
   }
 
   .chat-approval-group-rows :global(.chat-message-wrapper) {

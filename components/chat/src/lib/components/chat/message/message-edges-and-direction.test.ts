@@ -53,7 +53,7 @@ describe('glyphs meet their edges, spacing and direction', () => {
   test('the time sits at one distance under both roles, with no Sources row between prose and line', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(
-      /> \.chat-message\s*\+ \.chat-message-line \{\s*margin-block-start: calc\(/,
+      /> \.chat-message\s*\+ \.chat-message-line \{\s*margin-block-start: var\(\s*--_cinder-chat-line-pull,\s*calc\(/,
     );
     expect(source).not.toMatch(/\[data-presentation='transcript'\] > \.chat-message-sources/);
   });

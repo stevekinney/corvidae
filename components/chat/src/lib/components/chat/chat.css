@@ -128,6 +128,14 @@
     --cinder-text-base: var(--_cinder-chat-text-base);
     --cinder-text-lg: var(--_cinder-chat-text-lg);
 
+    /* How the line under a message (its time and actions) stands under the text: the gap the
+     * message's flex column leaves, the pull that trims it back for an assistant's text, and the
+     * line's own height. A step row's spacing to the answer below reads these same three, so the
+     * answer stands from the row as far as a message's text stands from its time. */
+    --_cinder-chat-line-gap: var(--cinder-space-1);
+    --_cinder-chat-line-pull: calc(var(--cinder-space-1) * -1.5);
+    --_cinder-chat-line-block-size: 1.5rem;
+
     container-type: inline-size;
     display: flex;
     flex-direction: column;
