@@ -328,9 +328,6 @@
     ),
   );
   const turnPresentation = $derived(presentTurnState(turn));
-  // Narration the turn did not end on: it is not an answer, so its line carries no time and no
-  // actions, only its sources when it has some.
-  const workingNarration = $derived(narration && turnState === undefined);
   const turnWords = $derived(resolveTurnLabels(turnLabels));
   const messageLabels = $derived(resolveChatLabels(labels));
   // Text arrives with a caret only in a state that draws one: a reconnecting turn's partial text
@@ -883,10 +880,10 @@
           Remove
         </Button>
       {/if}
-    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice && !workingNarration}
+    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice}
       <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
     {/if}
-    {#if !isPending && !streaming && !workingNarration}
+    {#if !isPending && !streaming}
       <span class="chat-message-line-actions">
         {@render messageIconActions()}
         {#if actions}
@@ -1237,10 +1234,8 @@
   {#if transcript}
     <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
-         line again, and so does an empty one, which carries its time there. What the agent says
-         while it works (narration) is not an answer, so it has no time, Copy, Quote or Regenerate
-         unless the turn ended on it. -->
-    {#if !isEditing && !systemRow && turnPresentation.line && (!workingNarration || shownSources)}
+         line again, and so does an empty one, which carries its time there. -->
+    {#if !isEditing && !systemRow && turnPresentation.line}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
