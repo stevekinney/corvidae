@@ -22,10 +22,15 @@ import {
 import { Window } from 'happy-dom';
 
 import { FIRST_RUN_SAID_HELLO_KEY } from '../../app/first-run.ts';
-import { contextFixture, taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import {
+  contextFixture,
+  taskFixture,
+  toolApprovalFixture,
+} from '../../lib/bureau-fixtures.test-support.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { emptyBureauWorld } from '../../lib/bureau-world.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
+import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { chooseOption, shownLabel } from '../chat/listbox.test-support.ts';
 import { takeFirstMessage } from '../chat/new-chat-handoff.ts';
 import HomeHarness from './home-test-harness.test-harness.svelte';
@@ -99,84 +104,66 @@ describe('Home', () => {
     expect(getByRole('heading', { level: 1 })).toBe(heading);
   });
 
-  test('says four counts under the labels Health uses: 0, 2, 0 and 4 (01d)', async () => {
+  // COR-2329: the content-first Home leads with one Spotlight and one quiet count, not four tiles.
+  test('leads with a Spotlight that says how many reviews wait on you, and one count under it', async () => {
     const { getByTestId } = await open();
+    await waitFor(() =>
+      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('2 need you'),
+    );
     const counts = getByTestId('home-counts');
+    expect(counts.getAttribute('data-cinder-variant')).toBe('plain');
     await waitFor(() => {
       const stats = [...counts.querySelectorAll('.cinder-statistic')].map((stat) =>
         stat.textContent?.replaceAll(/\s+/g, ' ').trim(),
       );
-      expect(stats).toEqual([
-        'Running now 0',
-        'Needs you 2',
-        'Failed in 24 hours 0',
-        'Missed schedule runs (7 days) 4',
-      ]);
+      expect(stats).toEqual(['Failed in 24 hours 0']);
     });
-    // A dot stands only before a non-zero bad count.
-    const dotted = [...counts.querySelectorAll('.cinder-statistic')]
-      .filter((stat) => stat.hasAttribute('data-cinder-attention'))
-      .map(
-        (stat) => stat.textContent?.includes('Needs you') || stat.textContent?.includes('Missed'),
-      );
-    expect(dotted).toEqual([true, true]);
+    // A dot stands only before a count above zero.
+    expect(counts.querySelector('[data-cinder-attention]')).toBeNull();
+    // The Spotlight comes before the Needs you list, the first thing the page says.
+    const needsYou = getByTestId('home-spotlight').compareDocumentPosition(
+      cardOf(document.body, 'Needs you'),
+    );
+    expect(needsYou & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  test('counts the runs that are going, and never one waiting on a review', async () => {
-    const world = sampleHomeWorld();
-    world.world.tasks = [
-      {
-        id: 'run-going',
-        contextId: 'c1',
-        agentName: 'assistant',
-        owner: 'anonymous:local',
-        actor: null,
-        kind: 'chat',
-        status: 'working',
-        finishReason: null,
-        statusMessage: null,
-        createdAt: '2026-11-02T10:44:00-06:00',
-        updatedAt: '2026-11-02T10:44:00-06:00',
-        cleanup: null,
-        openWaits: [],
-      },
-      {
-        id: 'run-parked',
-        contextId: 'c2',
-        agentName: 'assistant',
-        owner: 'anonymous:local',
-        actor: null,
-        kind: 'chat',
-        status: 'input-required',
-        finishReason: null,
-        statusMessage: null,
-        createdAt: '2026-11-02T10:44:00-06:00',
-        updatedAt: '2026-11-02T10:44:00-06:00',
-        cleanup: null,
-        openWaits: [],
-      },
-    ];
-    const { getByTestId } = await open(world);
+  test('puts a dot before the count when runs failed in the last day', async () => {
+    const { getByTestId } = await open(sampleHomeWorld({ failedRuns: 3 }));
+    const counts = getByTestId('home-counts');
     await waitFor(() =>
-      expect(getByTestId('home-counts').textContent?.replaceAll(/\s+/g, ' ')).toContain(
-        'Running now 1',
+      expect(counts.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Failed in 24 hours 3'),
+    );
+    expect(counts.querySelector('.cinder-statistic')?.hasAttribute('data-cinder-attention')).toBe(
+      true,
+    );
+  });
+
+  test('says the count as a dash for a caller who may not read runs', async () => {
+    installed = installHome(sampleHomeWorld());
+    const { findByTestId, getByTestId } = render(HomeHarness, {
+      props: {
+        client: installed.client,
+        scopes: AUTHORIZATION_SCOPES.filter((scope) => scope !== 'workflows:read'),
+      },
+    } as never);
+    await findByTestId('home-counts');
+    await waitFor(() =>
+      expect(getByTestId('home-counts').textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
+        'Failed in 24 hours —',
       ),
     );
   });
 
-  test('says a count it cannot read as a dash, leaves the others alone, and never claims all is well', async () => {
+  test('keeps the Spotlight and the count when the problems cannot be read, and never claims all is well', async () => {
     const { container, getByTestId } = await open(sampleHomeWorld({ attentionRefused: true }));
-    await waitFor(() => {
-      const stats = [...getByTestId('home-counts').querySelectorAll('.cinder-statistic')].map(
-        (stat) => stat.textContent?.replaceAll(/\s+/g, ' ').trim(),
-      );
-      expect(stats).toEqual([
-        'Running now 0',
-        'Needs you 2',
+    await waitFor(() =>
+      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('2 need you'),
+    );
+    await waitFor(() =>
+      expect(getByTestId('home-counts').textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
         'Failed in 24 hours 0',
-        'Missed schedule runs (7 days) —',
-      ]);
-    });
+      ),
+    );
     // Needs attention could not be read, so it says nothing about the host being fine.
     expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
   });
@@ -198,6 +185,37 @@ describe('Home', () => {
     expect(within(card).getByRole('link', { name: 'Open Reviews' }).getAttribute('href')).toBe(
       '/reviews',
     );
+  });
+
+  test('lists five reviews and ends the list in one row that opens the rest in Reviews', async () => {
+    const reviews = Array.from({ length: 7 }, (_, index) =>
+      toolApprovalFixture({
+        id: `approval:${String(index)}`,
+        runId: `run-${String(index)}`,
+        sessionId: `chat-${String(index)}`,
+        requestedAt: HOME_NOW - (index + 1) * 60_000,
+      }),
+    );
+    const { container, getByTestId } = await open(
+      sampleHomeWorld({ world: emptyBureauWorld({ reviews }) }),
+    );
+    await waitFor(() =>
+      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('7 need you'),
+    );
+    const card = cardOf(container, 'Needs you');
+    await waitFor(() => expect(card.querySelectorAll('li[data-review]')).toHaveLength(5));
+    // The last row is Cinder's own linked row, not a line the page draws.
+    const more = card.querySelector('li[data-more]');
+    expect(more?.classList.contains('cinder-grouped-list-item')).toBe(true);
+    expect(
+      within(more as HTMLElement)
+        .getByRole('link', { name: '2 more in Reviews' })
+        .getAttribute('href'),
+    ).toBe('/reviews');
+    await fireEvent.click(
+      within(more as HTMLElement).getByRole('link', { name: '2 more in Reviews' }),
+    );
+    expect(router.current.route?.pattern).toBe('/reviews');
   });
 
   test('opens a review inside the application when its button is clicked', async () => {
@@ -296,20 +314,15 @@ describe('Home with nothing waiting on you and a provider connected', () => {
     });
   };
 
-  test('reads zero everywhere, with no dots (01s)', async () => {
+  test('says nothing needs you in the Spotlight, and reads zero with no dot (01s)', async () => {
     const { getByTestId } = await open(calm());
+    await waitFor(() =>
+      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('Nothing needs you'),
+    );
     const counts = getByTestId('home-counts');
-    await waitFor(() => {
-      const stats = [...counts.querySelectorAll('.cinder-statistic')].map((stat) =>
-        stat.textContent?.replaceAll(/\s+/g, ' ').trim(),
-      );
-      expect(stats).toEqual([
-        'Running now 0',
-        'Needs you 0',
-        'Failed in 24 hours 0',
-        'Missed schedule runs (7 days) 0',
-      ]);
-    });
+    await waitFor(() =>
+      expect(counts.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Failed in 24 hours 0'),
+    );
     expect(counts.querySelector('[data-cinder-attention]')).toBeNull();
   });
 
@@ -329,9 +342,10 @@ describe('Home with nothing waiting on you and a provider connected', () => {
   test('collapses Needs attention to one line with the link to Health (01u)', async () => {
     const { container, getByTestId } = await open(calm());
     const line = await waitFor(() => getByTestId('attention-clear'));
-    expect(line.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-      'Nothing needs attention. Storage, schedules, providers and hooks are fine. Open Health',
-    );
+    // Cinder's empty state in its row layout, as Needs you's is: no line drawn by the page.
+    const empty = within(line).getByRole('group', { name: 'Nothing needs attention' });
+    expect(empty.getAttribute('data-cinder-layout')).toBe('row');
+    expect(empty.textContent).toContain('Storage, schedules, providers and hooks are fine.');
     expect(within(line).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
       '/health',
     );
@@ -766,21 +780,17 @@ describe('Home’s Running now (01w, 01x)', () => {
     });
   }
 
-  test('counts 1 with no dot, and a card under Needs you reads the run: title, line two, View run (01w, 01x)', async () => {
-    const { container, getByTestId } = await open(running([SCHEDULED_RUN]));
-    const counts = getByTestId('home-counts');
-    await waitFor(() =>
-      expect(words(counts.querySelectorAll('.cinder-statistic')[0] as Element)).toBe(
-        'Running now 1',
-      ),
-    );
-    // A run going is not a problem, so its count has no dot.
-    expect(
-      counts.querySelectorAll('.cinder-statistic')[0]?.hasAttribute('data-cinder-attention'),
-    ).toBe(false);
+  /**
+   * A row's words as they read. The status dot's word ends in the whitespace of its own markup,
+   * which its inline flex box never draws, so a comma after it reads straight after the word.
+   */
+  const rowWords = (element: Element) => words(element)?.replaceAll(' ,', ',');
+
+  test('lists the run in a section under Needs you: title, line two, View run (01w, 01x)', async () => {
+    const { container } = await open(running([SCHEDULED_RUN]));
     const card = await waitFor(() => cardOf(container, 'Running now'));
     const row = await waitFor(() => within(card).getByRole('listitem'));
-    expect(words(row)).toBe(
+    expect(rowWords(row)).toBe(
       'Daily summary Running, Schedule, Assistant, started 10:44 AM View run',
     );
     expect(row.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
@@ -800,14 +810,11 @@ describe('Home’s Running now (01w, 01x)', () => {
     expect(cards.indexOf('Running now')).toBeLessThan(cards.indexOf('Needs attention'));
   });
 
-  test('is gone at zero, and a run waiting on a person is neither counted nor listed (01x)', async () => {
+  test('is gone at zero, and a run waiting on a person is not listed (01x)', async () => {
     const waiting = taskFixture({ id: 'run-waiting', status: 'input-required' });
     const { container, getByTestId } = await open(running([waiting]));
-    const counts = getByTestId('home-counts');
     await waitFor(() =>
-      expect(words(counts.querySelectorAll('.cinder-statistic')[0] as Element)).toBe(
-        'Running now 0',
-      ),
+      expect(getByTestId('home-spotlight').textContent?.trim()).toBe('Nothing needs you'),
     );
     expect(container.querySelector('[data-home-card="Running now"]')).toBeNull();
   });
@@ -821,7 +828,7 @@ describe('Home’s Running now (01w, 01x)', () => {
     });
     const { container } = await open(running([chatRun]));
     const card = await waitFor(() => cardOf(container, 'Running now'));
-    expect(words(within(card).getByRole('listitem'))).toBe(
+    expect(rowWords(within(card).getByRole('listitem'))).toBe(
       'Summarize yesterday’s chats and open reviews. Running, Chat, Assistant, started 10:45 AM View run',
     );
   });
@@ -837,10 +844,15 @@ describe('Home’s Running now (01w, 01x)', () => {
     );
     const { container } = await open(running(tasks));
     const card = await waitFor(() => cardOf(container, 'Running now'));
-    await waitFor(() => expect(within(card).getAllByRole('listitem')).toHaveLength(5));
-    expect(within(card).getByRole('link', { name: '2 more in Runs' }).getAttribute('href')).toBe(
-      '/runs',
-    );
+    // Five runs, then one more row: a link to Runs that says how many more.
+    await waitFor(() => expect(card.querySelectorAll('li[data-run]')).toHaveLength(5));
+    const more = card.querySelector('li[data-more]');
+    expect(more).not.toBeNull();
+    expect(
+      within(more as HTMLElement)
+        .getByRole('link', { name: '2 more in Runs' })
+        .getAttribute('href'),
+    ).toBe('/runs');
   });
 
   test('is not drawn while the first-run checklist shows', async () => {

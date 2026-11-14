@@ -22,6 +22,12 @@
       "code": "<script lang=\"ts\">\n  import { Button, Skeleton } from '@lostgradient/cinder';\n\n  let loading = $state(false);\n</script>\n\n<Button label=\"Start loading\" onclick={() => (loading = true)} disabled={loading} />\n\n{#if loading}\n  <Skeleton lines={5} delay={300} stillLoadingAfter={10000} onCancel={() => (loading = false)} />\n{/if}\n"
     },
     {
+      "id": "grouped-loading",
+      "title": "Grouped list loading",
+      "description": "The grouped variant draws a grouped list's rows on its rounded surface, separators inset at the text. With action, each row keeps a block where its button goes, and on a phone the block drops under the text at full width.",
+      "code": "<script lang=\"ts\">\n  import { Skeleton } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-column\" style=\"gap: var(--cinder-space-6)\">\n  <Skeleton variant=\"grouped\" rows={2} action label=\"Loading reviews\" />\n  <Skeleton variant=\"grouped\" rows={3} label=\"Loading chats\" />\n</div>\n"
+    },
+    {
       "id": "list-loading",
       "title": "List loading and slow loading",
       "description": "The list variant keeps each row’s status column reserved, then draws two text bars and a time bar, with no circle, so nothing shifts when the data arrives. The region is announced as \"Loading agents\" with no spinner. After the slow-loading time its own status line and a ghost Cancel appear below the rows; it is not a banner.",
