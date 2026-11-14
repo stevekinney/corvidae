@@ -8,7 +8,6 @@ import {
   type BackendDescriptor,
   createAgent,
   createMockGenerate,
-  createModelCatalog,
   type DecisionModel,
   type GenerateContext,
   type GenerateFunction,
@@ -25,6 +24,7 @@ import type { Bureau } from '../bureau-types/facade.ts';
 import type { BureauOptions } from '../bureau-types/options.ts';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -60,7 +60,7 @@ async function change(bureau: Bureau<AgentDefinitions>, patch: Record<string, un
   });
 }
 
-const anthropicDescriptor = createModelCatalog().descriptors.find(
+const anthropicDescriptor = createVendorCatalog().descriptors.find(
   (row) => row.provider === 'anthropic',
 )!;
 
@@ -106,7 +106,7 @@ describe('modelPolicy', () => {
   });
 });
 
-const seed = createModelCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
+const seed = createVendorCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
 
 function row(provider: BackendDescriptor['provider'], model: string): BackendDescriptor {
   return { ...seed, provider, model, aliases: [] };

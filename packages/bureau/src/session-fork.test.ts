@@ -28,6 +28,7 @@ import type { BureauContexts } from './bureau-types/contexts';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -69,6 +70,7 @@ async function openBureau(
   options: { agent?: ReturnType<typeof twoStepAgent>; storage?: Storage } = {},
 ) {
   const bureau = await createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       agent: options.agent ?? twoStepAgent(),
     },
@@ -528,6 +530,7 @@ describe('a message that is not a branch point', () => {
   it('refuses a fork while the run still has a pending approval', async () => {
     const charges: number[] = [];
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           generate: async () => ({
@@ -1017,6 +1020,7 @@ describe('a parent whose model a policy profile chose', () => {
   async function openOpaque(durable: boolean) {
     const observed: Array<string | undefined> = [];
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         agent: createAgent({
           name: 'opaque',
@@ -1098,6 +1102,7 @@ describe('a parent whose model a policy profile chose', () => {
     // purges its ledger entries, so the same command id is free again; a fork of the next session
     // must carry that session's explicit choice, not the deleted session's policy.
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         agent: createAgent({
           name: 'picker',

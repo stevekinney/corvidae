@@ -7,6 +7,7 @@
 import { describe, expect, expectTypeOf, it } from 'bun:test';
 
 import { isDelegatedAuthority } from '../child-run.ts';
+import { createFixtureCatalog, fixtureRows } from '../testing/model-catalog.test-support.ts';
 import { getProviderCapabilities } from './capabilities.ts';
 import { type BackendDescriptor, createModelCatalog } from './model-catalog.ts';
 import type { ProviderDefinition } from './provider-definition.ts';
@@ -35,10 +36,10 @@ const decisionOnlyDefinition = {
 // @ts-expect-error A provider must expose at least one capability factory.
 const emptyDefinition = { name: 'empty' } satisfies ProviderDefinition<'empty'>;
 
-/** The row the example provider contributes: a seed row re-attributed to the provider's name. */
+/** The row the example provider contributes: a fixture row re-attributed to the provider's name. */
 function exampleRow(overrides: Partial<BackendDescriptor> = {}): BackendDescriptor {
-  const [seed] = createModelCatalog({ now: () => FIXED_NOW }).descriptors;
-  if (seed === undefined) throw new Error('the seed catalog has no rows');
+  const [seed] = fixtureRows(FIXED_NOW);
+  if (seed === undefined) throw new Error('the fixture has no rows');
   return {
     ...seed,
     provider: exampleDefinition.name,
@@ -101,15 +102,13 @@ describe('ProviderName is open', () => {
 
 describe('a provider that operative does not know', () => {
   it('produces a catalog row from its own descriptor', () => {
-    const catalog = createModelCatalog({ now: () => FIXED_NOW, descriptors: [exampleRow()] });
+    const catalog = createFixtureCatalog({ now: () => FIXED_NOW, descriptors: [exampleRow()] });
 
     const rows = catalog.descriptors.filter((row) => row.provider === exampleDefinition.name);
     expect(rows.map((row) => row.model)).toEqual(['example-1']);
     expect(Object.isFrozen(rows[0])).toBe(true);
-    // The built-in rows are untouched and come first.
-    expect(catalog.descriptors.slice(0, -1)).toEqual([
-      ...createModelCatalog({ now: () => FIXED_NOW }).descriptors,
-    ]);
+    // The rows given beside it are untouched and come first.
+    expect(catalog.descriptors.slice(0, -1)).toEqual([...fixtureRows(FIXED_NOW)]);
   });
 
   it("snapshots a contributed row instead of freezing or sharing the caller's object", () => {
@@ -140,12 +139,14 @@ describe('a provider that operative does not know', () => {
     ).toEqual(none);
   });
 
-  it('keeps the answers the built-in providers always gave', () => {
+  it('leaves the answer for another provider as the rows of that provider give it', () => {
     const rows = [exampleRow()];
     expect(getProviderCapabilities('voyage', { descriptors: rows }).batchInference).toBe(false);
-    expect(getProviderCapabilities('anthropic', { descriptors: rows })).toEqual(
-      getProviderCapabilities('anthropic'),
+    expect(getProviderCapabilities('alpha', { descriptors: [...fixtureRows(), ...rows] })).toEqual(
+      getProviderCapabilities('alpha', { descriptors: fixtureRows() }),
     );
+    // Operative offers no row of its own: a provider answers only from rows it is handed.
+    expect(getProviderCapabilities('alpha', { descriptors: rows }).batchInference).toBe(false);
   });
 
   it('refuses a contributed row whose provider is malformed or duplicates another row', () => {
@@ -155,8 +156,8 @@ describe('a provider that operative does not know', () => {
     expect(() => createModelCatalog({ descriptors: [exampleRow(), exampleRow()] })).toThrow(
       /duplicate row for example\/example-1/,
     );
-    const [seed] = createModelCatalog().descriptors;
-    expect(() => createModelCatalog({ descriptors: [{ ...exampleRow(), ...seed }] })).toThrow(
+    const [seed] = fixtureRows();
+    expect(() => createFixtureCatalog({ descriptors: [{ ...exampleRow(), ...seed }] })).toThrow(
       /duplicate row/,
     );
   });

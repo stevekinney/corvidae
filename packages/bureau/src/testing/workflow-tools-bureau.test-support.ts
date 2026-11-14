@@ -26,6 +26,7 @@ import { workflowFileDirectory } from '../sources/workflow-file-directory';
 import { startTaskFrom } from '../test/task-start-request.ts';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createMemoryAssetStorage } from '../assets/storage.ts';
+import { createVendorCatalog } from './vendor-catalog.test-support.ts';
 
 /** Wait, by the clock and not by a count of turns, until a session run is no longer running. */
 async function settledRun(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
@@ -145,7 +146,10 @@ export async function startWorkflowToolsBureau(
       workflowsPath,
       options.workflowOperations === undefined ? {} : { operations: options.workflowOperations },
     ),
-    models: { generate: (_descriptor: BackendDescriptor) => generate },
+    models: {
+      catalog: createVendorCatalog().descriptors,
+      generate: (_descriptor: BackendDescriptor) => generate,
+    },
     assets: { storage: createMemoryAssetStorage() },
     storage: new MemoryStorage(),
     durable: true,

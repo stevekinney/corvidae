@@ -4,18 +4,19 @@
  * image asset), end in the same terminal result, and name the same asset.
  */
 import { EventType } from '@ag-ui/core';
-import { createAgent, createModelCatalog, withBackendDescriptors } from '@lostgradient/operative';
+import { createAgent, withBackendDescriptors } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { pngBytes } from '../testing/asset-fixtures.test-support.ts';
 import { as, runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
 import { readAgUiStream } from './ag-ui-stream.test-support.ts';
 import { openBureau } from './management/management-fixtures.test-support.ts';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const PUBLIC_URL = 'http://localhost';
 const ALICE = 'api-key:alice';
 
-const vision = createModelCatalog()
+const vision = createVendorCatalog()
   .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
   .slice(0, 1);
 

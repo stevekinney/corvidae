@@ -6,7 +6,6 @@
 import {
   type BackendDescriptor,
   createMockGenerate,
-  createModelCatalog,
   type GenerateFunction,
 } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -20,6 +19,7 @@ import {
   type RpcBody,
   rpc,
 } from './management-fixtures.test-support.ts';
+import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -190,7 +190,7 @@ describe('bureau.decisions.decide', () => {
   });
 
   it('answers a policy that forbids every model able to answer as unprocessable, and calls no provider', async () => {
-    const forbidden = createModelCatalog().descriptors.map((descriptor) => descriptor.model);
+    const forbidden = createVendorCatalog().descriptors.map((descriptor) => descriptor.model);
     const { opened, generate } = await open([], {
       modelPolicy: { deployment: { deniedModels: forbidden }, policyRevision: 3 },
     });

@@ -974,7 +974,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   };
   /**
    * The model rows the deployment offers and how a row becomes a `generate`, exposed as
-   * {@link Bureau.models}. `catalog` defaults to `@lostgradient/operative`'s static seed.
+   * {@link Bureau.models}. `catalog` defaults to no rows: a provider plugin contributes its own.
    * `generate` is required with {@link BureauOptions.agentSource}: a model name that nothing
    * can turn into a `generate` would be silently ignored, so `createBureau` refuses the
    * combination with `BureauError` (`BAD_REQUEST`).

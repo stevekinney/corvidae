@@ -45,6 +45,7 @@ import { agentFileDirectory } from './sources/agent-file-directory';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { agentFileText, KNOWN_MODEL, lookupTool } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 import type { BureauOptions } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 
@@ -594,7 +595,10 @@ describe('a run of a file agent reattached after its process died', () => {
           tools: { 'lookup-order': lookupTool },
           watch: false,
         }),
-        models: { generate: () => dyingInStepOne(life, offered) },
+        models: {
+          catalog: createVendorCatalog().descriptors,
+          generate: () => dyingInStepOne(life, offered),
+        },
         agentSkillCatalog: () => catalog,
       });
 

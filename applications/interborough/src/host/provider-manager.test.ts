@@ -10,11 +10,11 @@ import {
  */
 import { SecretProviderError, type Bungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate } from '@lostgradient/bureau';
-import { createAgent, createModelCatalog } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 
-import { contributedFixtures } from './provider-fixtures.test-support.ts';
+import { contributedFixtures, vendorRows } from './provider-fixtures.test-support.ts';
 import {
   createProviderManager,
   ProviderInputError,
@@ -202,7 +202,7 @@ async function decisionOnlyManager(
   builtWith: string[],
   alongside: ReturnType<typeof contributedFixtures> = [],
 ) {
-  const [seed] = createModelCatalog().descriptors;
+  const [seed] = vendorRows();
   if (seed === undefined) throw new Error('Expected the seed catalog to hold rows.');
   const manager = createProviderManager({
     bungalow: home,
@@ -1024,7 +1024,7 @@ describe('testing a key', () => {
   });
 
   test('tests the key of a decision-only provider with one decision, since it has no generate to probe with (COR-2157)', async () => {
-    const [seed] = createModelCatalog().descriptors;
+    const [seed] = vendorRows();
     if (seed === undefined) throw new Error('Expected the seed catalog to hold rows.');
     const asked: { readonly apiKey: unknown; readonly kind: string }[] = [];
     const home = fakeHome('local');

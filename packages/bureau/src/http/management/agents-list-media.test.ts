@@ -3,15 +3,16 @@
  * `media` field: `null` for an agent with no model descriptor, and the descriptor's modalities,
  * families and per-part byte limits for one that has.
  */
-import { createAgent, createModelCatalog, withBackendDescriptors } from '@lostgradient/operative';
+import { createAgent, withBackendDescriptors } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { agentsListOperation } from './deployment-operations.ts';
 import { callAs, disposeServed, listOf, serve } from './agent-definitions-fixtures.test-support.ts';
+import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
 
 afterEach(disposeServed);
 
-const anthropic = createModelCatalog().descriptors.find((row) => row.provider === 'anthropic')!;
+const anthropic = createVendorCatalog().descriptors.find((row) => row.provider === 'anthropic')!;
 
 describe('bureau.agents.list media', () => {
   it('is null for a code agent whose generate names no model, and describes one that does', async () => {

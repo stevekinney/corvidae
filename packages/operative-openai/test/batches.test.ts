@@ -20,9 +20,9 @@
  * `withOpenAIBaseUrl`.
  *
  * That variable is why the capability suite at the bottom pins it too:
- * `getProviderCapabilities('openai')` reports on the *effective* endpoint, so
- * an `OPENAI_BASE_URL` inherited from the shell would otherwise decide the
- * answer those assertions are making.
+ * `openAIRows()` reads the *effective* endpoint, so an `OPENAI_BASE_URL`
+ * inherited from the shell would otherwise decide the answer those assertions
+ * are making.
  */
 import { describe, expect, it } from 'bun:test';
 
@@ -30,6 +30,7 @@ import { getProviderCapabilities } from '@lostgradient/operative';
 import { ProviderError } from '@lostgradient/operative/provider-kit';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createOpenAIBatchClient } from '../src/batches/openai.ts';
+import { openAIRows } from '../src/openai-catalog.ts';
 import type { OpenAIBatch, OpenAIBatchClient } from '../src/openai-types.ts';
 
 const PLACEHOLDER_TOKEN = 'placeholder-not-a-real-key-0000';
@@ -94,9 +95,8 @@ async function collect<T>(source: AsyncIterable<T>): Promise<T[]> {
  *
  * That variable is ambient input to two things this file exercises: the
  * `openai` SDK's own base-URL default, which is how the SDK-construction test
- * below reaches its local server, and `getProviderCapabilities('openai')`,
- * which reads the same variable so its answer describes the endpoint a request
- * would actually reach. Neither assertion can inherit whatever shell ran the
+ * below reaches its local server, and `openAIRows()`, which reads the same
+ * variable so the rows describe the endpoint a request would actually reach. Neither assertion can inherit whatever shell ran the
  * suite, so both pin it here.
  */
 async function withOpenAIBaseUrl<T>(
@@ -261,7 +261,9 @@ describe('createOpenAIBatchClient — SDK construction', () => {
         // The same override that routes this request is what makes an
         // options-only capability report wrong: in this configuration a batch
         // request reaches a server with no `/v1/batches` at all.
-        expect(getProviderCapabilities('openai').batchInference).toBe(false);
+        expect(
+          getProviderCapabilities('openai', { descriptors: openAIRows() }).batchInference,
+        ).toBe(false);
       });
     } finally {
       server.stop();

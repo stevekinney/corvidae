@@ -7,11 +7,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  createAgentSession,
-  createModelCatalog,
-  createSessionStore,
-} from '@lostgradient/operative';
+import { createAgentSession, createSessionStore } from '@lostgradient/operative';
 import { textValueStore, MemoryStorage } from '@lostgradient/storage';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -22,6 +18,7 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const directories: string[] = [];
 const bureaus: Bureau[] = [];
@@ -106,13 +103,16 @@ describe('a pending approval restored after a restart', () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {},
       agentSource: agentFileDirectory(directory),
-      models: { generate: () => async () => ({ content: 'ok', toolCalls: [] }) },
+      models: {
+        catalog: createVendorCatalog().descriptors,
+        generate: () => async () => ({ content: 'ok', toolCalls: [] }),
+      },
       storage,
       durable: true,
     });
     bureaus.push(bureau);
 
-    expect(createModelCatalog().descriptors.length).toBeGreaterThan(0);
+    expect(createVendorCatalog().descriptors.length).toBeGreaterThan(0);
     expect(
       Object.fromEntries(bureau.reviews.list().map((review) => [review.runId, review.agentName])),
     ).toEqual({ [olderRunId]: 'alpha-file', [newestRunId]: 'bravo-file' });

@@ -24,10 +24,12 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 /** A Bureau over a new handle on `database`, as another process would open. */
 async function openBureau(database: PersistentBureauStorageFixture) {
   return createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       default: createAgent({
         generate: () => new Promise<never>(() => {}),
@@ -51,6 +53,7 @@ describe('durable steering across two Bureau processes', () => {
     });
     let generateCalls = 0;
     const bureauA = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           generate: async ({ step }) => {
@@ -119,6 +122,7 @@ describe('durable steering across two Bureau processes', () => {
         : { content: 'done', toolCalls: [] };
     };
     const bureauA = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           generate,
@@ -221,6 +225,7 @@ describe('durable steering across two Bureau processes', () => {
         : { content: 'done', toolCalls: [] };
     };
     const bureauA = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           generate,
