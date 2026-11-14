@@ -2,6 +2,7 @@ import { THEMES, VIEWPORTS } from '@lostgradient/testing';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './component-page-fixture.ts';
 import { fixtureEntry } from './editor-fixture.ts';
+import { measureCloseButton } from './link-popover-close-support.ts';
 
 const markdownEditorEntry = fixtureEntry('markdown-editor');
 
@@ -619,27 +620,7 @@ test('MarkdownEditor LinkPopover close button is a 32px face with a 44px hit are
   const close = page.locator('.link-popover-close');
   await expect(close).toBeVisible();
 
-  const measured = await close.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const header = element.closest('.link-popover-header')!.getBoundingClientRect();
-    const centerX = rect.x + rect.width / 2;
-    const centerY = rect.y + rect.height / 2;
-    // A tap 21.5 pixels from the center, on each side, still lands on the button.
-    const reached = (
-      [
-        ['left', centerX - 21.5, centerY],
-        ['right', centerX + 21.5, centerY],
-        ['above', centerX, centerY - 21.5],
-        ['below', centerX, centerY + 21.5],
-      ] as const
-    ).filter(([, x, y]) => element.contains(document.elementFromPoint(x, y)));
-    return {
-      width: rect.width,
-      height: rect.height,
-      headerHeight: header.height,
-      reached: reached.map(([side]) => side),
-    };
-  });
+  const measured = await measureCloseButton(close);
   await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
 
   expect(measured.width).toBeCloseTo(32, 0);

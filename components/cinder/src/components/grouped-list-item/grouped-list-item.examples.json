@@ -10,6 +10,12 @@
       "code": "<script lang=\"ts\">\n  import { Avatar, GroupedList, GroupedListItem } from '@lostgradient/cinder';\n</script>\n\n<GroupedList header=\"People\">\n  <GroupedListItem href=\"/people/ada\">\n    {#snippet leading()}<Avatar name=\"Ada Lovelace\" />{/snippet}\n    {#snippet title()}Ada Lovelace{/snippet}\n    {#snippet subtitle()}Engineer{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/people/grace\">\n    {#snippet leading()}<Avatar name=\"Grace Hopper\" />{/snippet}\n    {#snippet title()}Grace Hopper{/snippet}\n    {#snippet subtitle()}Admiral{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
     },
     {
+      "id": "actions",
+      "title": "Text actions",
+      "description": "Rows whose button is their point end in secondary small buttons. On a phone the buttons stack full width under the text instead of folding into a menu, and a status leads the subtitle as a dot and its word.",
+      "code": "<script lang=\"ts\">\n  import { GroupedList, GroupedListItem, StatusDot } from '@lostgradient/cinder';\n</script>\n\n<GroupedList aria-label=\"Waiting on you\">\n  <GroupedListItem actions={[{ label: 'Answer', href: '/reviews/1', changes: true }]}>\n    {#snippet title()}Which environment should the release go to?{/snippet}\n    {#snippet subtitle()}Question, Request human input, waiting 3 h{/snippet}\n  </GroupedListItem>\n  <GroupedListItem actions={[{ label: 'View run', href: '/runs/7' }]}>\n    {#snippet title()}Nightly backup{/snippet}\n    {#snippet subtitle()}<StatusDot word=\"Running\" />, Schedule, started 10:42 AM{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
+    },
+    {
       "id": "time-led",
       "title": "Time-led rows",
       "description": "A fixed 72px lead holds a number and a unit from a closed vocabulary. Urgent uses the warning text colour, soon is muted, and a stale row draws a gray clock and a short age.",

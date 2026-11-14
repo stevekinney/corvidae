@@ -14,7 +14,7 @@ Work built from an agreed design (a Claude Design canvas, its boards, and its in
 
 - Save the canvas index board (`project/Main.dc.html`, read with the Artifact tool) under `tmp/chef/design/<canvas id>/` and run `bun scripts/chef/design-ledger.ts --index <file> --canvas <id>` before dispatch. Every row is a criterion in exactly the issue that builds it, or deferred on an issue with a reason (`Deferred: 19b, because …`). Exit 1 blocks dispatch; fix the issues, not the ledger.
 - Run it again after every split or revision that moves rows.
-- `brief.ts` carries the rows, and the worker returns a design-review verdict per row.
+- `brief.ts` carries the rows; the worker runs no capture and returns the rows and screens it changed, and the coordinator obtains each row's verdict ([acceptance](review-and-deliver.md#accepting-a-submission)).
 - Close the programme only after `design-ledger.ts` exits 0 and a full drift audit of the canvas against the shipped interface (the `design-review` skill) leaves no unexplained miss.
 
 ## Sizing and splitting
