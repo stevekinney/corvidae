@@ -8,23 +8,27 @@ import {
   type ActiveRun,
   type AgentSession,
   type CleanupAcknowledgement as RunCleanupAcknowledgement,
+  SESSION_ARCHIVED_AT_METADATA_KEY,
   SESSION_OWNER_METADATA_KEY,
   SESSION_TITLE_METADATA_KEY,
   SESSION_TITLE_OVERRIDE_LIMIT,
   type SessionListOptions,
   type SessionStore,
+  sessionArchivedAtOf,
   sessionOriginOf,
   summarizeSession,
 } from '@lostgradient/operative';
+import { holdsPendingApproval } from '../http/ag-ui-thread-admission';
+import { isDurableRunUnsettled } from '../durable-run-waits';
 import { type AgUiLease, createAgUiLeases, releaseQuietly } from '../http/ag-ui-lease';
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauCore, SessionDeletionRecord } from './core';
-import { BureauError, BureauShuttingDownError } from '../bureau-errors';
+import { BureauError, BureauShuttingDownError, ContextBusyError } from '../bureau-errors';
 import type { BureauSteeringGate } from '../steering';
 import type { ChatAsset } from '../chat-asset-purge';
 import { ChatRunsNotEndedError, type DeletedChat } from '../chat-content-purge';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
-import type { ContextDeletionReport } from '../bureau-types/contexts';
+import type { ContextArchiveOutcome, ContextDeletionReport } from '../bureau-types/contexts';
 import type { RunSummary } from '../bureau-types/runs';
 import type { RunMemoryPlacement } from '../chat-memory-purge';
 import { THREAD_LEASE_RETRY_MILLISECONDS } from '../bureau-construction-support';
@@ -163,6 +167,147 @@ export function createSessions<D extends AgentDefinitions>(
       },
       { refreshActivity: false },
     );
+  }
+
+  /**
+   * COR-2285 — whether the context `session` records has a live task: the registry's activity of
+   * its incarnation (a run of this process running or parked, a pending review, an unsettled fire),
+   * an approval its last run still holds, or a last run recorded as `running` that is not known to
+   * have ended. That last run is live while this process holds it running or is still starting it
+   * (its attribution is set before its session is saved), or while its durable workflow is unsettled
+   * or not yet written, as a run another process is starting. A marker no run of this process and
+   * no durable workflow stands behind, as a crash of a Bureau without a durable engine can leave, is
+   * not live.
+   */
+  async function contextHasLiveTask(session: AgentSession): Promise<boolean> {
+    const activity = await core.tasks.activityOf(
+      [session.id],
+      new Map([[session.id, session.incarnation]]),
+    );
+    if ((activity.get(session.id) ?? 'idle') !== 'idle') return true;
+    const lastRunId = session.metadata['lastRunId'];
+    if (typeof lastRunId !== 'string') return false;
+    if (holdsPendingApproval(session.metadata, lastRunId, runtimeServices.clock.now())) return true;
+    if (session.metadata['lastRunStatus'] !== 'running') return false;
+    const held = store.getRun(lastRunId);
+    if (held !== undefined) return held.status === 'running' || held.status === 'aborting';
+    if (core.runAttribution.has(lastRunId)) return true;
+    const durable = runtime.durable;
+    if (durable === undefined) return false;
+    const workflow = await durable.engine.get(lastRunId);
+    return workflow === null || isDurableRunUnsettled(workflow.status);
+  }
+
+  /** How many times an archive re-decides after the session moved under it, before it refuses. */
+  const ARCHIVE_ATTEMPTS = 3;
+
+  // COR-2285: when a person archived the context lives in its metadata, under a key of its own, so
+  // unarchiving is removing the key and every older session reads as not archived. Each write is
+  // one `update()` that does not refresh `updatedAt`: archiving is not activity, and must not
+  // reorder the listing or keep a session from expiring.
+  async function archiveSession(
+    id: string,
+    archiveOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextArchiveOutcome | undefined> {
+    const sessions = peers.requireSessionStore();
+    for (let attempt = 1; ; attempt += 1) {
+      assertArchiveAdmissionOpen('archive');
+      const read = await sessions.load(id);
+      if (
+        read === undefined ||
+        (archiveOptions?.incarnation !== undefined &&
+          read.incarnation !== archiveOptions.incarnation)
+      ) {
+        return undefined;
+      }
+      const recorded = sessionArchivedAtOf(read.metadata);
+      if (recorded !== null) return { contextId: id, changed: false, archivedAt: recorded };
+      if (await contextHasLiveTask(read)) throw new ContextBusyError(id);
+      assertArchiveAdmissionOpen('archive');
+      const archivedAt = runtimeServices.clock.nowISO();
+      // What the updater found, as its last attempt judged it.
+      const found: { archivedAt: string | null; moved: boolean } = {
+        archivedAt: null,
+        moved: false,
+      };
+      const written = await sessions.update(
+        id,
+        (current) => {
+          found.archivedAt = null;
+          found.moved = false;
+          if (current === undefined || current.incarnation !== read.incarnation) return undefined;
+          const already = sessionArchivedAtOf(current.metadata);
+          if (already !== null) {
+            found.archivedAt = already;
+            return undefined;
+          }
+          // The fence: the live-task decision above was made from this exact revision. A task
+          // start saves the session before its run does anything, so a start that committed since
+          // moved the revision, and the decision is made again from what it wrote.
+          if (current.revision !== read.revision) {
+            found.moved = true;
+            return undefined;
+          }
+          return {
+            ...current,
+            metadata: { ...current.metadata, [SESSION_ARCHIVED_AT_METADATA_KEY]: archivedAt },
+          };
+        },
+        { refreshActivity: false },
+      );
+      if (written !== undefined) return { contextId: id, changed: true, archivedAt };
+      if (found.archivedAt !== null) {
+        return { contextId: id, changed: false, archivedAt: found.archivedAt };
+      }
+      if (!found.moved) return undefined;
+      // A session that keeps moving under the archive is a session something is writing to.
+      if (attempt >= ARCHIVE_ATTEMPTS) throw new ContextBusyError(id);
+    }
+  }
+
+  async function unarchiveSession(
+    id: string,
+    unarchiveOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextArchiveOutcome | undefined> {
+    const sessions = peers.requireSessionStore();
+    assertArchiveAdmissionOpen('unarchive');
+    // What the updater found, as its last attempt judged it.
+    const found = { held: false, wasArchived: false };
+    const written = await sessions.update(
+      id,
+      (current) => {
+        found.held = false;
+        found.wasArchived = false;
+        if (current === undefined) return undefined;
+        if (
+          unarchiveOptions?.incarnation !== undefined &&
+          current.incarnation !== unarchiveOptions.incarnation
+        ) {
+          return undefined;
+        }
+        found.held = true;
+        if (!Object.hasOwn(current.metadata, SESSION_ARCHIVED_AT_METADATA_KEY)) return undefined;
+        found.wasArchived = sessionArchivedAtOf(current.metadata) !== null;
+        // A malformed value reads as not archived and is removed with the rest.
+        const { [SESSION_ARCHIVED_AT_METADATA_KEY]: _removed, ...rest } = current.metadata;
+        return { ...current, metadata: rest };
+      },
+      { refreshActivity: false },
+    );
+    if (written !== undefined) {
+      return { contextId: id, changed: found.wasArchived, archivedAt: null };
+    }
+    // Nothing written: no such session (or incarnation), or one that records no archive.
+    return found.held ? { contextId: id, changed: false, archivedAt: null } : undefined;
+  }
+
+  function assertArchiveAdmissionOpen(verb: 'archive' | 'unarchive'): void {
+    if (core.runAdmissionClosed) {
+      throw new BureauShuttingDownError(
+        `Cannot ${verb}: Bureau is shutting down.`,
+        runtimeServices.clock.nowISO(),
+      );
+    }
   }
 
   // AB-228 (Codex P2 review finding, PR #566): two concurrent
@@ -1109,6 +1254,8 @@ export function createSessions<D extends AgentDefinitions>(
     listSessions,
     getSession,
     renameSession,
+    archiveSession,
+    unarchiveSession,
     purgeDurableRun,
     isTerminalDurableStatus,
     descendantRunIdsOf,

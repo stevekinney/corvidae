@@ -25,6 +25,7 @@ import {
   payloadText,
   readSessionTaint,
   reservedIdentifierReason,
+  sessionArchivedAtOf,
 } from '@lostgradient/operative';
 import type {
   CatalogAgentRunOptionsResolver,
@@ -729,6 +730,18 @@ export function createScheduledRunServices(
       return {
         status: 'unavailable',
         reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which was not found`,
+      };
+    }
+    // COR-2285 — an archived context takes no new work, a schedule's fire included. A replay of a
+    // fire that already wrote to it is let through, so a fire recovered after a crash finishes.
+    if (
+      existing !== undefined &&
+      sessionArchivedAtOf(existing.metadata) !== null &&
+      existing.metadata['lastScheduledFireRunId'] !== runId
+    ) {
+      return {
+        status: 'unavailable',
+        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which is archived (context-archived)`,
       };
     }
     // COR-323 — a fire runs as its named agent, and a continued session keeps the system prompt

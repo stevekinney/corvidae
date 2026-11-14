@@ -68,7 +68,7 @@ import {
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import type { AgentSession } from '@lostgradient/operative';
+import { type AgentSession, sessionArchivedAtOf } from '@lostgradient/operative';
 import { type RunAgentInput } from '@ag-ui/core';
 import { RunAgentInputSchema } from '@ag-ui/core/schemas';
 import type { OperationHandlerMount } from '@lostgradient/weft';
@@ -77,7 +77,7 @@ import { createConversationHistory } from 'conversationalist';
 import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { readContextTombstone } from '../context-tombstone.ts';
-import { BureauError } from '../bureau-errors.ts';
+import { BureauError, ContextArchivedError } from '../bureau-errors.ts';
 import { isDurableRunUnsettled } from '../durable-run-waits.ts';
 import type { Bureau, BureauInternals } from '../bureau-types/facade.ts';
 import type { BureauReviews } from '../bureau-types/reviews.ts';
@@ -735,6 +735,14 @@ export function createAgUiMount(
             };
           }
         }
+        // COR-2285: an archived chat takes no new turn. Read under the lease from the session the
+        // busy decision is made from, after a retried start has attached to the run it started;
+        // `tasks.start` refuses it again inside the write that would start the run.
+        if (session !== undefined && sessionArchivedAtOf(session.metadata) !== null) {
+          return {
+            response: refuse('THREAD_ARCHIVED', `Thread "${input.threadId}" is archived`),
+          };
+        }
         if (appendMessages.at(-1)?.role !== 'user') {
           return {
             response: refuse(
@@ -923,6 +931,10 @@ async function inspectNamedAssets(
 function refusalFor(error: unknown, threadId: string): [AgUiErrorCode, string] {
   if (error instanceof BureauLedgerConflictError) {
     return ['RUN_CONFLICT', 'This runId was already used for a different request'];
+  }
+  // An archive that committed after the check under the lease, refused by the start's own write.
+  if (error instanceof ContextArchivedError) {
+    return ['THREAD_ARCHIVED', `Thread "${threadId}" is archived`];
   }
   if (error instanceof BureauError) {
     if (error.code === 'NOT_FOUND')

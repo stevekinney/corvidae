@@ -168,6 +168,10 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The response is the new context identifier and carried effort and permission command outcomes; it does not carry the forked conversation (contexts-fork-operation output schema).',
   'bureau.contexts.regenerate':
     'The response is the context and message identifiers and the committed revision; it does not carry the regenerated answer or any other row (contexts-regenerate-operation output schema).',
+  'bureau.contexts.archive':
+    'The archive receipt contains the context identifier, a changed flag and the archive time, not the title, preview or any message (contextArchiveReceiptSchema).',
+  'bureau.contexts.unarchive':
+    'The unarchive receipt contains the context identifier, a changed flag and a null archive time, not the title, preview or any message (contextArchiveReceiptSchema).',
   'bureau.notifications.markread':
     'The notification update output is only the count of records updated (notifications operation output schema).',
   'bureau.notifications.dismiss':
