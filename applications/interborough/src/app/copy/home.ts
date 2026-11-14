@@ -21,14 +21,12 @@ export const HOME_COPY = {
     /** The Spotlight that leads Home: how many reviews wait on you, from the list under it. */
     spotlight: (count: number): string =>
       count === 0 ? 'Nothing needs you' : `${String(count)} ${count === 1 ? 'needs' : 'need'} you`,
+    /** The list's heading, drawn only when no Spotlight stands over it (the read failed). */
     title: 'Needs you',
+    /** The link beside the Spotlight to the page that holds the rest. */
     link: 'Open Reviews',
     /** The accessible name of the list of reviews waiting on the person. */
     listLabel: 'Reviews waiting on you',
-    empty: {
-      title: 'Nothing is waiting on you',
-      description: 'Approvals and questions from your agents show up here.',
-    },
     answer: 'Answer',
     review: 'Review',
     kind: { approval: 'Approval', question: 'Question', workflow: 'Workflow review' },

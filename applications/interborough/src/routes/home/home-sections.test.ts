@@ -74,9 +74,17 @@ describe('Home’s sections', () => {
     // The rows are in once the list is named.
     await within(cardOf(container, 'Recent chats')).findByRole('list', { name: 'Recent chats' });
 
-    const sections = [...container.querySelectorAll<HTMLElement>('[data-home-card]')];
+    // The Needs you list is titled by the Spotlight above it, so it is the one block with no
+    // heading of its own (COR-2329).
+    const needsYou = cardOf(container, 'Needs you');
+    expect(needsYou.querySelector('h2')).toBeNull();
+    const sections = [
+      ...container.querySelectorAll<HTMLElement>(
+        '[data-home-card]:not([data-home-card="Needs you"])',
+      ),
+    ];
     expect(sections.map((section) => section.getAttribute('data-home-card'))).toEqual(
-      expect.arrayContaining(['Needs you', 'Needs attention', 'Start a chat', 'Recent chats']),
+      expect.arrayContaining(['Needs attention', 'Start a chat', 'Recent chats']),
     );
     for (const section of sections) {
       const title = section.getAttribute('data-home-card');

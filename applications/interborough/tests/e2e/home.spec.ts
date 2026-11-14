@@ -160,17 +160,33 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     await expect(rows.nth(1)).toContainText('Refund order 4471 for $42.00?');
     await expect(rows.nth(1)).toContainText('Approval, Tool runner, Can’t be undone, 4 min ago');
     await expect(rows.nth(1).getByRole('link', { name: 'Review' })).toBeVisible();
-    await expect(card.getByRole('link', { name: 'Open Reviews' })).toHaveAttribute(
-      'href',
-      '/reviews',
+    // COR-2329: the Spotlight is the list's title, so the list has no heading of its own, and
+    // "Open Reviews" sits beside the Spotlight, ending where the list does.
+    await expect(card.getByRole('heading')).toHaveCount(0);
+    await expect(card.getByRole('list', { name: 'Reviews waiting on you' })).toBeVisible();
+    const open = page.getByTestId('home-focus').getByRole('link', { name: 'Open Reviews' });
+    await expect(open).toHaveAttribute('href', '/reviews');
+    await expect(page.getByRole('link', { name: 'Open Reviews' })).toHaveCount(1);
+    const [spotlightBox, openBox, listBox] = await Promise.all([
+      page.getByTestId('home-spotlight').boundingBox(),
+      open.boundingBox(),
+      card.boundingBox(),
+    ]);
+    expect(openBox!.y).toBeGreaterThanOrEqual(spotlightBox!.y - 1);
+    expect(openBox!.y + openBox!.height).toBeLessThanOrEqual(
+      spotlightBox!.y + spotlightBox!.height + 1,
     );
+    expect(
+      Math.abs(openBox!.x + openBox!.width - (listBox!.x + listBox!.width)),
+    ).toBeLessThanOrEqual(1);
+    // The link is quieter than the Spotlight and the section headings: small regular text.
+    await expect(open).toHaveCSS('font-size', '14px');
+    await expect(open).toHaveCSS('font-weight', '400');
     // Needs you leads: it sits above Needs attention.
-    const attention = page.getByRole('heading', { level: 2, name: 'Needs attention' });
-    const waitingTop = await card
-      .getByRole('heading', { level: 2, name: 'Needs you' })
+    const attentionTop = await page
+      .getByRole('heading', { level: 2, name: 'Needs attention' })
       .boundingBox();
-    const attentionTop = await attention.boundingBox();
-    expect(waitingTop!.y).toBeLessThan(attentionTop!.y);
+    expect(listBox!.y).toBeLessThan(attentionTop!.y);
   });
 
   test('lists the three system problems, each with one button, and no provider banner (01h, 01i, 01j)', async ({
@@ -307,9 +323,13 @@ test.describe('Home with nothing waiting and a provider connected', () => {
         .getByRole('link', { name: /^Health/ })
         .locator('.cinder-status-dot'),
     ).toHaveAttribute('data-cinder-status', 'success');
-    const empty = page.getByRole('group', { name: 'Nothing is waiting on you' });
-    await expect(empty).toContainText('Approvals and questions from your agents show up here.');
-    await expect(empty.getByRole('link', { name: 'Open Reviews' })).toBeVisible();
+    // "Nothing needs you" stands alone, with the link to Reviews beside it: no second line says it
+    // again (COR-2329).
+    await expect(
+      page.getByTestId('home-focus').getByRole('link', { name: 'Open Reviews' }),
+    ).toBeVisible();
+    await expect(page.getByText('Nothing is waiting on you')).toHaveCount(0);
+    await expect(needsYou(page)).toHaveCount(0);
     const clear = page.getByTestId('attention-clear');
     await expect(clear.getByRole('group', { name: 'Nothing needs attention' })).toContainText(
       'Storage, schedules, providers and hooks are fine.',
@@ -546,8 +566,9 @@ test.describe('Home with a run going', () => {
       '/runs/running-daily-summary',
     );
     await expect(card.getByRole('link', { name: 'Open Runs' })).toHaveAttribute('href', '/runs');
-    // It sits under Needs you (which shows its empty state) and above Needs attention.
-    const waiting = await needsYou(page).boundingBox();
+    // It sits under the Spotlight (nothing waits, so no list is drawn under it) and above Needs
+    // attention.
+    const waiting = await page.getByTestId('home-focus').boundingBox();
     const running = await card.boundingBox();
     const attention = await page.getByTestId('attention-clear').boundingBox();
     expect(waiting!.y + waiting!.height).toBeLessThan(running!.y);
@@ -622,8 +643,8 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     ).toBeVisible();
     await expect(counts.locator('.cinder-statistic__value .cinder-skeleton')).toHaveCount(1);
     await expect(counts.locator('.cinder-statistic__value')).toHaveText(['']);
+    // The Needs you rows have no heading, as the loaded ones do: the Spotlight is their title.
     await expect(body.getByRole('heading', { level: 2 })).toHaveText([
-      'Needs you',
       'Needs attention',
       'Start a chat',
       'Recent chats',
@@ -842,7 +863,7 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
         }
         return product;
       });
-    expect(await opacity(page.getByRole('heading', { level: 2, name: 'Needs you' }))).toBe(1);
+    expect(await opacity(page.getByRole('heading', { level: 2, name: 'Needs attention' }))).toBe(1);
     expect(
       await opacity(needsYou(page).getByText('Which environment should the release go to?')),
     ).toBe(1);

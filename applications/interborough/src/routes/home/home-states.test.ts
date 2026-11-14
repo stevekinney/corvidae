@@ -125,7 +125,9 @@ describe('Home while it loads (02c, 02d)', () => {
     ).toBe(true);
     expect(
       [...container.querySelectorAll('h2')].map((heading) => heading.textContent?.trim()),
-    ).toEqual(['Needs you', 'Needs attention', 'Start a chat', 'Recent chats']);
+    ).toEqual(['Needs attention', 'Start a chat', 'Recent chats']);
+    // The Needs you rows have no heading, as the loaded ones do: the Spotlight is their title.
+    expect(cardOf(container, 'Needs you').querySelector('h2')).toBeNull();
     // Rows are Cinder's grouped placeholders, with a button block where a row has a button.
     const placeholders = [
       ...container.querySelectorAll('.cinder-skeleton-group[data-cinder-variant="grouped"]'),
@@ -300,6 +302,11 @@ describe('One card that cannot be read (01n, 01o)', () => {
     expect(
       words(await within(cardOf(container, 'Needs you')).findByTestId('home-card-error')),
     ).toBe('Couldn’t load what needs you. The rest of Home is live. Try again');
+    // No Spotlight stands over the failure, so the section takes its own heading back.
+    expect(container.querySelector('[data-testid="home-spotlight"]')).toBeNull();
+    expect(
+      within(cardOf(container, 'Needs you')).getByRole('heading', { level: 2, name: 'Needs you' }),
+    ).toBeDefined();
     expect(
       words(await within(cardOf(container, 'Recent chats')).findByTestId('home-card-error')),
     ).toBe('Couldn’t load recent chats. The rest of Home is live. Try again');
@@ -380,7 +387,7 @@ describe('Home when the server does not answer (02g to 02j)', () => {
     }
     // Reading is not changing: the links to Reviews, Health and the chats are not marked.
     for (const link of [
-      ...within(cardOf(container, 'Needs you')).getAllByRole('link', { name: 'Open Reviews' }),
+      ...within(getByTestId('home-focus')).getAllByRole('link', { name: 'Open Reviews' }),
       ...within(cardOf(container, 'Needs attention')).getAllByRole('link', { name: 'Open Health' }),
     ]) {
       expect(link.hasAttribute('data-changes')).toBe(false);
