@@ -1570,8 +1570,9 @@
     }
   }
 
-  /* Deny and Approve are equal-width 44px targets in a narrow card, with "Add note" above
-   * them, and everywhere on a touch screen. The selectors repeat the button's own attribute so
+  /* Deny and Approve keep their compact width at a 44px height in a narrow card, where the card
+   * layout's buttons take a line of their own at the trailing end under "Add note" (so its words
+   * always fit there), and everywhere on a touch screen. The selectors repeat the button's own attribute so
    * they outrank the compact desktop height without a cross-component custom property. */
   @container (inline-size < 32rem) {
     /* The input line wraps rather than cutting its values, so a phone still reads all of it. */
