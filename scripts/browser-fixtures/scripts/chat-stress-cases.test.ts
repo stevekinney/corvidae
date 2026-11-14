@@ -233,6 +233,8 @@ describe('the committed Chat stress cases', () => {
       },
       { action: 'click', role: 'button', name: 'Deny' },
       { action: 'expect-text', text: 'Denied' },
+      // The note is in the receipt's one Details disclosure, opened by its real button.
+      { action: 'click', role: 'button', name: 'Details' },
       { action: 'expect-text', text: 'The duplicate charge was already refunded.' },
     ]);
   });

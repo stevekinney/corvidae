@@ -1559,14 +1559,16 @@
         "steps": [
           { "action": "expect-question-dock", "choices": 7 },
           { "action": "scroll-list", "target": "question-choices", "to": "start" }
-        ]
+        ],
+        "profiles": ["320-dark"]
       },
       {
         "name": "choices-end",
         "steps": [
           { "action": "expect-question-dock", "choices": 7 },
           { "action": "scroll-list", "target": "question-choices", "to": "end" }
-        ]
+        ],
+        "profiles": ["320-dark"]
       }
     ],
     "focusSweep": false

@@ -1923,8 +1923,13 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
         const distance = to === 'start' ? 0 : to === 'middle' ? room / 2 : room;
         if (inline) element.scrollLeft = rtl ? -distance : distance;
         else element.scrollTop = distance;
-        return { inline, distance };
+        return { inline, distance, room };
       }, step.to);
+      // A list that fits has no edge to fade, so an image of it would prove nothing: the variant
+      // belongs only to the profiles where the list is cut off.
+      if (scrollTarget.room <= 1) {
+        throw new Error(`The ${step.target} is not cut off here, so it has no fade to show.`);
+      }
       // Settled: the scroll has landed and the fades follow it, so the image shows the state named.
       await page.waitForFunction(
         ({ selector: scroller, ...wanted }) => {

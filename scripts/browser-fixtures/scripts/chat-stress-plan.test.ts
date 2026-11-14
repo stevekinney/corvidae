@@ -163,12 +163,12 @@ describe('image names', () => {
 });
 
 describe('expectedCounts', () => {
-  it('hold 324 primaries and 165 fixed variants before any focus image', () => {
+  it('hold 324 primaries and 159 fixed variants before any focus image', () => {
     const counts = expectedCounts(cases, STRESS_PROFILES, {});
     expect(counts.primary).toBe(324);
-    expect(counts.fixedVariants).toBe(165);
+    expect(counts.fixedVariants).toBe(159);
     expect(counts.focus).toBe(0);
-    expect(counts.total).toBe(489);
+    expect(counts.total).toBe(483);
   });
 
   it('add the focus stops each profile found', () => {
@@ -179,7 +179,7 @@ describe('expectedCounts', () => {
       '320-dark': 13,
     });
     expect(counts.focus).toBe(54);
-    expect(counts.total).toBe(543);
+    expect(counts.total).toBe(537);
   });
 });
 
@@ -531,7 +531,7 @@ describe('countProblems', () => {
   it('names a missing fixed variant', () => {
     const records = completeRun().filter((entry) => entry.file !== '390-light-33-expanded.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 165 fixed variant images, found 164',
+      'expected 159 fixed variant images, found 158',
     ]);
   });
 
