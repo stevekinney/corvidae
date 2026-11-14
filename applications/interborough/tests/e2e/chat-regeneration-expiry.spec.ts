@@ -470,7 +470,7 @@ for (const viewport of VIEWPORTS) {
       expect(expiredCall.railKey).toBe(initialCall.railKey);
       const expiredApproval = expiredCall.card;
       await expect(expiredApproval).toHaveAttribute('data-cinder-state', 'expired');
-      await expect(expiredApproval.locator('.cinder-approval-card__expired-row')).toBeVisible();
+      await expect(expiredApproval.locator('.cinder-approval-card__settled-row')).toBeVisible();
       await expect(expiredApproval).toContainText('Expired');
       await expect(expiredApproval).toContainText('Ask again');
       const expiredToolRow = expiredCall.row;
@@ -580,7 +580,7 @@ for (const viewport of VIEWPORTS) {
       const reloadedExpiredApproval = reloadedExpiredCall.card;
       await expect(reloadedExpiredApproval).toHaveAttribute('data-cinder-state', 'expired');
       await expect(
-        reloadedExpiredApproval.locator('.cinder-approval-card__expired-row'),
+        reloadedExpiredApproval.locator('.cinder-approval-card__settled-row'),
       ).toBeVisible();
       const reloadedPendingCall = await assertCanonicalCallPair(
         page,

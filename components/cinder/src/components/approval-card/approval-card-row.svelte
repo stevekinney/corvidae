@@ -95,7 +95,7 @@
   import CodeBlock from '../code-block/code-block.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
-  import ApprovalCardExpired from './approval-card-expired.svelte';
+  import ApprovalCardSettled from './approval-card-settled.svelte';
   import ApprovalCardFactsLine from './approval-card-facts-line.svelte';
   import { fitNoteLabel } from './approval-card-note-fit.ts';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
@@ -204,13 +204,16 @@
 
 <div class="cinder-approval-card__row" data-cinder-collapsed={collapsed || undefined}>
   {#if approvalState === 'expired'}
-    <ApprovalCardExpired
+    <ApprovalCardSettled
       {titleTag}
       {titleId}
-      {question}
+      title={question}
+      stateName="Expired before a decision"
       {onAskAgain}
       titleClass="cinder-approval-card__row-question"
-    />
+    >
+      {#snippet status()}Expired before a decision{/snippet}
+    </ApprovalCardSettled>
   {:else}
     {#if collapsed}
       <span class="cinder-approval-card__decided-glyph" data-cinder-tone={outcomeTone}>

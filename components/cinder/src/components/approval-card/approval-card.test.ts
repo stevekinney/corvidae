@@ -1348,10 +1348,10 @@ describe('ApprovalCard row layout', () => {
       }),
     ).toBeTruthy();
     expect(container.querySelectorAll('.cinder-approval-card__row-question')).toHaveLength(1);
-    expect(container.querySelector('.cinder-approval-card__expired-row')).not.toBeNull();
+    expect(container.querySelector('.cinder-approval-card__settled-row')).not.toBeNull();
     // The time is not in the card: the host writes it under the card, as it writes a message's.
     expect(container.textContent).not.toContain('10:15 AM');
-    expect(container.querySelector('.cinder-approval-card__expired-note')?.textContent).toBe(
+    expect(container.querySelector('.cinder-approval-card__settled-note')?.textContent).toBe(
       'Expired before a decision',
     );
     expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
@@ -2706,7 +2706,7 @@ describe('ApprovalCard on a phone', () => {
       /\.cinder-approval-card__note-toggle-tip \{[\s\S]*?margin-inline-end: auto;/,
     );
     expect(css).toMatch(
-      /\.cinder-approval-card__expiry-actions \{[\s\S]*?justify-content: flex-end;[\s\S]*?margin-inline-start: auto;/,
+      /\.cinder-approval-card__settled-actions \{[\s\S]*?justify-content: flex-end;[\s\S]*?margin-inline-start: auto;/,
     );
     expect(css).toMatch(
       /\.cinder-approval-card__editor-actions \{[\s\S]*?justify-content: flex-end;/,

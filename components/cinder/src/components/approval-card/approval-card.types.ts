@@ -145,8 +145,9 @@ export type ApprovalResolution = {
  * and a readable Command with the command always visible and monospaced, Add a note, then Deny
  * and a named primary
  * action. An irreversible primary arms on its first press. Once decided it stays as a receipt:
- * the action, who decided where and when beside a check, the reason a denial gave quoted, and
- * the note, the result and the command one disclosure away.
+ * the action, one status line saying what was decided and by whom (in the layout an expired card
+ * has, with the time left to the host to write under the card), and the note, the result and the
+ * command one disclosure away.
  */
 export type ApprovalCardLayout = 'card' | 'row' | 'detail' | 'decision';
 
@@ -276,7 +277,7 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     result?: string;
     /** Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". */
     decidedIn?: string;
-    /** Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "by Priya Raman in Reviews, 10:46 AM". */
+    /** Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "Approved by Priya Raman in Reviews". */
     decidedInHref?: string;
     /** Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself. */
     facts?: ApprovalFact[];
@@ -380,7 +381,7 @@ export type ApprovalCardSchemaProps = {
   result?: string;
   /** Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". */
   decidedIn?: string;
-  /** Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "by Priya Raman in Reviews, 10:46 AM". */
+  /** Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "Approved by Priya Raman in Reviews". */
   decidedInHref?: string;
   /** Meaningful host facts the `decision` layout writes under the title, such as Target and Amount. Tool identity and the readable Command come from the approval itself. */
   facts?: ApprovalFact[];

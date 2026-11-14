@@ -428,7 +428,7 @@ describe('ApprovalCard decision layout: why the agent wants to do this', () => {
 describe('ApprovalCard decision layout: the retained receipt', () => {
   // C#6 (chat stress sweep): a receipt repeated the question it asked ("Refund order 4471 for
   // $42.00?") beside "Approved", and never said what was approved.
-  test('an approval stays as what was approved, a check badge, who decided and when', () => {
+  test('an approval is the expired card pattern: what was approved, one status line, no time inside', () => {
     const { container, getByRole, queryByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'approved',
@@ -436,19 +436,25 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
         decidedAt: '2026-11-02T10:46:00.000Z',
       }),
     });
-    const badge = container.querySelector('.cinder-approval-card__receipt-head .cinder-badge');
 
-    expect(squash(badge?.textContent)).toBe('Approved');
-    expect(badge?.querySelector('svg')).not.toBeNull();
-    expect(badge?.getAttribute('aria-hidden')).toBe('true');
-    const title = container.querySelector('.cinder-approval-card__decision-title');
+    const row = container.querySelector(
+      '.cinder-approval-card__receipt > .cinder-approval-card__settled-row',
+    );
+    expect(row?.getAttribute('data-cinder-tone')).toBe('success');
+    const title = row?.querySelector('.cinder-approval-card__settled-title');
     expect(squash(title?.textContent)).toBe('Approved: Refund $42.00, order 4471');
-    expect(title?.querySelector('.cinder-sr-only')?.textContent).toBe('Approved: ');
+    expect(title?.querySelector('.cinder-sr-only')?.textContent).toBe('Approved:');
     expect(getByRole('article', { name: 'Approved: Refund $42.00, order 4471' })).toBeTruthy();
     expect(squash(title?.textContent)).not.toContain('Refund order 4471 for $42.00?');
-    expect(squash(container.querySelector('.cinder-approval-card__receipt-by')?.textContent)).toBe(
-      'by you, 10:46 AM',
+    // One status line: the word, then who. When it was decided is the host's, under the card.
+    expect(squash(row?.querySelector('.cinder-approval-card__settled-note')?.textContent)).toBe(
+      'Approved by you',
     );
+    expect(row?.querySelector('.cinder-approval-card__settled-dot')).not.toBeNull();
+    expect(container.textContent).not.toContain('10:46 AM');
+    // No badge, and none of the old receipt's parts.
+    expect(container.querySelector('.cinder-badge')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__receipt-by')).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Refund $42.00' })).toBeNull();
   });
@@ -463,9 +469,9 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
         decidedAt: '2026-11-02T10:46:00.000Z',
       }),
     });
-    const by = container.querySelector('.cinder-approval-card__receipt-by');
+    const by = container.querySelector('.cinder-approval-card__settled-note');
 
-    expect(squash(by?.textContent)).toBe('by Priya Raman in Reviews, 10:46 AM');
+    expect(squash(by?.textContent)).toBe('Approved by Priya Raman in Reviews');
     expect(by?.textContent).not.toContain(String.fromCodePoint(0xb7));
     const link = getByRole('link', { name: 'Reviews' });
     expect(link.getAttribute('href')).toBe('/reviews');
@@ -483,13 +489,13 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     });
 
     expect(queryByRole('link')).toBeNull();
-    expect(squash(container.querySelector('.cinder-approval-card__receipt-by')?.textContent)).toBe(
-      'by Priya Raman in Reviews, 10:46 AM',
-    );
+    expect(
+      squash(container.querySelector('.cinder-approval-card__settled-note')?.textContent),
+    ).toBe('Approved by Priya Raman in Reviews');
   });
 
-  test('a denial quotes its reason inline in neutral text', () => {
-    const { container } = render(ApprovalCard, {
+  test('a denial is the same pattern in a neutral tone, with its reason in the one disclosure', async () => {
+    const { container, getByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'denied',
         decidedBy: 'you',
@@ -497,13 +503,44 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
         decisionNote: 'Refund it through the original card instead',
       }),
     });
-    const badge = container.querySelector('.cinder-approval-card__receipt-head .cinder-badge');
+    const row = container.querySelector('.cinder-approval-card__settled-row');
 
-    expect(squash(badge?.textContent)).toBe('Denied');
-    expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
-    expect(
-      squash(container.querySelector('.cinder-approval-card__receipt-quote')?.textContent),
-    ).toBe('“Refund it through the original card instead”');
+    expect(row?.getAttribute('data-cinder-tone')).toBe('neutral');
+    expect(squash(row?.querySelector('.cinder-approval-card__settled-note')?.textContent)).toBe(
+      'Denied by you',
+    );
+    // The reason is not a second line on the card: it is in the disclosure, with the note's label.
+    expect(container.querySelector('.cinder-approval-card__receipt-quote')).toBeNull();
+    const details = container.querySelector('.cinder-approval-card__receipt-details');
+    expect(details?.hasAttribute('hidden')).toBe(true);
+    await fireEvent.click(getByRole('button', { name: 'Details' }));
+    expect(squash(details?.textContent)).toContain(
+      'Your note Refund it through the original card instead',
+    );
+  });
+
+  test('approved, denied and expired share one structure and differ only in tone and words', () => {
+    const shapeOf = (state: 'approved' | 'denied' | 'expired'): string[] => {
+      const { container, unmount } = render(ApprovalCard, {
+        props: decisionCard({
+          state,
+          decidedBy: 'you',
+          ...(state === 'expired' ? { expiresAt: '2026-11-02T10:15:00.000Z' } : {}),
+        }),
+      });
+      const row = container.querySelector('.cinder-approval-card__settled-row');
+      const shape = [...(row?.children ?? [])].map((child) => child.className.split(' ')[0] ?? '');
+      unmount();
+      return shape;
+    };
+
+    // The title and the one status line, in that order, in every settled state.
+    for (const state of ['approved', 'denied', 'expired'] as const) {
+      expect(shapeOf(state).slice(0, 2)).toEqual([
+        'cinder-approval-card__settled-title',
+        'cinder-approval-card__settled-note',
+      ]);
+    }
   });
 
   test('expands to the note, the result and the command, and shows none of them until asked', async () => {
@@ -567,12 +604,13 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(container.querySelector('.cinder-approval-card__countdown')).toBeNull();
     // One small muted line says why it is read-only; the title is the question alone.
     expect(
-      squash(container.querySelector('.cinder-approval-card__expired-note')?.textContent),
+      squash(container.querySelector('.cinder-approval-card__settled-note')?.textContent),
     ).toBe('Expired before a decision');
+    expect(container.querySelector('.cinder-approval-card__settled-dot')).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     // "Ask again" is last, at the trailing end.
     const expiryChildren = [
-      ...(container.querySelector('.cinder-approval-card__expiry-actions')?.children ?? []),
+      ...(container.querySelector('.cinder-approval-card__settled-actions')?.children ?? []),
     ];
     expect(expiryChildren.map((child) => child.tagName)).toEqual(['BUTTON']);
     await fireEvent.click(getByRole('button', { name: 'Ask again' }));
@@ -703,7 +741,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
       'title',
       'decision-title',
       'row-question',
-      'expired-title',
+      'settled-title',
       'elsewhere-title',
     ]) {
       const rule = new RegExp(`\\n  \\.cinder-approval-card__${title} \\{([^}]*)\\}`).exec(css);

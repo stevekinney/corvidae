@@ -611,7 +611,6 @@
       {decidedBy}
       {decidedIn}
       {decidedInHref}
-      {outcomeTime}
       {onAskAgain}
       {decisionNote}
       {context}

@@ -90,7 +90,7 @@
     {
       "id": "decision-receipt",
       "title": "Decision receipt",
-      "description": "A decided approval stays in the transcript with a check badge, who decided where and when, and the note, result and command behind Details.",
+      "description": "A decided approval stays in the transcript as the action with one status line saying what was decided and by whom, and the note, result and command behind Details.",
       "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"decision\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-decision-02\"\n  state=\"approved\"\n  decidedBy=\"Priya Raman\"\n  decidedIn=\"Reviews\"\n  decidedInHref=\"/reviews\"\n  decidedAt=\"2026-11-02T10:46:00.000Z\"\n  decisionNote=\"Checked the order first.\"\n  result=\"Refunded $42.00 to the original card.\"\n/>\n"
     }
   ]

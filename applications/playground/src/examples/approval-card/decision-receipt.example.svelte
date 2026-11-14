@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Decision receipt';
   export const description =
-    'A decided approval stays in the transcript with a check badge, who decided where and when, and the note, result and command behind Details.';
+    'A decided approval stays in the transcript as the action with one status line saying what was decided and by whom, and the note, result and command behind Details.';
 </script>
 
 <script lang="ts">

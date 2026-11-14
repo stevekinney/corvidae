@@ -946,10 +946,11 @@
     background: var(--cinder-status-warning-background);
   }
 
-  /* An expired card is the question as the title on its own line, then one small muted line and
-   * "Ask again" at the trailing end of it. Two text sizes in all: the title's and the small one
-   * the note and the button share. The title uses the full width before it wraps. */
-  .cinder-approval-card__expired-row {
+  /* A settled card (expired, approved or denied) is the title on its own line, then one small muted
+   * status line and, for an expired card, "Ask again" at the trailing end of it. Two text sizes in
+   * all: the title's and the small one the status and the button share. The title uses the full
+   * width before it wraps. */
+  .cinder-approval-card__settled-row {
     display: grid;
     flex: 1 1 auto;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -958,7 +959,7 @@
     min-inline-size: 0;
   }
 
-  .cinder-approval-card__expired-title {
+  .cinder-approval-card__settled-title {
     grid-column: 1 / -1;
     min-inline-size: 0;
     margin: 0;
@@ -971,7 +972,7 @@
     text-wrap: wrap;
   }
 
-  .cinder-approval-card__expired-note {
+  .cinder-approval-card__settled-note {
     grid-column: 1;
     margin: 0;
     color: var(--cinder-text-muted);
@@ -980,8 +981,32 @@
     text-align: start;
   }
 
+  /* An approval or a denial's line starts with a quiet dot in its tone and the word for what was
+   * decided: green for an approval, neutral for a denial. The dot is the line's only mark. */
+  .cinder-approval-card__settled-dot {
+    display: inline-block;
+    inline-size: 8px;
+    block-size: 8px;
+    /* Top-aligned to the line, then half the line less half the dot: centred on the first line. */
+    margin-block-start: calc((1lh - 8px) / 2);
+    margin-inline-end: var(--cinder-space-2);
+    vertical-align: top;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-text-subtle);
+  }
+
+  .cinder-approval-card__settled-row[data-cinder-tone='success']
+    .cinder-approval-card__settled-dot {
+    background: var(--cinder-status-success-solid);
+  }
+
+  .cinder-approval-card__settled-word {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
+  }
+
   /* "Ask again" is last, at the trailing end of the note's line. */
-  .cinder-approval-card__expiry-actions {
+  .cinder-approval-card__settled-actions {
     display: flex;
     grid-column: 2;
     align-items: center;
@@ -992,8 +1017,7 @@
 
   /* No glyph gutter: the action is the first thing on the row, and a badge beside it says when it
      cannot be undone. The title may wrap, so a long action never truncates. */
-  .cinder-approval-card__decision-head,
-  .cinder-approval-card__receipt-meta {
+  .cinder-approval-card__decision-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1023,19 +1047,6 @@
     align-items: center;
     align-self: flex-start;
     line-height: var(--cinder-leading-tight);
-  }
-
-  .cinder-approval-card__receipt-meta .cinder-approval-card__decision-title {
-    font-size: var(--cinder-text-sm);
-  }
-
-  .cinder-approval-card__receipt-meta .cinder-badge {
-    flex: none;
-    white-space: nowrap;
-  }
-
-  .cinder-approval-card__receipt-meta .cinder-badge svg {
-    flex: none;
   }
 
   .cinder-approval-card__pause {
@@ -1314,27 +1325,6 @@
        24px Details control's 44px area overhangs it by 10px, so the last row keeps that much
        room beneath it. */
     padding-block-end: var(--cinder-space-2-5);
-  }
-
-  .cinder-approval-card__receipt-meta {
-    gap: var(--cinder-space-1) var(--cinder-space-2);
-  }
-
-  .cinder-approval-card__receipt-by,
-  .cinder-approval-card__receipt-quote {
-    margin: 0;
-    color: var(--cinder-text-subtle);
-    line-height: var(--cinder-leading-snug);
-    text-align: start;
-  }
-
-  .cinder-approval-card__receipt-by {
-    font-size: var(--cinder-text-sm);
-  }
-
-  .cinder-approval-card__receipt-quote-text {
-    color: var(--cinder-text-muted);
-    overflow-wrap: anywhere;
   }
 
   .cinder-approval-card__receipt-details {

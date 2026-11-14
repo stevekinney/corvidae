@@ -61,8 +61,6 @@
     decidedIn: string | undefined;
     /** Where `decidedIn` leads. */
     decidedInHref: string | undefined;
-    /** When it was decided, such as "10:46 AM". */
-    outcomeTime: string | undefined;
     /** Requests a fresh approval after expiration. */
     onAskAgain: (() => void) | undefined;
     /** The note the approver left with the decision. */
@@ -83,19 +81,16 @@
 </script>
 
 <script lang="ts">
-  import Ban from '@lucide/svelte/icons/ban';
-  import Check from '@lucide/svelte/icons/check';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { untrack } from 'svelte';
 
-  import Badge from '../badge/badge.svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
   import Link from '../link/link.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
-  import ApprovalCardExpired from './approval-card-expired.svelte';
+  import ApprovalCardSettled from './approval-card-settled.svelte';
   import ApprovalCardFactsLine from './approval-card-facts-line.svelte';
   import { fitNoteLabel } from './approval-card-note-fit.ts';
   import ApprovalCardNoteToggle from './approval-card-note-toggle.svelte';
@@ -129,7 +124,6 @@
     decidedBy,
     decidedIn,
     decidedInHref,
-    outcomeTime,
     onAskAgain,
     decisionNote,
     context,
@@ -196,18 +190,14 @@
   const undecidedPrefix = $derived(UNDECIDED_PREFIX[approvalState]);
 
   const hasWho = $derived(decidedBy !== undefined || decidedIn !== undefined);
-  // The receipt reads "by Priya Raman in Reviews, 10:46 AM": the place is the only link, and the
-  // comma stays with the time. A middle dot never separates them.
+  // The status line reads "Approved by Priya Raman in Reviews": the place is the only link. When it
+  // was decided is the host's to say under the card, as it says an expired card's.
   const byText = $derived(decidedBy === undefined ? '' : `by ${decidedBy}`);
   const inText = $derived(decidedIn === undefined ? '' : decidedBy === undefined ? 'in ' : ' in ');
-  const timeText = $derived(
-    outcomeTime === undefined ? '' : hasWho ? `, ${outcomeTime}` : outcomeTime,
-  );
-  const hasReceiptDetails = $derived(
-    (outcomeTone === 'success' && decisionNote !== undefined && decisionNote !== '') ||
-      result !== undefined ||
-      command !== undefined,
-  );
+  // The note, the result and the command are what a receipt has beyond its one line, in one
+  // disclosure.
+  const hasNote = $derived(decisionNote !== undefined && decisionNote !== '');
+  const hasReceiptDetails = $derived(hasNote || result !== undefined || command !== undefined);
 
   function decide(decision: 'approve' | 'deny'): void {
     if (!canAnswer || actionsOff) return;
@@ -228,51 +218,36 @@
 {/if}
 
 {#if approvalState === 'expired'}
-  <ApprovalCardExpired
+  <ApprovalCardSettled
     {titleTag}
     {titleId}
-    {question}
+    title={question}
+    stateName="Expired before a decision"
     {onAskAgain}
     titleClass="cinder-approval-card__decision-title"
-  />
+  >
+    {#snippet status()}Expired before a decision{/snippet}
+  </ApprovalCardSettled>
 {:else if isReceipt}
   <div class="cinder-approval-card__receipt" data-cinder-tone={outcomeTone}>
-    <div class="cinder-approval-card__receipt-head">
-      <!-- The title says the outcome to assistive technology, so the badge is the visual mark. -->
-      <Badge
-        variant={outcomeTone === 'success' ? 'success' : 'neutral'}
-        size="sm"
-        aria-hidden="true"
-      >
-        {#if outcomeTone === 'success'}
-          <Check size={12} strokeWidth={2} aria-hidden="true" />
-        {:else}
-          <Ban size={12} strokeWidth={2} aria-hidden="true" />
-        {/if}
-        {outcomeWord ?? STATE_LABELS[approvalState]}
-      </Badge>
-      <svelte:element
-        this={titleTag}
-        id={titleId}
-        class="cinder-approval-card__decision-title"
-        dir="auto"
-      >
-        <span class="cinder-sr-only">{`${outcomeWord ?? STATE_LABELS[approvalState]}: `}</span
-        >{decidedAction}
-      </svelte:element>
-    </div>
-    {#if hasWho || outcomeTime !== undefined}
-      <p class="cinder-approval-card__receipt-by">
-        {byText}{inText}{#if decidedIn !== undefined}{#if decidedInHref !== undefined}<Link
-              href={decidedInHref}>{decidedIn}</Link
-            >{:else}{decidedIn}{/if}{/if}{timeText}
-      </p>
-    {/if}
-    {#if approvalState === 'denied' && decisionNote !== undefined && decisionNote !== ''}
-      <p class="cinder-approval-card__receipt-quote" dir="auto">
-        <span class="cinder-approval-card__receipt-quote-text">&ldquo;{decisionNote}&rdquo;</span>
-      </p>
-    {/if}
+    <!-- The same pattern as an expired card: the decided action as the title, one status line, and
+         the time under the card, which the host writes as it writes a message's. -->
+    <ApprovalCardSettled
+      {titleTag}
+      {titleId}
+      title={decidedAction}
+      stateName={outcomeWord ?? STATE_LABELS[approvalState]}
+      tone={outcomeTone}
+      titleClass="cinder-approval-card__decision-title"
+    >
+      {#snippet status()}
+        <span class="cinder-approval-card__settled-word"
+          >{outcomeWord ?? STATE_LABELS[approvalState]}</span
+        >{#if hasWho}{' '}{byText}{inText}{#if decidedIn !== undefined}{#if decidedInHref !== undefined}<Link
+                href={decidedInHref}>{decidedIn}</Link
+              >{:else}{decidedIn}{/if}{/if}{/if}
+      {/snippet}
+    </ApprovalCardSettled>
     {#if hasReceiptDetails}
       <div class="cinder-approval-card__input">
         <button
@@ -292,7 +267,7 @@
           <span class="cinder-approval-card__input-word">Details</span>
         </button>
         <div id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
-          {#if outcomeTone === 'success' && decisionNote !== undefined && decisionNote !== ''}
+          {#if hasNote}
             <p class="cinder-approval-card__decision-note">
               <span class="cinder-approval-card__decision-note-label">Your note</span>
               <span class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</span
