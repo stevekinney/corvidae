@@ -264,6 +264,37 @@ describe('Callout neutral variant and action', () => {
     expect(stacked.container.querySelector('.cinder-callout--inline-action')).toBeNull();
   });
 
+  test('a beside action is an inline action that stays beside the message on a phone', async () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const icon = createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' }));
+    const { container } = render(Callout, {
+      props: {
+        actionLayout: 'beside',
+        action,
+        icon,
+        children: textSnippet('Upload failed.'),
+      },
+    });
+    const root = container.querySelector('.cinder-callout')!;
+    expect(root.classList.contains('cinder-callout--inline-action')).toBe(true);
+    expect(root.classList.contains('cinder-callout--beside-action')).toBe(true);
+    // The glyph and the text stand together in the body, and the action is the body's other child.
+    expect(root.querySelector('.cinder-callout__body > .cinder-callout__message')).not.toBeNull();
+    expect(root.querySelector('.cinder-callout__body > .cinder-callout__action')).not.toBeNull();
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{[\s\S]*?\.cinder-callout--beside-action > \.cinder-callout__body \{\s*flex-wrap: nowrap;/,
+    );
+  });
+
+  test('the default inline action has no beside class, so it still wraps under the message on a phone', () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const { container } = render(Callout, {
+      props: { action, children: textSnippet('Connection paused.') },
+    });
+    expect(container.querySelector('.cinder-callout--beside-action')).toBeNull();
+  });
+
   test('an inline action shares one wrapping row with the message and wraps only when it cannot fit', async () => {
     const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
     const icon = createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' }));

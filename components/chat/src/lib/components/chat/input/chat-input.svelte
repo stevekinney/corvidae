@@ -1935,6 +1935,10 @@
             <Callout
               variant="danger"
               semantic="note"
+              actionLayout={failureLine.type !== 'many' &&
+              (failureLine.action === 'retry' || failureLine.action === 'remove')
+                ? 'beside'
+                : 'inline'}
               class="chat-input-attachment-reason"
               data-chat-attachment-failure
             >

@@ -45,7 +45,7 @@ Callout is the single notice in Cinder's chat surfaces: one box, one layout, and
 - `title`: an optional bold first line.
 - children: the text.
 - `progress`: an optional snippet under the text inside the content column, usually a small `Progress` with its own accessible name.
-- `action` (`actionLayout="inline"`, the default): one `sm` secondary `Button` at the trailing end of the text. It wraps under the text, at the text's own edge, only when the row cannot hold both.
+- `action` (`actionLayout="inline"`, the default): one `sm` secondary `Button` at the trailing end of the text. It wraps under the text, at the text's own edge, only when the row cannot hold both. `actionLayout="beside"` is for one icon-only action (a retry or remove glyph): it stays beside the text at every width, phone included.
 - `onDismiss` and `dismissLabel`: a compact dismiss button at the trailing end, 20px painted with a 44px hit area that takes no layout space. Callout stays static, so the caller removes it.
 
 ```svelte
@@ -72,7 +72,7 @@ A callout is a note beside the content it qualifies. Do not wrap a form control 
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `actionLayout` | `"stacked"` \| `"inline"` | no | — | Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. |
+| `actionLayout` | `"stacked"` \| `"inline"` \| `"beside"` | no | — | Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. `beside` keeps one icon-only action at the trailing end of the message at every width, so a phone's callout is not made a row taller by a glyph. |
 | `class` | `string` | no | — | Extra classes appended to the root element. Pass via the explicit `class` prop — it is excluded from rest-prop spread, so writing `class="x"` inside spread attributes will not reach the root. |
 | `dismissLabel` | `string` | no | — | Accessible name of the dismiss button. Default `'Dismiss'`. |
 | `semantic` | `"aside"` \| `"note"` | no | — | Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark. |

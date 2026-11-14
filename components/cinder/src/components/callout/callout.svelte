@@ -68,7 +68,8 @@
   {...restWithoutForbidden}
   class={classNames(
     'cinder-callout',
-    actionLayout === 'inline' && 'cinder-callout--inline-action',
+    actionLayout !== 'stacked' && 'cinder-callout--inline-action',
+    actionLayout === 'beside' && 'cinder-callout--beside-action',
     icon && 'cinder-callout--with-icon',
     onDismiss && 'cinder-callout--dismissible',
     variant !== 'neutral' && 'cinder-_status-surface',
@@ -79,11 +80,11 @@
   role={semantic === 'note' ? 'note' : undefined}
   aria-label={ariaLabel}
 >
-  {#if icon && !(actionLayout === 'inline' && action)}
+  {#if icon && !(actionLayout !== 'stacked' && action)}
     {@render iconBlock()}
   {/if}
 
-  {#if actionLayout === 'inline' && action}
+  {#if actionLayout !== 'stacked' && action}
     <div class="cinder-callout__body">
       <!-- The glyph and the message stand together, so the action centres against both and the
            glyph stays on the message's first line wherever the row puts it. -->

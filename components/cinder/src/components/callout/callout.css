@@ -333,6 +333,12 @@
       inline-size: calc(var(--_cinder-callout-icon-size) + var(--cinder-space-2));
       block-size: 1px;
     }
+
+    /* One icon-only action stays beside the message: the message gives up the width the glyph
+     * takes instead of dropping the action to a row of its own. */
+    .cinder-callout--beside-action > .cinder-callout__body {
+      flex-wrap: nowrap;
+    }
   }
 
   /* ----------------------------------------
