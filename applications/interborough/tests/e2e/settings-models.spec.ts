@@ -241,8 +241,10 @@ test.describe('Settings › Models, provider connected', () => {
       if (body?.method !== 'bureau.settings.get') return route.fallback();
       const response = await route.fetch();
       const answer = (await response.json()) as {
-        result: { keys: Record<string, Record<string, unknown>> };
+        result: { keys: Record<string, Record<string, unknown>>; values: Record<string, unknown> };
       };
+      // The Bureau set the stored value aside, so none is held and the row shows the default.
+      delete answer.result.values['decisions.model'];
       answer.result.keys['decisions.model'] = {
         ...answer.result.keys['decisions.model'],
         problem: 'the stored value names the retired catalog row',
@@ -279,6 +281,11 @@ test.describe('Settings › Models, provider connected', () => {
     await expect(model.getByRole('combobox')).toContainText('acme/vanished');
     await checkA11y('settings models, decision model missing, at 1280px');
     await captureAtEveryWidth(page, 'decision-model-missing');
+
+    // Opened, the stored name is still an option, unmarked, beside the rows the Bureau lists.
+    await model.getByRole('combobox').click();
+    await expect(page.getByRole('option', { name: 'acme/vanished' })).toBeVisible();
+    await captureAtEveryWidth(page, 'decision-model-missing-open');
   });
 });
 
@@ -623,20 +630,23 @@ test.describe('Settings › Models, manage, replace and remove', () => {
       MODELS_COPY.manageDialog.save,
     ].map((name) => dialog.getByRole('button', { name, exact: true }));
     await page.setViewportSize({ width: 320, height: 640 });
-    const panel = await dialog.boundingBox();
+    const footer = dialog.locator('.cinder-modal__footer');
+    await expect(footer).toBeVisible();
+    const footerBox = await footer.boundingBox();
     for (const button of buttons) {
       await expect(button).toBeVisible();
       const box = await button.boundingBox();
-      // Whole inside the dialog, so the footer wrapped to a second line instead of clipping one.
-      expect(box!.x).toBeGreaterThanOrEqual(panel!.x);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(panel!.x + panel!.width + 1);
+      // Whole inside the footer's inline edges, so the buttons wrapped to another line instead of
+      // one overflowing and being clipped by the panel.
+      expect(box!.x).toBeGreaterThanOrEqual(footerBox!.x);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(footerBox!.x + footerBox!.width + 1);
     }
-    await captureForDesignReview(page, {
-      route: ROUTE,
-      state: 'manage-save-and-key-buttons',
-      source: SOURCE,
-    });
-    await page.setViewportSize({ width: 1280, height: 900 });
+    // Wrapped: they do not share one row.
+    const rows = new Set(
+      await Promise.all(buttons.map(async (button) => Math.round((await button.boundingBox())!.y))),
+    );
+    expect(rows.size).toBeGreaterThan(1);
+    await captureAtEveryWidth(page, 'manage-save-and-key-buttons');
   });
 
   test('Replace key, in progress: the new key tests while the old one stays in use', async ({
@@ -840,12 +850,8 @@ test.describe('Settings › Models, a keyless provider', () => {
     page,
     checkA11y,
   }) => {
-    await withKeylessOllama(page, {
-      $schema: 'https://json-schema.org/draft/2020-12/schema',
-      type: 'object',
-      properties: {},
-      additionalProperties: false,
-    });
+    // The same schema the page's own test reads as "no settings": an object with no properties.
+    await withKeylessOllama(page, { type: 'object', properties: {} });
     await open(page, E2E_SHOWCASE_URL);
     const ollama = providerRow(page, 'ollama');
     await expect(ollama).toContainText(MODELS_COPY.providers.connected);

@@ -210,7 +210,7 @@ describe('connecting a provider whose plugin has settings', () => {
     expect(pluginWrites()).toEqual([]);
   });
 
-  test('stores the settings, then the key, once the key has passed its test', async () => {
+  test('stores the settings, tests the key against them, then stores the key', async () => {
     const { container } = open();
     await loaded(container);
     const dialog = await beginConnect(container);

@@ -2,8 +2,9 @@
   /**
    * Connect a provider (board SettingsShell, "Connect, empty", "testing", "invalid key" and
    * "connected"): one API key, tested before it is saved. Connect is always enabled: pressing it
-   * tests the key first, then saves it, or shows why the provider refused it at the field. Test is an
-   * optional secondary that only asks. Once the key is saved the dialog says Connected, with how many
+   * stores the settings the person changed, tests the key against them, then saves the key, or shows
+   * why the provider refused it at the field. Test is an optional secondary that only asks about the
+   * key (it stores changed settings first, which the probe reads). Once the key is saved the dialog says Connected, with how many
    * models it added (no restart), and its footer is a single Done.
    *
    * The key sequence lives in `key-flow.svelte.ts`. The key is held only in the field, only until the
@@ -36,7 +37,11 @@
   const copy = MODELS_COPY.connectDialog;
   const queryClient = useQueryClient();
 
-  /** The provider's plugin settings, saved before the key once the key has passed its test. */
+  /**
+   * The provider's plugin settings, stored before the key is tested: the host probes with the
+   * settings it holds, so the key is tested against what will stay stored. A refused key leaves the
+   * settings stored, as `interborough providers connect` does.
+   */
   const configuration = new ProviderConfigurationDraft({
     source: () => (provider === null ? undefined : configurations.get(provider)),
     onSaved: () => refreshAfterConfigurationSave(queryClient),

@@ -93,7 +93,7 @@ export class KeyFlow {
     this.failure = '';
   }
 
-  /** Asks the provider whether it accepts the key, and saves nothing. */
+  /** Asks the provider whether it accepts the key, and saves no key (`beforeTest` still stores the configuration). */
   async test(): Promise<void> {
     await this.#run(false);
   }

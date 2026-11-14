@@ -1080,6 +1080,35 @@ describe('testing a key', () => {
     expect(home.writes).toEqual([]);
   });
 
+  test('probes with the plugin configuration the host holds after a configuration write, which is what Connect stores before it tests the key (COR-2148)', async () => {
+    let held: unknown = { baseURL: 'http://old.example/v1' };
+    const configurations: unknown[] = [];
+    const inner = fakeProvider('ok').resolver;
+    const manager = createProviderManager({
+      bungalow: fakeHome('local'),
+      warn: () => undefined,
+      pluginConfigurations: () => Promise.resolve(new Map([['anthropic', held]])),
+      resolveProviderGenerate: (definitions, request, signal, context, configuration) => {
+        configurations.push(configuration);
+        return inner(definitions, request, signal, context, configuration);
+      },
+    });
+    await manager.adopt(contributedFixtures());
+    manager.attach((rows) => Promise.resolve(rows.length));
+    await manager.reload();
+
+    await manager.testKey({ provider: 'anthropic', apiKey: KEY });
+    // `PUT /host/plugins/anthropic` stores the draft and applies it live through `reload`.
+    held = { baseURL: 'http://new.example/v1' };
+    await manager.reload();
+    await manager.testKey({ provider: 'anthropic', apiKey: KEY });
+
+    expect(configurations).toEqual([
+      { baseURL: 'http://old.example/v1' },
+      { baseURL: 'http://new.example/v1' },
+    ]);
+  });
+
   test('tests a key even when the host cannot save one, since testing writes nothing', async () => {
     const { manager } = await testingManager(fakeHome('remote'));
 
