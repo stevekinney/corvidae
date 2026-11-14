@@ -16,6 +16,7 @@
    * @related timeline, feed, steps
    */
   import type { RunStep, RunStepBranchGroup } from './run-step-timeline.types.ts';
+  import type { RailThrough } from './run-step-timeline.utilities.ts';
 
   export type {
     RunStep,
@@ -31,7 +32,6 @@
     RunStepTimelineProps,
     RunStepTimelineVariant,
   } from './run-step-timeline.types.ts';
-  import type { RailThrough } from './run-step-timeline.utilities.ts';
 
   // See documentation/decisions/chronological-display-boundaries.md for this family's boundary.
 
