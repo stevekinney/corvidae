@@ -6,7 +6,8 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  *
  * An archived context accepts no new work: a task started in it, `bureau.contexts.input`,
  * `bureau.contexts.steer` and `bureau.contexts.regenerate` are refused with a `Conflict` whose
- * `data.reason` is `context-archived`, until `bureau.contexts.unarchive`. Authorization is the
+ * `data.reason` is `context-archived`, until `bureau.contexts.unarchive`. A goal's session cannot be
+ * archived (`Conflict`, `context-not-archivable`). Authorization is the
  * rename operation's: the owner, or a caller holding `bureau.contexts:write`, and anyone else is
  * answered as for a missing context. The answer is a receipt, never the context's summary, for the
  * same reason a rename's is: `bureau.contexts:write` does not imply `bureau.contexts:read`.
@@ -18,7 +19,11 @@ import { sessionOwnerOf } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauShuttingDownError, ContextBusyError } from '../../bureau-errors.ts';
+import {
+  BureauShuttingDownError,
+  ContextBusyError,
+  ContextNotArchivableError,
+} from '../../bureau-errors.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import type { BureauInternals } from '../../bureau-types/facade.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
@@ -80,7 +85,7 @@ export const contextsArchiveOperation = defineOperation<
   mcpExposable: false,
   summary: 'Archive a context',
   description:
-    'Archives one of the caller’s own contexts; a caller holding `bureau.contexts:write` archives any owner’s. An archived context accepts no new work: starting a task in it, `bureau.contexts.input`, `bureau.contexts.steer` and `bureau.contexts.regenerate` are each a `Conflict` with reason `context-archived` until it is unarchived (`bureau.contexts.unarchive`); reading, renaming, deleting, forking, forgetting grants and the window keep working. `bureau.contexts.list` and `get` show when in `archivedAt`, and `list` filters by it with `archived`. A context with a task running, or waiting on an approval or an answer, is a `Conflict` with reason `context-busy`, and nothing is stored: stop or answer the task first. Archiving is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Archiving an archived context is not an error: it answers `changed: false` with the time it was first archived, so a retry is safe. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ id, changed, archivedAt }`, and nothing else of the context. The call writes no audit entry.',
+    'Archives one of the caller’s own contexts; a caller holding `bureau.contexts:write` archives any owner’s. An archived context accepts no new work: starting a task in it, `bureau.contexts.input`, `bureau.contexts.steer` and `bureau.contexts.regenerate` are each a `Conflict` with reason `context-archived` until it is unarchived (`bureau.contexts.unarchive`), and a schedule’s fire into it fails; reading, renaming, deleting, forking, forgetting grants and the window keep working. `bureau.contexts.list` and `get` show when in `archivedAt`, and `list` filters by it with `archived`. A context with a task running, or waiting on an approval or an answer, is a `Conflict` with reason `context-busy`, and nothing is stored: stop or answer the task first. A goal’s session (origin `goal`) cannot be archived, because the goal writes its attempts to it whatever it records: it is a `Conflict` with reason `context-not-archivable`, and the goal is stopped with `bureau.goals.cancel` instead. Archiving is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Archiving an archived context is not an error: it answers `changed: false` with the time it was first archived, so a retry is safe. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ id, changed, archivedAt }`, and nothing else of the context. The call writes no audit entry.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsArchiveInput,
@@ -117,6 +122,13 @@ export const contextsArchiveOperation = defineOperation<
     } catch (error) {
       if (error instanceof BureauShuttingDownError) throw shuttingDownFault(error.message);
       if (error instanceof ContextBusyError) throw contextBusyFault(error.message);
+      if (error instanceof ContextNotArchivableError) {
+        throw {
+          code: 'Conflict',
+          message: error.message,
+          data: { reason: 'context-not-archivable' },
+        } satisfies OperationFault;
+      }
       throw error;
     }
     // The id holds another incarnation now (or none): the context authorized is gone.

@@ -23,7 +23,11 @@ import type {
   SteeringCommandAdmissionOutcome,
   SteeringCommandRequest,
 } from '../steering';
-import type { ContextArchivedError, ContextBusyError } from '../bureau-errors';
+import type {
+  ContextArchivedError,
+  ContextBusyError,
+  ContextNotArchivableError,
+} from '../bureau-errors';
 import type {
   EventHistoryDeletedAggregateOutcome,
   EventHistoryNotFoundOutcome,
@@ -135,9 +139,15 @@ export interface BureauContexts {
    * the context's place in a listing, does not move.
    *
    * A context with a live task (running, or waiting on an approval or an answer) is refused with a
-   * {@link ContextBusyError}, and nothing is stored. The decision is fenced on the session record it
-   * was made from, and every task start writes that record, so a start racing the archive either
-   * commits first (and the archive is refused) or finds the context archived (and is refused).
+   * {@link ContextBusyError}, and nothing is stored. A goal's session is refused with a
+   * {@link ContextNotArchivableError}: its goal writes to it through its own path. The decision is
+   * fenced on the session revision it was made from. A task start saves the session in the write
+   * that starts its run, and a schedule's fire saves it after each step; each of those writes
+   * refuses a context archived meanwhile (a fire that has already written once goes on, since the
+   * archive found it live). So an archive and a start, or a fire, racing on one context never both
+   * commit. Input and steering are refused on a read made before they are admitted, which an archive
+   * can follow: input admitted that way finds no run to take it and is cancelled, but a steering
+   * command can be logged.
    * Archiving an archived context is not an error: it answers `changed: false` and the time it was
    * first archived. With `options.incarnation` it archives only that incarnation.
    *

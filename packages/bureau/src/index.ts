@@ -429,6 +429,7 @@ export {
   BureauError,
   ContextArchivedError,
   ContextBusyError,
+  ContextNotArchivableError,
   PinnedToolUnavailableError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,

@@ -4,14 +4,22 @@
  * new work; a context with a live task cannot be archived. Neither is activity: the context keeps
  * its `updatedAt` and its place in a listing.
  */
-import { createAgent, SESSION_ARCHIVED_AT_METADATA_KEY } from '@lostgradient/operative';
+import {
+  createAgent,
+  createAgentSession,
+  SESSION_ARCHIVED_AT_METADATA_KEY,
+  SESSION_ORIGIN_METADATA_KEY,
+  SESSION_OWNER_METADATA_KEY,
+} from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
+import { createConversationHistory } from 'conversationalist';
 
 import {
   BureauShuttingDownError,
   ContextArchivedError,
   ContextBusyError,
+  ContextNotArchivableError,
 } from '../../bureau-errors.ts';
 import { waitForCondition, waitForTaskState } from '../../test';
 import { createMemoryStorageFixture } from '../../test/storage-fixtures.ts';
@@ -263,6 +271,36 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
     }
   });
 
+  it('archives a context whose run a crash left marked running, once a restart finds its workflow ended', async () => {
+    const fixture = createMemoryStorageFixture();
+    try {
+      const first = await openBureau({ agents: { agent }, storage: fixture.storage });
+      let contextId: string;
+      try {
+        const run = await finishedSession(first, 'before the crash');
+        contextId = run.contextId;
+        // What a process that died between the workflow's end and the session's save leaves.
+        await first.bureau.internals.sessionStore!.update(contextId, (session) =>
+          session === undefined
+            ? undefined
+            : { ...session, metadata: { ...session.metadata, lastRunStatus: 'running' } },
+        );
+      } finally {
+        await first.dispose();
+      }
+
+      const second = await openBureau({ agents: { agent }, storage: fixture.storage });
+      try {
+        const archived = await archive(second, contextId);
+        expect(archived.result).toMatchObject({ id: contextId, changed: true });
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
   it('answers another owner’s context, and a write-less scope, exactly as a missing one, and changes nothing', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened, 'private');
@@ -312,6 +350,44 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
       expect(await archivedAtOf(opened, run.contextId)).toBe(archived.result?.['archivedAt']);
       const unarchived = await unarchive(opened, run.contextId, 'contexts-writer-key');
       expect(unarchived.result).toMatchObject({ changed: true });
+    });
+  });
+
+  it('refuses a goal’s session as context-not-archivable, and stores nothing', async () => {
+    await withBureau(async (opened) => {
+      const goalSession = createAgentSession({
+        id: 'goal-session',
+        agentName: 'agent',
+        conversationHistory: createConversationHistory({ id: 'goal-session' }),
+        metadata: {
+          goalRunId: 'goal-run-1',
+          [SESSION_ORIGIN_METADATA_KEY]: 'goal',
+          [SESSION_OWNER_METADATA_KEY]: OWNER.alice,
+        },
+      });
+      await opened.bureau.internals.sessionStore!.save(goalSession);
+
+      const body = await archive(opened, 'goal-session');
+
+      expect(body.result).toBeUndefined();
+      expect(body.error?.data).toMatchObject({
+        weftCode: 'Conflict',
+        reason: 'context-not-archivable',
+      });
+      const refusal = await rejectionOf(opened.bureau.contexts.archive('goal-session'));
+      expect(refusal).toBeInstanceOf(ContextNotArchivableError);
+      expect(await archivedAtOf(opened, 'goal-session')).toBeNull();
+      // A session a goal wrote is refused by its goal record too, whatever origin it names.
+      await opened.bureau.internals.sessionStore!.save(
+        createAgentSession({
+          id: 'goal-attempt',
+          agentName: 'agent',
+          conversationHistory: createConversationHistory({ id: 'goal-attempt' }),
+          metadata: { goalRunId: 'goal-run-1', [SESSION_OWNER_METADATA_KEY]: OWNER.alice },
+        }),
+      );
+      const attempt = await rejectionOf(opened.bureau.contexts.archive('goal-attempt'));
+      expect(attempt).toBeInstanceOf(ContextNotArchivableError);
     });
   });
 

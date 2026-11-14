@@ -23,7 +23,12 @@ import { isDurableRunUnsettled } from '../durable-run-waits';
 import { type AgUiLease, createAgUiLeases, releaseQuietly } from '../http/ag-ui-lease';
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauCore, SessionDeletionRecord } from './core';
-import { BureauError, BureauShuttingDownError, ContextBusyError } from '../bureau-errors';
+import {
+  BureauError,
+  BureauShuttingDownError,
+  ContextBusyError,
+  ContextNotArchivableError,
+} from '../bureau-errors';
 import type { BureauSteeringGate } from '../steering';
 import type { ChatAsset } from '../chat-asset-purge';
 import { ChatRunsNotEndedError, type DeletedChat } from '../chat-content-purge';
@@ -172,12 +177,14 @@ export function createSessions<D extends AgentDefinitions>(
   /**
    * COR-2285 — whether the context `session` records has a live task: the registry's activity of
    * its incarnation (a run of this process running or parked, a pending review, an unsettled fire),
-   * an approval its last run still holds, or a last run recorded as `running` that is not known to
-   * have ended. That last run is live while this process holds it running or is still starting it
-   * (its attribution is set before its session is saved), or while its durable workflow is unsettled
-   * or not yet written, as a run another process is starting. A marker no run of this process and
-   * no durable workflow stands behind, as a crash of a Bureau without a durable engine can leave, is
-   * not live.
+   * a schedule's fire that last wrote to it and whose workflow is unsettled, an approval its last
+   * run still holds, or a last run recorded as `running` that is not known to have ended.
+   *
+   * That last run is live while this process holds it running. Otherwise a durable Bureau asks the
+   * engine: an unsettled workflow is live and a settled one is not, so a marker a crash left behind
+   * does not hold the context once its workflow has ended; a workflow not written yet is live, as a
+   * run some process is starting. A Bureau without a durable engine has only this process's
+   * starts, which set the run's attribution before they save the session.
    */
   async function contextHasLiveTask(session: AgentSession): Promise<boolean> {
     const activity = await core.tasks.activityOf(
@@ -185,17 +192,37 @@ export function createSessions<D extends AgentDefinitions>(
       new Map([[session.id, session.incarnation]]),
     );
     if ((activity.get(session.id) ?? 'idle') !== 'idle') return true;
+    const durable = runtime.durable;
+    // A fire saves its session after every step, and is bound to the context only after its first
+    // save: the workflow is what says whether the fire that wrote last is still going.
+    const fireRunId = session.metadata['lastScheduledFireRunId'];
+    if (typeof fireRunId === 'string' && durable !== undefined) {
+      const fire = await durable.engine.get(fireRunId);
+      if (fire !== null && isDurableRunUnsettled(fire.status)) return true;
+    }
     const lastRunId = session.metadata['lastRunId'];
     if (typeof lastRunId !== 'string') return false;
     if (holdsPendingApproval(session.metadata, lastRunId, runtimeServices.clock.now())) return true;
     if (session.metadata['lastRunStatus'] !== 'running') return false;
     const held = store.getRun(lastRunId);
     if (held !== undefined) return held.status === 'running' || held.status === 'aborting';
-    if (core.runAttribution.has(lastRunId)) return true;
-    const durable = runtime.durable;
-    if (durable === undefined) return false;
+    if (durable === undefined) return core.runAttribution.has(lastRunId);
     const workflow = await durable.engine.get(lastRunId);
     return workflow === null || isDurableRunUnsettled(workflow.status);
+  }
+
+  /**
+   * COR-2285 — whether a person may archive the context `metadata` records. A goal's session may
+   * not: the goal writes its attempts to it through its own path, which takes no archive into
+   * account, and the goal is stopped with `goals.cancel` instead. A chat, a schedule's session
+   * (whose fires refuse an archived context inside their own save) and a tried agent's chat (whose
+   * follow-ups are task starts) may.
+   */
+  function isArchivable(metadata: AgentSession['metadata']): boolean {
+    return (
+      sessionOriginOf(metadata) !== 'goal' &&
+      !(Object.hasOwn(metadata, 'goalRunId') && metadata['goalRunId'] !== undefined)
+    );
   }
 
   /** How many times an archive re-decides after the session moved under it, before it refuses. */
@@ -220,6 +247,7 @@ export function createSessions<D extends AgentDefinitions>(
       ) {
         return undefined;
       }
+      if (!isArchivable(read.metadata)) throw new ContextNotArchivableError(id);
       const recorded = sessionArchivedAtOf(read.metadata);
       if (recorded !== null) return { contextId: id, changed: false, archivedAt: recorded };
       if (await contextHasLiveTask(read)) throw new ContextBusyError(id);
