@@ -181,6 +181,12 @@ export class ChatSessionState {
    */
   historySettled = $state(false);
   /**
+   * Whether the last read of the thread failed, and no read has succeeded since: the chat may hold
+   * history the page could not show. It clears when a read succeeds, and stays set while a retry is
+   * out, so nothing that would send past that history is offered in between.
+   */
+  readFailed = $state(false);
+  /**
    * Whether the session has stopped trying to reach the thread: it failed `MAX_RECONNECT_ATTEMPTS`
    * times in a row, or the Bureau refused it in a way a retry cannot change. The page says so and
    * offers `reconnect()`. It clears when the thread is read again, or a frame of the run arrives,
@@ -919,11 +925,13 @@ export class ChatSessionState {
         }
         // The Bureau answered: with the thread's rows, or with none for a thread it has no record of.
         this.historySettled = true;
+        this.readFailed = false;
         this.#attachedRun = false;
         return false;
       }
       this.restore(restored);
       this.historySettled = true;
+      this.readFailed = false;
       // A run was restored, so the Bureau holds the thread.
       this.#opened = true;
       this.disconnected = false;
@@ -937,6 +945,7 @@ export class ChatSessionState {
       // The read has settled, though it failed: the page says so, as it always has, and does not
       // keep drawing the transcript as loading behind it.
       this.historySettled = true;
+      this.readFailed = true;
       this.#attachFailed = true;
       if (isNotFound(error)) this.#onNotFound?.();
       if (!rereading) this.failure = error instanceof Error ? error.message : String(error);

@@ -456,6 +456,52 @@ describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
     expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
   });
 
+  test('a first read that fails offers no prompt while it is tried again, and offers them once a retry reads the empty thread', async () => {
+    let failedReads = 0;
+    restore = bureau(
+      {
+        'bureau.agents.list': withExamples['bureau.agents.list'],
+        'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        'bureau.contexts.window': () => ({
+          maxTokens: 200_000,
+          usedEstimated: 76_000,
+          usedReported: null,
+          categories: [],
+        }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+      },
+      (url) => {
+        if (url.endsWith('/host/providers')) return provider(true);
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (!url.includes('/threads/')) return undefined;
+        // The first read cannot reach the server; the retry that follows can.
+        if (failedReads === 0) {
+          failedReads += 1;
+          throw new TypeError('Failed to fetch');
+        }
+        return new Response(
+          `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' })}\n\n`,
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    const { container, findByText, findByRole, client } = mountWithClient();
+
+    expect(await findByText('Failed to fetch')).not.toBeNull();
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.agents.list())?.status).toBe('success'),
+    );
+    // The read failed and is being tried again: the chat may hold history, so no prompt is offered.
+    expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+
+    // The retry reads the thread, which is empty: now the first-use prompts are offered.
+    expect(await findByRole('group', { name: 'Suggested prompts' })).not.toBeNull();
+  });
+
   test('an empty thread is the first-use state once its read has settled', async () => {
     const served = serveHeld([], true);
     const { container, findByRole, client } = mountWithClient();

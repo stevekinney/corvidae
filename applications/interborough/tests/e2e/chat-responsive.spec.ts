@@ -228,6 +228,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
+    // The reminder is drawn until the first measurement finds Deny and Approve in view.
+    await expect(page.locator('[data-chat-approval-drawer]')).toHaveCount(0);
     // One layout, read once: each decision button's box, what a tap at its centre lands on, the
     // transcript's box, and the reminder and blocked row, when drawn.
     const read = await page.evaluate(() => {
@@ -399,6 +401,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await open(connected, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const composer = connected.getByRole('textbox', { name: 'Message' });
     await expect(composer).toBeVisible();
+    // The chat's history is in (COR-2327 B3): its waiting approval is drawn, and Send is Send.
+    await expect(connected.locator('[data-approval-decision]')).toBeVisible();
     const send = await boxOf(connected.getByRole('button', { name: 'Send message' }));
     // The hint line sits under the composer; the composer's own bottom is within it of the tab bar.
     const liveTabBar = await boxOf(

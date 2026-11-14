@@ -578,10 +578,10 @@
   const emptyPrompts = $derived(
     listedAgent === undefined ||
       // Until a read of the thread has succeeded the chat may hold history, and a waiting decision a
-      // prompt would send past: the first read is out, it failed and is being tried again, or the
-      // session gave up (`disconnected`, below).
+      // prompt would send past: the first read is out, or the last one failed and no read has
+      // succeeded since.
       !session.historySettled ||
-      session.reconnectAttempt > 0 ||
+      session.readFailed ||
       composerStatus?.kind === 'blocked' ||
       noProvider ||
       session.disconnected ||
