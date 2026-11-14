@@ -422,7 +422,6 @@
         emptyTitle="Start a conversation"
         emptyDescription="Ask the agent about orders, refunds and the ledger."
         {sourcesByMessageId}
-        sourcePresentation={setup.sourcePresentation}
         {...setup.regenerate ? { onRegenerate: () => {} } : {}}
         onRetryConnection={(messageId) => {
           recordTurnAction('retry-now', messageId);

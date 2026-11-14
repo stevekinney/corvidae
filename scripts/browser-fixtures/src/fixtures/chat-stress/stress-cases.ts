@@ -62,6 +62,8 @@ type StressStepAction =
   | { action: 'expect-source-contract' }
   | { action: 'expect-approval-review' }
   | { action: 'expect-question-layout' }
+  | { action: 'expect-question-dock'; choices: number }
+  | { action: 'expect-source-control' }
   | { action: 'expect-offscreen'; selector: string }
   | { action: 'expect-absent'; selector: string }
   /**
@@ -225,6 +227,8 @@ const STEP_ACTIONS = [
   'expect-source-contract',
   'expect-approval-review',
   'expect-question-layout',
+  'expect-question-dock',
+  'expect-source-control',
   'expect-offscreen',
   'expect-absent',
   'expect-attachment-strip',
@@ -294,6 +298,10 @@ function problemsInStep(step: unknown, where: string): string[] {
       if (step[key] !== undefined && typeof step[key] !== 'string')
         problems.push(`${where}: attachment strip ${key} must be text`);
     }
+  }
+  if (action === 'expect-question-dock') {
+    if (!Number.isInteger(step['choices']) || (step['choices'] as number) < 1)
+      problems.push(`${where}: expect-question-dock needs a positive number of choices`);
   }
   if (action === 'measure-composer-top' && step['name'] !== 'before' && step['name'] !== 'after')
     problems.push(`${where}: measure-composer-top name must be before or after`);

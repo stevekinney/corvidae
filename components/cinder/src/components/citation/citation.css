@@ -49,20 +49,26 @@
       box-shadow: none;
     }
   }
-  /* The panel is a column, so the title, the optional excerpt, the optional link and the pager
-     are separate boxes with one token gap between them. An absent excerpt is an absent box and
-     leaves no gap. `overflow-wrap: anywhere` keeps a long unbroken string inside the panel. */
+  /* The panel is as tall as its rows up to about half the viewport, then the list scrolls inside
+     it, so one source is a short sheet and a long list never covers the page. A list shown under
+     its marker (`inPlace`) is part of the page and takes its natural height. `overflow-wrap:
+     anywhere` keeps a long unbroken string inside the panel. */
   .cinder-citation__panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
     min-width: 0;
+    max-block-size: 50dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     text-align: start;
     overflow-wrap: anywhere;
     line-height: var(--cinder-leading-normal);
     /* The owning Popover/Drawer supplies the surface inset. Keeping this panel content-only
-       prevents an empty band when a source has no excerpt or link. */
+       prevents an empty band when a source has no excerpt. */
     padding: 0;
+  }
+
+  .cinder-citation--in-place .cinder-citation__panel {
+    max-block-size: none;
+    overflow-y: visible;
   }
 
   /* Citation owns a compact sheet contract while Popover/Drawer continue to own modal focus,
@@ -82,6 +88,69 @@
     padding: var(--cinder-space-2) var(--cinder-space-3);
     background: transparent;
   }
+  /* One list of flat rows, however many sources there are. */
+  .cinder-citation__list {
+    display: flex;
+    flex-direction: column;
+    /* A row's text starts on the edge of the heading above the list: the list is pulled out by the
+       row's own inset (its padding and its 2px current-row edge), so the hover face and the edge
+       overhang into the panel's padding while the words line up. */
+    margin-block: 0;
+    margin-inline: calc(-1 * (var(--cinder-space-2) + 2px));
+    padding: 0;
+    list-style: none;
+  }
+  .cinder-citation__item {
+    min-width: 0;
+  }
+  /* A row is the source: its title, the domain (or the note that says why it has none) and the
+     excerpt. With a safe address the whole row is the link and the open glyph ends it; the 2px
+     start edge is transparent until the row is the cited one. */
+  .cinder-citation__row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    min-width: 0;
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-2);
+    border-inline-start: 2px solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    color: inherit;
+    text-decoration: none;
+  }
+  a.cinder-citation__row:hover {
+    background: var(--cinder-surface-hover);
+  }
+  a.cinder-citation__row:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 2px var(--cinder-ring-offset-color),
+      0 0 0 calc(2px + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+  @media (forced-colors: active) {
+    a.cinder-citation__row:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+  /* The cited row is marked by more than colour: an accent edge and a tinted face. */
+  .cinder-citation__row[aria-current='true'] {
+    border-inline-start-color: var(--cinder-accent-solid);
+    background: var(--cinder-accent-background);
+  }
+  @media (forced-colors: active) {
+    .cinder-citation__row[aria-current='true'] {
+      border-inline-start-color: Highlight;
+    }
+  }
+  .cinder-citation__row-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: var(--cinder-space-1);
+    min-width: 0;
+  }
   /* A title is clamped to two lines; its whole text stays in the DOM for assistive technology. */
   .cinder-citation__title {
     display: -webkit-box;
@@ -89,12 +158,19 @@
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
+    font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-semibold);
     color: var(--cinder-text-default);
   }
+  /* The domain, or the note on a source with no link or a refused one. */
+  .cinder-citation__domain,
+  .cinder-citation__note {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
   /* An excerpt reads as a quotation: the language's own quotation marks wrap it. */
   .cinder-citation__detail {
-    margin: 0;
+    font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-normal);
     color: var(--cinder-text-muted);
   }
@@ -104,89 +180,18 @@
   .cinder-citation__detail::after {
     content: close-quote;
   }
-  /* The note that stands in for a link a source has none of, or one that was refused. */
-  .cinder-citation__note {
-    font-size: var(--cinder-text-sm);
+  /* The open-in-new glyph is smaller than the title's line, so it never makes the row taller. */
+  :is(.cinder-citation__row) > svg.cinder-citation__glyph {
+    flex: none;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    margin-block-start: var(--cinder-space-1);
     color: var(--cinder-text-muted);
-  }
-  /* Five or fewer sources are one list of flat rows, each its own title, excerpt and link. */
-  .cinder-citation__list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-3);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .cinder-citation__item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
-    min-width: 0;
-  }
-  /* A standalone link in the popover is a target of its own: at least 24px tall. */
-  .cinder-citation__link {
-    display: inline-flex;
-    align-items: center;
-    min-block-size: 1.5rem;
-  }
-  .cinder-citation__pagination {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-1);
-    align-items: center;
-    justify-content: center;
-  }
-  .cinder-citation__pagination button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 2rem;
-    block-size: 2rem;
-    padding: 0;
-  }
-  .cinder-citation__pagination button svg {
-    inline-size: 1rem;
-    block-size: 1rem;
   }
   @media (any-pointer: coarse) {
     .cinder-citation__marker::before {
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
       inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-    }
-
-    .cinder-citation__pagination button,
-    /* The link stays compact; its 44px hit area is a pseudo-element that takes no layout. */
-    .cinder-citation__link {
-      position: relative;
-    }
-    .cinder-citation__link::before {
-      content: '';
-      position: absolute;
-      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-      inset-inline: 0;
-    }
-    .cinder-citation__pagination button {
-      inline-size: var(--cinder-touch-target-min);
-    }
-    /* The pager buttons paint 32px tall and reach 44px through a pseudo-element that takes no
-       layout, as the link and the marker do; it covers the space around the button, never another
-       control, because the row gap and the panel's padding keep the neighbours further than it. */
-    .cinder-citation__pagination button::before {
-      content: '';
-      position: absolute;
-      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-      inset-inline: 0;
-    }
-  }
-
-  @container (inline-size < 30rem) {
-    .cinder-citation__panel {
-      gap: var(--cinder-space-1);
-    }
-
-    .cinder-citation__list {
-      gap: var(--cinder-space-2);
     }
   }
 }

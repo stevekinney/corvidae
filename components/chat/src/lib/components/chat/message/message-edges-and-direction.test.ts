@@ -9,7 +9,7 @@ describe('glyphs meet their edges, spacing and direction', () => {
   test('the user message keeps its trailing Copy glyph on the bubble edge', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(
-      /\.chat-message-wrapper\[data-role='user'\] \.chat-message-line-actions \{\s*margin-inline-end: calc\(\(0\.75rem - 1\.5rem\) \/ 2\);/,
+      /\.chat-message-wrapper\[data-role='user'\] \.chat-message-line-actions \{\s*margin-inline-end: calc\(\(0\.625rem - 1\.5rem\) \/ 2\);/,
     );
   });
 
@@ -45,19 +45,17 @@ describe('glyphs meet their edges, spacing and direction', () => {
   test('message action glyphs are sized to the time beside them and sit 8px apart', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(
-      /\.chat-message-line :global\(\.chat-message-action-button svg\) \{\s*inline-size: 0\.75rem;\s*block-size: 0\.75rem;/,
+      /\.chat-message-line :global\(\.chat-message-action-button svg\) \{\s*inline-size: 0\.625rem;\s*block-size: 0\.625rem;/,
     );
     expect(source).toMatch(/\.chat-message-line-actions \{[^}]*gap: var\(--cinder-space-2\);/);
   });
 
-  test('the time sits at one distance under both roles, and Sources follow the prose closely', async () => {
+  test('the time sits at one distance under both roles, with no Sources row between prose and line', async () => {
     const source = await read('chat-message.svelte');
     expect(source).toMatch(
       /> \.chat-message\s*\+ \.chat-message-line \{\s*margin-block-start: calc\(/,
     );
-    expect(source).toMatch(
-      /\[data-presentation='transcript'\] > \.chat-message-sources \{\s*margin-block-start: calc\(/,
-    );
+    expect(source).not.toMatch(/\[data-presentation='transcript'\] > \.chat-message-sources/);
   });
 
   test('a bubble ending in an attachment tile has the same inset below it as beside it', async () => {
@@ -67,11 +65,19 @@ describe('glyphs meet their edges, spacing and direction', () => {
     );
   });
 
-  test('the Sources label and chevron start on the prose edge', async () => {
+  test('the Sources control ends the message line, in the size of the time, with a chevron no taller than its text', async () => {
     const source = await read('message-sources.svelte');
-    expect(source).toMatch(/margin-inline-start: calc\(\(1rem - 1\.5rem\) \/ 2\);/);
-    expect(source).toMatch(/padding-inline: 0;/);
-    expect(source).toContain("[data-message-direction='rtl']");
+    const marker = /\.cinder-citation__marker\) \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(marker).toContain('margin-inline-start: auto;');
+    expect(marker).toContain('font-size: inherit;');
+    expect(marker).toContain('color: var(--cinder-text-muted);');
+    const chevron = /\.chat-message-sources-chevron\) \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(chevron).toContain('inline-size: 0.75rem;');
+    expect(chevron).toContain('block-size: 0.75rem;');
+    // The control paints compact; its 44px hit area is Citation's pseudo-element, never a height.
+    expect(source).not.toContain('touch-target-min');
+    const message = await read('chat-message.svelte');
+    expect(message).toMatch(/\.chat-message-line-sources \{\s*display: contents;/);
   });
 
   test('the step row takes the message direction', async () => {

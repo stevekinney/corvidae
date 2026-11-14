@@ -372,14 +372,14 @@ describe('chat stress visual measurement', () => {
     }
   });
 
-  it('recognizes the next remaining source chip as the withdrawal focus', async () => {
+  it('recognizes the next remaining source row as the withdrawal focus', async () => {
     const browser = await chromium.launch();
     try {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       await page.setContent(
-        '<main data-testid="chat-stress-shell"><span class="chat-message-source-chips"><button class="cinder-citation__marker">Support playbook</button></span></main><style>.cinder-citation__marker:focus-visible { outline: 2px solid #06f; }</style>',
+        '<main data-testid="chat-stress-shell"><section class="cinder-citation__panel"><a class="cinder-citation__row" href="/support-playbook">Support playbook</a></section></main><style>.cinder-citation__row:focus-visible { outline: 2px solid #06f; }</style>',
       );
-      await page.locator('button').focus();
+      await page.locator('a').focus();
       const measurement = await page.evaluate(readWithdrawal);
       expect(measurement.focusVisible).toBe(true);
     } finally {

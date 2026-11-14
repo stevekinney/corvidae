@@ -200,10 +200,10 @@
     font-weight: var(--cinder-font-semibold);
   }
 
-  /* The question: the one heading of the request, in the reading size and weight. */
+  /* The question: the one heading of the request, at the docked question's 14px and weight. */
   .chat-tool-input-heading {
     margin: 0;
-    font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     font-weight: var(--cinder-font-semibold);
     overflow-wrap: anywhere;
   }

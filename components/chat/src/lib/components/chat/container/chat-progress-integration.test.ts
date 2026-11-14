@@ -40,7 +40,14 @@ describe('Chat progress affordance integration contract', () => {
     const rule = /\.chat-typing-indicator \{[^}]*\}/u.exec(chat)?.[0] ?? '';
     expect(rule).not.toContain('background');
     expect(rule).not.toContain('border-radius');
-    expect(rule).toMatch(/padding: var\(--cinder-space-1\) 0;/u);
+    // A full step clear of the text above, and dots as far apart as they are wide.
+    expect(rule).toMatch(/padding: var\(--cinder-space-2\) 0 var\(--cinder-space-1\);/u);
+    expect(rule).toMatch(/gap: 0\.375rem;/u);
+    const dot = /\.chat-typing-dot \{[^}]*\}/u.exec(chat)?.[0] ?? '';
+    expect(dot).toMatch(/width: 0\.375rem;\s*height: 0\.375rem;/u);
+    // Body text colour, never fainter than 55%: at least 4:1 at rest in both themes.
+    expect(dot).toContain('background: var(--cinder-text-default);');
+    expect(chat).not.toMatch(/@keyframes typing-(?:bounce|pulse) \{[^}]*\{\s*opacity: 0\.4;/u);
     expect(chat).toContain('streamingFenceIsOpen(streamingState.content)');
     const suppress = /getSuppressTypingIndicator: \(\) =>[^,]*,/u.exec(chat)?.[0] ?? '';
     for (const banner of ['reconnecting', 'approvalWaiting', 'dockedQuestions', 'availability']) {
