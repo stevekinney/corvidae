@@ -333,8 +333,23 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
   const acquiredAt = () => new Date(now()).toISOString();
   await mkdir(directory, { recursive: true });
   if (options.bypass === true) {
-    const record = recordFor(request, 'worker', acquiredAt(), true);
-    await tryInstall(join(directory, `bypass-${record.token}`), record);
+    // Past the cap, but counted like any other: the worker's place, and its coordinator's when
+    // that coordinator holds none that counts.
+    const places = await readPlaces(directory);
+    const table = options.readProcessTable();
+    const coordinatorHeld = places.some(
+      (place) =>
+        place.record.kind === 'coordinator' &&
+        samePair(place.record, request) &&
+        reclaimableBecause(place, places, table) === undefined,
+    );
+    const records = [recordFor(request, 'worker', acquiredAt(), true)];
+    if (!coordinatorHeld) records.push(recordFor(request, 'coordinator', acquiredAt(), true));
+    for (const record of records) {
+      if (!(await tryInstall(join(directory, `bypass-${record.token}`), record))) {
+        throw new Error(`could not record the bypassed place bypass-${record.token}`);
+      }
+    }
     return { admitted: true, bypassed: true, waitedMilliseconds: 0 };
   }
   const queue = queueDirectory(directory);

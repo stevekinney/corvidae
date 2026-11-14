@@ -430,8 +430,13 @@ describe('the hook', () => {
     expect(named?.systemMessage).toContain(`${capBypassVariable}=COR-9 admitted this dispatch`);
     expect(named?.hookSpecificOutput?.permissionDecision).toBeUndefined();
     const places = await readPlaces(directory);
-    expect(places).toHaveLength(4);
-    expect(places.find((place) => place.record.bypass === true)?.directory).toContain('bypass-');
+    // The bypassed worker and its coordinator both count, past the cap.
+    const bypassed = places.filter((place) => place.record.bypass === true);
+    expect(places).toHaveLength(5);
+    expect(
+      bypassed.map((place) => `${place.record.kind}:${place.record.sessionId}`).toSorted(),
+    ).toEqual(['coordinator:session-B', 'worker:session-B']);
+    expect(bypassed.every((place) => place.directory.includes('bypass-'))).toBe(true);
     const other = await handleHookEvent(
       { ...dispatch('chef-worker', 'tool-4', 'Deliver COR-10'), session_id: 'session-B' },
       context(directory, { hookPid: 511, environment, waitLimitMilliseconds: 0 }),
