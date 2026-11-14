@@ -395,11 +395,7 @@ export function createRunCreation<D extends AgentDefinitions>(
     // retry of a task started before the archive still replays it, and after the owner check, so
     // another owner's archived context reads as one that does not exist. The save below decides it
     // again inside its atomic update, against an archive that commits meanwhile.
-    if (session !== undefined && sessionArchivedAtOf(session.metadata) !== null) {
-      const refusal = new ContextArchivedError(sessionId);
-      await releaseRunCreationClaim(ledgerClaim, refusal);
-      throw refusal;
-    }
+    await refuseArchivedContext(session, sessionId, ledgerClaim);
     if (core.flowController) {
       const decision = core.flowController.admit({
         runId,
@@ -1268,6 +1264,21 @@ export function createRunCreation<D extends AgentDefinitions>(
       peers.abortTask(runId, 'Aborted: the task’s receipt was not recorded');
       throw error;
     });
+  }
+
+  /**
+   * COR-2285 — refuses a task in `session` when it is archived, with a `ContextArchivedError`,
+   * releasing the run-creation claim first so an exact retry after an unarchive starts afresh.
+   */
+  async function refuseArchivedContext(
+    session: AgentSession | undefined,
+    sessionId: string,
+    ledgerClaim: Parameters<typeof releaseRunCreationClaim>[0],
+  ): Promise<void> {
+    if (session === undefined || sessionArchivedAtOf(session.metadata) === null) return;
+    const refusal = new ContextArchivedError(sessionId);
+    await releaseRunCreationClaim(ledgerClaim, refusal);
+    throw refusal;
   }
 
   /**

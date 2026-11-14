@@ -129,7 +129,8 @@ describe('a message to an archived chat through another door', () => {
         );
 
         expect(refusal).toBeInstanceOf(ContextArchivedError);
-        expect((await harness.bureau.contexts.get(THREAD))?.revision).toBe(before?.revision);
+        const after = await harness.bureau.contexts.get(THREAD);
+        expect(after?.revision).toBe(before?.revision);
 
         await harness.bureau.contexts.unarchive(THREAD);
         const second = await startIdleTurn(harness.bureau, {

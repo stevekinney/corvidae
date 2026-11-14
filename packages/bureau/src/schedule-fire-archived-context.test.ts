@@ -52,7 +52,8 @@ describe('a schedule’s fire into an archived context', () => {
         spec: '1h',
         sessionId: SESSION,
       });
-      expect((await fireNow(bureau, schedule!.id)).status).toBe('completed');
+      const first = await fireNow(bureau, schedule!.id);
+      expect(first.status).toBe('completed');
       // The fire's task settles a little after its workflow does; until then it is a live task.
       await waitUntil(async () => {
         try {
@@ -72,7 +73,8 @@ describe('a schedule’s fire into an archived context', () => {
       expect(after?.conversationHistory.ids).toEqual(before?.conversationHistory.ids);
 
       await bureau.contexts.unarchive(SESSION);
-      expect((await fireNow(bureau, schedule!.id)).status).toBe('completed');
+      const resumed = await fireNow(bureau, schedule!.id);
+      expect(resumed.status).toBe('completed');
       const continued = await bureau.contexts.get(SESSION);
       expect(continued!.conversationHistory.ids.length).toBeGreaterThan(
         before!.conversationHistory.ids.length,

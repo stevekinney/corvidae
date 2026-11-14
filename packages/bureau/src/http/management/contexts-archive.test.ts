@@ -34,6 +34,9 @@ import {
 
 const agent = createAgent({ name: 'agent', generate: answering() });
 
+/** The prefix of a session body's storage key. */
+const SESSION_BODY_KEY = 'agent-session-v2:body:';
+
 async function withBureau<T>(
   body: (opened: OpenedBureau) => Promise<T>,
   options: Parameters<typeof openBureau>[0] = {},
@@ -58,26 +61,52 @@ const archive = (opened: OpenedBureau, contextId: string, key = 'alice-key') =>
 const unarchive = (opened: OpenedBureau, contextId: string, key = 'alice-key') =>
   rpc(opened.handler, 'bureau.contexts.unarchive', { contextId }, key);
 
-const getOf = (opened: OpenedBureau, contextId: string, key = 'alice-key') =>
-  rpc(opened.handler, 'bureau.contexts.get', { contextId }, key);
+/** What `bureau.contexts.get` answers for alice. */
+async function detailOf(opened: OpenedBureau, contextId: string): Promise<Record<string, unknown>> {
+  const body = await rpc(opened.handler, 'bureau.contexts.get', { contextId }, 'alice-key');
+  expect(body.error).toBeUndefined();
+  return body.result ?? {};
+}
 
-const listOf = async (
-  opened: OpenedBureau,
-  params: Record<string, unknown> = {},
-  key = 'alice-key',
-) => {
-  const body = await rpc(opened.handler, 'bureau.contexts.list', params, key);
-  return body.result as {
-    contexts: { id: string; archivedAt: string | null }[];
-    nextOffset: number | null;
-  };
+/** The `archivedAt` `bureau.contexts.get` answers for alice. */
+async function archivedAtOf(opened: OpenedBureau, contextId: string): Promise<unknown> {
+  const detail = await detailOf(opened, contextId);
+  return detail['archivedAt'];
+}
+
+type ContextPage = {
+  contexts: { id: string; archivedAt: string | null }[];
+  nextOffset: number | null;
 };
+
+async function listOf(opened: OpenedBureau, params: Record<string, unknown> = {}) {
+  const body = await rpc(opened.handler, 'bureau.contexts.list', params, 'alice-key');
+  return body.result as ContextPage;
+}
+
+async function listedIds(opened: OpenedBureau, params: Record<string, unknown> = {}) {
+  const page = await listOf(opened, params);
+  return page.contexts.map((context) => context.id);
+}
+
+/** The session as the store holds it. */
+async function storedSession(opened: OpenedBureau, contextId: string) {
+  const session = await opened.bureau.contexts.get(contextId);
+  if (session === undefined) throw new Error(`No session "${contextId}"`);
+  return session;
+}
 
 /** The fault an archived context answers new work with. */
 function expectArchivedFault(body: RpcBody): void {
   expect(body.result).toBeUndefined();
   expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason: 'context-archived' });
   expect(body.error?.data?.httpStatus).not.toBe(404);
+}
+
+/** The fault a context with a live task answers an archive with. */
+function expectBusyFault(body: RpcBody): void {
+  expect(body.result).toBeUndefined();
+  expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason: 'context-busy' });
 }
 
 describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
@@ -89,7 +118,7 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
   it('records when the context was archived, shows it in get and list, and takes it away again', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened, 'the opening question');
-      expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBeNull();
+      expect(await archivedAtOf(opened, run.contextId)).toBeNull();
 
       const archived = await archive(opened, run.contextId);
 
@@ -100,20 +129,19 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
       });
       const archivedAt = archived.result?.['archivedAt'] as string;
       expect(Number.isNaN(Date.parse(archivedAt))).toBe(false);
-      expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBe(archivedAt);
-      expect((await listOf(opened)).contexts).toEqual([
-        expect.objectContaining({ id: run.contextId, archivedAt }),
-      ]);
+      expect(await archivedAtOf(opened, run.contextId)).toBe(archivedAt);
+      const page = await listOf(opened);
+      expect(page.contexts).toEqual([expect.objectContaining({ id: run.contextId, archivedAt })]);
       // Durable: the session's own metadata holds it.
-      const stored = await opened.bureau.contexts.get(run.contextId);
-      expect(stored?.metadata[SESSION_ARCHIVED_AT_METADATA_KEY]).toBe(archivedAt);
+      const stored = await storedSession(opened, run.contextId);
+      expect(stored.metadata[SESSION_ARCHIVED_AT_METADATA_KEY]).toBe(archivedAt);
 
       const unarchived = await unarchive(opened, run.contextId);
 
       expect(unarchived.result).toEqual({ id: run.contextId, changed: true, archivedAt: null });
-      expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBeNull();
-      const after = await opened.bureau.contexts.get(run.contextId);
-      expect(Object.keys(after!.metadata)).not.toContain(SESSION_ARCHIVED_AT_METADATA_KEY);
+      expect(await archivedAtOf(opened, run.contextId)).toBeNull();
+      const after = await storedSession(opened, run.contextId);
+      expect(Object.keys(after.metadata)).not.toContain(SESSION_ARCHIVED_AT_METADATA_KEY);
     });
   });
 
@@ -142,40 +170,35 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
     await withBureau(async (opened) => {
       const older = await finishedSession(opened, 'older');
       const newer = await finishedSession(opened, 'newer');
-      const before = await getOf(opened, older.contextId);
+      const before = await detailOf(opened, older.contextId);
 
       await archive(opened, older.contextId);
-      const archived = await getOf(opened, older.contextId);
+      const archived = await detailOf(opened, older.contextId);
       await unarchive(opened, older.contextId);
-      const unarchived = await getOf(opened, older.contextId);
+      const unarchived = await detailOf(opened, older.contextId);
 
-      expect(archived.result?.['updatedAt']).toBe(before.result?.['updatedAt']);
-      expect(unarchived.result?.['updatedAt']).toBe(before.result?.['updatedAt']);
+      expect(archived['updatedAt']).toBe(before['updatedAt']);
+      expect(unarchived['updatedAt']).toBe(before['updatedAt']);
       await archive(opened, older.contextId);
-      const ids = (await listOf(opened)).contexts.map((context) => context.id);
-      expect(ids).toEqual([newer.contextId, older.contextId]);
+      expect(await listedIds(opened)).toEqual([newer.contextId, older.contextId]);
     });
   });
 
   it('lists every context by default and for include, filters for exclude and only, and pages after filtering', async () => {
     await withBureau(async (opened) => {
-      const runs = [];
-      for (const message of ['one', 'two', 'three', 'four', 'five'])
-        runs.push(await finishedSession(opened, message));
+      const ids: string[] = [];
+      for (const message of ['one', 'two', 'three', 'four', 'five']) {
+        const run = await finishedSession(opened, message);
+        ids.push(run.contextId);
+      }
       // Newest first: five, four, three, two, one. Archive four and two.
-      const [one, two, three, four, five] = runs.map((run) => run.contextId) as [
-        string,
-        string,
-        string,
-        string,
-        string,
-      ];
+      const [one, two, three, four, five] = ids as [string, string, string, string, string];
       await archive(opened, four);
       await archive(opened, two);
-      const idsOf = (page: { contexts: { id: string }[] }) => page.contexts.map((row) => row.id);
+      const idsOf = (page: ContextPage) => page.contexts.map((row) => row.id);
 
-      expect(idsOf(await listOf(opened))).toEqual([five, four, three, two, one]);
-      expect(idsOf(await listOf(opened, { archived: 'include' }))).toEqual([
+      expect(await listedIds(opened)).toEqual([five, four, three, two, one]);
+      expect(await listedIds(opened, { archived: 'include' })).toEqual([
         five,
         four,
         three,
@@ -195,10 +218,7 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
       expect(idsOf(secondArchived)).toEqual([two]);
       expect(secondArchived.nextOffset).toBeNull();
       // The activity filter reads the same filtered index.
-      expect(idsOf(await listOf(opened, { archived: 'only', activity: 'idle' }))).toEqual([
-        four,
-        two,
-      ]);
+      expect(await listedIds(opened, { archived: 'only', activity: 'idle' })).toEqual([four, two]);
       const refused = await rpc(
         opened.handler,
         'bureau.contexts.list',
@@ -218,25 +238,23 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
       try {
         const run = await finishedSession(first, 'before the restart');
         contextId = run.contextId;
-        archivedAt = (await archive(first, contextId)).result?.['archivedAt'];
+        const archived = await archive(first, contextId);
+        archivedAt = archived.result?.['archivedAt'];
       } finally {
         await first.dispose();
       }
 
       const second = await openBureau({ agents: { agent }, storage: fixture.storage });
       try {
-        expect((await getOf(second, contextId)).result?.['archivedAt']).toBe(archivedAt);
-        expect((await listOf(second, { archived: 'only' })).contexts.map((row) => row.id)).toEqual([
-          contextId,
-        ]);
-        expect(
-          await rejectionOf(
-            second.bureau.tasks.start('agent', 'after the restart', {
-              contextId,
-              principal: OWNER.alice,
-            }),
-          ),
-        ).toBeInstanceOf(ContextArchivedError);
+        expect(await archivedAtOf(second, contextId)).toBe(archivedAt);
+        expect(await listedIds(second, { archived: 'only' })).toEqual([contextId]);
+        const refusal = await rejectionOf(
+          second.bureau.tasks.start('agent', 'after the restart', {
+            contextId,
+            principal: OWNER.alice,
+          }),
+        );
+        expect(refusal).toBeInstanceOf(ContextArchivedError);
       } finally {
         await second.dispose();
       }
@@ -275,7 +293,7 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
           JSON.stringify(missing).replaceAll('no-such-context', '<id>'),
         );
       }
-      expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBeNull();
+      expect(await archivedAtOf(opened, run.contextId)).toBeNull();
     });
   });
 
@@ -291,12 +309,9 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
         'id',
       ]);
       expect(JSON.stringify(archived)).not.toContain('alice’s');
-      expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBe(
-        archived.result?.['archivedAt'],
-      );
-      expect((await unarchive(opened, run.contextId, 'contexts-writer-key')).result).toMatchObject({
-        changed: true,
-      });
+      expect(await archivedAtOf(opened, run.contextId)).toBe(archived.result?.['archivedAt']);
+      const unarchived = await unarchive(opened, run.contextId, 'contexts-writer-key');
+      expect(unarchived.result).toMatchObject({ changed: true });
     });
   });
 
@@ -312,21 +327,18 @@ describe('bureau.contexts.archive and bureau.contexts.unarchive', () => {
             },
       );
 
-      expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBeNull();
-      expect((await listOf(opened, { archived: 'only' })).contexts).toEqual([]);
+      expect(await archivedAtOf(opened, run.contextId)).toBeNull();
+      expect(await listedIds(opened, { archived: 'only' })).toEqual([]);
       const next = await opened.bureau.tasks.start('agent', 'still open', {
         contextId: run.contextId,
         principal: OWNER.alice,
       });
       await waitForTaskState(opened.bureau, next.id);
       // An unarchive clears the malformed value, and says nothing was archived.
-      expect((await unarchive(opened, run.contextId)).result).toEqual({
-        id: run.contextId,
-        changed: false,
-        archivedAt: null,
-      });
-      const session = await opened.bureau.contexts.get(run.contextId);
-      expect(Object.keys(session!.metadata)).not.toContain(SESSION_ARCHIVED_AT_METADATA_KEY);
+      const unarchived = await unarchive(opened, run.contextId);
+      expect(unarchived.result).toEqual({ id: run.contextId, changed: false, archivedAt: null });
+      const session = await storedSession(opened, run.contextId);
+      expect(Object.keys(session.metadata)).not.toContain(SESSION_ARCHIVED_AT_METADATA_KEY);
     });
   });
 });
@@ -336,7 +348,7 @@ describe('an archived context', () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened, 'first');
       await archive(opened, run.contextId);
-      const before = await opened.bureau.contexts.get(run.contextId);
+      const before = await storedSession(opened, run.contextId);
 
       const refusal = await rejectionOf(
         opened.bureau.tasks.start('agent', 'second', {
@@ -347,9 +359,9 @@ describe('an archived context', () => {
 
       expect(refusal).toBeInstanceOf(ContextArchivedError);
       expect(refusal).toMatchObject({ code: 'CONFLICT', reason: 'context-archived' });
-      const after = await opened.bureau.contexts.get(run.contextId);
-      expect(after?.revision).toBe(before?.revision);
-      expect(after?.conversationHistory.ids).toEqual(before?.conversationHistory.ids);
+      const after = await storedSession(opened, run.contextId);
+      expect(after.revision).toBe(before.revision);
+      expect(after.conversationHistory.ids).toEqual(before.conversationHistory.ids);
 
       await unarchive(opened, run.contextId);
       const resumed = await opened.bureau.tasks.start('agent', 'second', {
@@ -357,7 +369,7 @@ describe('an archived context', () => {
         principal: OWNER.alice,
       });
       await waitForTaskState(opened.bureau, resumed.id);
-      expect((await opened.bureau.tasks.detail(resumed.id))?.status).toBe('completed');
+      expect(opened.bureau.tasks.detail(resumed.id)?.status).toBe('completed');
     });
   });
 
@@ -400,7 +412,7 @@ describe('an archived context', () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened, 'first');
       await archive(opened, run.contextId);
-      const before = await opened.bureau.contexts.get(run.contextId);
+      const before = await storedSession(opened, run.contextId);
 
       expectArchivedFault(
         await rpc(
@@ -425,14 +437,16 @@ describe('an archived context', () => {
           {
             contextId: run.contextId,
             commandId: 'regenerate-1',
-            messageId: before!.conversationHistory.ids.at(-1),
+            messageId: before.conversationHistory.ids.at(-1),
           },
           'alice-key',
         ),
       );
-      const after = await opened.bureau.contexts.get(run.contextId);
-      expect(after?.revision).toBe(before?.revision);
-      expect((await getOf(opened, run.contextId)).result?.['configVersion']).toBe(0);
+      const after = await storedSession(opened, run.contextId);
+      expect(after.revision).toBe(before.revision);
+      const detail = await detailOf(opened, run.contextId);
+      expect(detail['configVersion']).toBe(0);
+      expect(detail['permissionMode']).toBe('on-changes');
     });
   });
 
@@ -465,28 +479,24 @@ describe('an archived context', () => {
       const call = (method: string, params: Record<string, unknown>) =>
         rpc(opened.handler, method, { contextId: run.contextId, ...params }, 'alice-key');
 
-      expect((await call('bureau.contexts.get', {})).error).toBeUndefined();
-      expect((await call('bureau.contexts.window', {})).error).toBeUndefined();
-      expect((await call('bureau.contexts.rename', { title: 'Old trip' })).result).toMatchObject({
-        title: 'Old trip',
-      });
-      expect(
-        (await call('bureau.contexts.forgetgrants', { tools: ['charge-card'] })).result,
-      ).toEqual({ forgotten: [] });
+      const read = await call('bureau.contexts.get', {});
+      expect(read.error).toBeUndefined();
+      expect(read.result?.['archivedAt']).toEqual(expect.any(String));
+      const window = await call('bureau.contexts.window', {});
+      expect(window.error).toBeUndefined();
+      const renamed = await call('bureau.contexts.rename', { title: 'Old trip' });
+      expect(renamed.result).toMatchObject({ title: 'Old trip' });
+      const forgotten = await call('bureau.contexts.forgetgrants', { tools: ['charge-card'] });
+      expect(forgotten.result).toEqual({ forgotten: [] });
       const fork = await call('bureau.contexts.fork', {
         commandId: 'fork-1',
         throughMessageId: null,
       });
       expect(fork.error).toBeUndefined();
       // The fork is a new context, and is not born archived.
-      const forkId = fork.result?.['contextId'] as string;
-      expect((await getOf(opened, forkId)).result?.['archivedAt']).toBeNull();
-      expect((await call('bureau.contexts.get', {})).result?.['archivedAt']).toEqual(
-        expect.any(String),
-      );
-      expect((await call('bureau.contexts.delete', {})).result).toMatchObject({
-        receipt: 'applied',
-      });
+      expect(await archivedAtOf(opened, fork.result?.['contextId'] as string)).toBeNull();
+      const deleted = await call('bureau.contexts.delete', {});
+      expect(deleted.result).toMatchObject({ receipt: 'applied' });
     });
   });
 });
@@ -501,19 +511,17 @@ describe('archiving a context with a live task', () => {
           'the run started',
         );
 
-        const body = await archive(opened, run.contextId);
+        expectBusyFault(await archive(opened, run.contextId));
 
-        expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason: 'context-busy' });
-        expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBeNull();
-        expect(await rejectionOf(opened.bureau.contexts.archive(run.contextId))).toBeInstanceOf(
-          ContextBusyError,
-        );
+        expect(await archivedAtOf(opened, run.contextId)).toBeNull();
+        const refusal = await rejectionOf(opened.bureau.contexts.archive(run.contextId));
+        expect(refusal).toBeInstanceOf(ContextBusyError);
       },
       { generate: parkingUntilAborted },
     );
   });
 
-  it('is refused as context-busy while a task waits on an approval, and goes through once it is stopped', async () => {
+  it('is refused as context-busy while a task waits on an approval, and goes through once it is answered', async () => {
     const charges: number[] = [];
     await withBureau(
       async (opened) => {
@@ -525,11 +533,9 @@ describe('archiving a context with a live task', () => {
           'the approval became pending',
         );
 
-        const body = await archive(opened, run.contextId);
+        expectBusyFault(await archive(opened, run.contextId));
 
-        expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason: 'context-busy' });
-        expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBeNull();
-
+        expect(await archivedAtOf(opened, run.contextId)).toBeNull();
         const denied = await rpc(
           opened.handler,
           'bureau.tasks.respond',
@@ -546,9 +552,7 @@ describe('archiving a context with a live task', () => {
             });
           return attempt !== undefined;
         }, 'the context could be archived once the approval was answered');
-        expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toEqual(
-          expect.any(String),
-        );
+        expect(await archivedAtOf(opened, run.contextId)).toEqual(expect.any(String));
       },
       { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
     );
@@ -564,10 +568,9 @@ describe('archiving a context with a live task', () => {
           'the question was put to a person',
         );
 
-        const body = await archive(opened, run.contextId);
+        expectBusyFault(await archive(opened, run.contextId));
 
-        expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason: 'context-busy' });
-        expect((await getOf(opened, run.contextId)).result?.['archivedAt']).toBeNull();
+        expect(await archivedAtOf(opened, run.contextId)).toBeNull();
       },
       {
         generate: async () => {
@@ -594,11 +597,11 @@ describe('an archive and a start racing on one context', () => {
   it('refuses a start whose context was archived after the start read it, inside the write that would start the run', async () => {
     let opened: OpenedBureau | undefined;
     let contextId = '';
-    const bodyKey = 'agent-session-v2:body:';
     const interleaver = createStorageInterleaver(
-      (verb, args) => verb === 'get' && String(args[0]).startsWith(bodyKey),
+      (verb, args) => verb === 'get' && String(args[0]).startsWith(SESSION_BODY_KEY),
       async () => {
-        expect(await opened!.bureau.contexts.archive(contextId)).toMatchObject({ changed: true });
+        const archived = await opened!.bureau.contexts.archive(contextId);
+        expect(archived).toMatchObject({ changed: true });
       },
     );
     const fixture = createMemoryStorageFixture({ wrapStorage: (raw) => interleaver.wrap(raw) });
@@ -606,7 +609,7 @@ describe('an archive and a start racing on one context', () => {
       opened = await openBureau({ agents: { agent }, storage: fixture.storage });
       const run = await finishedSession(opened, 'first');
       contextId = run.contextId;
-      const before = await opened.bureau.contexts.get(contextId);
+      const before = await storedSession(opened, contextId);
       interleaver.arm();
 
       const refusal = await rejectionOf(
@@ -614,10 +617,10 @@ describe('an archive and a start racing on one context', () => {
       );
 
       expect(refusal).toBeInstanceOf(ContextArchivedError);
-      const after = await opened.bureau.contexts.get(contextId);
-      expect(after?.conversationHistory.ids).toEqual(before?.conversationHistory.ids);
-      expect(after?.metadata['lastRunId']).toBe(run.id);
-      expect((await getOf(opened, contextId)).result?.['archivedAt']).toEqual(expect.any(String));
+      const after = await storedSession(opened, contextId);
+      expect(after.conversationHistory.ids).toEqual(before.conversationHistory.ids);
+      expect(after.metadata['lastRunId']).toBe(run.id);
+      expect(await archivedAtOf(opened, contextId)).toEqual(expect.any(String));
     } finally {
       await opened?.dispose();
       await fixture.dispose();
@@ -628,13 +631,12 @@ describe('an archive and a start racing on one context', () => {
     let opened: OpenedBureau | undefined;
     let contextId = '';
     let started: { id: string } | undefined;
-    const bodyKey = 'agent-session-v2:body:';
     let bodyReads = 0;
     // The archive reads the body once to decide, then again inside its update: the start lands
     // between the two, after the decision and before the write.
     const interleaver = createStorageInterleaver(
       (verb, args) =>
-        verb === 'get' && String(args[0]).startsWith(bodyKey) && (bodyReads += 1) === 2,
+        verb === 'get' && String(args[0]).startsWith(SESSION_BODY_KEY) && (bodyReads += 1) === 2,
       async () => {
         started = await opened!.bureau.tasks.start('default', 'second', {
           contextId,
@@ -651,7 +653,6 @@ describe('an archive and a start racing on one context', () => {
       });
       const first = await opened.bureau.tasks.start('default', 'first', {
         principal: OWNER.alice,
-        commandId: 'first',
       });
       contextId = first.contextId;
       await waitForCondition(
@@ -661,8 +662,8 @@ describe('an archive and a start racing on one context', () => {
       first.abort('done');
       await waitForTaskState(opened.bureau, first.id);
       await waitForCondition(async () => {
-        const session = await opened!.bureau.contexts.get(contextId);
-        return session?.metadata['lastRunStatus'] !== 'running';
+        const session = await storedSession(opened!, contextId);
+        return session.metadata['lastRunStatus'] !== 'running';
       }, 'the first run’s end was saved');
       interleaver.arm();
 
@@ -671,7 +672,7 @@ describe('an archive and a start racing on one context', () => {
       expect(refusal).toBeInstanceOf(ContextBusyError);
       expect(started).toBeDefined();
       expect(opened.bureau.tasks.detail(started!.id)?.status).toBe('running');
-      expect((await getOf(opened, contextId)).result?.['archivedAt']).toBeNull();
+      expect(await archivedAtOf(opened, contextId)).toBeNull();
     } finally {
       await opened?.dispose();
       await fixture.dispose();
@@ -692,8 +693,8 @@ describe('Bureau.contexts.archive and unarchive', () => {
       expect(
         await opened.bureau.contexts.unarchive(run.contextId, { incarnation: 'another' }),
       ).toBeUndefined();
-      const session = await opened.bureau.contexts.get(run.contextId);
-      expect(session?.metadata[SESSION_ARCHIVED_AT_METADATA_KEY]).toBeUndefined();
+      const session = await storedSession(opened, run.contextId);
+      expect(session.metadata[SESSION_ARCHIVED_AT_METADATA_KEY]).toBeUndefined();
     });
   });
 
@@ -703,12 +704,11 @@ describe('Bureau.contexts.archive and unarchive', () => {
       const run = await finishedSession(opened, 'q');
       await opened.bureau.shutdown();
 
-      expect(await rejectionOf(opened.bureau.contexts.archive(run.contextId))).toBeInstanceOf(
-        BureauShuttingDownError,
-      );
-      expect(await rejectionOf(opened.bureau.contexts.unarchive(run.contextId))).toBeInstanceOf(
-        BureauShuttingDownError,
-      );
+      const archiving = await rejectionOf(opened.bureau.contexts.archive(run.contextId));
+      const unarchiving = await rejectionOf(opened.bureau.contexts.unarchive(run.contextId));
+
+      expect(archiving).toBeInstanceOf(BureauShuttingDownError);
+      expect(unarchiving).toBeInstanceOf(BureauShuttingDownError);
     } finally {
       await opened.dispose();
     }
