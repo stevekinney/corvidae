@@ -1800,6 +1800,9 @@
   // Whether the transcript sits where a waiting item's lift put it, and not where the person did.
   // Jump to latest stays hidden then: the lift is the end of what there is to read (C#7).
   let attentionLifted = $state(false);
+  // Whether Jump to latest is drawn. The transcript gives up the band the button floats in while
+  // it shows, so the button never lies on a line of text; the band is not there otherwise.
+  const jumpButtonShown = $derived(scrollState.showJumpButton && !attentionLifted);
   $effect(() => {
     const scroller = viewport;
     if (scroller === null || typeof ResizeObserver === 'undefined') return undefined;
@@ -2405,6 +2408,7 @@
     data-cinder-density={density}
     data-cinder-variant={variant}
     data-composer-placement={composerCentered ? 'centered' : 'docked'}
+    data-jump-visible={jumpButtonShown ? '' : undefined}
     role="region"
     aria-label="Chat conversation"
     onkeydown={handleKeyDown}
@@ -2884,7 +2888,7 @@
     <!-- Input Area with Jump Buttons -->
     <div class="chat-input-wrapper" style:display={composerHidden ? 'none' : undefined}>
       <ChatJumpControls
-        showJumpButton={scrollState.showJumpButton && !attentionLifted}
+        showJumpButton={jumpButtonShown}
         hasNewMessageIndicator={unreadState.newMessageIndicatorVisible}
         unreadCount={unreadState.unreadCount}
         displayUnreadCount={unreadState.displayUnreadCount}
@@ -3089,6 +3093,21 @@
 
   .chat-container[data-surface-mode='transparent'] {
     background: transparent;
+  }
+
+  /* Jump to latest floats over the transcript's bottom edge: its painted size and the space above
+   * the composer are named here, for the button (chat-jump-controls.svelte) and for the band the
+   * transcript gives up while it shows, so the one reads what the other draws. */
+  .chat-container {
+    --_cinder-chat-jump-size: 2rem;
+    --_cinder-chat-jump-offset: var(--cinder-space-2);
+  }
+
+  /* While the button shows, the transcript ends above it: a line scrolled to the bottom edge is
+   * cut there, never drawn under the button. The viewport's top and the scroll position do not
+   * move, so the reader's place holds; with the button hidden there is no band. */
+  .chat-container[data-jump-visible] > .chat-timeline {
+    margin-block-end: calc(var(--_cinder-chat-jump-size) + var(--_cinder-chat-jump-offset));
   }
 
   /* ==========================================================================

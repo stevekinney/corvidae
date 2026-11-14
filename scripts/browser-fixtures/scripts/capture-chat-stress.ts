@@ -734,7 +734,11 @@ export function measureInPage(options: {
           box.left < inside.left - 1 ||
           box.right > inside.right + 1 ||
           box.top < inside.top - 1 ||
-          box.bottom > inside.bottom + 1 ||
+          // The transcript gives up a band under it, of the button's size and offset, while the
+          // button shows: the button stands in that band, so its limit is the transcript's box
+          // and the band's margin.
+          box.bottom >
+            inside.bottom + (parseFloat(transcriptStyle?.marginBottom ?? '0') || 0) + 1 ||
           covered.some((element) => meets(element.getBoundingClientRect()))
         );
       })(),
@@ -2262,6 +2266,7 @@ async function measure(
   }
   problems.push(...(await readActionRowProblems(opened.page)));
   problems.push(...(await readComposerNoticeProblems(opened.page)));
+  problems.push(...(await readJumpOverlapProblems(opened.page)));
   problems.push(...(await readLabelFitProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
   const insets = await readCalloutInsets(opened.page);
@@ -3771,6 +3776,63 @@ export async function readComposerNoticeProblems(page: Page): Promise<string[]> 
           problems.push(
             `the ${name} notice's ink stands ${Math.round(above * 10) / 10}px under its top border and ${Math.round(below * 10) / 10}px over its bottom one`,
           );
+        }
+      }
+    }
+    return problems;
+  });
+}
+
+/**
+ * Measures that Jump to latest lies on no text of the transcript at rest: no drawn line of a word
+ * that shows inside the transcript's own box is met by the painted circle of the button. A word is
+ * a line rectangle of its text and the button a circle, so a line that only shares a corner of the
+ * button's box passes, and a word under the button (the duration of a step row) fails.
+ *
+ * @param page - The captured page
+ */
+export async function readJumpOverlapProblems(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const problems: string[] = [];
+    const transcript = document.querySelector<HTMLElement>('.chat-timeline');
+    const button = [...document.querySelectorAll<HTMLElement>('.chat-jump-button')].find(
+      (candidate) => {
+        const style = getComputedStyle(candidate);
+        const box = candidate.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0;
+      },
+    );
+    if (transcript === null || button === undefined) return problems;
+    const visible = transcript.getBoundingClientRect();
+    const circle = button.getBoundingClientRect();
+    const radius = Math.min(circle.width, circle.height) / 2;
+    const centreX = circle.left + circle.width / 2;
+    const centreY = circle.top + circle.height / 2;
+    const walker = document.createTreeWalker(transcript, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const holder = node.parentElement;
+      const words = (node.textContent ?? '').trim();
+      if (holder === null || words === '') continue;
+      if (holder.closest('[hidden], [aria-hidden="true"], .cinder-sr-only, script, style'))
+        continue;
+      const style = getComputedStyle(holder);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+        continue;
+      }
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) {
+        const left = Math.max(rect.left, visible.left);
+        const right = Math.min(rect.right, visible.right);
+        const top = Math.max(rect.top, visible.top);
+        const bottom = Math.min(rect.bottom, visible.bottom);
+        if (right - left <= 0 || bottom - top <= 0) continue;
+        const nearestX = Math.min(Math.max(centreX, left), right);
+        const nearestY = Math.min(Math.max(centreY, top), bottom);
+        const depth = radius - Math.hypot(centreX - nearestX, centreY - nearestY);
+        if (depth > 1) {
+          problems.push(`Jump to latest lies on the text "${words.slice(0, 40)}"`);
+          break;
         }
       }
     }

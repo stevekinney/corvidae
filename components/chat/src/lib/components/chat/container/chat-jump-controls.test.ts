@@ -43,25 +43,41 @@ describe('Jump to latest on a phone', () => {
     unmount(instance);
   });
 
-  test('floats over the transcript without a band, painted 32 px with a 44 px hit area', () => {
+  test('floats above the composer with no height of its own, painted 32 px with a 44 px hit area', () => {
     expect(controls).toMatch(
       /\.chat-jump-dock\s*\{[^}]*position: absolute;[^}]*inset-block-end: calc\(100%/,
     );
-    expect(controls).toMatch(/\.chat-jump-button\s*\{[^}]*width: 2rem;[^}]*height: 2rem;/);
+    expect(controls).toMatch(
+      /\.chat-jump-button\s*\{[^}]*width: var\(--_cinder-chat-jump-size, 2rem\);[^}]*height: var\(--_cinder-chat-jump-size, 2rem\);/,
+    );
     expect(controls).toMatch(
       /\.chat-jump-button::before\s*\{[^}]*position: absolute;[^}]*inset: calc\([^;]*- 1px\);/,
     );
     // The trailing inset holds the hit area's overhang past the painted button, so a chat that
     // clips or ends at its edge never cuts the 44 px area.
     expect(controls).toMatch(
-      /\.chat-jump-dock\[data-jump-latest\]\s*\{[^}]*padding-inline-end: calc\(\(var\(--cinder-touch-target-min\) - 2rem\) \/ 2 \+ var\(--cinder-space-1\)\);/,
+      /\.chat-jump-dock\[data-jump-latest\]\s*\{[^}]*padding-inline-end: calc\(\s*\(var\(--cinder-touch-target-min\) - var\(--_cinder-chat-jump-size, 2rem\)\) \/ 2 \+\s*var\(--cinder-space-1\)\s*\);/,
     );
+    // The transcript gives up the band the button floats in, from the same two properties the
+    // button reads, only while the button shows.
+    expect(chat).toMatch(
+      /\.chat-container\s*\{\s*--_cinder-chat-jump-size: 2rem;\s*--_cinder-chat-jump-offset: var\(--cinder-space-2\);\s*\}/,
+    );
+    expect(chat).toMatch(
+      /\.chat-container\[data-jump-visible\] > \.chat-timeline\s*\{\s*margin-block-end: calc\(var\(--_cinder-chat-jump-size\) \+ var\(--_cinder-chat-jump-offset\)\);\s*\}/,
+    );
+    expect(chat).toContain("data-jump-visible={jumpButtonShown ? '' : undefined}");
+    // The band is the button's, never the transcript's own: the plain rule reserves nothing.
+    expect(chat).not.toMatch(/\n\s*\.chat-timeline\s*\{[^}]*margin-block-end/);
     // Nothing moves it back into the flow on a phone, where it would reserve a strip.
     expect(controls).not.toContain('@container (max-width: 30rem)');
   });
 
   test('stays hidden while the transcript sits where a waiting item lifted it', () => {
-    expect(chat).toContain('showJumpButton={scrollState.showJumpButton && !attentionLifted}');
+    expect(chat).toContain(
+      'const jumpButtonShown = $derived(scrollState.showJumpButton && !attentionLifted);',
+    );
+    expect(chat).toContain('showJumpButton={jumpButtonShown}');
     // The lift sets it; only the transcript moving from where the lift left it, or nothing
     // waiting any more, clears it. A press inside the card does not, so the control never comes in
     // under the finger mid-press.

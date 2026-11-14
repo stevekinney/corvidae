@@ -16,6 +16,7 @@ import {
   readFailureSummaryProblems,
   readIconCentreProblems,
   readIconSizeProblems,
+  readJumpOverlapProblems,
   readLabelFitProblems,
   readNarrationFoldProblems,
   readNarrationLineProblems,
@@ -1791,6 +1792,65 @@ describe('chat stress visual measurement', () => {
 
     it('measures nothing on a page with no composer notice', async () => {
       expect(await problemsFor('<p>Nothing.</p>')).toEqual([]);
+    });
+  });
+
+  describe('jump to latest guard', () => {
+    // The real mechanism in miniature: a transcript whose last row ends in a duration at the
+    // trailing edge, the 32px round button floating 8px over the composer at the trailing edge, and
+    // the band the transcript gives up while the button shows.
+    const chat = (parts: { band: boolean; button?: boolean; timelineStyle?: string }): string => `
+      <style>
+        body { margin: 0; font: 13px/20px sans-serif; }
+        .chat-container { position: relative; display: flex; flex-direction: column; inline-size: 300px; block-size: 260px; }
+        .chat-timeline { flex: 1; overflow: hidden; ${parts.band ? 'margin-block-end: calc(32px + 8px);' : ''} ${parts.timelineStyle ?? ''} }
+        .row { display: flex; justify-content: space-between; padding-inline: 12px; }
+        .chat-input-wrapper { position: relative; block-size: 60px; }
+        .chat-jump-button { position: absolute; inset-block-end: calc(100% + 8px); inset-inline-end: 6px;
+          inline-size: 32px; block-size: 32px; border-radius: 50%; padding: 0; }
+      </style>
+      <div class="chat-container">
+        <div class="chat-timeline">
+          <div class="row"><span>first</span><span>0.1s</span></div>
+          <div style="block-size: 150px"></div>
+          <div class="row"><span>RequestHumanInput</span><span>0.0s</span></div>
+          <div class="row"><span>a row past the edge</span><span>9.9s</span></div>
+        </div>
+        <div class="chat-input-wrapper">${parts.button === false ? '' : '<button class="chat-jump-button" aria-label="Jump to latest"></button>'}</div>
+      </div>`;
+
+    const problemsFor = async (markup: string): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+        await page.setContent(markup);
+        return await readJumpOverlapProblems(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a transcript that ends above the button, with a row cut at its edge', async () => {
+      expect(await problemsFor(chat({ band: true }))).toEqual([]);
+    });
+
+    it('fails the button lying on the duration of the last row, with no band reserved', async () => {
+      expect(await problemsFor(chat({ band: false }))).toEqual([
+        'Jump to latest lies on the text "0.0s"',
+      ]);
+    });
+
+    it('passes no button at all', async () => {
+      expect(await problemsFor(chat({ band: false, button: false }))).toEqual([]);
+    });
+
+    it('passes a word beside the button, clear of its circle', async () => {
+      // The word ends 40px short of the trailing edge, left of the button's box.
+      const beside = chat({ band: false }).replace(
+        '<span>0.0s</span>',
+        '<span style="margin-inline-end: 40px">0.0s</span>',
+      );
+      expect(await problemsFor(beside)).toEqual([]);
     });
   });
 
