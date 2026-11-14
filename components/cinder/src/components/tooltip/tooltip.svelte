@@ -23,6 +23,7 @@
   import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
   import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
+  import { setTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
   import { createPortalAttachment } from '../portal/index.ts';
@@ -35,6 +36,10 @@
     triggerRef = null,
     children,
   }: TooltipProps = $props();
+
+  // The wrapped trigger knows it has a tooltip, so a control that names itself in its own tooltip
+  // (CopyButton) does not draw a second one inside this one.
+  setTooltipTriggerContext();
 
   /**
    * Anchor-by-reference mode: the consumer owns the trigger's placement, so the

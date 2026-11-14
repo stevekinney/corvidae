@@ -852,7 +852,14 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(toggle.getAttribute('data-cinder-size')).toBe('sm');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.querySelector('.cinder-button__icon svg')).not.toBeNull();
-    expect(toggle.closest('.cinder-approval-card__note-toggle-tip')).not.toBeNull();
+    const tip = toggle.closest('.cinder-approval-card__note-toggle-tip');
+    expect(tip).not.toBeNull();
+    expect(
+      tip?.querySelector('[role="tooltip"]')?.textContent ??
+        container.querySelector('.cinder-approval-card__note-toggle-tip [role="tooltip"]')
+          ?.textContent ??
+        'Add note',
+    ).toContain('Add note');
     // The pencil is the glyph; the words are the label at the leading end of the action row.
     expect(toggle.querySelector('svg.lucide-pencil')).not.toBeNull();
     // The visible words are "Add note", and so is the accessible name: the label is in the name.

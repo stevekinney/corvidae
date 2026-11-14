@@ -312,6 +312,7 @@
                 height={bar.height}
                 fill={bar.color}
                 aria-hidden="true"
+                data-cinder-rounded-end={bar.roundedEnd}
                 data-cinder-series={bar.seriesId}
                 data-cinder-category={bar.categoryLabel}
                 data-cinder-active={interaction.activeTarget?.seriesId === bar.seriesId &&

@@ -47,24 +47,36 @@
     font-size: var(--cinder-text-2xs);
   }
 
-  /* A shortcut hint inside a Button (the `shortcut` prop or hand-written markup) is plain glyphs in
- * the button's own text color on every variant: no border, fill, shadow, or key-cap chip. The rule
- * names the Button, never a variant, so a new variant gets it too. The extra attribute selector
- * outranks the size rules above; the button's color is theme-aware, so both themes stay legible. */
+  /* A shortcut hint inside a Button (the `shortcut` prop or hand-written markup) is a quiet key chip
+ * on every variant, so it reads as a key to press and not as part of the label: a wash of the
+ * button's own text colour (14%) behind each key, a small radius and tight padding, and no border,
+ * so it is not a box in a box. The key's glyphs keep the button's text colour at full strength,
+ * so they keep the label's contrast; the chip itself is decoration and carries no contrast duty.
+ * Its height is set in `em` of its own smaller type, shorter than the line of every button size,
+ * so it never makes a button taller. The rule names the Button, never a variant, so a new variant
+ * gets it too; the extra attribute selector outranks the size rules above. */
   .cinder-button .cinder-kbd,
   .cinder-button .cinder-kbd[data-cinder-size] {
-    min-width: 0;
-    height: auto;
-    padding: 0;
+    min-width: 1.6em;
+    height: 1.6em;
+    padding: 0 0.4em;
     font-family: inherit;
-    font-size: var(--cinder-text-xs);
-    font-weight: inherit;
+    font-size: var(--cinder-text-2xs);
+    font-weight: var(--cinder-font-medium);
+    line-height: 1;
     color: inherit;
-    background: transparent;
+    background: color-mix(in oklch, currentColor 14%, transparent);
     border: 0;
-    border-radius: 0;
+    border-radius: var(--cinder-radius-sm);
     box-shadow: none;
-    opacity: 0.72;
+  }
+
+  /* Forced colours drop the wash, so each key keeps a 1px edge in the button's text colour. */
+  @media (forced-colors: active) {
+    .cinder-button .cinder-kbd,
+    .cinder-button .cinder-kbd[data-cinder-size] {
+      border: 1px solid currentColor;
+    }
   }
 
   .cinder-button .cinder-shortcut-hint__separator,

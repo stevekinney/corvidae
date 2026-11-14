@@ -92,4 +92,15 @@ export const COLOR_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-chart-series-8',
     ],
   },
+  {
+    slug: 'chart-ramp',
+    headings: ['## Chart ramp'],
+    cssProperties: [
+      '--cinder-chart-ramp-low',
+      '--cinder-chart-ramp-high',
+      '--cinder-chart-ramp-negative',
+      '--cinder-chart-ramp-neutral',
+      '--cinder-chart-ramp-positive',
+    ],
+  },
 ]);

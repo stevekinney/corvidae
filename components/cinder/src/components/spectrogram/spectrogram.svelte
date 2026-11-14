@@ -33,6 +33,7 @@
   import {
     heatmapCellFill,
     heatmapDomainOfRows,
+    heatmapRamp,
     toFiniteOrNull,
   } from '../../_internal/chart/heatmap-utilities.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -122,14 +123,11 @@
   // grid never materializes a full flattened copy of every bin.
   const domain = $derived(heatmapDomainOfRows(frames.map((frame) => frame.bins)));
 
+  // Cinder's shared ramp tokens, the same as MatrixChart's, unless the page passes its own palette.
+  const ramp = $derived(heatmapRamp(theme?.palette, theme?.background));
+
   function cellFill(value: number | null): string {
-    return heatmapCellFill(
-      value,
-      domain,
-      'sequential',
-      resolvedTheme.palette,
-      theme?.background ?? 'var(--cinder-surface-inset)',
-    );
+    return heatmapCellFill(value, domain, 'sequential', ramp);
   }
 
   // Convert a bin index to a y-coordinate. Frequency increases UPWARD (the audio

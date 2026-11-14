@@ -30,18 +30,23 @@
     stroke-width: 1.5;
   }
 
+  /* A cell with no value is the page canvas inside a hairline, so it never reads as the lowest
+   * value. The hairline sits inside the cell's gap stroke. */
+  .cinder-matrix-chart__cell[data-cinder-empty] {
+    stroke: var(--cinder-border);
+    stroke-width: 1;
+  }
+
   .cinder-matrix-chart__cell[data-cinder-active] {
     filter: brightness(1.15);
     stroke-width: 3;
   }
 
-  .cinder-matrix-chart__cell-group {
-    isolation: isolate;
-  }
-
+  /* A cell's number is black or white, whichever keeps 4.5:1 on its own cell (the fill is set from
+   * the cell's luminance), in tabular figures so a column of numbers lines up. */
   .cinder-matrix-chart__cell-label {
     font-size: var(--cinder-text-xs);
-    mix-blend-mode: difference;
+    font-variant-numeric: tabular-nums;
     pointer-events: none;
   }
 

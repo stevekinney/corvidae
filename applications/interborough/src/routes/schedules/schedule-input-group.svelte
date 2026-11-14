@@ -36,7 +36,6 @@
         <Segment value="json">{copy.json}</Segment>
       </SegmentedControl>
       <CopyButton
-        iconOnly
         label={copy.copyInput}
         value={JSON.stringify(input.payload, null, 2)}
         class="ib-schedule-card__copy"

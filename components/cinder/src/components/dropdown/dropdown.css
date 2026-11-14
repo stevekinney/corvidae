@@ -9,7 +9,9 @@
     display: inline-block;
   }
 
-  .cinder-dropdown-trigger {
+  /* The trigger's own bordered face. A trigger drawn as a Button (`variant`, `size`, or inside a
+   * ButtonGroup as a split button) carries `.cinder-button` and takes the Button's face instead. */
+  .cinder-dropdown-trigger:not(.cinder-button) {
     display: inline-flex;
     align-items: center;
     justify-content: center;

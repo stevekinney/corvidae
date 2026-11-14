@@ -22,6 +22,8 @@ Responsive SVG bar chart for grouped or stacked category comparisons.
 <BarChart label="Support ticket volume" {data} categoryKey="week" {series} mode="stacked" />
 ```
 
+A bar is rounded only at its end away from the baseline, and its baseline end is square. A stack reads as one bar: only its outermost visible segment on each side of zero is rounded, so every join between segments is square, and a zero or hidden top segment passes the rounded end to the next one down. A custom `mark` receives each bar's `roundedEnd`.
+
 ## Guidance
 
 ### Use When

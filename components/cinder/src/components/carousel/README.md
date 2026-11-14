@@ -17,6 +17,8 @@ Composable slide rotator with controls, indicators, keyboard support, and option
 <Carousel {slides} autoplay />
 ```
 
+Previous and Next are chevron buttons in gutters at the inline start and end of the slides, centred on them, so they never cover a slide's words or image, even at a phone's width; they mirror in right to left. Each is named by its words, which also show in a tooltip; `controlLabels` changes them. The page buttons are small dots centred under the slides, the current one a wider accent pill; each keeps a 24px hit area, 44px on a touch screen, without growing the dot.
+
 > **`loop` defaults to `false`.** `Previous`/`Next` clamp and disable at the ends instead of wrapping. Set `loop` to wrap past the first/last slide. Wrapping is seamless only for the **first** cycle through the deck — `slides` is rendered in a rotated physical order (via CSS `order`) starting from the initial `activeIndex`, so the first wrap navigation lines up with an adjacent physical slide. Repeated wraps after that reuse the same rotated order and are not guaranteed to be adjacent, so they animate as a longer traversal rather than a single seamless step.
 
 > **`slidesPerView` and `loop` are mutually exclusive.** Setting `slidesPerView` above `1` while `loop` is also set logs a dev warning and ignores `loop` — wrapping a multi-slide range across the physical-order rotation boundary would leave a partial-width gap. `slidesPerView` above `1` also widens the _active_ range: more than one slide is non-`inert` at once, and the live region announces `"Slides N–M of Total"` instead of a single labelled slide. See `carousel.a11y.md` for the full review.

@@ -181,7 +181,7 @@
       disabled={view.snapshot === undefined || !view.snapshot.refreshable}
       onclick={refresh}>Refresh</Button
     >
-    <CopyButton value={view.snapshot?.snapshot.text ?? ''}>Copy</CopyButton>
+    <CopyButton value={view.snapshot?.snapshot.text ?? ''} label="Copy" textVisible />
     <Button variant="secondary" onclick={() => inspection.downloadExport()}>Download</Button>
     <Button variant="primary" onclick={() => inspection.closeSnapshot()}>Close</Button>
   {/snippet}

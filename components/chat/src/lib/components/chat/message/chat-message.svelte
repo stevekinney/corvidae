@@ -948,7 +948,6 @@
         html={copyHtml}
         {...copyImage ? { image: copyImage } : {}}
         label={transcript ? messageLabels.copy : messageLabels.copyMessage}
-        iconOnly
         copiedLabel={messageLabels.copied}
         confirmDuration={2000}
         class="chat-message-action-button chat-message-copy"
