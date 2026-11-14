@@ -301,6 +301,19 @@ describe('createAttachmentUpload', () => {
     expect(methods).toHaveLength(3);
   });
 
+  test('passes the upload’s progress to Chat’s onProgress, so the tile can draw it', async () => {
+    const { send } = bureau();
+    const upload = createAttachmentUpload(attachmentSettings(media())!, { fetch: send });
+    const progress: number[] = [];
+
+    await upload(file('image/png', MIB + MIB / 2), {
+      signal: new AbortController().signal,
+      onProgress: (fraction) => progress.push(fraction),
+    });
+
+    expect(progress).toEqual([1 / 3, 2 / 3, 1]);
+  });
+
   test('refuses a file over its own type’s limit before calling the Bureau', async () => {
     const { methods, send } = bureau();
     const upload = createAttachmentUpload(attachmentSettings(media())!, { fetch: send });

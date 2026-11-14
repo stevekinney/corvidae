@@ -13,10 +13,16 @@ import {
   type SessionInputRetractionRequest,
   type SessionStore,
   parseSessionInputPayload,
+  sessionArchivedAtOf,
   snapshotPayload,
 } from '@lostgradient/operative';
 import type { BureauCore, SteeringCursor } from './core';
-import { BureauError, BureauShuttingDownError, toBadRequest } from '../bureau-errors';
+import {
+  BureauError,
+  BureauShuttingDownError,
+  ContextArchivedError,
+  toBadRequest,
+} from '../bureau-errors';
 import { CURRENT_SCHEMA_VERSION } from 'conversationalist';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import type { Mailbox } from '@lostgradient/weft';
@@ -259,6 +265,14 @@ export function createSessionInputAdmission<D extends AgentDefinitions>(
       request.principal,
     );
     if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
+    // COR-2285: an archived context takes no input, decided after authorization so another
+    // owner's reads as missing, and before the lifecycle, since an archived context has no run
+    // and would otherwise read as ended. An archive that commits after this read cannot strand
+    // the input: archiving waits for no live run and no run starts in an archived context, so
+    // input admitted meanwhile finds no run to take it and is cancelled below like any other.
+    if (sessionArchivedAtOf(session.metadata) !== null) {
+      throw new ContextArchivedError(sessionId);
+    }
     if (preAdmission.verdict === 'session-terminal') {
       return { outcome: 'session-terminal', sessionId };
     }

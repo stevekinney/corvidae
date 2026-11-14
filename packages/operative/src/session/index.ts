@@ -6,6 +6,8 @@ export {
   summarizeSession,
 } from './create-session-store';
 export { conversationThroughRun } from './run-conversation-boundary';
+export { SESSION_ARCHIVED_AT_METADATA_KEY, sessionArchivedAtOf } from './session-archive';
+export type { SessionArchivedFilter } from './session-archive';
 export {
   ForkIdentifierInUseError,
   ForkThroughMessageError,

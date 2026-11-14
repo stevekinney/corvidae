@@ -17,7 +17,7 @@ import type { Page } from '@playwright/test';
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, pressRecorder, test } from './fixtures.ts';
 
 test.describe('the hooks list states', () => {
   test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
@@ -51,10 +51,14 @@ test.describe('the hooks list states', () => {
   }
 
   /** What `bureau.hooks.list` answers while the page is open: the hooks given, or a fault. */
-  async function answerList(page: Page, answer: readonly unknown[] | { status: number }) {
+  async function answerList(
+    page: Page,
+    answer: readonly unknown[] | { status: number },
+    recovered: () => Promise<boolean> = async () => false,
+  ) {
     await page.route(BUREAU_CALLS, async (route) => {
       const body = route.request().postData() ?? '';
-      if (!body.includes('"bureau.hooks.list"')) {
+      if (!body.includes('"bureau.hooks.list"') || (await recovered())) {
         await route.fallback();
         return;
       }
@@ -239,13 +243,17 @@ test.describe('the hooks list states', () => {
       const main = page.locator('main');
       await expect(main.locator('li[data-hook]')).toHaveCount(5);
 
-      await answerList(page, { status: 500 });
+      // The read keeps failing until Retry now is pressed, so the banner's own countdown cannot
+      // recover it and remove the button under the click.
+      let pressed: () => Promise<boolean> = async () => false;
+      await answerList(page, { status: 500 }, () => pressed());
       // The person comes back to the tab, which reads the list again.
       await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
       const banner = main.getByRole('region', { name: 'Refresh problem' });
       await expect(banner).toBeVisible();
       await expect(banner).toContainText('Showing what loaded as of');
       await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+      pressed = await pressRecorder(page, 'Retry now');
       await expect(banner.getByRole('button', { name: /dismiss/i })).toHaveCount(0);
       // The rows stay at full contrast, links stay live, and what changes something is held.
       await expect(main.locator('li[data-hook]')).toHaveCount(5);
@@ -264,7 +272,6 @@ test.describe('the hooks list states', () => {
       });
       await checkA11y(`hooks failed refresh at ${width}px`);
 
-      await page.unroute(BUREAU_CALLS);
       await banner.getByRole('button', { name: 'Retry now' }).click();
       await expect(banner).toHaveCount(0);
     });

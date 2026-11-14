@@ -177,7 +177,11 @@ function compareStep(
   after: WorkflowFileStep,
   step: number,
 ): WorkflowRevisionChange[] {
-  if (before['kind'] !== after['kind'] || before['handler'] !== after['handler']) {
+  if (
+    before['kind'] !== after['kind'] ||
+    before['handler'] !== after['handler'] ||
+    before['workflow'] !== after['workflow']
+  ) {
     return [{ kind: 'step-replaced', step, breaking: true }];
   }
   const changes: WorkflowRevisionChange[] = [];

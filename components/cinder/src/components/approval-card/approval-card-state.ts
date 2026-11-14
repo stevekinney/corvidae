@@ -1,3 +1,5 @@
+import { tick } from 'svelte';
+
 import {
   formatDateTime,
   formatTimeOfDay,
@@ -270,6 +272,35 @@ export function dedupeFilePaths(paths: string[]): string[] {
   }
 
   return uniquePaths;
+}
+
+/** The title over the touched files: "File touched" for one, "3 files touched" for more. */
+export function describeFilesTouched(count: number): string {
+  return count === 1 ? 'File touched' : `${count} files touched`;
+}
+
+/**
+ * A path split into its directory segments and its file name. Each segment keeps the slash after
+ * it, so the parts written side by side are the path exactly, and a line can break after any
+ * slash. A path that ends in a slash, or has none, is all name.
+ */
+export function splitFilePath(path: string): { directorySegments: string[]; name: string } {
+  const lastSlash = path.lastIndexOf('/');
+  if (lastSlash < 0 || lastSlash === path.length - 1) return { directorySegments: [], name: path };
+  const directorySegments = path
+    .slice(0, lastSlash + 1)
+    .split(/(?<=\/)/u)
+    .filter((segment) => segment !== '');
+  return { directorySegments, name: path.slice(lastSlash + 1) };
+}
+
+/**
+ * Moves focus into the note field once "Add a note" has opened it. The toggle that held focus is
+ * gone by then, so without this the focus would fall back to the page.
+ */
+export async function focusOpenedNote(fieldId: string): Promise<void> {
+  await tick();
+  document.getElementById(fieldId)?.focus();
 }
 
 /** One pair of the input line: a sentence-case label and the value written as text. */

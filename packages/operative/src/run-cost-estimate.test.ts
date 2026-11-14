@@ -19,7 +19,11 @@ import { createRunWorkflow } from './durable/run-workflow';
 import { createRunState, executeLoop } from './loop';
 import { computeCostEstimate } from './run-lifecycle';
 import { accumulateUsage } from './run-step-support';
+import { fixturePricing } from './testing/model-catalog.test-support.ts';
 import type { GenerateResponse, RunOptions, TokenUsage } from './types';
+
+/** Prices passed the way a host passes its own: Operative holds none. */
+const pricing = { customPricing: fixturePricing };
 
 const nextTool = createTool({
   name: 'next',
@@ -45,18 +49,18 @@ function scripted(usages: TokenUsage[]): RunOptions['generate'] {
 }
 
 function sumOfRequests(usages: TokenUsage[], model: string): number {
-  return usages.reduce((sum, usage) => sum + estimateCost(usage, model).totalCost, 0);
+  return usages.reduce((sum, usage) => sum + estimateCost(usage, model, pricing).totalCost, 0);
 }
 
 describe('RunResult.costEstimate', () => {
   it('prices a long-prompt and a short-prompt Haiku 5.5 request each at its own tier', async () => {
-    const model = 'claude-haiku-5-5';
+    const model = 'alpha-small';
     const result = await executeLoop({
       generate: scripted([longPrompt, shortPrompt]),
       toolbox: createTestToolbox([nextTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      costEstimation: { model },
+      costEstimation: { model, pricing },
     });
 
     const expected = sumOfRequests([longPrompt, shortPrompt], model);
@@ -70,16 +74,16 @@ describe('RunResult.costEstimate', () => {
   });
 
   it('leaves a model with no long-context tier unchanged', async () => {
-    const model = 'claude-haiku-4-5';
+    const model = 'alpha-medium';
     const result = await executeLoop({
       generate: scripted([longPrompt, shortPrompt]),
       toolbox: createTestToolbox([nextTool]),
       conversation: new Conversation(),
       stopWhen: noToolCalls(),
-      costEstimation: { model },
+      costEstimation: { model, pricing },
     });
 
-    const aggregate = estimateCost(result.usage, model, undefined, 'aggregate');
+    const aggregate = estimateCost(result.usage, model, pricing, 'aggregate');
     expect(result.costEstimate?.totalCost).toBeCloseTo(aggregate.totalCost, 10);
     expect(result.costEstimate?.promptCost).toBeCloseTo(aggregate.promptCost, 10);
   });
@@ -97,7 +101,7 @@ describe('RunResult.costEstimate', () => {
 
 describe('durable run costEstimate', () => {
   it('keeps the accumulated per-request cost across a checkpoint round trip', async () => {
-    const model = 'claude-haiku-5-5';
+    const model = 'alpha-small';
     const storage = new MemoryStorage();
     const checkpointStore = createCheckpointStore(
       textValueStore(storage, { disposeUnderlyingStorage: false }),
@@ -113,7 +117,7 @@ describe('durable run costEstimate', () => {
         toolbox: createTestToolbox([nextTool]),
         conversation: createConversationHistory(),
         stopWhen: noToolCalls(),
-        costEstimation: { model },
+        costEstimation: { model, pricing },
       };
       await startDurableRunResult(
         { engine, checkpointStore },
@@ -126,7 +130,7 @@ describe('durable run costEstimate', () => {
 
       const reading = await readDurableRunResult({ engine, checkpointStore }, 'tiered', {
         runtime: createDefaultRuntimeServices(),
-        costEstimation: { model },
+        costEstimation: { model, pricing },
       });
       expect(reading.status).toBe('completed');
       if (reading.status !== 'completed') return;
@@ -138,45 +142,50 @@ describe('durable run costEstimate', () => {
 });
 
 describe('resuming from a checkpoint written before costs were accumulated', () => {
-  const model = 'claude-haiku-5-5';
+  const model = 'alpha-small';
   const prior: TokenUsage = { prompt: 150_000, completion: 4_000, total: 154_000 };
 
   it('keeps the spend that came before the resume', () => {
     const runState = createRunState();
     runState.totalUsage = { ...prior };
 
-    accumulateUsage(runState, undefined, 3, shortPrompt, { model });
-    const estimate = computeCostEstimate(runState.totalUsage, { model }, runState.cost);
+    accumulateUsage(runState, undefined, 3, shortPrompt, { model, pricing });
+    const estimate = computeCostEstimate(runState.totalUsage, { model, pricing }, runState.cost);
 
     // Prior usage has no per-request breakdown, so it is priced at the base tier.
     const expected =
-      estimateCost(prior, model, undefined, 'aggregate').totalCost +
-      estimateCost(shortPrompt, model).totalCost;
+      estimateCost(prior, model, pricing, 'aggregate').totalCost +
+      estimateCost(shortPrompt, model, pricing).totalCost;
     expect(estimate?.totalCost).toBeCloseTo(expected, 10);
-    expect(estimate?.totalCost).toBeGreaterThan(estimateCost(shortPrompt, model).totalCost);
+    expect(estimate?.totalCost).toBeGreaterThan(
+      estimateCost(shortPrompt, model, pricing).totalCost,
+    );
   });
 
   it('seeds once and then prices each later request on its own usage', () => {
     const runState = createRunState();
     runState.totalUsage = { ...prior };
 
-    accumulateUsage(runState, undefined, 3, shortPrompt, { model });
-    accumulateUsage(runState, undefined, 4, longPrompt, { model });
-    const estimate = computeCostEstimate(runState.totalUsage, { model }, runState.cost);
+    accumulateUsage(runState, undefined, 3, shortPrompt, { model, pricing });
+    accumulateUsage(runState, undefined, 4, longPrompt, { model, pricing });
+    const estimate = computeCostEstimate(runState.totalUsage, { model, pricing }, runState.cost);
 
     const expected =
-      estimateCost(prior, model, undefined, 'aggregate').totalCost +
-      estimateCost(shortPrompt, model).totalCost +
-      estimateCost(longPrompt, model).totalCost;
+      estimateCost(prior, model, pricing, 'aggregate').totalCost +
+      estimateCost(shortPrompt, model, pricing).totalCost +
+      estimateCost(longPrompt, model, pricing).totalCost;
     expect(estimate?.totalCost).toBeCloseTo(expected, 10);
   });
 
   it('seeds nothing for a fresh run', () => {
     const runState = createRunState();
-    accumulateUsage(runState, undefined, 0, shortPrompt, { model });
-    expect(runState.cost?.promptCost).toBeCloseTo(estimateCost(shortPrompt, model).promptCost, 10);
+    accumulateUsage(runState, undefined, 0, shortPrompt, { model, pricing });
+    expect(runState.cost?.promptCost).toBeCloseTo(
+      estimateCost(shortPrompt, model, pricing).promptCost,
+      10,
+    );
     expect(
-      computeCostEstimate(runState.totalUsage, { model }, runState.cost)?.totalCost,
-    ).toBeCloseTo(estimateCost(shortPrompt, model).totalCost, 10);
+      computeCostEstimate(runState.totalUsage, { model, pricing }, runState.cost)?.totalCost,
+    ).toBeCloseTo(estimateCost(shortPrompt, model, pricing).totalCost, 10);
   });
 });

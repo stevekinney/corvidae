@@ -586,7 +586,7 @@ describe('quoting an agent’s reply', () => {
 });
 
 describe('an existing session', () => {
-  test('says a session with no message has none with an empty state, not a status line', async () => {
+  test('says a session with no message has none with Chat’s first-use empty state', async () => {
     restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
       if (url.includes('/threads/')) {
@@ -603,8 +603,9 @@ describe('an existing session', () => {
     });
 
     await findByRole('heading', { level: 2, name: 'No messages yet' });
-    expect(container.querySelector('.cinder-empty-state')).not.toBeNull();
-    expect(container.querySelector('.chat-empty')).toBeNull();
+    // Chat's own first-use state (COR-2285 V1), with no prompt while the agents are not listed.
+    expect(container.querySelector('.chat-empty .cinder-empty-state')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
   });
 
   test('shows its title once, with no agent line under it and no agent chooser', async () => {

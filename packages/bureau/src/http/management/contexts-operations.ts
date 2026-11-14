@@ -4,7 +4,7 @@
  *
  * A context belongs to the principal that created it. A caller reaches its own
  * contexts without any scope; `bureau.contexts:read` grants `list` and `get` on any
- * owner's, `bureau.contexts:write` grants `delete` and `rename`, neither implies the other, and a
+ * owner's, `bureau.contexts:write` grants `delete`, `rename`, `archive` and `unarchive`, neither implies the other, and a
  * context the caller may not see is answered exactly as a missing one. A task's id is not a context id, so it reads as missing here.
  *
  * @module contexts-operations
@@ -16,6 +16,7 @@ import {
   SESSION_ORIGINS,
   type SessionListOptions,
   type SessionSummary,
+  sessionArchivedAtOf,
   sessionOriginOf,
   sessionOwnerOf,
   summarizeSession,
@@ -229,6 +230,12 @@ export const contextSummarySchema = z.object({
    * and once a new run starts.
    */
   endReason: z.enum(SESSION_END_REASONS).nullable(),
+  /**
+   * When the context was archived (COR-2285, `bureau.contexts.archive`), as an ISO 8601 timestamp,
+   * or `null` when it is not archived. An archived context accepts no new work until it is
+   * unarchived.
+   */
+  archivedAt: z.string().nullable(),
 });
 
 /**
@@ -264,6 +271,7 @@ function projectContext(
     updatedAt: summary.updatedAt,
     activity: activity ?? 'idle',
     endReason: sessionEndReasonOf(summary.metadata),
+    archivedAt: sessionArchivedAtOf(summary.metadata),
   };
 }
 
@@ -295,6 +303,12 @@ const contextsListInput = z.object({
     .describe(
       'Only the contexts with this origin; `chat` includes every context that records none. Contexts of origin `try` are listed only when this is `try`.',
     ),
+  archived: z
+    .enum(['include', 'exclude', 'only'])
+    .optional()
+    .describe(
+      'Which contexts to list by whether they are archived: `include` (the default) lists every one, `exclude` only the ones that are not archived, `only` only the archived ones.',
+    ),
   allOwners: z
     .boolean()
     .optional()
@@ -324,7 +338,7 @@ export const contextsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List contexts',
   description:
-    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created, `try` for a throwaway chat with an unsaved agent definition (`bureau.agents.try`), which is left out of the list unless `origin` is `try`. `agentName` filters by agent, `origin` by origin, `titleContains` by a case-insensitive substring of the title (a title given by `bureau.contexts.rename` counts), and `activity` by what the context is doing right now, all before the page is cut, so a page of chats holds chats and `offset` counts matches. An `activity` filter classifies the contexts the other filters leave, a hundred at a time, until the page is full; a context’s activity can change between pages. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
+    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created, `try` for a throwaway chat with an unsaved agent definition (`bureau.agents.try`), which is left out of the list unless `origin` is `try`. Each carries `archivedAt`, when it was archived (`bureau.contexts.archive`), or `null`. `agentName` filters by agent, `origin` by origin, `titleContains` by a case-insensitive substring of the title (a title given by `bureau.contexts.rename` counts), `archived` by whether it is archived (`include`, the default, lists every one; `exclude` leaves the archived ones out; `only` lists only them), and `activity` by what the context is doing right now, all before the page is cut, so a page of chats holds chats and `offset` counts matches. An `activity` filter classifies the contexts the other filters leave, a hundred at a time, until the page is full; a context’s activity can change between pages. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsListInput,
@@ -354,6 +368,7 @@ export const contextsListOperation = defineOperation<
       ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
       ...(input.origin === undefined ? {} : { origin: input.origin }),
       ...(input.titleContains === undefined ? {} : { titleContains: input.titleContains }),
+      ...(input.archived === undefined ? {} : { archived: input.archived }),
       ...(input.sortBy === undefined ? {} : { sortBy: input.sortBy }),
       ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
     };
@@ -422,7 +437,7 @@ export const contextsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one context',
   description:
-    'Returns the summary of one of the caller’s own contexts, with its `origin`, and what its steering has settled on; a caller holding `bureau.contexts:read` reads any owner’s. `model` is the latest admitted model override (`{ provider, model }`, with a `null` provider when the override named none), or `null` before any, which means the agent’s default; `effort` is the latest admitted effort override (`low`, `medium`, `high`, `xhigh` or `max`), or `null` before any; `permissionMode` is the chat’s permission mode (`always`, `on-changes`, `allow-all` or `read-only`; it governs every tool of the chat’s runs, for any kind of agent, except `requestHumanInput`, and a child Bureau started under those runs takes it at its next tool call, as its grandchildren do; a child outside Bureau’s reach, including one an agent’s own `createSubagentTool` runs and a task a remote agent runs for a `createPeerCallTool` call, is not held to it, and a child whose agent exposes no run options is refused, not started, when a Bureau-owned run dispatches it), `on-changes` before one was set; `configVersion` is the version `bureau.contexts.steer`’s `expectedRevision` is compared against. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',
+    'Returns the summary of one of the caller’s own contexts, with its `origin` and `archivedAt` (when it was archived, or `null`), and what its steering has settled on; a caller holding `bureau.contexts:read` reads any owner’s. `model` is the latest admitted model override (`{ provider, model }`, with a `null` provider when the override named none), or `null` before any, which means the agent’s default; `effort` is the latest admitted effort override (`low`, `medium`, `high`, `xhigh` or `max`), or `null` before any; `permissionMode` is the chat’s permission mode (`always`, `on-changes`, `allow-all` or `read-only`; it governs every tool of the chat’s runs, for any kind of agent, except `requestHumanInput`, and a child Bureau started under those runs takes it at its next tool call, as its grandchildren do; a child outside Bureau’s reach, including one an agent’s own `createSubagentTool` runs and a task a remote agent runs for a `createPeerCallTool` call, is not held to it, and a child whose agent exposes no run options is refused, not started, when a Bureau-owned run dispatches it), `on-changes` before one was set; `configVersion` is the version `bureau.contexts.steer`’s `expectedRevision` is compared against. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsGetInput,

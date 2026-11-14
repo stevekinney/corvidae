@@ -201,7 +201,7 @@ describe('ApprovalCard decision layout', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Add a note' }));
-    await fireEvent.input(getByLabelText('Note (optional)'), { target: { value: 'Looks right' } });
+    await fireEvent.input(getByLabelText('Note'), { target: { value: 'Looks right' } });
     await fireEvent.click(getByRole('button', { name: 'Publish' }));
 
     expect(onResolve).toHaveBeenCalledTimes(1);

@@ -28,6 +28,7 @@ import {
 import type { AgentDefinitions } from './agent-catalog';
 import type { Bureau } from './bureau-types/facade';
 import type { WorkspaceMembershipOptions } from './http/workspace-principal';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 type Script = GenerateFunction;
 const roots: string[] = [];
@@ -152,6 +153,7 @@ async function open(options: {
       options.agentTools === undefined ? {} : { tools: options.agentTools },
     ),
     models: {
+      catalog: createVendorCatalog().descriptors,
       generate: (descriptor) =>
         withBackendDescriptors(
           async (context) => scripts[descriptor.model]!(context),

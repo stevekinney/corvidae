@@ -26,14 +26,15 @@ The overlay and the sheet are Drawers: opening moves focus into the panel, Tab s
 
 | Key or gesture | Context | Expected behavior |
 | --- | --- | --- |
-| Tab, Shift+Tab | Anywhere in the panel | Moves between the close control, the retry button, the copy buttons, the note field, Deny and Approve. |
+| Tab, Shift+Tab | Anywhere in the panel | Moves between the close control, the retry button, the copy buttons, Add a note (or the note field once it is open), Deny and Approve. |
+| Enter, Space | Add a note | Opens the Note field and moves focus into it; the button leaves, so the field takes its place in the Tab order. |
 | Esc | Overlay or sheet | Closes the panel (Drawer). |
 | Esc | Docked panel, focus inside | Closes the panel and reports `onClose`. |
 | Enter, Space | Any button | Activates it. |
 
 ### Assistive-technology announcements
 
-The docked panel is an `aside` named by the tool's heading. The overlay and the sheet are modal dialogs named by the same heading. The status dot and glyph are decorative; the state is in words ("Failed", "Waiting on you"). Each section is a region named by its heading ("Input", "Error", "Result"), and fields are a description list so a screen reader hears each label with its value. Copying announces "Copied" through the copy button's live region. A running call's spinner is decorative; the status says "Running". The X is named "Close panel" and the sheet's text button "Close".
+The docked panel is an `aside` named by the tool's heading. The overlay and the sheet are modal dialogs named by the same heading. The status dot and glyph are decorative; the state is in words ("Failed", "Waiting on you"). Each section is a region named by its heading ("Input", "Error", "Result"), and fields are a description list so a screen reader hears each label with its value. Copying announces "Copied" through the copy button's live region. A running call's spinner is decorative; the status says "Running". The X is named "Close panel" and the sheet's text button "Close". On a waiting call, "Add a note" is a ghost button (ApprovalCard's own toggle) whose name is its words; its icon is decorative. Once the field opens it is labelled "Note" and described by the line under it.
 
 ## Verification
 

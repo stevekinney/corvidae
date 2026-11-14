@@ -191,6 +191,93 @@
     justify-content: center;
   }
 
+  /* Grouped variant: the placeholder for a grouped list. The same rounded raised surface the
+   * list draws, no border, and rows whose separator is the bottom edge of their content, so it
+   * starts at the text as the real rows' does. Each row holds two text bars and, for a list whose
+   * rows end in text actions, a block the height of a small button where the button goes. */
+  .cinder-skeleton-grouped {
+    overflow: hidden;
+    border-radius: var(--cinder-radius-surface);
+    background: var(--cinder-surface-raised);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-skeleton-grouped {
+      border: 1px solid CanvasText;
+    }
+  }
+
+  .cinder-skeleton-grouped-row {
+    padding-inline-start: var(--cinder-space-4);
+  }
+
+  .cinder-skeleton-grouped-content {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    min-block-size: 2.75rem;
+    padding-block: var(--cinder-space-2-5);
+    padding-inline-end: var(--cinder-space-2);
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-skeleton-grouped-row:last-child > .cinder-skeleton-grouped-content {
+    border-block-end-color: transparent;
+  }
+
+  /* The text column of a grouped-list row: a title line and a subtitle line, each a line box in the
+   * real row's own type (the title at base size and snug leading, the subtitle at small size and the
+   * inherited leading), so the placeholder row is exactly as tall as the row it stands for. */
+  .cinder-skeleton-grouped-text {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-skeleton-grouped-line {
+    display: flex;
+    align-items: center;
+    block-size: 1lh;
+  }
+
+  .cinder-skeleton-grouped-line--title {
+    font-size: var(--cinder-text-base);
+    line-height: var(--cinder-leading-snug, 1.35);
+  }
+
+  .cinder-skeleton-grouped-line--subtitle {
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-skeleton-action-bar {
+    flex: none;
+    inline-size: 5.25rem;
+    block-size: var(--cinder-button-height-sm);
+    border-radius: var(--cinder-button-radius-sm);
+  }
+
+  /* A row narrower than 26rem stacks its real buttons full width under the text (GroupedListItem's
+   * own container query), so the block does too, at the same width. */
+  .cinder-skeleton-grouped-row--action {
+    container: cinder-skeleton-grouped-row / inline-size;
+  }
+
+  @container cinder-skeleton-grouped-row (width < 26rem) {
+    .cinder-skeleton-grouped-row--action > .cinder-skeleton-grouped-content {
+      flex-wrap: wrap;
+    }
+
+    .cinder-skeleton-grouped-row--action .cinder-skeleton-action-bar {
+      flex-basis: 100%;
+    }
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='grouped'] > .cinder-skeleton-status {
+    justify-content: center;
+  }
+
   /* A page's own placeholder has its status line centred under it as well. */
   .cinder-skeleton-group[data-cinder-variant='custom'] > .cinder-skeleton-status {
     justify-content: center;

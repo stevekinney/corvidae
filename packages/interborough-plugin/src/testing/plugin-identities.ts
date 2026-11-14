@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { createModelCatalog, guardrailOf } from '@lostgradient/operative';
+import { guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { type DefinitionSchema, definitionSchemaToJsonSchema } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -222,13 +222,10 @@ function named(item: Named, kind: string, schema?: unknown) {
  * decision kinds of each row that declares any (COR-2158). Routers carried no version and a change
  * to the kinds they served went unnoticed; a provider's identity is its catalog rows, so a change
  * to either fails the snapshot guard. A row that declares no decision kinds adds nothing, so a
- * model added to Operative's static rows does not change a provider that never decided.
+ * model added to its rows does not change a provider that never decided.
  */
 function providerNamed(provider: PluginProvider, plugin: PluginDescriptor<z.ZodType>) {
-  const rows =
-    provider.rows ??
-    createModelCatalog().descriptors.filter((descriptor) => descriptor.provider === provider.name);
-  const decisions = rows
+  const decisions = (provider.rows ?? [])
     .filter((row) => row.decisions !== undefined)
     .map((row) => ({
       model: row.model,

@@ -16,13 +16,18 @@
 // without it every provider's root is accepted. `stale` lists, read-only, every worktree under the
 // accepted roots with its branch, age, cleanliness, lock, live processes and delivered state (the
 // two tests, and their limits, are on `classifyDelivered`); `--remove` removes those that are clean,
-// unlocked and delivered, never the main checkout or the worktree it runs from, and keeps the
-// remote branches. It reads `origin/<default>` as last fetched (`--remove` fetches first). A live
+// unlocked and delivered, never the main checkout or the worktree it runs from, and keeps every
+// branch, local and remote. A worktree locked in the Agent tool's form (`isAgentLockReason`) is
+// also removable when delivered and clean, but only with no process at all inside it (none is
+// ended), no ignored file outside dependency and cache directories, and no use of its Git files
+// within `AGENT_QUIET_MILLISECONDS`. It reads `origin/<default>` as last fetched (`--remove`
+// fetches first). A live
 // process in the listing is one whose working directory is inside the worktree, seen by one
-// host-wide `lsof` that shows only the running user's processes. A worktree whose branch was
-// squash-merged (`changes-in-default`) is finished, so `--remove` ends the processes left inside it
-// (`endProcessesInside`); one whose tip is a commit of the default branch looks like a worktree a
-// session has just created, so a live process keeps it. `--remove` re-checks open files. A branch
+// host-wide `lsof` that shows only the running user's processes. In an unlocked worktree whose
+// branch was squash-merged (`changes-in-default`), which is finished, `--remove` ends the processes
+// left inside it (`endProcessesInside`); in a locked worktree it never does, and one whose tip is a
+// commit of the default branch looks like a worktree a session has just created, so a live
+// process keeps it. `--remove` re-checks open files. A branch
 // with no commit of its own counts as delivered (its tip is in `origin/<default>`).
 //
 // `create` runs the default-branch ownership preflight (it never attaches the default branch),
@@ -33,9 +38,10 @@
 //
 // `remove` refuses, changing nothing, when the worktree has uncommitted or untracked changes, when
 // any process has its working directory or open files inside it (`deliver.ts` and `stale --remove`
-// first end the processes whose working directory is inside, once nothing else refuses the
-// removal; files held open from elsewhere still refuse it), when Git reports the worktree
-// locked, or when it is not a worktree under the provider's root (`~/.agent-worktrees/<provider>/corvidae`)
+// first end the processes whose working directory is inside an unlocked worktree, once nothing else
+// refuses the removal; files held open from elsewhere, and any process in a locked worktree, still
+// refuse it), when Git reports the worktree locked (an Agent-tool lock is released only for a
+// delivered tip, and then ignored files outside dependency and cache directories also refuse), or when it is not a worktree under the provider's root (`~/.agent-worktrees/<provider>/corvidae`)
 // or under `<main checkout>/.claude/worktrees`, where Claude Code's Agent tool makes them. It also
 // refuses, because the branch is deleted with `git branch -D` and
 // the remote branch with `git push --delete`, unless the branch's work is delivered: its tip is an
@@ -51,9 +57,18 @@
 //
 // Exit codes: 0 done, 1 refused or a step failed, 2 invalid CLI usage.
 
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { ancestorsOf } from '../run-exclusively.ts';
+import { readLedgerHeads } from './delivery-ledger.ts';
 import { findWorktreeProcesses, ProbeError } from './leftovers.ts';
 import {
   defaultRunner,
@@ -87,6 +102,20 @@ export interface WorktreeEntry {
   bare: boolean;
   /** Git reports the worktree locked (`git worktree lock`), with or without a reason. */
   locked: boolean;
+  /** The reason given to `git worktree lock`; `undefined` when the lock has none. */
+  lockReason?: string | undefined;
+}
+
+/**
+ * Whether `reason` is the Agent tool's lock reason for the worktree at `path`:
+ * `claude agent agent-<id> (pid <n> start <date>)`, where `agent-<id>` is also the name of the
+ * worktree's directory. The pid is the parent session's process and lives as long as that session,
+ * so it says nothing about whether the worker is finished; this only recognises the form, and a
+ * removal still needs the worktree delivered, clean and without a process inside.
+ */
+export function isAgentLockReason(reason: string | undefined, path: string): boolean {
+  const match = /^claude agent (agent-[A-Za-z0-9]+) \(pid \d+ start [^()\n]+\)$/.exec(reason ?? '');
+  return match !== null && match[1] === basename(path);
 }
 
 /**
@@ -113,7 +142,10 @@ export function parseWorktreeList(text: string): WorktreeEntry[] {
         else if (line.startsWith('branch ')) entry.branch = line.slice('branch '.length);
         else if (line === 'detached') entry.detached = true;
         else if (line === 'bare') entry.bare = true;
-        else if (line === 'locked' || line.startsWith('locked ')) entry.locked = true;
+        else if (line === 'locked' || line.startsWith('locked ')) {
+          entry.locked = true;
+          if (line.length > 'locked '.length) entry.lockReason = line.slice('locked '.length);
+        }
       }
     }
     if (entry !== undefined) entries.push(entry);
@@ -132,7 +164,26 @@ export interface WorktreeDependencies {
   checkout?: string;
   /** How `endProcesses` signals and waits; tests substitute recorders. */
   endProcesses?: EndProcessesDependencies;
+  /** The clock, in milliseconds since the epoch; tests set time instead of waiting. */
+  now?: () => number;
 }
+
+/** An Agent-locked worktree used within this long is kept: its agent may be between tool calls. */
+export const AGENT_QUIET_MILLISECONDS = 6 * 60 * 60 * 1000;
+
+/**
+ * Directory names whose ignored contents (dependencies and caches, as `.gitignore` spells them)
+ * never keep an Agent-locked worktree; any other ignored path is work `git worktree remove` would
+ * delete without `--force`.
+ */
+export const DISPOSABLE_IGNORED_DIRECTORIES: readonly string[] = [
+  'node_modules',
+  '.turbo',
+  'dist',
+  '.svelte-kit',
+  '.playwright',
+  'coverage',
+];
 
 function resolveDependencies(
   partial: Partial<WorktreeDependencies>,
@@ -141,6 +192,7 @@ function resolveDependencies(
   return {
     runner,
     checkout: partial.checkout ?? resolveMainCheckout(runner),
+    now: partial.now ?? Date.now,
   };
 }
 
@@ -305,6 +357,8 @@ export interface RemoveOptions {
    * elsewhere still refuse it.
    */
   endProcesses?: boolean;
+  /** Leave the local branch alone after removing the worktree (`stale --remove` always does). */
+  keepBranch?: boolean;
 }
 
 export interface RemoveResult {
@@ -393,7 +447,16 @@ export function removeWorktree(
   if (entry === undefined) {
     throw new Refusal(`${path} is not a worktree under ${roots.join(' or ')}.`);
   }
-  if (entry.locked) reasons.push('Git reports it locked (git worktree unlock it first)');
+  // A lock whose reason is the Agent tool's form names the parent session's process, which outlives
+  // the worker, so it is released only for a worktree the caller pinned as delivered at its head;
+  // the other checks (clean, delivered branch, no process inside) still apply to it.
+  const finishedLock =
+    entry.locked &&
+    isAgentLockReason(entry.lockReason, path) &&
+    entry.head !== undefined &&
+    entry.head === options.deliveredTip;
+  if (entry.locked && !finishedLock)
+    reasons.push('Git reports it locked (git worktree unlock it first)');
   const branch = entry.branch?.replace(/^refs\/heads\//, '');
   if (branch === config.defaultBranch)
     reasons.push(`it has the default branch "${branch}" checked out`);
@@ -403,6 +466,11 @@ export function removeWorktree(
     reasons.push(
       `it has ${status.stdout.trim().split('\n').length} uncommitted or untracked path(s)`,
     );
+  }
+  if (finishedLock) {
+    // `git worktree remove` deletes ignored files too; only dependencies and caches may go.
+    const ignored = firstWorkIgnoredPath(runner, path);
+    if (ignored !== undefined) reasons.push(`ignored files: ${ignored}`);
   }
   const tipDelivered =
     options.deliveredTip !== undefined &&
@@ -431,7 +499,9 @@ export function removeWorktree(
   let ended: WorkingDirectoryProcess[] = [];
   try {
     // Only once nothing else refuses the removal: a refused worktree keeps its processes.
-    if (options.endProcesses === true && reasons.length === 0) {
+    // Never in a locked worktree: an Agent lock names a live session, so a process inside means
+    // its worker is still running, and it refuses the removal below instead.
+    if (options.endProcesses === true && !entry.locked && reasons.length === 0) {
       ended = endProcessesInside(path, runner, partial.endProcesses);
     }
     // Then every open file, not only working directories: an editor or a server holding a file
@@ -449,10 +519,35 @@ export function removeWorktree(
   }
   if (reasons.length > 0) throw new Refusal(`Refusing to remove ${path}: ${reasons.join('; ')}.`);
 
-  const removed = git(runner, checkout, 'worktree', 'remove', path);
-  if (removed.code !== 0) throw failure('git worktree remove', removed);
+  let unlockedFrom: string | undefined;
+  try {
+    if (finishedLock) {
+      const unlocked = git(runner, checkout, 'worktree', 'unlock', path);
+      if (unlocked.code !== 0) throw failure('git worktree unlock', unlocked);
+      unlockedFrom = entry.lockReason ?? '';
+    }
+    const removed = git(runner, checkout, 'worktree', 'remove', path);
+    if (removed.code !== 0) throw failure('git worktree remove', removed);
+    unlockedFrom = undefined;
+  } catch (error) {
+    // Put the Agent tool's lock back with its reason: a worktree this did not remove keeps what it had.
+    if (unlockedFrom !== undefined) {
+      let relocked = false;
+      try {
+        relocked =
+          git(runner, checkout, 'worktree', 'lock', '--reason', unlockedFrom, path).code === 0;
+      } catch {
+        relocked = false;
+      }
+      if (!relocked)
+        throw new Refusal(
+          `${path} left unlocked: its removal failed (${error instanceof Error ? error.message : String(error)}) and the lock could not be restored (reason: ${unlockedFrom}).`,
+        );
+    }
+    throw error;
+  }
   let remoteDeleted = false;
-  if (branch !== undefined) {
+  if (branch !== undefined && options.keepBranch !== true) {
     const deleted = git(runner, checkout, 'branch', '-D', branch);
     if (deleted.code !== 0) throw failure(`git branch -D ${branch}`, deleted);
     if (!options.keepRemote) {
@@ -585,7 +680,7 @@ export function endProcessesInside(
 }
 
 /** How a worktree's branch was shown to be delivered: see `classifyDelivered`. */
-export type DeliveredBy = 'ancestor' | 'changes-in-default' | 'none';
+export type DeliveredBy = 'ancestor' | 'delivered-head' | 'changes-in-default' | 'none';
 
 export interface StaleEntry {
   path: string;
@@ -619,6 +714,8 @@ export interface StaleResult {
   /** Filled only with `remove`: the worktrees removed, then those a re-check refused. */
   removed: { path: string; branch: string | undefined; ended: number }[];
   refused: { path: string; reason: string }[];
+  /** What could not be read (for example `gh`), so a narrower answer is never silent. */
+  notes: string[];
 }
 
 /** Every `n` (file name) line of an `lsof -F pcn` listing, with the pid and command that opened it. */
@@ -632,9 +729,98 @@ function* lsofOpenFiles(stdout: string): Generator<{ pid: number; command: strin
   }
 }
 
+/** The heads known to be delivered, and every local commit that only they reach. */
+interface DeliveredHeads {
+  /** The ledger's heads and the merged pull requests' heads. */
+  heads: Set<string>;
+  /** The commits reachable from a delivered head that exist locally and are not in `origin/<default>`. */
+  covered: Set<string>;
+  /** What could not be read, for the output. */
+  notes: string[];
+}
+
 /**
- * Whether `tip` is delivered into `base` (`origin/<default>`), by one of two tests and no other:
+ * The delivery ledger's heads and the merged pull requests' heads (one `gh pr list` for the whole
+ * sweep, never one call per worktree), with the commits behind them: one `git rev-list --stdin --not
+ * origin/<default>` over the heads that exist locally, never a merge-base per pair. A `gh` that
+ * fails leaves the ledger and the other rules, and says so in `notes`.
+ */
+function collectDeliveredHeads(
+  runner: Runner,
+  checkout: string,
+  config: RepositoryConfig,
+): DeliveredHeads {
+  const result: DeliveredHeads = {
+    heads: readLedgerHeads(checkout),
+    covered: new Set(),
+    notes: [],
+  };
+  const listed = runner(
+    [
+      'gh',
+      'pr',
+      'list',
+      '--repo',
+      config.repository,
+      '--state',
+      'merged',
+      '--base',
+      config.defaultBranch,
+      '--limit',
+      '1000',
+      '--json',
+      'headRefOid',
+    ],
+    { cwd: checkout },
+  );
+  let pullRequests: unknown;
+  if (listed.code === 0) {
+    try {
+      pullRequests = JSON.parse(listed.stdout);
+    } catch {
+      pullRequests = undefined;
+    }
+  }
+  if (!Array.isArray(pullRequests)) {
+    result.notes.push(
+      `merged pull requests could not be read (${listed.stderr.trim().split('\n')[0] || 'unreadable answer'}); the delivery ledger and the other rules decide`,
+    );
+  } else {
+    for (const item of pullRequests as { headRefOid?: unknown }[]) {
+      const head = item?.headRefOid;
+      if (typeof head === 'string' && /^[0-9a-f]{40}$/.test(head)) result.heads.add(head);
+    }
+  }
+  if (result.heads.size === 0) return result;
+  const checked = runner(['git', 'cat-file', '--batch-check'], {
+    cwd: checkout,
+    input: `${[...result.heads].join('\n')}\n`,
+  });
+  const local = checked.stdout
+    .split('\n')
+    .filter((line) => / commit \d+$/.test(line))
+    .map((line) => line.split(' ')[0] ?? '');
+  if (checked.code !== 0 || local.length === 0) return result;
+  const reachable = runner(
+    ['git', 'rev-list', '--stdin', '--not', `origin/${config.defaultBranch}`],
+    { cwd: checkout, input: `${local.join('\n')}\n` },
+  );
+  if (reachable.code !== 0) {
+    result.notes.push(
+      'the commits behind delivered heads could not be listed; only the heads themselves count',
+    );
+    return result;
+  }
+  for (const line of reachable.stdout.split('\n')) if (line !== '') result.covered.add(line);
+  return result;
+}
+
+/**
+ * Whether `tip` is delivered into `base` (`origin/<default>`), by one of these tests and no other:
  *
+ * - `delivered-head`: `tip` equals, or is an ancestor of, a head the delivery ledger records or a
+ *   merged pull request had (an earlier commit of a delivered branch), on a branch or detached.
+ *   A tip with a commit after the delivery is neither equal to nor behind any such head.
  * - `ancestor`: `tip` is an ancestor of `base`. A branch with no commit of its own passes it.
  * - `changes-in-default`: a local branch whose `origin/<branch>` tracking ref is absent (it was
  *   never pushed, or its remote branch was deleted and pruned) and for which `git merge-tree
@@ -651,9 +837,11 @@ function classifyDelivered(
   config: RepositoryConfig,
   tip: string,
   branch: string | undefined,
+  delivered: DeliveredHeads,
 ): DeliveredBy {
   const base = `origin/${config.defaultBranch}`;
   if (git(runner, checkout, 'merge-base', '--is-ancestor', tip, base).code === 0) return 'ancestor';
+  if (delivered.heads.has(tip) || delivered.covered.has(tip)) return 'delivered-head';
   if (branch === undefined) return 'none';
   const tracking = git(
     runner,
@@ -673,18 +861,60 @@ function classifyDelivered(
 }
 
 /**
+ * Whole minutes since the newest modification among the worktree's Git administrative files
+ * (`HEAD`, `index`, `logs/HEAD` and `locked` in its git directory), or `undefined` when none can be
+ * read. Never negative.
+ */
+function minutesSinceUse(runner: Runner, path: string, now: number): number | undefined {
+  const located = git(runner, path, 'rev-parse', '--absolute-git-dir');
+  if (located.code !== 0) return undefined;
+  const directory = located.stdout.trim();
+  let newest: number | undefined;
+  for (const name of ['HEAD', 'index', join('logs', 'HEAD'), 'locked']) {
+    try {
+      const modified = statSync(join(directory, name)).mtimeMs;
+      if (newest === undefined || modified > newest) newest = modified;
+    } catch {
+      // A file Git has not written (no index yet) shows no use.
+    }
+  }
+  return newest === undefined ? undefined : Math.max(0, Math.floor((now - newest) / 60_000));
+}
+
+/**
+ * The first ignored path in the worktree outside dependency and cache directories
+ * (`DISPOSABLE_IGNORED_DIRECTORIES`), from `git status --porcelain --ignored`; `git worktree
+ * remove` without `--force` deletes ignored files too. Git collapses an ignored directory to one
+ * `dir/` line. `undefined` when there is none or the status cannot be read (the clean check
+ * already keeps a worktree whose status fails).
+ */
+function firstWorkIgnoredPath(runner: Runner, path: string): string | undefined {
+  const status = git(runner, path, '--no-optional-locks', 'status', '--porcelain', '--ignored');
+  if (status.code !== 0) return undefined;
+  for (const line of status.stdout.split('\n')) {
+    if (!line.startsWith('!! ')) continue;
+    const ignored = line.slice(3);
+    const segments = ignored.split('/').filter((segment) => segment !== '');
+    if (!segments.some((segment) => DISPOSABLE_IGNORED_DIRECTORIES.includes(segment)))
+      return ignored;
+  }
+  return undefined;
+}
+
+/**
  * Every worktree under the accepted roots (every provider's and `<main checkout>/.claude/worktrees`)
  * with its branch, age, cleanliness, lock, live processes and whether its branch is delivered. The
  * listing changes nothing. With `remove`, it first runs `git fetch --prune origin`, then removes
  * those that are clean, unlocked, without a process, delivered, not the current worktree and not the
- * main checkout, through `removeWorktree` (which checks each again) with `keepRemote`, so a bulk
- * removal never deletes a remote branch.
+ * main checkout, through `removeWorktree` (which checks each again) with `keepRemote` and
+ * `keepBranch`, so a bulk removal never deletes a branch. An Agent-locked worktree also needs no
+ * process, no recent use and no ignored work files (`minutesSinceUse`, `firstWorkIgnoredPath`).
  */
 export function staleWorktrees(
   options: StaleOptions,
   partial: Partial<WorktreeDependencies> = {},
 ): StaleResult {
-  const { runner, checkout } = resolveDependencies(partial);
+  const { runner, checkout, now: clock } = resolveDependencies(partial);
   const config = loadRepositoryConfig(options.configPath);
   const roots = acceptedRoots(config, checkout, undefined);
   if (options.remove) {
@@ -721,16 +951,18 @@ export function staleWorktrees(
     }
   }
 
-  const now = Date.now();
+  const deliveredHeads = collectDeliveredHeads(runner, checkout, config);
+  const now = clock();
   const entries = candidates.map((entry): StaleEntry => {
     const root = realpath(entry.path);
     const branch = entry.branch?.replace(/^refs\/heads\//, '');
     const date = git(runner, entry.path, 'log', '-1', '--format=%cI').stdout.trim();
-    const status = git(runner, entry.path, 'status', '--porcelain');
+    // Without optional locks, so the listing never refreshes the index it later reads the age of.
+    const status = git(runner, entry.path, '--no-optional-locks', 'status', '--porcelain');
     const deliveredBy =
       entry.head === undefined
         ? 'none'
-        : classifyDelivered(runner, checkout, config, entry.head, branch);
+        : classifyDelivered(runner, checkout, config, entry.head, branch, deliveredHeads);
     const stale: StaleEntry = {
       path: entry.path,
       branch,
@@ -749,24 +981,46 @@ export function staleWorktrees(
       keep: [],
     };
     if (stale.current) stale.keep.push('it is the worktree this command runs from');
-    if (stale.locked) stale.keep.push('locked');
+    // The Agent tool's lock names a session that outlives its worker, so it is no reason for a
+    // worktree shown delivered by a head or by its changes being in the default branch (the keeps
+    // below still decide the rest). A tip that is merely a commit of the default branch looks exactly
+    // like the worktree of a worker that has just started, so that lock keeps it, as any other does.
+    const finished = deliveredBy === 'delivered-head' || deliveredBy === 'changes-in-default';
+    const agentLocked = stale.locked && isAgentLockReason(entry.lockReason, entry.path);
+    if (stale.locked && !(finished && agentLocked)) stale.keep.push('locked');
     if (stale.clean === undefined) stale.keep.push('git status failed');
     else if (!stale.clean) stale.keep.push('uncommitted or untracked changes');
-    // A worktree whose branch was squash-merged is finished, and `--remove` ends what is left
-    // running inside it. One whose tip is a commit of the default branch looks the same as one a
+    // An unlocked worktree whose branch was squash-merged is finished, and `--remove` ends what is
+    // left running inside it; a locked one never has its processes ended. One whose tip is a commit of the default branch looks the same as one a
     // session has just created, so its processes keep it.
     if (stale.processes === undefined) stale.keep.push('processes could not be checked');
-    else if (stale.processes > 0 && deliveredBy !== 'changes-in-default') {
+    else if (stale.processes > 0 && (deliveredBy !== 'changes-in-default' || stale.locked)) {
       stale.keep.push(
-        `${stale.processes} live process(es), and its tip is a commit of ${config.defaultBranch}, as a worktree a session has just created is`,
+        deliveredBy === 'ancestor'
+          ? `${stale.processes} live process(es), and its tip is a commit of ${config.defaultBranch}, as a worktree a session has just created is`
+          : `${stale.processes} live process(es)`,
       );
+    }
+    if (agentLocked && stale.clean === true) {
+      // The lock's pid is the parent session's, so only recent use and ignored files tell whether
+      // the agent is idle and nothing would be lost.
+      const used = minutesSinceUse(runner, entry.path, now);
+      if (used !== undefined && used * 60_000 < AGENT_QUIET_MILLISECONDS)
+        stale.keep.push(`Agent lock, used ${used} minutes ago`);
+      const ignored = firstWorkIgnoredPath(runner, entry.path);
+      if (ignored !== undefined) stale.keep.push(`ignored files: ${ignored}`);
     }
     if (!stale.delivered) stale.keep.push('branch not delivered');
     if (branch === config.defaultBranch) stale.keep.push('default branch checked out');
     return stale;
   });
 
-  const result: StaleResult = { entries, removed: [], refused: [] };
+  const result: StaleResult = {
+    entries,
+    removed: [],
+    refused: [],
+    notes: deliveredHeads.notes,
+  };
   if (!options.remove) return result;
   for (const entry of entries.filter((item) => item.keep.length === 0)) {
     try {
@@ -779,7 +1033,9 @@ export function staleWorktrees(
           deliveredBranch: entry.branch,
           // Never for a tip on the default branch: a session may have started there since the
           // listing, and the removal then refuses for its processes instead.
-          endProcesses: entry.deliveredBy === 'changes-in-default',
+          endProcesses: entry.deliveredBy === 'changes-in-default' && !entry.locked,
+          // `stale --remove` never deletes a branch.
+          keepBranch: true,
         },
         partial,
       );
@@ -818,6 +1074,7 @@ export function renderStale(result: StaleResult, remove: boolean): string {
   lines.push(
     `${result.entries.length} worktree(s): ${result.entries.filter((entry) => entry.delivered).length} delivered, ${removable} removable, ${result.entries.filter((entry) => entry.locked).length} locked`,
   );
+  for (const note of result.notes) lines.push(`note: ${note}`);
   if (remove) {
     for (const item of result.removed)
       lines.push(

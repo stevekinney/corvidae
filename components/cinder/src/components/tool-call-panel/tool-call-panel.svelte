@@ -43,6 +43,7 @@
   import Drawer from '../drawer/drawer.svelte';
   import Spinner from '../spinner/spinner.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import ApprovalCardNoteToggle from '../approval-card/approval-card-note-toggle.svelte';
   import type { ToolCallPanelProps, ToolCallPanelStatus } from './tool-call-panel.types.ts';
   import { readPanelPayload, formatJsonText } from './tool-call-panel.utilities.ts';
   import type { PanelPayload } from './tool-call-panel.utilities.ts';
@@ -82,6 +83,8 @@
   const noteId = `${baseId}-note`;
 
   let note = $state('');
+  // The note waits behind "Add a note"; once opened it stays open, so a typed note never hides.
+  let showNote = $state(false);
   let wasOpen = untrack(() => open);
 
   $effect(() => {
@@ -106,7 +109,8 @@
     copyInput: labels?.copyInput ?? 'Copy input',
     copyResult: labels?.copyResult ?? `Copy ${resultLabel.toLowerCase()}`,
     copyError: labels?.copyError ?? 'Copy error',
-    note: labels?.note ?? 'Note (optional)',
+    addNote: labels?.addNote ?? 'Add a note',
+    note: labels?.note ?? 'Note',
     noteDescription:
       labels?.noteDescription ??
       'Saved with your decision. If you deny, the agent reads it as the reason.',
@@ -314,37 +318,49 @@
 
   {#if showDecision}
     <div class="cinder-tool-call-panel__decision">
-      <Textarea
-        id={noteId}
-        bind:value={note}
-        label={words.note}
-        description={words.noteDescription}
-        rows={3}
-        disabled={decisionOff}
-      />
+      {#if showNote}
+        <Textarea
+          id={noteId}
+          bind:value={note}
+          label={words.note}
+          description={words.noteDescription}
+          rows={3}
+          disabled={decisionOff}
+        />
+      {/if}
       <div class="cinder-tool-call-panel__decision-actions">
-        <Button
-          type="button"
-          variant="secondary"
-          mutating
-          disabled={decisionOff && resolving !== 'deny'}
-          loading={resolving === 'deny'}
-          loadingStatus={words.denying}
-          onclick={() => onDeny?.(note)}
-        >
-          {words.deny}
-        </Button>
-        <Button
-          type="button"
-          variant="primary"
-          mutating
-          disabled={decisionOff && resolving !== 'approve'}
-          loading={resolving === 'approve'}
-          loadingStatus={words.approving}
-          onclick={() => onApprove?.(note)}
-        >
-          {words.approve}
-        </Button>
+        {#if !showNote}
+          <ApprovalCardNoteToggle
+            disabled={decisionOff}
+            fieldId={noteId}
+            label={words.addNote}
+            onOpen={() => (showNote = true)}
+          />
+        {/if}
+        <div class="cinder-tool-call-panel__decision-buttons">
+          <Button
+            type="button"
+            variant="secondary"
+            mutating
+            disabled={decisionOff && resolving !== 'deny'}
+            loading={resolving === 'deny'}
+            loadingStatus={words.denying}
+            onclick={() => onDeny?.(note)}
+          >
+            {words.deny}
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            mutating
+            disabled={decisionOff && resolving !== 'approve'}
+            loading={resolving === 'approve'}
+            loadingStatus={words.approving}
+            onclick={() => onApprove?.(note)}
+          >
+            {words.approve}
+          </Button>
+        </div>
       </div>
     </div>
   {/if}

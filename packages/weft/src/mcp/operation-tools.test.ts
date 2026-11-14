@@ -286,6 +286,22 @@ describe.each(eras)('injected resources and tool metadata ($era era)', ({ mode }
     expect(tools.find((tool) => tool.name === 'probe.missing')?._meta).toBeUndefined();
   });
 
+  it('attaches the default _meta to every tool without an entry, and an entry replaces it', async () => {
+    const { client } = await connect(mode, readerContext, {
+      toolMeta: { 'probe.echo': { ui: { resourceUri: page.uri } } },
+      defaultToolMeta: { ui: { visibility: ['model'] } },
+    });
+    const { tools } = await client.listTools();
+    expect(tools.length).toBeGreaterThan(1);
+    for (const tool of tools) {
+      expect(tool._meta).toEqual(
+        tool.name === 'probe.echo'
+          ? { ui: { resourceUri: page.uri } }
+          : { ui: { visibility: ['model'] } },
+      );
+    }
+  });
+
   it('runs a function body per read with the request context', async () => {
     let reads = 0;
     const { client } = await connect(mode, readerContext, {

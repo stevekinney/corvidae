@@ -10,7 +10,8 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
-import { type BackendDescriptor, createModelCatalog, type ModelCatalog } from './model-catalog.ts';
+import { createFixtureCatalog } from '../testing/model-catalog.test-support.ts';
+import { type BackendDescriptor, type ModelCatalog } from './model-catalog.ts';
 import type { UserModelConfiguration } from './policy.ts';
 import {
   describeInputMedia,
@@ -31,7 +32,7 @@ function freshNewPlanId(): () => string {
   return () => `plan-fixed-${String(planIdCounter++).padStart(4, '0')}`;
 }
 
-const SEED_CATALOG = createModelCatalog({ now: () => FIXED_NOW });
+const SEED_CATALOG = createFixtureCatalog({ now: () => FIXED_NOW });
 
 function descriptor(provider: string, model: string): BackendDescriptor {
   const found = SEED_CATALOG.descriptors.find(
@@ -43,15 +44,15 @@ function descriptor(provider: string, model: string): BackendDescriptor {
   return found;
 }
 
-const anthropic = descriptor('anthropic', 'claude-fable-5');
-const openai = descriptor('openai', 'gpt-4o');
-const gemini = descriptor('gemini', 'gemini-2.5-pro');
+const anthropic = descriptor('alpha', 'alpha-large');
+const openai = descriptor('beta', 'beta-standard');
+const gemini = descriptor('gamma', 'gamma-pro');
 // No xhigh support: 'xhigh' degrades to 'high' (defined, different tier) —
 // the reject-vs-degrade pair's fixture.
-const opus45 = descriptor('anthropic', 'claude-opus-4-5');
+const opus45 = descriptor('alpha', 'alpha-medium');
 // Absent from ANTHROPIC_EFFORT_SUPPORT entirely: every tier degrades to
 // undefined — the "unsupported at any degradation" fixture.
-const haiku45 = descriptor('anthropic', 'claude-haiku-4-5');
+const haiku45 = descriptor('alpha', 'alpha-small');
 
 function catalogOf(
   descriptors: readonly BackendDescriptor[],
@@ -107,7 +108,7 @@ describe('select: fixed Agent, one eligible descriptor', () => {
     const plan = select(baseRequest(), baseOptions(catalogOf([anthropic])));
     expect(plan.outcome).toBe('selected');
     expect(plan.candidates).toHaveLength(1);
-    expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(plan.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
     expect(plan.failure).toBeUndefined();
   });
 });
@@ -127,9 +128,9 @@ describe('select: a row that only decides (COR-2156)', () => {
     ]) {
       const plan = select(baseRequest(), baseOptions(catalogOf(rows)));
       expect(plan.candidates.map((candidate) => candidate.descriptorSnapshot.model)).toEqual([
-        'claude-fable-5',
+        'alpha-large',
       ]);
-      expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+      expect(plan.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
     }
   });
 
@@ -148,7 +149,7 @@ describe('select: a row that only decides (COR-2156)', () => {
       baseOptions(catalogOf([decisionOnly, anthropic], { stale: true })),
     );
     expect(plan.candidates.map((candidate) => candidate.descriptorSnapshot.model)).toEqual([
-      'claude-fable-5',
+      'alpha-large',
     ]);
   });
 
@@ -158,7 +159,7 @@ describe('select: a row that only decides (COR-2156)', () => {
       decisions: { kinds: ['boolean'], only: false },
     };
     const plan = select(baseRequest(), baseOptions(catalogOf([both])));
-    expect(plan.selected).toEqual({ provider: 'openai', model: 'jev' });
+    expect(plan.selected).toEqual({ provider: 'beta', model: 'jev' });
   });
 });
 
@@ -173,7 +174,7 @@ describe('select: custom opaque generator (empty descriptor set)', () => {
 
 describe('select: descriptorSnapshot replay independence', () => {
   it('keeps reporting the same eligibility reasoning after the source catalog is mutated', () => {
-    const mutableDeployment: { deniedProviders: ('anthropic' | 'openai')[] } = {
+    const mutableDeployment: { deniedProviders: ('alpha' | 'beta')[] } = {
       deniedProviders: [],
     };
     const descriptors = [{ ...anthropic }, { ...openai }];
@@ -181,24 +182,24 @@ describe('select: descriptorSnapshot replay independence', () => {
     const plan = select(baseRequest(), options);
 
     const anthropicCandidateBefore = plan.candidates.find(
-      (candidate) => candidate.provider === 'anthropic',
+      (candidate) => candidate.provider === 'alpha',
     );
     expect(anthropicCandidateBefore?.eligible).toBe(true);
-    expect(anthropicCandidateBefore?.model).toBe('claude-fable-5');
-    expect(anthropicCandidateBefore?.descriptorSnapshot.model).toBe('claude-fable-5');
+    expect(anthropicCandidateBefore?.model).toBe('alpha-large');
+    expect(anthropicCandidateBefore?.descriptorSnapshot.model).toBe('alpha-large');
 
     // Mutate the source descriptor objects and the deployment rule after
     // the plan was produced — a live reference would flip this candidate to
     // ineligible and rename its snapshot; the plan must not move.
-    mutableDeployment.deniedProviders.push('anthropic');
+    mutableDeployment.deniedProviders.push('alpha');
     (descriptors[0] as { model: string }).model = 'mutated-model';
 
     const anthropicCandidateAfter = plan.candidates.find(
-      (candidate) => candidate.provider === 'anthropic',
+      (candidate) => candidate.provider === 'alpha',
     );
     expect(anthropicCandidateAfter?.eligible).toBe(true);
-    expect(anthropicCandidateAfter?.model).toBe('claude-fable-5');
-    expect(anthropicCandidateAfter?.descriptorSnapshot.model).toBe('claude-fable-5');
+    expect(anthropicCandidateAfter?.model).toBe('alpha-large');
+    expect(anthropicCandidateAfter?.descriptorSnapshot.model).toBe('alpha-large');
     expect(anthropicCandidateAfter).toEqual(anthropicCandidateBefore);
   });
 
@@ -210,7 +211,7 @@ describe('select: descriptorSnapshot replay independence', () => {
     const plan = buildPlan();
     // `descriptors` above is now unreachable — nothing keeps it alive except
     // the plan's own inlined `descriptorSnapshot`.
-    expect(plan.candidates[0]?.descriptorSnapshot.provider).toBe('anthropic');
+    expect(plan.candidates[0]?.descriptorSnapshot.provider).toBe('alpha');
   });
 
   it('produces a descriptorSnapshot that is not the same object reference as the source descriptor', () => {
@@ -224,14 +225,14 @@ describe('select: descriptorSnapshot replay independence', () => {
 describe('select: hard constraints filter before soft preferences rank', () => {
   it('never promotes an ineligible candidate over an eligible one, no matter how strongly it is preferred', () => {
     const options = baseOptions(catalogOf([anthropic, openai]), {
-      deployment: { deniedProviders: ['openai'] },
-      agent: { preferredProviders: ['openai'], preferredModels: ['gpt-4o'] },
+      deployment: { deniedProviders: ['beta'] },
+      agent: { preferredProviders: ['beta'], preferredModels: ['beta-standard'] },
       user: { costPreference: 'lowest-cost' },
     });
     const plan = select(baseRequest(), options);
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected?.provider).toBe('anthropic');
-    const openaiCandidate = plan.candidates.find((candidate) => candidate.provider === 'openai');
+    expect(plan.selected?.provider).toBe('alpha');
+    const openaiCandidate = plan.candidates.find((candidate) => candidate.provider === 'beta');
     expect(openaiCandidate?.eligible).toBe(false);
     expect(openaiCandidate?.exclusionCode).toBe('denied-by-deployment');
   });
@@ -239,7 +240,7 @@ describe('select: hard constraints filter before soft preferences rank', () => {
 
 describe('select: access-restricted models', () => {
   it('keeps a Mythos row, whose availability is unknown, eligible rather than excluding it', () => {
-    const mythos = descriptor('anthropic', 'claude-mythos-5-1');
+    const mythos = descriptor('alpha', 'alpha-restricted');
     expect(mythos.availability).toBe('unknown');
     const plan = select(baseRequest(), baseOptions(catalogOf([mythos])));
     expect(plan.candidates[0]?.eligible).toBe(true);
@@ -261,7 +262,7 @@ describe('select: rankingInputs', () => {
 
   it('leaves rankingInputs undefined on an ineligible candidate', () => {
     const options = baseOptions(catalogOf([anthropic]), {
-      deployment: { deniedProviders: ['anthropic'] },
+      deployment: { deniedProviders: ['alpha'] },
     });
     const plan = select(baseRequest(), options);
     expect(plan.candidates[0]?.rankingInputs).toBeUndefined();
@@ -276,13 +277,13 @@ describe('select: rankingInputs', () => {
   it('scores every candidate 1 when all priced candidates share the identical price', () => {
     const priceA: BackendDescriptor = {
       ...anthropic,
-      provider: 'anthropic',
+      provider: 'alpha',
       model: 'tie-a',
       pricing: { inputPerMillionTokens: 3, outputPerMillionTokens: 15, currency: 'USD' },
     };
     const priceB: BackendDescriptor = {
       ...anthropic,
-      provider: 'anthropic',
+      provider: 'alpha',
       model: 'tie-b',
       pricing: { inputPerMillionTokens: 3, outputPerMillionTokens: 15, currency: 'USD' },
     };
@@ -295,13 +296,13 @@ describe('select: rankingInputs', () => {
   it('normalizes cost between two differently priced candidates so the cheaper one scores higher', () => {
     const cheap: BackendDescriptor = {
       ...anthropic,
-      provider: 'anthropic',
+      provider: 'alpha',
       model: 'cheap-model',
       pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
     };
     const expensive: BackendDescriptor = {
       ...anthropic,
-      provider: 'anthropic',
+      provider: 'alpha',
       model: 'expensive-model',
       pricing: { inputPerMillionTokens: 100, outputPerMillionTokens: 100, currency: 'USD' },
     };
@@ -344,13 +345,13 @@ describe('select: rankingInputs', () => {
 
   it('reports 0.5 preferenceMatch for one matching preference field and 1 for both', () => {
     const options = baseOptions(catalogOf([anthropic]), {
-      agent: { preferredProviders: ['anthropic'] },
+      agent: { preferredProviders: ['alpha'] },
     });
     const plan = select(baseRequest(), options);
     expect(plan.candidates[0]?.rankingInputs?.['preferenceMatch']).toBe(0.5);
 
     const both = baseOptions(catalogOf([anthropic]), {
-      agent: { preferredProviders: ['anthropic'], preferredModels: ['claude-fable-5'] },
+      agent: { preferredProviders: ['alpha'], preferredModels: ['alpha-large'] },
     });
     const bothPlan = select(baseRequest(), both);
     expect(bothPlan.candidates[0]?.rankingInputs?.['preferenceMatch']).toBe(1);
@@ -360,13 +361,13 @@ describe('select: rankingInputs', () => {
 describe('select: ranking picks the cheaper candidate under lowest-cost, ignores cost otherwise', () => {
   const cheap: BackendDescriptor = {
     ...anthropic,
-    provider: 'anthropic',
+    provider: 'alpha',
     model: 'zzz-cheap',
     pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
   };
   const expensive: BackendDescriptor = {
     ...anthropic,
-    provider: 'anthropic',
+    provider: 'alpha',
     model: 'aaa-expensive',
     pricing: { inputPerMillionTokens: 100, outputPerMillionTokens: 100, currency: 'USD' },
   };
@@ -420,13 +421,13 @@ describe('select: ranking picks the cheaper candidate under lowest-cost, ignores
 describe('select: tie-break by (provider, model) lexicographic order', () => {
   const candidateAnthropic: BackendDescriptor = {
     ...anthropic,
-    provider: 'anthropic',
+    provider: 'alpha',
     model: 'shared-model',
     pricing: undefined,
   };
   const candidateOpenAI: BackendDescriptor = {
     ...openai,
-    provider: 'openai',
+    provider: 'beta',
     model: 'shared-model',
     pricing: undefined,
   };
@@ -436,7 +437,7 @@ describe('select: tie-break by (provider, model) lexicographic order', () => {
       baseRequest(),
       baseOptions(catalogOf([candidateAnthropic, candidateOpenAI])),
     );
-    expect(plan.selected?.provider).toBe('anthropic');
+    expect(plan.selected?.provider).toBe('alpha');
   });
 
   it('is unaffected by reversing the input array order', () => {
@@ -444,7 +445,7 @@ describe('select: tie-break by (provider, model) lexicographic order', () => {
       baseRequest(),
       baseOptions(catalogOf([candidateOpenAI, candidateAnthropic])),
     );
-    expect(plan.selected?.provider).toBe('anthropic');
+    expect(plan.selected?.provider).toBe('alpha');
   });
 
   it('resolves a true (provider, model) tie — a duplicate catalog entry — deterministically via the stable sort, never throwing', () => {
@@ -453,7 +454,7 @@ describe('select: tie-break by (provider, model) lexicographic order', () => {
       baseOptions(catalogOf([candidateAnthropic, { ...candidateAnthropic }])),
     );
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected?.provider).toBe('anthropic');
+    expect(plan.selected?.provider).toBe('alpha');
     expect(plan.selected?.model).toBe('shared-model');
     expect(plan.candidates).toHaveLength(2);
   });
@@ -470,7 +471,7 @@ describe('select: exact override via requestedValue', () => {
     });
     const options = baseOptions(catalogOf([anthropic, openai]), {
       deployment: { deniedModels: [openai.model] },
-      user: { exactOverride: { provider: 'openai' } },
+      user: { exactOverride: { provider: 'beta' } },
     });
     const plan = select(request, options);
     expect(plan.outcome).toBe('exact-override-rejected');
@@ -486,7 +487,7 @@ describe('select: exact override via requestedValue', () => {
       requestedValue: { target: 'model', override: 'nonexistent-model' },
     });
     const options = baseOptions(catalogOf([anthropic, openai]), {
-      user: { exactOverride: { provider: 'openai' } },
+      user: { exactOverride: { provider: 'beta' } },
     });
     const plan = select(request, options);
     expect(plan.outcome).toBe('no-candidate');
@@ -495,14 +496,14 @@ describe('select: exact override via requestedValue', () => {
 
   it('selects the exact override when every layer above the user permits it', () => {
     const request = baseRequest({
-      requestedValue: { target: 'provider', override: 'openai' },
+      requestedValue: { target: 'provider', override: 'beta' },
     });
     const options = baseOptions(catalogOf([anthropic, openai]), {
       user: { exactOverride: { model: openai.model } },
     });
     const plan = select(request, options);
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+    expect(plan.selected).toEqual({ provider: 'beta', model: 'beta-standard' });
   });
 
   it('always yields no-candidate for a route override, since no descriptor carries a route field', () => {
@@ -582,21 +583,21 @@ describe('select: fallbackPlan', () => {
     });
     const plan = select(baseRequest(), options);
     expect(plan.fallbackPlan).toEqual([
-      { provider: 'gemini', model: gemini.model },
-      { provider: 'openai', model: openai.model },
+      { provider: 'gamma', model: gemini.model },
+      { provider: 'beta', model: openai.model },
     ]);
   });
 
   it('picks the lexicographically smallest provider as the deterministic representative when multiple eligible descriptors share a model name, regardless of catalog order', () => {
     const sharedAnthropic: BackendDescriptor = {
       ...anthropic,
-      provider: 'anthropic',
+      provider: 'alpha',
       model: 'shared-model',
       pricing: undefined,
     };
     const sharedOpenAI: BackendDescriptor = {
       ...openai,
-      provider: 'openai',
+      provider: 'beta',
       model: 'shared-model',
       pricing: undefined,
     };
@@ -604,13 +605,13 @@ describe('select: fallbackPlan', () => {
       user: { fallbackOrder: ['shared-model'] },
     });
     const plan = select(baseRequest(), options);
-    expect(plan.fallbackPlan).toEqual([{ provider: 'anthropic', model: 'shared-model' }]);
+    expect(plan.fallbackPlan).toEqual([{ provider: 'alpha', model: 'shared-model' }]);
 
     const reversedOptions = baseOptions(catalogOf([sharedAnthropic, sharedOpenAI]), {
       user: { fallbackOrder: ['shared-model'] },
     });
     const reversedPlan = select(baseRequest(), reversedOptions);
-    expect(reversedPlan.fallbackPlan).toEqual([{ provider: 'anthropic', model: 'shared-model' }]);
+    expect(reversedPlan.fallbackPlan).toEqual([{ provider: 'alpha', model: 'shared-model' }]);
   });
 });
 
@@ -632,7 +633,7 @@ describe('select: stale-catalog', () => {
       requestedValue: { target: 'model', override: openai.model },
     });
     const options = baseOptions(catalogOf([anthropic, openai], { stale: true, revision: 7 }), {
-      user: { exactOverride: { provider: 'openai' } },
+      user: { exactOverride: { provider: 'beta' } },
     });
     const plan = select(request, options);
     expect(plan.outcome).toBe('stale-catalog');
@@ -644,7 +645,7 @@ describe('select: stale-catalog', () => {
 describe('select: no-candidate with a shared exclusion code', () => {
   it('surfaces the shared exclusionCode when every excluded candidate shares one', () => {
     const options = baseOptions(catalogOf([anthropic, openai]), {
-      deployment: { deniedProviders: ['anthropic', 'openai'] },
+      deployment: { deniedProviders: ['alpha', 'beta'] },
     });
     const plan = select(baseRequest(), options);
     expect(plan.outcome).toBe('no-candidate');
@@ -653,8 +654,8 @@ describe('select: no-candidate with a shared exclusion code', () => {
 
   it('leaves exclusionCode undefined when excluded candidates disagree on the reason', () => {
     const options = baseOptions(catalogOf([anthropic, openai]), {
-      deployment: { deniedProviders: ['anthropic'] },
-      bureau: { deniedProviders: ['openai'] },
+      deployment: { deniedProviders: ['alpha'] },
+      bureau: { deniedProviders: ['beta'] },
     });
     const plan = select(baseRequest(), options);
     expect(plan.outcome).toBe('no-candidate');
@@ -667,22 +668,22 @@ describe('select: revalidation', () => {
     const request = baseRequest({ catalogRevision: 2 });
     const options = baseOptions(catalogOf([openai]), {
       revalidate: {
-        priorSelected: { provider: 'anthropic', model: anthropic.model },
+        priorSelected: { provider: 'alpha', model: anthropic.model },
         priorCatalogRevision: 1,
         priorPolicyRevision: 1,
       },
     });
     const plan = select(request, options);
     expect(plan.outcome).toBe('capability-changed');
-    expect(plan.failure?.reason).toContain('anthropic');
+    expect(plan.failure?.reason).toContain('alpha');
   });
 
   it('reports policy-changed when the policy revision moved and the prior candidate is now excluded', () => {
     const request = baseRequest({ policyRevision: 2 });
     const options = baseOptions(catalogOf([anthropic, openai]), {
-      bureau: { deniedProviders: ['anthropic'] },
+      bureau: { deniedProviders: ['alpha'] },
       revalidate: {
-        priorSelected: { provider: 'anthropic', model: anthropic.model },
+        priorSelected: { provider: 'alpha', model: anthropic.model },
         priorCatalogRevision: 1,
         priorPolicyRevision: 1,
       },
@@ -695,7 +696,7 @@ describe('select: revalidation', () => {
   it('proceeds to a normal selection when the prior candidate is still present and eligible', () => {
     const options = baseOptions(catalogOf([anthropic]), {
       revalidate: {
-        priorSelected: { provider: 'anthropic', model: anthropic.model },
+        priorSelected: { provider: 'alpha', model: anthropic.model },
         priorCatalogRevision: 1,
         priorPolicyRevision: 1,
       },
@@ -707,14 +708,14 @@ describe('select: revalidation', () => {
   it('does not revalidate when catalog and policy revisions are unchanged', () => {
     const options = baseOptions(catalogOf([openai]), {
       revalidate: {
-        priorSelected: { provider: 'anthropic', model: anthropic.model },
+        priorSelected: { provider: 'alpha', model: anthropic.model },
         priorCatalogRevision: 1,
         priorPolicyRevision: 1,
       },
     });
     const plan = select(baseRequest(), options);
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected?.provider).toBe('openai');
+    expect(plan.selected?.provider).toBe('beta');
   });
 });
 
@@ -770,8 +771,8 @@ describe('recordEffectiveGeneration', () => {
     const plan = select(baseRequest(), baseOptions(catalogOf([anthropic])));
     const effective: EffectiveGenerationResult = {
       planId: plan.planId,
-      provider: 'anthropic',
-      model: 'claude-fable-5',
+      provider: 'alpha',
+      model: 'alpha-large',
       divergedFromPlan: false,
     };
     expect(recordEffectiveGeneration(plan, effective)).toBe(plan);
@@ -781,8 +782,8 @@ describe('recordEffectiveGeneration', () => {
     const plan = select(baseRequest(), baseOptions(catalogOf([anthropic])));
     const effective: EffectiveGenerationResult = {
       planId: plan.planId,
-      provider: 'openai',
-      model: 'gpt-4o',
+      provider: 'beta',
+      model: 'beta-standard',
       divergedFromPlan: true,
     };
     const diverged = recordEffectiveGeneration(plan, effective);
@@ -797,8 +798,8 @@ describe('recordEffectiveGeneration', () => {
     expect(plan.outcome).toBe('no-candidate');
     const effective: EffectiveGenerationResult = {
       planId: plan.planId,
-      provider: 'openai',
-      model: 'gpt-4o',
+      provider: 'beta',
+      model: 'beta-standard',
       divergedFromPlan: true,
     };
     expect(recordEffectiveGeneration(plan, effective)).toBe(plan);
@@ -807,11 +808,11 @@ describe('recordEffectiveGeneration', () => {
 
 describe('select: exactOverride merges a standing user override with a requestedValue target', () => {
   it('merges a requestedValue provider override onto a standing exactOverride model', () => {
-    const request = baseRequest({ requestedValue: { target: 'provider', override: 'anthropic' } });
+    const request = baseRequest({ requestedValue: { target: 'provider', override: 'alpha' } });
     const user: UserModelConfiguration = { exactOverride: { model: anthropic.model } };
     const plan = select(request, baseOptions(catalogOf([anthropic, openai]), { user }));
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(plan.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
   });
 });
 
@@ -849,11 +850,11 @@ describe('select: input media filters incompatible backends before ranking (COR-
       baseOptions(catalogOf([anthropic, openai, gemini])),
     );
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected).toEqual({ provider: 'gemini', model: 'gemini-2.5-pro' });
+    expect(plan.selected).toEqual({ provider: 'gamma', model: 'gamma-pro' });
     const excluded = plan.candidates.filter((candidate) => !candidate.eligible);
     expect(excluded.map((candidate) => [candidate.provider, candidate.exclusionCode])).toEqual([
-      ['anthropic', 'incompatible-modality'],
-      ['openai', 'incompatible-modality'],
+      ['alpha', 'incompatible-modality'],
+      ['beta', 'incompatible-modality'],
     ]);
     // Excluded candidates carry no ranking inputs: media filtering ran first.
     expect(excluded.every((candidate) => candidate.rankingInputs === undefined)).toBe(true);
@@ -891,44 +892,44 @@ describe('select: input media filters incompatible backends before ranking (COR-
     );
     // A 200k-token window caps images at 100; a 1M-token window allows 600.
     const excluded = plan.candidates.filter((c) => !c.eligible);
-    expect(excluded.map((c) => c.model)).toEqual(['claude-haiku-4-5']);
+    expect(excluded.map((c) => c.model)).toEqual(['alpha-small']);
     expect(excluded[0]?.exclusionReason).toContain('at most 100 image parts');
     const overSixHundred = select(
       baseRequest({ inputMedia: [{ modality: 'image', sourceForm: 'inline', count: 601 }] }),
       baseOptions(catalogOf([anthropic, openai])),
     );
-    expect(overSixHundred.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+    expect(overSixHundred.selected).toEqual({ provider: 'beta', model: 'beta-standard' });
   });
 
   it('keeps the provider of a provider-file part and excludes backends of another provider', () => {
     const requirements = describeInputMedia([
       {
         type: 'document',
-        source: { kind: 'provider-file', provider: 'anthropic', providerFileId: 'file_1' },
+        source: { kind: 'provider-file', provider: 'alpha', providerFileId: 'file_1' },
       },
     ]);
     expect(requirements).toEqual([
-      { modality: 'document', sourceForm: 'provider-file', provider: 'anthropic', count: 1 },
+      { modality: 'document', sourceForm: 'provider-file', provider: 'alpha', count: 1 },
     ]);
     const plan = select(
       baseRequest({ inputMedia: requirements }),
       baseOptions(catalogOf([anthropic, gemini])),
     );
-    expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
-    expect(plan.candidates.find((c) => c.provider === 'gemini')).toMatchObject({
+    expect(plan.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
+    expect(plan.candidates.find((c) => c.provider === 'gamma')).toMatchObject({
       eligible: false,
       exclusionCode: 'incompatible-modality',
     });
   });
 
   it('excludes a backend that does not fetch remote URLs itself', () => {
-    const gemini20 = descriptor('gemini', 'gemini-2.0-flash');
+    const gemini20 = descriptor('gamma', 'gamma-legacy');
     const plan = select(
       baseRequest({ inputMedia: [{ modality: 'image', sourceForm: 'remote-url', count: 1 }] }),
       baseOptions(catalogOf([gemini20, gemini])),
     );
-    expect(plan.selected).toEqual({ provider: 'gemini', model: 'gemini-2.5-pro' });
-    expect(plan.candidates.find((c) => c.model === 'gemini-2.0-flash')?.exclusionReason).toContain(
+    expect(plan.selected).toEqual({ provider: 'gamma', model: 'gamma-pro' });
+    expect(plan.candidates.find((c) => c.model === 'gamma-legacy')?.exclusionReason).toContain(
       'does not fetch remote URLs itself',
     );
   });
@@ -942,7 +943,7 @@ describe('select: input media filters incompatible backends before ranking (COR-
       }),
       baseOptions(catalogOf([anthropic, openai])),
     );
-    expect(plan.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+    expect(plan.selected).toEqual({ provider: 'beta', model: 'beta-standard' });
   });
 
   it('excludes a backend whose aggregate byte limit the known sizes sum past', () => {
@@ -956,7 +957,7 @@ describe('select: input media filters incompatible backends before ranking (COR-
       baseRequest({ inputMedia: [image, image] }),
       baseOptions(catalogOf([capped, openai])),
     );
-    expect(twice.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+    expect(twice.selected).toEqual({ provider: 'beta', model: 'beta-standard' });
     expect(twice.candidates.find((c) => c.model === 'capped-model')).toMatchObject({
       eligible: false,
       exclusionCode: 'incompatible-modality',
@@ -966,7 +967,7 @@ describe('select: input media filters incompatible backends before ranking (COR-
     );
 
     const once = select(baseRequest({ inputMedia: [image] }), baseOptions(catalogOf([capped])));
-    expect(once.selected).toEqual({ provider: 'anthropic', model: 'capped-model' });
+    expect(once.selected).toEqual({ provider: 'alpha', model: 'capped-model' });
   });
 
   it('is a no-op for a request that carries no media', () => {

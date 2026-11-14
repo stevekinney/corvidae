@@ -557,6 +557,7 @@
     "$|anyOf[1].nextCursor",
     "$|anyOf[1].total"
   ],
+  "output:bureau.contexts.archive": ["$.archivedAt", "$.changed", "$.id"],
   "output:bureau.contexts.delete": [
     "$.contextId",
     "$.reason",
@@ -764,6 +765,7 @@
   "output:bureau.contexts.get": [
     "$.activity",
     "$.agentName",
+    "$.archivedAt",
     "$.configVersion",
     "$.createdAt",
     "$.effort",
@@ -797,6 +799,7 @@
     "$.contexts",
     "$.contexts[].activity",
     "$.contexts[].agentName",
+    "$.contexts[].archivedAt",
     "$.contexts[].createdAt",
     "$.contexts[].endReason",
     "$.contexts[].forkedFromMessageId",
@@ -888,6 +891,7 @@
     "$|oneOf[5].outcome",
     "$|oneOf[5].reason"
   ],
+  "output:bureau.contexts.unarchive": ["$.archivedAt", "$.changed", "$.id"],
   "output:bureau.contexts.window": [
     "$.categories",
     "$.categories[].name",

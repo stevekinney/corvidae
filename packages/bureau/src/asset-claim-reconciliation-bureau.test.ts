@@ -14,7 +14,6 @@ import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgr
 import {
   createAgent,
   createAgentSession,
-  createModelCatalog,
   SESSION_OWNER_METADATA_KEY,
   stopWhen,
   waitForCondition,
@@ -38,6 +37,7 @@ import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.te
 import type { Bureau } from './bureau-types/facade';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -46,7 +46,7 @@ afterEach(async () => {
   await yieldToPortableEventLoop();
 });
 
-const anthropicDescriptors = createModelCatalog().descriptors.filter(
+const anthropicDescriptors = createVendorCatalog().descriptors.filter(
   (descriptor) => descriptor.provider === 'anthropic',
 );
 const png = pngBytes(4, 3);

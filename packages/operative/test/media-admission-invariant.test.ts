@@ -28,8 +28,8 @@ import type { OperativeHookMap } from '../src/hooks';
 import { withBackendDescriptors } from '../src/providers/backend-descriptor-attachment';
 import { createFalloverGenerate } from '../src/providers/fallover/create-fallover-generate';
 import type { BackendDescriptor } from '../src/providers/model-catalog';
-import { createModelCatalog } from '../src/providers/model-catalog';
 import { createRoutingGenerate } from '../src/providers/routing/create-routing-generate';
+import { createFixtureCatalog } from '../src/testing/model-catalog.test-support.ts';
 import type { ContentSourceResolver, GenerateContext, GenerateFunction } from '../src/types';
 
 const BYTES = 'QUJDREVGRw==';
@@ -279,14 +279,14 @@ describe('admission runs on the conversation generate receives (COR-716)', () =>
 });
 
 describe('dispatch is limited to the backends that admit the whole request (COR-716)', () => {
-  const catalog = createModelCatalog();
+  const catalog = createFixtureCatalog();
   const anthropic = catalog.descriptors.find(
     (row) =>
-      row.provider === 'anthropic' &&
+      row.provider === 'alpha' &&
       row.mediaCounts.some((count) => count.modality === 'image' && count.maxPerRequest === 100),
   )!;
   const openai = catalog.descriptors.find(
-    (row) => row.provider === 'openai' && row.model === 'gpt-4o',
+    (row) => row.provider === 'beta' && row.model === 'beta-standard',
   )!;
   /** One more image than Anthropic's per-request cap, well under OpenAI's. */
   const images: MediaContent[] = Array.from({ length: 101 }, () => ({
@@ -373,7 +373,7 @@ describe('dispatch is limited to the backends that admit the whole request (COR-
     // Audio only Gemini takes, beside an image only Anthropic can hold (this
     // Gemini row caps an image at four bytes): each part fits one backend alone,
     // and no single backend takes both.
-    const gemini = catalog.descriptors.find((row) => row.provider === 'gemini')!;
+    const gemini = catalog.descriptors.find((row) => row.provider === 'gamma')!;
     const tinyImages: BackendDescriptor = {
       ...gemini,
       mediaLimits: [{ scope: 'per-part', modality: 'image', maxBytes: 4 }],
@@ -411,9 +411,9 @@ describe('dispatch is limited to the backends that admit the whole request (COR-
 });
 
 describe('an opaque candidate keeps the request reachable (COR-716)', () => {
-  const catalog = createModelCatalog();
+  const catalog = createFixtureCatalog();
   const openai = catalog.descriptors.find(
-    (row) => row.provider === 'openai' && row.model === 'gpt-4o',
+    (row) => row.provider === 'beta' && row.model === 'beta-standard',
   )!;
   const audio: MediaContent = {
     type: 'audio',
@@ -490,7 +490,7 @@ describe('an opaque candidate keeps the request reachable (COR-716)', () => {
 
 describe('the MIME family comes from the shared document table (COR-716)', () => {
   it('admits an application/json document on a backend that accepts documents', async () => {
-    const anthropic = createModelCatalog().descriptors.find((row) => row.provider === 'anthropic')!;
+    const anthropic = createFixtureCatalog().descriptors.find((row) => row.provider === 'alpha')!;
     const calls: string[] = [];
     const conversation = new Conversation();
     conversation.appendUserMessage([

@@ -132,12 +132,22 @@ function toBase64(bytes: Uint8Array): string {
  * which case no more bytes are sent and the open upload is aborted on the Bureau
  * (`bureau.assets.uploads.abort`). An abort during the call that creates the upload leaves a
  * session this page never learned the identifier of, which expires on its own.
+ *
+ * `onProgress` hears the fraction of the file's bytes the Bureau has acknowledged, from 0 to 1,
+ * after each `append` answers. The bytes travel as one JSON-RPC request per
+ * {@link UPLOAD_CHUNK_BYTES} chunk, so progress moves a chunk at a time; `fetch` reports no upload
+ * progress inside one request, and a chunk is small enough that it need not. Nothing is reported
+ * before the first chunk is acknowledged, so a tile keeps its moving bar rather than sitting at 0%.
  */
 export async function uploadAsset(
   file: File,
-  options: { readonly signal?: AbortSignal; readonly fetch?: Fetcher } = {},
+  options: {
+    readonly signal?: AbortSignal;
+    readonly fetch?: Fetcher;
+    readonly onProgress?: (fraction: number) => void;
+  } = {},
 ): Promise<UploadedAsset> {
-  const { signal } = options;
+  const { signal, onProgress } = options;
   const call = async (
     step: 'create' | 'append' | 'complete',
     method: string,
@@ -173,6 +183,7 @@ export async function uploadAsset(
         uploadId: session.uploadId,
         chunk: toBase64(chunk),
       });
+      onProgress?.((start + chunk.length) / file.size);
     }
     return assetSchema.parse(
       await call('complete', 'bureau.assets.uploads.complete', { uploadId: session.uploadId }),

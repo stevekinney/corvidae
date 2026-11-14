@@ -38,6 +38,9 @@
 <script lang="ts">
   import Check from '@lucide/svelte/icons/check';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import File from '@lucide/svelte/icons/file';
+  import FileDiff from '@lucide/svelte/icons/file-diff';
+  import FilePen from '@lucide/svelte/icons/file-pen';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -45,7 +48,6 @@
   import Badge from '../badge/badge.svelte';
   import Card from '../card/card.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
-  import Collapsible from '../collapsible/collapsible.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
   import Link from '../link/link.svelte';
   import PayloadInspector from '../payload-inspector/payload-inspector.svelte';
@@ -63,6 +65,7 @@
     STATE_LABELS,
     dedupeFilePaths,
     describeCountdown,
+    describeFilesTouched,
     describeDecisionTime,
     describeExpiry,
     inputRepeatsShownFacts,
@@ -72,6 +75,7 @@
     prepareArgumentsPreview,
     resolveEffectiveApprovalState,
     sanitizeEnvironmentNames,
+    splitFilePath,
     summarizeInput,
   } from './approval-card-state.ts';
   import type {
@@ -311,8 +315,10 @@
   const inputPairs = $derived(hasArgumentsPreview ? summarizeInput(operation.argsPreview) : []);
   const canEditArguments = $derived(editableArgs && hasArgumentsPreview);
   const filesTouched = $derived(dedupeFilePaths(operation.filesTouched ?? []));
-  const filesTouchedLabel = $derived(
-    `${filesTouched.length} file${filesTouched.length === 1 ? '' : 's'}`,
+  const filesTouchedTitle = $derived(describeFilesTouched(filesTouched.length));
+  // A patch changes the lines a diff shows; a write replaces a file; anything else just names it.
+  const FileGlyph = $derived(
+    operation.kind === 'patch' ? FileDiff : operation.kind === 'file-write' ? FilePen : File,
   );
   const environmentNames = $derived(sanitizeEnvironmentNames(env));
   // The row's Input discloses only what the operation carries.
@@ -334,6 +340,18 @@
   const rowInputPairs = $derived(
     hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand]) ? inputPairs : [],
   );
+  // The card keeps its arguments and its Details behind disclosures, closed until asked for.
+  // Arguments that only repeat the command shown above get no disclosure of their own.
+  const hasCardArguments = $derived(
+    hasArgumentsPreview && !inputRepeatsShownFacts(inputPairs, [decisionCommand]),
+  );
+  // The title above already names the tool, so the closed line just says "Arguments"; the
+  // inspector it opens keeps the tool's name, which also names its copy button.
+  const cardArgumentsWord = $derived(inputLabel ?? 'Arguments');
+  const argumentsId = $derived(`${rootId}-arguments`);
+  const detailsId = $derived(`${rootId}-details`);
+  let argumentsOpen = $state(false);
+  let detailsOpen = $state(false);
 
   // Arguments that only repeat what the facts already show in the open (the command, the target,
   // the tool) get no Input disclosure of their own.
@@ -428,16 +446,27 @@
 {#snippet filesTouchedSection()}
   {#if filesTouched.length > 0}
     <div class="cinder-approval-card__section">
-      <div class="cinder-approval-card__section-heading">
-        <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
-          Files touched
-        </svelte:element>
-        <Badge size="sm">{filesTouchedLabel}</Badge>
-      </div>
+      <svelte:element this={sectionTag} class="cinder-approval-card__section-title">
+        {filesTouchedTitle}
+      </svelte:element>
       <ul class="cinder-approval-card__file-list">
         {#each filesTouched as file (file)}
+          {@const path = splitFilePath(file)}
           <li class="cinder-approval-card__file">
-            <span class="cinder-approval-card__file-path">{file}</span>
+            <FileGlyph
+              class="cinder-approval-card__file-icon"
+              size={16}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <!-- The directory is muted and the name is not; a line breaks after a slash, so the
+                 name stays whole. Written with no space between, the text is the path exactly. -->
+            <span class="cinder-approval-card__file-path" dir="ltr"
+              >{#each path.directorySegments as segment, index (index)}<span
+                  class="cinder-approval-card__file-directory">{segment}</span
+                ><wbr />{/each}<span class="cinder-approval-card__file-name">{path.name}</span
+              ></span
+            >
             <CopyButton
               value={file}
               label={`Copy path ${file}`}
@@ -462,6 +491,78 @@
       />
     </div>
   {/if}
+{/snippet}
+
+{#snippet cardDetails()}
+  <div class="cinder-approval-card__details-content">
+    {#if sandbox}
+      <div class="cinder-approval-card__details-group">
+        <p class="cinder-approval-card__details-label">Sandbox</p>
+        <dl class="cinder-approval-card__metadata cinder-approval-card__metadata--compact">
+          <div class="cinder-approval-card__metadata-item">
+            <dt>Provider</dt>
+            <dd>{sandbox.provider}</dd>
+          </div>
+          <div class="cinder-approval-card__metadata-item">
+            <dt>Profile</dt>
+            <dd>{sandbox.name}</dd>
+          </div>
+          <div class="cinder-approval-card__metadata-item">
+            <dt>Working directory</dt>
+            <dd>{sandbox.workingDir}</dd>
+          </div>
+        </dl>
+      </div>
+    {/if}
+
+    {#if environmentNames.length > 0}
+      <div class="cinder-approval-card__details-group">
+        <p class="cinder-approval-card__details-label">Environment</p>
+        <ul
+          class="cinder-approval-card__environment-list"
+          aria-label="Environment variable names only; values are never shown"
+        >
+          {#each environmentNames as environmentName (environmentName)}
+            <li>
+              <Badge size="sm" monospace>{environmentName}</Badge>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
+    <dl class="cinder-approval-card__metadata">
+      <div class="cinder-approval-card__metadata-item">
+        <dt>Policy version</dt>
+        <dd>
+          {policyVersion}
+          <span class="cinder-approval-card__metadata-help">
+            Approval policy that produced this request.
+          </span>
+        </dd>
+      </div>
+      <div class="cinder-approval-card__metadata-item">
+        <dt>Idempotency key</dt>
+        <dd>
+          {idempotencyKey}
+          <span class="cinder-approval-card__metadata-help">
+            Keeps this decision durable if it is submitted more than once.
+          </span>
+        </dd>
+      </div>
+      {#if snapshotId}
+        <div class="cinder-approval-card__metadata-item">
+          <dt>Snapshot</dt>
+          <dd>
+            {snapshotId}
+            <span class="cinder-approval-card__metadata-help">
+              Workspace snapshot this request was captured against.
+            </span>
+          </dd>
+        </div>
+      {/if}
+    </dl>
+  </div>
 {/snippet}
 
 {#snippet rowInputBody()}
@@ -788,7 +889,9 @@
   >
     <span class="cinder-sr-only" aria-hidden="true">{question}</span>
     <Card padding="none" class="cinder-approval-card__surface">
-      {#snippet header()}
+      <!-- The heading is the body's first row, on the card's own fill: Card's header slot is a
+           band above the content, and this is the top of the content. -->
+      <div class="cinder-approval-card__body">
         <div class="cinder-approval-card__header">
           <Tooltip text={riskLabel} describe={false} class="cinder-approval-card__risk-tip">
             <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
@@ -830,15 +933,15 @@
                 <span class="cinder-approval-card__title-tool">{tool.name}</span>
               {/if}
             </svelte:element>
-            {#if question !== undefined}
-              <p class="cinder-approval-card__tool-line">
-                {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
-                    >{tool.label}</span
-                  >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code>
-              </p>
-            {/if}
+            <!-- One line says what runs and how risky it is: "Issue refund issue-refund, Dangerous,
+                 Can't be undone". A title without a question already names the tool. -->
             <p class="cinder-approval-card__risk-line">
-              <span class="cinder-approval-card__risk-word">{riskWord}</span
+              {#if question !== undefined}<span class="cinder-approval-card__keep"
+                  >{#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
+                      >{tool.label}</span
+                    >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code
+                  ><span class="cinder-approval-card__separator" aria-hidden="true">,</span></span
+                >{' '}{/if}<span class="cinder-approval-card__risk-word">{riskWord}</span
               >{#if tool.irreversible}<span
                   class="cinder-approval-card__separator"
                   aria-hidden="true">,</span
@@ -861,89 +964,81 @@
             {/if}
           </div>
         </div>
-      {/snippet}
 
-      <div class="cinder-approval-card__body">
         {@render operationPreview()}
 
         {@render filesTouchedSection()}
 
-        {@render argumentsPreviewSection()}
-
-        {#if hasDetails}
-          <Collapsible trigger="Details" class="cinder-approval-card__details">
-            <div class="cinder-approval-card__details-content">
-              {#if sandbox}
-                <div class="cinder-approval-card__details-group">
-                  <p class="cinder-approval-card__details-label">Sandbox</p>
-                  <dl
-                    class="cinder-approval-card__metadata cinder-approval-card__metadata--compact"
-                  >
-                    <div class="cinder-approval-card__metadata-item">
-                      <dt>Provider</dt>
-                      <dd>{sandbox.provider}</dd>
-                    </div>
-                    <div class="cinder-approval-card__metadata-item">
-                      <dt>Profile</dt>
-                      <dd>{sandbox.name}</dd>
-                    </div>
-                    <div class="cinder-approval-card__metadata-item">
-                      <dt>Working directory</dt>
-                      <dd>{sandbox.workingDir}</dd>
-                    </div>
-                  </dl>
-                </div>
-              {/if}
-
-              {#if environmentNames.length > 0}
-                <div class="cinder-approval-card__details-group">
-                  <p class="cinder-approval-card__details-label">Environment</p>
-                  <ul
-                    class="cinder-approval-card__environment-list"
-                    aria-label="Environment variable names only; values are never shown"
-                  >
-                    {#each environmentNames as environmentName (environmentName)}
-                      <li>
-                        <Badge size="sm" monospace>{environmentName}</Badge>
-                      </li>
+        <!-- What the request carries beyond the command and the files waits behind two quiet
+             disclosures, closed by default, so the decision follows straight after. -->
+        {#if hasCardArguments || hasDetails}
+          <div class="cinder-approval-card__disclosures">
+            {#if hasCardArguments}
+              <div class="cinder-approval-card__input">
+                <button
+                  type="button"
+                  class="cinder-approval-card__input-toggle"
+                  aria-expanded={argumentsOpen}
+                  aria-controls={argumentsId}
+                  onclick={() => (argumentsOpen = !argumentsOpen)}
+                >
+                  <ChevronRight
+                    class="cinder-approval-card__input-chevron"
+                    size={12}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                    data-cinder-open={argumentsOpen || undefined}
+                  />
+                  <span class="cinder-approval-card__input-word">{cardArgumentsWord}</span>
+                  <span class="cinder-approval-card__input-pairs">
+                    {#each rowInputPairs as pair, index (pair.key)}
+                      {#if index > 0}<span
+                          class="cinder-approval-card__separator"
+                          aria-hidden="true">,</span
+                        >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
+                      >{' '}<span
+                        class="cinder-approval-card__pair-value"
+                        data-cinder-muted={pair.muted || undefined}>{pair.text}</span
+                      >
                     {/each}
-                  </ul>
+                  </span>
+                </button>
+                <!-- Kept mounted while closed, so a bound Fields and JSON choice holds. -->
+                <div
+                  id={argumentsId}
+                  class="cinder-approval-card__row-input"
+                  hidden={!argumentsOpen}
+                >
+                  {@render argumentsPreviewSection()}
                 </div>
-              {/if}
-
-              <dl class="cinder-approval-card__metadata">
-                <div class="cinder-approval-card__metadata-item">
-                  <dt>Policy version</dt>
-                  <dd>
-                    {policyVersion}
-                    <span class="cinder-approval-card__metadata-help">
-                      Approval policy that produced this request.
-                    </span>
-                  </dd>
+              </div>
+            {/if}
+            {#if hasDetails}
+              <div class="cinder-approval-card__input">
+                <button
+                  type="button"
+                  class="cinder-approval-card__input-toggle"
+                  aria-expanded={detailsOpen}
+                  aria-controls={detailsId}
+                  onclick={() => (detailsOpen = !detailsOpen)}
+                >
+                  <ChevronRight
+                    class="cinder-approval-card__input-chevron"
+                    size={12}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                    data-cinder-open={detailsOpen || undefined}
+                  />
+                  <span class="cinder-approval-card__input-word">Details</span>
+                </button>
+                <div id={detailsId} class="cinder-approval-card__row-input" hidden={!detailsOpen}>
+                  {#if detailsOpen}
+                    {@render cardDetails()}
+                  {/if}
                 </div>
-                <div class="cinder-approval-card__metadata-item">
-                  <dt>Idempotency key</dt>
-                  <dd>
-                    {idempotencyKey}
-                    <span class="cinder-approval-card__metadata-help">
-                      Keeps this decision durable if it is submitted more than once.
-                    </span>
-                  </dd>
-                </div>
-                {#if snapshotId}
-                  <div class="cinder-approval-card__metadata-item">
-                    <dt>Snapshot</dt>
-                    <dd>
-                      {snapshotId}
-                      <span class="cinder-approval-card__metadata-help">
-                        Workspace snapshot this request was captured against.
-                      </span>
-                    </dd>
-                  </div>
-                {/if}
-              </dl>
-            </div>
-          </Collapsible>
+              </div>
+            {/if}
+          </div>
         {/if}
 
         {#if isActionable && hasResolutionCallback}

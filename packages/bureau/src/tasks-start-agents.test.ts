@@ -13,7 +13,6 @@ import {
   AgentContractError,
   createAgent,
   createLazyAgent,
-  createModelCatalog,
   createSubagentTool,
   type DefinitionResolvingAgent,
   type GenerateContext,
@@ -33,6 +32,7 @@ import type { StartTaskOptions } from './bureau-types/tasks';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const runtime = createDefaultRuntimeServices();
 
@@ -95,7 +95,7 @@ describe('bureau.tasks.start of a catalog agent', () => {
     ] as const;
 
     function recordingAgent(seen: GenerateContext[]) {
-      const descriptors = createModelCatalog().descriptors.filter(
+      const descriptors = createVendorCatalog().descriptors.filter(
         (descriptor) => descriptor.provider === 'anthropic',
       );
       return createAgent({

@@ -149,6 +149,7 @@ export interface WorkflowToolDocument {
   readonly trigger: Record<string, unknown>;
   readonly steps: readonly Record<string, unknown>[];
   readonly activityVersions?: Readonly<Record<string, string>> | undefined;
+  readonly workflowVersions?: Readonly<Record<string, string>> | undefined;
   readonly inputSchema?: Readonly<Record<string, unknown>> | undefined;
   readonly outputSchema?: Readonly<Record<string, unknown>> | undefined;
 }
@@ -305,6 +306,9 @@ function documentOf(document: WorkflowToolDocument): WorkflowToolDocument {
     ...(document.activityVersions === undefined
       ? {}
       : { activityVersions: { ...document.activityVersions } }),
+    ...(document.workflowVersions === undefined
+      ? {}
+      : { workflowVersions: { ...document.workflowVersions } }),
     ...(document.inputSchema === undefined ? {} : { inputSchema: { ...document.inputSchema } }),
     ...(document.outputSchema === undefined ? {} : { outputSchema: { ...document.outputSchema } }),
   };

@@ -1,5 +1,6 @@
 /** The shared provider contract, run against the Anthropic definition. */
 import { runProviderContract } from '@lostgradient/operative/provider-testing';
+import { anthropicRows } from '../src/anthropic-catalog.ts';
 import { anthropicProvider } from '../src/anthropic-definition.ts';
 import type { AnthropicMessageCreateRequest } from '../src/anthropic-types.ts';
 import {
@@ -22,6 +23,7 @@ runProviderContract<AnthropicMessageCreateRequest>({
   },
   fixtures: {
     name: 'anthropic',
+    rows: anthropicRows(),
     model: 'claude-sonnet-5',
     unknownModel: 'claude-does-not-exist-in-the-seed',
     text: 'Hello from Anthropic!',

@@ -6,18 +6,19 @@
  * clients `packages/operative/test/<provider>/*.test.ts` already use.
  */
 import type { BackendDescriptor } from '@lostgradient/operative/provider-kit';
-import { createModelCatalog, readBackendDescriptors } from '@lostgradient/operative/provider-kit';
+import { readBackendDescriptors } from '@lostgradient/operative/provider-kit';
 import { describe, expect, it } from 'bun:test';
+import { geminiRows } from '../src/gemini-catalog.ts';
 import { createGeminiProviderStream } from '../src/gemini.ts';
 import { geminiStreamTextChunks } from '../src/test/gemini-fixtures.ts';
 import { createMockGeminiStreamingModel } from '../src/test/gemini-mock-clients.ts';
 
 // The provider factories under test read the wall clock through
-// `createModelCatalog`'s default `now`, same as this helper — so every
+// `geminiRows`'s default `freshness`, same as this helper — so every
 // comparison below strips `freshness` rather than pinning it, and asserts
 // separately that it is a well-formed ISO timestamp.
 function seedDescriptor(provider: 'anthropic' | 'openai' | 'gemini', model: string) {
-  return createModelCatalog().descriptors.find(
+  return geminiRows().find(
     (descriptor) => descriptor.provider === provider && descriptor.model === model,
   );
 }

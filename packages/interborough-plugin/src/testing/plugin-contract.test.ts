@@ -1,6 +1,5 @@
 import {
   type BackendDescriptor,
-  createModelCatalog,
   type DecisionKind,
   type DecisionModel,
 } from '@lostgradient/operative';
@@ -9,6 +8,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { PluginInterceptor } from '../contributions.ts';
 import { definePlugin } from '../define-plugin.ts';
+import { catalogRow } from './catalog-row.test-support.ts';
 import { PLUGIN_CONTRACT_UNCHECKED_HOOK_POINTS } from './hook-observation.ts';
 import {
   checkPluginContract,
@@ -255,8 +255,7 @@ describe('the hook points the contract runs', () => {
 
 describe('the native decision scenarios (COR-2159)', () => {
   const DECISION_CHECK = 'answers the decision scenarios of every row with native decision kinds';
-  const [seed] = createModelCatalog().descriptors;
-  if (seed === undefined) throw new Error('Expected the seed catalog to hold rows.');
+  const seed = catalogRow;
   const row: BackendDescriptor = {
     ...seed,
     provider: 'judge',

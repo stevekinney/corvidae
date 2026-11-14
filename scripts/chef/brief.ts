@@ -32,8 +32,12 @@
 //     focused checks for what the worker changed, with the root lint always among them;
 //   - the charter rules every worker gets (`charterRules` below, their one source; the
 //     `references/execution-record.md` "Worker charter" template points here): cost, checks,
-//     branch updates, delivery, the review rounds, the turn rule, the defect-class self-check,
-//     context, the report, corrections, and acceptance-criteria statuses.
+//     browser suites on CI only, the scratch directory, branch updates, delivery, the review
+//     rounds, the turn rule, the defect-class self-check, context, the report, corrections, and
+//     acceptance-criteria statuses;
+//   - the scratch directory: a written brief gets its own `<issue>-<short id>` directory under the
+//     main checkout's `tmp/chef/scratch/` (under `<out-dir>/scratch` with `--out-dir`), created by
+//     this script, so two workers never share logs. `--stdout` creates none.
 //
 // The script only prepares the brief. The coordinator tool starts the session: one fresh session
 // per issue, on Sonnet unless the brief names a reason for another model, from this file, and the
@@ -82,13 +86,16 @@ export const deliveryRule =
 export const charterRules = [
   '**Cost:** batch independent reads and searches into one message. Edit with Edit or Write, never a shell heredoc (a throwaway codemod for a mechanical multi-file rewrite is the exception).',
   '**Checks:** run the focused checks on what you changed once, when the change is complete, in the background and never polled, not `bun run check`: `bun scripts/chef/focused-checks.ts`; fix every failed step. A test file that starts a process is named `*.integration.test.ts`; the command runs `bun scripts/affected-tests.ts run --isolated` when your change reaches one. The full suite only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts, and then on GitHub with `gh workflow run main.yml --ref <branch>`, never a local `bun run validate`. Delivery runs no gate.',
+  "**Browser suites:** never run a Playwright fixture suite, the Interborough end-to-end suite, a design-review capture (the coordinator runs it for your design rows), `validate` or `harden` on this host (owner decision, 2026-11-13). When your change reaches a browser suite, push, run `gh workflow run main.yml --ref <branch>`, and wait for it in a background command. Before any re-run, read the failing test names and download the failing shard's artifact: a re-run makes the first attempt's artifact unreachable.",
+  '**Processes:** never end a process by name or pattern (`pkill`, `killall`, `kill` of a pid you did not start): a worker ends only a process it started, by pid, and when the test pool queue is long it waits (a `pkill -f "run test:self"` ended other sessions\' runs on 2026-11-13).',
+  '**Scratch:** keep your logs and temporary files only in the scratch directory this brief names under `## Scratch directory`, never in `/tmp` or any path another worker can write.',
   '**Branch:** update from `main` only by a real merge (`git fetch origin main && git merge FETCH_HEAD`), never `git reset --soft` onto a newer `main`. Before every push, run `bun scripts/chef/revert-check.ts` and read `git diff --name-only origin/main...HEAD`; a file you did not mean to change means a stale tree.',
   `**Delivery:** ${deliveryRule}`,
   '**Review rounds, with a pull request open (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; then open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',
   '**Turn rule:** end a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait on a completion; never poll, and never end a turn to say you are still waiting.',
   '**Defect-class self-check:** before pushing, check the diff against every class in `.agents/skills/chef/references/defect-classes.md` and report each. With a pull request open, run `bun scripts/chef/review-threads.ts classes --pr <n>` before every fix push; on exit 1, push nothing more and return blocked.',
   '**Context:** there is no context ceiling; work until the change is complete and verified. Keep context small anyway: write long output to a file and read its tail.',
-  '**Report:** your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Lines: `status:`, `pr:` (or none), `head:`, `worktree:`, `checks:` (command and exit code), `revert check:`, `changed files:`, `not verified:`, `decisions:`, and each acceptance criterion with its status. Logs and evidence go under `tmp/chef/<package>/round-<n>/` in the main checkout. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.',
+  '**Report:** your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Lines: `status:`, `pr:` (or none), `head:`, `worktree:`, `checks:` (command and exit code), `revert check:`, `changed files:`, `not verified:`, `decisions:`, and each acceptance criterion with its status. Evidence for the coordinator goes under `tmp/chef/<package>/round-<n>/` in the main checkout. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.',
   '**Corrections:** after two unsuccessful attempts at the same defect or acceptance criterion, stop patching and return evidence for causal reassessment.',
   '**Acceptance criteria:** give every criterion exactly one status in the return. Implemented: not yet checked. Verified: a named command passed or a manual check was done. Failed: a check failed. Blocked: an external dependency prevents checking. Not verified: not checked, with the reason. Criteria include dated revisions and amending comments; a conflict between them is needs-decision. Number unnumbered criteria AC1, AC2 in the return only.',
 ];
@@ -267,7 +274,7 @@ function designLines(identifier: string, description: string, descriptionInclude
         ]
       : []),
     `- Before changing code, read every board these rows name with the Artifact tool's read action (the board's \`project/<Board>.dc.html\` path) and save it under \`tmp/chef/briefs/${identifier}/boards/\` in the main checkout. Build to the boards.`,
-    '- Before the pull request is ready, capture the screens you changed (`bun scripts/design-review-capture.ts` in `applications/interborough`) and get an implementation review from the `design-reviewer` agent, following the `design-review` skill: write these rows as its rows file (`row-id | board | requirement text`, where `board` is the file stem you saved under `boards/`, the name without `.dc.html`), and check its `row-verdicts.txt` with `bun scripts/design-review-rows.ts` in `applications/interborough`. Put the verdict lines (`row-id | verdict | evidence`) in the pull request body and your report. Only `matches`, or `deferred` with the reason recorded on the issue, passes; `drifted`, `partial`, `missing` and `unverified` block the pull request.',
+    "- You run no design-review capture and no `design-reviewer` (a capture never runs on the host; see **Browser suites**). Push your branch and return `ready-for-review` naming each design row you implemented with its board (the file stem you saved under `boards/`) and the screens you changed. The coordinator runs `bun scripts/design-review-capture.ts` (in `applications/interborough`, one capture at a time, under host admission), gets each row's verdict from the read-only `design-reviewer`, checks it with `bun scripts/design-review-rows.ts`, and returns an `unverified` or failing row to you as a correction. Only `matches`, or `deferred` with the reason recorded on the issue, passes; `drifted`, `partial`, `missing` and `unverified` block acceptance.",
     '',
   ];
 }
@@ -365,6 +372,18 @@ export interface BriefOptions {
   claim?: string | undefined;
   /** The run the dispatch belongs to; another run's live claim refuses the brief. */
   run?: string | undefined;
+  /**
+   * The directory `writeBrief` creates for this brief alone; `readBrief` names it from
+   * `scratchRoot`. Omitted for a read-only `--stdout` brief, which creates nothing.
+   */
+  scratch?: string | undefined;
+  /** The parent of every brief's scratch directory; `readBrief` appends `<issue>-<short id>`. */
+  scratchRoot?: string | undefined;
+}
+
+/** A directory name unique to one brief of `identifier`: `COR-7-1a2b3c4d`. */
+export function scratchName(identifier: string): string {
+  return `${identifier}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
 /** The "Open blockers" section: never "None" unless the relations were actually read. */
@@ -443,6 +462,13 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
   lines.push(...blockerLines(options.blockers));
   if (options.claim !== undefined) lines.push('## Claim', '', options.claim, '');
   lines.push(...designLines(issue.identifier, fullDescription, execution === undefined));
+  if (options.scratch !== undefined)
+    lines.push(
+      '## Scratch directory',
+      '',
+      `\`${options.scratch}\` is yours alone, created for this brief. Keep your logs and temporary files there and nowhere shared.`,
+      '',
+    );
   lines.push('## Files', '');
   const issueVerification =
     execution !== undefined && options.verify.length === 0
@@ -485,6 +511,8 @@ export interface BriefResult {
   path: string;
   identifier: string;
   bytes: number;
+  /** The scratch directory created for this brief, when one was asked for. */
+  scratch?: string;
 }
 
 /** Reads the issue and its blockers and renders the brief; writes nothing. */
@@ -492,7 +520,13 @@ export async function readBrief(
   identifier: string,
   options: BriefOptions,
   dependencies: LinearDependencies = {},
-): Promise<{ identifier: string; text: string; bytes: number; foreignClaim?: string }> {
+): Promise<{
+  identifier: string;
+  text: string;
+  bytes: number;
+  scratch?: string;
+  foreignClaim?: string;
+}> {
   const client = createClient(dependencies);
   const now = (dependencies.now ?? (() => new Date()))();
   const issue = await fetchIssue(client, identifier);
@@ -513,11 +547,21 @@ export async function readBrief(
     claim !== undefined && !foreign && claimIsLive(claim.marker, now)
       ? `\n\nCheckpoint after every push, with the pushed head: \`bun scripts/chef/linear.ts claim ${issue.identifier} --run ${claim.marker.run} --branch ${claim.marker.branch} --head <sha>\`.`
       : '';
-  const text = renderBrief(issue, { ...options, blockers, claim: `${claimLine}${checkpoint}` });
+  const scratch =
+    options.scratchRoot === undefined
+      ? undefined
+      : join(options.scratchRoot, scratchName(issue.identifier));
+  const text = renderBrief(issue, {
+    ...options,
+    blockers,
+    claim: `${claimLine}${checkpoint}`,
+    scratch,
+  });
   return {
     identifier: issue.identifier,
     text,
     bytes: Buffer.byteLength(text),
+    ...(scratch === undefined ? {} : { scratch }),
     ...(foreign ? { foreignClaim: claimLine } : {}),
   };
 }
@@ -533,9 +577,15 @@ export async function writeBrief(
       `Refused: ${brief.identifier} is ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`,
     );
   mkdirSync(options.outDirectory, { recursive: true });
+  if (brief.scratch !== undefined) mkdirSync(brief.scratch, { recursive: true });
   const path = join(options.outDirectory, `${brief.identifier}.md`);
   writeFileSync(path, brief.text);
-  return { path, identifier: brief.identifier, bytes: brief.bytes };
+  return {
+    path,
+    identifier: brief.identifier,
+    bytes: brief.bytes,
+    ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
+  };
 }
 
 export async function run(
@@ -575,14 +625,24 @@ export async function run(
         output: json ? JSON.stringify({ ok: true, ...brief }) : brief.text,
       };
     }
-    const outDirectory =
-      parsed.values['out-dir'] ?? join(resolveMainCheckout(runner), 'tmp', 'chef', 'briefs');
-    const result = await writeBrief(identifier, { ...options, outDirectory }, dependencies);
+    // The scratch root is the main checkout's `tmp/chef/scratch`; with `--out-dir`, `scratch` inside it.
+    const customDirectory = parsed.values['out-dir'];
+    const checkout = customDirectory === undefined ? resolveMainCheckout(runner) : '';
+    const outDirectory = customDirectory ?? join(checkout, 'tmp', 'chef', 'briefs');
+    const scratchRoot =
+      customDirectory === undefined
+        ? join(checkout, 'tmp', 'chef', 'scratch')
+        : join(customDirectory, 'scratch');
+    const result = await writeBrief(
+      identifier,
+      { ...options, outDirectory, scratchRoot },
+      dependencies,
+    );
     return {
       code: 0,
       output: json
         ? JSON.stringify({ ok: true, ...result })
-        : `Brief for ${result.identifier} written to ${result.path} (${result.bytes} bytes).`,
+        : `Brief for ${result.identifier} written to ${result.path} (${result.bytes} bytes); scratch directory ${result.scratch}.`,
     };
   } catch (error) {
     if (!(error instanceof LinearError)) throw error;

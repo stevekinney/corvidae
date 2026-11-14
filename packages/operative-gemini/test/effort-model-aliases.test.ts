@@ -7,8 +7,8 @@
  *   - The effective model and effort actually used are reported on `GenerateResponse.metadata`.
  *   - A resolved model alias reaches the request the client receives.
  *
- * The alias registry itself is provider-neutral and is covered by
- * `test/provider-effort-model-aliases.test.ts`.
+ * The alias table and the effort resolver themselves are covered by `test/model-aliases.test.ts`
+ * and `test/effort-resolver.test.ts`.
  */
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';

@@ -3,17 +3,19 @@
    * @cinder
    * @category data-display
    * @status beta
-   * @purpose Row of a grouped list with leading icon, avatar, thumbnail or control, a fixed lead column, title, subtitle, and trailing value, photo, chevron and action; the whole row is the link.
+   * @purpose Row of a grouped list with leading icon, avatar, thumbnail or control, a fixed lead column, title, subtitle, and trailing value, photo, chevron, action and text actions; the whole row is the link.
    * @tag list
    * @tag row
    * @useWhen Listing entities inside a grouped list, each with a leading glyph, a title and a secondary line.
    * @useWhen Linking each row to a detail view by passing href, which makes the whole row one link.
-   * @avoidWhen Showing a status-first run or approval row with details — use stacked-list-item.
+   * @useWhen Ending a row with the button that is its point, such as Review on an approval, which stays a button on a phone.
+   * @avoidWhen Showing a row with a fixed status column, details or a disclosure — use stacked-list-item.
    * @avoidWhen Comparing values across columns — use table.
    * @related grouped-list, stacked-list-item, avatar
    * @rationale Nearest alternative: StackedListItem — a grouped-list row has no border of its own; the group draws one rounded surface and inset separators.
    */
   export type {
+    GroupedListItemAction,
     GroupedListItemLeadingKind,
     GroupedListItemLeadUnit,
     GroupedListItemProps,
@@ -25,7 +27,8 @@
   import { ChevronRight } from '@lucide/svelte';
   import Clock from '@lucide/svelte/icons/clock';
   import { classNames } from '../../utilities/class-names.ts';
-  import type { GroupedListItemProps } from './grouped-list-item.types.ts';
+  import Button from '../button/button.svelte';
+  import type { GroupedListItemAction, GroupedListItemProps } from './grouped-list-item.types.ts';
 
   let {
     title,
@@ -40,6 +43,7 @@
     photo,
     trailing,
     action,
+    actions,
     chevron,
     selected = false,
     suggested = false,
@@ -55,6 +59,20 @@
 
   // A `lead` snippet wins; otherwise a lead value makes the row time-led.
   const timed = $derived(!lead && leadValue !== undefined);
+
+  const generatedId = $props.id();
+  const hasActions = $derived(actions !== undefined && actions.length > 0);
+
+  /** Blocks a disabled action's click, as `aria-disabled` alone does not. */
+  function guardDisabled(item: GroupedListItemAction) {
+    return (event: MouseEvent) => {
+      if (item.disabled) {
+        event.preventDefault();
+        return;
+      }
+      item.onclick?.(event);
+    };
+  }
 
   // `_blank` links always carry noopener and noreferrer, merged into the consumer's tokens.
   const resolvedRel = $derived.by(() => {
@@ -73,6 +91,7 @@
     href !== undefined && 'cinder-grouped-list-item--linked',
     selected && 'cinder-grouped-list-item--selected',
     timed && 'cinder-grouped-list-item--timed',
+    hasActions && 'cinder-grouped-list-item--actions',
     className,
   )}
   data-cinder-selected={selected ? '' : undefined}
@@ -138,6 +157,42 @@
     {/if}
     {#if action}
       <div class="cinder-grouped-list-item__action">{@render action()}</div>
+    {/if}
+    {#if hasActions && actions}
+      <div class="cinder-grouped-list-item__actions">
+        {#each actions as item, index (index)}
+          {@const reasonId = `${generatedId}-action-${index}-reason`}
+          {#if item.href !== undefined}
+            <Button
+              variant="secondary"
+              size="sm"
+              href={item.href}
+              data-changes={item.changes ? '' : undefined}
+              aria-disabled={item.disabled ? 'true' : undefined}
+              aria-describedby={item.disabled && item.disabledReason ? reasonId : undefined}
+              title={item.disabled ? item.disabledReason : undefined}
+              onclick={guardDisabled(item)}
+            >
+              {item.label}
+            </Button>
+          {:else}
+            <Button
+              variant="secondary"
+              size="sm"
+              data-changes={item.changes ? '' : undefined}
+              aria-disabled={item.disabled ? 'true' : undefined}
+              aria-describedby={item.disabled && item.disabledReason ? reasonId : undefined}
+              title={item.disabled ? item.disabledReason : undefined}
+              onclick={guardDisabled(item)}
+            >
+              {item.label}
+            </Button>
+          {/if}
+          {#if item.disabled && item.disabledReason}
+            <span id={reasonId} class="cinder-sr-only">{item.disabledReason}</span>
+          {/if}
+        {/each}
+      </div>
     {/if}
   </div>
 </li>
