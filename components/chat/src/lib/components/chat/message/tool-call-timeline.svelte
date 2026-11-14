@@ -996,6 +996,10 @@
     flex: none;
     align-items: center;
     block-size: 1lh;
+    /* The header's phrases align on a baseline, and a box with no text of its own has its bottom
+       edge for one, which would push the sentence beside it below the spinner. The spinner is
+       one text line tall, so it stands on the first line and the sentence keeps that line. */
+    align-self: flex-start;
   }
 
   .chat-tool-call-spinner :global(.cinder-spinner),

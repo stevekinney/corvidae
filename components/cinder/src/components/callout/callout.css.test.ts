@@ -304,7 +304,7 @@ describe('callout — one edge, no stripe', () => {
     test('under 30rem the message takes the full row so the action stacks under it', () => {
       const css = calloutCss.replace(/\s+/g, ' ');
       expect(css).toMatch(
-        /@container \(inline-size < 30rem\) \{[^@]*\.cinder-callout__body > \.cinder-callout__content \{ flex: 1 1 100%; \}/,
+        /@container \(inline-size < 30rem\) \{[^@]*\.cinder-callout__body > \.cinder-callout__message \{ display: block; flex: 1 1 100%; \}/,
       );
     });
   });

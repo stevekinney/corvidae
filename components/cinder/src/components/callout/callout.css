@@ -68,7 +68,7 @@
   }
 
   /* The first line is the title's when there is one, and the title has its own leading. */
-  .cinder-callout:has(.cinder-callout__title) > .cinder-callout__icon {
+  .cinder-callout:has(.cinder-callout__title) .cinder-callout__icon {
     line-height: var(--cinder-leading-snug, 1.3);
   }
 
@@ -197,7 +197,8 @@
   }
 
   .cinder-callout__body {
-    grid-column: 2;
+    /* The glyph is inside the body, with the message, so the body spans the glyph's track too. */
+    grid-column: 1 / 3;
     grid-row: 1;
     display: flex;
     flex-wrap: wrap;
@@ -211,7 +212,14 @@
    * margin, so the action sits at the row's trailing end while both fit; when they cannot, the
    * action wraps onto a line of its own and the same margin still pushes it to the trailing
    * edge. */
-  .cinder-callout__body > .cinder-callout__content {
+  .cinder-callout__body > .cinder-callout__message {
+    display: flex;
+    align-items: flex-start;
+    flex: 0 1 auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-callout__message > .cinder-callout__content {
     flex: 0 1 auto;
     max-inline-size: 68ch;
   }
@@ -304,8 +312,19 @@
 
     /* The message takes the whole row, so it uses its line before it wraps; the action drops
      * under it, ending at the trailing edge. */
-    .cinder-callout__body > .cinder-callout__content {
+    .cinder-callout__body > .cinder-callout__message {
+      display: block;
       flex: 1 1 100%;
+    }
+
+    /* In the message the glyph floats at the start of the first line, and the lines after it start
+     * at the message's own edge; the float is the indent, so the content adds none. */
+    .cinder-callout__message > .cinder-callout__icon {
+      float: inline-start;
+    }
+
+    .cinder-callout--with-icon .cinder-callout__message > .cinder-callout__content::before {
+      content: none;
     }
 
     .cinder-callout--with-icon .cinder-callout__content::before {

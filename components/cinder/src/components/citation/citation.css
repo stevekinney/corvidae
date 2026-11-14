@@ -113,6 +113,10 @@
     min-width: 0;
     padding-block: var(--cinder-space-2);
     padding-inline: var(--cinder-space-2);
+    /* The row sets the title's size and leading, so `1lh` on the open glyph is the title's first
+       line wherever the row stands. */
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
     border-inline-start: 2px solid transparent;
     border-radius: var(--cinder-radius-sm);
     color: inherit;
@@ -185,7 +189,8 @@
     flex: none;
     inline-size: 0.875rem;
     block-size: 0.875rem;
-    margin-block-start: var(--cinder-space-1);
+    /* Centred on the title's first line: half of what that line has beyond the glyph. */
+    margin-block-start: calc((1lh - 0.875rem) / 2);
     color: var(--cinder-text-muted);
   }
   @media (any-pointer: coarse) {

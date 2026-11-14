@@ -228,6 +228,29 @@ describe('Callout neutral variant and action', () => {
     }
   });
 
+  test('an inline action keeps the glyph in the message, so it follows the message wherever the row centres it', () => {
+    const { container } = render(Callout, {
+      props: {
+        icon: createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' })),
+        action: createRawSnippet(() => ({ render: () => '<button type="button">Act</button>' })),
+        children: textSnippet('Note.'),
+      },
+    });
+    const body = container.querySelector('.cinder-callout__body');
+    expect([...(body?.children ?? [])].map((child) => child.className)).toEqual([
+      'cinder-callout__message',
+      'cinder-callout__action',
+    ]);
+    const message = body?.querySelector('.cinder-callout__message');
+    expect([...(message?.children ?? [])].map((child) => child.className)).toEqual([
+      'cinder-callout__icon',
+      'cinder-callout__content',
+    ]);
+    // The glyph is rendered once, and not also as a child of the callout itself.
+    expect(container.querySelectorAll('.cinder-callout__icon')).toHaveLength(1);
+    expect(container.querySelector('.cinder-callout > .cinder-callout__icon')).toBeNull();
+  });
+
   test('the action is inline by default and stacked only on request', () => {
     const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
     const { container } = render(Callout, {

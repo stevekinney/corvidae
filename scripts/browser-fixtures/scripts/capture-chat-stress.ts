@@ -854,7 +854,10 @@ export function revealScrollableControls(controlIds: readonly string[] = []): {
         (candidateAxes.x && (before.left < box.left || before.right > box.right))
       );
     });
-    if (!initiallyClipped || before.width <= 0 || before.height <= 0) return [];
+    // A control that no scroller clips can still sit under a floating control (the jump pill at
+    // the transcript's corner) at this scroll position; scrolling it to the centre clears it.
+    const covered = !pointHitsTarget(element, before);
+    if (!(initiallyClipped || covered) || before.width <= 0 || before.height <= 0) return [];
     const previouslyFocused = document.activeElement;
     const positions = ancestors.map((candidate) => ({
       candidate,
@@ -875,7 +878,7 @@ export function revealScrollableControls(controlIds: readonly string[] = []): {
         if (candidateAxes.scrollY) {
           // A floating control may cover an edge, so a clipped control is brought to the centre of
           // the visible box (the browser clamps at the scroll limits), where nothing floats over it.
-          if (current.top < box.top || current.bottom > box.bottom)
+          if (covered || current.top < box.top || current.bottom > box.bottom)
             candidate.scrollTop += current.top + current.height / 2 - (box.top + box.height / 2);
         }
         if (candidateAxes.scrollX) {
@@ -902,7 +905,7 @@ export function revealScrollableControls(controlIds: readonly string[] = []): {
         {
           controlId,
           name: nameOf(element),
-          initiallyClipped: true,
+          initiallyClipped,
           originalBox,
           revealedBox: serializedBox(after),
           revealed,
@@ -2036,8 +2039,19 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
       timeout: DEADLINE,
     });
   }
+  // A block that names its language is highlighted once the highlighter answers, and until its
+  // effect first runs it reads "plain", as a block that never highlights does. Waiting on "pending"
+  // alone passes in that gap and the frame is taken as the highlight starts, so a block that names
+  // a language, and is not streaming, must also have left "plain".
   await opened.page.waitForFunction(
-    () => document.querySelector('[data-cinder-highlight-state="pending"]') === null,
+    () =>
+      document.querySelector('[data-cinder-highlight-state="pending"]') === null &&
+      [...document.querySelectorAll('.cinder-code-block')].every(
+        (block) =>
+          block.querySelector('.cinder-code-block__language') === null ||
+          block.getAttribute('aria-busy') === 'true' ||
+          block.getAttribute('data-cinder-highlight-state') !== 'plain',
+      ),
     undefined,
     { timeout: DEADLINE },
   );
@@ -2976,6 +2990,13 @@ export async function readIconCentreProblems(page: Page): Promise<string[]> {
             } else if (node.nodeType !== Node.TEXT_NODE) {
               return false;
             }
+            // A label visually hidden by a 1px clip box (a button that shows only its glyph) is
+            // text no one sees, though its letters keep their layout width.
+            const owner = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : null;
+            if (owner !== null) {
+              const clip = owner.getBoundingClientRect();
+              if (clip.width <= 1 || clip.height <= 1) return false;
+            }
             return textOf(node) !== '' && (firstLine(node)?.width ?? 0) > 1;
           });
           const line = beside === undefined ? undefined : firstLine(beside);
@@ -3221,7 +3242,8 @@ async function captureImage(
           ?.filter(
             (control) =>
               control.reachableWidth < control.hitWidth ||
-              control.reachableHeight < control.hitHeight,
+              control.reachableHeight < control.hitHeight ||
+              control.samples.some((sample) => !sample.hitsTarget),
           )
           .map((control) => control.controlId) ?? [];
       const proof = await opened.page.evaluate(revealScrollableControls, partialControls);

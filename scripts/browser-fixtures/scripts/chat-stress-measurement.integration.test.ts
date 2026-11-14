@@ -406,6 +406,55 @@ describe('chat stress visual measurement', () => {
     }
   });
 
+  it('reveals a control no scroller clips when a floating button covers it, and not one that stays covered', async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+      const scroller = (identifier: string) => `
+        <div style="height:300px; overflow:auto">
+          <div style="height:200px"></div>
+          <button data-chat-stress-control-id="${identifier}" aria-label="Copy" style="width:80px; height:32px; margin-top:20px">Copy</button>
+          <div style="height:800px"></div>
+        </div>`;
+      // Positive control: the button is inside the scrollport (not clipped) at y 220, and a floating
+      // corner button covers its lower edge there; at the centre of the scroller nothing floats.
+      await page.setContent(`
+        <style>*, *::before, *::after { box-sizing:border-box } body { margin:0 }</style>
+        <main data-testid="chat-stress-shell">
+          ${scroller('under-pill')}
+          <div style="position:fixed; left:0; top:236px; width:200px; height:44px"></div>
+        </main>
+      `);
+      expect(await page.evaluate(revealScrollableControls, ['under-pill'])).toEqual([
+        expect.objectContaining({
+          controlId: 'under-pill',
+          initiallyClipped: false,
+          revealed: true,
+          samplesHitTarget: true,
+        }),
+      ]);
+      // Negative control: a control nothing covers and nothing clips needs no proof.
+      await page.setContent(`
+        <style>*, *::before, *::after { box-sizing:border-box } body { margin:0 }</style>
+        <main data-testid="chat-stress-shell">${scroller('free')}</main>
+      `);
+      expect(await page.evaluate(revealScrollableControls, ['free'])).toEqual([]);
+      // Negative control: a cover that stays over every scroll position is still reported missed.
+      await page.setContent(`
+        <style>*, *::before, *::after { box-sizing:border-box } body { margin:0 }</style>
+        <main data-testid="chat-stress-shell">
+          ${scroller('always-covered')}
+          <div style="position:fixed; left:0; top:0; width:200px; height:300px"></div>
+        </main>
+      `);
+      expect(await page.evaluate(revealScrollableControls, ['always-covered'])).toEqual([
+        expect.objectContaining({ controlId: 'always-covered', samplesHitTarget: false }),
+      ]);
+    } finally {
+      await browser.close();
+    }
+  });
+
   it('scrolls an inner user-scrollport through an outer hidden clip', async () => {
     const browser = await chromium.launch();
     try {
@@ -1352,6 +1401,23 @@ describe('chat stress visual measurement', () => {
       const problems = await problemsFor(row(0));
       expect(problems).toHaveLength(1);
       expect(problems[0]).toContain('glyph centre is 2.00px off its text');
+    });
+
+    it('reads no text where the label is visually hidden by a 1px clip, and still reads one that shows', async () => {
+      const labelled = (hidden: boolean): string => `
+        <style>
+          body { margin: 0; font: 14px/20px sans-serif; }
+          button { display: flex; align-items: center; gap: 8px; font: inherit; padding: 0; border: 0; height: 28px; }
+          svg { flex: none; inline-size: 16px; block-size: 16px; }
+          .label { display: block; ${hidden ? 'position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%);' : 'margin-block-start: 6px;'} }
+        </style>
+        <button><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg><span class="label">Add note</span></button>`;
+      // Negative control: the same words, shown and 6px lower than the glyph, are a failure.
+      const shown = await problemsFor(labelled(false));
+      expect(shown).toHaveLength(1);
+      expect(shown[0]).toContain('glyph centre is');
+      // Positive control: clipped to a pixel, the words are not on the row at all.
+      expect(await problemsFor(labelled(true))).toEqual([]);
     });
 
     it('allows half a pixel and no more', async () => {
