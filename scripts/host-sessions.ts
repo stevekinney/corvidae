@@ -29,7 +29,7 @@
  * `--directory=<path>` uses another places directory, for a check by hand.
  */
 
-import { link, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { link, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -447,13 +447,45 @@ async function withAdmissionLock<T>(
         await removeLock(lock, mine);
       }
     }
+    if (await reclaimAbandonedLock(lock, options)) continue;
+    await options.sleep(admissionLockRetryMilliseconds);
+  }
+}
+
+/** How long a reclaim guard may stand before it counts as left by a reclaimer that died. */
+const reclaimGuardStaleMilliseconds = 30_000;
+
+/**
+ * Removes the admission lock when its owner is gone, judged while holding a reclaim guard, so the
+ * lock judged is the lock removed: a reclaimer acting on a stale reading could otherwise move
+ * aside a live lock another hook had just installed. Resolves to whether the lock was removed.
+ */
+async function reclaimAbandonedLock(
+  lock: string,
+  options: Pick<AdmitOptions, 'readProcessTable'>,
+): Promise<boolean> {
+  const guard = `${lock}.reclaiming`;
+  try {
+    await mkdir(guard);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    const stale = await stat(guard).then(
+      ({ mtimeMs }) => Date.now() - mtimeMs >= reclaimGuardStaleMilliseconds,
+      () => false,
+    );
+    if (stale) await rm(guard, { recursive: true, force: true });
+    return false;
+  }
+  try {
     const holder = await readOwner(lock);
     const table = options.readProcessTable();
     if (holder === undefined || (table !== undefined && !isHolderAlive(holder, table))) {
       await removeLock(lock, holder);
-      continue;
+      return true;
     }
-    await options.sleep(admissionLockRetryMilliseconds);
+    return false;
+  } finally {
+    await rm(guard, { recursive: true, force: true });
   }
 }
 

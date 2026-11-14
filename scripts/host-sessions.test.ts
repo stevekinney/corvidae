@@ -392,6 +392,23 @@ describe('admitWorker', () => {
     expect(second.admitted).toBe(true);
     expect(waits).toBe(2);
   });
+
+  test('hooks that meet one abandoned lock together reclaim it once and strand no live lock', async () => {
+    const directory = await scratch();
+    await mkdir(directory, { recursive: true });
+    const { tryInstall } = await import('./run-exclusively.ts');
+    const dead = { pid: 999_997, command: 'dead hook', cwd: '/', acquiredAt: '', token: 'dead' };
+    expect(await tryInstall(join(directory, 'admission'), dead)).toBe(true);
+    const admissions = await Promise.all(
+      ['1', '2'].map((toolUseId) =>
+        admitWorker({ ...options(directory, clock()), request: request('A', toolUseId) }),
+      ),
+    );
+    expect(admissions.every((each) => each.admitted)).toBe(true);
+    const names = await readdir(directory);
+    expect(names).not.toContain('admission');
+    expect(names).not.toContain('admission.reclaiming');
+  });
 });
 
 describe('the hook', () => {
