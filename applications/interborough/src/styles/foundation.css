@@ -26,12 +26,17 @@
   font-size: var(--cinder-text-base);
 }
 
+/* The column clips what overflows it but is never a scroll container: the phone's tab bar draws its
+ * focus-ring room a few pixels past the column's bottom, and a hidden-overflow column could then be
+ * scrolled by those pixels when a focus or `scrollIntoView` reached for an element near the bottom,
+ * lifting the whole page under the tab bar. `clip` cuts the same overflow and has no scroll offset
+ * to take (COR-2327). The outlet below is the one scrolling region. */
 .weft-shell-main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
 }
 
 /* The outlet is the one place a page is padded: a route adds none of its own, so padding never

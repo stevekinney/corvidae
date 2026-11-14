@@ -399,6 +399,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await openRefundFromList(page);
     // Under 700 pixels the shell's tab bar holds the bottom edge (COR-2315), so the composer docks on
     // top of it: the page's own margin and the pane's border lie between them, and nothing else.
+    // The shell's column never scrolls: the tab bar's focus-ring room overhangs it by a few pixels,
+    // and a focus that scrolled the column by them lifted the page 5px under the tab bar (CI run
+    // 43635945611 read 41px here).
+    expect(
+      await page.evaluate(() => document.querySelector('.weft-shell-main')?.scrollTop ?? -1),
+    ).toBe(0);
     const tabBar = await boxOf(page.getByRole('navigation', { name: NAVIGATION_COPY.tabBar }));
     const blocked = await boxOf(blockedRow(page));
     expect(tabBar.y - (blocked.y + blocked.height)).toBeGreaterThanOrEqual(0);
