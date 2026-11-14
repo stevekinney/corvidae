@@ -50,17 +50,29 @@ describe('a blocked composer', () => {
     expect(message).toContain('flex: 1 1 6rem;');
   });
 
-  test('on a phone-width composer the actions fill a line of their own, as touch targets', async () => {
+  test('on a phone-width composer the actions stay at the row’s end at their own width, never a full-width bar (COR-2327 B1)', async () => {
     const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
-    const narrow = /@media \(max-width: 639\.98px\) \{([\s\S]*?)\n  \}\n/u.exec(
-      source.slice(source.indexOf('.chat-input-blocked-actions {')),
-    )?.[1];
+    const actions = /\.chat-input-blocked-actions \{([^}]*)\}/u.exec(source)?.[1];
 
-    expect(narrow).toContain('flex: 1 0 100%;');
-    expect(narrow).not.toContain('justify-content: flex-end');
-    // A Button keeps its painted height; its 44px hit area is its own pseudo-element.
-    expect(narrow).toMatch(/\.cinder-button\) \{[^}]*flex: 1 1 auto;/u);
-    expect(narrow).not.toContain('min-block-size');
+    expect(actions).toContain('flex: none;');
+    expect(actions).toContain('margin-inline-start: auto;');
+    // No width rule stretches the actions, or their buttons, across a line of their own.
+    expect(source).not.toContain('flex: 1 0 100%;');
+    expect(source).not.toMatch(/\.chat-input-blocked-actions :global\(\.cinder-button\)/u);
+    // The buttons are small: they paint 28px and reach 44px through their own hit area.
+    const { container } = render(ChatInput, {
+      id: 'blocked-small',
+      status: {
+        kind: 'blocked',
+        reason: BLOCKED_REASON,
+        action: { label: 'Connect a provider', onclick: () => undefined },
+      },
+    });
+    expect(
+      container
+        .querySelector('.chat-input-blocked-actions .cinder-button')
+        ?.getAttribute('data-cinder-size'),
+    ).toBe('sm');
   });
 
   test('draws one row with the reason, and no text box, controls or Send', () => {

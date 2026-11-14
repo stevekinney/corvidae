@@ -1953,7 +1953,11 @@
     {/if}
     <!-- A chat the server ended says why under its last reply, so the strip of runs adds nothing. -->
     {#if !choosing && !endedByRestart}
-      <SessionTasks {sessionId} streaming={session.streaming} />
+      <SessionTasks
+        {sessionId}
+        streaming={session.streaming}
+        headerSaysWaiting={chatStatus === CHAT_COPY.status.waiting}
+      />
     {/if}
 
     {#if session.failure !== undefined && !failureShownInTranscript && !choosing && !(session.disconnected && !session.historySettled)}

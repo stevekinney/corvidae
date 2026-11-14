@@ -87,6 +87,11 @@ export type ChatLabels = {
    */
   approvalQueueNote: string;
   reviewApproval: string;
+  /**
+   * What the approval reminder's button reads in a narrow column, where the whole row is one line
+   * on a phone. Its accessible name stays `reviewApproval`, which must contain these words.
+   */
+  reviewApprovalShort: string;
   copy: string;
   copyMessage: string;
   copied: string;
@@ -186,6 +191,7 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   approvalWaitingText: 'Waiting for your approval.',
   approvalQueueNote: 'Messages you send now wait until you decide.',
   reviewApproval: 'Review approval',
+  reviewApprovalShort: 'Review',
   copy: 'Copy',
   copyMessage: 'Copy message',
   copied: 'Copied',

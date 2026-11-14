@@ -2680,6 +2680,11 @@
     }
   }
 
+  /* The actions sit at the row's end, beside the reason, at every width: the reason wraps first, and
+   * only when the reason's floor and the actions cannot share a line do the actions take a line of
+   * their own, still at the end and at their own width, never a full-width bar (owner preference,
+   * COR-2327 B1). A small button paints 28px and reaches 44px under a coarse pointer through its
+   * own hit area, so the row stays one row of about 44px. */
   .chat-input-blocked-actions {
     display: flex;
     flex: none;
@@ -2687,28 +2692,6 @@
     align-items: center;
     gap: var(--cinder-space-2);
     margin-inline-start: auto;
-  }
-
-  /* On a phone the actions drop to a line of their own and fill it, from the left edge to the
-   * right, as touch targets (rows 05a, 06m, 24x), instead of overlapping the reason. A tablet's
-   * conversation pane is as narrow as a phone's screen, so it is the screen that decides, not the
-   * pane: there the reason wraps and the action stays at the right (row 06n). */
-  @media (max-width: 639.98px) {
-    .chat-input-blocked-actions {
-      flex: 1 0 100%;
-    }
-
-    .chat-input-blocked-actions :global(.cinder-button) {
-      flex: 1 1 auto;
-    }
-
-    .chat-input-notice .chat-input-blocked-actions {
-      flex: none;
-    }
-
-    .chat-input-notice .chat-input-blocked-actions :global(.cinder-button) {
-      flex: 0 0 auto;
-    }
   }
 
   .chat-input-editor:focus {

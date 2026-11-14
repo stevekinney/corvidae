@@ -187,6 +187,48 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
   });
 
+  test('is one row, the glyph, the words and Review at its end, which reads Review in a narrow column and keeps its name (COR-2327 B1)', async () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-one-row',
+      conversation: approvalConversation('drawer-one-row'),
+    });
+    const drawer = drawerOf(container)!;
+    const row = drawer.querySelector('.chat-approval-drawer-row')!;
+
+    // The glyph, the words and the button are siblings in one row: the button never sits on a line
+    // of its own under the words, as a Callout's action does under 30rem.
+    expect(drawer.querySelector('.cinder-callout')).toBeNull();
+    expect([...row.children].map((child) => child.getAttribute('class') ?? '')).toEqual([
+      expect.stringContaining('chat-approval-drawer-glyph'),
+      expect.stringContaining('chat-approval-drawer-text'),
+      expect.stringContaining('chat-approval-drawer-actions'),
+    ]);
+    const review = getByRole(drawer, 'button', { name: 'Review approval' });
+    expect(review.getAttribute('data-cinder-size')).toBe('sm');
+    expect(review.querySelector('.chat-approval-drawer-action-short')?.textContent).toBe('Review');
+
+    // The short words show only in a narrow column: the row asks its own width, not the screen's.
+    const source = await Bun.file(
+      new URL('./container/chat-approval-drawer.svelte', import.meta.url),
+    ).text();
+    expect(source).toContain('container-type: inline-size;');
+    const narrow = /@container \(inline-size < 30rem\) \{([\s\S]*?)\n {2}\}\n/u.exec(source)?.[1];
+    expect(narrow).toMatch(/\.chat-approval-drawer-action-full \{\s*display: none;/u);
+    expect(narrow).toMatch(/\.chat-approval-drawer-action-short \{\s*display: inline;/u);
+    expect(source).toMatch(/\.chat-approval-drawer-row \{[^}]*display: flex;[^}]*\}/u);
+    expect(source).not.toMatch(/\.chat-approval-drawer-row \{[^}]*flex-wrap: wrap;[^}]*\}/u);
+  });
+
+  test('says the short Review in a host’s own words', () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-short-label',
+      conversation: approvalConversation('drawer-short-label'),
+      labels: { reviewApproval: 'Genehmigung prüfen', reviewApprovalShort: 'Prüfen' },
+    });
+    const review = getByRole(drawerOf(container)!, 'button', { name: 'Genehmigung prüfen' });
+    expect(review.querySelector('.chat-approval-drawer-action-short')?.textContent).toBe('Prüfen');
+  });
+
   test('draws no reminder while the card top is clipped but its action row is in view', () => {
     const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
     HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {

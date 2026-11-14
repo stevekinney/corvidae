@@ -59,6 +59,42 @@ describe('the runs of a chat session', () => {
     expect(container.textContent).not.toContain('run-2');
   });
 
+  test('say nothing of one waiting run when the header already says Waiting on you, and count several (COR-2327 B1)', async () => {
+    stub = installBureauWorld(
+      emptyBureauWorld({
+        tasks: [taskFixture({ id: 'run-2', contextId: 'session-1', status: 'input-required' })],
+      }),
+    );
+    const one = render(QueryPage, {
+      props: {
+        page: SessionTasks,
+        pageProps: { sessionId: 'session-1', streaming: false, headerSaysWaiting: true },
+      },
+    } as never);
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));
+    expect(one.container.querySelector('.weft-chat-strip')).toBeNull();
+    one.unmount();
+    stub.restore();
+
+    stub = installBureauWorld(
+      emptyBureauWorld({
+        tasks: [
+          taskFixture({ id: 'run-2', contextId: 'session-1', status: 'input-required' }),
+          taskFixture({ id: 'run-3', contextId: 'session-1', status: 'input-required' }),
+        ],
+      }),
+    );
+    const several = render(QueryPage, {
+      props: {
+        page: SessionTasks,
+        pageProps: { sessionId: 'session-1', streaming: false, headerSaysWaiting: true },
+      },
+    } as never);
+    await waitFor(() =>
+      expect(sentence(several.container)?.textContent).toBe('2 runs are waiting on you'),
+    );
+  });
+
   test('say that a run is working, then are read again when the run ends', async () => {
     stub = installBureauWorld(
       emptyBureauWorld({ tasks: [taskFixture({ id: 'run-1', status: 'working' })] }),

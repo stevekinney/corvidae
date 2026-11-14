@@ -1541,7 +1541,9 @@
   // The room the reminder takes from the transcript (its height and margins), last read while it
   // was on screen; the estimate holds until the first read. It is not state: nothing renders from
   // it, and it only keeps the box the row is judged against the same with the reminder on and off.
-  let approvalReminderBlockSize = 48;
+  // One row: a small button (28px) inside 6px of padding and a hairline each way, and 4px of
+  // margin above and below.
+  let approvalReminderBlockSize = 50;
   /**
    * Reads the reminder from the page, not from state: what the transcript's box excludes is what is
    * drawn now, and a state update the page has not yet drawn would count the reminder twice.
