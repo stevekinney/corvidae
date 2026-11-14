@@ -126,7 +126,7 @@ describe('Chat — narration and answer', () => {
       ...container.querySelectorAll<HTMLElement>('.chat-message-wrapper[data-role="assistant"]'),
     ];
     expect(settledAnswer).toHaveLength(1);
-    expect(settledAnswer[0]).toBe(answerWrapper!);
+    expect(settledAnswer[0]).toBe(answerWrapper);
   });
 
   test('opening the group shows the narration between the steps, and the closed row counts steps only', async () => {

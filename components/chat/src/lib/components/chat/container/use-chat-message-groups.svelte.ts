@@ -192,7 +192,12 @@ export function buildMessagesWithDateSeparators(
 }
 
 /** A settled turn that folds: the item range it covers and what the one group holds. */
-type TurnFold = { lastIndex: number; group: ToolCallRunItem };
+type TurnFold = {
+  lastIndex: number;
+  firstMessageId: string;
+  lastMessageId: string;
+  group: ToolCallRunItem;
+};
 
 /** The metadata a narration message may not carry: each is drawn by its message, which a fold drops. */
 const narrationOverlayKeys = (): readonly string[] => [
@@ -215,7 +220,7 @@ function isPlainNarration(message: Message): boolean {
     message.metadata?.['_deliveryStatus'] !== 'failed' &&
     !messageHasImageContent(message) &&
     !messageHasStructuredEntries(message) &&
-    narrationOverlayKeys().every((key) => message.metadata?.[key] === undefined)
+    narrationOverlayKeys().every((key) => !Object.hasOwn(message.metadata ?? {}, key))
   );
 }
 
@@ -267,18 +272,23 @@ function planTurnFolds(
       .slice(lastIndex + 1)
       .some((item) => item.type === 'message' && roles.get(item.message.id) === 'answer');
     if (!hasAnswer || !span.some(isNarration)) return;
+    const entries: ToolCallRunEntry[] = [];
     for (const [position, item] of span.entries()) {
-      if (item.type !== 'message' || !(isStep(item) || isNarration(item))) return;
+      if (item.type !== 'message') return;
+      const step = isStep(item);
+      if (!step && !isNarration(item)) return;
       if (position > 0 && item.message.id === firstUnreadId) return;
       const callId = item.message.toolCall?.id;
       if (callId !== undefined && options?.pendingToolCallIds?.has(callId)) return;
+      entries.push({ type: step ? 'step' : 'narration', message: item.message });
     }
-    const entries = span.map((item): ToolCallRunEntry => {
-      const message = (item as MessageItem).message;
-      return { type: isStep(item) ? 'step' : 'narration', message };
-    });
+    const firstEntry = entries[0];
+    const lastEntry = entries.at(-1);
+    if (firstEntry === undefined || lastEntry === undefined) return;
     folds.set(from + firstIndex, {
       lastIndex: from + lastIndex,
+      firstMessageId: firstEntry.message.id,
+      lastMessageId: lastEntry.message.id,
       group: {
         type: 'tool-call-group',
         messages: entries.flatMap((entry) => (entry.type === 'step' ? [entry.message] : [])),
@@ -318,12 +328,11 @@ export function buildChatRenderRows(
     const fold = folds.get(index);
     if (fold) {
       flushToolCallRun();
-      const first = (items[index] as MessageItem).message;
-      if (first.id === firstUnreadId) {
+      if (fold.firstMessageId === firstUnreadId) {
         rows.push({ type: 'unread-divider', afterMessageId: previousMessageId });
       }
       rows.push(fold.group);
-      previousMessageId = (items[fold.lastIndex] as MessageItem).message.id;
+      previousMessageId = fold.lastMessageId;
       index = fold.lastIndex;
       continue;
     }
