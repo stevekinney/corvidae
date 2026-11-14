@@ -481,12 +481,15 @@ async function reclaimAbandonedLock(
     const holder = await readOwner(lock);
     if (holder === undefined) {
       // No owner file: the lock was released, and a hook may have installed another since the
-      // failed install. Only a directory that still stands without an owner is removed.
-      const standing = await stat(lock).then(
-        () => true,
-        () => false,
+      // failed install, which `removeLock` would move aside. Installs are whole, so a directory
+      // without an owner was left by something else, and is removed only once it has stood a while.
+      const ageMilliseconds = await stat(lock).then(
+        ({ mtimeMs }) => Date.now() - mtimeMs,
+        () => undefined,
       );
-      if (standing) await removeLock(lock, undefined);
+      if (ageMilliseconds === undefined) return true;
+      if (ageMilliseconds < reclaimGuardStaleMilliseconds) return false;
+      await removeLock(lock, undefined);
       return true;
     }
     const table = options.readProcessTable();
