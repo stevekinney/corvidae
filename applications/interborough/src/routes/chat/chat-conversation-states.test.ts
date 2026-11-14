@@ -310,6 +310,9 @@ describe('an existing chat with no message yet (COR-2285 V1)', () => {
       return found;
     });
     expect(state.textContent).toContain('Connect a model provider');
+    // One person runs Interborough: there is no admin to wait for (COR-2327 N1).
+    expect(state.textContent).toContain(CHAT_COPY.composer.unconfiguredDescription);
+    expect(state.textContent).not.toContain('admin');
     expect(await findByRole('button', { name: 'Connect provider' })).not.toBeNull();
     expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
   });

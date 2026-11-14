@@ -572,7 +572,11 @@
       };
     }
     if (noProvider && composerStatus?.kind !== 'blocked') {
-      return { kind: 'unconfigured', onConnect: () => router.navigate('/settings/models') };
+      return {
+        kind: 'unconfigured',
+        onConnect: () => router.navigate('/settings/models'),
+        labels: { unconfiguredDescription: CHAT_COPY.composer.unconfiguredDescription },
+      };
     }
     return undefined;
   });

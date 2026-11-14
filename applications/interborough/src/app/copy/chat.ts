@@ -504,6 +504,11 @@ export const CHAT_COPY = {
     /** The composer's placeholder while a question that draws choices waits. */
     answerPlaceholder: 'Choose an answer above, or type your own…',
     noProvider: 'Connect a model provider to chat',
+    /**
+     * Said under Connect a model provider in a chat with no message yet. Interborough has one
+     * person, who adds the provider themselves: there is no admin to wait for (COR-2327 N1).
+     */
+    unconfiguredDescription: 'The agent needs a model to answer. Add one in Settings.',
     connectProvider: 'Connect a provider',
     useAssistant: 'Use Assistant',
     /** Said in the blocked row of a chat started from Workflows when no agent has the tool. */
