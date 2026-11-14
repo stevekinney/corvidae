@@ -196,9 +196,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
         const box = control.getBoundingClientRect();
         const x = box.x + box.width / 2;
         const y = box.y + box.height / 2;
+        // What a press lands on: the control itself, or the name of what took it instead.
         const lands = (at: number) => {
           const hit = document.elementFromPoint(x, at);
-          return hit !== null && control.contains(hit);
+          return hit !== null && control.contains(hit)
+            ? 'control'
+            : `${hit?.tagName.toLowerCase() ?? 'nothing'}.${hit?.className ?? ''}`;
         };
         return { height: box.height, centre: lands(y), above: lands(y - 21), below: lands(y + 21) };
       };
@@ -213,10 +216,15 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     expect(read.more!.height).toBeLessThanOrEqual(32.5);
     expect(read.title).not.toBeNull();
     expect(read.title!.height).toBeLessThanOrEqual(30.5);
-    for (const control of [read.more!, read.title!]) {
-      expect(control.centre).toBe(true);
-      expect(control.above).toBe(true);
-      expect(control.below).toBe(true);
+    // The title switcher sits a little above the top bar's centre, so the top bar's trail must not
+    // clip its hit area vertically (CI run 43635945611 found it cut at the top).
+    for (const [name, control] of [
+      ['More', read.more!],
+      ['title switcher', read.title!],
+    ] as const) {
+      expect(control.centre, `${name} centre`).toBe('control');
+      expect(control.above, `${name}, 21px above`).toBe('control');
+      expect(control.below, `${name}, 21px below`).toBe('control');
     }
   });
 

@@ -240,13 +240,16 @@
 .weft-shell-topbar__trail {
   flex: 1 1 0;
   min-width: 0;
-  /* The back link on a phone is painted as tall as its text and reaches 44px through a hit area
-   * that takes no layout, so the clip below must hold that whole area: the trail is a touch target
-   * tall, with the breadcrumbs centered in it (the bar is taller still, so nothing moves). */
+  /* The back link and the title switcher on a phone are painted as tall as their text and reach
+   * 44px through hit areas that take no layout. The trail is a touch target tall, with the
+   * breadcrumbs centered in it (the bar is taller still, so nothing moves), and it clips only
+   * sideways: the switcher sits a little above the trail's centre, and a vertical clip cut the top
+   * of its hit area (COR-2327 B2). `clip`, unlike `hidden`, leaves the other axis visible. */
   display: grid;
   align-content: center;
   min-block-size: var(--cinder-touch-target-min);
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   font-size: var(--cinder-text-sm);
   white-space: nowrap;
 }

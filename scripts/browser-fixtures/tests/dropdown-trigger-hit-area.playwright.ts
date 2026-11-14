@@ -16,11 +16,18 @@ import { fixtureRoute } from './overlay-fixture.ts';
 
 const PAINTED = 32;
 const COARSE_HIT = 44;
-const TRIGGER = '#example-mount-basic .cinder-dropdown-trigger';
+/**
+ * The fixture stacks three triggers with no gap between them (Options, Grouped menu, Row
+ * regression), so a press 21px below Options lands on Grouped menu's painted face, which is right:
+ * a neighbour's face takes the press over another control's invisible hit area, as with Button.
+ * Each side is therefore probed where nothing else is drawn: above the first trigger, below the
+ * last.
+ */
+const FIRST = '#example-mount-basic .cinder-dropdown-trigger';
 
 async function openDropdown(page: Page): Promise<void> {
   await page.goto(fixtureRoute('dropdown'), { waitUntil: 'load' });
-  await page.locator(TRIGGER).waitFor({ state: 'visible' });
+  await page.locator(FIRST).waitFor({ state: 'visible' });
 }
 
 async function coarsePage(browser: Browser): Promise<{ page: Page; close: () => Promise<void> }> {
@@ -33,25 +40,33 @@ async function coarsePage(browser: Browser): Promise<{ page: Page; close: () => 
   return { page: await context.newPage(), close: () => context.close() };
 }
 
-/** The trigger's painted box and whether presses at its centre and 21px above and below land on it. */
-function readTrigger(page: Page) {
-  return page.evaluate((selector) => {
-    const trigger = document.querySelector(selector);
-    if (trigger === null) throw new Error('The trigger is not on the page.');
-    const box = trigger.getBoundingClientRect();
-    const centreX = box.x + box.width / 2;
-    const centreY = box.y + box.height / 2;
-    const lands = (y: number) => {
-      const hit = document.elementFromPoint(centreX, y);
-      return hit !== null && trigger.contains(hit);
+/**
+ * In one pass: the first trigger's painted height, its hit area's height (the pseudo-element's),
+ * and whether presses at its centre and 21px above it land on it, and 21px below the last trigger
+ * lands on that one. A miss names what was hit.
+ */
+function readTriggers(page: Page) {
+  return page.evaluate((first) => {
+    const firstTrigger = document.querySelector(first);
+    const lastTrigger = [...document.querySelectorAll('.cinder-dropdown-trigger')].at(-1) ?? null;
+    if (firstTrigger === null || lastTrigger === null) throw new Error('No trigger on the page.');
+    const lands = (trigger: Element, offset: number) => {
+      const box = trigger.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2 + offset);
+      return hit !== null && trigger.contains(hit)
+        ? 'trigger'
+        : `${hit?.tagName.toLowerCase() ?? 'nothing'}.${hit?.className ?? ''}`;
     };
+    const box = firstTrigger.getBoundingClientRect();
+    const before = getComputedStyle(firstTrigger, '::before');
     return {
       height: box.height,
-      centre: lands(centreY),
-      above: lands(centreY - 21),
-      below: lands(centreY + 21),
+      hitHeight: before.position === 'absolute' ? Number.parseFloat(before.height) : box.height,
+      centre: lands(firstTrigger, 0),
+      above: lands(firstTrigger, -21),
+      below: lands(lastTrigger, 21),
     };
-  }, TRIGGER);
+  }, FIRST);
 }
 
 test.describe('Dropdown trigger, fine pointer', () => {
@@ -59,11 +74,12 @@ test.describe('Dropdown trigger, fine pointer', () => {
     await page.emulateMedia({ media: 'screen' });
     await openDropdown(page);
     expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(false);
-    const read = await readTrigger(page);
+    const read = await readTriggers(page);
     expect(read.height).toBeCloseTo(PAINTED, 0);
-    expect(read.centre).toBe(true);
-    expect(read.above).toBe(false);
-    expect(read.below).toBe(false);
+    expect(read.hitHeight).toBeCloseTo(PAINTED, 0);
+    expect(read.centre).toBe('trigger');
+    expect(read.above).not.toBe('trigger');
+    expect(read.below).not.toBe('trigger');
   });
 });
 
@@ -75,12 +91,13 @@ test.describe('Dropdown trigger, coarse pointer', () => {
     try {
       await openDropdown(page);
       expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
-      const read = await readTrigger(page);
+      const read = await readTriggers(page);
       expect(read.height).toBeCloseTo(PAINTED, 0);
       expect(read.height).toBeLessThan(COARSE_HIT);
-      expect(read.centre).toBe(true);
-      expect(read.above).toBe(true);
-      expect(read.below).toBe(true);
+      expect(read.hitHeight).toBeGreaterThanOrEqual(COARSE_HIT);
+      expect(read.centre).toBe('trigger');
+      expect(read.above).toBe('trigger');
+      expect(read.below).toBe('trigger');
     } finally {
       await close();
     }
