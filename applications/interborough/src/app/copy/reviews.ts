@@ -76,7 +76,7 @@ export const REVIEWS_COPY = {
   /** The footer button that commits a structured answer (a form), which picking a value does not send. */
   sendAnswer: 'Send answer',
   /** The optional note saved with any decision; on a denial the agent reads it. */
-  noteLabel: 'Note (optional)',
+  noteLabel: 'Note',
   /** Said under the note field: where the note goes. */
   noteDescription: 'Saved with your decision. If you deny, the agent reads it as the reason.',
   toolLabel: 'Tool',
