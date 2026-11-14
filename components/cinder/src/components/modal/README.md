@@ -6,7 +6,7 @@ See the [dialog preset boundary](https://github.com/stevekinney/cinder/blob/main
 
 ## As a bottom sheet
 
-`sheetBelow` (a CSS length such as `"640px"`; off by default) makes the modal dock to the bottom edge below that viewport width (the sheet design docks below `"760px"`): a 20px top radius with a square bottom edge, a grabber, an upward shadow, 32px of padding under the last row (more where the device reports a bottom safe area), a height capped so the body scrolls inside the sheet, and a lift above the on-screen keyboard. The footer's actions stack at full width and 44px with the last one, the confirmation, on top; DOM order is unchanged, so the first action keeps initial focus. Under reduced motion the sheet cross-fades instead of sliding.
+`sheetBelow` (a CSS length such as `"640px"`; off by default) makes the modal dock to the bottom edge below that viewport width (the sheet design docks below `"760px"`): a 20px top radius with a square bottom edge, a grabber, an upward shadow, 32px of padding under the last row (more where the device reports a bottom safe area), a height capped so the body scrolls inside the sheet, and a lift above the on-screen keyboard. The footer's actions stack at full width, drawn at the button's painted height with the 44px reached through its hit area, with the last one, the confirmation, on top; DOM order is unchanged, so the first action keeps initial focus. Under reduced motion the sheet cross-fades instead of sliding.
 
 ## Choosing this component
 
@@ -110,7 +110,7 @@ This conditional requirement is expressed in the generated JSON Schema below via
 | `dismissOnEscape` | `boolean` | no | — | When true, pressing Escape dismisses the modal. Default `true`. |
 | `open` | `boolean` | yes | — | Controls whether the modal is open; bindable for controlled usage. |
 | `role` | `"dialog"` \| `"alertdialog"` | no | — | ARIA role applied to the underlying dialog element. Default `dialog`. |
-| `sheetBelow` | `string` \| `false` | no | `false` | Viewport width below which the modal opens as a bottom sheet instead of a centred card: it docks to the bottom edge with a grabber and rounded top corners, its footer actions stack at full width and 44px with the last action (the confirmation) first, and it rides above the on-screen keyboard and the bottom safe area. A CSS length such as `"640px"`, or `false` for the centred card at every width. Ignored for `chrome="none"`. |
+| `sheetBelow` | `string` \| `false` | no | `false` | Viewport width below which the modal opens as a bottom sheet instead of a centred card: it docks to the bottom edge with a grabber and rounded top corners, its footer actions stack at full width, drawn at the button's painted height with the 44px reached through its hit area, with the last action (the confirmation) first, and it rides above the on-screen keyboard and the bottom safe area. A CSS length such as `"640px"`, or `false` for the centred card at every width. Ignored for `chrome="none"`. |
 | `title` | `string` | no | — | Text rendered as the modal's visible heading and used as its accessible label. |
 | `children` | `(opaque)` | yes | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `footer` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

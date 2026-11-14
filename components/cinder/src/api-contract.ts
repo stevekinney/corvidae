@@ -317,6 +317,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       icon: s0(true),
       illustration: s0(true),
       action: s0(true),
+      children: s0(true),
     },
   },
 
@@ -759,6 +760,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       readonly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      pending: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       descriptionVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       descriptionPlacement: { optional: true, type_kind: 'TSUnionType', default: L('inline') },

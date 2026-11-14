@@ -127,6 +127,16 @@
     justify-content: flex-start;
   }
 
+  /* Supporting content under the action, such as the steps of a manual set-up: the full width of
+   * the state, with no measure of its own, so it can hold a code block. It reads the state's
+   * alignment (the text inherits it) and draws no border or background. */
+  .cinder-empty-state-details {
+    inline-size: 100%;
+    min-inline-size: 0;
+    margin-block-start: var(--cinder-space-4);
+    overflow-wrap: anywhere;
+  }
+
   /* Compact fits a tab or a panel: less padding, a smaller disc, and quieter type. */
   .cinder-empty-state[data-cinder-size='compact'] {
     padding-block: var(--cinder-space-6);
@@ -151,6 +161,10 @@
 
   .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-action {
     margin-block-start: var(--cinder-space-2);
+  }
+
+  .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-details {
+    margin-block-start: var(--cinder-space-3);
   }
 
   /* A row lays the parts on one line: the disc, then the title over the description, then the

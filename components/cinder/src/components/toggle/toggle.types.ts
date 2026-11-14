@@ -35,6 +35,15 @@ export type ToggleProps = {
    */
   readonly?: boolean;
   /**
+   * Shows that the setting is being read or changed and a press has to wait, such as a switch
+   * whose consequence is still being looked up. The switch announces `aria-busy="true"` and
+   * `aria-disabled="true"`, shows a small spinner in its thumb, and ignores a press on the track,
+   * the label or the state words. It stays focusable, so focus is not lost when it starts or
+   * stops, and it keeps its value and its colour (unlike `disabled`, which greys it).
+   * @default false
+   */
+  pending?: boolean;
+  /**
    * Short visible text beside the label that describes the switch, such as the file that defines
    * it ("Defined in workflows/release-notes.json"). It is wired into `aria-describedby`.
    */

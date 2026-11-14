@@ -319,6 +319,207 @@ test.describe('Settings › Plugins', () => {
     await expect(detail(page, 'guardrails').getByRole('switch', { name: 'Enabled' })).toBeChecked();
   });
 
+  /** A run of a Demo agent as `bureau.tasks.list` shows it. */
+  const runOf = (id: string, status: string, agentName: string, openWaits: unknown[] = []) => ({
+    id,
+    contextId: `session-${id}`,
+    agentName,
+    owner: 'anonymous:local',
+    actor: null,
+    kind: 'chat',
+    origin: { kind: 'chat' },
+    status,
+    finishReason: null,
+    statusMessage: null,
+    createdAt: '2026-11-02T09:00:00.000Z',
+    updatedAt: '2026-11-02T10:00:00.000Z',
+    cleanup: null,
+    openWaits,
+  });
+
+  /** Answers the reads the disable question makes of the runs in flight, and sends every other call on. */
+  async function answerRuns(
+    page: Page,
+    options: {
+      failing?: boolean;
+      /** How many runs are working, beyond the one that waits on a person. */
+      working?: number;
+      /** Holds the read of the runs until this settles, to capture the switch while it waits. */
+      hold?: Promise<void>;
+    } = {},
+  ) {
+    const { failing = false, working = 1, hold } = options;
+    const titles: Record<string, string> = {
+      'session-run-1': 'Weekly changelog',
+      'session-run-2': 'Triage the inbox',
+      'session-run-3': 'Draft the release notes',
+      'session-run-4': 'Summarise the board',
+      'session-run-5': 'Answer the customer',
+      'session-run-6': 'Sort the receipts',
+      'session-run-7': 'Plan the offsite',
+    };
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as {
+        id: unknown;
+        method: string;
+        params: { status?: string; contextId?: string };
+      };
+      if (body.method === 'bureau.tasks.list') {
+        await hold;
+        if (failing) return route.fulfill({ status: 500, json: { error: 'The server is down.' } });
+        const byStatus: Record<string, unknown[]> = {
+          working: [
+            runOf('run-1', 'working', 'demo:echo'),
+            // Runs 3 and on are working too, so a plugin can have more than the five that are named.
+            ...Array.from({ length: working - 1 }, (_, index) =>
+              runOf(`run-${String(index + 3)}`, 'working', 'demo:echo'),
+            ),
+          ],
+          'input-required': [
+            runOf('run-2', 'input-required', 'demo:request-human-input', [
+              { kind: 'human-wait', reviewId: 'review-1', signalName: 'answer' },
+            ]),
+          ],
+        };
+        return route.fulfill({
+          json: {
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: byStatus[body.params.status ?? ''] ?? [], nextPageToken: null },
+          },
+        });
+      }
+      if (body.method === 'bureau.contexts.get') {
+        const contextId = body.params.contextId ?? '';
+        return route.fulfill({
+          json: {
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              id: contextId,
+              owner: 'anonymous:local',
+              agentName: 'demo:echo',
+              title: titles[contextId] ?? null,
+              lastMessagePreview: null,
+              parentContextId: null,
+              forkedFromMessageId: null,
+              model: null,
+              effort: null,
+              permissionMode: 'on-changes',
+              configVersion: 0,
+              messageCount: 1,
+              createdAt: '2026-11-02T09:00:00.000Z',
+              updatedAt: '2026-11-02T10:00:00.000Z',
+              activity: 'idle',
+            },
+          },
+        });
+      }
+      return route.fallback();
+    });
+  }
+
+  test('disabling a plugin whose agents have runs in flight names them first, and the confirmation fails them', async ({
+    page,
+    checkA11y,
+  }) => {
+    await answerRuns(page);
+    await open(page, 'demo', 1280, E2E_BASE_URL);
+
+    await detail(page, 'demo').getByRole('switch', { name: 'Enabled' }).click();
+
+    const question = page.getByRole('dialog', { name: PLUGINS_COPY.disable.title('Demo') });
+    await expect(question).toBeVisible();
+    const runs = question.locator('[data-impact="inFlightRuns"]');
+    await expect(runs).toContainText('2 runs');
+    await expect(runs).toContainText('Weekly changelog');
+    await expect(runs).toContainText('marked failed when Interborough restarts');
+    await expect(question).toContainText(PLUGINS_COPY.disable.reassuranceWithRuns);
+    await checkA11y('settings plugins disable question with runs in flight');
+    await captureAtEveryWidth(page, 'disable-confirm-runs-in-flight');
+
+    await question.getByRole('button', { name: 'Cancel' }).click();
+    await expect(question).toBeHidden();
+    await expect(detail(page, 'demo').getByRole('switch', { name: 'Enabled' })).toBeChecked();
+  });
+
+  test('disabling a plugin still asks when the runs cannot be read, and says any that is going will fail', async ({
+    page,
+    pageErrors,
+    checkA11y,
+  }) => {
+    // The read is one request for each state a run in flight is in: submitted, working and waiting.
+    pageErrors.expect({
+      pattern: loggedFailedResponse(500, /\/bureau\/jsonrpc/),
+      reason:
+        'the test answers the read of the runs in flight with an error to draw the failed read',
+      count: 3,
+    });
+    await answerRuns(page, { failing: true });
+    await open(page, 'demo', 1280, E2E_BASE_URL);
+
+    await detail(page, 'demo').getByRole('switch', { name: 'Enabled' }).click();
+
+    const question = page.getByRole('dialog', { name: PLUGINS_COPY.disable.title('Demo') });
+    await expect(question).toBeVisible();
+    await expect(question.locator('[data-impact="inFlightRuns"]')).toContainText(
+      'could not be checked',
+    );
+    await checkA11y('settings plugins disable question when the runs could not be read');
+    await expect(question).toContainText(PLUGINS_COPY.disable.reassuranceRunsUnknown);
+    await expect(question).not.toContainText('works as before');
+    await expect(
+      question.getByRole('button', { name: PLUGINS_COPY.disable.confirm }),
+    ).toHaveAttribute('data-cinder-variant', 'danger');
+    await captureAtEveryWidth(page, 'disable-confirm-runs-unknown');
+    await question.getByRole('button', { name: 'Cancel' }).click();
+  });
+
+  test('the switch waits while the runs of a plugin’s agents are read, and the question opens once they are', async ({
+    page,
+    checkA11y,
+  }) => {
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await answerRuns(page, { hold: held });
+    await open(page, 'demo', 1280, E2E_BASE_URL);
+
+    const toggle = detail(page, 'demo').getByRole('switch', { name: 'Enabled' });
+    await toggle.click();
+
+    // The read is in flight: the switch is pending (busy, a spinner in its thumb), and no question is open yet.
+    await expect(toggle).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await captureAtEveryWidth(page, 'disable-switch-reading-runs');
+    release();
+    await expect(
+      page.getByRole('dialog', { name: PLUGINS_COPY.disable.title('Demo') }),
+    ).toBeVisible();
+    await expect(toggle).not.toHaveAttribute('aria-busy', 'true');
+    await checkA11y('settings plugins disable question after the runs were read');
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+  });
+
+  test('a plugin with more runs in flight than are named lists five and counts the rest', async ({
+    page,
+    checkA11y,
+  }) => {
+    await answerRuns(page, { working: 7 });
+    await open(page, 'demo', 1280, E2E_BASE_URL);
+
+    await detail(page, 'demo').getByRole('switch', { name: 'Enabled' }).click();
+
+    const question = page.getByRole('dialog', { name: PLUGINS_COPY.disable.title('Demo') });
+    const runs = question.locator('[data-impact="inFlightRuns"]');
+    await expect(runs).toContainText('8 runs');
+    await expect(runs).toContainText('3 more');
+    await checkA11y('settings plugins disable question with more runs than are named');
+    await captureAtEveryWidth(page, 'disable-confirm-runs-and-more');
+    await question.getByRole('button', { name: 'Cancel' }).click();
+  });
+
   test('plugin problems: after a startup with problems the page lists each plugin’s problems under its name, and the banner counts them', async ({
     page,
     checkA11y,
