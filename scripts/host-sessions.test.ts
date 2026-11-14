@@ -103,8 +103,14 @@ async function places(directory: string): Promise<number> {
   return hostPlaces(await readSessions(directory));
 }
 
+async function sessionIds(directory: string): Promise<string[]> {
+  const sessions = await readSessions(directory);
+  return sessions.map((ledger) => ledger.sessionId);
+}
+
 async function workersOf(directory: string, sessionId: string): Promise<number> {
-  const ledger = (await readSessions(directory)).find((each) => each.sessionId === sessionId);
+  const sessions = await readSessions(directory);
+  const ledger = sessions.find((each) => each.sessionId === sessionId);
   return ledger === undefined ? 0 : workerPlaces(ledger.state);
 }
 
@@ -296,9 +302,7 @@ describe('admitWorker', () => {
       request: request('B', '1', { holder: { pid: 999_999, pidStartedAt: 'gone' } }),
     });
     await admitWorker({ ...options(directory, time), request: request('A', '2'), cap: 2 });
-    expect((await readSessions(directory)).map((ledger) => ledger.sessionId)).toEqual([
-      'session-A',
-    ]);
+    expect(await sessionIds(directory)).toEqual(['session-A']);
     // A recycled pid is not the holder: the start time decides.
     const recycled = hostTable([[400, { ...entry(300, claude), startedAt: 'a later start' }]]);
     const admission = await admitWorker({
@@ -310,9 +314,7 @@ describe('admitWorker', () => {
       }),
     });
     expect(admission.admitted).toBe(true);
-    expect((await readSessions(directory)).map((ledger) => ledger.sessionId)).toEqual([
-      'session-B',
-    ]);
+    expect(await sessionIds(directory)).toEqual(['session-B']);
   });
 
   test('an admitted dispatch with no start is shown as never started after the limit, then reclaimed on the next acquire', async () => {
@@ -399,15 +401,21 @@ describe('admitWorker', () => {
     const { tryInstall } = await import('./run-exclusively.ts');
     const dead = { pid: 999_997, command: 'dead hook', cwd: '/', acquiredAt: '', token: 'dead' };
     expect(await tryInstall(join(directory, 'admission'), dead)).toBe(true);
+    const toolUseIds = Array.from({ length: 12 }, (_, index) => String(index + 1));
     const admissions = await Promise.all(
-      ['1', '2'].map((toolUseId) =>
-        admitWorker({ ...options(directory, clock()), request: request('A', toolUseId) }),
+      toolUseIds.map((toolUseId) =>
+        admitWorker({
+          ...options(directory, clock()),
+          cap: 100,
+          // The injected clock advances on every wait, so a contender under load must not lose to it.
+          waitLimitMilliseconds: Number.POSITIVE_INFINITY,
+          request: request('A', toolUseId),
+        }),
       ),
     );
     expect(admissions.every((each) => each.admitted)).toBe(true);
     const names = await readdir(directory);
-    expect(names).not.toContain('admission');
-    expect(names).not.toContain('admission.reclaiming');
+    expect(names.filter((name) => name.startsWith('admission'))).toEqual([]);
   });
 });
 

@@ -170,7 +170,8 @@ export async function appendEvent(
   await writeFile(staged, JSON.stringify({ ...event, sessionId }));
   try {
     for (;;) {
-      const names = (await readdir(events)).filter((name) => eventFile.test(name));
+      const entries = await readdir(events);
+      const names = entries.filter((name) => eventFile.test(name));
       const last = names.toSorted().at(-1);
       const next = (last === undefined ? 0 : Number(last.slice(0, 12))) + 1;
       try {
@@ -478,8 +479,18 @@ async function reclaimAbandonedLock(
   }
   try {
     const holder = await readOwner(lock);
+    if (holder === undefined) {
+      // No owner file: the lock was released, and a hook may have installed another since the
+      // failed install. Only a directory that still stands without an owner is removed.
+      const standing = await stat(lock).then(
+        () => true,
+        () => false,
+      );
+      if (standing) await removeLock(lock, undefined);
+      return true;
+    }
     const table = options.readProcessTable();
-    if (holder === undefined || (table !== undefined && !isHolderAlive(holder, table))) {
+    if (table !== undefined && !isHolderAlive(holder, table)) {
       await removeLock(lock, holder);
       return true;
     }
