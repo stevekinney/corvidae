@@ -28,7 +28,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Ban from '@lucide/svelte/icons/ban';
-  import Copy from '@lucide/svelte/icons/copy';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
   import X from '@lucide/svelte/icons/x';
@@ -226,7 +225,6 @@
 
 {#snippet copyButton(value: string, label: string)}
   <CopyButton {value} {label} copiedLabel="Copied" class="cinder-tool-call-panel__copy">
-    <Copy class="cinder-icon-sm" aria-hidden="true" />
     {label}
   </CopyButton>
 {/snippet}

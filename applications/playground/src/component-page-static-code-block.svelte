@@ -26,7 +26,6 @@
           class="cinder-code-block__copy"
           label="Copy code"
           copiedLabel="Code copied"
-          iconOnly={true}
         />
       {/if}
     </div>

@@ -56,8 +56,10 @@ function required<T extends Element = HTMLElement>(root: ParentNode, selector: s
 }
 
 function button(label: string, root: ParentNode = document.body): HTMLButtonElement {
+  // By accessible name: a copy button keeps its "Copied" word laid out (hidden) beside "Copy".
   const found = [...root.querySelectorAll('button')].find(
-    (candidate) => candidate.textContent?.trim() === label,
+    (candidate) =>
+      (candidate.getAttribute('aria-label') ?? candidate.textContent?.trim()) === label,
   );
   if (found === undefined) throw new Error(`Expected a "${label}" button`);
   return found;

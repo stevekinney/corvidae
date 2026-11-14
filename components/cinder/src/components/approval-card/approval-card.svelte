@@ -443,7 +443,6 @@
               label={`Copy path ${file}`}
               copiedLabel="Path copied"
               class="cinder-approval-card__file-copy"
-              iconOnly
             />
           </li>
         {/each}

@@ -259,6 +259,25 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: {},
   },
 
+  // The Copy icon by default, named by `label` and shown in a tooltip; `textVisible` (or `children`)
+  // adds words after the icon. `iconOnly` was removed when the icon became the default face.
+  'copy-button': {
+    kind: 'intersection',
+    html_attrs: 'HTMLButtonAttributes',
+    props: {
+      value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      html: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      image: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      confirmDuration: { optional: true, type_kind: 'TSNumberKeyword', default: L(1500) },
+      label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      copiedLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      textVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      onError: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+    },
+    snippets: { children: s0(true), confirmation: s0(true) },
+  },
+
   // A split button: inside a ButtonGroup the trigger draws as a Button and takes its variant and
   // size from the Button beside it, unless `variant` or `size` set them.
   'dropdown-trigger': {

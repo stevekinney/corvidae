@@ -67,7 +67,8 @@ describe('JsonSchemaEditor — Diff tab source contract', () => {
     expect(source).toContain('label="Undo"');
     expect(source).toContain('label="Redo"');
     expect(source).toContain('label="Revert"');
-    expect(source).toContain('label="Copy JSON" iconOnly');
+    // CopyButton is the Copy icon by default, named by its label and shown in a tooltip.
+    expect(source).toContain('<CopyButton value={editorState.copyValue} label="Copy JSON" />');
   });
 
   test('property editor uses Collapsible for every optional disclosure', async () => {

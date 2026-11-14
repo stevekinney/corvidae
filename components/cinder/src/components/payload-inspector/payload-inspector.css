@@ -106,11 +106,6 @@
     border-color: transparent;
   }
 
-  /* The word that follows the check once a copy lands, beside the count. */
-  .cinder-payload-inspector__copied {
-    font-size: var(--cinder-text-sm);
-  }
-
   /* ----------------------------------------
    * Body
    * ---------------------------------------- */

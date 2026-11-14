@@ -802,7 +802,8 @@ describe('PayloadInspector', () => {
         );
         await Promise.resolve();
         expect(copy.hasAttribute('data-cinder-copied')).toBe(true);
-        expect(copy.querySelector('.cinder-payload-inspector__copied')?.textContent).toBe('Copied');
+        // The icon face turns to a check, at the same width; the live region says "Copied".
+        expect(copy.querySelector('svg.lucide-check')).not.toBeNull();
         expect(document.body.querySelector('[aria-live="polite"]')).not.toBeNull();
         expect(document.body.querySelector('.cinder-toast-region')).toBeNull();
       } finally {

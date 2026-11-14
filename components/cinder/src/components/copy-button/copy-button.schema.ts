@@ -26,10 +26,11 @@ const schema = {
       description:
         'Accessible label for the copied state — what `aria-live="polite"` announces\nwhen the copy succeeds. Defaults to "Copied". Override this when `label` is\ncustomized so the live-region announcement reflects what just happened\n(e.g. label="Copy code" + copiedLabel="Code copied").',
     },
-    iconOnly: {
+    textVisible: {
       type: 'boolean',
       description:
-        'Render the button with only an icon and a visually hidden label.\nWhen true, defaults to a Copy icon (idle) and a Check icon (copied).',
+        'Shows the words "Copy", and "Copied" after a copy, after the icon. By default the button is\nthe Copy icon alone (a Check after a copy), named by `label`, which also shows as a tooltip.\nThe button keeps one width in both states.',
+      default: false,
     },
     class: {
       type: 'string',
@@ -43,12 +44,14 @@ const schema = {
       {
         name: 'children',
         reason: 'function-or-snippet',
-        description: 'Default content (idle state).',
+        description:
+          'The words of the text face at rest, after the Copy icon. Passing them shows the text face.',
       },
       {
         name: 'confirmation',
         reason: 'function-or-snippet',
-        description: 'Content rendered while in the "copied" state.',
+        description:
+          'The words of the text face once copied, after the Check icon. Defaults to "Copied".',
       },
       {
         name: 'image',

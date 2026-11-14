@@ -27,7 +27,6 @@
   import type { PayloadInspectorProps, PayloadInspectorView } from './payload-inspector.types.ts';
 
   import CircleAlert from '@lucide/svelte/icons/circle-alert';
-  import Check from '@lucide/svelte/icons/check';
   import Download from '@lucide/svelte/icons/download';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Badge from '../badge/badge.svelte';
@@ -316,13 +315,7 @@
               title={copyLabel}
               confirmDuration={2000}
               disabled={copyDisabled}
-              iconOnly
-            >
-              {#snippet confirmation()}
-                <Check class="cinder-icon-sm" aria-hidden="true" />
-                <span class="cinder-payload-inspector__copied">Copied</span>
-              {/snippet}
-            </CopyButton>
+            />
           {/if}
         </div>
       {/if}

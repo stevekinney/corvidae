@@ -11,7 +11,6 @@
     Search,
     Terminal,
     X,
-    Copy,
     CopyButton,
     formatDuration,
     Spinner,
@@ -403,11 +402,8 @@
             label={words.copyError}
             copiedLabel={words.errorCopied}
             confirmDuration={2000}
-            iconOnly
             class="chat-tool-call-failure-action"
-          >
-            <Copy class="cinder-icon-xs" aria-hidden="true" />
-          </CopyButton>
+          />
         </Tooltip>
       </div>
     </div>

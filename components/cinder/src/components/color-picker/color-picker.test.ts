@@ -23,6 +23,11 @@ function q<T extends Element>(root: ParentNode, selector: string, _expectedType?
   return element;
 }
 
+/** The words a copy-format button shows now (its "Copied" word is laid out but hidden). */
+function shownWords(button: HTMLButtonElement): string | undefined {
+  return button.querySelector('[data-cinder-current]')?.textContent?.trim();
+}
+
 describe('ColorPicker structure', () => {
   test('composes CopyButton through its public component entrypoint', async () => {
     const source = await Bun.file(
@@ -1267,8 +1272,8 @@ describe('ColorPicker "Copy HEX format" stays genuinely hex (P1 regression)', ()
     const { container } = render(ColorPicker, { value: '#3366cc', format: 'hwb' });
     const rgbButton = q<HTMLButtonElement>(container, '[aria-label="Copy RGB format"]');
     const hslButton = q<HTMLButtonElement>(container, '[aria-label="Copy HSL format"]');
-    expect(rgbButton.textContent?.trim()).toMatch(/^RGB rgb\(/);
-    expect(hslButton.textContent?.trim()).toMatch(/^HSL hsl\(/);
+    expect(shownWords(rgbButton)).toMatch(/^RGB rgb\(/);
+    expect(shownWords(hslButton)).toMatch(/^HSL hsl\(/);
   });
 });
 
@@ -1326,8 +1331,8 @@ describe('ColorPicker retained translucent value renders/copies consistently (P1
 
     const rgbButton = q<HTMLButtonElement>(container, '[aria-label="Copy RGB format"]');
     const hslButton = q<HTMLButtonElement>(container, '[aria-label="Copy HSL format"]');
-    expect(rgbButton.textContent?.trim()).toMatch(/^RGB rgba\(/);
-    expect(hslButton.textContent?.trim()).toMatch(/^HSL hsla\(/);
+    expect(shownWords(rgbButton)).toMatch(/^RGB rgba\(/);
+    expect(shownWords(hslButton)).toMatch(/^HSL hsla\(/);
   });
 
   test('alpha=false with a genuinely opaque value: preview and RGB/HSL copy stay opaque', () => {
@@ -1339,8 +1344,8 @@ describe('ColorPicker retained translucent value renders/copies consistently (P1
 
     const rgbButton = q<HTMLButtonElement>(container, '[aria-label="Copy RGB format"]');
     const hslButton = q<HTMLButtonElement>(container, '[aria-label="Copy HSL format"]');
-    expect(rgbButton.textContent?.trim()).toMatch(/^RGB rgb\(/);
-    expect(hslButton.textContent?.trim()).toMatch(/^HSL hsl\(/);
+    expect(shownWords(rgbButton)).toMatch(/^RGB rgb\(/);
+    expect(shownWords(hslButton)).toMatch(/^HSL hsl\(/);
   });
 
   // Review thread (PR #1420, PRRT_kwDOSKrFTs6b5hjd): the retained
@@ -1396,8 +1401,8 @@ describe('ColorPicker fractional alpha in the 0.9995–1 band (P1 regression)', 
 
     const rgbButton = q<HTMLButtonElement>(container, '[aria-label="Copy RGB format"]');
     const hslButton = q<HTMLButtonElement>(container, '[aria-label="Copy HSL format"]');
-    expect(rgbButton.textContent?.trim()).toBe('RGB rgba(255, 0, 0, 0.9996)');
-    expect(hslButton.textContent?.trim()).toBe('HSL hsla(0, 100%, 50%, 0.9996)');
+    expect(shownWords(rgbButton)).toBe('RGB rgba(255, 0, 0, 0.9996)');
+    expect(shownWords(hslButton)).toBe('HSL hsla(0, 100%, 50%, 0.9996)');
 
     // Checkerboard and preview must also agree it's translucent.
     const preview = q(container, '.cinder-color-picker__preview');
@@ -1420,8 +1425,8 @@ describe('ColorPicker fractional alpha in the 0.9995–1 band (P1 regression)', 
 
     const rgbButton = q<HTMLButtonElement>(container, '[aria-label="Copy RGB format"]');
     const hslButton = q<HTMLButtonElement>(container, '[aria-label="Copy HSL format"]');
-    expect(rgbButton.textContent?.trim()).toBe('RGB rgb(255, 0, 0)');
-    expect(hslButton.textContent?.trim()).toBe('HSL hsl(0, 100%, 50%)');
+    expect(shownWords(rgbButton)).toBe('RGB rgb(255, 0, 0)');
+    expect(shownWords(hslButton)).toBe('HSL hsl(0, 100%, 50%)');
 
     const preview = q(container, '.cinder-color-picker__preview');
     expect(preview.hasAttribute('data-cinder-alpha')).toBe(false);
@@ -1500,8 +1505,8 @@ describe('ColorPicker format="hex" alpha quantization agrees everywhere (P1 regr
 
     const rgbButton = q<HTMLButtonElement>(container, '[aria-label="Copy RGB format"]');
     const hslButton = q<HTMLButtonElement>(container, '[aria-label="Copy HSL format"]');
-    expect(rgbButton.textContent?.trim()).toBe('RGB rgb(255, 0, 0)');
-    expect(hslButton.textContent?.trim()).toBe('HSL hsl(0, 100%, 50%)');
+    expect(shownWords(rgbButton)).toBe('RGB rgb(255, 0, 0)');
+    expect(shownWords(hslButton)).toBe('HSL hsl(0, 100%, 50%)');
   });
 
   test('the SAME 0.9996 alpha with format="rgb" (no byte quantization) stays translucent everywhere', () => {

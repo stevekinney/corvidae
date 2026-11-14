@@ -44,7 +44,6 @@
    * on the page, via `createActiveRevisionComparisons` — so this component
    * still needs no query client and renders standalone.
    */
-  import { Copy } from '@lucide/svelte';
   import { Badge, CopyButton, Table, Tooltip } from '@lostgradient/cinder';
   import type { WorkflowSummary } from '@lostgradient/weft';
 
@@ -179,9 +178,7 @@
                   <code>{truncateId(row.id)}</code>
                 </a>
               </Tooltip>
-              <CopyButton value={row.id} iconOnly label={`Copy workflow ID ${truncateId(row.id)}`}>
-                <Copy aria-hidden="true" size={13} />
-              </CopyButton>
+              <CopyButton value={row.id} label={`Copy workflow ID ${truncateId(row.id)}`} />
             </span>
             {#if workflowOrigin !== undefined}
               <span class="weft-workflows-table__origin">

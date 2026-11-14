@@ -133,7 +133,7 @@
           highlight={false}
           languageLabelVisible={false}
         />
-        <CopyButton value={activity.token} iconOnly label="Copy completion token" />
+        <CopyButton value={activity.token} label="Copy completion token" />
       </div>
     </div>
 

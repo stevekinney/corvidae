@@ -154,7 +154,6 @@
                 value={item.definition.value}
                 label={`Copy ${item.term}`}
                 copiedLabel={`${item.term} copied`}
-                iconOnly
               />
             </span>
           {:else}

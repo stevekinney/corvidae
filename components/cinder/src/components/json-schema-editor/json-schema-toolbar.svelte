@@ -13,7 +13,6 @@
 </script>
 
 <script lang="ts">
-  import ClipboardCopy from '@lucide/svelte/icons/clipboard-copy';
   import Redo2 from '@lucide/svelte/icons/redo-2';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Undo2 from '@lucide/svelte/icons/undo-2';
@@ -199,9 +198,7 @@
     >
       <Redo2 class="cinder-icon-sm" />
     </Button>
-    <CopyButton value={editorState.copyValue} label="Copy JSON" iconOnly>
-      {#snippet children()}<ClipboardCopy class="cinder-icon-sm" aria-hidden="true" />{/snippet}
-    </CopyButton>
+    <CopyButton value={editorState.copyValue} label="Copy JSON" />
     <Button
       variant="secondary"
       size="sm"

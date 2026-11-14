@@ -343,7 +343,7 @@
             <span class="weft-revisions-panel__revision" title={row.revision}>
               {truncateId(row.revision)}
             </span>
-            <CopyButton value={row.revision} iconOnly label={`Copy revision ${row.revision}`} />
+            <CopyButton value={row.revision} label={`Copy revision ${row.revision}`} />
             {#if row.isActive}
               <Badge variant="success">Active</Badge>
             {:else}

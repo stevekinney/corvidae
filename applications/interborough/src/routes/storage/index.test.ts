@@ -1190,7 +1190,10 @@ describe('the buttons of a key the application does not manage', () => {
       expect(pane.getByRole('button', { name: STORAGE_COPY.detail.edit })).not.toBeNull(),
     );
 
-    const names = pane.getAllByRole('button').map((button) => button.textContent?.trim());
+    // Each button's accessible name: a copy button keeps both its words laid out (one hidden).
+    const names = pane
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim());
     expect(names.slice(0, 3)).toEqual([
       STORAGE_COPY.detail.copyKey,
       STORAGE_COPY.detail.copyValue,

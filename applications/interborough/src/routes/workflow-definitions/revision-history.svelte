@@ -9,7 +9,6 @@
    * the list says what compatibility means.
    */
   import { Alert, Button, CopyButton, EmptyState, Skeleton, StatusDot } from '@lostgradient/cinder';
-  import { Copy } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL } from '../../app/copy/views.ts';
@@ -81,13 +80,7 @@
                 revision.workflowVersion === currentVersion,
               )}</span
             >
-            <CopyButton
-              value={revision.workflowVersion}
-              iconOnly
-              label={copy.copyVersion(shortVersion)}
-            >
-              <Copy aria-hidden="true" size={13} />
-            </CopyButton>
+            <CopyButton value={revision.workflowVersion} label={copy.copyVersion(shortVersion)} />
           </p>
           <p class="weft-workflow-revisions__line" data-testid="workflow-revision-verdict">
             {#if revision.compatibility === null}

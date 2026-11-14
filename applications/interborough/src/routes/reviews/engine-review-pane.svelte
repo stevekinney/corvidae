@@ -96,7 +96,6 @@
             value={draftText}
             label={REVIEWS_COPY.workflow.copyDraft}
             copiedLabel={REVIEWS_COPY.workflow.draftCopied}
-            iconOnly
           />
         {/if}
       </div>

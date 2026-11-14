@@ -38,7 +38,7 @@
     <span style="font-size: 0.75rem; font-weight: 600; color: var(--cinder-text-subtle);"
       >{eventType}</span
     >
-    <CopyButton value={rawJson} label="Copy raw JSON" iconOnly />
+    <CopyButton value={rawJson} label="Copy raw JSON" />
   </div>
   <div style="padding: 0.75rem;">
     <JsonViewer value={payload} initialDepth={2} />

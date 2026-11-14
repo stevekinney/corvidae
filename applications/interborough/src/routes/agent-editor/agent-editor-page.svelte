@@ -602,7 +602,6 @@
         value={filePath}
         label={copy.newAgent.copyFilePath}
         copiedLabel={copy.newAgent.copiedFilePath}
-        iconOnly
       />
     </p>
   {/if}

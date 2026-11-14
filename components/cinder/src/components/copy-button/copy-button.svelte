@@ -20,9 +20,11 @@
 
   import Check from '@lucide/svelte/icons/check';
   import Copy from '@lucide/svelte/icons/copy';
+  import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
   import { copyToClipboard } from '../../utilities/clipboard.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
+  import Tooltip from '../tooltip/tooltip.svelte';
   import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
 
   let {
@@ -32,7 +34,7 @@
     confirmDuration = 1500,
     label,
     copiedLabel,
-    iconOnly = false,
+    textVisible = false,
     class: className,
     children,
     confirmation,
@@ -54,6 +56,11 @@
   // double-announces (the AT reads the button's name on focus AND as a live
   // change) and conflicts with the button role — it's an ARIA anti-pattern.
   const copiedAnnouncement = $derived(copied ? (copiedLabel ?? 'Copied') : '');
+  const accessibleName = $derived(label ?? 'Copy to clipboard');
+  // The Copy icon is the face; words follow it only when asked for, or when the page writes its own.
+  const textFace = $derived(textVisible || children !== undefined);
+  // Inside a page's own Tooltip the icon face leaves the tooltip to it, so there is only one.
+  const insideTooltip = getTooltipTriggerContext() !== undefined;
 
   async function handleClick() {
     const richClipboardContent: { html?: string; image?: Blob | string } = {};
@@ -84,32 +91,45 @@
      separate live region below, not via aria-live on the button — putting a live
      region on the interactive control double-announces and conflicts with the
      button role. -->
-<button
-  {...rest}
-  type="button"
-  data-cinder-copied={copied || undefined}
-  aria-label={label ?? 'Copy to clipboard'}
-  data-cinder-icon-only={iconOnly || undefined}
-  onclick={handleClick}
-  class={classNames('cinder-copy-button', className)}
->
-  <!-- Accessible name comes from `aria-label`. In iconOnly mode the icon is
-       decorative (`aria-hidden`). Visible "Copied" text is presentational only;
-       the announcement is owned by the live region. -->
-  {#if copied && confirmation}
-    {@render confirmation()}
-  {:else if copied && iconOnly}
-    <Check class="cinder-icon-sm" aria-hidden="true" />
-  {:else if copied}
-    Copied
-  {:else if children}
-    {@render children()}
-  {:else if iconOnly}
-    <Copy class="cinder-icon-sm" aria-hidden="true" />
-  {:else}
-    Copy
-  {/if}
-</button>
+{#snippet face()}
+  <button
+    {...rest}
+    type="button"
+    data-cinder-copied={copied || undefined}
+    aria-label={accessibleName}
+    data-cinder-icon-only={textFace ? undefined : ''}
+    onclick={handleClick}
+    class={classNames('cinder-copy-button', className)}
+  >
+    <!-- Accessible name comes from `aria-label`. The icon is always present and decorative: Copy
+         at rest, Check once copied. Visible words are presentational only; the announcement is
+         owned by the live region. -->
+    {#if copied}
+      <Check class="cinder-icon-sm" aria-hidden="true" />
+    {:else}
+      <Copy class="cinder-icon-sm" aria-hidden="true" />
+    {/if}
+    {#if textFace}
+      <!-- Both words are laid out in one cell and only the current one shows, so the button is
+           as wide copied as at rest and nothing beside it moves. -->
+      <span class="cinder-copy-button__words">
+        <span class="cinder-copy-button__word" data-cinder-current={copied ? undefined : ''}>
+          {#if children}{@render children()}{:else}Copy{/if}
+        </span>
+        <span class="cinder-copy-button__word" data-cinder-current={copied ? '' : undefined}>
+          {#if confirmation}{@render confirmation()}{:else}Copied{/if}
+        </span>
+      </span>
+    {/if}
+  </button>
+{/snippet}
+
+{#if textFace || insideTooltip}
+  {@render face()}
+{:else}
+  <!-- The icon-only face shows its name in a tooltip; the button is already named by it. -->
+  <Tooltip text={accessibleName} describe={false}>{@render face()}</Tooltip>
+{/if}
 
 <!-- Dedicated polite live region: announces the copy confirmation exactly once
      per successful copy, decoupled from the interactive button. -->
