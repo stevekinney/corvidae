@@ -29,6 +29,7 @@ const calls: string[] = [];
 /** Whether the `gated` activity holds item `y` open: until the test restarts the engine. */
 let holdItemY = false;
 let retryingAttempts = 0;
+let siblingCommitted = Promise.withResolvers<void>();
 
 const host: DocumentWorkflowHost = {
   activities: {
@@ -63,10 +64,15 @@ const host: DocumentWorkflowHost = {
         backoffMultiplier: 1,
         maxBackoff: 3_600_000,
       },
-      execute: () => {
+      // The first attempt fails only once its sibling `b` has finished and been committed, so no
+      // commit of `b`'s carries the retry's state.
+      execute: async () => {
         retryingAttempts += 1;
         calls.push('retrying');
-        if (retryingAttempts === 1) throw new Error('first attempt fails');
+        if (retryingAttempts === 1) {
+          await siblingCommitted.promise;
+          throw new Error('first attempt fails');
+        }
         return 'R';
       },
     },
@@ -334,9 +340,14 @@ describe('what a branch`s settled step commits besides a signal', () => {
         b: [{ kind: 'activity', handler: 'count', input: 'b' }],
       }),
     ]);
+    siblingCommitted = Promise.withResolvers<void>();
     {
       await using original = await startEngine(storage, document);
       await original.start(document.name, null, { id });
+      await waitUntil(async () => (await committedStepCount(storage, id, 1)) > 1, {
+        message: 'b to finish and be committed',
+      });
+      siblingCommitted.resolve();
       await waitUntil(async () => hasCommittedRetryBackoff(storage, id), {
         message: 'the retry`s attempt and backoff to be committed',
       });
