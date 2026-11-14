@@ -423,28 +423,17 @@
     min-inline-size: 0;
   }
 
-  /* Several questions: the tag and the progress with its two buttons share the top line, the
-   * progress at the trailing end, and the question has the full width under them. */
-  .chat-question-dock-heading[data-chat-question-several] {
-    flex-wrap: wrap;
-  }
-
-  .chat-question-dock-heading[data-chat-question-several] > .chat-question-dock-needs {
-    order: 0;
-  }
-
+  /* Several questions use the same row: the question with the tag on its line when it fits, and the
+   * progress with its two buttons in a trailing slot of its own. The slot is the last item, so
+   * when the row runs out of room it is what wraps first, onto the line above, at the trailing
+   * end; the row wraps further, the tag with it, only when the question does not fit. */
   .chat-question-dock-steps {
     display: inline-flex;
     flex: none;
     align-items: center;
     gap: var(--cinder-space-1);
-    order: 1;
-    margin-inline-start: auto;
-  }
-
-  .chat-question-dock-heading[data-chat-question-several] > .chat-question-dock-question {
     order: 2;
-    flex: 1 0 100%;
+    margin-inline-start: auto;
   }
 
   /* The chevrons point the way the questions run, so right-to-left mirrors them. */
