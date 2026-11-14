@@ -916,7 +916,7 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
 test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  test('has a menu button, Home and three icon buttons, the Spotlight over one count, and full-width 44px buttons under each review (05c, 05o, 05p, 05q)', async ({
+  test('has a menu button, Home and three icon buttons, the Spotlight over one count, and 44px buttons at their own width under each review (05c, 05o, 05p, 05q)', async ({
     page,
     checkA11y,
   }) => {
@@ -941,7 +941,8 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
     const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
     await expect(stats).toHaveText([/Failed in 24 hours\s*0/]);
     await expect(stats.locator('xpath=self::*[@data-cinder-attention]')).toHaveCount(0);
-    // Needs you, oldest first: each button is full width and 44px, under its text.
+    // Needs you, oldest first: each button is 44px, under its text at its own width, from the
+    // title's leading edge (COR-2329: a full-width button read as a page-wide pill).
     const rows = needsYou(page).getByRole('listitem');
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText('Which environment should the release go to?');
@@ -961,7 +962,13 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
         .count();
       expect(title).toBeLessThanOrEqual(1);
       expect(await touchHeight(button), `${name} is 44px`).toBeGreaterThanOrEqual(44);
-      expect(box!.width, `${name} is the row's width`).toBeGreaterThan(row!.width - 40);
+      const titleBox = await rows
+        .nth(index)
+        .locator('.cinder-grouped-list-item__title')
+        .boundingBox();
+      expect(box!.y, `${name} is under its text`).toBeGreaterThan(titleBox!.y);
+      expect(box!.width, `${name} keeps its own width`).toBeLessThan(row!.width / 2);
+      expect(Math.abs(box!.x - titleBox!.x), `${name} starts at the title`).toBeLessThanOrEqual(1);
     }
     await expect(needsYou(page).getByRole('button', { name: 'More actions' })).toHaveCount(0);
     // The phone's order: the Spotlight, Needs you, the composer card, then Needs attention and Recent chats.

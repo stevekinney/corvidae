@@ -52,8 +52,8 @@ export type SkeletonProps = {
   /**
    * Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`,
    * for a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone,
-   * the block drops under the text at full width, where the real buttons go. Ignored by other
-   * variants.
+   * the block drops under the text at its own width, starting at the text's leading edge, where the
+   * real buttons go. Ignored by other variants.
    * @default false
    */
   action?: boolean;

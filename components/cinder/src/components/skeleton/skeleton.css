@@ -258,8 +258,9 @@
     border-radius: var(--cinder-button-radius-sm);
   }
 
-  /* A row narrower than 26rem stacks its real buttons full width under the text (GroupedListItem's
-   * own container query), so the block does too, at the same width. */
+  /* A row narrower than 26rem drops its real buttons under the text at their own width, from the
+   * text's leading edge (GroupedListItem's own container query), so the block does too: the text
+   * takes the whole first line, and the block keeps its 5.25rem at the start of the next. */
   .cinder-skeleton-grouped-row--action {
     container: cinder-skeleton-grouped-row / inline-size;
   }
@@ -269,7 +270,7 @@
       flex-wrap: wrap;
     }
 
-    .cinder-skeleton-grouped-row--action .cinder-skeleton-action-bar {
+    .cinder-skeleton-grouped-row--action .cinder-skeleton-grouped-text {
       flex-basis: 100%;
     }
   }

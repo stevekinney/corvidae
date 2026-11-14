@@ -99,7 +99,7 @@ const schema = {
         name: 'actions',
         reason: 'unknown-shape',
         description:
-          "Text actions at the end of the row, each a secondary small button (a link drawn as one when it\nhas `href`), for a row whose action is the point of the row, such as a review waiting on you.\nThey sit above the row's own link. In a row narrower than 26rem, as on a phone, they leave the\nend of the row and stack full width under its text, never collapsing into a menu, each a 44px\ntarget under a coarse pointer.",
+          "Text actions at the end of the row, each a secondary small button (a link drawn as one when it\nhas `href`), for a row whose action is the point of the row, such as a review waiting on you.\nThey sit above the row's own link. In a row narrower than 26rem, as on a phone, they leave the\nend of the row for a line of their own under its text, each at its own width from the text's\nleading edge, never collapsing into a menu, each a 44px target under a coarse pointer.",
       },
       {
         name: 'lead',
