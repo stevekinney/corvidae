@@ -5,22 +5,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { ProcessEntry, ProcessTable } from './bun-test-pool.ts';
+import { neverStartedLimitMilliseconds, workerPlaces } from './host-sessions-model.ts';
 import {
   admitWorker,
+  appendEvent,
   capBypassVariable,
+  describePlaces,
   handleHookEvent,
   hostPlaceCap,
+  hostPlaces,
   placePollIntervalMilliseconds,
   placeTakingAgentTypes,
   placeWaitLimitMilliseconds,
-  readPlaces,
+  readSessions,
+  releasePlace,
   sessionProcess,
+  type AdmitOptions,
   type HookContext,
   type HookInput,
-  type PlaceRecord,
   type PlaceRequest,
 } from './host-sessions.ts';
-import { tryInstall } from './run-exclusively.ts';
+import { enqueue } from './run-exclusively.ts';
 
 /**
  * Every scenario owns a scratch places directory, judges liveness from an injected process table,
@@ -82,8 +87,8 @@ function request(session: 'A' | 'B', toolUseId: string, overrides: Partial<Place
   } satisfies PlaceRequest;
 }
 
-function clock() {
-  const state = { now: 1_000_000, sleeps: 0 };
+function clock(start = 1_000_000) {
+  const state = { now: start, sleeps: 0 };
   return {
     state,
     now: () => state.now,
@@ -94,14 +99,13 @@ function clock() {
   };
 }
 
-async function recordsIn(directory: string): Promise<PlaceRecord[]> {
-  const places = await readPlaces(directory);
-  return places.map((place) => place.record);
+async function places(directory: string): Promise<number> {
+  return hostPlaces(await readSessions(directory));
 }
 
-async function placeKinds(directory: string): Promise<string[]> {
-  const records = await recordsIn(directory);
-  return records.map((record) => `${record.kind}:${record.sessionId}`);
+async function workersOf(directory: string, sessionId: string): Promise<number> {
+  const ledger = (await readSessions(directory)).find((each) => each.sessionId === sessionId);
+  return ledger === undefined ? 0 : workerPlaces(ledger.state);
 }
 
 function context(directory: string, overrides: Partial<HookContext> = {}): HookContext {
@@ -129,6 +133,26 @@ function dispatch(
     tool_use_id: toolUseId,
     cwd: '/worktrees/A',
     tool_input: { subagent_type: subagentType, description, prompt: 'Implement it.' },
+  };
+}
+
+function agentEvent(name: string, agentId: string, agentType = 'chef-worker'): HookInput {
+  return {
+    hook_event_name: name,
+    session_id: 'session-A',
+    agent_id: agentId,
+    agent_type: agentType,
+  };
+}
+
+function toolResult(toolUseId: string, status: string, agentId: string): HookInput {
+  return {
+    hook_event_name: 'PostToolUse',
+    session_id: 'session-A',
+    tool_name: 'Agent',
+    tool_use_id: toolUseId,
+    tool_input: { subagent_type: 'chef-worker' },
+    tool_response: { status, agentId },
   };
 }
 
@@ -160,47 +184,54 @@ describe('sessionProcess', () => {
 });
 
 describe('admitWorker', () => {
+  function options(directory: string, time: ReturnType<typeof clock>) {
+    return { directory, readProcessTable: () => hostTable(), now: time.now, sleep: time.sleep };
+  }
+
   test('admits at once while places are free, with a place for the coordinator the first time', async () => {
     const directory = await scratch();
     const time = clock();
-    const options = { directory, readProcessTable: () => hostTable(), ...time };
-    const first = await admitWorker({ ...options, request: request('A', '1') });
+    const first = await admitWorker({ ...options(directory, time), request: request('A', '1') });
     expect(first).toEqual({ admitted: true, bypassed: false, waitedMilliseconds: 0 });
-    expect(await placeKinds(directory)).toEqual(['worker:session-A', 'coordinator:session-A']);
-    const second = await admitWorker({ ...options, request: request('A', '2') });
+    expect(await places(directory)).toBe(2);
+    const second = await admitWorker({ ...options(directory, time), request: request('A', '2') });
     expect(second.admitted).toBe(true);
-    expect(await placeKinds(directory)).toEqual([
-      'worker:session-A',
-      'coordinator:session-A',
-      'worker:session-A',
-    ]);
+    expect(await places(directory)).toBe(3);
     expect(time.state.sleeps).toBe(0);
     expect(await readdir(join(directory, 'queue'))).toEqual([]);
   });
 
-  test('waits, then admits once a holder releases, reporting who held the places', async () => {
+  test('a main agent and its subagent that both dispatch hold one coordinator place', async () => {
     const directory = await scratch();
     const time = clock();
-    const options = { directory, readProcessTable: () => hostTable(), ...time };
-    await admitWorker({ ...options, request: request('A', '1') });
-    let released = false;
+    await admitWorker({ ...options(directory, time), request: request('A', '1') });
+    const nested = await admitWorker({
+      ...options(directory, time),
+      request: request('A', '2', { dispatcher: 'agent-coordinator' }),
+    });
+    expect(nested.admitted).toBe(true);
+    expect(await places(directory)).toBe(3);
+  });
+
+  test('tells the holders when the wait starts, then admits once a holder stops', async () => {
+    const directory = await scratch();
+    const time = clock();
+    await admitWorker({ ...options(directory, time), request: request('A', '1') });
+    const reports: string[][] = [];
+    let stopped = false;
     const admission = await admitWorker({
-      ...options,
+      ...options(directory, time),
       request: request('B', '2'),
+      report: (lines) => reports.push([...lines]),
       // Session B needs a worker's place and a coordinator's: 2 + 2 is over the cap until A's
-      // worker ends, which leaves A's coordinator place with no worker.
+      // worker ends, which ends A's coordinator place too.
       sleep: async (milliseconds) => {
+        expect(reports).toHaveLength(1);
         await time.sleep(milliseconds);
-        if (!released) {
-          released = true;
+        if (!stopped) {
+          stopped = true;
           await handleHookEvent(
-            {
-              hook_event_name: 'PostToolUseFailure',
-              session_id: 'session-A',
-              tool_name: 'Agent',
-              tool_use_id: '1',
-              tool_input: { subagent_type: 'chef-worker' },
-            },
+            { ...dispatch('chef-worker', '1'), hook_event_name: 'PostToolUseFailure' },
             context(directory),
           );
         }
@@ -209,61 +240,107 @@ describe('admitWorker', () => {
     expect(admission.admitted).toBe(true);
     if (!admission.admitted) throw new Error('unreachable');
     expect(admission.waitedMilliseconds).toBe(placePollIntervalMilliseconds);
-    expect(admission.heldWhenWaiting?.[0]).toBe(`2 of ${hostPlaceCap} host places held`);
-    expect(admission.heldWhenWaiting?.join('\n')).toContain('worker COR-1 "Deliver COR-1"');
-    expect(await placeKinds(directory)).toEqual(['worker:session-B', 'coordinator:session-B']);
+    expect(reports[0]?.[0]).toBe(`2 of ${hostPlaceCap} host places held`);
+    expect(reports[0]?.join('\n')).toContain('worker COR-1 "Deliver COR-1"');
+    expect(admission.heldWhenWaiting).toEqual(reports[0]);
+    expect(await workersOf(directory, 'session-A')).toBe(0);
+    expect(await workersOf(directory, 'session-B')).toBe(1);
   });
 
   test('waits up to the limit, then refuses with the holders and leaves no ticket', async () => {
     const directory = await scratch();
     const time = clock();
-    const options = { directory, readProcessTable: () => hostTable(), ...time };
-    await admitWorker({ ...options, request: request('A', '1') });
-    await admitWorker({ ...options, request: request('A', '2') });
-    const admission = await admitWorker({ ...options, request: request('B', '3') });
+    await admitWorker({ ...options(directory, time), request: request('A', '1') });
+    await admitWorker({ ...options(directory, time), request: request('A', '2') });
+    // Both workers run, so the wait outlasts the never-started limit without reclaiming them.
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-1'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-2'), context(directory));
+    const admission = await admitWorker({
+      ...options(directory, time),
+      request: request('B', '3'),
+    });
     expect(admission.admitted).toBe(false);
     if (admission.admitted) throw new Error('unreachable');
     expect(admission.waitedMilliseconds).toBe(placeWaitLimitMilliseconds);
     expect(time.state.sleeps).toBe(placeWaitLimitMilliseconds / placePollIntervalMilliseconds);
     expect(admission.held[0]).toBe('3 of 3 host places held');
-    expect(admission.held.slice(1).join('\n')).toContain(
-      'coordinator (session session-, main agent)',
-    );
-    expect(await placeKinds(directory)).toHaveLength(3);
+    expect(admission.held.join('\n')).toContain('session session-');
+    expect(await places(directory)).toBe(3);
     expect(await readdir(join(directory, 'queue'))).toEqual([]);
   });
 
-  test('reclaims a place whose session process is gone on the next acquire', async () => {
+  test("admits the active coordinator's second worker while an older waiter needing two places waits", async () => {
+    const directory = await scratch();
+    const time = clock();
+    await admitWorker({ ...options(directory, time), request: request('A', '1') });
+    // Session B's dispatch waits, live, ahead in the queue: it needs two places, and one is free.
+    const waiting = { pid: 511, pidStartedAt: hostTable().get(511)?.startedAt ?? '' };
+    await enqueue(join(directory, 'queue'), {
+      ...waiting,
+      command: 'session B waiting',
+      cwd: '/worktrees/B',
+      acquiredAt: '',
+      token: 'waiting-b',
+      sessionId: 'session-B',
+    } as Parameters<typeof enqueue>[1]);
+    const second = await admitWorker({ ...options(directory, time), request: request('A', '2') });
+    expect(second).toEqual({ admitted: true, bypassed: false, waitedMilliseconds: 0 });
+    expect(await places(directory)).toBe(3);
+  });
+
+  test('reclaims a session whose process is gone on the next acquire', async () => {
     const directory = await scratch();
     const time = clock();
     await admitWorker({
-      directory,
-      readProcessTable: () => hostTable(),
-      ...time,
-      request: request('A', '1', { holder: { pid: 999_999, pidStartedAt: 'gone' } }),
+      ...options(directory, time),
+      request: request('B', '1', { holder: { pid: 999_999, pidStartedAt: 'gone' } }),
     });
-    await admitWorker({
-      directory,
-      readProcessTable: () => hostTable(),
-      ...time,
-      request: request('A', '2'),
-    });
-    expect(await placeKinds(directory)).toEqual(['worker:session-A', 'coordinator:session-A']);
-    const reclaimed = await recordsIn(directory);
-    expect(reclaimed.every((record) => record.pid === 400)).toBe(true);
+    await admitWorker({ ...options(directory, time), request: request('A', '2'), cap: 2 });
+    expect((await readSessions(directory)).map((ledger) => ledger.sessionId)).toEqual([
+      'session-A',
+    ]);
     // A recycled pid is not the holder: the start time decides.
     const recycled = hostTable([[400, { ...entry(300, claude), startedAt: 'a later start' }]]);
     const admission = await admitWorker({
-      directory,
+      ...options(directory, time),
       readProcessTable: () => recycled,
-      ...time,
       cap: 2,
       request: request('B', '3', {
         holder: { pid: 500, pidStartedAt: recycled.get(500)?.startedAt ?? '' },
       }),
     });
     expect(admission.admitted).toBe(true);
-    expect(await placeKinds(directory)).toEqual(['worker:session-B', 'coordinator:session-B']);
+    expect((await readSessions(directory)).map((ledger) => ledger.sessionId)).toEqual([
+      'session-B',
+    ]);
+  });
+
+  test('an admitted dispatch with no start is shown as never started after the limit, then reclaimed on the next acquire', async () => {
+    const directory = await scratch();
+    const time = clock();
+    await admitWorker({ ...options(directory, time), request: request('A', '1') });
+    await admitWorker({ ...options(directory, time), request: request('A', '2') });
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-2'), context(directory));
+    const shown = () =>
+      readSessions(directory).then((ledgers) =>
+        describePlaces(ledgers, hostPlaceCap, time.now(), hostTable()).join('\n'),
+      );
+    expect(await shown()).toContain('no agent started yet');
+    time.state.now += neverStartedLimitMilliseconds;
+    // The newest unstarted admission is the one shown: the start went to the oldest.
+    expect(await shown()).toContain(
+      'dispatch 2, admitted 10m ago, admitted, never started (reclaimed by the next dispatch)',
+    );
+    const admission = await admitWorker({
+      ...options(directory, time),
+      request: request('B', '3'),
+      waitLimitMilliseconds: 0,
+    });
+    // One worker of A runs: A holds 2, B takes 2, past the cap of 3, so B still waits; but the
+    // stale admission is gone.
+    expect(admission.admitted).toBe(false);
+    expect(await workersOf(directory, 'session-A')).toBe(1);
+    expect(await places(directory)).toBe(2);
   });
 
   test('skips a dead waiter ahead in the queue', async () => {
@@ -273,23 +350,47 @@ describe('admitWorker', () => {
     await mkdir(queue, { recursive: true });
     await Bun.write(
       join(queue, '0000000000000001-dead.json'),
-      JSON.stringify({
-        pid: 999_998,
-        command: 'dead waiter',
-        cwd: '/',
-        acquiredAt: '',
-        token: 'dead',
-      }),
+      JSON.stringify({ pid: 999_998, command: 'dead', cwd: '/', acquiredAt: '', token: 'dead' }),
     );
     const admission = await admitWorker({
-      directory,
-      readProcessTable: () => hostTable(),
-      ...time,
+      ...options(directory, time),
       request: request('A', '1'),
     });
     expect(admission.admitted).toBe(true);
     expect(time.state.sleeps).toBe(0);
     expect(await readdir(queue)).toEqual([]);
+  });
+
+  test('a lock left by a hook that died is removed, and one held by a live hook is waited for', async () => {
+    const directory = await scratch();
+    const time = clock();
+    await mkdir(directory, { recursive: true });
+    const { tryInstall, removeLock } = await import('./run-exclusively.ts');
+    const dead = { pid: 999_997, command: 'dead hook', cwd: '/', acquiredAt: '', token: 'dead' };
+    expect(await tryInstall(join(directory, 'admission'), dead)).toBe(true);
+    const admitted = await admitWorker({ ...options(directory, time), request: request('A', '1') });
+    expect(admitted.admitted).toBe(true);
+    const live = {
+      pid: 511,
+      pidStartedAt: hostTable().get(511)?.startedAt ?? '',
+      command: 'live',
+      cwd: '/',
+      acquiredAt: '',
+      token: 'live',
+    };
+    expect(await tryInstall(join(directory, 'admission'), live)).toBe(true);
+    let waits = 0;
+    const second = await admitWorker({
+      ...options(directory, time),
+      request: request('A', '2'),
+      sleep: async (milliseconds) => {
+        waits += 1;
+        await time.sleep(milliseconds);
+        if (waits === 2) await removeLock(join(directory, 'admission'), live);
+      },
+    } satisfies AdmitOptions);
+    expect(second.admitted).toBe(true);
+    expect(waits).toBe(2);
   });
 });
 
@@ -301,122 +402,121 @@ describe('the hook', () => {
         await handleHookEvent(dispatch(type, `t-${type}`), context(directory)),
       ).toBeUndefined();
     }
-    expect(await readPlaces(directory)).toEqual([]);
+    expect(await readSessions(directory)).toEqual([]);
   });
 
-  test('takes a place on dispatch, binds it at the start, and releases it when the worker stops', async () => {
+  test('takes places on dispatch, keeps them through the start, and returns them when the worker stops', async () => {
     const directory = await scratch();
     expect(
       await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory)),
     ).toBeUndefined();
-    const [worker] = await readPlaces(directory);
-    expect(worker?.record).toMatchObject({ pid: 400, issue: 'COR-1', toolUseId: 'tool-1' });
-    await handleHookEvent(
-      {
-        hook_event_name: 'SubagentStart',
-        session_id: 'session-A',
-        agent_id: 'agent-1',
-        agent_type: 'chef-worker',
-      },
-      context(directory),
-    );
-    const [bound] = await recordsIn(directory);
-    expect(bound?.agentId).toBe('agent-1');
-    // A second stop of the same agent, or one of a read-only type, releases nothing more.
-    await handleHookEvent(
-      {
-        hook_event_name: 'SubagentStop',
-        session_id: 'session-A',
-        agent_id: 'agent-1',
-        agent_type: 'Explore',
-      },
-      context(directory),
-    );
-    expect(await readPlaces(directory)).toHaveLength(2);
-    await handleHookEvent(
-      {
-        hook_event_name: 'SubagentStop',
-        session_id: 'session-A',
-        agent_id: 'agent-1',
-        agent_type: 'chef-worker',
-      },
-      context(directory),
-    );
-    expect(await placeKinds(directory)).toEqual(['coordinator:session-A']);
+    expect(await places(directory)).toBe(2);
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-1'), context(directory));
+    expect(await places(directory)).toBe(2);
+    // A stop of a read-only type, or of an agent never started here, returns nothing.
+    await handleHookEvent(agentEvent('SubagentStop', 'agent-1', 'Explore'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStop', 'agent-9'), context(directory));
+    expect(await places(directory)).toBe(2);
+    await handleHookEvent(agentEvent('SubagentStop', 'agent-1'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStop', 'agent-1'), context(directory));
+    expect(await places(directory)).toBe(0);
   });
 
-  test('binds a backgrounded worker from PostToolUse and releases a foreground one when it completes', async () => {
+  test('two background workers whose second starts first keep the first counted after the second stops', async () => {
+    const directory = await scratch();
+    await handleHookEvent(dispatch('chef-worker', 'tool-a'), context(directory));
+    await handleHookEvent(dispatch('chef-worker', 'tool-b'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-b'), context(directory));
+    await handleHookEvent(toolResult('tool-b', 'async_launched', 'agent-b'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-a'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStop', 'agent-b'), context(directory));
+    expect(await places(directory)).toBe(2);
+  });
+
+  test('two background workers launched in order keep the second counted after the first stops', async () => {
+    const directory = await scratch();
+    await handleHookEvent(dispatch('chef-worker', 'tool-a'), context(directory));
+    await handleHookEvent(dispatch('chef-worker', 'tool-b'), context(directory));
+    await handleHookEvent(toolResult('tool-a', 'async_launched', 'agent-a'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-a'), context(directory));
+    await handleHookEvent(toolResult('tool-b', 'async_launched', 'agent-b'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-b'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStop', 'agent-a'), context(directory));
+    expect(await places(directory)).toBe(2);
+  });
+
+  test('a completed foreground call, a failed one and a denied one each return their place once', async () => {
     const directory = await scratch();
     await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));
     await handleHookEvent(dispatch('chef-worker', 'tool-2'), context(directory));
-    const after = (toolUseId: string, status: string, agentId: string): HookInput => ({
-      hook_event_name: 'PostToolUse',
-      session_id: 'session-A',
-      tool_name: 'Agent',
-      tool_use_id: toolUseId,
-      tool_input: { subagent_type: 'chef-worker' },
-      tool_response: { status, agentId },
-    });
-    await handleHookEvent(after('tool-1', 'async_launched', 'agent-1'), context(directory));
-    const launched = await recordsIn(directory);
-    expect(launched.find((record) => record.toolUseId === 'tool-1')?.agentId).toBe('agent-1');
-    await handleHookEvent(after('tool-2', 'completed', 'agent-2'), context(directory));
-    const left = await recordsIn(directory);
-    expect(left.map((record) => record.toolUseId ?? 'coordinator')).toEqual([
-      'tool-1',
-      'coordinator',
-    ]);
-  });
-
-  test('two workers that start out of order release only their own places', async () => {
-    const directory = await scratch();
-    await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));
-    await handleHookEvent(dispatch('chef-worker', 'tool-2'), context(directory));
-    const event = (name: string, agentId: string): HookInput => ({
-      hook_event_name: name,
-      session_id: 'session-A',
-      agent_id: agentId,
-      agent_type: 'chef-worker',
-    });
-    // The second dispatch starts first, so it is bound to the first dispatch's place.
-    await handleHookEvent(event('SubagentStart', 'agent-2'), context(directory));
-    await handleHookEvent(event('SubagentStart', 'agent-1'), context(directory));
-    await handleHookEvent(event('SubagentStop', 'agent-1'), context(directory));
-    const completed: HookInput = {
-      hook_event_name: 'PostToolUse',
-      session_id: 'session-A',
-      tool_name: 'Agent',
-      tool_use_id: 'tool-1',
-      tool_input: { subagent_type: 'chef-worker' },
-      tool_response: { status: 'completed', agentId: 'agent-1' },
-    };
-    await handleHookEvent(completed, context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-1'), context(directory));
+    // The foreground call returns with no SubagentStop (an API error fires StopFailure instead).
+    await handleHookEvent(toolResult('tool-1', 'completed', 'agent-1'), context(directory));
+    expect(await workersOf(directory, 'session-A')).toBe(1);
     await handleHookEvent(
-      { ...completed, hook_event_name: 'PostToolUseFailure', tool_response: undefined },
+      { ...dispatch('chef-worker', 'tool-2'), hook_event_name: 'PermissionDenied' },
       context(directory),
     );
-    const records = await recordsIn(directory);
-    const workers = records.filter((record) => record.kind === 'worker');
-    expect(workers.map((record) => record.agentId)).toEqual(['agent-2']);
+    await handleHookEvent(
+      { ...dispatch('chef-worker', 'tool-2'), hook_event_name: 'PostToolUseFailure' },
+      context(directory),
+    );
+    expect(await places(directory)).toBe(0);
   });
 
-  test('denies at the cap after the wait, naming the holders, the status command and the bypass', async () => {
+  test('StopFailure in a worker returns its place', async () => {
+    const directory = await scratch();
+    await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-1'), context(directory));
+    await handleHookEvent(agentEvent('StopFailure', 'agent-1'), context(directory));
+    expect(await places(directory)).toBe(0);
+  });
+
+  test('an agent resumed after its stop with no place free counts, and status says it is over the cap', async () => {
+    const directory = await scratch();
+    await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-1'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStop', 'agent-1'), context(directory));
+    const sessionB = { ...dispatch('chef-worker', 'tool-2'), session_id: 'session-B' };
+    await handleHookEvent(sessionB, context(directory, { hookPid: 511 }));
+    await handleHookEvent(
+      { ...dispatch('chef-worker', 'tool-3'), session_id: 'session-B' },
+      context(directory, { hookPid: 511 }),
+    );
+    expect(await places(directory)).toBe(3);
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-1'), context(directory));
+    expect(await places(directory)).toBe(5);
+    const lines = describePlaces(
+      await readSessions(directory),
+      hostPlaceCap,
+      1_000_000,
+      hostTable(),
+    );
+    expect(lines[0]).toBe('5 of 3 host places held, over the cap');
+    expect(lines.join('\n')).toContain('resumed (run 2) without an admission, over the cap');
+  });
+
+  test('denies at the cap after the wait, naming the holders, the status and release commands and the bypass', async () => {
     const directory = await scratch();
     await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));
     await handleHookEvent(dispatch('chef-worker', 'tool-2'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-1'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-2'), context(directory));
+    const reports: string[] = [];
     const output = await handleHookEvent(
       { ...dispatch('chef-worker', 'tool-3', 'Deliver COR-3'), session_id: 'session-B' },
-      context(directory, { hookPid: 511 }),
+      context(directory, { hookPid: 511, report: (lines) => reports.push(...lines) }),
     );
     expect(output?.hookSpecificOutput?.permissionDecision).toBe('deny');
     const reason = output?.hookSpecificOutput?.permissionDecisionReason ?? '';
     expect(reason).toContain('waited 20 minute(s)');
     expect(reason).toContain('3 of 3 host places held');
     expect(reason).toContain('worker COR-1 "Deliver COR-1"');
-    expect(reason).toContain('Retry the dispatch later');
     expect(reason).toContain('bun scripts/host-sessions.ts status');
+    expect(reason).toContain('bun scripts/host-sessions.ts release');
     expect(reason).toContain(capBypassVariable);
-    expect(await readPlaces(directory)).toHaveLength(3);
+    expect(reports[0]).toContain('this dispatch waits for one of the host');
+    expect(await places(directory)).toBe(3);
   });
 
   test('the bypass variable admits only the dispatch it names, past the cap, and says so', async () => {
@@ -430,14 +530,8 @@ describe('the hook', () => {
     );
     expect(named?.systemMessage).toContain(`${capBypassVariable}=COR-9 admitted this dispatch`);
     expect(named?.hookSpecificOutput?.permissionDecision).toBeUndefined();
-    const places = await readPlaces(directory);
     // The bypassed worker and its coordinator both count, past the cap.
-    const bypassed = places.filter((place) => place.record.bypass === true);
-    expect(places).toHaveLength(5);
-    expect(
-      bypassed.map((place) => `${place.record.kind}:${place.record.sessionId}`).toSorted(),
-    ).toEqual(['coordinator:session-B', 'worker:session-B']);
-    expect(bypassed.every((place) => place.directory.includes('bypass-'))).toBe(true);
+    expect(await places(directory)).toBe(5);
     const other = await handleHookEvent(
       { ...dispatch('chef-worker', 'tool-4', 'Deliver COR-10'), session_id: 'session-B' },
       context(directory, { hookPid: 511, environment, waitLimitMilliseconds: 0 }),
@@ -452,15 +546,52 @@ describe('the hook', () => {
       context(directory, { readProcessTable: () => undefined }),
     );
     expect(output?.systemMessage).toContain('took no host place');
-    expect(await readPlaces(directory)).toEqual([]);
+    expect(await readSessions(directory)).toEqual([]);
   });
 
-  test('a place installed by another run is never taken twice', async () => {
+  test('events appended at once each land whole, in one order', async () => {
     const directory = await scratch();
-    await mkdir(directory, { recursive: true });
-    const record = { pid: 500, command: 'x', cwd: '/', acquiredAt: '', token: 'held' };
-    expect(await tryInstall(join(directory, 'place-0'), record)).toBe(true);
-    expect(await tryInstall(join(directory, 'place-0'), { ...record, token: 'other' })).toBe(false);
+    const appends = Array.from({ length: 20 }, (_, index) =>
+      appendEvent(directory, 'session-A', {
+        kind: 'admit',
+        toolUseId: `tool-${index}`,
+        at: index,
+        description: '',
+        dispatcher: '',
+      }),
+    );
+    await Promise.all(appends);
+    const [ledger] = await readSessions(directory);
+    expect(ledger?.state.dispatches.size).toBe(20);
+    const files = await readdir(join(directory, 'sessions', 'session-A', 'events'));
+    expect(files.toSorted()).toEqual(
+      Array.from({ length: 20 }, (_, index) => `${String(index + 1).padStart(12, '0')}.json`),
+    );
+  });
+});
+
+describe('release', () => {
+  const releaseOptions = { readProcessTable: () => hostTable(), ...clock(), pid: 411 };
+
+  test('frees a pending dispatch, a running agent, or a whole session', async () => {
+    const directory = await scratch();
+    await handleHookEvent(dispatch('chef-worker', 'tool-1'), context(directory));
+    await handleHookEvent(dispatch('chef-worker', 'tool-2'), context(directory));
+    await handleHookEvent(agentEvent('SubagentStart', 'agent-1'), context(directory));
+    expect(await releasePlace(directory, 'tool-2', releaseOptions)).toEqual([
+      'released tool-2 in session session-A: 1 place(s)',
+    ]);
+    expect(await releasePlace(directory, 'agent-1', releaseOptions)).toEqual([
+      'released agent-1 in session session-A: 2 place(s)',
+    ]);
+    await handleHookEvent(dispatch('chef-worker', 'tool-3'), context(directory));
+    expect(await releasePlace(directory, 'session-', releaseOptions)).toEqual([
+      'released session session-A: 2 place(s)',
+    ]);
+    expect(await places(directory)).toBe(0);
+    await expect(releasePlace(directory, 'nothing-here', releaseOptions)).rejects.toThrow(
+      'no session, pending dispatch or running agent is named nothing-here',
+    );
   });
 });
 
@@ -477,15 +608,16 @@ describe('.claude/settings.json', () => {
         .map((hook) => ({ matcher: group.matcher, ...hook })),
     );
 
-  test('the dispatch hook outlasts the wait limit and blocks when it fails', () => {
+  test('the dispatch hook outlasts the wait limit, blocks when it fails, and names the status command while it runs', () => {
     const [hook] = registered('PreToolUse');
     expect(hook).toMatchObject({ matcher: 'Agent', onFailure: 'block' });
     expect(Number(hook?.['timeout']) * 1000).toBeGreaterThan(placeWaitLimitMilliseconds);
+    expect(String(hook?.['statusMessage'])).toContain('bun scripts/host-sessions.ts status');
   });
 
-  test('every place-taking type is registered for dispatch, start, stop and result', () => {
+  test('every place-taking type is registered for dispatch, start, stop, result and denial', () => {
     const types = [...placeTakingAgentTypes];
-    for (const event of ['PreToolUse', 'PostToolUse', 'PostToolUseFailure']) {
+    for (const event of ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionDenied']) {
       expect(registered(event).map((hook) => hook['if'])).toEqual(
         types.map((type) => `Agent(${type})`),
       );
@@ -493,5 +625,7 @@ describe('.claude/settings.json', () => {
     for (const event of ['SubagentStart', 'SubagentStop']) {
       expect(registered(event).map((hook) => hook['matcher'])).toEqual([types.join('|')]);
     }
+    // StopFailure matches on the error type, so it runs for every agent and the hook filters.
+    expect(registered('StopFailure')).toHaveLength(1);
   });
 });

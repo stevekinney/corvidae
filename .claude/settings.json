@@ -100,6 +100,28 @@
         ]
       }
     ],
+    "PermissionDenied": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Agent(chef-worker)",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          }
+        ]
+      }
+    ],
     "SubagentStart": [
       {
         "matcher": "chef-worker",
@@ -131,7 +153,8 @@
             "if": "Agent(chef-worker)",
             "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook",
             "timeout": 1260,
-            "onFailure": "block"
+            "onFailure": "block",
+            "statusMessage": "Waiting for a host place if none is free (bun scripts/host-sessions.ts status lists the holders)"
           }
         ]
       },

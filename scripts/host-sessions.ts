@@ -3,31 +3,33 @@
  * The host-wide cap on implementation workers and the coordinators that dispatch them (AGENTS.md
  * "Parallel runs", COR-2455), enforced by Claude Code hooks in `.claude/settings.json`.
  *
- * A place is a record in the Git common directory, which every worktree shares, built as the test
- * slot pool's slots are (`scripts/bun-test-pool.ts`): a directory installed by one atomic rename,
- * whose owner file names the holder's process by pid and start time, and which the next waiter
- * reclaims once that process is gone. The holder is the Claude Code session's own process, the
- * nearest `claude` ancestor of the hook, never the short-lived hook; a session killed outright
- * leaves its places to be reclaimed.
+ * Each session that dispatches a place-taking agent ({@link placeTakingAgentTypes}) keeps a ledger
+ * in the Git common directory, which every worktree shares: the session's own process (the nearest
+ * `claude` ancestor of the hook, by pid and start time), and its hook events, each appended as the
+ * next numbered file by one exclusive link, so a ledger has one order. `scripts/host-sessions-model.ts`
+ * folds a ledger into the session's places: one for each admitted dispatch whose agent has not
+ * started and one for each running agent, plus one for the session's coordinator while it has any.
+ * The main agent and its subagents are one coordinator. Nothing is bound to a place.
  *
- * - `PreToolUse` on an `Agent` call whose `subagent_type` takes a place ({@link placeTakingAgentTypes})
- *   admits it: one place for the worker, and one more for its coordinator (the session and the
- *   dispatching agent) when that coordinator holds none. Both are taken at once or not at all, so
- *   coordinators that wait never hold a place while they wait. At the cap the hook waits, in
- *   arrival order, up to {@link placeWaitLimitMilliseconds}, then denies the call with the holders
- *   and the instruction to retry later. Read-only agent types take no place.
- * - `SubagentStart` binds the worker's place to its agent id, and so does `PostToolUse` when the
- *   call moved to the background. `SubagentStop`, a completed foreground `PostToolUse` and
- *   `PostToolUseFailure` release it. A coordinator's place goes once it has no worker left.
+ * - `PreToolUse` on an `Agent` call of a place-taking type admits it when its places fit: one, or
+ *   two when its session has no worker. Waiters are admitted oldest first among those whose need
+ *   fits, so a waiter needing two never holds back a later one needing one. At the cap the hook
+ *   waits, up to {@link placeWaitLimitMilliseconds}, then denies the call with the holders.
+ *   Admission, its reclaims and its expiries run under one short lock, never held across a wait.
+ * - `SubagentStart`, `SubagentStop`, `StopFailure`, `PostToolUse`, `PostToolUseFailure` and
+ *   `PermissionDenied` are recorded in the ledger; the fold decides what they change.
+ * - A ledger whose session process is gone, and an admitted dispatch with no start after
+ *   {@link neverStartedLimitMilliseconds}, are reclaimed by the next admission.
  * - {@link capBypassVariable}, set in the session's environment to text a dispatch's description or
  *   prompt contains (its issue, say), admits that dispatch at once, past the cap, and says so.
  *
  * Usage: `bun scripts/host-sessions.ts status` lists the places and waiters;
+ * `bun scripts/host-sessions.ts release <session, dispatch or agent>` frees a place by hand;
  * `bun scripts/host-sessions.ts hook` is the hook, reading its input from standard input.
  * `--directory=<path>` uses another places directory, for a check by hand.
  */
 
-import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { link, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -38,10 +40,20 @@ import {
 } from './bun-test-pool.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import {
+  applySessionEvent,
+  foldSession,
+  neverStarted,
+  neverStartedLimitMilliseconds,
+  runsWithoutAdmission,
+  sessionPlaces,
+  workerPlaces,
+  type SessionEvent,
+  type SessionState,
+} from './host-sessions-model.ts';
+import {
   ancestorsOf,
   enqueue,
   gitCommonDirectory,
-  ownerFileName,
   readOwner,
   readTicket,
   removeLock,
@@ -58,6 +70,9 @@ export const placeWaitLimitMilliseconds = 20 * 60 * 1000;
 /** How often a waiting dispatch looks again. */
 export const placePollIntervalMilliseconds = 5_000;
 
+/** How often a hook looks again for the admission lock, which is held only while deciding. */
+export const admissionLockRetryMilliseconds = 100;
+
 /** Set to text in one dispatch's description or prompt to admit that dispatch past the cap. */
 export const capBypassVariable = 'CORVIDAE_AGENT_CAP_BYPASS';
 
@@ -67,96 +82,155 @@ export const placeTakingAgentTypes: ReadonlySet<string> = new Set(['chef-worker'
 /** The places directory's name in the Git common directory. */
 export const placesDirectoryName = 'corvidae-agent-places';
 
-export type PlaceRecord = OwnerRecord & {
-  readonly kind: 'worker' | 'coordinator';
-  readonly sessionId: string;
-  /** The agent that dispatched the worker, empty for the session's main agent. */
-  readonly dispatcher: string;
-  readonly toolUseId?: string;
-  readonly agentId?: string;
-  /** The issue the dispatch names, when it names one. */
-  readonly issue?: string;
-  readonly bypass?: boolean;
-};
-
-export type Place = { readonly directory: string; readonly record: PlaceRecord };
-
 type ProcessIdentity = { readonly pid: number; readonly pidStartedAt?: string };
 
-const placeName = /^(?:place-\d+|bypass-[\w-]+)$/;
-const ticketSuffix = '.json';
-const boundMarker = 'bound';
+/** A session's ledger as read: its process, and its events folded. */
+export type SessionLedger = {
+  readonly sessionId: string;
+  readonly directory: string;
+  /** The session's process; absent when its ledger has none recorded yet. */
+  readonly holder?: OwnerRecord;
+  readonly state: SessionState;
+};
+
+type Ticket = OwnerRecord & { readonly sessionId: string };
+
+const holderFileName = 'holder.json';
+const eventsDirectoryName = 'events';
+const eventFile = /^\d{12}\.json$/;
+
+function sessionsDirectory(directory: string): string {
+  return join(directory, 'sessions');
+}
 
 function queueDirectory(directory: string): string {
   return join(directory, 'queue');
 }
 
-function placeDirectory(directory: string, index: number): string {
-  return join(directory, `place-${index}`);
+function ledgerDirectory(directory: string, sessionId: string): string {
+  return join(sessionsDirectory(directory), sessionId.replaceAll(/[^\w-]/g, '_'));
 }
 
-/** Every place record, in name order, and the place directories that hold none. */
-async function readPlaceDirectories(
-  directory: string,
-): Promise<{ places: Place[]; garbage: string[] }> {
-  const names = await readdir(directory).catch(() => [] as string[]);
-  const places: Place[] = [];
-  const garbage: string[] = [];
-  for (const name of names.filter((entry) => placeName.test(entry)).toSorted()) {
-    const path = join(directory, name);
-    const record = (await readOwner(path)) as PlaceRecord | undefined;
-    if (record === undefined) garbage.push(path);
-    else places.push({ directory: path, record });
+async function readJson<T>(path: string): Promise<T | undefined> {
+  try {
+    return JSON.parse(await readFile(path, 'utf8')) as T;
+  } catch {
+    return undefined;
   }
-  return { places, garbage };
 }
 
-/** Every readable place record, without judging or changing any. */
-export async function readPlaces(directory: string): Promise<Place[]> {
-  const { places } = await readPlaceDirectories(directory);
-  return places;
+async function readLedger(path: string): Promise<SessionLedger | undefined> {
+  const holder = await readJson<OwnerRecord & { sessionId?: string }>(join(path, holderFileName));
+  const names = await readdir(join(path, eventsDirectoryName)).catch(() => [] as string[]);
+  const events: SessionEvent[] = [];
+  let sessionId = holder?.sessionId;
+  for (const name of names.filter((entry) => eventFile.test(entry)).toSorted()) {
+    const event = await readJson<SessionEvent & { sessionId?: string }>(
+      join(path, eventsDirectoryName, name),
+    );
+    if (event === undefined) continue;
+    sessionId ??= event.sessionId;
+    events.push(event);
+  }
+  if (holder === undefined && events.length === 0) return undefined;
+  return {
+    sessionId: sessionId ?? '',
+    directory: path,
+    ...(holder === undefined ? {} : { holder }),
+    state: foldSession(events),
+  };
 }
 
-function samePair(a: PlaceRecord, b: { sessionId: string; dispatcher: string }): boolean {
-  return a.sessionId === b.sessionId && a.dispatcher === b.dispatcher;
+/** Every session's ledger, without judging or changing any. */
+export async function readSessions(directory: string): Promise<SessionLedger[]> {
+  const root = sessionsDirectory(directory);
+  const names = await readdir(root).catch(() => [] as string[]);
+  const ledgers: SessionLedger[] = [];
+  for (const name of names.toSorted()) {
+    const ledger = await readLedger(join(root, name));
+    if (ledger !== undefined) ledgers.push(ledger);
+  }
+  return ledgers;
 }
 
 /**
- * Why a place no longer counts: its holder process is gone, or it is a coordinator's with no
- * worker left. Undefined while it counts. A table that cannot be read judges every holder alive.
+ * Appends one event to a session's ledger as the next numbered file. The file is written aside and
+ * linked into place, which fails if another hook took that number first, so every event lands
+ * whole and in one order.
  */
-export function reclaimableBecause(
-  place: Place,
-  places: readonly Place[],
-  table: ProcessTable | undefined,
-): string | undefined {
-  if (table !== undefined && !isHolderAlive(place.record, table)) return 'its session has exited';
-  if (place.record.kind !== 'coordinator') return undefined;
-  const hasWorker = places.some(
-    (other) =>
-      other.record.kind === 'worker' &&
-      samePair(other.record, place.record) &&
-      (table === undefined || isHolderAlive(other.record, table)),
-  );
-  return hasWorker ? undefined : 'it has no worker left';
+export async function appendEvent(
+  directory: string,
+  sessionId: string,
+  event: SessionEvent,
+): Promise<void> {
+  const ledger = ledgerDirectory(directory, sessionId);
+  const events = join(ledger, eventsDirectoryName);
+  await mkdir(events, { recursive: true });
+  const staged = join(ledger, `staged-${crypto.randomUUID()}.json`);
+  await writeFile(staged, JSON.stringify({ ...event, sessionId }));
+  try {
+    for (;;) {
+      const names = (await readdir(events)).filter((name) => eventFile.test(name));
+      const last = names.toSorted().at(-1);
+      const next = (last === undefined ? 0 : Number(last.slice(0, 12))) + 1;
+      try {
+        await link(staged, join(events, `${String(next).padStart(12, '0')}.json`));
+        return;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      }
+    }
+  } finally {
+    await rm(staged, { force: true });
+  }
+}
+
+/** Records the session's process, in one rename, unless the ledger already names that process. */
+async function recordHolder(directory: string, sessionId: string, holder: OwnerRecord) {
+  const ledger = ledgerDirectory(directory, sessionId);
+  const current = await readJson<OwnerRecord>(join(ledger, holderFileName));
+  if (current?.pid === holder.pid && current.pidStartedAt === holder.pidStartedAt) return;
+  await mkdir(ledger, { recursive: true });
+  const staged = join(ledger, `${holderFileName}.${holder.token}`);
+  await writeFile(staged, JSON.stringify({ ...holder, sessionId }));
+  await rename(staged, join(ledger, holderFileName));
+}
+
+/** Whether a session's process lives; a table that cannot be read, or no recorded process, judges it alive. */
+export function sessionAlive(ledger: SessionLedger, table: ProcessTable | undefined): boolean {
+  return ledger.holder === undefined || table === undefined || isHolderAlive(ledger.holder, table);
+}
+
+/** The places every live session holds. */
+export function hostPlaces(ledgers: readonly SessionLedger[]): number {
+  return ledgers.reduce((sum, ledger) => sum + sessionPlaces(ledger.state), 0);
 }
 
 /**
- * The places that count, after reclaiming the rest (see {@link reclaimableBecause}). Only the
- * waiter at the front of the queue calls it, so a reclaim never races an install.
+ * The live ledgers, after reclaiming the rest: a ledger whose session process is gone is removed,
+ * and an admitted dispatch with no start after the limit is expired. Run under the admission lock.
  */
-export async function surveyPlaces(
+export async function surveySessions(
   directory: string,
   table: ProcessTable | undefined,
-): Promise<Place[]> {
-  const { places, garbage } = await readPlaceDirectories(directory);
-  for (const path of garbage) await rm(path, { recursive: true, force: true });
-  const kept: Place[] = [];
-  for (const place of places) {
-    if (reclaimableBecause(place, places, table) === undefined) kept.push(place);
-    else await removeLock(place.directory, place.record);
+  now: number,
+  limit = neverStartedLimitMilliseconds,
+): Promise<SessionLedger[]> {
+  const live: SessionLedger[] = [];
+  for (const ledger of await readSessions(directory)) {
+    if (!sessionAlive(ledger, table)) {
+      await rm(ledger.directory, { recursive: true, force: true });
+      continue;
+    }
+    let state = ledger.state;
+    for (const dispatch of neverStarted(state, now, limit)) {
+      const event: SessionEvent = { kind: 'expire', toolUseId: dispatch.toolUseId, at: now };
+      await appendEvent(directory, ledger.sessionId, event);
+      state = applySessionEvent(state, event);
+    }
+    live.push({ ...ledger, state });
   }
-  return kept;
+  return live;
 }
 
 function age(milliseconds: number): string {
@@ -166,36 +240,65 @@ function age(milliseconds: number): string {
   return whole < 120 ? `${whole}m` : `${Math.floor(whole / 60)}h${whole % 60}m`;
 }
 
-/** One line naming a place's holder: what it is, its session, its issue, and its age. */
-export function describePlace(record: PlaceRecord, now: number): string {
-  const session = `session ${record.sessionId.slice(0, 8)}`;
-  const dispatcher = record.dispatcher === '' ? 'main agent' : `agent ${record.dispatcher}`;
-  const held = `held ${age(now - Date.parse(record.acquiredAt))}`;
-  const what =
-    record.kind === 'coordinator'
-      ? `coordinator (${session}, ${dispatcher})`
-      : `worker ${record.issue ?? 'without an issue'} "${record.command}" (${session}, dispatched by ${dispatcher}${record.bypass ? ', past the cap' : ''})`;
-  return `${what}, ${held}, by pid ${record.pid} in ${record.cwd}`;
+/**
+ * One session's places as lines: the session and its coordinator place, then one line per place
+ * with the dispatch, its age, and whether an agent ever started for it.
+ */
+export function describeSession(
+  ledger: SessionLedger,
+  now: number,
+  table: ProcessTable | undefined,
+  limit = neverStartedLimitMilliseconds,
+): string[] {
+  const { state } = ledger;
+  const workers = workerPlaces(state);
+  const process =
+    ledger.holder === undefined
+      ? 'process not recorded'
+      : `pid ${ledger.holder.pid} in ${ledger.holder.cwd}`;
+  const gone = sessionAlive(ledger, table) ? '' : ' (its process has exited: reclaimable)';
+  const lines = [
+    `session ${ledger.sessionId.slice(0, 8)} (${process})${gone}: ${workers === 0 ? 'no place' : `${workers} worker place(s) and its coordinator's`}`,
+  ];
+  for (const dispatch of state.dispatches.values()) {
+    const what = `worker ${dispatch.issue ?? 'without an issue'} "${dispatch.description}", dispatch ${dispatch.toolUseId}, admitted ${age(now - dispatch.admittedAt)} ago${dispatch.bypass ? ' past the cap' : ''}`;
+    if (dispatch.status === 'pending') {
+      const never = now - dispatch.admittedAt >= limit;
+      lines.push(
+        `  place: ${what}, ${never ? 'admitted, never started (reclaimed by the next dispatch)' : 'no agent started yet'}`,
+      );
+    }
+  }
+  for (const agent of state.agents.values()) {
+    if (!agent.running) continue;
+    const dispatch =
+      agent.toolUseId === undefined ? undefined : state.dispatches.get(agent.toolUseId);
+    const origin =
+      dispatch === undefined
+        ? 'without an admission'
+        : `worker ${dispatch.issue ?? 'without an issue'} "${dispatch.description}", dispatch ${dispatch.toolUseId}, admitted ${age(now - dispatch.admittedAt)} ago`;
+    const resumed = agent.runs > 1 ? `, resumed (run ${agent.runs}) without an admission` : '';
+    const over = agent.overCap ? ', over the cap' : '';
+    lines.push(
+      `  place: ${runsWithoutAdmission(agent) && agent.runs === 1 ? 'agent started ' : ''}${origin}, agent ${agent.agentId} started ${age(now - agent.startedAt)} ago and running${resumed}${over}`,
+    );
+  }
+  return lines;
 }
 
-/**
- * The places as lines: a summary, then one line per place, marking those the next waiter reclaims.
- */
+/** The places as lines: a summary, then each session's. */
 export function describePlaces(
-  places: readonly Place[],
+  ledgers: readonly SessionLedger[],
   cap: number,
   now: number,
   table: ProcessTable | undefined,
 ): string[] {
-  const reasons = places.map((place) => reclaimableBecause(place, places, table));
-  const held = reasons.filter((reason) => reason === undefined).length;
+  const held = hostPlaces(ledgers.filter((ledger) => sessionAlive(ledger, table)));
   return [
-    `${held} of ${cap} host places held`,
-    ...places.map((place, index) => {
-      const reason = reasons[index];
-      const note = reason === undefined ? '' : ` (reclaimable: ${reason})`;
-      return `  ${describePlace(place.record, now)}${note}`;
-    }),
+    `${held} of ${cap} host places held${held > cap ? ', over the cap' : ''}`,
+    ...ledgers
+      .filter((ledger) => sessionPlaces(ledger.state) > 0)
+      .flatMap((ledger) => describeSession(ledger, now, table)),
   ];
 }
 
@@ -210,29 +313,60 @@ function ticketLive(waiter: OwnerRecord | undefined, table: ProcessTable | undef
   );
 }
 
-async function tickets(queue: string): Promise<string[]> {
+/** The live tickets in arrival order, after removing the dead ones. */
+async function liveTickets(
+  queue: string,
+  table: ProcessTable | undefined,
+): Promise<Array<{ name: string; ticket: Ticket }>> {
   const names = await readdir(queue).catch(() => [] as string[]);
-  return names.filter((name) => name.endsWith(ticketSuffix)).toSorted();
-}
-
-/** The oldest live ticket, after pruning the dead ones ahead of it: `own` once none is left ahead. */
-async function liveFront(queue: string, own: string, table: ProcessTable | undefined) {
-  for (const name of await tickets(queue)) {
-    if (name === own || ticketLive(await readTicket(queue, name), table)) return name;
-    await rm(join(queue, name), { force: true });
+  const live: Array<{ name: string; ticket: Ticket }> = [];
+  for (const name of names.filter((entry) => entry.endsWith('.json')).toSorted()) {
+    const ticket = (await readTicket(queue, name)) as Ticket | undefined;
+    if (ticket !== undefined && ticketLive(ticket, table)) live.push({ name, ticket });
+    else await rm(join(queue, name), { force: true });
   }
-  return own;
+  return live;
 }
 
 /** The waiters in arrival order, as lines. */
 export async function describeWaiters(directory: string): Promise<string[]> {
   const queue = queueDirectory(directory);
+  const names = await readdir(queue).catch(() => [] as string[]);
   const lines: string[] = [];
-  for (const name of await tickets(queue)) {
+  for (const name of names.filter((entry) => entry.endsWith('.json')).toSorted()) {
     const waiter = await readTicket(queue, name);
     if (waiter !== undefined) lines.push(`  waiting: ${waiter.command}, pid ${waiter.pid}`);
   }
   return lines;
+}
+
+/**
+ * The waiters admitted now, in arrival order: each whose need fits in what is left, the oldest
+ * first, where a waiter needs one place, or two when its session has no worker yet.
+ */
+export function admissionPlan(
+  waiters: ReadonlyArray<{ readonly name: string; readonly sessionId: string }>,
+  ledgers: readonly SessionLedger[],
+  cap: number,
+): Set<string> {
+  const workers = new Map<string, number>();
+  for (const ledger of ledgers) {
+    workers.set(
+      ledger.sessionId,
+      (workers.get(ledger.sessionId) ?? 0) + workerPlaces(ledger.state),
+    );
+  }
+  let free = cap - hostPlaces(ledgers);
+  const admitted = new Set<string>();
+  for (const waiter of waiters) {
+    const held = workers.get(waiter.sessionId) ?? 0;
+    const need = held === 0 ? 2 : 1;
+    if (need > free) continue;
+    admitted.add(waiter.name);
+    free -= need;
+    workers.set(waiter.sessionId, held + 1);
+  }
+  return admitted;
 }
 
 export type PlaceRequest = {
@@ -255,9 +389,12 @@ export type AdmitOptions = {
   readonly readProcessTable: () => ProcessTable | undefined;
   readonly now: () => number;
   readonly sleep: (milliseconds: number) => Promise<void>;
+  /** Told the holders once, when the dispatch starts waiting. */
+  readonly report?: (lines: readonly string[]) => void;
   readonly cap?: number;
   readonly waitLimitMilliseconds?: number;
   readonly pollIntervalMilliseconds?: number;
+  readonly neverStartedLimitMilliseconds?: number;
   /** Admit at once, past the cap. */
   readonly bypass?: boolean;
 };
@@ -272,55 +409,67 @@ export type Admission =
     }
   | { readonly admitted: false; readonly waitedMilliseconds: number; readonly held: string[] };
 
-function recordFor(
-  request: PlaceRequest,
-  kind: PlaceRecord['kind'],
-  acquiredAt: string,
-  bypass: boolean,
-): PlaceRecord {
+function ownerFor(
+  identity: ProcessIdentity,
+  command: string,
+  cwd: string,
+  at: number,
+): OwnerRecord {
   return {
-    pid: request.holder.pid,
-    ...(request.holder.pidStartedAt === undefined
-      ? {}
-      : { pidStartedAt: request.holder.pidStartedAt }),
-    command: kind === 'worker' ? request.description : 'coordinator',
-    cwd: request.cwd,
-    acquiredAt,
+    pid: identity.pid,
+    ...(identity.pidStartedAt === undefined ? {} : { pidStartedAt: identity.pidStartedAt }),
+    command,
+    cwd,
+    acquiredAt: new Date(at).toISOString(),
     token: crypto.randomUUID(),
-    kind,
-    sessionId: request.sessionId,
+  };
+}
+
+/**
+ * Runs `decide` holding the admission lock, a directory installed by one rename and naming the
+ * hook's process, which the next hook removes once that process is gone. Never held across a wait.
+ */
+async function withAdmissionLock<T>(
+  directory: string,
+  owner: OwnerRecord,
+  options: Pick<AdmitOptions, 'readProcessTable' | 'sleep'>,
+  decide: () => Promise<T>,
+): Promise<T> {
+  const lock = join(directory, 'admission');
+  for (;;) {
+    const mine = { ...owner, token: crypto.randomUUID() };
+    if (await tryInstall(lock, mine)) {
+      try {
+        return await decide();
+      } finally {
+        await removeLock(lock, mine);
+      }
+    }
+    const holder = await readOwner(lock);
+    const table = options.readProcessTable();
+    if (holder === undefined || (table !== undefined && !isHolderAlive(holder, table))) {
+      await removeLock(lock, holder);
+      continue;
+    }
+    await options.sleep(admissionLockRetryMilliseconds);
+  }
+}
+
+function admitEvent(request: PlaceRequest, at: number, bypass: boolean): SessionEvent {
+  return {
+    kind: 'admit',
+    toolUseId: request.toolUseId,
+    at,
+    description: request.description,
+    ...(request.issue === undefined ? {} : { issue: request.issue }),
     dispatcher: request.dispatcher,
-    ...(kind === 'worker' ? { toolUseId: request.toolUseId } : {}),
-    ...(kind === 'worker' && request.issue !== undefined ? { issue: request.issue } : {}),
     ...(bypass ? { bypass } : {}),
   };
 }
 
-/** Installs every record in a free place, or none: a partial claim is given back. */
-async function claimPlaces(
-  directory: string,
-  free: readonly number[],
-  records: readonly PlaceRecord[],
-): Promise<boolean> {
-  const installed: Array<{ path: string; record: PlaceRecord }> = [];
-  const pending = [...records];
-  for (const index of free) {
-    const record = pending[0];
-    if (record === undefined) break;
-    const path = placeDirectory(directory, index);
-    if (await tryInstall(path, record)) {
-      installed.push({ path, record });
-      pending.shift();
-    }
-  }
-  if (pending.length === 0) return true;
-  await Promise.all(installed.map(({ path, record }) => removeLock(path, record)));
-  return false;
-}
-
 /**
- * Waits, in arrival order, until the dispatch holds a place for its worker and one for its
- * coordinator when that coordinator holds none, or until the wait limit passes.
+ * Waits until the dispatch's places fit, oldest first among the waiters whose need fits, or until
+ * the wait limit passes.
  */
 export async function admitWorker(input: AdmitOptions): Promise<Admission> {
   // Snapshotted, so a caller that changes its options after an await cannot change this dispatch.
@@ -330,130 +479,68 @@ export async function admitWorker(input: AdmitOptions): Promise<Admission> {
   const cap = options.cap ?? hostPlaceCap;
   const limit = options.waitLimitMilliseconds ?? placeWaitLimitMilliseconds;
   const started = now();
-  const acquiredAt = () => new Date(now()).toISOString();
+  const holder = ownerFor(request.holder, 'claude session', request.cwd, started);
   await mkdir(directory, { recursive: true });
   if (options.bypass === true) {
-    // Past the cap, but counted like any other: the worker's place, and its coordinator's when
-    // that coordinator holds none that counts.
-    const places = await readPlaces(directory);
-    const table = options.readProcessTable();
-    const coordinatorHeld = places.some(
-      (place) =>
-        place.record.kind === 'coordinator' &&
-        samePair(place.record, request) &&
-        reclaimableBecause(place, places, table) === undefined,
-    );
-    const records = [recordFor(request, 'worker', acquiredAt(), true)];
-    if (!coordinatorHeld) records.push(recordFor(request, 'coordinator', acquiredAt(), true));
-    for (const record of records) {
-      if (!(await tryInstall(join(directory, `bypass-${record.token}`), record))) {
-        throw new Error(`could not record the bypassed place bypass-${record.token}`);
-      }
-    }
+    // Past the cap, but counted like any other.
+    await recordHolder(directory, request.sessionId, holder);
+    await appendEvent(directory, request.sessionId, admitEvent(request, now(), true));
     return { admitted: true, bypassed: true, waitedMilliseconds: 0 };
   }
   const queue = queueDirectory(directory);
-  const ticket = await enqueue(queue, {
-    pid: request.waiter.pid,
-    ...(request.waiter.pidStartedAt === undefined
-      ? {}
-      : { pidStartedAt: request.waiter.pidStartedAt }),
-    command: `worker ${request.issue ?? 'without an issue'} "${request.description}" (session ${request.sessionId.slice(0, 8)})`,
-    cwd: request.cwd,
-    acquiredAt: acquiredAt(),
-    token: crypto.randomUUID(),
-  });
+  const waiter = ownerFor(
+    request.waiter,
+    `worker ${request.issue ?? 'without an issue'} "${request.description}" (session ${request.sessionId.slice(0, 8)})`,
+    request.cwd,
+    started,
+  );
+  const ticket = await enqueue(queue, { ...waiter, sessionId: request.sessionId } as OwnerRecord);
   let heldWhenWaiting: string[] | undefined;
   try {
     for (;;) {
-      const table = options.readProcessTable();
-      const front = (await liveFront(queue, ticket, table)) === ticket;
-      const places = front ? await surveyPlaces(directory, table) : await readPlaces(directory);
-      if (front) {
-        const coordinatorHeld = places.some(
-          (place) => place.record.kind === 'coordinator' && samePair(place.record, request),
+      const outcome = await withAdmissionLock(directory, waiter, options, async () => {
+        const table = options.readProcessTable();
+        // The tickets are read before the ledgers, so a waiter admitted in between is counted
+        // twice, never missed.
+        const waiters = await liveTickets(queue, table);
+        const ledgers = await surveySessions(
+          directory,
+          table,
+          now(),
+          options.neverStartedLimitMilliseconds,
         );
-        const records = [recordFor(request, 'worker', acquiredAt(), false)];
-        if (!coordinatorHeld) records.push(recordFor(request, 'coordinator', acquiredAt(), false));
-        const taken = new Set(places.map((place) => place.directory));
-        const free = Array.from({ length: cap }, (_, index) => index).filter(
-          (index) => !taken.has(placeDirectory(directory, index)),
+        const plan = admissionPlan(
+          waiters.map(({ name, ticket: entry }) => ({ name, sessionId: entry.sessionId })),
+          ledgers,
+          cap,
         );
-        if (
-          places.length + records.length <= cap &&
-          (await claimPlaces(directory, free, records))
-        ) {
-          return {
-            admitted: true,
-            bypassed: false,
-            waitedMilliseconds: now() - started,
-            ...(heldWhenWaiting === undefined ? {} : { heldWhenWaiting }),
-          };
+        if (plan.has(ticket)) {
+          await recordHolder(directory, request.sessionId, holder);
+          await appendEvent(directory, request.sessionId, admitEvent(request, now(), false));
+          return undefined;
         }
+        return describePlaces(ledgers, cap, now(), table);
+      });
+      if (outcome === undefined) {
+        return {
+          admitted: true,
+          bypassed: false,
+          waitedMilliseconds: now() - started,
+          ...(heldWhenWaiting === undefined ? {} : { heldWhenWaiting }),
+        };
       }
-      const held = describePlaces(places, cap, now(), table);
-      heldWhenWaiting ??= held;
+      if (heldWhenWaiting === undefined) {
+        heldWhenWaiting = outcome;
+        options.report?.(outcome);
+      }
       const waitedMilliseconds = now() - started;
-      if (waitedMilliseconds >= limit) return { admitted: false, waitedMilliseconds, held };
+      if (waitedMilliseconds >= limit)
+        return { admitted: false, waitedMilliseconds, held: outcome };
       await options.sleep(options.pollIntervalMilliseconds ?? placePollIntervalMilliseconds);
     }
   } finally {
     await rm(join(queue, ticket), { force: true });
   }
-}
-
-/** Writes a place's owner file in one rename, so a reader never sees it half-written. */
-async function rewritePlace(place: Place, record: PlaceRecord): Promise<void> {
-  const staged = join(place.directory, `${ownerFileName}.${record.token}.${crypto.randomUUID()}`);
-  await writeFile(staged, JSON.stringify(record));
-  await rename(staged, join(place.directory, ownerFileName));
-}
-
-/** Marks a place bound; only the first caller succeeds, so two binders never share one place. */
-async function markBound(place: Place): Promise<boolean> {
-  try {
-    await mkdir(join(place.directory, boundMarker));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Binds the oldest unbound worker place `match` selects to `agentId`; false when none was bound. */
-export async function bindAgent(
-  directory: string,
-  agentId: string,
-  match: (record: PlaceRecord) => boolean,
-): Promise<boolean> {
-  const all = await readPlaces(directory);
-  const places = all
-    .filter(
-      (place) =>
-        place.record.kind === 'worker' && place.record.agentId === undefined && match(place.record),
-    )
-    .toSorted((a, b) => a.record.acquiredAt.localeCompare(b.record.acquiredAt));
-  for (const place of places) {
-    if (await markBound(place)) {
-      await rewritePlace(place, { ...place.record, agentId });
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Releases the worker places `match` selects; resolves to how many. A coordinator's place left
- * with no worker stops counting at once and is removed by the next waiter's survey, so a release
- * never races a dispatch that counted on it.
- */
-export async function releaseWorkers(
-  directory: string,
-  match: (record: PlaceRecord) => boolean,
-): Promise<number> {
-  const all = await readPlaces(directory);
-  const places = all.filter((place) => place.record.kind === 'worker' && match(place.record));
-  for (const place of places) await removeLock(place.directory, place.record);
-  return places.length;
 }
 
 const claudeCommand = /(?:^|\/)claude(?:\s|$)/;
@@ -507,6 +594,8 @@ export type HookContext = {
   readonly readProcessTable: () => ProcessTable | undefined;
   readonly now: () => number;
   readonly sleep: (milliseconds: number) => Promise<void>;
+  /** Where the holders go when a dispatch starts waiting: standard error in the hook. */
+  readonly report?: (lines: readonly string[]) => void;
   readonly cap?: number;
   readonly waitLimitMilliseconds?: number;
 };
@@ -536,7 +625,6 @@ async function admitDispatch(
   context: HookContext,
 ): Promise<HookOutput | undefined> {
   const toolInput = input.tool_input;
-  if (!placeTakingAgentTypes.has(text(field(toolInput, 'subagent_type')))) return undefined;
   const description = text(field(toolInput, 'description'));
   const prompt = text(field(toolInput, 'prompt'));
   const table = context.readProcessTable();
@@ -550,7 +638,6 @@ async function admitDispatch(
   const bypass =
     bypassText !== '' && (description.includes(bypassText) || prompt.includes(bypassText));
   const cap = context.cap ?? hostPlaceCap;
-  const limit = context.waitLimitMilliseconds ?? placeWaitLimitMilliseconds;
   const admission = await admitWorker({
     directory: context.directory,
     request: {
@@ -566,15 +653,24 @@ async function admitDispatch(
     readProcessTable: context.readProcessTable,
     now: context.now,
     sleep: context.sleep,
+    ...(context.report === undefined
+      ? {}
+      : {
+          report: (lines: readonly string[]) =>
+            context.report?.([
+              `host-sessions: this dispatch waits for one of the host's ${cap} places. Held now:`,
+              ...lines,
+            ]),
+        }),
     cap,
-    waitLimitMilliseconds: limit,
+    waitLimitMilliseconds: context.waitLimitMilliseconds ?? placeWaitLimitMilliseconds,
     bypass,
   });
   if (!admission.admitted) {
     const reason = [
       `Host place cap: this ${[...placeTakingAgentTypes].join('/')} dispatch waited ${minutes(admission.waitedMilliseconds)} for one of the host's ${cap} places for implementation workers and their coordinators (AGENTS.md "Parallel runs"), and none came free. The places:`,
       ...admission.held,
-      `Retry the dispatch later, once a holder finishes; \`bun scripts/host-sessions.ts status\` lists the holders. On the owner's instruction only, a session started with ${capBypassVariable} set to text in a dispatch's description or prompt, such as its issue, admits that dispatch past the cap.`,
+      `Retry the dispatch later, once a holder finishes; \`bun scripts/host-sessions.ts status\` lists the holders, and \`bun scripts/host-sessions.ts release <session, dispatch or agent>\` frees one that is stuck. On the owner's instruction only, a session started with ${capBypassVariable} set to text in a dispatch's description or prompt, such as its issue, admits that dispatch past the cap.`,
     ].join('\n');
     return {
       hookSpecificOutput: {
@@ -600,7 +696,50 @@ async function admitDispatch(
   };
 }
 
-/** The hook's answer to one event, after acting on the places; undefined to print nothing. */
+/**
+ * Records an agent's start. A start that takes no admitted dispatch's place (a resume by
+ * `SendMessage`, or a dispatch reclaimed before it started) still counts, and is marked over the
+ * cap when the host had no place for it.
+ */
+async function recordStart(input: HookInput, context: HookContext): Promise<void> {
+  const sessionId = text(input.session_id);
+  const agentId = text(input.agent_id);
+  if (agentId === '') return;
+  const table = context.readProcessTable();
+  const session = table === undefined ? undefined : sessionProcess(context.hookPid, table);
+  const ledgers = await readSessions(context.directory);
+  const own = ledgers.find((ledger) => ledger.sessionId === sessionId);
+  if (own === undefined && session === undefined) return;
+  if (session !== undefined && table !== undefined) {
+    const holder = ownerFor(
+      identity(session, table.get(session)),
+      'claude session',
+      text(input.cwd),
+      context.now(),
+    );
+    await recordHolder(context.directory, sessionId, holder);
+  }
+  const event: SessionEvent = { kind: 'start', agentId, at: context.now() };
+  const before = own?.state ?? foldSession([]);
+  const after = applySessionEvent(before, event);
+  const agent = after.agents.get(agentId);
+  const others = ledgers.filter((ledger) => ledger !== own && sessionAlive(ledger, table));
+  const overCap =
+    agent !== undefined &&
+    runsWithoutAdmission(agent) &&
+    hostPlaces(others) + sessionPlaces(after) > (context.cap ?? hostPlaceCap);
+  await appendEvent(context.directory, sessionId, overCap ? { ...event, overCap } : event);
+}
+
+/** Appends an event to a session that has a ledger; a session without one holds nothing to change. */
+async function recordInLedger(directory: string, sessionId: string, event: SessionEvent) {
+  const ledgers = await readSessions(directory);
+  if (ledgers.some((ledger) => ledger.sessionId === sessionId)) {
+    await appendEvent(directory, sessionId, event);
+  }
+}
+
+/** The hook's answer to one event, after recording it; undefined to print nothing. */
 export async function handleHookEvent(
   input: HookInput,
   context: HookContext,
@@ -608,45 +747,82 @@ export async function handleHookEvent(
   const event = text(input.hook_event_name);
   const sessionId = text(input.session_id);
   const toolUseId = text(input.tool_use_id);
+  const agentId = text(input.agent_id);
+  const at = context.now();
   const isAgentCall =
     text(input.tool_name) === 'Agent' &&
     placeTakingAgentTypes.has(text(field(input.tool_input, 'subagent_type')));
-  if (event === 'PreToolUse' && text(input.tool_name) === 'Agent') {
-    return admitDispatch(input, context);
-  }
-  if (event === 'SubagentStart' && placeTakingAgentTypes.has(text(input.agent_type))) {
-    await bindAgent(
-      context.directory,
-      text(input.agent_id),
-      (record) => record.sessionId === sessionId,
-    );
-  } else if (event === 'SubagentStop' && placeTakingAgentTypes.has(text(input.agent_type))) {
-    const agentId = text(input.agent_id);
-    if (agentId !== '')
-      await releaseWorkers(context.directory, (record) => record.agentId === agentId);
+  const isPlaceTakingAgent = placeTakingAgentTypes.has(text(input.agent_type));
+  if (event === 'PreToolUse' && isAgentCall) return admitDispatch(input, context);
+  if (event === 'SubagentStart' && isPlaceTakingAgent) {
+    await recordStart(input, context);
+  } else if ((event === 'SubagentStop' || event === 'StopFailure') && isPlaceTakingAgent) {
+    if (agentId !== '') {
+      await recordInLedger(context.directory, sessionId, { kind: 'stop', agentId, at });
+    }
   } else if (event === 'PostToolUse' && isAgentCall && toolUseId !== '') {
     const status = text(field(input.tool_response, 'status'));
-    const agentId = text(field(input.tool_response, 'agentId'));
-    // `SubagentStart` binds the oldest unbound place of the session, which may be another
-    // dispatch's when two start out of order: a place bound to a different agent belongs to that
-    // agent, which may still run, so only the agent's own place, or this call's unbound one, goes.
-    if (status === 'completed') {
-      await releaseWorkers(
-        context.directory,
-        (record) =>
-          (agentId !== '' && record.agentId === agentId) ||
-          (record.toolUseId === toolUseId && record.agentId === undefined),
-      );
-    } else if (status === 'async_launched' && agentId !== '') {
-      await bindAgent(context.directory, agentId, (record) => record.toolUseId === toolUseId);
+    const named = text(field(input.tool_response, 'agentId'));
+    if (status === 'async_launched' && named !== '') {
+      await recordInLedger(context.directory, sessionId, {
+        kind: 'launched',
+        toolUseId,
+        agentId: named,
+        at,
+      });
+    } else if (status === 'completed') {
+      await recordInLedger(context.directory, sessionId, {
+        kind: 'completed',
+        toolUseId,
+        agentId: named,
+        at,
+      });
     }
-  } else if (event === 'PostToolUseFailure' && isAgentCall && toolUseId !== '') {
-    await releaseWorkers(
-      context.directory,
-      (record) => record.toolUseId === toolUseId && record.agentId === undefined,
-    );
+  } else if (
+    (event === 'PostToolUseFailure' || event === 'PermissionDenied') &&
+    isAgentCall &&
+    toolUseId !== ''
+  ) {
+    await recordInLedger(context.directory, sessionId, { kind: 'failed', toolUseId, at });
   }
   return undefined;
+}
+
+/**
+ * Frees a place by hand: every place of a session named by its id or the first eight characters
+ * of it, or one dispatch's or agent's place. Resolves to what it freed, as lines.
+ */
+export async function releasePlace(
+  directory: string,
+  target: string,
+  options: Pick<AdmitOptions, 'readProcessTable' | 'sleep' | 'now'> & { readonly pid: number },
+): Promise<string[]> {
+  const owner = ownerFor({ pid: options.pid }, `release ${target}`, process.cwd(), options.now());
+  return withAdmissionLock(directory, owner, options, async () => {
+    const ledgers = await readSessions(directory);
+    const sessions = ledgers.filter(
+      (ledger) =>
+        ledger.sessionId === target || (target.length >= 8 && ledger.sessionId.startsWith(target)),
+    );
+    if (sessions.length > 1) {
+      throw new Error(`${target} names ${sessions.length} sessions; give more of the session id`);
+    }
+    const [session] = sessions;
+    if (session !== undefined) {
+      const held = sessionPlaces(session.state);
+      await rm(session.directory, { recursive: true, force: true });
+      return [`released session ${session.sessionId}: ${held} place(s)`];
+    }
+    for (const ledger of ledgers) {
+      const event: SessionEvent = { kind: 'release', target, at: options.now() };
+      const after = applySessionEvent(ledger.state, event);
+      if (after === ledger.state) continue;
+      await appendEvent(directory, ledger.sessionId, event);
+      const freed = sessionPlaces(ledger.state) - sessionPlaces(after);
+      return [`released ${target} in session ${ledger.sessionId}: ${freed} place(s)`];
+    }
+    throw new Error(`no session, pending dispatch or running agent is named ${target}`);
+  });
 }
 
 async function placesDirectory(argumentsList: readonly string[]): Promise<string> {
@@ -666,6 +842,7 @@ async function runHook(argumentsList: readonly string[]): Promise<void> {
       readProcessTable,
       now: () => Date.now(),
       sleep: (milliseconds) => Bun.sleep(milliseconds),
+      report: (lines) => process.stderr.write(`${lines.join('\n')}\n`),
     });
   } catch (error) {
     // Loud, never silent: the dispatch goes ahead, and the session is told the cap was not checked.
@@ -680,9 +857,21 @@ async function printStatus(argumentsList: readonly string[]): Promise<void> {
   const directory = await placesDirectory(argumentsList);
   const lines = [
     `host places ${directory}:`,
-    ...describePlaces(await readPlaces(directory), hostPlaceCap, Date.now(), readProcessTable()),
+    ...describePlaces(await readSessions(directory), hostPlaceCap, Date.now(), readProcessTable()),
     ...(await describeWaiters(directory)),
   ];
+  process.stdout.write(`${lines.join('\n')}\n`);
+}
+
+async function release(argumentsList: readonly string[]): Promise<void> {
+  const target = argumentsList.find((argument) => !argument.startsWith('--'));
+  if (target === undefined) throw new Error('name a session, a dispatch or an agent to release');
+  const lines = await releasePlace(await placesDirectory(argumentsList), target, {
+    readProcessTable,
+    sleep: (milliseconds) => Bun.sleep(milliseconds),
+    now: () => Date.now(),
+    pid: process.pid,
+  });
   process.stdout.write(`${lines.join('\n')}\n`);
 }
 
@@ -690,8 +879,17 @@ if (import.meta.main) {
   const [command, ...rest] = Bun.argv.slice(2);
   if (command === 'hook') await runHook(rest);
   else if (command === 'status') await printStatus(rest);
-  else {
-    process.stderr.write('Usage: bun scripts/host-sessions.ts status|hook [--directory=<path>]\n');
+  else if (command === 'release') {
+    await release(rest).catch((error: unknown) => {
+      process.stderr.write(
+        `host-sessions: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exitCode = 1;
+    });
+  } else {
+    process.stderr.write(
+      'Usage: bun scripts/host-sessions.ts status|release <session, dispatch or agent>|hook [--directory=<path>]\n',
+    );
     process.exitCode = 64;
   }
 }
