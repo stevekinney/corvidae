@@ -8,7 +8,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { createToolbox, readToolShortDescription, type Tool } from 'armorer';
+import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
+import { workflow } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
@@ -539,6 +542,59 @@ describe('workflows-get and workflow revisions', () => {
     });
   });
 
+  it('preserves workflow-version pins in workflow and revision documents', async () => {
+    const plugin = {
+      descriptor: definePlugin({
+        name: 'kit',
+        version: '3.1.0',
+        description: 'Contributes a code workflow.',
+        setup: () => ({
+          workflows: [
+            {
+              ...workflow({ name: 'echo' }).execute(async function* (_context, input: unknown) {
+                yield* [];
+                return input;
+              }),
+              title: 'Echo',
+              inputSchema: z.unknown(),
+            } as PluginWorkflow,
+          ],
+        }),
+      }),
+      source: 'package' as const,
+      location: '@example/kit',
+    };
+    const harness = await start({ overrides: { plugins: [plugin] } });
+    await Bun.write(
+      join(harness.workflowsPath, 'pipeline.json'),
+      workflowFileText('pipeline', {
+        trigger: { kind: 'schedule', spec: '1h' },
+        steps: [{ kind: 'workflow', workflow: 'kit:echo' }],
+      }),
+    );
+    await harness.bureau.workflows!.refresh();
+    const detail = await harness.callTool('bureau__workflows-get', { id: 'pipeline' });
+    expect(detail.result).toMatchObject({
+      status: 'ok',
+      document: { workflowVersions: { 'kit:echo': '3.1.0' } },
+    });
+    const run = await harness.bureau
+      .durableEngine()!
+      .start('pipeline', null, { id: 'pipeline-run' });
+    await run.result();
+    const listed = await harness.callTool('bureau__workflows-revisions-list', { id: 'pipeline' });
+    const revision = (listed.result as { revisions: Array<{ workflowVersion: string }> })
+      .revisions[0];
+    const revisionDetail = await harness.callTool('bureau__workflows-revisions-get', {
+      id: 'pipeline',
+      workflowVersion: revision!.workflowVersion,
+    });
+    expect(revisionDetail.result).toMatchObject({
+      status: 'ok',
+      document: { workflowVersions: { 'kit:echo': '3.1.0' } },
+    });
+  });
+
   it('shares definitions with members but keeps revision usage private from administrators', async () => {
     const harness = await start({
       overrides: {
@@ -876,6 +932,7 @@ describe('workflows-validate and workflows-catalog', () => {
       'branch',
       'map',
       'parallel',
+      'workflow',
     ]);
     expect(catalog.activities.map(({ id }) => id)).toContain('agent');
     expect(catalog.triggers.map(({ id }) => id)).toEqual(['schedule', 'signal', 'manual']);
