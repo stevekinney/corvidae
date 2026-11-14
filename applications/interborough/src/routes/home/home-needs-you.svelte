@@ -11,8 +11,8 @@
    * so none of them can disagree. A read that fails is this section's own failure, said in place
    * with a Try again, and no other section is held; while it has not answered the section holds
    * Cinder's grouped placeholder rows in the rows' own shape. On a phone each button drops under the
-   * row's text at its own width, and while the server does not answer each is held like every control
-   * that changes something.
+   * row's text at its own width. Each only opens a page in Reviews, so it stays live while the
+   * server does not answer, as the link to Reviews does.
    */
   import { EmptyState, GroupedList, GroupedListItem, Link, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -90,7 +90,6 @@
                 label: row.action,
                 href: router.href(row.href),
                 onclick: (event) => openInApplication(event, row.href),
-                changes: true,
               },
             ]}
           >

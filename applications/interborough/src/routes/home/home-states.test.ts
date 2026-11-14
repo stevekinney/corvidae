@@ -354,20 +354,20 @@ describe('Home when the server does not answer (02g to 02j)', () => {
     expect(container.querySelector('[data-testid="home-unreachable"]')).toBeNull();
   });
 
-  test('old data keeps its place: the buttons that change something carry the mark the shell holds, and links to read stay plain', async () => {
+  test('old data keeps its place: the row buttons only open a page, so none carries the mark the shell holds, and links to read stay plain', async () => {
     installed = installHome(sampleHomeWorld());
     const { container, getByTestId } = render(HomeHarness, {
       props: { client: installed.client },
     } as never);
     await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
-    const held = (name: string): boolean =>
-      container.querySelector(`a[href][data-changes]`) !== null &&
-      [...container.querySelectorAll('[data-changes]')].some(
-        (element) => element.textContent?.trim() === name,
-      );
     await waitFor(() =>
       expect(within(cardOf(container, 'Needs attention')).getAllByRole('listitem')).toHaveLength(3),
     );
+    await waitFor(() =>
+      expect(within(cardOf(container, 'Needs you')).getAllByRole('listitem')).toHaveLength(2),
+    );
+    // COR-2329: each opens a page, as "Open Reviews" does, so none is held while the server does
+    // not answer; holding them drew grey chips beside a live link to the same page.
     for (const name of [
       'Answer',
       'Review',
@@ -375,7 +375,8 @@ describe('Home when the server does not answer (02g to 02j)', () => {
       'View schedule',
       'Connect a provider',
     ]) {
-      expect(held(name), `${name} is held while the server does not answer`).toBe(true);
+      const button = within(container).getByRole('link', { name });
+      expect(button.hasAttribute('data-changes'), `${name} only opens a page`).toBe(false);
     }
     // Reading is not changing: the links to Reviews, Health and the chats are not marked.
     for (const link of [

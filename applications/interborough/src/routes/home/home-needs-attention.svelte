@@ -13,8 +13,9 @@
    * row layout: "Nothing needs attention", with the link to Health at the end of it. (Without the
    * heading the row read as part of the section above it.) A read that failed says so in the
    * section's own place, with a Try again and no link to Health, and never claims all is well;
-   * while it has not answered the section holds Cinder's grouped placeholder rows. While the server
-   * does not answer each row's button is held like every control that changes something.
+   * while it has not answered the section holds Cinder's grouped placeholder rows. Each row's button
+   * only opens a page, so it stays live while the server does not answer, as the link to Health
+   * does.
    */
   import { EmptyState, GroupedList, GroupedListItem, Link, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -108,7 +109,6 @@
               label: row.action.label,
               href: router.href(row.action.href),
               onclick: (event) => openInApplication(event, row.action.href),
-              changes: true,
             },
           ]}
         >
