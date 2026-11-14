@@ -103,8 +103,14 @@ async function places(directory: string): Promise<number> {
   return hostPlaces(await readSessions(directory));
 }
 
+async function sessionIds(directory: string): Promise<string[]> {
+  const ledgers = await readSessions(directory);
+  return ledgers.map((ledger) => ledger.sessionId);
+}
+
 async function workersOf(directory: string, sessionId: string): Promise<number> {
-  const ledger = (await readSessions(directory)).find((each) => each.sessionId === sessionId);
+  const ledgers = await readSessions(directory);
+  const ledger = ledgers.find((each) => each.sessionId === sessionId);
   return ledger === undefined ? 0 : workerPlaces(ledger.state);
 }
 
@@ -296,9 +302,7 @@ describe('admitWorker', () => {
       request: request('B', '1', { holder: { pid: 999_999, pidStartedAt: 'gone' } }),
     });
     await admitWorker({ ...options(directory, time), request: request('A', '2'), cap: 2 });
-    expect((await readSessions(directory)).map((ledger) => ledger.sessionId)).toEqual([
-      'session-A',
-    ]);
+    expect(await sessionIds(directory)).toEqual(['session-A']);
     // A recycled pid is not the holder: the start time decides.
     const recycled = hostTable([[400, { ...entry(300, claude), startedAt: 'a later start' }]]);
     const admission = await admitWorker({
@@ -310,9 +314,7 @@ describe('admitWorker', () => {
       }),
     });
     expect(admission.admitted).toBe(true);
-    expect((await readSessions(directory)).map((ledger) => ledger.sessionId)).toEqual([
-      'session-B',
-    ]);
+    expect(await sessionIds(directory)).toEqual(['session-B']);
   });
 
   test('an admitted dispatch with no start is shown as never started after the limit, then reclaimed on the next acquire', async () => {
@@ -606,9 +608,11 @@ describe('release', () => {
       'released session session-A: 2 place(s)',
     ]);
     expect(await places(directory)).toBe(0);
-    await expect(releasePlace(directory, 'nothing-here', releaseOptions)).rejects.toThrow(
-      'no session, pending dispatch or running agent is named nothing-here',
+    const refusal = await releasePlace(directory, 'nothing-here', releaseOptions).then(
+      () => undefined,
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
     );
+    expect(refusal).toBe('no session, pending dispatch or running agent is named nothing-here');
   });
 });
 

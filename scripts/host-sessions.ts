@@ -170,7 +170,8 @@ export async function appendEvent(
   await writeFile(staged, JSON.stringify({ ...event, sessionId }));
   try {
     for (;;) {
-      const names = (await readdir(events)).filter((name) => eventFile.test(name));
+      const listed = await readdir(events);
+      const names = listed.filter((name) => eventFile.test(name));
       const last = names.toSorted().at(-1);
       const next = (last === undefined ? 0 : Number(last.slice(0, 12))) + 1;
       try {
@@ -412,14 +413,16 @@ export type Admission =
   | { readonly admitted: false; readonly waitedMilliseconds: number; readonly held: string[] };
 
 function ownerFor(
-  identity: ProcessIdentity,
+  holderProcess: ProcessIdentity,
   command: string,
   cwd: string,
   at: number,
 ): OwnerRecord {
   return {
-    pid: identity.pid,
-    ...(identity.pidStartedAt === undefined ? {} : { pidStartedAt: identity.pidStartedAt }),
+    pid: holderProcess.pid,
+    ...(holderProcess.pidStartedAt === undefined
+      ? {}
+      : { pidStartedAt: holderProcess.pidStartedAt }),
     command,
     cwd,
     acquiredAt: new Date(at).toISOString(),
