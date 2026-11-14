@@ -23,13 +23,43 @@
     row-gap: var(--cinder-space-3);
     align-items: start;
     inline-size: 100%;
-    padding-block: var(--cinder-space-3);
+    /* The distance from the border to the first ink on top, and from the last ink to the border
+     * below: letters and button faces are what a person measures, not the line boxes that hold
+     * them. The ink insets below take each line's own air out of this. */
+    --_cinder-banner-inset: var(--cinder-space-3);
+    padding-block: var(--_cinder-banner-inset);
     padding-inline: var(--cinder-space-4);
     border-block: 1px solid var(--cinder-border);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
+  }
+
+  /* ----------------------------------------
+ * Ink insets
+ * The first ink sits as far under the top border as the last ink sits over the bottom one, as in
+ * Callout. A line box has air round its letters (half of what its height leaves beside the
+ * capitals), so a plain inset reads heavier above the capitals than below a button: the air above
+ * the first line is taken out of the top inset, and when no action row follows, the air under the
+ * last baseline is taken out of the bottom one. An action row ends in a button face, a box with no
+ * air to take out. `1cap` and `1lh` follow the text's own size. The feature banner has its own
+ * block with art and keeps its padding.
+ * ---------------------------------------- */
+
+  .cinder-banner:not([data-cinder-variant='feature']) {
+    --_cinder-banner-first-air: calc((1lh - 1cap) / 2);
+    --_cinder-banner-last-air: calc((1lh - 1cap) / 2);
+    padding-block-start: calc(var(--_cinder-banner-inset) - var(--_cinder-banner-first-air));
+  }
+
+  .cinder-banner:not([data-cinder-variant='feature']):not(:has(> .cinder-banner__actions)) {
+    padding-block-end: calc(var(--_cinder-banner-inset) - var(--_cinder-banner-last-air));
+  }
+
+  /* The dismiss button keeps its place against the border. */
+  .cinder-banner:not([data-cinder-variant='feature']) > .cinder-banner__dismiss {
+    margin-block-start: var(--_cinder-banner-first-air);
   }
 
   @media (prefers-reduced-motion: no-preference) {

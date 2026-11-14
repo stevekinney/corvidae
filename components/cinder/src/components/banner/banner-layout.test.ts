@@ -33,6 +33,39 @@ describe('Banner layout', () => {
     expect(actions.get('margin-inline-start')).toBeUndefined();
   });
 
+  // The ink is the letters: the line's own air (half of what its height leaves beside the
+  // capitals) came off neither side, so the capitals stood about 17px under the top border and the
+  // button 13px over the bottom one. Callout's round-one inset, applied to Banner.
+  test('the capitals stand as far under the top border as the last ink stands over the bottom one', () => {
+    const base = declarationsFor(css, '.cinder-banner');
+    expect(base.get('--_cinder-banner-inset')).toBe('var(--cinder-space-3)');
+    expect(base.get('padding-block')).toBe('var(--_cinder-banner-inset)');
+
+    const ink = declarationsFor(css, ".cinder-banner:not([data-cinder-variant='feature'])");
+    expect(ink.get('--_cinder-banner-first-air')).toBe('calc((1lh - 1cap) / 2)');
+    expect(ink.get('--_cinder-banner-last-air')).toBe('calc((1lh - 1cap) / 2)');
+    expect(ink.get('padding-block-start')).toBe(
+      'calc(var(--_cinder-banner-inset) - var(--_cinder-banner-first-air))',
+    );
+
+    // With no action row the last ink is the text, so its air comes off the bottom too; an action
+    // row ends in a button face, which has none to take out.
+    const bare = declarationsFor(
+      css,
+      ".cinder-banner:not([data-cinder-variant='feature']):not(:has(> .cinder-banner__actions))",
+    );
+    expect(bare.get('padding-block-end')).toBe(
+      'calc(var(--_cinder-banner-inset) - var(--_cinder-banner-last-air))',
+    );
+
+    expect(
+      declarationsFor(
+        css,
+        ".cinder-banner:not([data-cinder-variant='feature']) > .cinder-banner__dismiss",
+      ).get('margin-block-start'),
+    ).toBe('var(--_cinder-banner-first-air)');
+  });
+
   test('a button label never wraps', () => {
     for (const control of ['button', 'a']) {
       expect(declarationsFor(css, `.cinder-banner__actions ${control}`).get('white-space')).toBe(
