@@ -308,8 +308,10 @@
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  /* On a touch screen the copy button keeps its painted 28px box. CopyButton gives it the 44px hit
-   * area through a pseudo-element, so the block's layout never grows for a finger. */
+  /* On a touch screen the copy button keeps its painted 24px box. CopyButton gives it the 44px hit
+   * area through a pseudo-element, so the block's layout never grows for a finger; the block's
+   * rounded clip trims that area's outer 6px at the top and inline end, and the painted 24px stays
+   * whole. */
 
   .cinder-code-block .cinder-code-block__meta .cinder-copy-button:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
