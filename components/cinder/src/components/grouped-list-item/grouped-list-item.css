@@ -86,6 +86,19 @@
     border-block-end-color: transparent;
   }
 
+  /* A row with a trailing value or a chevron sets them on the title's first line (below). Its
+     content is one wrapping flex line centred in the row's height: a row taller than its text (the
+     44px minimum, or an avatar beside it) centres the text as before, and the value and the chevron
+     still sit at the top of that line, on the title's first line. */
+  .cinder-grouped-list-item:is(
+      .cinder-grouped-list-item--trailing,
+      .cinder-grouped-list-item--linked
+    )
+    > .cinder-grouped-list-item__content {
+    flex-wrap: wrap;
+    align-content: center;
+  }
+
   /* A fixed column, so a time or number lines up from one row to the next. */
   .cinder-grouped-list-item__lead {
     flex: none;

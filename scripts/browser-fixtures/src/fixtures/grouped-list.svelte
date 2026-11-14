@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    Avatar,
     Button,
     EmptyState,
     ErrorState,
@@ -52,6 +53,15 @@
       {#snippet title()}Say hello{/snippet}
       {#snippet subtitle()}<StatusDot word="Done" />, Hello! How can I help?{/snippet}
       {#snippet trailing()}Yesterday, 4:12 PM{/snippet}
+    </GroupedListItem>
+    <!-- A title alone in a row the 44px minimum makes taller, and a row beside an avatar. -->
+    <GroupedListItem href="/reviews" data-testid="row-title-only">
+      {#snippet title()}2 more in Reviews{/snippet}
+    </GroupedListItem>
+    <GroupedListItem href="/people/ada" data-testid="row-avatar">
+      {#snippet leading()}<Avatar name="Ada Lovelace" />{/snippet}
+      {#snippet title()}Ada Lovelace{/snippet}
+      {#snippet trailing()}Online{/snippet}
     </GroupedListItem>
   </GroupedList>
 

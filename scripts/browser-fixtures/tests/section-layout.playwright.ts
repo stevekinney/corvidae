@@ -242,6 +242,31 @@ test.describe('GroupedList layout', () => {
         }
       }
     }
+    // A title alone in a row the 44px minimum makes taller, and a row beside an avatar: the title
+    // stays centred in the row, and the chevron and the value sit on its line.
+    await page.setViewportSize({ width: 1024, height: 900 });
+    for (const testId of ['row-title-only', 'row-avatar']) {
+      const row = page.getByTestId(testId);
+      const [rowBox, titleBox, chevronBox] = await Promise.all(
+        [
+          row,
+          row.locator('.cinder-grouped-list-item__title'),
+          row.locator('.cinder-grouped-list-item__chevron'),
+        ].map(async (locator) => (await locator.boundingBox())!),
+      );
+      const titleCentre = titleBox!.y + titleBox!.height / 2;
+      expect(Math.abs(titleCentre - (rowBox!.y + rowBox!.height / 2)), testId).toBeLessThanOrEqual(
+        1,
+      );
+      expect(
+        Math.abs(chevronBox!.y + chevronBox!.height / 2 - titleCentre),
+        testId,
+      ).toBeLessThanOrEqual(1);
+      if (testId === 'row-avatar') {
+        const valueBox = await row.locator('.cinder-grouped-list-item__trailing').boundingBox();
+        expect(Math.abs(valueBox!.y + valueBox!.height / 2 - titleCentre)).toBeLessThanOrEqual(1);
+      }
+    }
     // The fixture's longer value beside a lead column: the title never breaks letter by letter.
     await page.setViewportSize({ width: 320, height: 900 });
     const indexRebuild = page
