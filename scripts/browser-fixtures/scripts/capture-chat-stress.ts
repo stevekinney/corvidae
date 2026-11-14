@@ -2967,11 +2967,10 @@ export const EDGE_FADE_SCROLLERS = [
  */
 export async function readEdgeFadeProblems(page: Page): Promise<string[]> {
   return page.evaluate(
-    async ({ known }) => {
-      // The attachment measures on a frame, so a scroll or a resize is read one frame later.
-      await new Promise<void>((_resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => _resolve())),
-      );
+    ({ known }) => {
+      // Read at once, with no wait on a frame: a page that holds its clock still (the armed
+      // approval's) never delivers a timer or a frame, so a wait here would never end. A step that
+      // moves a list (`scroll-list`) waits for its fades itself.
       const problems: string[] = [];
       const scrollers = new Map<Element, { axis: string; name: string }>();
       for (const entry of known) {
