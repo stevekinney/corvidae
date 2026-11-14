@@ -20,6 +20,7 @@ import {
   type AtomicWorkflowCommitSideEffects,
 } from './checkpoint-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
+import type { CapturedSideEffectSink } from './side-effect-capture.ts';
 
 /**
  * Receives the side effects a consume would have staged, and the execution token it would have
@@ -30,15 +31,30 @@ export type SideEffectHold = (
   workflowExecutionToken: string | undefined,
 ) => void;
 
-type Held = { sideEffects: AtomicWorkflowCommitSideEffects; token: string | undefined };
+type Held = {
+  sideEffects: AtomicWorkflowCommitSideEffects;
+  token: string | undefined;
+  bound: boolean;
+};
 
 export class HeldSideEffects {
   #held: Held[] = [];
 
   /** Hold a consume's side effects: pass this to `finalizeAndUnwrap`. */
   readonly hold: SideEffectHold = (sideEffects, token) => {
-    this.#held.push({ sideEffects, token });
+    this.#held.push({ sideEffects, token, bound: true });
   };
+
+  /** Hold an effect a branch operation staged: the sink of its capture (`side-effect-capture.ts`). */
+  readonly keep: CapturedSideEffectSink = (sideEffects, token, bound) => {
+    this.#held.push({ sideEffects, token, bound });
+  };
+
+  /** Move everything held to `target`, which commits it from now on. */
+  moveTo(target: HeldSideEffects): void {
+    for (const entry of this.#held) target.#held.push(entry);
+    this.#held = [];
+  }
 
   /**
    * Run `commit` with everything held, which it writes in its batch (none, possibly). What it took
@@ -60,7 +76,10 @@ export class HeldSideEffects {
     }
   }
 
-  /** Hand what is still held to the workflow's staged buffer, as the consume would have staged it. */
+  /**
+   * Hand what is still held to the workflow's staged buffer, as it would have been staged, or to
+   * the capture of an enclosing branch operation, which commits it with that operation's result.
+   */
   stageRemaining(internals: EngineInternals, workflowId: string): void {
     const remaining = this.#held;
     this.#held = [];
@@ -70,7 +89,7 @@ export class HeldSideEffects {
         workflowId,
         entry.sideEffects,
         entry.token,
-        true,
+        entry.bound,
       );
     }
   }

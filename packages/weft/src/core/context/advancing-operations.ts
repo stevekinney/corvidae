@@ -101,19 +101,42 @@ function isAdvancingEntry(
 }
 
 /**
+ * The checkpoint local that says a run began where parallel branches advance on their own. Every
+ * run that begins now carries it from its first checkpoint, so its parallel steps advance whatever
+ * the checkpoint happens to hold when one is recovered (a `map` round settled around a parallel
+ * step nested in one of its items, say); a run persisted before has none.
+ */
+const ADVANCING_FORMAT_LOCAL = '__weftParallelBranchesAdvance';
+
+/**
+ * Mark the run `context` drives as one whose parallel branches advance on their own, when it has
+ * recorded nothing yet: a run that begins now, or one persisted before that recorded no step, which
+ * has nothing to finish the old way. Call it before the run's first operation; it yields nothing.
+ */
+export function markAdvancingRun(context: object): void {
+  if (!hasContextInternals(context)) return;
+  const internals = getInternals(context);
+  if (internals.checkpointLocals[ADVANCING_FORMAT_LOCAL] === true) return;
+  if ((internals.accumulatedResults?.size ?? 0) > 0) return;
+  // Reassign rather than mutate in place: `checkpointLocals` is frozen between operations.
+  internals.checkpointLocals = { ...internals.checkpointLocals, [ADVANCING_FORMAT_LOCAL]: true };
+}
+
+/**
  * Whether the step `context` numbers next can run as an advancing parallel step of `branchCount`
- * branches: it belongs to an inline run, no lockstep parallel step encloses it, and the step holds
- * what such a step wrote, or nothing at or after its number. A run persisted before branches
- * advanced on their own finishes its parallel step, and every parallel step nested in it, in
- * lockstep rounds (see the document `parallel` step). Such a run's rounds number their operations
- * through the shared counter from this step on, so once a round has settled it holds results at
- * or after this number, though the step's own number may hold none (a branch that failed there).
- * An advancing step keeps all it has under its own number until it finishes.
+ * branches: it belongs to an inline run, no lockstep parallel step encloses it, and either the run
+ * carries the mark of {@link markAdvancingRun} or, for a run persisted before, the step holds
+ * nothing at or after its number. Such a run finishes a parallel step it began, and every parallel
+ * step nested in it, in lockstep rounds (see the document `parallel` step): its rounds numbered
+ * their operations through the shared counter from this step on, so once a round settled it holds
+ * results at or after this number, though the step's own number may hold none (a branch that
+ * failed there).
  */
 export function canAdvanceBranches(context: object, branchCount: number): boolean {
   if (!hasContextInternals(context)) return false;
   const internals = getInternals(context);
   if (internals.lockstepDepth > 0) return false;
+  if (internals.checkpointLocals[ADVANCING_FORMAT_LOCAL] === true) return true;
   const step = internals.stepIndex;
   const results = internals.accumulatedResults;
   if (results?.has(step) === true) {

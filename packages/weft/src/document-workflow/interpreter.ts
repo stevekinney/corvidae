@@ -10,6 +10,7 @@ import {
   advanceBranchesOf,
   canAdvanceBranches,
   inLockstep,
+  markAdvancingRun,
 } from '../core/context/advancing-operations.ts';
 import type { ContextOperationRequest } from '../core/context/operation-request.ts';
 import {
@@ -212,6 +213,9 @@ export async function buildDocumentWorkflowDefinition(
     const firedBy = trigger === undefined ? null : trigger;
     // Pure, and the same on a replay: it reads the recorded input and yields nothing.
     checkSchema('input', firedBy);
+    // A run that begins now says so in its checkpoint, so its parallel steps advance on their own
+    // whatever a recovered checkpoint holds (see `canAdvanceBranches`).
+    markAdvancingRun(context);
     type RunState = { previous: unknown; pendingSignal: unknown; lastStepWasSignal: boolean };
     type RunSteps = (
       steps: readonly WorkflowDocument['steps'][number][],

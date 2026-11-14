@@ -1,6 +1,7 @@
 import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 
 import type { EngineInternals } from './internals.ts';
+import { capturedSideEffectSink } from './side-effect-capture.ts';
 
 export type AtomicWorkflowCommitSideEffects = {
   conditions: ConditionalBatchCondition[];
@@ -15,6 +16,13 @@ export function stageAtomicWorkflowCommitSideEffects(
   bindToExecutionGeneration = false,
 ): void {
   if (sideEffects.conditions.length === 0 && sideEffects.operations.length === 0) {
+    return;
+  }
+  // Staged by a branch operation of a coordinator that commits while its branches run: the
+  // coordinator writes it with that operation's result (see `side-effect-capture.ts`).
+  const capturedSink = capturedSideEffectSink(internals, workflowId);
+  if (capturedSink !== undefined) {
+    capturedSink(sideEffects, workflowExecutionToken, bindToExecutionGeneration);
     return;
   }
 

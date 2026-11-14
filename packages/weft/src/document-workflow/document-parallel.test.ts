@@ -975,9 +975,7 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
       await using recovered = new Engine({ storage });
       await registerWorkflowDocuments(recovered, host, { active: [document] });
       const [handle] = await recovered.recoverAll();
-      expect(
-        await resultOnceTimersFire(recovered, 'legacy-retry-round-run', handle!.result()),
-      ).toEqual({
+      expect(await resultAfterDeadline(handle!.result())).toEqual({
         a: 'F',
         b: lockstepRoundEntry(2, [
           { status: 'rejected', reason: { name: 'Error', message: 'flaky once' } },
@@ -992,31 +990,25 @@ describe('a parallel step persisted before branches advanced on their own (COR-2
 });
 
 /**
- * The value `result` settles with once the fake clock has passed the recovered run's timers. The
- * run arms them as its replay reaches them, so each hour is moved only once the run shows an
- * operation running. The clock moves outside `waitUntil`: under fake timers its hang guard counts
- * the moved time as awake time.
+ * The value `result` settles with once the fake clock has passed the recovered run's one-hour
+ * sleeps. Each sleep keeps its deadline in the checkpoint it was parked at, so moving the clock
+ * once is all it depends on: a sleep the replay arms before the move fires during it, and one it
+ * arms after finds its deadline passed and ends without a timer (`executeSleepSubOperation`).
  */
-async function resultOnceTimersFire<Value>(
-  engine: Engine,
-  id: string,
-  result: Promise<Value>,
-): Promise<Value> {
-  let settled = false;
-  const observed = result.finally(() => {
-    settled = true;
-  });
-  const running = async () => {
-    const timeline = await engine.getTimeline(id);
-    return timeline.some((entry) => entry.status === 'running');
-  };
-  while (!settled) {
-    await waitUntil(async () => settled || (await running()), {
-      message: 'the recovered run to reach its timer',
-    });
-    if (!settled) await advanceTimersByTime(3_600_000);
-  }
-  return observed;
+async function resultAfterDeadline<Value>(result: Promise<Value>): Promise<Value> {
+  await advanceTimersByTime(2 * 3_600_000);
+  return result;
+}
+
+/** Whether run `id` has settled a `map` round and parked in the next one. */
+async function isParkedAfterFirstRound(engine: Engine, id: string): Promise<boolean> {
+  const rounds = (await engine.getTimeline(id)).filter(
+    (entry) => entry.operationType === 'parallel',
+  );
+  return (
+    rounds.some((entry) => entry.status === 'completed') &&
+    rounds.some((entry) => entry.status === 'running')
+  );
 }
 
 /**
@@ -1036,21 +1028,22 @@ function lockstepRoundEntry(step: number, branches: readonly Record<string, unkn
   };
 }
 
-describe('a batch map restarted after its first round (matrix row D16)', () => {
-  it('ends with the values main gives it', async () => {
-    // `map` is another step kind (out of scope for COR-2416): this pins today's result, the
-    // second item being the first round's entry (finding F1), so a change to it is seen.
+describe('a batch map restarted after its first round (finding F1, matrix row D16)', () => {
+  it('ends with each item`s own value when it restarts parked in its second round', async () => {
+    // Before the fix the replay read the second round one number early and ended with the first
+    // round's cache entry for an item.
     useFakeTimers(0);
     try {
+      calls.length = 0;
       const storage = new MemoryStorage();
       const id = 'batch-map-rounds-run';
       const document = doc('batch-map-rounds', [
-        { kind: 'activity', handler: 'pinned', input: { items: ['x', 'y'] } },
+        { kind: 'activity', handler: 'list' },
         {
           kind: 'map',
           over: 'items',
           steps: [
-            { kind: 'activity', handler: 'count' },
+            { kind: 'activity', handler: 'hold' },
             { kind: 'sleep', duration: '1h' },
           ],
         },
@@ -1059,23 +1052,71 @@ describe('a batch map restarted after its first round (matrix row D16)', () => {
         await using original = new Engine({ storage });
         await registerWorkflowDocuments(original, host, { active: [document] });
         await original.start(document.name, null, { id });
-        await waitUntil(async () => {
-          const timeline = await original.getTimeline(id);
-          return timeline.some((entry) => entry.status === 'running');
+        await waitUntil(async () => isParkedAfterFirstRound(original, id), {
+          message: 'the map to park in its second round',
         });
       }
       await using restarted = new Engine({ storage });
       await registerWorkflowDocuments(restarted, host, { active: [document] });
       const [handle] = await restarted.recoverAll();
-      expect(await resultOnceTimersFire(restarted, id, handle!.result())).toEqual([
-        null,
-        lockstepRoundEntry(3, [
-          { status: 'fulfilled', value: null },
-          { status: 'fulfilled', value: null },
-        ]),
-      ]);
+      expect(await resultAfterDeadline(handle!.result())).toEqual([1, 2]);
+      // The first round ran once.
+      expect(calls).toEqual(['1', '2']);
     } finally {
       restoreRealTimers();
     }
   });
+
+  it('still waits on the step after the map when it restarts there', async () => {
+    // Two rounds of two items, then a wait. Before the fix the replay read the wait's number as
+    // the second round's entry, and the run ended without waiting.
+    calls.length = 0;
+    const storage = new MemoryStorage();
+    const id = 'batch-map-then-wait-run';
+    const document = doc('batch-map-then-wait', [
+      { kind: 'activity', handler: 'list' },
+      {
+        kind: 'map',
+        over: 'items',
+        steps: [
+          { kind: 'activity', handler: 'hold' },
+          { kind: 'activity', handler: 'hold' },
+        ],
+      },
+      { kind: 'await-signal', signal: 'w' },
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      await original.start(document.name, null, { id });
+      await waitUntil(async () => isWaitingOnSignal(original, id, 'w'), {
+        message: 'the run to wait after the map',
+      });
+    }
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [handle] = await restarted.recoverAll();
+    await waitUntil(
+      async () =>
+        (await statusOf(restarted, id)) !== 'running' || (await waitsOn(restarted, id, 'w')),
+      {
+        message: 'the recovered run to wait on w, or to end',
+      },
+    );
+    expect(await statusOf(restarted, id)).toBe('running');
+    await handle!.signal('w', 'W');
+    expect(await handle!.result()).toBe('W');
+    expect(calls).toEqual(['1', '2', '1', '2']);
+  });
 });
+
+/** Whether run `id`'s timeline holds a running wait on `signal`: the wait itself, not the list. */
+async function waitsOn(engine: Engine, id: string, signal: string): Promise<boolean> {
+  const timeline = await engine.getTimeline(id);
+  return timeline.some(
+    (entry) =>
+      entry.operationType === 'wait-signal' &&
+      entry.operationLabel === signal &&
+      entry.status === 'running',
+  );
+}

@@ -9,16 +9,18 @@
  * and a recovered run resumes every branch where it stopped instead of running its finished
  * operations again.
  *
- * The invariant every commit here keeps: a signal a branch's step consumes is written only in a
- * commit whose entry already records that step's result, at every nesting depth and whatever the
- * branch does next (moves on, finishes, or throws). Three things carry it:
+ * The invariant every commit here keeps: a signal a branch's step consumes, and any side effect
+ * its operation staged for the checkpoint, is written in the commit whose entry records that
+ * step's result, at every nesting depth and whatever the branch does next (moves on, finishes, or
+ * throws); an effect of an operation still running waits for its own. Three things carry it:
  *
  * - One tree per top-level step. An advancing step nested in a branch (see {@link NestedLink})
  *   runs its sections on the top-level step's chain and commits through it, so no two sections of
  *   one tree interleave, and nothing commits between a consume and the recording of its result.
- * - Held consumes. A branch's envelope is finalized into the tree's {@link HeldSideEffects}, never
- *   the workflow's staged buffer; the section that finalized it records the result and then
- *   commits, and that commit writes the held consumes and nothing staged elsewhere.
+ * - Held effects. A branch's envelope is finalized into the tree's {@link HeldSideEffects}, and
+ *   what its operation staged is caught there too (`side-effect-capture.ts`), never the
+ *   workflow's staged buffer; the section that settles the operation records the result and then
+ *   commits, and that commit writes what the tree holds and nothing staged elsewhere.
  * - Results on every slot. A branch that has not finished, or that threw, keeps the results of the
  *   steps it finished in its slot, and a nested step keeps its progress under its own step number
  *   in its parent branch's results, so the commit's entry holds every result a held consume took.
@@ -48,7 +50,7 @@ import {
 import type { MidOperationCommitReport } from './checkpoint-io.ts';
 import { finalizeAndUnwrap } from './deferred-consume-envelope.ts';
 import { requestCompletion } from './file-workflow-completion-events.ts';
-import type { SideEffectHold } from './held-side-effects.ts';
+import { HeldSideEffects, type SideEffectHold } from './held-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   captureFirstRejection,
@@ -56,6 +58,7 @@ import {
   normalizeRejectionReason,
 } from './parallel-dispatch.ts';
 import { recordSettledStep, takeSettledSteps } from './settled-step-sink.ts';
+import { captureSideEffects } from './side-effect-capture.ts';
 import { assertSupportedSignalBranches } from './signal-branch-guard.ts';
 
 type ParallelOperation = Extract<ContextOperationRequest, { type: 'parallel' }>;
@@ -292,7 +295,7 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
   const settleRequest = async (
     index: number,
     request: ContextOperationRequest,
-  ): Promise<BranchOutcome> => {
+  ): Promise<{ settled: BranchOutcome; staged: HeldSideEffects }> => {
     if (request.type === 'parallel' && branchDriversOf(request) !== undefined) {
       linkNestedStep(request, {
         tree,
@@ -300,10 +303,16 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
         commit: commitProgress,
       });
     }
+    // What the operation stages for the checkpoint is caught here and committed with its result.
+    const staged = new HeldSideEffects();
+    const capture = captureSideEffects(run.internals, run.workflowId, staged.keep);
     try {
-      return { status: 'fulfilled', value: await run.execute(request, controller.signal) };
+      const value = await capture.run(() => run.execute(request, controller.signal));
+      return { settled: { status: 'fulfilled', value }, staged };
     } catch (error) {
-      return { status: 'rejected', error };
+      return { settled: { status: 'rejected', error }, staged };
+    } finally {
+      capture.close();
     }
   };
 
@@ -357,16 +366,18 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
   };
 
   /**
-   * Settle one operation of a branch, in one section: finalize it (holding the consume of a wait's
-   * signal), resume the branch with it, and commit. The commit runs whatever the branch did with
-   * a fulfilled outcome, so a consume is written with the result that took it, even when the
-   * branch then threw. Returns where the branch stands, or `undefined` for a branch that is over.
+   * Settle one operation of a branch, in one section: take what it staged, finalize it (holding
+   * the consume of a wait's signal), resume the branch with it, and commit. The commit runs
+   * whatever the branch then did, so a consume or a staged effect is written with the result it
+   * belongs to, even when the branch then threw. Returns where the branch stands, or `undefined`
+   * for a branch that is over.
    */
   const settleStep = async (
     index: number,
     request: ContextOperationRequest,
-    settled: BranchOutcome,
+    { settled, staged }: { settled: BranchOutcome; staged: HeldSideEffects },
   ): Promise<BranchStep | undefined> => {
+    staged.moveTo(tree.held);
     if (mustStop(index)) return undefined;
     const outcome = await finalizeOutcome(settled, tree.held.hold);
     let next: BranchStep | undefined;
@@ -380,7 +391,9 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
       next = resumeBranch(index, outcome);
       if (next !== undefined && !placeBranch(index, next)) next = undefined;
     }
-    if (outcome.status === 'fulfilled') await commitProgress();
+    // Whatever the outcome: a fulfilled one took a signal or moved the branch on, and a rejected
+    // one the branch handled (a retry) moved its checkpoint locals and its next operation on.
+    await commitProgress();
     return next;
   };
 

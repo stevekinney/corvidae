@@ -34,6 +34,7 @@ import {
 } from './parallel-dispatch.ts';
 import { canPersistPartialEntry, writePartialEntry } from './partial-entry.ts';
 import { takeSettledSteps } from './settled-step-sink.ts';
+import { captureSideEffects } from './side-effect-capture.ts';
 import { assertSupportedSignalBranches } from './signal-branch-guard.ts';
 import { settleSignalWaitClears } from './signal-wait-tracking.ts';
 import { peekSignal } from './signals.ts';
@@ -96,8 +97,10 @@ export type CoordinationOperationCallbacks = {
  *
  * A commit finalizes the slot's deferred signal consume first, into the committer's own hold (see
  * `held-side-effects.ts`), and writes the held consumes with the entry that records the slot: the
- * slot and the delete of its signal record land together, and the commit writes nothing a branch
- * still running staged. What the committer still holds when the branches settle goes to the
+ * slot and the delete of its signal record land together. What the branch's operation staged for
+ * the checkpoint (a child's cancellation link, an activity's reconciliation receipt) is caught as
+ * it runs (`side-effect-capture.ts`) and lands in that commit too; the commit writes nothing a
+ * branch still running staged. What the committer still holds when the branches settle goes to the
  * staged buffer, for the commit that settles the operation.
  * Commits are chained: each one compares-and-swaps against the checkpoint bytes the one before it
  * wrote, so two overlapping would make the second a conflict and abandon the run.
@@ -110,6 +113,8 @@ function createSlotCommitter(
   resumedSlots: readonly ParallelBranchSlot[] | undefined,
 ):
   | {
+      /** Run branch `index`, catching what it stages for the commit of its slot. */
+      execute: (index: number, execute: () => Promise<unknown>) => Promise<unknown>;
       onSlotSettled: OnSlotSettled;
       /** Call once every slot has settled: hands on what is held, and reports a failed commit. */
       settle: () => { error: unknown } | undefined;
@@ -122,6 +127,8 @@ function createSlotCommitter(
     (resumedSlots ?? []).flatMap((slot, index) => (slot.status === 'fulfilled' ? [index] : [])),
   );
   const held = new HeldSideEffects();
+  /** What each branch staged (`side-effect-capture.ts`), until its slot's commit takes it. */
+  const staged = operation.operations.map(() => new HeldSideEffects());
   let chain: Promise<void> = Promise.resolve();
   let failure: { error: unknown } | undefined;
   const isCurrent = () =>
@@ -135,6 +142,7 @@ function createSlotCommitter(
       slot.value = await finalizeAndUnwrap(slot.value, held.hold);
       if (!isCurrent()) return;
       committed.add(index);
+      staged[index]?.moveTo(held);
       // A settled branch whose own commit is still queued is not durable yet, and its value may
       // still hold an envelope that cannot encode: it stays pending in this entry.
       const snapshot = slots.map((other, otherIndex): ParallelBranchSlot => {
@@ -162,15 +170,37 @@ function createSlotCommitter(
     }
   };
   return {
+    execute: async (index, execute) => {
+      const capture = captureSideEffects(internals, workflowId, staged[index]!.keep);
+      try {
+        return await capture.run(execute);
+      } finally {
+        capture.close();
+      }
+    },
     onSlotSettled: (slots, index) => {
       chain = chain.then(() => commitSlot(slots, index));
       return chain;
     },
     settle: () => {
+      for (const branch of staged) branch.moveTo(held);
       held.stageRemaining(internals, workflowId);
       return failure;
     },
   };
+}
+
+/** How each branch of a `ctx.all` runs: through the slot committer, when it commits slots. */
+function branchRunner(
+  callbacks: Pick<CoordinationOperationCallbacks, 'executeSubOperation'>,
+  workflowId: string,
+  operation: ParallelOperation,
+  committer: ReturnType<typeof createSlotCommitter>,
+): (index: number) => Promise<unknown> {
+  const execute = (index: number) =>
+    callbacks.executeSubOperation(workflowId, operation.operations[index]!);
+  if (committer === undefined) return execute;
+  return (index) => committer.execute(index, () => execute(index));
 }
 
 /**
@@ -238,7 +268,7 @@ export async function processParallelOperation(
       // so the slot committer, or `finalizeFulfilledSlots` below once every branch has
       // settled, is the only place a durable signal is consumed: the consume goes into
       // the same batch that checkpoints the slot or the whole result.
-      (index) => callbacks.executeSubOperation(workflowId, operation.operations[index]!),
+      branchRunner(callbacks, workflowId, operation, slotCommitter),
       slotCommitter?.onSlotSettled,
     );
     // What an advancing parallel step nested in a branch settled reports here, whatever follows.
