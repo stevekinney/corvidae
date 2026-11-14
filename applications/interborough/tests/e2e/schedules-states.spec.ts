@@ -13,7 +13,7 @@ import type { Page } from '@playwright/test';
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, pressRecorder, test } from './fixtures.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -246,9 +246,16 @@ for (const width of WIDTHS) {
     const main = page.locator('main');
     await expect(main.locator('li[data-schedule]')).toHaveCount(4);
 
-    await page.route(SCHEDULES_READ, (route) =>
-      route.fulfill({ status: 500, json: { error: 'The server broke.' } }),
-    );
+    // The read keeps failing until Retry now is pressed, so the banner's own countdown cannot
+    // recover it and remove the button under the click.
+    let pressed: () => Promise<boolean> = async () => false;
+    await page.route(SCHEDULES_READ, async (route) => {
+      if (await pressed()) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
+    });
     // The person comes back to the tab, which reads the list again.
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
     // The shared unreachable preset with its countdown, under the header (row 70u).
@@ -258,6 +265,7 @@ for (const width of WIDTHS) {
     await expect(banner).toContainText('Showing what loaded as of');
     await expect(banner).toContainText(/Retrying in \d+ s \(attempt \d+ of \d+\)\./);
     await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    pressed = await pressRecorder(page, 'Retry now');
     // No dismiss, and the rows stay.
     await expect(banner.getByRole('button', { name: /dismiss/i })).toHaveCount(0);
     await expect(main.locator('li[data-schedule]')).toHaveCount(4);
@@ -275,7 +283,6 @@ for (const width of WIDTHS) {
     });
     await checkA11y(`schedules failed refresh at ${width}px`);
 
-    await page.unroute(SCHEDULES_READ);
     await banner.getByRole('button', { name: 'Retry now' }).click();
     await expect(banner).toHaveCount(0);
     await expect(main.locator('li[data-schedule]')).toHaveCount(4);
