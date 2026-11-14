@@ -74,11 +74,3 @@
     </div>
   {/if}
 </section>
-
-<style>
-  /* The column gives the heading its inset; the row is padded as the loaded header's title is. */
-  .ib-chat-unavailable__heading {
-    padding-block-end: var(--cinder-space-5);
-    border-block-end: 1px solid var(--cinder-border-muted);
-  }
-</style>

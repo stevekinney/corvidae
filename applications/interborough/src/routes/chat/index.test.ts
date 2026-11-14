@@ -232,6 +232,12 @@ describe('a session the page is still reading (design rows 17j, 17y)', () => {
       'Chat',
       CHAT_COPY.load.crumb,
     ]);
+    // The heading's stand-in sits in the conversation's column, as the loaded header does, and
+    // draws no rule the loaded header lacks, so nothing shifts when the chat arrives (COR-2327 N9).
+    const heading = loading()?.querySelector('.ib-chat-unavailable__heading');
+    expect(heading?.classList.contains('weft-chat-head')).toBe(true);
+    const source = await Bun.file(new URL('./chat-unavailable.svelte', import.meta.url)).text();
+    expect(source).not.toMatch(/border-(?:block-end|bottom)/u);
   });
 
   test('says it is still loading after 10 s with Cancel, and a canceled read offers Try again and All conversations', async () => {
