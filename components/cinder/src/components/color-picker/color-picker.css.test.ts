@@ -73,7 +73,30 @@ test('format controls are at least 24 CSS px tall (WCAG 2.5.8 target size)', () 
       minimum = declaration.value;
     });
   });
-  expect(minimum).toBe('24px');
+  expect(minimum).toBe('var(--_cinder-color-picker-row-height)');
+  expect(
+    ruleDeclarationValue(
+      colorPickerCss,
+      '.cinder-color-picker__footer',
+      '--_cinder-color-picker-row-height',
+    ),
+  ).toBe('24px');
+});
+
+// Owner review: the current colour is a swatch in the first format row, at that row's height,
+// not a separate block centred against the three rows.
+test('the preview swatch shares the first format row and its height', () => {
+  expect(ruleDeclarationValue(colorPickerCss, '.cinder-color-picker__footer', 'align-items')).toBe(
+    'flex-start',
+  );
+  for (const property of ['inline-size', 'block-size']) {
+    expect(ruleDeclarationValue(colorPickerCss, '.cinder-color-picker__preview', property)).toBe(
+      'var(--_cinder-color-picker-row-height)',
+    );
+  }
+  expect(
+    ruleDeclarationValue(colorPickerCss, '.cinder-color-picker__preview', 'border-radius'),
+  ).toBe('var(--cinder-radius-sm)');
 });
 
 test('composed color controls aggregate their dependency styles for à-la-carte consumers', () => {

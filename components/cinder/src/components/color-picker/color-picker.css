@@ -152,19 +152,21 @@
 
   /* ── Footer row: preview chip + copyable formats ─────────────────────── */
 
+  /* The current colour sits in the first format row, beside the hex value, at that row's height:
+     a swatch aligned with the readouts rather than a separate block centred on the stack. */
   .cinder-color-picker__footer {
+    --_cinder-color-picker-row-height: 24px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--cinder-space-2);
   }
 
   .cinder-color-picker__preview {
     flex-shrink: 0;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
+    inline-size: var(--_cinder-color-picker-row-height);
+    block-size: var(--_cinder-color-picker-row-height);
+    border-radius: var(--cinder-radius-sm);
     background-color: var(--cinder-color-picker-preview, transparent);
-    border: 1px solid var(--cinder-border-control);
   }
 
   .cinder-color-picker__preview[data-cinder-alpha] {
@@ -205,7 +207,7 @@
     gap: var(--cinder-space-2);
     min-width: 0;
     /* WCAG 2.5.8: the three stacked format buttons are 24 CSS px tall at least. */
-    min-block-size: 24px;
+    min-block-size: var(--_cinder-color-picker-row-height);
     padding: 0;
     border: 0;
     background: transparent;
@@ -261,6 +263,12 @@
     .cinder-color-picker__alpha:focus-visible {
       outline: 3px solid Highlight;
       outline-offset: 2px;
+    }
+
+    /* The swatch has no edge of its own; forced colours keep its colour and give it one. */
+    .cinder-color-picker__preview {
+      forced-color-adjust: none;
+      border: 1px solid CanvasText;
     }
   }
 }
