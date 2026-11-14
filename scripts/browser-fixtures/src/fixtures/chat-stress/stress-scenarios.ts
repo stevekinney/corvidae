@@ -778,11 +778,26 @@ const scenarios: Record<StressScenarioName, Scenario> = {
   },
 
   question: (stressCase) => {
-    const shape = param<'single' | 'other' | 'three' | 'identifier'>(stressCase, 'shape', 'single');
+    const shape = param<'single' | 'other' | 'three' | 'four' | 'identifier'>(
+      stressCase,
+      'shape',
+      'single',
+    );
     let conversation = appendUserMessage(start('stress-question'), 'Deploy the build.');
     const setup = baseSetup(conversation);
     setup.runInput = true;
-    if (shape === 'three') {
+    if (shape === 'four') {
+      conversation = withQuestion(conversation, 'ask-1', 'Which environment?', ENVIRONMENT_SCHEMA);
+      conversation = withQuestion(conversation, 'ask-2', 'Which region?', {
+        enum: ['east', 'west', 'north'],
+      });
+      conversation = withQuestion(conversation, 'ask-3', 'Notify the channel?', {
+        type: 'boolean',
+      });
+      conversation = withQuestion(conversation, 'ask-4', 'Which support tier?', {
+        enum: ['free', 'paid'],
+      });
+    } else if (shape === 'three') {
       conversation = withQuestion(conversation, 'ask-1', 'Which environment?', ENVIRONMENT_SCHEMA);
       conversation = withQuestion(conversation, 'ask-2', 'Which region?', {
         enum: ['east', 'west', 'north'],

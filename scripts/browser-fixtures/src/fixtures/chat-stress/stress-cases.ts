@@ -63,6 +63,8 @@ type StressStepAction =
   | { action: 'expect-approval-review' }
   | { action: 'expect-question-layout' }
   | { action: 'expect-question-dock'; choices: number }
+  /** The docked question's header for several questions: `Question <position> of <total>` and the two buttons. */
+  | { action: 'expect-question-steps'; position: number; total: number }
   | { action: 'expect-source-control' }
   | { action: 'expect-offscreen'; selector: string }
   | { action: 'expect-absent'; selector: string }
@@ -94,7 +96,7 @@ export interface StressVariant {
 
 /** One stress case. */
 export interface StressCase {
-  /** The case number, 1 to 80, unique. */
+  /** The case number, 1 to 81, unique. */
   readonly id: number;
   /** A short kebab-case name. */
   readonly slug: string;
@@ -130,8 +132,11 @@ export interface StressCase {
 /** The sample world's "now": every case runs with the browser's clock fixed here, so a date reads Today. */
 export const STRESS_NOW = '2026-11-02T16:46:00.000Z';
 
-/** The number of cases the board requires. */
-export const STRESS_CASE_COUNT = 80;
+/**
+ * The number of cases the board requires: the 80 of COR-2289, and case 81, the docked question with
+ * four questions asked together (2026-11-13 owner review).
+ */
+export const STRESS_CASE_COUNT = 81;
 
 /** Required owner-audit scenarios and the durable case/variant that captures each one. */
 export const OWNER_AUDIT_SCENARIO_MAPPING = [
@@ -214,6 +219,7 @@ const STEP_ACTIONS = [
   'expect-approval-review',
   'expect-question-layout',
   'expect-question-dock',
+  'expect-question-steps',
   'expect-source-control',
   'expect-offscreen',
   'expect-absent',
@@ -277,6 +283,20 @@ function problemsInStep(step: unknown, where: string): string[] {
   if (action === 'expect-question-dock') {
     if (!Number.isInteger(step['choices']) || (step['choices'] as number) < 1)
       problems.push(`${where}: expect-question-dock needs a positive number of choices`);
+  }
+  if (action === 'expect-question-steps') {
+    const { position, total } = step;
+    if (
+      !Number.isInteger(position) ||
+      !Number.isInteger(total) ||
+      (position as number) < 1 ||
+      (total as number) < 2 ||
+      (position as number) > (total as number)
+    ) {
+      problems.push(
+        `${where}: expect-question-steps needs a position from 1 to a total of at least 2`,
+      );
+    }
   }
   if (action === 'measure-composer-top' && step['name'] !== 'before' && step['name'] !== 'after')
     problems.push(`${where}: measure-composer-top name must be before or after`);

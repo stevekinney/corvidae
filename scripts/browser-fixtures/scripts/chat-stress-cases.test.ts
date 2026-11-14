@@ -249,7 +249,7 @@ describe('the committed Chat stress cases', () => {
     expect(assistant.content).toBe('Yes, the order was charged twice.');
   });
 
-  it('holds exactly the 80 cases the board requires, numbered 1 to 80', () => {
+  it('holds exactly the 81 cases the board requires, numbered 1 to 81', () => {
     expect(cases).toHaveLength(STRESS_CASE_COUNT);
     expect(cases.map((stressCase) => stressCase.id)).toEqual(
       Array.from({ length: STRESS_CASE_COUNT }, (_, index) => index + 1),
@@ -315,6 +315,8 @@ describe('the committed Chat stress cases', () => {
         '63-empty-and-ready',
         '79-discard-drawer',
         '79-restored-after-discard',
+        '81-first-answered',
+        '81-last',
       ].toSorted(),
     );
   });

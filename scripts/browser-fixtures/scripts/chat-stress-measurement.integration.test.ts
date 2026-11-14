@@ -11,6 +11,7 @@ import {
   readFailureSummaryProblems,
   readIconSizeProblems,
   readLabelFitProblems,
+  readQuestionStepsProblems,
   readRepeatedSummaryProblems,
   readWithdrawal,
   revealScrollableControls,
@@ -115,6 +116,97 @@ describe('chat stress visual measurement', () => {
 
     it('passes when the duration sits beside the tool name in its own column', async () => {
       expect(await problemsFor(failedRow('2 / 3 / 3 / 4'))).toEqual([]);
+    });
+  });
+
+  describe('question steps guard', () => {
+    // The real mechanism of the dock's header with several questions: a wrapping row, the tag at
+    // the leading end, the progress with its two compact buttons pushed to the trailing end, and
+    // the question taking the full width on its own line.
+    const dock = (options: {
+      progress?: string;
+      previousDisabled?: boolean;
+      nextDisabled?: boolean;
+      width?: number;
+      stepsFirst?: boolean;
+    }): string => {
+      const tag =
+        '<span class="chat-question-dock-needs" data-chat-question-needs>Needs you</span>';
+      const steps = `<div class="chat-question-dock-steps"><span data-chat-question-progress>${options.progress ?? 'Question 2 of 4'}</span><button data-chat-question-previous ${options.previousDisabled ? 'disabled' : ''}>p</button><button data-chat-question-next ${options.nextDisabled ? 'disabled' : ''}>n</button></div>`;
+      return `
+        <style>
+          body { margin: 0; font: 13px sans-serif; }
+          * { box-sizing: border-box; }
+          [data-chat-question-heading] { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; width: ${options.width ?? 296}px; }
+          .chat-question-dock-needs { flex: none; white-space: nowrap; padding: 2px 8px; }
+          .chat-question-dock-steps { display: inline-flex; margin-inline-start: auto; gap: 4px; align-items: center; }
+          .chat-question-dock-steps button { width: 28px; height: 28px; padding: 0; }
+          .chat-question-dock-question { flex: 1 0 100%; margin: 0; }
+        </style>
+        <div data-chat-question-dock>
+          <div data-chat-question-heading data-chat-question-several>
+            ${options.stepsFirst ? steps + tag : tag + steps}
+            <p class="chat-question-dock-question">Which region?</p>
+          </div>
+          <div role="radio" aria-checked="false">East</div>
+        </div>`;
+    };
+
+    const problemsFor = async (markup: string, position = 2, total = 4): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 320, height: 640 } });
+        await page.setContent(markup);
+        return await readQuestionStepsProblems(page, position, total);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes for the second of four, with both buttons on', async () => {
+      expect(await problemsFor(dock({}))).toEqual([]);
+    });
+
+    it('passes for the first, with previous off, and the last, with next off', async () => {
+      expect(
+        await problemsFor(dock({ progress: 'Question 1 of 4', previousDisabled: true }), 1, 4),
+      ).toEqual([]);
+      expect(
+        await problemsFor(dock({ progress: 'Question 4 of 4', nextDisabled: true }), 4, 4),
+      ).toEqual([]);
+    });
+
+    it('fails when the progress reads another question', async () => {
+      expect(await problemsFor(dock({ progress: 'Question 3 of 4' }))).toEqual([
+        expect.stringContaining('the progress reads'),
+      ]);
+    });
+
+    it('fails when previous stays on at the first question or next at the last', async () => {
+      expect(await problemsFor(dock({ progress: 'Question 1 of 4' }), 1, 4)).toContain(
+        'previous is on at question 1',
+      );
+      expect(await problemsFor(dock({ progress: 'Question 4 of 4' }), 4, 4)).toContain(
+        'next is on at question 4',
+      );
+    });
+
+    it('fails when a button is off in the middle', async () => {
+      expect(await problemsFor(dock({ nextDisabled: true }))).toContain(
+        'next is off at question 2',
+      );
+    });
+
+    it('fails when the progress comes before the tag in the document', async () => {
+      expect(await problemsFor(dock({ stepsFirst: true }))).toContain(
+        'the tag, progress, buttons and choices are not in that order',
+      );
+    });
+
+    it('fails when the row is too narrow and the buttons wrap below the tag', async () => {
+      expect(await problemsFor(dock({ width: 150 }))).toContain(
+        'the tag, the progress and the buttons are not on one line',
+      );
     });
   });
 
@@ -977,6 +1069,25 @@ describe('chat stress visual measurement', () => {
           `<button class="cinder-button" data-cinder-hit-target="44" aria-label="Edit" style="${bordered}"></button><button class="cinder-button" data-cinder-hit-target="44" aria-label="Remove" style="${bordered}"></button>`,
         ),
       ).toEqual([]);
+    });
+
+    it('passes a button whose 44px hit area meets a plain positioned block within a third of a pixel', async () => {
+      // The block starts 9.7px under the face, 0.3px short of where the 44px area ends, and paints
+      // above it. The probe sits half a pixel inside the area, within the engine's shared-edge
+      // tolerance of the block's edge, so it answers the block: the same shared edge two touching
+      // controls have, not a hit area cut short.
+      expect(
+        await smallTargetsFor(
+          `<div style="height:24px;margin-block-end:9.7px"><button class="cinder-button" data-cinder-hit-target="44" aria-label="Copy"></button></div><div style="position:relative;height:20px">Details</div>`,
+        ),
+      ).toEqual([]);
+    });
+
+    it('fails a button whose hit area is cut short by a plain positioned block starting well inside it', async () => {
+      const targets = await smallTargetsFor(
+        `<div style="height:24px;margin-block-end:4px"><button class="cinder-button" data-cinder-hit-target="44" aria-label="Copy"></button></div><div style="position:relative;height:20px">Details</div>`,
+      );
+      expect(targets[0]?.shortSides?.map((side) => side.split(' ')[0])).toEqual(['below']);
     });
 
     it('passes two adjacent 24px buttons at a 28px pitch, whose hit areas overlap by design', async () => {
