@@ -29,7 +29,11 @@ async function openAnatomy(
   ] as const);
   const page = await context.newPage();
   await page.goto(fixtureRoute('schema-view', { fixtureName: 'anatomy' }), { waitUntil: 'load' });
-  await page.locator('.cinder-schema-view__row').first().waitFor();
+  // The header row is hidden at phone width, where the columns restack; wait for a field row.
+  await page
+    .locator('.cinder-schema-view__row:not(.cinder-schema-view__row--header)')
+    .first()
+    .waitFor();
   return page;
 }
 
@@ -70,33 +74,36 @@ for (const theme of ['light', 'dark'] as const) {
 
       test('no row draws a vertical line, and every divider spans the whole row', async () => {
         const rows = await page.evaluate(() =>
-          [...document.querySelectorAll<HTMLElement>('.cinder-schema-view__row')].map((row) => {
-            const box = row.getBoundingClientRect();
-            const vertical: string[] = [];
-            for (const element of [row, ...row.querySelectorAll<HTMLElement>('*')]) {
-              const style = getComputedStyle(element);
-              if (
-                Number.parseFloat(style.borderInlineStartWidth) > 0 ||
-                Number.parseFloat(style.borderInlineEndWidth) > 0
-              ) {
-                vertical.push(element.className);
-              }
-              for (const pseudo of ['::before', '::after']) {
-                const part = getComputedStyle(element, pseudo);
-                if (part.content !== 'none' && part.position === 'absolute') {
-                  vertical.push(`${element.className}${pseudo}`);
+          [...document.querySelectorAll<HTMLElement>('.cinder-schema-view__row')]
+            // A row the layout hides (the header at phone width) draws nothing to measure.
+            .filter((row) => row.getClientRects().length > 0)
+            .map((row) => {
+              const box = row.getBoundingClientRect();
+              const vertical: string[] = [];
+              for (const element of [row, ...row.querySelectorAll<HTMLElement>('*')]) {
+                const style = getComputedStyle(element);
+                if (
+                  Number.parseFloat(style.borderInlineStartWidth) > 0 ||
+                  Number.parseFloat(style.borderInlineEndWidth) > 0
+                ) {
+                  vertical.push(element.className);
+                }
+                for (const pseudo of ['::before', '::after']) {
+                  const part = getComputedStyle(element, pseudo);
+                  if (part.content !== 'none' && part.position === 'absolute') {
+                    vertical.push(`${element.className}${pseudo}`);
+                  }
                 }
               }
-            }
-            const frame = row.closest('.cinder-schema-view__frame')?.getBoundingClientRect();
-            return {
-              vertical,
-              left: box.left,
-              right: box.right,
-              frameLeft: (frame?.left ?? 0) + 1,
-              frameRight: (frame?.right ?? 0) - 1,
-            };
-          }),
+              const frame = row.closest('.cinder-schema-view__frame')?.getBoundingClientRect();
+              return {
+                vertical,
+                left: box.left,
+                right: box.right,
+                frameLeft: (frame?.left ?? 0) + 1,
+                frameRight: (frame?.right ?? 0) - 1,
+              };
+            }),
         );
         expect(rows.length).toBeGreaterThan(8);
         for (const row of rows) {
