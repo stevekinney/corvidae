@@ -341,6 +341,19 @@ export function measureInPage(options: {
           overlay = overlay.parentElement;
         }
         if (coveredByOverlay) continue;
+        // The probe sits half a pixel inside the area, so a block that starts within a pixel of
+        // the area's far edge (the next row, a hidden line under a question) shares that edge: the
+        // engine answers the neighbour there, as it does for two touching controls above.
+        const hitBox = hit.getBoundingClientRect();
+        const edgeOfHit =
+          side === 'left'
+            ? hitBox.right - x
+            : side === 'right'
+              ? x - hitBox.left
+              : side === 'above'
+                ? hitBox.bottom - y
+                : y - hitBox.top;
+        if (!insideOwnBox && edgeOfHit >= -0.75 && edgeOfHit <= 0.75) continue;
         short.push(`${side} (reaches ${nameOf(hit) || hit.tagName.toLowerCase()})`);
       }
       return short;
@@ -1508,6 +1521,16 @@ export async function runStep(page: Page, step: StressStep): Promise<void> {
       }
       return;
     }
+    case 'expect-question-steps': {
+      await page
+        .locator('[data-chat-question-dock]')
+        .waitFor({ state: 'visible', timeout: DEADLINE });
+      const problems = await readQuestionStepsProblems(page, step.position, step.total);
+      if (problems.length > 0) {
+        throw new Error(`The docked question's header breaks its contract: ${problems.join('; ')}`);
+      }
+      return;
+    }
     case 'expect-approval-review': {
       // The product guarantees one thing the capture waits on: the reminder is on screen if and only
       // if the pending card's row of decision buttons is not wholly inside the transcript's box.
@@ -2160,6 +2183,7 @@ async function measure(
     problems.push(...(await readFailureSummaryProblems(opened.page)));
   }
   problems.push(...(await readActionRowProblems(opened.page)));
+  problems.push(...(await readLabelFitProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
   problems.push(...(await readIconSizeProblems(opened.page)));
   problems.push(...(await readAttachmentStripProblems(opened.page)));
@@ -2408,6 +2432,173 @@ export async function readActionRowProblems(
     },
     { selectors: [...selectors], tolerance: ACTION_ROW_TOLERANCE },
   );
+}
+
+/**
+ * Measures the docked question's header when several questions were asked together: it reads
+ * `Question <position> of <total>`; the tag comes first in the document, then the progress, the
+ * previous button, the next button and the choices; the tag at the leading end and the progress
+ * with its two compact buttons at the trailing end share the top line; the question has the full
+ * width on the line under them; previous is off on the first question and next on the last.
+ */
+export async function readQuestionStepsProblems(
+  page: Page,
+  position: number,
+  total: number,
+): Promise<string[]> {
+  return page.evaluate(
+    (spec) => {
+      const problems: string[] = [];
+      const dock = document.querySelector<HTMLElement>('[data-chat-question-dock]');
+      if (dock === null) return ['the question dock is missing'];
+      const find = (selector: string): HTMLElement | null => dock.querySelector(selector);
+      const heading = find('[data-chat-question-heading]');
+      const tag = find('[data-chat-question-needs]');
+      const progress = find('[data-chat-question-progress]');
+      const previous = find('[data-chat-question-previous]') as HTMLButtonElement | null;
+      const next = find('[data-chat-question-next]') as HTMLButtonElement | null;
+      const question = find('.chat-question-dock-question');
+      const firstChoice = find('[role="radio"]');
+      if (heading === null || tag === null) return ['the dock has no heading or no tag'];
+      if (progress === null || previous === null || next === null) {
+        return ['the header has no progress or no previous and next buttons'];
+      }
+      const expected = `Question ${spec.position} of ${spec.total}`;
+      if (progress.textContent?.trim() !== expected) {
+        problems.push(
+          `the progress reads ${JSON.stringify(progress.textContent?.trim())}, not ${expected}`,
+        );
+      }
+      if (previous.disabled !== (spec.position === 1)) {
+        problems.push(
+          `previous is ${previous.disabled ? 'off' : 'on'} at question ${spec.position}`,
+        );
+      }
+      if (next.disabled !== (spec.position === spec.total)) {
+        problems.push(`next is ${next.disabled ? 'off' : 'on'} at question ${spec.position}`);
+      }
+      const ordered = [tag, progress, previous, next, firstChoice].filter(
+        (element): element is HTMLElement => element !== null,
+      );
+      for (let index = 1; index < ordered.length; index += 1) {
+        const before = ordered[index - 1]!;
+        const after = ordered[index]!;
+        if ((before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
+          problems.push('the tag, progress, buttons and choices are not in that order');
+          break;
+        }
+      }
+      const rtl = getComputedStyle(dock).direction === 'rtl';
+      const box = (element: HTMLElement): DOMRect => element.getBoundingClientRect();
+      const headingBox = box(heading);
+      const lineOf = (element: HTMLElement): number => box(element).top + box(element).height / 2;
+      const topLine = [tag, progress, previous, next];
+      if (topLine.some((element) => Math.abs(lineOf(element) - lineOf(tag)) > 2)) {
+        problems.push('the tag, the progress and the buttons are not on one line');
+      }
+      if (box(tag).height > 30) problems.push('the tag wraps or stretches');
+      for (const button of [previous, next]) {
+        const face = box(button);
+        if (face.height > 40 || face.width > 40)
+          problems.push('a navigation button is not compact');
+      }
+      const leadingGap = rtl ? headingBox.right - box(tag).right : box(tag).left - headingBox.left;
+      if (Math.abs(leadingGap) > 1) problems.push('the tag is not at the leading end');
+      const trailingGap = rtl
+        ? box(next).left - headingBox.left
+        : headingBox.right - box(next).right;
+      if (Math.abs(trailingGap) > 1) problems.push('the buttons are not at the trailing end');
+      if (question !== null) {
+        const questionBox = box(question);
+        if (questionBox.top < box(tag).bottom - 1)
+          problems.push('the question is not under the tag');
+        if (questionBox.width < headingBox.width - 1) {
+          problems.push('the question does not use the full width');
+        }
+        if ((question.textContent ?? '').trim() === '') problems.push('the question is empty');
+      } else {
+        problems.push('the question is missing');
+      }
+      return problems;
+    },
+    { position, total },
+  );
+}
+
+/**
+ * The action rows whose control gives up its words for its icon only when the row cannot hold them
+ * on one line: the row, the control, the attribute that makes it icon-only, and the parts that are
+ * meant to take a line of their own. A new row of this kind joins this list.
+ */
+export const LABEL_FIT_ROWS: readonly {
+  readonly row: string;
+  readonly control: string;
+  readonly attribute: string;
+  readonly ignore: string;
+}[] = [
+  {
+    row: '.cinder-approval-card__row-actions',
+    control: '.cinder-approval-card__note-toggle',
+    attribute: 'data-cinder-note-compact',
+    ignore: '.cinder-inline-confirm__two-press-hint',
+  },
+  {
+    row: '.chat-question-dock-actions',
+    control: '.chat-question-dock-reply-tip',
+    attribute: 'data-chat-reply-compact',
+    ignore: '[hidden]',
+  },
+];
+
+/**
+ * Measures that a control shows its words exactly when its row has room for them. The check does
+ * not use the helper's own test (items sharing a line): it puts the words back, adds the widths of
+ * the row's items and their gaps, and compares the sum with the row's width. A control that is
+ * icon-only with room to spare, or that keeps its words while the row cannot hold them, is a problem.
+ * The attribute is restored before returning.
+ */
+export async function readLabelFitProblems(
+  page: Page,
+  rows: typeof LABEL_FIT_ROWS = LABEL_FIT_ROWS,
+): Promise<string[]> {
+  return page.evaluate((specs) => {
+    const problems: string[] = [];
+    for (const spec of specs) {
+      for (const row of document.querySelectorAll<HTMLElement>(spec.row)) {
+        const control = row.querySelector<HTMLElement>(spec.control);
+        if (control === null || row.clientWidth === 0) continue;
+        const items = (parent: Element): HTMLElement[] =>
+          [...parent.children].flatMap((child) => {
+            if (!(child instanceof HTMLElement) || child.matches(spec.ignore)) return [];
+            const style = getComputedStyle(child);
+            if (style.display === 'none' || style.position === 'absolute') return [];
+            if (style.display === 'contents') return items(child);
+            return child.getBoundingClientRect().width > 0 ? [child] : [];
+          });
+        const compact = control.hasAttribute(spec.attribute);
+        control.removeAttribute(spec.attribute);
+        const laidOut = items(row);
+        const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+        const needed =
+          laidOut.reduce((sum, item) => sum + item.getBoundingClientRect().width, 0) +
+          gap * Math.max(0, laidOut.length - 1);
+        if (compact) control.setAttribute(spec.attribute, '');
+        const fits = needed <= row.clientWidth + 0.5;
+        const label = (row.className.split(/\s+/)[0] ?? row.tagName).trim();
+        if (compact && fits) {
+          problems.push(
+            `${spec.control} in .${label} is icon-only with room for its words (${needed.toFixed(1)}px of ${row.clientWidth}px)`,
+          );
+        }
+        if (!compact && !fits) {
+          problems.push(
+            `${spec.control} in .${label} keeps its words while the row cannot hold them (${needed.toFixed(1)}px of ${row.clientWidth}px)`,
+          );
+        }
+      }
+    }
+    return problems;
+  }, rows);
 }
 
 /** How far apart the two gaps around a notice's progress line may be, in pixels (owner decision of 2026-11-13). */

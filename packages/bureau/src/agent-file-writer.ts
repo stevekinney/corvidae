@@ -246,6 +246,9 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         name: Object.hasOwn(raw, 'name') ? definition.name : undefined,
         tools: definition.tools.map(unversioned),
         approvals,
+        // COR-2234: the copy records the agent it came from and the `hash` of its file now, which
+        // replaces any `from` the source's own file holds.
+        from: { agent: id, version: entry.hash },
       }) ?? entry.bytes;
     return { name, bytes };
   }

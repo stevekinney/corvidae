@@ -215,6 +215,7 @@ describe('an agent’s facts', () => {
     references: null,
     guardrails: null,
     approvals: null,
+    from: null,
     instructions: '',
   });
 

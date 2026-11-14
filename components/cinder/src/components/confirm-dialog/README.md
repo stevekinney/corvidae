@@ -27,7 +27,7 @@ The key distinction between ConfirmDialog and AlertDialog is _who initiates_ the
 
 ## Choosing something else
 
-- When the dialog body needs rich content (lists, markup, multiple paragraphs) — compose [`Modal`](../modal/README.md) directly instead, since `aria-describedby` collapses to a single continuous string for screen readers.
+- When the dialog body needs rich content beyond a list and a note (a form, several sections, markup around controls) — compose [`Modal`](../modal/README.md) directly instead. A plain list or a short note goes in `options`; see [A list or a note in `options`](#a-list-or-a-note-in-options).
 - When more than two actions are needed — use [`Modal`](../modal/README.md) with a custom `footer` snippet.
 - When the dialog is triggered by a system event or out-of-band condition requiring mandatory acknowledgement — use [`AlertDialog`](../alert-dialog/README.md) instead.
 - Non-blocking notifications — use a toast or inline alert that does not interrupt the flow.
@@ -78,6 +78,28 @@ The key distinction between ConfirmDialog and AlertDialog is _who initiates_ the
 />
 ```
 
+## A list or a note in `options`
+
+Put what each choice does in `options`. A plain `<ul>` as a direct child is drawn as flat rows: no bullets, a hairline between rows, and long words wrap. Each `<li>` is one item, usually a `<strong>` name and one sentence; join them with a full stop or a colon. A `<p>` as a direct child is a note and takes the description's muted, small treatment. Do not wrap the list in a card, callout, or tinted panel: the dialog is already the surface, and the page adds no CSS for the list.
+
+```svelte
+<ConfirmDialog
+  bind:open
+  title="Disable the plugin?"
+  description="These stop working until you enable it again."
+  confirmLabel="Disable"
+  onConfirm={disable}
+>
+  {#snippet options()}
+    <ul>
+      <li><strong>Agents.</strong> Two agents stop running.</li>
+      <li><strong>Tools.</strong> Three tools leave the catalog.</li>
+    </ul>
+    <p>Nothing is deleted.</p>
+  {/snippet}
+</ConfirmDialog>
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -91,7 +113,7 @@ The key distinction between ConfirmDialog and AlertDialog is _who initiates_ the
 | `closeOnConfirm` | `boolean` | no | `true` | Whether the dialog closes itself when the confirm button is pressed. Set `false` when the confirmed work can fail and the page needs the dialog to stay open to show it: the page then closes the dialog with `open = false` once the work succeeds. |
 | `confirmLabel` | `string` | yes | — | Confirm button label. Required — no default. Name the action being confirmed: - Destructive: "Delete", "Discard changes", "Remove from organization". - Non-destructive: "Save", "Continue", "Publish". Never use "OK" or "Confirm" in production — they don't describe the action. |
 | `destructive` | `boolean` | no | — | When true, the confirm button uses variant="danger". The cancel button still receives default focus regardless — color is never the sole destructive signal. |
-| `error` | `string` | no | — | Why the confirmed work failed, in a danger callout between the body and the actions that is announced as it appears: "Nothing was deleted." The dialog stays open, the typed text stays, and the confirm button stays armed under its own label, so pressing it again is the retry. Clear it to hide the callout. |
+| `error` | `string` | no | — | Why the confirmed work failed, in a danger callout in the footer, directly above the actions and outside the scrolling body, so it stays in view on a short phone, announced as it appears: "Nothing was deleted." The dialog stays open, the typed text stays, and the confirm button stays armed under its own label, so pressing it again is the retry. Clear it to hide the callout. |
 | `errorTitle` | `string` | no | — | Bold lead sentence of the failure, such as "Couldn’t delete the agent.", set before `error`. Shown only with `error`. |
 | `open` | `boolean` | yes | — | Controls visibility. Bindable. |
 | `sheetBelow` | `string` \| `false` | no | `"640px"` | Viewport width below which the dialog is a bottom sheet: a grabber, the confirmation first and Cancel under it, both full width at 44px, with Cancel keeping initial focus. A CSS length such as `"640px"`, or `false` for the centred dialog at every width. |

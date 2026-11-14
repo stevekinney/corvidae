@@ -679,7 +679,7 @@
           {
             "action": "expect",
             "role": "button",
-            "name": "Reply in chat instead"
+            "name": "Reply in chat"
           },
           {
             "action": "expect",
@@ -1525,7 +1525,7 @@
       {
         "action": "expect-text",
         "text": "Which ledger should orders_reconciliation_ledger_export_with_a_very_long_generated_identifier_v2 export?",
-        "scope": "[data-chat-question-dock] fieldset",
+        "scope": "[data-chat-question-dock]",
         "exact": true
       },
       {
@@ -2142,7 +2142,7 @@
   {
     "id": 65,
     "slug": "docked-reply-in-chat",
-    "title": "Reply in chat instead gives the composer back.",
+    "title": "Reply in chat gives the composer back.",
     "provenance": "derived",
     "source": "Derived from design row P3; the original definition of this number was lost.",
     "rows": ["P3"],
@@ -2155,7 +2155,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Reply in chat instead"
+        "name": "Reply in chat"
       },
       {
         "action": "expect",
@@ -2725,6 +2725,53 @@
       }
     ],
     "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 81,
+    "slug": "question-four",
+    "title": "Four questions asked together: the second is open and the first is answered; the header reads Question 2 of 4 with previous and next, and the buttons turn off at the ends.",
+    "provenance": "issue-named",
+    "source": "2026-11-13 owner review: with several questions, show how many and where I am, along the header, with forward and back buttons.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "four",
+      "placement": "docked"
+    },
+    "steps": [
+      { "action": "expect-text", "text": "Question 1 of 4" },
+      { "action": "click", "role": "radio", "name": "Staging" },
+      { "action": "click", "role": "button", "name": "Answer" },
+      { "action": "expect-text", "text": "Question 2 of 4" },
+      { "action": "expect-question-steps", "position": 2, "total": 4 },
+      { "action": "expect-question-dock", "choices": 3 }
+    ],
+    "variants": [
+      {
+        "name": "first-answered",
+        "steps": [
+          { "action": "click", "role": "radio", "name": "Staging" },
+          { "action": "click", "role": "button", "name": "Answer" },
+          { "action": "expect-text", "text": "Question 2 of 4" },
+          { "action": "click", "role": "button", "name": "Previous question" },
+          { "action": "expect-text", "text": "Question 1 of 4" },
+          { "action": "expect-question-steps", "position": 1, "total": 4 }
+        ]
+      },
+      {
+        "name": "last",
+        "steps": [
+          { "action": "click", "role": "radio", "name": "Staging" },
+          { "action": "click", "role": "button", "name": "Answer" },
+          { "action": "expect-text", "text": "Question 2 of 4" },
+          { "action": "click", "role": "button", "name": "Next question" },
+          { "action": "click", "role": "button", "name": "Next question" },
+          { "action": "expect-text", "text": "Question 4 of 4" },
+          { "action": "expect-question-steps", "position": 4, "total": 4 }
+        ]
+      }
+    ],
     "focusSweep": false
   }
 ]

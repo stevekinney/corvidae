@@ -14,11 +14,6 @@
     cursor: pointer;
   }
 
-  .cinder-action-row[data-cinder-density='condensed'] {
-    --cinder-action-row-padding-block: var(--cinder-space-2);
-    --cinder-action-row-padding-inline: var(--cinder-space-3);
-  }
-
   @media (hover: hover) {
     .cinder-action-row:hover:not(:disabled) {
       background: var(--cinder-surface-hover);

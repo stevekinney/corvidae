@@ -119,32 +119,40 @@
     />
   {/if}
 
-  <!-- Always mounted, so the region exists before the failure arrives and the failure is announced. -->
-  <div class="cinder-confirm-dialog__failure" role="alert">
-    {#if failure}
-      <Callout variant="danger" semantic="note" class="cinder-confirm-dialog__error">
-        {#if errorTitle}<strong>{errorTitle}</strong>{' '}{/if}{failure}
-      </Callout>
-    {/if}
-  </div>
-
   {#snippet footer()}
-    <Button
-      variant="secondary"
-      class="cinder-confirm-dialog__cancel"
-      autofocus
-      aria-disabled={busy ? 'true' : undefined}
-      onclick={handleCancel}>{cancelLabel}</Button
-    >
-    <Button
-      variant={destructive ? 'danger' : 'primary'}
-      disabled={!typedConfirmationMatches}
-      loading={busy}
-      {...busy ? { loadingStatus: busyLabel ?? confirmLabel } : {}}
-      {...confirmIcon ? { leadingIcon: confirmIcon } : {}}
-      onclick={handleConfirm}
-    >
-      {busy && busyLabel ? busyLabel : confirmLabel}
-    </Button>
+    <div class="cinder-confirm-dialog__footer">
+      <!--
+        Always mounted, so the region exists before the failure arrives and the failure is
+        announced. It sits in the footer, above the actions and outside the scrolling body: on a
+        short phone the body scrolls, and a failure inside it would be a faded strip under the
+        footer with the next step out of view.
+      -->
+      <div class="cinder-confirm-dialog__failure" role="alert">
+        {#if failure}
+          <Callout variant="danger" semantic="note" class="cinder-confirm-dialog__error">
+            {#if errorTitle}<strong>{errorTitle}</strong>{' '}{/if}{failure}
+          </Callout>
+        {/if}
+      </div>
+      <div class="cinder-confirm-dialog__actions">
+        <Button
+          variant="secondary"
+          class="cinder-confirm-dialog__cancel"
+          autofocus
+          aria-disabled={busy ? 'true' : undefined}
+          onclick={handleCancel}>{cancelLabel}</Button
+        >
+        <Button
+          variant={destructive ? 'danger' : 'primary'}
+          disabled={!typedConfirmationMatches}
+          loading={busy}
+          {...busy ? { loadingStatus: busyLabel ?? confirmLabel } : {}}
+          {...confirmIcon ? { leadingIcon: confirmIcon } : {}}
+          onclick={handleConfirm}
+        >
+          {busy && busyLabel ? busyLabel : confirmLabel}
+        </Button>
+      </div>
+    </div>
   {/snippet}
 </Modal>

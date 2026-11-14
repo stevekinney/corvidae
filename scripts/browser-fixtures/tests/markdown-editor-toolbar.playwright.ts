@@ -600,3 +600,50 @@ for (const theme of THEMES) {
     });
   }
 }
+
+test('MarkdownEditor LinkPopover close button is a 32px face with a 44px hit area on a touch screen', async ({
+  componentPage,
+}) => {
+  const page = await componentPage.open({
+    entry: markdownEditorEntry,
+    theme: 'light',
+    viewport: { name: 'mobile', width: 320, height: 800 },
+    fixtureName: 'assertion',
+  });
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+
+  const editorWrapper = page.locator('#example-mount-basic .markdown-editor-wrapper');
+  await editorWrapper.locator('[data-testid="toolbar-link"]').click();
+  const close = page.locator('.link-popover-close');
+  await expect(close).toBeVisible();
+
+  const measured = await close.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const header = element.closest('.link-popover-header')!.getBoundingClientRect();
+    const centerX = rect.x + rect.width / 2;
+    const centerY = rect.y + rect.height / 2;
+    // A tap 21.5 pixels from the center, on each side, still lands on the button.
+    const reached = (
+      [
+        ['left', centerX - 21.5, centerY],
+        ['right', centerX + 21.5, centerY],
+        ['above', centerX, centerY - 21.5],
+        ['below', centerX, centerY + 21.5],
+      ] as const
+    ).filter(([, x, y]) => element.contains(document.elementFromPoint(x, y)));
+    return {
+      width: rect.width,
+      height: rect.height,
+      headerHeight: header.height,
+      reached: reached.map(([side]) => side),
+    };
+  });
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+
+  expect(measured.width).toBeCloseTo(32, 0);
+  expect(measured.height).toBeCloseTo(32, 0);
+  expect(measured.headerHeight).toBeLessThanOrEqual(HEADER_FOOTER_MAX_HEIGHT);
+  expect(measured.reached).toEqual(['left', 'right', 'above', 'below']);
+});

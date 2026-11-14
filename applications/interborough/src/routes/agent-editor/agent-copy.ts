@@ -28,6 +28,8 @@ export function copySeedOf(detail: AgentDetail): DefinitionSeed | null {
       ...definition,
       name: AGENT_EDITOR_COPY.copyName(definition.name),
       a2a: false,
+      // Where the original came from is its own history; the form records none (only Duplicate does).
+      from: null,
       // The documents a `references` list names sit beside the original, in the directory the copy
       // is written to, so the copy finds them. Only a plugin's documents are out of reach, and the
       // Bureau refuses that copy when it is saved.
@@ -57,6 +59,7 @@ export function copySeedOf(detail: AgentDetail): DefinitionSeed | null {
     references: null,
     guardrails: null,
     approvals: null,
+    from: null,
     instructions: codeDefinition.instructions ?? '',
   };
 }

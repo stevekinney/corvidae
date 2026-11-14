@@ -19,7 +19,7 @@ Every script path is relative to the repository root and runs with `bun` from th
 - An explicit owner instruction outranks every process rule and guard, and the coordinator never asks the owner to choose between the two ([decisions](references/decisions.md#owner-instructions-outrank-process-rules)).
 - Credentials are never printed, logged, or written into a note, brief, commit, or issue ([credentials](references/credentials.md)).
 - On Claude Code, turn off the connectors the run does not need at run start and record them in the note, so you can restore them before any stop ([coordination](references/coordination.md#keep-contexts-small)).
-- Team size, the coordinator's context ceiling, and waiting rules are in AGENTS.md "Parallel runs"; a worker that ends a turn to say it is still waiting is a charter defect.
+- Team size, the coordinator's context ceiling, and waiting rules are in AGENTS.md "Parallel runs"; a worker ending a turn to say it is still waiting is a charter defect.
 - One text serves Claude Code and Codex, and where they differ it names each mechanism ([the Codex protocol](references/codex-protocol.md)).
 - Resolve the runtime's tools, roles, models, and effort controls before planning dispatch, and record one fallback decision per unsupported capability.
 - Use one team under the current coordinator, native subagent tools, and no nested delegation.

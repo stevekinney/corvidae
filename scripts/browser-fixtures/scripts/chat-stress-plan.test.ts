@@ -76,7 +76,7 @@ describe('question witnesses', () => {
       {
         action: 'expect-text',
         text: 'Which ledger should orders_reconciliation_ledger_export_with_a_very_long_generated_identifier_v2 export?',
-        scope: '[data-chat-question-dock] fieldset',
+        scope: '[data-chat-question-dock]',
         exact: true,
       },
       {
@@ -97,7 +97,25 @@ describe('question witnesses', () => {
         name: 'Canary',
         scope: '[data-chat-question-dock] fieldset',
       },
+      { action: 'expect-question-dock', choices: 7 },
     ]);
+  });
+
+  it('puts four questions to the dock in case 81: the first answered, the second open, then the ends', () => {
+    const four = caseNumbered(81);
+    expect(four.params).toEqual({ shape: 'four', placement: 'docked' });
+    expect(four.steps).toEqual([
+      { action: 'expect-text', text: 'Question 1 of 4' },
+      { action: 'click', role: 'radio', name: 'Staging' },
+      { action: 'click', role: 'button', name: 'Answer' },
+      { action: 'expect-text', text: 'Question 2 of 4' },
+      { action: 'expect-question-steps', position: 2, total: 4 },
+      { action: 'expect-question-dock', choices: 3 },
+    ]);
+    expect(four.variants.map((variant) => variant.name)).toEqual(['first-answered', 'last']);
+    for (const variant of four.variants) {
+      expect(variant.steps.at(-1)).toMatchObject({ action: 'expect-question-steps', total: 4 });
+    }
   });
 });
 
@@ -506,7 +524,7 @@ describe('countProblems', () => {
   it('names a missing primary image', () => {
     const records = completeRun().filter((entry) => entry.file !== '320-dark-24.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 320 primary images, found 319',
+      'expected 324 primary images, found 323',
     ]);
   });
 
@@ -609,8 +627,8 @@ describe('renderGallery', () => {
 
 describe('selectCases', () => {
   it('keeps every case when nothing is selected', () => {
-    expect(selectCases(cases, undefined)).toHaveLength(80);
-    expect(selectCases(cases, ' ')).toHaveLength(80);
+    expect(selectCases(cases, undefined)).toHaveLength(81);
+    expect(selectCases(cases, ' ')).toHaveLength(81);
   });
 
   it('reads numbers and ranges, in case order', () => {
@@ -619,7 +637,7 @@ describe('selectCases', () => {
 
   it('refuses a malformed part and a number that is not a case', () => {
     expect(() => selectCases(cases, '9,x')).toThrow("'x' is not a case number");
-    expect(() => selectCases(cases, '81')).toThrow('Unknown case numbers: 81.');
+    expect(() => selectCases(cases, '82')).toThrow('Unknown case numbers: 82.');
   });
 
   it('marks a summary that did not draw every case as a partial run in its gallery', () => {

@@ -697,6 +697,21 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/__why ~ \.cinder-approval-card__decision-tools/);
   });
 
+  test('every title fills its lines before it breaks, overriding the heading default of balancing', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    for (const title of [
+      'title',
+      'decision-title',
+      'row-question',
+      'expired-title',
+      'elsewhere-title',
+    ]) {
+      const rule = new RegExp(`\\n  \\.cinder-approval-card__${title} \\{([^}]*)\\}`).exec(css);
+      expect(rule?.[1], `${title} rule`).toMatch(/text-wrap:\s*wrap;/);
+    }
+    expect(css).not.toMatch(/text-wrap:\s*(balance|pretty)/);
+  });
+
   test('the action row sits one --cinder-space-3 under the metadata row in both layouts', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,

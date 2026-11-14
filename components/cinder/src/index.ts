@@ -16,7 +16,6 @@ export type { AccordionContext, AccordionProps } from './components/accordion/in
 export { default as ActionRow } from './components/action-row/index.ts';
 export type {
   ActionRowCurrentValue,
-  ActionRowDensity,
   ActionRowProps,
   ActionRowSelectedState,
 } from './components/action-row/index.ts';

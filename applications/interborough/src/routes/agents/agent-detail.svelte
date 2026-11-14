@@ -75,6 +75,7 @@
   import AgentAccess from './agent-access.svelte';
   import type { ChatCounts } from './agent-chat-filters.ts';
   import AgentChats from './agent-chats.svelte';
+  import AgentDuplicateDialog from './agent-duplicate-dialog.svelte';
   import AgentFacts from './agent-facts.svelte';
   import AgentHooks from './agent-hooks.svelte';
   import AgentInstructions from './agent-instructions.svelte';
@@ -86,6 +87,7 @@
     agentStatusLine,
     allowedToolCount,
     chatUsageByAgent,
+    copiedFromNotice,
     newChatPath,
     tabCountText,
   } from './agent-presentation.ts';
@@ -130,6 +132,9 @@
   const description = $derived(
     listed !== undefined ? listed.description : (definition.data?.description ?? null),
   );
+  // A copy whose source has changed since it was made (COR-2234): the Bureau answers the version the
+  // source is at now beside the one the copy recorded, and the page compares the two and nothing else.
+  const copiedFrom = $derived(copiedFromNotice(definition.data, agents.data, name));
   // The top bar's trail names the agent as a person reads it, once the Bureau has answered.
   usePageLabel(() => ({ path: agentPath(id), label: name }));
 
@@ -251,28 +256,68 @@
 
   const queryClient = useQueryClient();
   let duplicateProblem = $state<string | null>(null);
+  /** The confirmation before a copy that leaves something out, and what it lists. */
+  let confirmOpen = $state(false);
+  let confirmError = $state<string | null>(null);
+  let droppedItems = $state<readonly string[]>([]);
+  let duplicateButton = $state<HTMLElement | null>(null);
+
+  /** What a failed read or write of a copy says, in the words of the fault. */
+  function duplicateFaultWords(error: unknown): string {
+    const fault = agentFaultOf(error);
+    const words = copy.plugin;
+    if (fault.kind === 'identifier-taken') return words.exists(id.slice(id.indexOf(':') + 1));
+    if (fault.kind === 'not-found') return words.notLoaded;
+    if (fault.kind === 'forbidden') return words.forbidden;
+    return words.failed;
+  }
 
   // A plugin's agent cannot be edited here; Duplicate writes a copy into the owner's agents and opens it.
   const duplicate = createMutation(() => ({
     mutationFn: () => duplicateAgent(id),
     onMutate: () => {
       duplicateProblem = null;
+      confirmError = null;
     },
     onSuccess: (result) => {
+      confirmOpen = false;
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
       router.navigate(agentPath(result.id));
     },
     onError: (error) => {
-      const fault = agentFaultOf(error);
-      const words = copy.plugin;
-      if (fault.kind === 'identifier-taken')
-        duplicateProblem = words.exists(id.slice(id.indexOf(':') + 1));
-      else if (fault.kind === 'not-found') duplicateProblem = words.notLoaded;
-      else if (fault.kind === 'forbidden') duplicateProblem = words.forbidden;
-      else duplicateProblem = words.failed;
+      // While the question is open the failure shows in it, with Duplicate armed as the retry.
+      if (confirmOpen) confirmError = duplicateFaultWords(error);
+      else duplicateProblem = duplicateFaultWords(error);
     },
   }));
+
+  // Pressing Duplicate reads the source's definition now, because the Bureau states what a copy
+  // would lose there, before any write. A list with something in it asks first; an empty one (a
+  // plugin's file agent loses nothing) writes at once; a read that fails writes nothing.
+  let reading = $state(false);
+  async function startDuplicate(): Promise<void> {
+    reading = true;
+    duplicateProblem = null;
+    try {
+      const source = await queryClient.fetchQuery({
+        queryKey: queryKeys.agents.definition(id),
+        queryFn: ({ signal }) => getAgentDefinition(id, { signal }),
+        staleTime: 0,
+      });
+      if (source.dropped.length === 0) {
+        duplicate.mutate();
+        return;
+      }
+      droppedItems = [...source.dropped];
+      confirmError = null;
+      confirmOpen = true;
+    } catch (error) {
+      duplicateProblem = duplicateFaultWords(error);
+    } finally {
+      reading = false;
+    }
+  }
 
   const editPath = agentEditPath(id);
   // Duplicate on an agent defined in code opens the form for a new agent filled from it.
@@ -332,8 +377,11 @@
       data-changes
       variant="secondary"
       size="sm"
-      loading={duplicate.isPending}
-      onclick={() => duplicate.mutate()}>{copy.plugin.duplicate}</Button
+      loading={reading || (duplicate.isPending && !confirmOpen)}
+      onclick={(event) => {
+        duplicateButton = event.currentTarget;
+        void startDuplicate();
+      }}>{copy.plugin.duplicate}</Button
     >
   {:else if listed?.kind === 'file'}
     <Button
@@ -409,6 +457,19 @@
         </Alert>
       {/if}
 
+      {#if plugin !== null}
+        <AgentDuplicateDialog
+          bind:open={confirmOpen}
+          {name}
+          dropped={droppedItems}
+          busy={duplicate.isPending}
+          error={confirmError}
+          triggerRef={duplicateButton}
+          onConfirm={() => duplicate.mutate()}
+          onCancel={() => undefined}
+        />
+      {/if}
+
       <div class="ib-agent__summary">
         {#if description}
           <p class="ib-agent__description">{description}</p>
@@ -420,6 +481,22 @@
             {:else}
               <StatusDot size="sm" status={status.tone} label={status.text} />
             {/if}
+          </p>
+        {/if}
+        {#if copiedFrom !== undefined}
+          <!-- Where a copy came from, once the source has changed: one plain line on every tab,
+               not a banner, because it asks for nothing. -->
+          <p class="ib-agent__reason" data-testid="agent-copied-from">
+            {copy.header.copiedFrom.lead}
+            <a
+              href={router.href(agentPath(copiedFrom.agent))}
+              onclick={(event) => goTo(event, agentPath(copiedFrom.agent))}>{copiedFrom.name}</a
+            >{copiedFrom.versions === null
+              ? copy.header.copiedFrom.changed
+              : copy.header.copiedFrom.changedFrom(
+                  copiedFrom.versions.copied,
+                  copiedFrom.versions.now,
+                )}
           </p>
         {/if}
         {#if needsProvider}

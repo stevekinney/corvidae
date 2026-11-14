@@ -64,13 +64,12 @@ Official documentation, fetched as Markdown on 2026-11-12 by appending `.md` to 
 | [Test a mod](https://code.claude.com/docs/en/plugins/mods/test) | The test kit, stubs, mocks, surfaces, policy-mod tests |
 | [Troubleshoot a mod](https://code.claude.com/docs/en/plugins/mods/troubleshoot) | Refusal messages, the debug log, worker crashes |
 | [Manage mods for your organization](https://code.claude.com/docs/en/plugins/mods/admin) | The built-in guard, managed settings, review, policy mods |
-| [Plugin loading reference](https://code.claude.com/docs/en/plugins/loading) | Scopes, in-place and copied plugins, caches, dependency installs |
-| [Plugin manifest reference](https://code.claude.com/docs/en/plugins-reference) | Manifest fields, reserved names, `userConfig`, path variables |
-| [Create a marketplace](https://code.claude.com/docs/en/plugin-marketplaces) | Marketplace files, entry rules, sources |
-| [Hooks reference](https://code.claude.com/docs/en/hooks) | Settings hooks, `CLAUDE_PROJECT_DIR`, `CLAUDE_ENV_FILE` |
-| [Skills](https://code.claude.com/docs/en/skills) | Skill format, frontmatter, description limits |
-| [Agent SDK TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript) | `listSessions`, `getSessionInfo`, `getSessionMessages` |
-| [Agent SDK sessions](https://code.claude.com/docs/en/agent-sdk/sessions) | Session discovery and resume guidance |
+| [Plugin loading reference](https://code.claude.com/docs/en/plugins/loading) | Scopes, in-place and copied plugins, caches, dependency installs, version computation |
+| [Plugin manifest reference](https://code.claude.com/docs/en/plugins/manifest-reference) | Manifest fields, reserved names, `userConfig`, path variables, how keys combine |
+| [Create a marketplace](https://code.claude.com/docs/en/plugins/create-marketplace) | Marketplace files, entry rules, sources |
+| [Hooks reference](https://code.claude.com/docs/en/hooks) and [hooks guide](https://code.claude.com/docs/en/hooks-guide) | Settings hook types, events, matchers, exit codes, JSON output, timeouts, policy |
+
+Fetched on 2026-11-13 for the plugin references ([plugins and components](plugins-and-components.md), [plugin hooks and mod hooks](plugin-hooks-and-mod-hooks.md), [publishing and marketplaces](publishing-and-marketplaces.md)): [plugins overview](https://code.claude.com/docs/en/plugins/overview), [add components](https://code.claude.com/docs/en/plugins/components), [manifest reference](https://code.claude.com/docs/en/plugins/manifest-reference), [install](https://code.claude.com/docs/en/plugins/install), [dependencies](https://code.claude.com/docs/en/plugins/dependencies), [code intelligence](https://code.claude.com/docs/en/plugins/code-intelligence), [security](https://code.claude.com/docs/en/plugins/security), [organization](https://code.claude.com/docs/en/plugins/org), [commands reference](https://code.claude.com/docs/en/plugins/cli-reference), [publish](https://code.claude.com/docs/en/plugins/publish), [host a marketplace](https://code.claude.com/docs/en/plugins/host-marketplace), [marketplace reference](https://code.claude.com/docs/en/plugins/marketplace-reference), [relevance](https://code.claude.com/docs/en/plugins/relevance), [Anthropic's marketplaces](https://code.claude.com/docs/en/plugins/anthropic-marketplaces), [CLI hints](https://code.claude.com/docs/en/plugins/cli-hints), [measure](https://code.claude.com/docs/en/plugins/measure), [evals](https://code.claude.com/docs/en/plugin-evals), [troubleshooting](https://code.claude.com/docs/en/plugins/troubleshooting), [channels](https://code.claude.com/docs/en/channels), and [hooks](https://code.claude.com/docs/en/hooks) again. The claude.com pages on directory review were not fetched. | [Skills](https://code.claude.com/docs/en/skills) | Skill format, frontmatter, description limits | | [Agent SDK TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript) | `listSessions`, `getSessionInfo`, `getSessionMessages` | | [Agent SDK sessions](https://code.claude.com/docs/en/agent-sdk/sessions) | Session discovery and resume guidance |
 
 First-party source, read at these commits:
 
@@ -115,6 +114,10 @@ The earliest version a feature needs, from the documentation unless marked obser
 | `CLAUDE_CODE_PLUGIN_DIR_WATCH` | The reference table says environment | The bundled reference says it is set the same way as `CLAUDE_CODE_PLUGIN_DIRS`, which also reads `env` in `~/.claude/settings.json` | Set it in the environment, and confirm in the debug log |
 | `Link` on remote surfaces | The interface page allows `http://localhost` in the Desktop app and VS Code | `LinkProps` says a remote surface draws anything but `https:` as plain text | Use `https:` links, or test the surface |
 | Built-in mods | The overview table lists six | 2.1.321 also loaded `cc-plugin-easel` and `cc-plugin-privacy` (observed in the debug log) | Expect built-ins beyond the documented list in the chain |
+| Settings hook types | The mods pages name command, HTTP, prompt, and agent hooks | The [hooks reference](https://code.claude.com/docs/en/hooks) lists `mcp_tool` as a fifth type | Follow the hooks reference |
+| `claude plugin` subcommands | The [commands reference](https://code.claude.com/docs/en/plugins/cli-reference) (2026-11-13) | 2.1.316 and 2.1.321 also accept `install --registry` and `validate --profile directory`, and 2.1.321 adds `restore-set-aside` (observed in `--help`) | Check `--help` on the target build before scripting one |
+| Missing `version` | The publish page offers omitting `version` as a valid scheme | It also says `claude plugin validate --strict` fails on a missing `version` | Choose one: bump versions under `--strict`, or omit them and validate without `--strict` |
+| Monitors file | The manifest reference says `experimental.monitors` replaces `monitors/monitors.json` | The same page calls that file the default | Read it as the default only when the key is unset |
 
 ## Recheck before generating code for another build
 

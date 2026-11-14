@@ -73,6 +73,9 @@
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-tight);
     overflow-wrap: anywhere;
+    /* A heading balances its lines by default, which breaks a title early with room left; the
+     * approval card's titles fill each line before they break. */
+    text-wrap: wrap;
   }
 
   .cinder-approval-card__title:dir(rtl) {
@@ -534,6 +537,7 @@
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
+    text-wrap: wrap;
   }
 
   /* Decided on another page: a glyph in the decision's tone stands where the risk shield stood,
@@ -1006,6 +1010,7 @@
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
     text-align: start;
+    text-wrap: wrap;
   }
 
   /* The title takes the available width at its natural size, so when the badge would force the
@@ -1523,6 +1528,7 @@
     font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
+    text-wrap: wrap;
   }
 
   .cinder-approval-card__elsewhere-body {

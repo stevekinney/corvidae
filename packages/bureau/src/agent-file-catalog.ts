@@ -79,7 +79,7 @@ import {
   type ToolSecretResolver,
 } from 'armorer';
 
-import type { AnyRunnableAgent } from './agent-catalog';
+import type { AnyRunnableAgent, DroppedCodeAgentBehavior } from './agent-catalog';
 import { createAgentSkills } from './agent-skills';
 import {
   AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT,
@@ -181,6 +181,17 @@ export interface AgentFileDetail extends AgentListing {
    * {@link AgentFileDetail.definition} is the parsed file.
    */
   readonly codeDefinition?: AgentCodeDefinition | undefined;
+  /**
+   * COR-2232 — what a copy of this code agent would lose, which `duplicate` reports after the
+   * write; absent for a file agent and a built-in agent, which lose nothing.
+   */
+  readonly dropped?: readonly DroppedCodeAgentBehavior[] | undefined;
+  /**
+   * COR-2234 — for a copy, the version of the agent it was made from as that agent is now (a code
+   * agent's version, a file agent's `hash`), or `null` when that agent is not loaded. Absent when
+   * the file records no source.
+   */
+  readonly fromNow?: string | null | undefined;
   /** The file's exact text, or `null` when its bytes could not be read as UTF-8. */
   readonly text: string | null;
   /** What the frontmatter and body parse to, or `null` when the file does not parse. */

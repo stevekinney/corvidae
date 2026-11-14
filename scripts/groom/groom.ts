@@ -15,10 +15,21 @@
 // rewrite can fix each one (`rewrite`) or the owner has to answer (`owner`), which the `groom` skill
 // acts on.
 //
+// The comment ends with a record of what Jev read: a hash of the text it judged and each readiness
+// probability. While the text is unchanged a later run reuses those readings instead of asking
+// again, so a reading near a threshold cannot flip between runs on the same words. A changed title
+// or description asks again.
+//
 // Usage (LINEAR_API_KEY and TYPESAFE_API_KEY resolve through credentials.ts; neither is printed):
 //   bun scripts/groom/groom.ts [--issue COR-n ...] [--limit n] [--dry-run] [--json]
+//   bun scripts/groom/groom.ts --clear-open-choice COR-n --reason <text> [--dry-run] [--json]
 //
 // `--dry-run` asks Jev and reports what it would write, writing nothing.
+//
+// `--clear-open-choice` is the groom skill's verdict on an unsettled open-choice reading: having
+// read the issue and found no choice left for the owner, it records the reason, and the reading
+// passes for this exact text. Only a reading inside the unsettled band can be cleared; a clear yes
+// goes to the owner, and any change to the text asks Jev again and drops the verdict.
 //
 // Exit codes: 0 every issue is Ready, 1 an issue stays in Backlog, 2 invalid usage, 3 Linear or Jev
 // unavailable (a failed Jev call is an error, never an answer).
@@ -72,6 +83,8 @@ import {
 } from './groom-questions.ts';
 
 const TEAM = 'COR';
+/** The readiness question a groom verdict may clear. */
+const OPEN_CHOICE = 'no-open-choice';
 const BACKLOG = 'Backlog';
 const READY = 'Ready';
 const PAGE_LIMIT = 100;
@@ -93,6 +106,8 @@ export interface GroomDependencies extends LinearDependencies {
   repository?: () => RepositoryView;
   /** The workspaces a `package:` label can name; the default reads the working tree. */
   workspaces?: () => Workspace[];
+  /** Today's date as `YYYY-MM-DD`, for an open-choice verdict; the default is the UTC date. */
+  today?: () => string;
 }
 
 /** A workspace a `package:` label names: `package:<name>` for the folder `<root>/<name>`. */
@@ -140,6 +155,26 @@ export interface GroomReport {
   writes: string[];
   /** Each question Jev answered: the probability of yes for a yes/no question, the value otherwise. */
   answers: Record<string, number | string | boolean>;
+  /** Readiness questions answered from the last run's record because the text is unchanged. */
+  reused: string[];
+  /** The groom verdict that passes an unsettled open-choice reading for this text, when one holds. */
+  cleared?: OpenChoiceVerdict;
+}
+
+/** The groom skill's verdict that an unsettled open-choice reading leaves nothing for the owner. */
+export interface OpenChoiceVerdict {
+  date: string;
+  reason: string;
+}
+
+/**
+ * What a run read, kept at the end of its comment: a hash of the text Jev judged, each readiness
+ * probability of yes, and any open-choice verdict.
+ */
+export interface GroomRecord {
+  text: string;
+  readings: Map<string, number>;
+  cleared?: OpenChoiceVerdict;
 }
 
 // Workspaces --------------------------------------------------------------------------------------
@@ -177,8 +212,31 @@ function candidatePackages(issue: GroomIssue, workspaces: Workspace[]): Workspac
   return workspaces.filter((workspace) => !held.has(`${PACKAGE_PREFIX}${workspace.name}`));
 }
 
-/** One batch for one issue: priority and Work Type only when missing, every candidate package, every readiness question. */
-export function buildBatch(issue: GroomIssue, workspaces: Workspace[]): DecisionBatch {
+/** A short hash of the text Jev reads, so a later run can tell whether that text changed. */
+export function textHash(issue: Pick<GroomIssue, 'title' | 'description'>): string {
+  return new Bun.CryptoHasher('sha256').update(issueState(issue)).digest('hex').slice(0, 16);
+}
+
+/** The readiness questions that apply: each one whose section exists, or that judges no section. */
+export function applicableReadiness(issue: Pick<GroomIssue, 'description'>): string[] {
+  const sections = parseSections(issue.description ?? '');
+  return readinessQuestions
+    .filter(
+      (readiness) =>
+        readiness.section === undefined || (sections.get(readiness.section) ?? '') !== '',
+    )
+    .map((readiness) => readiness.name);
+}
+
+/**
+ * One batch for one issue: priority and Work Type only when missing, every candidate package, and
+ * every applicable readiness question that `reused` does not already answer.
+ */
+export function buildBatch(
+  issue: GroomIssue,
+  workspaces: Workspace[],
+  reused: ReadonlyMap<string, number> = new Map(),
+): DecisionBatch {
   const questions = new Map<string, DecisionQuestion>();
   if (issue.priority === 0) questions.set('priority', priorityQuestion);
   if (!labelNames(issue).some((name) => name.startsWith(WORK_TYPE_PREFIX)))
@@ -188,9 +246,9 @@ export function buildBatch(issue: GroomIssue, workspaces: Workspace[]): Decision
       `${PACKAGE_PREFIX}${workspace.name}`,
       packageQuestion(workspace.path, workspace.about),
     );
-  const sections = parseSections(issue.description ?? '');
+  const applicable = new Set(applicableReadiness(issue));
   for (const readiness of readinessQuestions)
-    if (readiness.section === undefined || (sections.get(readiness.section) ?? '') !== '')
+    if (applicable.has(readiness.name) && !reused.has(readiness.name))
       questions.set(readiness.name, readiness.question);
   return { context: issueState(issue), questions };
 }
@@ -242,11 +300,17 @@ export interface Plan {
   findings: GroomFinding[];
 }
 
-/** Turn Jev's answers and the mechanical checks into what to write and what fails. */
+/**
+ * Turn Jev's answers and the mechanical checks into what to write and what fails. `readiness` holds
+ * each applicable readiness question's probability of yes, asked this run or reused from the last
+ * one; `cleared` passes an unsettled open-choice reading, never a clear one.
+ */
 export function plan(
   issue: GroomIssue,
   result: DecisionBatchResult,
   mechanical: GroomFinding[],
+  readiness: ReadonlyMap<string, number | undefined>,
+  cleared = false,
 ): Plan {
   const decided: Plan = { labels: [], labelsUnsettled: [], findings: [...mechanical] };
   if (result.decisions.has('priority')) {
@@ -276,22 +340,32 @@ export function plan(
       message: `The issue carries ${workTypes.length} Work Type labels (${workTypes.join(', ')}); it needs exactly one.`,
       need: 'rewrite',
     });
-  for (const readiness of readinessQuestions) {
+  for (const question of readinessQuestions) {
     // A question not asked judged a missing section, which a mechanical finding already fails.
-    if (!result.decisions.has(readiness.name)) continue;
-    const reading = read(probabilityOfYes(answer(result, readiness.name)));
-    if (reading === readiness.passWhen) continue;
+    if (!readiness.has(question.name)) continue;
+    const reading = read(readiness.get(question.name));
+    if (reading === question.passWhen) continue;
+    if (question.name === OPEN_CHOICE && reading === 'unsettled' && cleared) continue;
     decided.findings.push({
-      code: reading === 'unsettled' ? `${readiness.name}-unsettled` : readiness.name,
+      code: reading === 'unsettled' ? `${question.name}-unsettled` : question.name,
       message:
         reading === 'unsettled'
-          ? `${readiness.failure} (Jev could not settle this from the issue as written.)`
-          : readiness.failure,
+          ? `${question.failure} (Jev could not settle this from the issue as written.)`
+          : question.failure,
       // An unmade choice is the owner's to make; every other judgment failure a rewrite can fix.
-      need: readiness.name === 'no-open-choice' ? 'owner' : 'rewrite',
+      need: question.name === OPEN_CHOICE ? 'owner' : 'rewrite',
     });
   }
   return decided;
+}
+
+/** Each readiness probability of yes Jev gave this run. */
+function readinessAnswers(result: DecisionBatchResult): Map<string, number | undefined> {
+  const readings = new Map<string, number | undefined>();
+  for (const question of readinessQuestions)
+    if (result.decisions.has(question.name))
+      readings.set(question.name, probabilityOfYes(answer(result, question.name)));
+  return readings;
 }
 
 /** Mechanical findings: the triage checks that block, and every open blocker. */
@@ -331,27 +405,93 @@ export function mechanicalFindings(
 
 // The comment -------------------------------------------------------------------------------------
 
-export function groomComment(report: Pick<GroomReport, 'ready' | 'findings'>): string {
-  if (report.ready)
-    return `${commentMarker} Ready. Every Definition of Ready predicate passed (references/linear-policy.md).`;
+const recordPrefix = 'Groom record:';
+const verdictPattern = /^No owner choice \(groom review, (\d{4}-\d{2}-\d{2})\): (.+)$/m;
+
+/** The record line and any verdict line that end the comment. */
+function recordLines(record: GroomRecord): string[] {
+  const readings = [...record.readings].map(([name, value]) => `${name}=${value.toFixed(2)}`);
+  const tokens = [
+    `text=${record.text}`,
+    ...readings,
+    ...(record.cleared ? ['cleared=no-open-choice'] : []),
+  ];
   return [
-    `${commentMarker} not Ready. These Definition of Ready predicates fail (references/linear-policy.md):`,
     '',
-    ...report.findings.map(
-      (finding) =>
-        `- ${finding.message}${finding.need === 'owner' ? ' (needs an answer from the owner)' : ''}`,
-    ),
-  ].join('\n');
+    ...(record.cleared
+      ? [`No owner choice (groom review, ${record.cleared.date}): ${record.cleared.reason}`]
+      : []),
+    `${recordPrefix} \`${tokens.join(' ')}\``,
+  ];
+}
+
+/** The record a comment ends with, or nothing when it has none this groomer can read. */
+export function parseRecord(body: string): GroomRecord | undefined {
+  const line = body.split('\n').find((candidate) => candidate.startsWith(recordPrefix));
+  const span = line === undefined ? undefined : /`([^`]*)`/.exec(line)?.[1];
+  if (span === undefined) return undefined;
+  const known = new Set(readinessQuestions.map((question) => question.name));
+  const readings = new Map<string, number>();
+  let text: string | undefined;
+  let cleared = false;
+  for (const token of span.split(/\s+/)) {
+    const [name = '', value = ''] = token.split('=');
+    if (name === 'text' && /^[0-9a-f]{16}$/.test(value)) text = value;
+    else if (name === 'cleared') cleared = value === OPEN_CHOICE;
+    else if (known.has(name) && /^(0(\.\d+)?|1(\.0+)?)$/.test(value))
+      readings.set(name, Number(value));
+  }
+  if (text === undefined) return undefined;
+  const verdict = verdictPattern.exec(body);
+  return {
+    text,
+    readings,
+    ...(cleared && verdict?.[1] !== undefined && verdict[2] !== undefined
+      ? { cleared: { date: verdict[1], reason: verdict[2].trim() } }
+      : {}),
+  };
+}
+
+export function groomComment(
+  report: Pick<GroomReport, 'ready' | 'findings'>,
+  record?: GroomRecord,
+): string {
+  const summary = report.ready
+    ? [
+        `${commentMarker} Ready. Every Definition of Ready predicate passed (references/linear-policy.md).`,
+      ]
+    : [
+        `${commentMarker} not Ready. These Definition of Ready predicates fail (references/linear-policy.md):`,
+        '',
+        ...report.findings.map(
+          (finding) =>
+            `- ${finding.message}${finding.need === 'owner' ? ' (needs an answer from the owner)' : ''}`,
+        ),
+      ];
+  return [...summary, ...(record === undefined ? [] : recordLines(record))].join('\n');
+}
+
+interface OwnComment {
+  id: string;
+  body: string;
+}
+
+/** The groomer's own comment on the issue, the last one that starts with its marker. */
+async function ownComment(
+  client: LinearClient,
+  identifier: string,
+): Promise<OwnComment | undefined> {
+  const comments = await fetchComments(client, identifier);
+  return comments.findLast((comment) => comment.body.startsWith(commentMarker));
 }
 
 /** Replace this groomer's comment on the issue, or post one when there is none it can edit. */
 async function upsertComment(
   client: LinearClient,
   identifier: string,
+  own: OwnComment | undefined,
   body: string,
 ): Promise<Outcome> {
-  const comments = await fetchComments(client, identifier);
-  const own = comments.findLast((comment) => comment.body.startsWith(commentMarker));
   if (own !== undefined) {
     if (own.body.trim() === body.trim())
       return { ok: true, summary: 'unchanged', data: { unchanged: true } };
@@ -415,30 +555,84 @@ async function write(
   if (!outcome.ok) throw new LinearError(outcome.summary);
 }
 
-export async function groomIssue(context: Context, issue: GroomIssue): Promise<GroomReport> {
-  const batch = buildBatch(issue, context.workspaces);
-  let result: DecisionBatchResult;
+async function ask(context: Context, issue: GroomIssue, batch: DecisionBatch) {
+  // Nothing left to ask (every readiness reading reused, priority and labels set): no call.
+  if (batch.questions.size === 0) return { decisions: new Map() } satisfies DecisionBatchResult;
   try {
-    result = await context.decide(batch);
+    return await context.decide(batch);
   } catch (error) {
     if (error instanceof UsageError) throw error;
     throw new JevError(
       `Jev failed on ${issue.identifier}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+/**
+ * Groom one issue. `verdict` is the groom skill's `--clear-open-choice` verdict; it is refused
+ * unless the open-choice reading for the current text is unsettled.
+ */
+export async function groomIssue(
+  context: Context,
+  issue: GroomIssue,
+  verdict?: OpenChoiceVerdict,
+): Promise<GroomReport> {
+  const own = await ownComment(context.client, issue.identifier);
+  const text = textHash(issue);
+  const last = own === undefined ? undefined : parseRecord(own.body);
+  // A record of other words is stale: the text changed, so every judgment is asked again.
+  const prior = last?.text === text ? last : undefined;
+  const applicable = applicableReadiness(issue);
+  const reused = new Map(
+    applicable.flatMap((name) => {
+      const value = prior?.readings.get(name);
+      return value === undefined ? [] : [[name, value] as const];
+    }),
+  );
+  const result = await ask(context, issue, buildBatch(issue, context.workspaces, reused));
+  const readiness = new Map<string, number | undefined>([...reused, ...readinessAnswers(result)]);
+  if (verdict !== undefined) {
+    const value = readiness.get(OPEN_CHOICE);
+    if (value === undefined || read(value) !== 'unsettled')
+      throw new UsageError(
+        `${issue.identifier}: the open-choice reading is ${value === undefined ? 'missing' : value.toFixed(2)}; only a reading between ${noThreshold} and ${yesThreshold} can be cleared, and a clear yes goes to the owner.`,
+      );
+  }
+  const cleared = verdict ?? prior?.cleared;
   const blockers = await openBlockers(context.client, issue.identifier);
-  const decided = plan(issue, result, mechanicalFindings(issue, blockers, context.repository));
+  const decided = plan(
+    issue,
+    result,
+    mechanicalFindings(issue, blockers, context.repository),
+    readiness,
+    cleared !== undefined,
+  );
   const ready = decided.findings.length === 0;
+  const answers = answersOf(result);
+  for (const [name, value] of reused) answers[name] = value;
+  // A verdict is kept only while the reading it cleared is still unsettled for these words.
+  const holds = cleared !== undefined && read(readiness.get(OPEN_CHOICE)) === 'unsettled';
   const report: GroomReport = {
     identifier: issue.identifier,
     title: issue.title,
     ...(decided.priority === undefined ? {} : { priority: decided.priority }),
     labelsAdded: decided.labels,
     labelsUnsettled: decided.labelsUnsettled,
-    answers: answersOf(result),
+    answers,
+    reused: [...reused.keys()],
+    ...(holds ? { cleared } : {}),
     ready,
     findings: decided.findings,
     writes: [],
+  };
+  const record: GroomRecord = {
+    text,
+    readings: new Map(
+      [...readiness].flatMap(([name, value]) =>
+        value === undefined ? [] : [[name, Math.round(value * 100) / 100] as const],
+      ),
+    ),
+    ...(holds ? { cleared } : {}),
   };
   const { priority } = decided;
   if (priority !== undefined)
@@ -450,7 +644,7 @@ export async function groomIssue(context: Context, issue: GroomIssue): Promise<G
       addLabels(context.client, issue.identifier, decided.labels),
     );
   await write(context, report.writes, ready ? 'comment Ready' : 'comment not Ready', () =>
-    upsertComment(context.client, issue.identifier, groomComment(report)),
+    upsertComment(context.client, issue.identifier, own, groomComment(report, record)),
   );
   // Only a Backlog issue is promoted: a named issue already in progress keeps its state.
   if (ready && issue.state.name === BACKLOG)
@@ -467,29 +661,47 @@ interface Options {
   limit: number;
   dryRun: boolean;
   json: boolean;
+  /** `--clear-open-choice`: the one issue named, with the reason the groom skill found. */
+  clear?: { identifier: string; reason: string };
+}
+
+function identifierOf(flag: string, value: string): string {
+  if (!/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(value))
+    throw new UsageError(`${flag} needs an identifier such as COR-12, not "${value}".`);
+  return value.toUpperCase();
 }
 
 function parseArguments(argv: string[]): Options {
   const parsed = parseOptions(argv, {
-    values: ['limit'],
+    values: ['limit', 'clear-open-choice', 'reason'],
     repeated: ['issue'],
     flags: ['dry-run', 'json'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
-  const identifiers = (parsed.repeated['issue'] ?? []).map((value) => {
-    if (!/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(value))
-      throw new UsageError(`--issue needs an identifier such as COR-12, not "${value}".`);
-    return value.toUpperCase();
-  });
+  const identifiers = (parsed.repeated['issue'] ?? []).map((value) =>
+    identifierOf('--issue', value),
+  );
   const limit = parsed.values['limit'];
   if (limit !== undefined && !/^[1-9]\d*$/.test(limit))
     throw new UsageError('--limit needs a positive integer.');
+  const clearing = parsed.values['clear-open-choice'];
+  const reason = parsed.values['reason']?.replace(/\s+/g, ' ').trim();
+  if ((clearing === undefined) !== (reason === undefined))
+    throw new UsageError('--clear-open-choice and --reason go together.');
+  if (reason === '') throw new UsageError('--reason needs the reason no owner choice remains.');
+  if (clearing !== undefined && (identifiers.length > 0 || limit !== undefined))
+    throw new UsageError(
+      '--clear-open-choice names its one issue; it takes no --issue or --limit.',
+    );
   return {
     identifiers,
     limit: limit === undefined ? Number.POSITIVE_INFINITY : Number(limit),
     dryRun: parsed.flags.has('dry-run'),
     json: parsed.flags.has('json'),
+    ...(clearing === undefined || reason === undefined
+      ? {}
+      : { clear: { identifier: identifierOf('--clear-open-choice', clearing), reason } }),
   };
 }
 
@@ -550,10 +762,18 @@ export async function run(
       workspaces: (dependencies.workspaces ?? loadWorkspaces)(),
       dryRun: options.dryRun,
     };
+    const named = options.clear === undefined ? options.identifiers : [options.clear.identifier];
     const issues =
-      options.identifiers.length > 0
-        ? await Promise.all(options.identifiers.map((id) => fetchGroomIssue(client, id)))
+      named.length > 0
+        ? await Promise.all(named.map((id) => fetchGroomIssue(client, id)))
         : await listBacklog(client, options.limit);
+    const verdict =
+      options.clear === undefined
+        ? undefined
+        : {
+            date: (dependencies.today ?? (() => new Date().toISOString().slice(0, 10)))(),
+            reason: options.clear.reason,
+          };
     const first = issues[0];
     if (first !== undefined) {
       // Offer only the package labels Linear has, so every label Jev picks can be applied.
@@ -563,7 +783,7 @@ export async function run(
         held.has(`${PACKAGE_PREFIX}${workspace.name}`.toLowerCase()),
       );
     }
-    for (const issue of issues) reports.push(await groomIssue(context, issue));
+    for (const issue of issues) reports.push(await groomIssue(context, issue, verdict));
   } catch (error) {
     if (error instanceof LinearError) return failure(`Linear is unavailable: ${error.message}`);
     if (error instanceof JevError) return failure(error.message);

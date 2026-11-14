@@ -4,9 +4,9 @@ The Cinder Chat board (COR-2289) is proved against the real `@lostgradient/chat`
 
 ## The fixture
 
-`scripts/browser-fixtures/src/fixtures/chat-stress.svelte` is registered in `src/app-fixture-declarations.ts` as `chat-stress`. It is served by case: `/page/chat-stress?case=NN`, where `NN` is 1 to 80. The Chromium component sweep leaves it out, because `capture-chat-stress.ts` owns its images.
+`scripts/browser-fixtures/src/fixtures/chat-stress.svelte` is registered in `src/app-fixture-declarations.ts` as `chat-stress`. It is served by case: `/page/chat-stress?case=NN`, where `NN` is 1 to 81. The Chromium component sweep leaves it out, because `capture-chat-stress.ts` owns its images.
 
-- `chat-stress.json` holds the 80 cases: the scenario each builds, its parameters, the design rows it shows, the real interactions the capture performs, and its variants.
+- `chat-stress.json` holds the 81 cases: the scenario each builds, its parameters, the design rows it shows, the real interactions the capture performs, and its variants.
 - `chat-stress/stress-scenarios.ts` turns a scenario into the conversation and plain props for one real `Chat`. A scenario seeds only what a person finds on arrival. Typing, Send now instead, choosing an option and answering are steps the capture presses through the page's controls, so no seeded receipt or preselected answer stands in for an interaction.
 - A host operation a person cannot perform (a dropped connection, a token arriving, a source taken away) is a `hook` step that calls `window.corvidaeChatStress`.
 - `chat-stress.rows.txt` is the rows file of the design-review skill, one `row-id | board | text` line per row. Every row is shown by at least one case, and a case that cannot show its row says so in its `deferred` field.
