@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
 
-import { createModelCatalog } from '../providers/model-catalog';
+import { createFixtureCatalog } from '../testing/model-catalog.test-support.ts';
 import {
   createCatalogMediaCostEstimator,
   MEDIA_TOKENS_PER_KIBIBYTE,
@@ -9,10 +9,10 @@ import {
   sourceByteLength,
 } from './media-cost';
 
-const catalog = createModelCatalog({ now: () => '2026-10-17T00:00:00.000Z' });
-const anthropic = catalog.descriptors.find((row) => row.provider === 'anthropic')!;
-const openai = catalog.descriptors.find((row) => row.provider === 'openai')!;
-const gemini = catalog.descriptors.find((row) => row.provider === 'gemini')!;
+const catalog = createFixtureCatalog({ now: () => '2026-10-17T00:00:00.000Z' });
+const anthropic = catalog.descriptors.find((row) => row.provider === 'alpha')!;
+const openai = catalog.descriptors.find((row) => row.provider === 'beta')!;
+const gemini = catalog.descriptors.find((row) => row.provider === 'gamma')!;
 const position = { messageId: 'm-1', partIndex: 0 } as const;
 
 /** `bytes` bytes of base64, so `sourceByteLength` reads them back exactly. */
@@ -86,13 +86,13 @@ describe('createCatalogMediaCostEstimator', () => {
       type: 'image',
       source: { kind: 'provider-file', provider, providerFileId: 'file-1' },
     });
-    expect(createCatalogMediaCostEstimator([anthropic])(handle('openai'), position)).toMatchObject({
+    expect(createCatalogMediaCostEstimator([anthropic])(handle('beta'), position)).toMatchObject({
       outcome: 'unsupported',
       reason: 'source-form-not-accepted',
     });
-    expect(
-      createCatalogMediaCostEstimator([anthropic])(handle('anthropic'), position),
-    ).toMatchObject({ outcome: 'estimated' });
+    expect(createCatalogMediaCostEstimator([anthropic])(handle('alpha'), position)).toMatchObject({
+      outcome: 'estimated',
+    });
   });
 
   it('refuses a MIME family the backend does not list', () => {
@@ -187,10 +187,8 @@ describe('createCatalogMediaCostEstimator', () => {
       mimeType: 'image/png',
       source: { kind: 'remote-url', url: 'https://example.com/a.png' },
     };
-    const gemini20 = catalog.descriptors.find((row) => row.model.startsWith('gemini-2.0'));
-    const gemini25 = catalog.descriptors.find(
-      (row) => row.provider === 'gemini' && !row.model.startsWith('gemini-2.0'),
-    )!;
+    const gemini20 = catalog.descriptors.find((row) => row.model === 'gamma-legacy');
+    const gemini25 = catalog.descriptors.find((row) => row.model === 'gamma-pro')!;
     expect(gemini20).toBeDefined();
 
     expect(createCatalogMediaCostEstimator([gemini20!])(remote, position)).toMatchObject({
@@ -250,7 +248,7 @@ describe('createCatalogMediaCostEstimator', () => {
     const openAIFile: MediaContent = {
       type: 'document',
       mimeType: 'application/pdf',
-      source: { kind: 'provider-file', provider: 'openai', providerFileId: 'file-1' },
+      source: { kind: 'provider-file', provider: 'beta', providerFileId: 'file-1' },
     };
     expect(
       createCatalogMediaCostEstimator([anthropic, openai])(openAIFile, position),

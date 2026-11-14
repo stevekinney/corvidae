@@ -143,3 +143,34 @@ test.describe('StatisticGroup column collapse (computed style)', () => {
     expect(await trackCount(outer)).toBe(3);
   });
 });
+
+test.describe('StatisticGroup plain variant (computed style)', () => {
+  test('draws no frame and sets its value a step smaller than a framed stat (COR-2329)', async ({
+    componentPage,
+  }) => {
+    const page = await openFixture(componentPage, 'statistic-group');
+    const plain = page.getByTestId('plain-group');
+    const frame = await plain.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        border: style.borderTopWidth,
+        padding: style.paddingTop,
+        background: style.backgroundColor,
+      };
+    });
+    expect(frame).toEqual({ border: '0px', padding: '0px', background: 'rgba(0, 0, 0, 0)' });
+    const cell = await plain.locator('.cinder-statistic').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { border: style.borderTopWidth, padding: style.paddingTop };
+    });
+    expect(cell).toEqual({ border: '0px', padding: '0px' });
+    const plainSize = await plain
+      .locator('.cinder-statistic__value')
+      .evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+    const framedSize = await page
+      .locator('.cinder-statistic-group[data-cinder-variant="default"] .cinder-statistic__value')
+      .first()
+      .evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+    expect(plainSize).toBeLessThan(framedSize);
+  });
+});

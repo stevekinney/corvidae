@@ -6,7 +6,6 @@
 import {
   createAgent,
   createContextEpochSealer,
-  createModelCatalog,
   createSelectionGate,
   stopWhen,
 } from '@lostgradient/operative';
@@ -20,6 +19,7 @@ import {
   rpc,
   type RpcBody,
 } from './management-fixtures.test-support.ts';
+import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -51,7 +51,7 @@ type InspectedStep = {
 const stepsOf = (body: RpcBody): InspectedStep[] => body.result!['steps'] as InspectedStep[];
 
 async function open(): Promise<OpenedBureau> {
-  const catalog = createModelCatalog({ now: () => NOW });
+  const catalog = createVendorCatalog({ now: () => NOW });
   const anthropic = catalog.descriptors.find((row) => row.provider === 'anthropic')!;
   const gate = createSelectionGate({
     request: () => ({

@@ -16,13 +16,13 @@ import {
   withBackendDescriptors,
 } from './providers/backend-descriptor-attachment';
 import type { BackendDescriptor } from './providers/model-catalog';
-import { createModelCatalog } from './providers/model-catalog';
+import { createFixtureCatalog } from './testing/model-catalog.test-support.ts';
 import type { GenerateContext, GenerateFunction, GenerateMiddleware } from './types';
 
 const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
-function descriptorFor(provider: 'anthropic' | 'openai' | 'gemini'): BackendDescriptor {
-  const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
+function descriptorFor(provider: 'alpha' | 'beta' | 'gamma'): BackendDescriptor {
+  const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
     (row) => row.provider === provider,
   );
   if (!descriptor)
@@ -127,8 +127,8 @@ describe('createFallbackGenerate — backend-descriptor propagation', () => {
   });
 
   it("attaches the ordered union of every provider's descriptors, deduplicated by (provider, endpoint, model)", () => {
-    const anthropic = descriptorFor('anthropic');
-    const openai = descriptorFor('openai');
+    const anthropic = descriptorFor('alpha');
+    const openai = descriptorFor('beta');
 
     const generate = createFallbackGenerate({
       providers: [generateWith('a', [anthropic]), generateWith('b', [anthropic, openai])],
@@ -142,8 +142,8 @@ describe('createFallbackGenerate — backend-descriptor propagation', () => {
   });
 
   it("reports a routed generation profile, not opaque, for an Agent whose generate is the wrapper's output", () => {
-    const anthropic = descriptorFor('anthropic');
-    const openai = descriptorFor('openai');
+    const anthropic = descriptorFor('alpha');
+    const openai = descriptorFor('beta');
 
     const wrapped = createFallbackGenerate({
       providers: [generateWith('a', [anthropic]), generateWith('b', [openai])],
@@ -169,7 +169,7 @@ describe('composeGenerate keeps the base backend descriptors (COR-716)', () => {
   it('re-attaches the base descriptors when a middleware returns a bare wrapper', () => {
     const base: GenerateFunction = withBackendDescriptors(
       async () => ({ content: '', toolCalls: [] }),
-      [descriptorFor('anthropic')],
+      [descriptorFor('alpha')],
     );
     const bare: GenerateMiddleware = (next) => async (context) => next(context);
 

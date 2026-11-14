@@ -28,6 +28,7 @@ import {
   type RunResultBase,
   type TokenUsage,
 } from '@lostgradient/operative';
+import { anthropicPricingTable } from '@lostgradient/operative-anthropic';
 
 import type { CollaborationRun, ComparisonSubjects, RunComparisonOptions } from '../../comparison';
 import { parseComparisonDataset, toEvaluationDataset } from '../../comparison-datasets';
@@ -45,6 +46,8 @@ import {
 import representativeDataset from './representative-dataset.json';
 
 export const FIXTURE_MODEL = 'claude-sonnet-4-20250514';
+/** Operative holds no price (COR-2151), so the fixture model is priced from the Anthropic table. */
+const FIXTURE_PRICING = { customPricing: anthropicPricingTable };
 export const FIXTURE_CODE_REVISION = '857d7dbf6e2a7c1a9f0b3d4e5f60718293a4b5c6';
 export const FIXTURE_REPETITIONS = 3;
 export const AGENT_USAGE: TokenUsage = { prompt: 400, completion: 100, total: 500 };
@@ -177,7 +180,10 @@ export function scriptedAgent(
         result: async () => {
           const result = await run.result();
           await runtime.advance(TURN_MILLISECONDS);
-          return { ...result, costEstimate: estimateCost(result.usage, FIXTURE_MODEL) };
+          return {
+            ...result,
+            costEstimate: estimateCost(result.usage, FIXTURE_MODEL, FIXTURE_PRICING),
+          };
         },
       };
     },
@@ -202,7 +208,7 @@ export async function collaborate(
       ...final,
       steps: runs.flatMap((run) => run.steps),
       usage,
-      costEstimate: estimateCost(usage, FIXTURE_MODEL),
+      costEstimate: estimateCost(usage, FIXTURE_MODEL, FIXTURE_PRICING),
     },
     trajectory,
   };

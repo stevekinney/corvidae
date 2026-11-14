@@ -1,8 +1,9 @@
-import { createModelCatalog, getModelPricing } from '@lostgradient/operative';
+import { getModelPricing } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { costBudgetOptions } from './file-agent-cost-budget';
 import { isGoalAttemptCostEstimation } from './goal-cost-estimation';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 describe('isGoalAttemptCostEstimation', () => {
   it.each([
@@ -111,7 +112,7 @@ describe('isGoalAttemptCostEstimation absence', () => {
 
 describe('the estimator a budgeted file agent is built with (COR-1914)', () => {
   it('is persistable for every model the catalog prices, long-prompt tiers included', () => {
-    const rows = createModelCatalog().descriptors.filter((row) => row.pricing !== undefined);
+    const rows = createVendorCatalog().descriptors.filter((row) => row.pricing !== undefined);
     expect(rows.length).toBeGreaterThan(0);
     // Prices a long-prompt tier too, so the case the shipped rows may not have is still covered.
     const withLongContext = {
@@ -141,7 +142,7 @@ describe('the estimator a budgeted file agent is built with (COR-1914)', () => {
   });
 
   it('accepts, and keeps through JSON, a budgeted agent’s estimator that lists a model as unpriced (COR-1921)', () => {
-    const [first, second] = createModelCatalog().descriptors;
+    const [first, second] = createVendorCatalog().descriptors;
     if (first === undefined || second === undefined) throw new Error('Expected two catalog rows.');
     const { costEstimation } = costBudgetOptions({ run: 1 }, first, [
       { ...second, model: 'unpriced-model', pricing: undefined },

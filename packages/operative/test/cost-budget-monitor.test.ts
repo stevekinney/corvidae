@@ -6,7 +6,11 @@ import {
   type CostBudgetThresholdEvent,
   createCostBudgetMonitor,
 } from '../src/cost-budget-monitor';
+import { fixturePricing } from '../src/testing/model-catalog.test-support.ts';
 import type { StepResult } from '../src/types';
+
+/** Prices passed the way a host passes its own: Operative holds none. */
+const pricing = { customPricing: fixturePricing };
 
 const makeStepResult = (overrides: Partial<StepResult> = {}): StepResult => ({
   parts: [],
@@ -21,12 +25,12 @@ const makeStepResult = (overrides: Partial<StepResult> = {}): StepResult => ({
 });
 
 describe('createCostBudgetMonitor', () => {
-  // gpt-4o: prompt=$2.50/M, completion=$10/M
-  const model = 'gpt-4o';
+  // beta-standard: prompt=$2.50/M, completion=$10/M
+  const model = 'beta-standard';
 
   it('returns false when budget is not exceeded', () => {
-    const monitor = createCostBudgetMonitor({ budget: 1.0, model });
-    // 1000 prompt tokens + 500 completion tokens at gpt-4o pricing
+    const monitor = createCostBudgetMonitor({ pricing, budget: 1.0, model });
+    // 1000 prompt tokens + 500 completion tokens at beta-standard pricing
     // cost = (1000/1M)*2.5 + (500/1M)*10 = 0.0025 + 0.005 = 0.0075
     const result = monitor.stopCondition(
       makeStepResult({ usage: { prompt: 1000, completion: 500, total: 1500 } }),
@@ -36,7 +40,7 @@ describe('createCostBudgetMonitor', () => {
 
   it('returns true when budget is exceeded', () => {
     // Set a tiny budget of $0.001
-    const monitor = createCostBudgetMonitor({ budget: 0.001, model });
+    const monitor = createCostBudgetMonitor({ pricing, budget: 0.001, model });
     // cost = (1000/1M)*2.5 + (500/1M)*10 = 0.0025 + 0.005 = 0.0075
     const result = monitor.stopCondition(
       makeStepResult({ usage: { prompt: 1000, completion: 500, total: 1500 } }),
@@ -44,9 +48,9 @@ describe('createCostBudgetMonitor', () => {
     expect(result).toBe(true);
   });
 
-  it('prices a current Claude model instead of throwing for missing pricing', () => {
-    // claude-opus-5-5: prompt=$4/M, completion=$20/M; cost = 0.004 + 0.01 = 0.014
-    const monitor = createCostBudgetMonitor({ budget: 0.001, model: 'claude-opus-5-5' });
+  it('prices a model from the pricing it is given instead of throwing for missing pricing', () => {
+    // alpha-large: prompt=$10/M, completion=$50/M; cost = 0.01 + 0.025 = 0.035
+    const monitor = createCostBudgetMonitor({ pricing, budget: 0.001, model: 'alpha-large' });
     const result = monitor.stopCondition(
       makeStepResult({ usage: { prompt: 1000, completion: 500, total: 1500 } }),
     );
@@ -56,6 +60,7 @@ describe('createCostBudgetMonitor', () => {
   it('fires threshold callbacks in order', () => {
     const fired: number[] = [];
     const monitor = createCostBudgetMonitor({
+      pricing,
       budget: 0.01,
       model,
       thresholds: [0.9, 0.5, 0.75],
@@ -74,6 +79,7 @@ describe('createCostBudgetMonitor', () => {
   it('fires each threshold only once', () => {
     const fired: number[] = [];
     const monitor = createCostBudgetMonitor({
+      pricing,
       budget: 0.02,
       model,
       thresholds: [0.25],
@@ -96,6 +102,7 @@ describe('createCostBudgetMonitor', () => {
   it('fires the onExceeded callback', () => {
     let exceededEvent: CostBudgetExceededEvent | undefined;
     const monitor = createCostBudgetMonitor({
+      pricing,
       budget: 0.001,
       model,
       onExceeded: (event) => {
@@ -109,12 +116,12 @@ describe('createCostBudgetMonitor', () => {
 
     expect(exceededEvent).toBeDefined();
     expect(exceededEvent!.budget).toBe(0.001);
-    expect(exceededEvent!.model).toBe('gpt-4o');
+    expect(exceededEvent!.model).toBe('beta-standard');
     expect(exceededEvent!.currentCost).toBeGreaterThan(0.001);
   });
 
   it('handles undefined usage gracefully', () => {
-    const monitor = createCostBudgetMonitor({ budget: 1.0, model });
+    const monitor = createCostBudgetMonitor({ pricing, budget: 1.0, model });
     const result = monitor.stopCondition(makeStepResult({ usage: undefined }));
     expect(result).toBe(false);
     expect(monitor.currentCost).toBe(0);
@@ -143,7 +150,7 @@ describe('createCostBudgetMonitor', () => {
   });
 
   it('reports accurate currentCost', () => {
-    const monitor = createCostBudgetMonitor({ budget: 1.0, model });
+    const monitor = createCostBudgetMonitor({ pricing, budget: 1.0, model });
 
     monitor.stopCondition(
       makeStepResult({ usage: { prompt: 1000, completion: 500, total: 1500 } }),
@@ -154,6 +161,7 @@ describe('createCostBudgetMonitor', () => {
 
   it('reports accurate firedThresholds', () => {
     const monitor = createCostBudgetMonitor({
+      pricing,
       budget: 0.01,
       model,
       thresholds: [0.5, 0.75, 0.9],
@@ -168,7 +176,7 @@ describe('createCostBudgetMonitor', () => {
   });
 
   it('accumulates cost across multiple invocations', () => {
-    const monitor = createCostBudgetMonitor({ budget: 0.02, model });
+    const monitor = createCostBudgetMonitor({ pricing, budget: 0.02, model });
 
     // Step 1: cost = 0.0075
     monitor.stopCondition(
@@ -193,7 +201,7 @@ describe('createCostBudgetMonitor', () => {
   });
 
   it('works with the stopWhen.costBudget convenience wrapper', () => {
-    const condition = stopWhen.costBudget({ budget: 0.001, model });
+    const condition = stopWhen.costBudget({ pricing, budget: 0.001, model });
     // cost = 0.0075 — exceeds 0.001
     const result = condition(
       makeStepResult({ usage: { prompt: 1000, completion: 500, total: 1500 } }),
@@ -202,7 +210,7 @@ describe('createCostBudgetMonitor', () => {
   });
 
   it('stopWhen.costBudget returns false when under budget', () => {
-    const condition = stopWhen.costBudget({ budget: 1.0, model });
+    const condition = stopWhen.costBudget({ pricing, budget: 1.0, model });
     const result = condition(
       makeStepResult({ usage: { prompt: 1000, completion: 500, total: 1500 } }),
     );
@@ -212,6 +220,7 @@ describe('createCostBudgetMonitor', () => {
   it('provides threshold event with correct fields', () => {
     let capturedEvent: CostBudgetThresholdEvent | undefined;
     const monitor = createCostBudgetMonitor({
+      pricing,
       budget: 0.01,
       model,
       thresholds: [0.5],
@@ -227,13 +236,14 @@ describe('createCostBudgetMonitor', () => {
     expect(capturedEvent).toBeDefined();
     expect(capturedEvent!.threshold).toBe(0.5);
     expect(capturedEvent!.budget).toBe(0.01);
-    expect(capturedEvent!.model).toBe('gpt-4o');
+    expect(capturedEvent!.model).toBe('beta-standard');
     expect(capturedEvent!.currentCost).toBeCloseTo(0.0075, 10);
   });
 
   it('does not fire onExceeded when under budget', () => {
     let called = false;
     const monitor = createCostBudgetMonitor({
+      pricing,
       budget: 1.0,
       model,
       onExceeded: () => {
@@ -248,7 +258,7 @@ describe('createCostBudgetMonitor', () => {
   });
 
   it('works with no thresholds configured', () => {
-    const monitor = createCostBudgetMonitor({ budget: 0.001, model });
+    const monitor = createCostBudgetMonitor({ pricing, budget: 0.001, model });
     const result = monitor.stopCondition(
       makeStepResult({ usage: { prompt: 1000, completion: 500, total: 1500 } }),
     );

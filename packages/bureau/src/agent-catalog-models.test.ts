@@ -3,7 +3,7 @@
  * `bureau.agents.models` operation: it describes what one agent allows a session to be switched
  * to, against the deployment's model catalog as it is when the call is made.
  */
-import { createAgent, createMockGenerate, createModelCatalog } from '@lostgradient/operative';
+import { createAgent, createMockGenerate } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { type AgentDefinitions, createAgentCatalog } from './agent-catalog';
@@ -12,6 +12,7 @@ import { createBureau } from './create-bureau';
 import { OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
 import type { Bureau } from './bureau-types/facade';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const bureaus: Bureau[] = [];
 
@@ -21,6 +22,7 @@ afterEach(async () => {
 
 async function open(): Promise<Bureau> {
   const bureau = await createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       switchable: createAgent({
         generate: createMockGenerate([]),
@@ -113,7 +115,7 @@ describe('agents.models under the model policy (COR-1996)', () => {
     let policy: BureauModelPolicyOptions | undefined;
     const catalog = createAgentCatalog(
       { switchable: agent },
-      { descriptors: () => createModelCatalog().descriptors, modelPolicy: () => policy },
+      { descriptors: () => createVendorCatalog().descriptors, modelPolicy: () => policy },
     );
     const deniedOf = () =>
       Object.fromEntries(

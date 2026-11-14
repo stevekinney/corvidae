@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { PluginDescriptor } from '@lostgradient/interborough-plugin';
+import type { BackendDescriptor } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createTool } from 'armorer';
 import { z } from 'zod';
@@ -75,8 +76,59 @@ const probeTool = createTool({
   execute: async () => 'probed',
 });
 
-/** A model the Bureau's default catalog holds, so the scripted agent file validates. */
-const SCRIPTED_MODEL = 'anthropic/claude-opus-5-5';
+/** The model the scripted agent names, and the one row of the host's catalog. */
+export const SCRIPTED_MODEL = 'anthropic/claude-opus-5-5';
+
+/**
+ * The host's catalog row for {@link SCRIPTED_MODEL}. Bureau holds no row of its own (COR-2151) and
+ * this published surface takes no vendor package, so the row is written out here: no model is
+ * called, the row only lets the scripted agent file, and a shipped file naming the same model,
+ * validate.
+ *
+ * The row is text-only, with no aliases and no effort tiers. The host takes no catalog option, so
+ * a plugin test that needs an alias, an effort tier, media or another model must contribute its own
+ * rows through the plugin (a provider's `rows`), not through the host. A plugin test that builds
+ * its own Bureau over agent files naming {@link SCRIPTED_MODEL} passes `pluginTestModelRows` as
+ * `models.catalog`, since Bureau holds no row of its own.
+ */
+const SCRIPTED_ROW: BackendDescriptor = {
+  provider: 'anthropic',
+  endpoint: 'https://api.anthropic.com',
+  model: 'claude-opus-5-5',
+  aliases: [],
+  lifecycle: 'stable',
+  modalities: {
+    text: { input: true, output: true, sourceForms: ['inline'] },
+    image: { input: false, output: false, sourceForms: [] },
+    document: { input: false, output: false, sourceForms: [] },
+    audio: { input: false, output: false, sourceForms: [] },
+    video: { input: false, output: false, sourceForms: [] },
+    file: { input: false, output: false, sourceForms: [] },
+  },
+  mimeFamilies: [],
+  mediaLimits: [],
+  mediaCounts: [],
+  providerFetchesRemoteUrls: false,
+  contextWindowTokens: 200_000,
+  maxOutputTokens: 32_000,
+  streaming: true,
+  tools: true,
+  parallelTools: true,
+  structuredOutput: true,
+  parameterCompatibility: [],
+  caching: false,
+  batchInference: false,
+  explicitThinkingRequest: false,
+  serverSideTokenCounting: false,
+  effort: { portable: [], nativeMapping: 'unsupported', degradesTo: {} },
+  availability: 'available',
+  health: 'healthy',
+  source: 'static',
+  freshness: '2026-10-17T00:00:00.000Z',
+};
+
+/** The one catalog row {@link SCRIPTED_MODEL} names, for a plugin test that builds its own Bureau. */
+export const pluginTestModelRows: readonly BackendDescriptor[] = Object.freeze([SCRIPTED_ROW]);
 
 /** The directory of agent files `plugin.content` ships, or `undefined` when it ships none. */
 function shippedAgentDirectory(content: URL | undefined): string | undefined {
@@ -116,6 +168,7 @@ export async function createPluginTestHost(
       storage: new MemoryStorage(),
       durable: true,
       models: {
+        catalog: [SCRIPTED_ROW],
         generate: (descriptor) => async () => {
           if (scripted?.scenario === 'failure') throw new Error('The scripted model failed.');
           if (scripted?.scenario === 'tool' && scripted.calls++ === 0) {

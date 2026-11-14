@@ -2,7 +2,7 @@
  * COR-1937 — the split `buildContextWindow` reports: five categories that always sum to
  * `usedEstimated`, the instructions counted once, the provider's own count labeled as such.
  */
-import { createModelCatalog, MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
+import { MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { compactConversation, Conversation, resolvedSourceKey } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
@@ -16,8 +16,9 @@ import {
   reportedInputTokens,
   sizeManagedAssets,
 } from './context-window.ts';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
-const catalog = createModelCatalog({ now: () => '2026-10-30T00:00:00.000Z' }).descriptors;
+const catalog = createVendorCatalog({ now: () => '2026-10-30T00:00:00.000Z' }).descriptors;
 const anthropic = catalog.find((row) => row.provider === 'anthropic');
 if (anthropic === undefined) throw new Error('The default catalog has no Anthropic row.');
 

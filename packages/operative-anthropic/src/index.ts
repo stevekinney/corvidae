@@ -19,6 +19,15 @@ export {
   anthropicPartsFromBlocks,
   isAnthropicPartBlock,
 } from './anthropic-blocks.ts';
+export {
+  ANTHROPIC_EFFORT_SUPPORT,
+  ANTHROPIC_MODEL_ALIASES,
+  anthropicPricingTable,
+  anthropicRows,
+  resolveAnthropicEffort,
+  resolveAnthropicModel,
+} from './anthropic-catalog.ts';
+export type { AnthropicRowsOptions } from './anthropic-catalog.ts';
 export { anthropicProvider } from './anthropic-definition.ts';
 export type { AnthropicProviderConfiguration } from './anthropic-definition.ts';
 export {

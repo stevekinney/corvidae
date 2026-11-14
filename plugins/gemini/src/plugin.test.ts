@@ -2,6 +2,8 @@ import { createPluginTestHost } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
 import { describe, expect, test } from 'bun:test';
 
+import { geminiRows } from '@lostgradient/operative-gemini';
+
 import plugin from './plugin.ts';
 
 pluginContract(plugin, { createHost: createPluginTestHost });
@@ -13,10 +15,13 @@ describe('the gemini plugin', () => {
     expect(plugin.secrets).toEqual(['gemini-api-key']);
   });
 
-  test("contributes the gemini provider with Operative's catalog rows", async () => {
+  test("contributes the gemini provider with its package's catalog rows", async () => {
     const result = await plugin.setup?.({ secrets } as never);
     expect(result?.providers?.map((provider) => provider.name)).toEqual(['gemini']);
-    expect(result?.providers?.[0]?.rows).toBeUndefined();
+    const rows = result?.providers?.[0]?.rows ?? [];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.provider === 'gemini')).toBe(true);
+    expect(rows.map((row) => row.model)).toEqual(geminiRows().map((row) => row.model));
   });
 
   test('takes an allowlist of models, and nothing else, as its configuration', () => {

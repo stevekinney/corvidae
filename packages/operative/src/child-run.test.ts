@@ -40,11 +40,11 @@ import {
   ChildWorkflowReattachedEvent,
   ChildWorkflowStartedEvent,
 } from './events';
-import { createModelCatalog } from './providers/model-catalog.ts';
 import { composePolicy, type DelegatedAuthority } from './providers/policy.ts';
 import { select } from './providers/selection.ts';
 import type { AgentInput, AgentRunContext, RunnableAgent } from './runnable-agent';
 import { createMockGenerate } from './test/index';
+import { createFixtureCatalog } from './testing/model-catalog.test-support.ts';
 import type { GenerateResponse, RunResult } from './types';
 
 // ---------------------------------------------------------------------------
@@ -795,7 +795,7 @@ describe('DelegatedAuthority threading (AB-250)', () => {
   it('forwards options.delegatedAuthority to agent.run() as AgentRunContext.delegatedAuthority', () => {
     const { agent, calls } = makeControllableAgent();
     const grant: DelegatedAuthority = {
-      grantedProviders: ['anthropic'],
+      grantedProviders: ['alpha'],
       policyVersion: 'v1',
     };
 
@@ -829,7 +829,7 @@ describe('DelegatedAuthority threading (AB-250)', () => {
 describe('attenuateDelegatedAuthority (AB-250)', () => {
   it('returns the child grant unchanged when the parent carries no delegated authority', () => {
     const child: DelegatedAuthority = {
-      grantedProviders: ['anthropic'],
+      grantedProviders: ['alpha'],
       policyVersion: 'child-v1',
     };
     expect(attenuateDelegatedAuthority(undefined, child)).toEqual(child);
@@ -837,31 +837,31 @@ describe('attenuateDelegatedAuthority (AB-250)', () => {
 
   it('intersects grantedProviders/grantedModels, never widening either side', () => {
     const parent: DelegatedAuthority = {
-      grantedProviders: ['anthropic', 'openai'],
-      grantedModels: ['claude-fable-5', 'gpt-4o'],
+      grantedProviders: ['alpha', 'beta'],
+      grantedModels: ['alpha-large', 'beta-standard'],
       policyVersion: 'parent-v1',
     };
     const child: DelegatedAuthority = {
-      grantedProviders: ['anthropic', 'gemini'],
-      grantedModels: ['claude-fable-5'],
+      grantedProviders: ['alpha', 'gamma'],
+      grantedModels: ['alpha-large'],
       policyVersion: 'child-v1',
     };
 
     const attenuated = attenuateDelegatedAuthority(parent, child);
 
-    expect(attenuated.grantedProviders).toEqual(['anthropic']);
-    expect(attenuated.grantedModels).toEqual(['claude-fable-5']);
+    expect(attenuated.grantedProviders).toEqual(['alpha']);
+    expect(attenuated.grantedModels).toEqual(['alpha-large']);
     expect(attenuated.policyVersion).toBe('child-v1');
   });
 
   it('narrows nothing on an absent side of either grant list', () => {
-    const parent: DelegatedAuthority = { grantedProviders: ['anthropic'], policyVersion: 'p' };
+    const parent: DelegatedAuthority = { grantedProviders: ['alpha'], policyVersion: 'p' };
     const child: DelegatedAuthority = { policyVersion: 'c' };
-    expect(attenuateDelegatedAuthority(parent, child).grantedProviders).toEqual(['anthropic']);
+    expect(attenuateDelegatedAuthority(parent, child).grantedProviders).toEqual(['alpha']);
 
     const parent2: DelegatedAuthority = { policyVersion: 'p' };
-    const child2: DelegatedAuthority = { grantedProviders: ['openai'], policyVersion: 'c' };
-    expect(attenuateDelegatedAuthority(parent2, child2).grantedProviders).toEqual(['openai']);
+    const child2: DelegatedAuthority = { grantedProviders: ['beta'], policyVersion: 'c' };
+    expect(attenuateDelegatedAuthority(parent2, child2).grantedProviders).toEqual(['beta']);
   });
 
   it('takes the lower of two maximumEffort tiers', () => {
@@ -883,12 +883,12 @@ describe('attenuateDelegatedAuthority (AB-250)', () => {
 
   it('excludes a parent-permitted-but-child-forbidden candidate from the child plan, with exceeds-delegated-authority and the attenuating grant’s policyVersion', () => {
     const FIXED_NOW = '2026-09-02T12:00:00.000Z';
-    const catalog = createModelCatalog({ now: () => FIXED_NOW });
+    const catalog = createFixtureCatalog({ now: () => FIXED_NOW });
     const anthropicDescriptor = catalog.descriptors.find(
-      (row) => row.provider === 'anthropic' && row.model === 'claude-fable-5',
+      (row) => row.provider === 'alpha' && row.model === 'alpha-large',
     );
     const openaiDescriptor = catalog.descriptors.find(
-      (row) => row.provider === 'openai' && row.model === 'gpt-4o',
+      (row) => row.provider === 'beta' && row.model === 'beta-standard',
     );
     if (!anthropicDescriptor || !openaiDescriptor) {
       throw new Error('fixture descriptor not found');
@@ -904,11 +904,11 @@ describe('attenuateDelegatedAuthority (AB-250)', () => {
     // child ever sees a grant — the child's plan must reflect ONLY the
     // narrower, attenuated authority.
     const grandparentGrant: DelegatedAuthority = {
-      grantedProviders: ['anthropic', 'openai'],
+      grantedProviders: ['alpha', 'beta'],
       policyVersion: 'grandparent-v1',
     };
     const parentToChildGrant: DelegatedAuthority = {
-      grantedProviders: ['anthropic'],
+      grantedProviders: ['alpha'],
       policyVersion: 'parent-v2',
     };
     const childGrant = attenuateDelegatedAuthority(grandparentGrant, parentToChildGrant);
@@ -928,16 +928,14 @@ describe('attenuateDelegatedAuthority (AB-250)', () => {
       },
     );
 
-    const openaiCandidate = plan.candidates.find((candidate) => candidate.provider === 'openai');
-    const anthropicCandidate = plan.candidates.find(
-      (candidate) => candidate.provider === 'anthropic',
-    );
+    const openaiCandidate = plan.candidates.find((candidate) => candidate.provider === 'beta');
+    const anthropicCandidate = plan.candidates.find((candidate) => candidate.provider === 'alpha');
 
     expect(openaiCandidate?.eligible).toBe(false);
     expect(openaiCandidate?.exclusionCode).toBe('exceeds-delegated-authority');
     expect(anthropicCandidate?.eligible).toBe(true);
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected?.provider).toBe('anthropic');
+    expect(plan.selected?.provider).toBe('alpha');
 
     // Same composition, checked directly at the policy layer, confirms the
     // attenuated grant's own `policyVersion` is what's carried onto the
@@ -946,7 +944,7 @@ describe('attenuateDelegatedAuthority (AB-250)', () => {
       descriptors: twoCandidateCatalog.descriptors,
       delegated: childGrant,
     });
-    const deniedOpenai = policyCandidates.find((candidate) => candidate.provider === 'openai');
+    const deniedOpenai = policyCandidates.find((candidate) => candidate.provider === 'beta');
     expect(deniedOpenai?.exclusionCode).toBe('exceeds-delegated-authority');
     // `policyVersion` is carried in the exclusion reason text (`policy.ts`'s
     // `evaluateDelegated`) — the attenuated grant's OWN version, `parent-v2`

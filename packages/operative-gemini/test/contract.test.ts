@@ -1,5 +1,6 @@
 /** The shared provider contract, run against the Gemini definition. */
 import { runProviderContract } from '@lostgradient/operative/provider-testing';
+import { geminiRows } from '../src/gemini-catalog.ts';
 import { geminiProvider } from '../src/gemini-definition.ts';
 import type { GeminiGenerateContentRequest } from '../src/gemini-types.ts';
 import { geminiStreamTextChunks, geminiTextResponse } from '../src/test/gemini-fixtures.ts';
@@ -23,6 +24,7 @@ runProviderContract<GeminiGenerateContentRequest>({
   },
   fixtures: {
     name: 'gemini',
+    rows: geminiRows(),
     model: 'gemini-2.5-flash',
     unknownModel: 'gemini-does-not-exist-in-the-seed',
     text: 'Hello from Gemini!',

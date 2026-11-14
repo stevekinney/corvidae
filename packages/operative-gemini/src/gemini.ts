@@ -17,16 +17,14 @@ import type {
 import {
   concatenateTextParts,
   createCacheAwareAssembly,
-  createModelCatalog,
   isProviderContractError,
   ProviderError,
   resolveCommonParameters,
-  resolveGeminiEffort,
-  resolveGeminiModel,
   withBackendDescriptors,
   withInputLineage,
 } from '@lostgradient/operative/provider-kit';
 import { resolveGeminiApiKey } from './gemini-api-key.ts';
+import { geminiRows, resolveGeminiEffort, resolveGeminiModel } from './gemini-catalog.ts';
 import {
   createGeminiPartMapper,
   droppedReplayDataMetadata,
@@ -801,7 +799,7 @@ async function importGeminiClient(options: {
  * `gemini.ts`'s streaming factory below.
  */
 function geminiDescriptorsFor(model: string, endpoint?: 'generateContentStream') {
-  const rows = createModelCatalog().descriptors.filter(
+  const rows = geminiRows().filter(
     (descriptor) => descriptor.provider === 'gemini' && descriptor.model === model,
   );
   // The seed row describes `models.generateContent`; the streaming factory calls

@@ -13,14 +13,10 @@ import { createActiveRun } from '../src/create-run';
 import { createSubagentTool, subagentToolContent } from '../src/create-subagent-tool';
 import { ToolSettledBubbleEvent } from '../src/events';
 import type { OperativeHookMap } from '../src/hooks';
-import {
-  buildAnthropicRow,
-  buildGeminiRow,
-  buildOpenAIRow,
-} from '../src/providers/model-catalog-rows';
 import { describeInputMedia, evaluateInputMedia } from '../src/providers/selection';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
+import { fixtureRowFor } from '../src/testing/model-catalog.test-support';
 import { retainToolResultMedia } from '../src/tool-result-media';
 import type { GenerateResponse, RunOptions } from '../src/types';
 
@@ -424,18 +420,15 @@ describe('tool-result media capability', () => {
   it('admits tool-result media only on a backend that advertises it', () => {
     if (imageInToolResult === undefined) throw new Error('no requirement');
     expect(
-      evaluateInputMedia(buildAnthropicRow('claude-sonnet-5-5', freshness), [imageInToolResult])
-        .eligible,
+      evaluateInputMedia(fixtureRowFor('alpha-medium', freshness), [imageInToolResult]).eligible,
     ).toBe(true);
-    const openai = evaluateInputMedia(buildOpenAIRow('gpt-4.1', freshness, false), [
-      imageInToolResult,
-    ]);
-    expect(openai).toEqual({
+    const beta = evaluateInputMedia(fixtureRowFor('beta-standard', freshness), [imageInToolResult]);
+    expect(beta).toEqual({
       eligible: false,
-      exclusionReason: 'openai/gpt-4.1 accepts no image in a tool result',
+      exclusionReason: 'beta/beta-standard accepts no image in a tool result',
     });
     expect(
-      evaluateInputMedia(buildGeminiRow('gemini-2.5-pro', freshness), [imageInToolResult]).eligible,
+      evaluateInputMedia(fixtureRowFor('gamma-pro', freshness), [imageInToolResult]).eligible,
     ).toBe(false);
   });
 });

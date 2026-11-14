@@ -1,5 +1,5 @@
 import { definePlugin } from '@lostgradient/interborough-plugin';
-import { createOpenAIEmbedder, openaiProvider } from '@lostgradient/operative-openai';
+import { createOpenAIEmbedder, openaiProvider, openAIRows } from '@lostgradient/operative-openai';
 import type { Embedder } from 'armorer';
 import { z } from 'zod';
 
@@ -53,7 +53,7 @@ export default definePlugin({
       return built.embed(texts);
     };
     return {
-      providers: [openaiProvider],
+      providers: [{ ...openaiProvider, rows: openAIRows() }],
       embedders: [{ name: OPENAI_EMBEDDING_MODEL, dimensions: OPENAI_EMBEDDING_DIMENSIONS, embed }],
     };
   },

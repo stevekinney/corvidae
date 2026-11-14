@@ -24,7 +24,6 @@
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
-  createModelCatalog,
   type GenerateContext,
   stopWhen,
   type Validator,
@@ -62,6 +61,7 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -72,7 +72,7 @@ afterEach(async () => {
 
 const FLOOR_MILLISECONDS = 1_000;
 
-const anthropicDescriptors = createModelCatalog().descriptors.filter(
+const anthropicDescriptors = createVendorCatalog().descriptors.filter(
   (descriptor) => descriptor.provider === 'anthropic',
 );
 const imageOutputDescriptors = anthropicDescriptors.slice(0, 1).map((descriptor) => ({

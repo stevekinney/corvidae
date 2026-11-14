@@ -9,16 +9,16 @@ import { Conversation } from 'conversationalist';
 
 import { createAgent } from '../../create-agent';
 import { readGenerationProfile } from '../../generation-profile';
+import { createFixtureCatalog } from '../../testing/model-catalog.test-support.ts';
 import type { GenerateContext, GenerateFunction } from '../../types';
 import { readBackendDescriptors, withBackendDescriptors } from '../backend-descriptor-attachment';
-import { createModelCatalog } from '../model-catalog';
 import { instrumentGenerate } from './index';
 
 const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
 function anthropicDescriptor() {
-  const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
-    (row) => row.provider === 'anthropic',
+  const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
+    (row) => row.provider === 'alpha',
   );
   if (!descriptor)
     throw new Error('expected at least one anthropic descriptor in the seed catalog');

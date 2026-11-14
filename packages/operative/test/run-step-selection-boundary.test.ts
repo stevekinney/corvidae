@@ -18,13 +18,10 @@ import { Conversation } from 'conversationalist';
 import { noToolCalls } from '../src/conditions/predicates';
 import { SelectionRevalidationError } from '../src/errors';
 import { executeLoop } from '../src/loop';
-import {
-  type BackendDescriptor,
-  createModelCatalog,
-  type ModelCatalog,
-} from '../src/providers/model-catalog.ts';
+import { type BackendDescriptor, type ModelCatalog } from '../src/providers/model-catalog.ts';
 import { select, type SelectionRequest, type SelectOptions } from '../src/providers/selection.ts';
 import { createSelectionGate, type SelectionGate } from '../src/selection-gate';
+import { createFixtureCatalog } from '../src/testing/model-catalog.test-support.ts';
 import type { GenerateResponse } from '../src/types';
 
 function textResponse(content: string): GenerateResponse {
@@ -39,7 +36,7 @@ function freshNewPlanId(): () => string {
   return () => `boundary-plan-${String(planIdCounter++).padStart(4, '0')}`;
 }
 
-const SEED_CATALOG = createModelCatalog({ now: () => FIXED_NOW });
+const SEED_CATALOG = createFixtureCatalog({ now: () => FIXED_NOW });
 
 function descriptor(provider: string, model: string): BackendDescriptor {
   const found = SEED_CATALOG.descriptors.find(
@@ -49,7 +46,7 @@ function descriptor(provider: string, model: string): BackendDescriptor {
   return found;
 }
 
-const anthropic = descriptor('anthropic', 'claude-fable-5');
+const anthropic = descriptor('alpha', 'alpha-large');
 
 function catalogOf(
   descriptors: readonly BackendDescriptor[],
@@ -174,8 +171,8 @@ describe('runStep: AB-64/AB-250 selection boundary read', () => {
     expect(error.plan.outcome).toBe('no-candidate');
     expect(error.supersededPlan).toBe(priorPlan);
     expect(error.supersededPlan?.selected).toEqual({
-      provider: 'anthropic',
-      model: 'claude-fable-5',
+      provider: 'alpha',
+      model: 'alpha-large',
     });
   });
 
@@ -235,6 +232,6 @@ describe('runStep: AB-64/AB-250 selection boundary read', () => {
     });
 
     expect(generateCallCount).toBe(0);
-    expect(priorPlan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(priorPlan.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
   });
 });

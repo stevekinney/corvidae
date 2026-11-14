@@ -3,11 +3,12 @@
  * rows of their models, once setup has run.
  */
 import { definePlugin, type PluginSetupResult } from '@lostgradient/interborough-plugin';
-import { createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
+import { type BackendDescriptor } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { type ComposableOptions, composePlugins } from './compose-plugins';
 import type { BureauPluginEntry, PluginModelContributions } from './plugin-types';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const definition = (name: string) => ({
   name,
@@ -22,7 +23,7 @@ function pluginEntry(name: string, setup: () => PluginSetupResult): BureauPlugin
 
 /** A catalog row of `provider`, copied from the static catalog and renamed. */
 function row(provider: string, model: string): BackendDescriptor {
-  const [seed] = createModelCatalog().descriptors;
+  const [seed] = createVendorCatalog().descriptors;
   if (seed === undefined) throw new Error('The static catalog is empty.');
   return { ...seed, provider, model, aliases: [] };
 }
@@ -61,7 +62,7 @@ describe('the models.catalog factory', () => {
     expect(resolvedRows(composed.options)).toEqual(alpha.rows);
   });
 
-  it('defaults a provider without rows to the static rows of its name', async () => {
+  it('gives a provider without rows none, even under a name the vendors ship rows for (COR-2151)', async () => {
     const received: PluginModelContributions[] = [];
     await composePlugins({
       plugins: [pluginEntry('anthropic', () => ({ providers: [definition('anthropic')] }))],
@@ -72,12 +73,28 @@ describe('the models.catalog factory', () => {
         },
       },
     });
-    const expected = createModelCatalog().descriptors.filter(
+    expect(received[0]?.providers[0]?.rows).toEqual([]);
+  });
+
+  it('hands over the rows a provider carries, such as a vendor package’s', async () => {
+    const received: PluginModelContributions[] = [];
+    const rows = createVendorCatalog().descriptors.filter(
       (entry) => entry.provider === 'anthropic',
     );
-    expect(expected.length).toBeGreaterThan(0);
+    expect(rows.length).toBeGreaterThan(0);
+    await composePlugins({
+      plugins: [
+        pluginEntry('anthropic', () => ({ providers: [{ ...definition('anthropic'), rows }] })),
+      ],
+      models: {
+        catalog: (contributions) => {
+          received.push(contributions);
+          return [];
+        },
+      },
+    });
     expect(received[0]?.providers[0]?.rows.map((entry) => entry.model)).toEqual(
-      expected.map((entry) => entry.model),
+      rows.map((entry) => entry.model),
     );
   });
 

@@ -414,6 +414,80 @@ describe('Skeleton list variant', () => {
   });
 });
 
+// COR-2329: Home's lists are grouped lists, so their placeholder takes the grouped list's shape.
+describe('Skeleton grouped variant', () => {
+  test('draws the default three rows of two text bars on one hidden surface', () => {
+    const { container } = render(Skeleton, { props: { variant: 'grouped' } });
+    const group = container.querySelector('.cinder-skeleton-group');
+    expect(group?.getAttribute('data-cinder-variant')).toBe('grouped');
+    expect(group?.getAttribute('aria-busy')).toBe('true');
+    const surface = container.querySelector('.cinder-skeleton-grouped');
+    expect(surface?.getAttribute('aria-hidden')).toBe('true');
+    const rows = [...container.querySelectorAll('.cinder-skeleton-grouped-row')];
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      // A title line and a subtitle line, each holding one bar.
+      const lines = [...row.querySelectorAll('.cinder-skeleton-grouped-text > *')];
+      expect(lines.map((line) => line.className)).toEqual([
+        'cinder-skeleton-grouped-line cinder-skeleton-grouped-line--title',
+        'cinder-skeleton-grouped-line cinder-skeleton-grouped-line--subtitle',
+      ]);
+      expect(lines.map((line) => line.querySelectorAll('.cinder-skeleton').length)).toEqual([1, 1]);
+      expect(row.querySelector('.cinder-skeleton-action-bar')).toBeNull();
+    }
+    expect(container.querySelector('.cinder-skeleton-list')).toBeNull();
+  });
+
+  test('action adds a button block to each row, and rows is clamped', () => {
+    const { container } = render(Skeleton, {
+      props: { variant: 'grouped', rows: 2, action: true, label: 'Loading reviews' },
+    });
+    const rows = [...container.querySelectorAll('.cinder-skeleton-grouped-row')];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.classList.contains('cinder-skeleton-grouped-row--action')).toBe(true);
+      expect(row.querySelectorAll('.cinder-skeleton-action-bar')).toHaveLength(1);
+    }
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('Loading reviews');
+    cleanup();
+    const many = render(Skeleton, { props: { variant: 'grouped', rows: 99 } });
+    expect(many.container.querySelectorAll('.cinder-skeleton-grouped-row')).toHaveLength(20);
+  });
+
+  test('action is ignored by the list variant', () => {
+    const { container } = render(Skeleton, { props: { variant: 'list', action: true } });
+    expect(container.querySelector('.cinder-skeleton-action-bar')).toBeNull();
+  });
+
+  test('the surface matches the grouped list, and a narrow row puts the button block under the text', () => {
+    const css = skeletonCss.replace(/\s+/g, ' ');
+    // Each bar's line box is the real row's: the title at base size and snug leading.
+    expect(css).toMatch(/\.cinder-skeleton-grouped-line \{[^}]*block-size: 1lh;/);
+    expect(css).toMatch(
+      /\.cinder-skeleton-grouped-line--title \{ font-size: var\(--cinder-text-base\); line-height: var\(--cinder-leading-snug, 1\.35\); \}/,
+    );
+    expect(css).toMatch(
+      /\.cinder-skeleton-grouped-line--subtitle \{ font-size: var\(--cinder-text-sm\); \}/,
+    );
+    expect(css).toMatch(
+      /\.cinder-skeleton-grouped \{[^}]*border-radius: var\(--cinder-radius-surface\);[^}]*background: var\(--cinder-surface-raised\);/,
+    );
+    // Only forced colours draw an edge; the surface carries tone, not a border.
+    expect(css).not.toMatch(/\.cinder-skeleton-grouped \{ overflow: hidden;[^}]*border:/);
+    expect(css).toMatch(
+      /\.cinder-skeleton-grouped-content \{[^}]*border-block-end: 1px solid var\(--cinder-border-faint\)/,
+    );
+    expect(css).toMatch(
+      /\.cinder-skeleton-action-bar \{[^}]*block-size: var\(--cinder-button-height-sm\)/,
+    );
+    // The row measures its own width at GroupedListItem's threshold, never the viewport's.
+    expect(css).toMatch(
+      /@container cinder-skeleton-grouped-row \(width < 26rem\) \{ \.cinder-skeleton-grouped-row--action > \.cinder-skeleton-grouped-content \{ flex-wrap: wrap; \}/,
+    );
+    expect(css).not.toMatch(/@media \(width/);
+  });
+});
+
 describe('Skeleton list variant timing', () => {
   function mountUnderFakeTimers(props: Record<string, unknown>) {
     jest.useFakeTimers();

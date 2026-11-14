@@ -56,6 +56,7 @@ import type { RunnableAgent } from '../runnable-agent';
 import { createManualDurableEngine, spyEngine, withTwoPhaseStart } from '../test/durable-engine';
 import { createManualCheckpointStore, createMockGenerate, waitForCondition } from '../test/index';
 import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
+import { fixturePricing } from '../testing/model-catalog.test-support.ts';
 import type { RunOptions, RunResult } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { createRecoveredRunEventSurface } from './active-run-event-surface';
@@ -67,6 +68,9 @@ import { createRunEngine } from './create-run-engine';
 import { createRunWorkflow } from './run-workflow';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from './run-workflow-result';
 import type { DurableRunDeps } from './types';
+
+/** Prices passed the way a host passes its own: Operative holds none. */
+const pricing = { customPricing: fixturePricing };
 
 const run = (...args: Parameters<typeof createActiveRun>) => createActiveRun(...args).result;
 const createRun = createActiveRun;
@@ -486,7 +490,7 @@ describe('createRun with durable routing', () => {
           },
           toolbox: createToolbox([]),
           conversation: createConversationHistory(),
-          costEstimation: { model: 'gpt-4o' },
+          costEstimation: { model: 'beta-standard', pricing },
         },
         { ...context, runId: 'error-cost-run', prompt: 'Hello' },
       );
@@ -582,7 +586,7 @@ describe('createRun with durable routing', () => {
           },
           toolbox: createToolbox([]),
           conversation: createConversationHistory(),
-          costEstimation: { model: 'gpt-4o' },
+          costEstimation: { model: 'beta-standard', pricing },
         },
         { ...context, runId: 'abort-cost-run', prompt: 'Hello' },
       );

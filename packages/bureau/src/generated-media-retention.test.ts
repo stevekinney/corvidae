@@ -8,7 +8,6 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
   createAgentSession,
-  createModelCatalog,
   SESSION_OWNER_METADATA_KEY,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -28,6 +27,7 @@ import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -36,7 +36,7 @@ afterEach(async () => {
   await yieldToPortableEventLoop();
 });
 
-const descriptors = createModelCatalog()
+const descriptors = createVendorCatalog()
   .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
   .slice(0, 1)
   .map((descriptor) => ({

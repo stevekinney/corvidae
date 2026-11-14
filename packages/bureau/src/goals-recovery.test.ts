@@ -54,6 +54,7 @@ import {
 } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau } from './bureau-types/facade';
 import { quietFor } from '@lostgradient/testing/wait-until';
+import { gpt4oCostEstimation } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 let database: TestDatabase = createUnsetTestDatabase();
@@ -769,7 +770,7 @@ describe('the attempt behind a running goal', () => {
             resolutions.count += 1;
             return resolveOptions
               .call(base, input, context)
-              .then((options) => ({ ...options, costEstimation: { model: 'gpt-4o' } }));
+              .then((options) => ({ ...options, costEstimation: gpt4oCostEstimation }));
           },
         },
       }) as typeof base;
@@ -810,9 +811,10 @@ describe('the attempt behind a running goal', () => {
       database = createTestDatabase('priced-persisted-newer');
       const resolutions = { count: 0 };
       const worker = pricedWorker(resolutions);
-      const view = await finishedAttempt(readGenerationProfile(worker).revision + 1, {
-        model: 'gpt-4o',
-      });
+      const view = await finishedAttempt(
+        readGenerationProfile(worker).revision + 1,
+        gpt4oCostEstimation,
+      );
       const { bureau } = await recoverCostBounded(view, { worker });
 
       expect(await ended(bureau)).toMatchObject({ status: 'succeeded' });
@@ -821,7 +823,7 @@ describe('the attempt behind a running goal', () => {
 
     it('prices it with the persisted estimator after the catalog lost the agent', async () => {
       database = createTestDatabase('priced-persisted-agent-gone');
-      const view = await finishedAttempt(1, { model: 'gpt-4o' });
+      const view = await finishedAttempt(1, gpt4oCostEstimation);
       const { bureau } = await recoverCostBounded(view, {
         planner: workerAgent(hangUntilAborted, 'planner'),
       });
@@ -858,7 +860,7 @@ describe('the attempt behind a running goal', () => {
 
   describe('the estimator an attempt is started with', () => {
     it.each([
-      { label: 'declared', declared: true, persisted: { model: 'gpt-4o' } },
+      { label: 'declared', declared: true, persisted: gpt4oCostEstimation },
       { label: 'not declared', declared: false, persisted: null },
     ])('is persisted with the run when it is $label', async ({ declared, persisted }) => {
       database = createTestDatabase(`persisted-${declared}`);
@@ -878,7 +880,7 @@ describe('the attempt behind a running goal', () => {
             return resolveOptions
               .call(base, input, context)
               .then((options) =>
-                declared ? { ...options, costEstimation: { model: 'gpt-4o' } } : options,
+                declared ? { ...options, costEstimation: gpt4oCostEstimation } : options,
               );
           },
         },

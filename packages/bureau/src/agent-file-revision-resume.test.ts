@@ -33,6 +33,7 @@ import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -157,7 +158,10 @@ describe('a pending approval restored after a restart', () => {
     const bureau: Bureau = await createBureau<AgentDefinitions>({
       agents: {},
       agentSource: agentFileDirectory(directory),
-      models: { generate: () => async () => ({ content: 'ok', toolCalls: [] }) },
+      models: {
+        catalog: createVendorCatalog().descriptors,
+        generate: () => async () => ({ content: 'ok', toolCalls: [] }),
+      },
       storage,
       durable: true,
       onDiagnostic: () => undefined,

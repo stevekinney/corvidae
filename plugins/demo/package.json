@@ -17,6 +17,7 @@
   "dependencies": {
     "@lostgradient/interborough-plugin": "workspace:*",
     "@lostgradient/operative": "workspace:*",
+    "@lostgradient/operative-anthropic": "workspace:*",
     "@lostgradient/storage": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",

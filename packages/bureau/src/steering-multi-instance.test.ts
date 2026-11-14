@@ -47,10 +47,12 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 /** A Bureau over a new handle on `database`, as another process would open. */
 async function openBureau(database: PersistentBureauStorageFixture) {
   return createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       default: createAgent({
         allowedCandidates: STEERABLE_MODELS,
@@ -269,6 +271,7 @@ describe('durable steering across two Bureau processes', () => {
     });
     let generateCalls = 0;
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           allowedCandidates: STEERABLE_MODELS,
@@ -379,6 +382,7 @@ describe('durable steering across two Bureau processes', () => {
         : { content: 'done', toolCalls: [] };
     };
     const bureauA = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           allowedCandidates: STEERABLE_MODELS,
@@ -510,6 +514,7 @@ describe('durable steering across two Bureau processes', () => {
       path: join(directory, 'bureau.sqlite'),
     });
     const withPolicy = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           allowedCandidates: STEERABLE_MODELS,
@@ -529,6 +534,7 @@ describe('durable steering across two Bureau processes', () => {
     });
     const withoutPolicy = await openBureau(pathFixture);
     const withChangedPolicy = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           allowedCandidates: STEERABLE_MODELS,
@@ -1369,6 +1375,7 @@ describe('durable steering across two Bureau processes', () => {
     });
     const diagnostics: BureauDiagnostic[] = [];
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           allowedCandidates: STEERABLE_MODELS,
@@ -1843,6 +1850,7 @@ describe('durable steering across two Bureau processes', () => {
     });
     const diagnostics: string[] = [];
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           allowedCandidates: STEERABLE_MODELS,
@@ -1934,6 +1942,7 @@ describe('durable steering across two Bureau processes', () => {
       path: join(directory, 'bureau.sqlite'),
     });
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           allowedCandidates: STEERABLE_MODELS,

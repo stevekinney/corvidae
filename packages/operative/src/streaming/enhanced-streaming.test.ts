@@ -10,8 +10,8 @@ import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../providers/backend-descriptor-attachment';
-import { createModelCatalog } from '../providers/model-catalog';
 import { createScriptedMediaAdmitter } from '../testing/generated-media.test-support';
+import { createFixtureCatalog } from '../testing/model-catalog.test-support.ts';
 import type { GenerateContext, GenerateResponse, StreamingGenerateFunction } from '../types';
 import { withEnhancedStreaming } from './enhanced-streaming';
 import type { StreamCustomEvent, StreamEvent, StreamEventMap, StreamState } from './types';
@@ -929,8 +929,8 @@ describe('withEnhancedStreaming — backend-descriptor propagation (AB-64, AB-24
   const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
   function anthropicDescriptor() {
-    const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
-      (row) => row.provider === 'anthropic',
+    const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
+      (row) => row.provider === 'alpha',
     );
     if (!descriptor)
       throw new Error('expected at least one anthropic descriptor in the seed catalog');

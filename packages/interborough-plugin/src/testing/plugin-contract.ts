@@ -1,8 +1,4 @@
-import {
-  createModelCatalog,
-  type BackendDescriptor,
-  type DecisionModel,
-} from '@lostgradient/operative';
+import type { BackendDescriptor, DecisionModel } from '@lostgradient/operative';
 import {
   decisionContractFailure,
   decisionScenarios,
@@ -266,10 +262,7 @@ function contractRun(
         const contributions = await pluginContributions(plugin);
         const problems: string[] = [];
         for (const provider of contributions.providers ?? []) {
-          const rows =
-            provider.rows ??
-            createModelCatalog().descriptors.filter((row) => row.provider === provider.name);
-          for (const row of rows) {
+          for (const row of provider.rows ?? []) {
             problems.push(...(await nativeDecisionProblems(provider, row, options)));
           }
         }

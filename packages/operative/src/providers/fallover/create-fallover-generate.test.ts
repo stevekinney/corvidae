@@ -4,12 +4,12 @@ import { describe, expect, it } from 'bun:test';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgent } from '../../create-agent.ts';
 import { readGenerationProfile } from '../../generation-profile.ts';
+import { createFixtureCatalog } from '../../testing/model-catalog.test-support.ts';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../backend-descriptor-attachment.ts';
 import type { BackendDescriptor } from '../model-catalog.ts';
-import { createModelCatalog } from '../model-catalog.ts';
 import { makeContext } from '../routing/strategies/test-helpers.ts';
 import { classifyProviderError } from './classify-error.ts';
 import { createFalloverGenerate } from './create-fallover-generate.ts';
@@ -454,8 +454,8 @@ describe('createProviderHealthTracker', () => {
 describe('createFalloverGenerate — backend-descriptor propagation (AB-64 AC2, AB-245, AB-288)', () => {
   const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
-  function descriptorFor(provider: 'anthropic' | 'openai' | 'gemini'): BackendDescriptor {
-    const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
+  function descriptorFor(provider: 'alpha' | 'beta' | 'gamma'): BackendDescriptor {
+    const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
       (row) => row.provider === provider,
     );
     if (!descriptor)
@@ -483,8 +483,8 @@ describe('createFalloverGenerate — backend-descriptor propagation (AB-64 AC2, 
   });
 
   it("attaches the ordered union of every provider's descriptors, deduplicated by (provider, endpoint, model)", () => {
-    const anthropic = descriptorFor('anthropic');
-    const openai = descriptorFor('openai');
+    const anthropic = descriptorFor('alpha');
+    const openai = descriptorFor('beta');
 
     const generate = createFalloverGenerate({
       providers: [providerWith('a', [anthropic]), providerWith('b', [anthropic, openai])],
@@ -498,8 +498,8 @@ describe('createFalloverGenerate — backend-descriptor propagation (AB-64 AC2, 
   });
 
   it("reports a routed generation profile, not opaque, for an Agent whose generate is the wrapper's output", () => {
-    const anthropic = descriptorFor('anthropic');
-    const openai = descriptorFor('openai');
+    const anthropic = descriptorFor('alpha');
+    const openai = descriptorFor('beta');
 
     const wrapped = createFalloverGenerate({
       providers: [providerWith('a', [anthropic]), providerWith('b', [openai])],

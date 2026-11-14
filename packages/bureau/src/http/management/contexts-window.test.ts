@@ -6,7 +6,6 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   type GenerateFunction,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -25,8 +24,9 @@ import {
   rpc,
   type RpcBody,
 } from './management-fixtures.test-support.ts';
+import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
 
-const rows = createModelCatalog().descriptors;
+const rows = createVendorCatalog().descriptors;
 const row = (choice: { provider: string; model: string }) => {
   const found = rows.find((candidate) => candidate.model === choice.model);
   if (found === undefined) throw new Error(`The default catalog has no ${choice.model} row.`);

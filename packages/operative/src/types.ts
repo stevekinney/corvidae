@@ -901,8 +901,9 @@ export interface RunOptionsBase {
   /**
    * When set, every terminal `RunResult` (stop-condition, maximum-steps,
    * abort, or error) carries a `costEstimate` computed from the run's
-   * accumulated `usage` at this model's pricing. `pricing` overrides
-   * `defaultPricingTable` the same way `estimateCost`'s options do. Omit to
+   * accumulated `usage` at this model's pricing. `pricing` supplies the model's prices
+   * (`customPricing`) the way `estimateCost`'s options do; Operative holds no price of its
+   * own, so a model it does not name is unpriced. Omit to
    * leave `costEstimate` absent — no estimate is fabricated without an
    * explicit model.
    */

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
@@ -191,8 +191,11 @@ describe('renderBrief', () => {
     expect(text).toContain('https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw');
     expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
     expect(text).not.toContain('Rows not named in the acceptance criteria: 11a');
-    expect(text).toContain('bun scripts/design-review-rows.ts');
-    expect(text).toContain('`unverified` block the pull request');
+    expect(text).toContain('The coordinator runs `bun scripts/design-review-capture.ts`');
+    expect(text).toContain('`unverified` block acceptance');
+    expect(text).toContain('You run no design-review capture');
+    expect(text).not.toContain('capture the screens you changed');
+    expect(text).not.toContain('get an implementation review from the `design-reviewer`');
     expect(text).toContain('tmp/chef/briefs/COR-7/boards/');
   });
 
@@ -269,7 +272,7 @@ describe('renderBrief', () => {
   test('cuts a very long description and says so', () => {
     const text = renderBrief(issue('x'.repeat(40_000)), options);
     expect(text).toContain('description cut at 16000');
-    expect(text.length).toBeLessThan(21_000);
+    expect(text.length).toBeLessThan(22_000);
   });
 });
 
@@ -347,6 +350,53 @@ describe('charter rules', () => {
       'name the command or manual check behind each verified criterion',
     ],
   ];
+
+  test('keep browser suites off the host and send a worker to the CI workflow', () => {
+    const rule = normalize(
+      charterRules.find((candidate) => candidate.startsWith('**Browser suites:**')) ?? '',
+    );
+    for (const phrase of [
+      'never run a playwright fixture suite',
+      'interborough end-to-end suite',
+      'design-review capture',
+      '`validate` or `harden` on this host',
+      '`gh workflow run main.yml --ref <branch>`',
+      'wait for it in a background command',
+      'read the failing test names',
+      "download the failing shard's artifact",
+    ])
+      expect(rule, phrase).toContain(phrase);
+  });
+
+  test('send a worker to its scratch directory for logs and temporary files', () => {
+    const rule = charterRules.find((candidate) => candidate.startsWith('**Scratch:**')) ?? '';
+    expect(rule).toContain('only in the scratch directory this brief names');
+  });
+
+  test('forbid ending processes by name or pattern, in the charter and both worker definitions', () => {
+    const rule = normalize(
+      charterRules.find((candidate) => candidate.startsWith('**Processes:**')) ?? '',
+    );
+    for (const phrase of ['`pkill`', '`killall`', 'by name or pattern', 'by pid', 'it waits'])
+      expect(rule, phrase).toContain(phrase);
+    for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
+      const text = read(path);
+      expect(text, path).toContain('never end a process by name or pattern');
+      expect(text, path).toContain('by pid');
+    }
+  });
+
+  test('the agent definitions and the worker-charter reference carry the browser-suite rule', () => {
+    for (const path of [
+      '.claude/agents/chef-worker.md',
+      '.codex/agents/chef-worker.toml',
+      '.agents/skills/chef/references/execution-record.md',
+    ]) {
+      const text = read(path);
+      expect(text, path).toContain('gh workflow run main.yml --ref <branch>');
+      expect(text, path).toContain('browser suite');
+    }
+  });
 
   test('each restate a rule that AGENTS.md or the execution record still carries', () => {
     const rules = normalize(charterRules.join('\n'));
@@ -566,6 +616,25 @@ describe('run', () => {
     expect(parsed.path).toBe(join(sandbox, 'COR-7.md'));
     expect(readFileSync(parsed.path, 'utf8')).toContain('## Charter rules');
     expect(readFileSync(parsed.path, 'utf8')).toContain('## Open blockers\n\nNone');
+  });
+
+  test('gives each brief of one issue its own created scratch directory, named in the brief', async () => {
+    const scratches: string[] = [];
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await run(['COR-7', '--out-dir', sandbox, '--json'], dependencies);
+      const parsed = JSON.parse(result.output) as { path: string; scratch: string };
+      expect(parsed.scratch).toMatch(/\/scratch\/COR-7-[0-9a-f]{8}$/);
+      expect(statSync(parsed.scratch).isDirectory()).toBe(true);
+      const text = readFileSync(parsed.path, 'utf8');
+      expect(text).toContain(`## Scratch directory\n\n\`${parsed.scratch}\``);
+      scratches.push(parsed.scratch);
+    }
+    expect(scratches[0]).not.toBe(scratches[1]);
+  });
+
+  test('a read-only --stdout brief creates and names no scratch directory', async () => {
+    const result = await run(['COR-7', '--stdout'], dependencies);
+    expect(result.output).not.toContain('\n## Scratch directory\n');
   });
 
   test('writes the open blockers it reads from Linear', async () => {

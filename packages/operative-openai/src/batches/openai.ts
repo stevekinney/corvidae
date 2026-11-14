@@ -35,8 +35,8 @@ const OPENAI_BATCH_REQUIREMENT: BatchSurfaceRequirement = {
  * OpenAI-compatible server — LM Studio, Ollama, vLLM, Groq. None of those
  * implement `/v1/batches`; they reuse the chat shape and nothing more. Offering
  * a `baseURL` knob on a batch factory would advertise a configuration that
- * cannot work, and would contradict `getProviderCapabilities('openai', {
- * baseURL })`, which reports `batchInference: false` for exactly that reason.
+ * cannot work, and would contradict `openAIRows({ baseURL })`, whose rows
+ * report `batchInference: false` for exactly that reason.
  *
  * A caller who genuinely has a batch-capable endpoint behind another origin — a
  * credential-injecting proxy in front of `api.openai.com`, say — constructs
@@ -47,8 +47,8 @@ const OPENAI_BATCH_REQUIREMENT: BatchSurfaceRequirement = {
  * constructs for itself carries no explicit `baseURL`, and `openai` documents
  * that option as defaulting to `process.env['OPENAI_BASE_URL']` — so an
  * ambient override routes these batch calls wherever it points.
- * `getProviderCapabilities('openai')` reads the same variable for exactly that
- * reason, so what it advertises and where a request lands stay in agreement.
+ * `openAIRows()` reads the same variable for exactly that reason, so what the
+ * rows advertise and where a request lands stay in agreement.
  */
 export interface OpenAIBatchClientOptions {
   /**

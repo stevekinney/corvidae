@@ -19,15 +19,33 @@
 // and deleted lines outside test files, or of more than 60 files, prints a warning suggesting a
 // split; it never fails the run.
 //
-// With --json the result is {ok, steps: [{name, command, exitCode}], warnings} on standard output
-// and the steps' own output goes to standard error. --dry-run prints the plan and runs nothing.
+// With --json the result is {ok, steps: [{name, command, exitCode, signal?, hung?}], warnings} on
+// standard output and the steps' own output goes to standard error. --dry-run prints the plan and
+// runs nothing.
+//
+// A step a signal ends is reported as `<step>: killed by SIGTERM`, not as a failed test; a step with
+// no result after an hour (`STEP_HANG_GUARD_MILLISECONDS`) is stopped and reported as hung.
+//
+// Workers never run a browser suite on the host (owner decision, 2026-11-13). The planned tiers
+// never run the Playwright suites (`test:browser`), and the real-browser smoke tests skip unless
+// `WEFT_BROWSER_SMOKE=1`, but a few `*.integration.test.ts` files launch Chromium unconditionally.
+// When the selection reaches one, the `tests:isolated` step runs with `--exclude <file>` for each,
+// and a warning line names them and `gh workflow run main.yml --ref <branch>`, to run after the push.
+//
+// Each step runs in a process group of its own. The hang guard, SIGTERM and SIGINT end the whole
+// group (SIGTERM, then SIGKILL after a grace), so no turbo or `bun test` worker outlives its step
+// holding a pool slot; a signal to this command also names the step it interrupted.
 //
 // Exit codes: 0 every step passed, 1 a step failed or the changed set could not be read,
-// 2 invalid usage.
+// 2 invalid usage, 3 a step was killed by a signal, 4 a step hung. 3 and 4 outrank 1: a step that
+// gave no verdict is not a test failure, and the run is incomplete.
 
+import { spawn } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { constants } from 'node:os';
 import { join } from 'node:path';
 import { ISOLATED_SUFFIXES } from '../affected-tests.ts';
+import { terminateProcessGroup } from '../run-exclusively.ts';
 import { directoryGlob, workspaceParentDirectories } from '../workspace-directories.ts';
 import {
   defaultRunner,
@@ -77,6 +95,19 @@ export interface PlanInput {
   base: string;
   /** Whether the quick-tier selection reaches an integration or slow test file. */
   selectsIsolatedTest: boolean;
+  /** The selected isolated test files that launch a browser; the isolated lane excludes them. */
+  browserTests?: readonly string[];
+}
+
+/** The CI command a skipped browser lane points to, named in the line printed in its place. */
+export const BROWSER_CI_COMMAND = 'gh workflow run main.yml --ref <branch>';
+
+/** Whether a test's source launches a browser itself, with no environment gate in front of it. */
+export function launchesBrowser(source: string): boolean {
+  return (
+    /\b(?:chromium|firefox|webkit)\.launch(?:PersistentContext)?\(/.test(source) &&
+    !/\bskipIf\(/.test(source)
+  );
 }
 
 /** The workspace owning `path`: the one with the longest directory prefix, if any. */
@@ -129,7 +160,15 @@ export function planSteps(input: PlanInput): PlannedStep[] {
   if (input.selectsIsolatedTest)
     steps.push({
       name: 'tests:isolated',
-      command: ['bun', 'scripts/affected-tests.ts', 'run', '--isolated', '--base', input.base],
+      command: [
+        'bun',
+        'scripts/affected-tests.ts',
+        'run',
+        '--isolated',
+        ...(input.browserTests ?? []).flatMap((path) => ['--exclude', path]),
+        '--base',
+        input.base,
+      ],
     });
   return steps;
 }
@@ -180,14 +219,35 @@ export function sizeWarnings(size: DiffSize): string[] {
 export interface StepResult {
   name: string;
   command: string;
+  /** Null for a dry run, a step killed by a signal, and a step that produced no result. */
   exitCode: number | null;
+  /** The signal that ended the step, such as `SIGTERM`. */
+  signal?: string;
+  /** Set when the step produced no result within the hang guard and was stopped. */
+  hung?: true;
 }
+
+/** How a step ended without an exit code: by a signal, or by outliving the hang guard. */
+export type StepEnd = { signal: string } | { hung: true };
+
+/**
+ * How long one step may run before it counts as hung. The heaviest step is a full test tier, which
+ * takes tens of minutes on a loaded host, so the guard sits well above that.
+ */
+export const STEP_HANG_GUARD_MILLISECONDS = 60 * 60_000;
 
 export interface FocusedDependencies {
   /** Runs the read-only git and selection commands. */
   runner?: Runner;
-  /** Runs one step's command with its output visible and returns its exit code. */
-  execute?: (command: string[], cwd: string, json: boolean) => number;
+  /**
+   * Runs one step's command with its output visible and returns its exit code, or how it ended
+   * without one.
+   */
+  execute?: (
+    command: string[],
+    cwd: string,
+    json: boolean,
+  ) => number | StepEnd | Promise<number | StepEnd>;
   exists?: (path: string) => boolean;
   readText?: (path: string) => string | undefined;
   workspaces?: (root: string) => WorkspaceReference[];
@@ -217,14 +277,68 @@ export function discoverWorkspaceReferences(root: string): WorkspaceReference[] 
   return found;
 }
 
-function defaultExecute(command: string[], cwd: string, json: boolean): number {
-  const result = Bun.spawnSync(command, {
+/**
+ * Runs one step to its end. A step the hang guard stopped is hung, and a step a signal ended is
+ * that signal; only a step that exited has an exit code.
+ */
+export async function executeStep(
+  command: string[],
+  cwd: string,
+  json: boolean,
+  timeout: number = STEP_HANG_GUARD_MILLISECONDS,
+): Promise<number | StepEnd> {
+  const [program = '', ...rest] = command;
+  // A process group of its own, so the guard and a signal end turbo and `bun test` workers too.
+  const child = spawn(program, rest, {
     cwd,
-    stdin: 'inherit',
-    stdout: json ? 2 : 'inherit',
-    stderr: 'inherit',
+    detached: true,
+    stdio: ['ignore', json ? 2 : 'inherit', 'inherit'],
   });
-  return result.exitCode ?? 1;
+  const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
+    child.once('exit', (code, signal) => resolve([code, signal]));
+    child.once('error', reject);
+  });
+  const group = child.pid;
+  if (group === undefined) {
+    await exited.catch(() => undefined);
+    return 127;
+  }
+  activeStep.group = group;
+  let hung = false;
+  const timer = setTimeout(() => {
+    hung = true;
+    void terminateProcessGroup(group);
+  }, timeout);
+  try {
+    const [code, signal] = await exited;
+    if (hung) return { hung: true };
+    if (signal !== null) return { signal };
+    return code ?? 1;
+  } finally {
+    clearTimeout(timer);
+    activeStep.group = undefined;
+    // What the step leaked (a worker still holding a pool slot) ends with it.
+    await terminateProcessGroup(group);
+  }
+}
+
+/** The step running now: its name for the interruption line, and the group to end. */
+export const activeStep: { name?: string | undefined; group?: number | undefined } = {};
+
+/**
+ * Ends the running step's process group after a signal to this command and says which step it
+ * interrupted. Resolves to the exit code this command takes: 128 plus the signal number.
+ */
+export async function interruptActiveStep(
+  signal: NodeJS.Signals,
+  log: (line: string) => void = (line) => void process.stderr.write(`${line}\n`),
+): Promise<number> {
+  const { name, group } = activeStep;
+  log(
+    `focused-checks: interrupted by ${signal} during ${name === undefined ? 'no step' : `step ${name}`}`,
+  );
+  if (group !== undefined) await terminateProcessGroup(group);
+  return 128 + (constants.signals[signal] ?? 0);
 }
 
 function gitLines(runner: Runner, root: string, args: string[]): string[] {
@@ -240,13 +354,13 @@ export interface FocusedResult {
 }
 
 /** Plan, and unless `dryRun`, run the focused checks for the change at `root`. */
-export function runChecks(
+export async function runChecks(
   root: string,
   options: { base: string; json: boolean; dryRun: boolean },
   dependencies: FocusedDependencies = {},
-): FocusedResult {
+): Promise<FocusedResult> {
   const runner = dependencies.runner ?? defaultRunner;
-  const execute = dependencies.execute ?? defaultExecute;
+  const execute = dependencies.execute ?? executeStep;
   const exists = dependencies.exists ?? ((path: string) => prettierReadable(root, path));
   const readText =
     dependencies.readText ??
@@ -290,15 +404,18 @@ export function runChecks(
   warnings.push(...sizeWarnings(size));
 
   let selectsIsolatedTest = false;
+  const browserTests: string[] = [];
   const selection = runner(['bun', 'scripts/affected-tests.ts', '--json', '--base', base], {
     cwd: root,
   });
   if (selection.code === 0) {
     try {
       const parsed = JSON.parse(selection.stdout) as { view: { tests: string[] }[] };
-      selectsIsolatedTest = parsed.view.some((workspace) =>
-        workspace.tests.some((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix))),
-      );
+      const isolated = parsed.view
+        .flatMap((workspace) => workspace.tests)
+        .filter((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)));
+      selectsIsolatedTest = isolated.length > 0;
+      browserTests.push(...isolated.filter((path) => launchesBrowser(readText(path) ?? '')));
     } catch {
       warnings.push('could not read the affected-tests selection; the isolated lane is skipped.');
     }
@@ -312,7 +429,12 @@ export function runChecks(
     workspaces,
     base,
     selectsIsolatedTest,
+    browserTests,
   });
+  if (selectsIsolatedTest && browserTests.length > 0)
+    warnings.push(
+      `tests:isolated excludes ${browserTests.join(', ')}: they launch a browser, which workers never run on the host; after pushing, run \`${BROWSER_CI_COMMAND}\`.`,
+    );
   const results: StepResult[] = [];
   for (const step of steps) {
     const command = step.command.join(' ');
@@ -321,23 +443,41 @@ export function runChecks(
       continue;
     }
     log(`focused-checks: ${step.name}: ${command}`);
-    results.push({ name: step.name, command, exitCode: execute(step.command, root, options.json) });
+    activeStep.name = step.name;
+    const ended = await execute(step.command, root, options.json);
+    activeStep.name = undefined;
+    results.push(
+      typeof ended === 'number'
+        ? { name: step.name, command, exitCode: ended }
+        : { name: step.name, command, exitCode: null, ...ended },
+    );
   }
   const failed = results.filter((step) => step.exitCode !== null && step.exitCode !== 0);
-  const ok = failed.length === 0;
-  if (options.json)
-    return { code: ok ? 0 : 1, output: JSON.stringify({ ok, steps: results, warnings }) };
+  const killed = results.filter((step) => step.signal !== undefined);
+  const hung = results.filter((step) => step.hung === true);
+  const ok = failed.length + killed.length + hung.length === 0;
+  // A signal or a hang means a step gave no verdict, so it outranks a failure that did.
+  const code = killed.length > 0 ? 3 : hung.length > 0 ? 4 : failed.length > 0 ? 1 : 0;
+  if (options.json) return { code, output: JSON.stringify({ ok, steps: results, warnings }) };
+  const named = (group: StepResult[]) => group.map((step) => step.name).join(', ');
   const summary = options.dryRun
     ? `focused-checks: dry run, ${results.length} steps planned`
-    : `focused-checks: ${results.length - failed.length} passed, ${failed.length} failed${
-        failed.length > 0 ? ` (${failed.map((step) => step.name).join(', ')})` : ''
+    : `focused-checks: ${results.length - failed.length - killed.length - hung.length} passed, ${failed.length} failed${
+        failed.length > 0 ? ` (${named(failed)})` : ''
+      }${killed.length > 0 ? `, ${killed.length} killed by a signal` : ''}${
+        hung.length > 0 ? `, ${hung.length} hung` : ''
       }`;
   const lines = [
     ...warnings.map((warning) => `focused-checks: warning: ${warning}`),
     ...(options.dryRun ? results.map((step) => `  ${step.name}: ${step.command}`) : []),
+    ...killed.map((step) => `focused-checks: ${step.name}: killed by ${step.signal}`),
+    ...hung.map(
+      (step) =>
+        `focused-checks: ${step.name}: hung (no result within ${STEP_HANG_GUARD_MILLISECONDS / 60_000} minutes; stopped)`,
+    ),
     summary,
   ];
-  return { code: ok ? 0 : 1, output: lines.join('\n') };
+  return { code, output: lines.join('\n') };
 }
 
 function worktreeRoot(runner: Runner): string {
@@ -346,11 +486,11 @@ function worktreeRoot(runner: Runner): string {
   return result.stdout.trim();
 }
 
-export function run(
+export async function run(
   argv: string[],
   dependencies: FocusedDependencies = {},
   root?: string,
-): FocusedResult {
+): Promise<FocusedResult> {
   const parsed = parseOptions(argv, { values: ['base'], flags: ['json', 'dry-run'] });
   if (parsed.positionals.length > 0)
     throw new UsageError('Usage: focused-checks.ts [--base <rev>] [--json] [--dry-run]');
@@ -366,8 +506,12 @@ export function run(
 }
 
 if (import.meta.main) {
+  for (const signal of ['SIGTERM', 'SIGINT'] as const)
+    process.on(signal, () => {
+      void interruptActiveStep(signal).then((code) => process.exit(code));
+    });
   try {
-    const { code, output } = run(Bun.argv.slice(2));
+    const { code, output } = await run(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {

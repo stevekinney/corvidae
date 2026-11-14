@@ -12,6 +12,9 @@ Its source imports Operative only through `@lostgradient/operative/provider-kit`
 
 - `createGeminiProvider(options)` returns a `GenerateFunction` backed by `models.generateContent`. `createGeminiProviderStream(options)` returns the streaming counterpart, backed by `models.generateContentStream`.
 - `geminiProvider` is the `ProviderDefinition` a host registers by name. Its `GeminiProviderConfiguration` is the shared `ProviderConfigurationBase` plus every factory option.
+- `geminiRows(options?)` is the provider's catalog rows, one per model and frozen. `options.freshness` stamps every row. The rows of a Gemini 2.0 model report `providerFetchesRemoteUrls: false`, so the host fetches a remote URL itself. The Gemini plugin passes them as its provider's `rows`.
+- `geminiPricingTable` is the list prices by model (`ModelPricing`), the source of each row's `pricing`; a host that prices a run passes it as `customPricing`.
+- `resolveGeminiModel(model)` resolves an alias in `GEMINI_MODEL_ALIASES` to its model and passes any other name through. `resolveGeminiEffort(tier, model)` maps an effort tier to a `thinkingBudget` on a thinking model (`GEMINI_THINKING_MODELS`) and returns `undefined` for any other.
 - `createGeminiBatchClient(options)` wraps `client.batches`.
 - `createGeminiTokenCounter(options)` wraps `client.models.countTokens`.
 - `createGeminiEmbedder(options)` returns an `Embedder` backed by `models.embedContent`.

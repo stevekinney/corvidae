@@ -71,6 +71,19 @@ describe('a workflow’s input and output', () => {
     expect(queryByRole('group', { name: copy.output })).toBeNull();
   });
 
+  // COR-2329: the page drew a spinner of its own; it is Cinder's, hidden behind the sentence.
+  test('a running workflow’s note turns with Cinder’s spinner, which the sentence speaks for', () => {
+    const { getByText } = render(Harness, {
+      props: { workflow: workflow({ status: 'running' }) },
+    });
+    const note = getByText(copy.appearsWhenFinished);
+    const spinner = note.querySelector('.cinder-spinner');
+    expect(spinner).not.toBeNull();
+    expect(spinner?.getAttribute('data-cinder-size')).toBe('sm');
+    expect(spinner?.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(note.querySelector('.ib-run__spinner')).toBeNull();
+  });
+
   test('a completed workflow shows an Input card and an Output card side by side', () => {
     const { getByRole, container } = render(Harness, {
       props: { workflow: workflow({ status: 'completed', result: { ok: true } }) },

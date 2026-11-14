@@ -14,7 +14,6 @@
 import {
   createAgent,
   createMockGenerate,
-  createModelCatalog,
   type ProviderName,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -27,6 +26,7 @@ import {
   type PlanSelectionRequest,
 } from './model-policy';
 import { createModels, type Models } from './models/create-models';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const FIXED_NOW = '2026-09-03T12:00:00.000Z';
 const now = () => FIXED_NOW;
@@ -36,7 +36,7 @@ function freshNewPlanId(): () => string {
   return () => `bureau-plan-${String(planIdCounter++).padStart(4, '0')}`;
 }
 
-const SEED_CATALOG = createModelCatalog({ now: () => FIXED_NOW });
+const SEED_CATALOG = createVendorCatalog({ now: () => FIXED_NOW });
 
 function requireDescriptor(provider: string) {
   const descriptor = SEED_CATALOG.descriptors.find((row) => row.provider === provider);

@@ -4,13 +4,14 @@
  * admitted as the caller's asset and the history keeps the route, never the bytes; any other
  * address is refused; and a part the card does not advertise is `-32005` before a model is called.
  */
-import { createAgent, createModelCatalog, withBackendDescriptors } from '@lostgradient/operative';
+import { createAgent, withBackendDescriptors } from '@lostgradient/operative';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { base64Of, pngBytes, wavBytes } from '../testing/asset-fixtures.test-support.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const PUBLIC_URL = 'http://localhost';
 const ALICE = 'api-key:alice';
@@ -20,7 +21,7 @@ const BOB = 'api-key:bob';
 type Json = any;
 
 /** A model that takes images and documents in, as a vision model does. */
-const vision = createModelCatalog()
+const vision = createVendorCatalog()
   .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
   .slice(0, 1);
 

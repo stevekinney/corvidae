@@ -12,7 +12,6 @@ import { join } from 'node:path';
 
 import {
   createAgent,
-  createModelCatalog,
   withBackendDescriptors,
   type GenerateFunction,
 } from '@lostgradient/operative';
@@ -20,6 +19,10 @@ import { principalFromApiKey } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
+import { vendorRows } from './testing/vendor-catalog.test-support';
+
+/** The README declares `anthropicRows()`, which a provider package ships; the test uses the fixture's. */
+const anthropicRows = () => vendorRows('anthropic');
 
 /** What the example's `console` records, in order. */
 type Recorder = { log(...values: unknown[]): void };
@@ -28,9 +31,7 @@ type Recorder = { log(...values: unknown[]): void };
 async function example(console: Recorder): Promise<void> {
   // A backend's descriptor says which media it takes in and gives out. Bureau admits only what a
   // descriptor advertises, so a function with no descriptor is a text-only agent.
-  const visionBackends = createModelCatalog().descriptors.filter(
-    (descriptor) => descriptor.provider === 'anthropic',
-  );
+  const visionBackends = anthropicRows();
   const drawingBackends = visionBackends.map((descriptor) => ({
     ...descriptor,
     modalities: {

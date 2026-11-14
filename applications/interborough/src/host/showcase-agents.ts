@@ -21,7 +21,6 @@ import {
 } from '@lostgradient/bureau';
 import {
   createAgent,
-  createModelCatalog,
   createScriptedGenerate,
   stopWhen,
   withBackendDescriptors,
@@ -30,6 +29,7 @@ import {
   type Validator,
   type ValidatorOutcome,
 } from '@lostgradient/operative';
+import { anthropicRows } from '@lostgradient/operative-anthropic';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -456,7 +456,7 @@ export const SHOWCASE_MODEL_AGENT_MODEL = {
  * answers, because the showcase never calls a model.
  */
 export function onShowcaseModel(generate: GenerateFunction): GenerateFunction {
-  const row = createModelCatalog().descriptors.find(
+  const row = anthropicRows().find(
     (descriptor) =>
       descriptor.provider === SHOWCASE_MODEL_AGENT_MODEL.provider &&
       descriptor.model === SHOWCASE_MODEL_AGENT_MODEL.model,
@@ -473,7 +473,7 @@ export function onShowcaseModel(generate: GenerateFunction): GenerateFunction {
  */
 export function showcaseModelSwitcherGenerate(): GenerateFunction {
   const [first] = SHOWCASE_MODEL_SWITCHER_MODELS;
-  const row = createModelCatalog().descriptors.find(
+  const row = anthropicRows().find(
     (descriptor) => descriptor.provider === first.provider && descriptor.model === first.model,
   );
   if (row === undefined) throw new Error(`The model catalog has no ${first.model} row.`);

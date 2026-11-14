@@ -17,6 +17,15 @@ export { createOpenAIBatchClient } from './batches/openai.ts';
 export type { OpenAIBatchClientOptions, OpenAIBatchOperations } from './batches/openai.ts';
 export { createOpenAIEmbedder } from './embeddings/openai.ts';
 export type { OpenAIEmbedderOptions, OpenAIEmbeddingClient } from './embeddings/openai.ts';
+export {
+  OPENAI_MODEL_ALIASES,
+  OPENAI_REASONING_MODELS,
+  openAIPricingTable,
+  openAIRows,
+  resolveOpenAIEffort,
+  resolveOpenAIModel,
+} from './openai-catalog.ts';
+export type { OpenAIRowsOptions } from './openai-catalog.ts';
 export { openaiProvider } from './openai-definition.ts';
 export type { OpenAIProviderConfiguration } from './openai-definition.ts';
 export { mapOpenAIMessage, mergeAssembledField } from './openai-parts.ts';

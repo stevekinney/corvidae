@@ -3,15 +3,17 @@
    * `/`: Home, the first item in the sidebar and the page the app opens on. Its heading is Cinder's
    * `visually-hidden` wrapper, so the page shows no heading of its own: the breadcrumb already says
    * "Home", and Home's heading row carries no status or actions. The date line leads the content,
-   * then four counts in one row (the labels and windows Health uses), then two columns: what needs
-   * you, what is running and what needs attention at the left, the box that starts a chat at the
-   * right, and the chats you were last in across the full width below (`home-layout.svelte`).
+   * then the page's one focal value, a Spotlight that says how many reviews wait on you, with the
+   * one count Home lists nowhere else under it (`home-focus.svelte`), then two columns: what needs
+   * you, what is running and what needs attention at the left, each one grouped list, the box that
+   * starts a chat at the right, and the chats you were last in across the full width below
+   * (`home-layout.svelte`).
    *
    * Each card reads on its own, so one that cannot be read says so in its own place and the rest
    * stay live. Running now is there only while a run is going.
    *
    * On a new installation the page is the first-run checklist instead (`useHomeFirstRun`): it
-   * leads with "Welcome. …" in place of the date line, and the counts, Needs you and the provider
+   * leads with "Welcome. …" in place of the date line, and the Spotlight, Needs you and the provider
    * notice give way to the checklist, whose first step says the notice. The box that starts a chat
    * comes back below the checklist once a provider is connected, and Recent chats says there are
    * none yet.
@@ -31,8 +33,8 @@
   import { getConnection } from '../../app/connection.svelte.ts';
   import { dateLine, timesShowIn } from '../../lib/format/clock.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
-  import HomeCounts from './home-counts.svelte';
   import HomeFirstRun from './home-first-run.svelte';
+  import HomeFocus from './home-focus.svelte';
   import { useHomeFirstRun } from './home-first-run.svelte.ts';
   import HomeLayout from './home-layout.svelte';
   import HomeLoading from './home-loading.svelte';
@@ -105,7 +107,7 @@
   <HomeLayout
     {mode}
     {date}
-    counts={mode === 'overview' ? countsRow : undefined}
+    focus={mode === 'overview' ? focusRow : undefined}
     primary={primaryCard}
     running={mode === 'overview' && runningNow.length > 0 ? runningCard : undefined}
     startChatBelow={mode === 'checklist' && firstRun.providerConnected()
@@ -124,7 +126,7 @@
     {dateLine(clock())}. {timesShowIn(clock())}.
   {/if}
 {/snippet}
-{#snippet countsRow()}<HomeCounts />{/snippet}
+{#snippet focusRow()}<HomeFocus />{/snippet}
 {#snippet primaryCard()}
   {#if mode === 'checklist'}
     <HomeFirstRun

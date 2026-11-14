@@ -7,7 +7,7 @@ import {
   createLazyGenerate,
 } from './index';
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
-import { createModelCatalog } from './providers/model-catalog';
+import { createFixtureCatalog } from './testing/model-catalog.test-support.ts';
 import type { GenerateContext, GenerateFunction, GenerateResponse } from './types';
 
 const response = { content: 'loaded', toolCalls: [] } satisfies GenerateResponse;
@@ -351,8 +351,8 @@ describe('createLazyGenerate — descriptors (AB-64 AC2, AB-245)', () => {
   const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
   function anthropicDescriptor() {
-    const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
-      (row) => row.provider === 'anthropic',
+    const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
+      (row) => row.provider === 'alpha',
     );
     if (!descriptor)
       throw new Error('expected at least one anthropic descriptor in the seed catalog');

@@ -1,5 +1,5 @@
 import { definePlugin } from '@lostgradient/interborough-plugin';
-import { createGeminiEmbedder, geminiProvider } from '@lostgradient/operative-gemini';
+import { createGeminiEmbedder, geminiProvider, geminiRows } from '@lostgradient/operative-gemini';
 import type { Embedder } from 'armorer';
 import { z } from 'zod';
 
@@ -50,7 +50,7 @@ export default definePlugin({
       return built.embed(texts);
     };
     return {
-      providers: [geminiProvider],
+      providers: [{ ...geminiProvider, rows: geminiRows() }],
       embedders: [{ name: GEMINI_EMBEDDING_MODEL, dimensions: GEMINI_EMBEDDING_DIMENSIONS, embed }],
     };
   },

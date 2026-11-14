@@ -4,20 +4,19 @@ Read this when dispatching a review, accepting a submission, reading a failed de
 
 ## Review
 
-Review earns its keep on product concurrency changes, one-way doors, and diffs a careful reading can fault; a mechanical move a script proves needs none. Every review dispatch names the read-only `chef-reviewer` agent (`.claude/agents/chef-reviewer.md` as the Claude Code `subagent_type`, `.codex/agents/chef-reviewer.toml` on Codex), and its charter applies AGENTS.md "Review guidelines". Keep one implementation owner and one primary reviewer through a correction cycle, consolidate findings into one correction request, and keep review cheaper than the work it checks.
+Review earns its keep on product concurrency changes, one-way doors, and diffs a careful reading can fault; a mechanical move a script proves needs none. Every review dispatch names the read-only `chef-reviewer` agent (`.claude/agents/chef-reviewer.md` as the Claude Code `subagent_type`, `.codex/agents/chef-reviewer.toml` on Codex), and its charter applies AGENTS.md "Review guidelines". Keep one implementation owner and one primary reviewer through a correction cycle, consolidate findings into one correction request.
 
-- The reviewer invokes no skills, including harness skills such as Claude Code's built-in `code-review`, which apply edits, and uses no file-editing tools. It records `git status --porcelain` and `git rev-parse HEAD` at the start and end, and the review fails if either differs. This is a charter rule, not a permission, so the coordinator checks the tree too.
-- The reviewer reads [the defect classes](defect-classes.md) first and starts where the worker's defect-class report says a class applies. For a wrapper, adapter, or delegation change it checks that every property of the wrapped object (approval policy, idempotency, gating, identity, context binding) survives.
-- A one-way-door review covers only the doors the change alters (a persisted format, a wire protocol, an authorization rule, a published surface) and runs after the primary review settles, unless the door is the change's main risk. A mechanical correction (a rename, a test fix, a documentation change) is verified at the economical tier.
-- A change to Interborough's interface or Cinder also carries the `design-reviewer` verdict AGENTS.md "Workflow" requires, which the worker obtains under the `design-review` skill; it sits beside the correctness review and replaces none of it.
+- The reviewer invokes no skills, including harness skills such as Claude Code's built-in `code-review`, which apply edits, and uses no file-editing tools. It records `git status --porcelain` and `git rev-parse HEAD` at the start and end, and the review fails if either differs.- The reviewer reads [the defect classes](defect-classes.md) first and starts where the worker's defect-class report says a class applies. For a wrapper, adapter, or delegation change it checks that every property of the wrapped object (approval policy, idempotency, gating, identity, context binding) survives.
+- A one-way-door review covers only the doors the change alters (a persisted format, a wire protocol, an authorization rule, a published surface) and runs after the primary review settles, unless the door is the change's main risk. A mechanical correction is verified at the economical tier.
+- A change to Interborough's interface or Cinder also carries the `design-reviewer` verdict AGENTS.md "Workflow" requires, which you obtain (see "Accepting a submission"); it sits beside the correctness review and replaces none of it.
 
 ## Accepting a submission
 
-A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.ts` is clean. Kill only processes you can attribute to this run by recorded PID; a leaked busy loop degrades every later gate. Acceptance authorizes delivery; a correction request is not acceptance, and the corrected head comes back as a new `ready-for-review`.
+A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.ts` is clean. Kill only processes you can attribute to this run by recorded PID. Acceptance authorizes delivery; a correction request is not acceptance, and the corrected head comes back as a new `ready-for-review`.
 
 - Every acceptance criterion has one status (Implemented, Verified, Failed, Blocked, Not verified). A Failed one goes back as a correction, and an Implemented one needs its check run first. For a long criteria list, or one written outside this run, have the `stickler` agent audit it clause by clause.
-- An issue that names design rows needs one `row-id | verdict | evidence` line per row from the `design-reviewer`, each `matches` or a `deferred` the issue records with a reason. A departure from a board is a defect, never style.
-- A filtered gate speaks only for the workspaces it names; require evidence for every repository-level gate the change can reach. A green result can be a false witness (a replayed cache, an assertion whose subject no longer renders, a grep over output with ANSI escapes): assert on a captured exit status, and say whether a green came from a fresh run or a replay.
+- An issue that names design rows: the worker runs no capture; it returns `ready-for-review` naming the rows it implemented and the screens it changed. You run `bun scripts/design-review-capture.ts` (in `applications/interborough`, one capture at a time, under host admission) and get one `row-id | verdict | evidence` line per row from the read-only `design-reviewer`. Only `matches`, or a `deferred` the issue records with a reason, passes; an `unverified` or failing row goes back to the worker as a correction. A departure from a board is a defect, never style.
+- A filtered gate speaks only for the workspaces it names; require evidence for every repository-level gate the change can reach. A green result can be a false witness (a replayed cache, an assertion whose subject no longer renders): assert on a captured exit status, and say whether it came from a fresh run or a replay.
 - If a worker crosses its authority boundary, stop it, inspect the actual effects, and record the incident before recovery.
 
 ## Exit codes
@@ -26,7 +25,7 @@ A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.t
 
 - `mergeable`: GitHub's mergeability stayed `UNKNOWN`; launch it again shortly.
 - `issue`: the merge happened, and a Linear comment or state change failed for the named issue; repair that issue with `bun scripts/chef/linear.ts comment <ID> --file <md>` or `bun scripts/chef/linear.ts state <ID> Done`, and do not relaunch.
-- A delivery removes its worktree, or prints `worktree kept: <why>`; `worktree.ts stale --remove` clears leftovers.
+- A delivery removes its worktree, or prints `worktree kept: <why>`, logs the head in `tmp/chef/delivered-heads.log`, sweeps; close batches with `worktree.ts stale --remove`.
 
 A red `main` is a warning line in the report (`mainHealthWarning` in the JSON), never a refusal.
 

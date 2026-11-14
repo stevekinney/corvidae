@@ -10,12 +10,16 @@ import { createConversationHistory } from 'conversationalist';
 import { stopWhen } from '../conditions/index';
 import { createActiveRun } from '../create-run';
 import { waitForCondition } from '../test/index';
+import { fixturePricing } from '../testing/model-catalog.test-support.ts';
 import type { RunOptions } from '../types';
 import { startDurableRunResult } from './active-run-result-entrypoints';
 import { createCheckpointStore } from './checkpoint-store';
 import { createRunEngine } from './create-run-engine';
 import { readDurableRunResult } from './read-run-result';
 import { createRunWorkflow } from './run-workflow';
+
+/** Prices passed the way a host passes its own: Operative holds none. */
+const pricing = { customPricing: fixturePricing };
 
 async function buildContext() {
   const storage = new MemoryStorage();
@@ -86,7 +90,7 @@ describe('readDurableRunResult', () => {
 
       const reading = await readDurableRunResult(context, 'costed-run', {
         runtime,
-        costEstimation: { model: 'gpt-4o' },
+        costEstimation: { model: 'beta-standard', pricing },
       });
 
       expect(reading.status).toBe('completed');

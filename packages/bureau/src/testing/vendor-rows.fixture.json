@@ -1,0 +1,2986 @@
+[
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-fable-5-1",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 10,
+      "outputPerMillionTokens": 50,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.25,
+      "cacheWritePerMillionTokens": 12.5
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-mythos-5-1",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 10,
+      "outputPerMillionTokens": 50,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.25,
+      "cacheWritePerMillionTokens": 12.5
+    },
+    "availability": "unknown",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-opus-5-5",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 4,
+      "outputPerMillionTokens": 20,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.2,
+      "cacheWritePerMillionTokens": 5
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-opus-5",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 5,
+      "outputPerMillionTokens": 25,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.5,
+      "cacheWritePerMillionTokens": 6.25
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-sonnet-5-5",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 2,
+      "outputPerMillionTokens": 10,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.1,
+      "cacheWritePerMillionTokens": 2.5
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-haiku-5-5",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 0.1,
+      "outputPerMillionTokens": 0.5,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.010000000000000002,
+      "cacheWritePerMillionTokens": 0.125,
+      "longContext": {
+        "inputTokensAbove": 100000,
+        "inputPerMillionTokens": 0.5,
+        "outputPerMillionTokens": 2.5,
+        "cacheReadPerMillionTokens": 0.05,
+        "cacheWritePerMillionTokens": 0.625
+      }
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-fable-5",
+    "aliases": [
+      {
+        "alias": "fable",
+        "resolvesTo": "claude-fable-5"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 10,
+      "outputPerMillionTokens": 50,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 1,
+      "cacheWritePerMillionTokens": 12.5
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-mythos-5",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 10,
+      "outputPerMillionTokens": 50,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 1,
+      "cacheWritePerMillionTokens": 12.5
+    },
+    "availability": "unknown",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-opus-4-8",
+    "aliases": [
+      {
+        "alias": "opus",
+        "resolvesTo": "claude-opus-4-8"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 5,
+      "outputPerMillionTokens": 25,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.5,
+      "cacheWritePerMillionTokens": 6.25
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-opus-4-7",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 5,
+      "outputPerMillionTokens": 25,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.5,
+      "cacheWritePerMillionTokens": 6.25
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-sonnet-5",
+    "aliases": [
+      {
+        "alias": "sonnet",
+        "resolvesTo": "claude-sonnet-5"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 2,
+      "outputPerMillionTokens": 10,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.2,
+      "cacheWritePerMillionTokens": 2.5
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-opus-4-6",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "high",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 5,
+      "outputPerMillionTokens": 25,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.5,
+      "cacheWritePerMillionTokens": 6.25
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-opus-4-5",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 100
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 64000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "high",
+        "max": "high"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 5,
+      "outputPerMillionTokens": 25,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.5,
+      "cacheWritePerMillionTokens": 6.25
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-sonnet-4-6",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 128000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "high",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 3,
+      "outputPerMillionTokens": 15,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.30000000000000004,
+      "cacheWritePerMillionTokens": 3.75
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-haiku-4-5",
+    "aliases": [
+      {
+        "alias": "haiku",
+        "resolvesTo": "claude-haiku-4-5"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 100
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 64000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "native",
+      "degradesTo": {}
+    },
+    "pricing": {
+      "inputPerMillionTokens": 1,
+      "outputPerMillionTokens": 5,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.1,
+      "cacheWritePerMillionTokens": 1.25
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-opus-4-20250514",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 100
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 32000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "native",
+      "degradesTo": {}
+    },
+    "pricing": {
+      "inputPerMillionTokens": 15,
+      "outputPerMillionTokens": 75,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 1.5,
+      "cacheWritePerMillionTokens": 18.75
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-sonnet-4-20250514",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 100
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 64000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "native",
+      "degradesTo": {}
+    },
+    "pricing": {
+      "inputPerMillionTokens": 3,
+      "outputPerMillionTokens": 15,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.30000000000000004,
+      "cacheWritePerMillionTokens": 3.75
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-haiku-4-20250506",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 100
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 64000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "native",
+      "degradesTo": {}
+    },
+    "pricing": {
+      "inputPerMillionTokens": 0.8,
+      "outputPerMillionTokens": 4,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.08000000000000002,
+      "cacheWritePerMillionTokens": 1
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-3-5-sonnet-20241022",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 100
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 8192,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "native",
+      "degradesTo": {}
+    },
+    "pricing": {
+      "inputPerMillionTokens": 3,
+      "outputPerMillionTokens": 15,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.30000000000000004,
+      "cacheWritePerMillionTokens": 3.75
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "anthropic",
+    "endpoint": "messages",
+    "model": "claude-3-5-haiku-20241022",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 10485760
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 100
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "toolResultModalities": ["image", "document"],
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 8192,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": true,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "native",
+      "degradesTo": {}
+    },
+    "pricing": {
+      "inputPerMillionTokens": 0.8,
+      "outputPerMillionTokens": 4,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.08000000000000002,
+      "cacheWritePerMillionTokens": 1
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "openai",
+    "endpoint": "chat.completions",
+    "model": "gpt-4.1",
+    "aliases": [
+      {
+        "alias": "gpt",
+        "resolvesTo": "gpt-4.1"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 1500
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 1047576,
+    "maxOutputTokens": 32768,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": false,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": false,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "unsupported",
+      "degradesTo": {}
+    },
+    "endpointAmbiguous": false,
+    "pricing": {
+      "inputPerMillionTokens": 2,
+      "outputPerMillionTokens": 8,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 1
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "openai",
+    "endpoint": "chat.completions",
+    "model": "gpt-4.1-mini",
+    "aliases": [
+      {
+        "alias": "gpt-mini",
+        "resolvesTo": "gpt-4.1-mini"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 1500
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 1047576,
+    "maxOutputTokens": 32768,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": false,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": false,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "unsupported",
+      "degradesTo": {}
+    },
+    "endpointAmbiguous": false,
+    "pricing": {
+      "inputPerMillionTokens": 0.4,
+      "outputPerMillionTokens": 1.6,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.2
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "openai",
+    "endpoint": "chat.completions",
+    "model": "gpt-4.1-nano",
+    "aliases": [
+      {
+        "alias": "gpt-nano",
+        "resolvesTo": "gpt-4.1-nano"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 1500
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 1047576,
+    "maxOutputTokens": 32768,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": false,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": false,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "unsupported",
+      "degradesTo": {}
+    },
+    "endpointAmbiguous": false,
+    "pricing": {
+      "inputPerMillionTokens": 0.1,
+      "outputPerMillionTokens": 0.4,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.05
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "openai",
+    "endpoint": "chat.completions",
+    "model": "o3",
+    "aliases": [
+      {
+        "alias": "o",
+        "resolvesTo": "o3"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 1500
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 100000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": false,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": false,
+    "effort": {
+      "portable": ["low", "medium", "high"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "high",
+        "max": "high"
+      }
+    },
+    "endpointAmbiguous": false,
+    "pricing": {
+      "inputPerMillionTokens": 10,
+      "outputPerMillionTokens": 40,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 5
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "openai",
+    "endpoint": "chat.completions",
+    "model": "o3-mini",
+    "aliases": [
+      {
+        "alias": "o-mini",
+        "resolvesTo": "o3-mini"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 1500
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 100000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": false,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": false,
+    "effort": {
+      "portable": ["low", "medium", "high"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "high",
+        "max": "high"
+      }
+    },
+    "endpointAmbiguous": false,
+    "pricing": {
+      "inputPerMillionTokens": 1.1,
+      "outputPerMillionTokens": 4.4,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.55
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "openai",
+    "endpoint": "chat.completions",
+    "model": "o4-mini",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 1500
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 200000,
+    "maxOutputTokens": 100000,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": false,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": false,
+    "effort": {
+      "portable": ["low", "medium", "high"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "high",
+        "max": "high"
+      }
+    },
+    "endpointAmbiguous": false,
+    "pricing": {
+      "inputPerMillionTokens": 1.1,
+      "outputPerMillionTokens": 4.4,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.55
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "openai",
+    "endpoint": "chat.completions",
+    "model": "gpt-4o",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 1500
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 128000,
+    "maxOutputTokens": 16384,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": false,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": false,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "unsupported",
+      "degradesTo": {}
+    },
+    "endpointAmbiguous": false,
+    "pricing": {
+      "inputPerMillionTokens": 2.5,
+      "outputPerMillionTokens": 10,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 1.25
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "openai",
+    "endpoint": "chat.completions",
+    "model": "gpt-4o-mini",
+    "aliases": [],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "provider-file"]
+      },
+      "audio": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "video": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document"],
+    "mediaLimits": [],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 1500
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 128000,
+    "maxOutputTokens": 16384,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat",
+      "requestMetadata"
+    ],
+    "caching": false,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": false,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "unsupported",
+      "degradesTo": {}
+    },
+    "endpointAmbiguous": false,
+    "pricing": {
+      "inputPerMillionTokens": 0.15,
+      "outputPerMillionTokens": 0.6,
+      "currency": "USD",
+      "cacheReadPerMillionTokens": 0.075
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "gemini",
+    "endpoint": "generateContent",
+    "model": "gemini-2.5-pro",
+    "aliases": [
+      {
+        "alias": "pro",
+        "resolvesTo": "gemini-2.5-pro"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "video": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document", "audio", "video"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "document",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "audio",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "video",
+        "maxBytes": 20971520
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 3600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 1048576,
+    "maxOutputTokens": 65536,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 1.25,
+      "outputPerMillionTokens": 10,
+      "currency": "USD"
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "gemini",
+    "endpoint": "generateContent",
+    "model": "gemini-2.5-flash",
+    "aliases": [
+      {
+        "alias": "flash",
+        "resolvesTo": "gemini-2.5-flash"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "video": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document", "audio", "video"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "document",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "audio",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "video",
+        "maxBytes": 20971520
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 3600
+      }
+    ],
+    "providerFetchesRemoteUrls": true,
+    "contextWindowTokens": 1048576,
+    "maxOutputTokens": 65536,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": ["low", "medium", "high", "xhigh", "max"],
+      "nativeMapping": "native",
+      "degradesTo": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    "pricing": {
+      "inputPerMillionTokens": 0.15,
+      "outputPerMillionTokens": 0.6,
+      "currency": "USD"
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  },
+  {
+    "provider": "gemini",
+    "endpoint": "generateContent",
+    "model": "gemini-2.0-flash",
+    "aliases": [
+      {
+        "alias": "flash-lite",
+        "resolvesTo": "gemini-2.0-flash"
+      }
+    ],
+    "lifecycle": "stable",
+    "modalities": {
+      "text": {
+        "input": true,
+        "output": true,
+        "sourceForms": ["inline"]
+      },
+      "image": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "document": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "audio": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "video": {
+        "input": true,
+        "output": false,
+        "sourceForms": ["inline", "data-url", "remote-url", "provider-file"]
+      },
+      "file": {
+        "input": false,
+        "output": false,
+        "sourceForms": []
+      }
+    },
+    "mimeFamilies": ["text", "image", "document", "audio", "video"],
+    "mediaLimits": [
+      {
+        "scope": "per-part",
+        "modality": "image",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "document",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "audio",
+        "maxBytes": 20971520
+      },
+      {
+        "scope": "per-part",
+        "modality": "video",
+        "maxBytes": 20971520
+      }
+    ],
+    "mediaCounts": [
+      {
+        "modality": "image",
+        "maxPerRequest": 3600
+      }
+    ],
+    "providerFetchesRemoteUrls": false,
+    "contextWindowTokens": 1048576,
+    "maxOutputTokens": 8192,
+    "streaming": true,
+    "tools": true,
+    "parallelTools": true,
+    "structuredOutput": true,
+    "parameterCompatibility": [
+      "model",
+      "effort",
+      "maximumTokens",
+      "temperature",
+      "topP",
+      "stopSequences",
+      "toolChoice",
+      "responseFormat"
+    ],
+    "caching": true,
+    "batchInference": true,
+    "explicitThinkingRequest": false,
+    "serverSideTokenCounting": true,
+    "effort": {
+      "portable": [],
+      "nativeMapping": "unsupported",
+      "degradesTo": {}
+    },
+    "pricing": {
+      "inputPerMillionTokens": 0.1,
+      "outputPerMillionTokens": 0.4,
+      "currency": "USD"
+    },
+    "availability": "available",
+    "health": "unknown",
+    "source": "static",
+    "freshness": "2026-10-17T00:00:00.000Z"
+  }
+]

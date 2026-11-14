@@ -16,12 +16,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import {
-  type BackendDescriptor,
-  createModelCatalog,
-  type ModelCatalog,
-} from './providers/model-catalog.ts';
+import { type BackendDescriptor, type ModelCatalog } from './providers/model-catalog.ts';
 import { createSelectionGate, type SelectionGate } from './selection-gate.ts';
+import { createFixtureCatalog } from './testing/model-catalog.test-support.ts';
 
 const FIXED_NOW = '2026-09-02T12:00:00.000Z';
 const now = () => FIXED_NOW;
@@ -32,7 +29,7 @@ function freshNewPlanId(): () => string {
   return () => `gate-plan-${String(planIdCounter++).padStart(4, '0')}`;
 }
 
-const SEED_CATALOG = createModelCatalog({ now: () => FIXED_NOW });
+const SEED_CATALOG = createFixtureCatalog({ now: () => FIXED_NOW });
 
 function descriptor(provider: string, model: string): BackendDescriptor {
   const found = SEED_CATALOG.descriptors.find(
@@ -42,7 +39,7 @@ function descriptor(provider: string, model: string): BackendDescriptor {
   return found;
 }
 
-const anthropic = descriptor('anthropic', 'claude-fable-5');
+const anthropic = descriptor('alpha', 'alpha-large');
 
 function catalogOf(
   descriptors: readonly BackendDescriptor[],
@@ -142,7 +139,7 @@ describe('createSelectionGate: revalidate() with no recorded plan', () => {
     const plan = gate.revalidate();
     expect(plan).not.toBeInstanceOf(Promise);
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(plan.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
   });
 });
 
@@ -183,7 +180,7 @@ describe('createSelectionGate: catalog revision changed', () => {
     expect(second.outcome).toBe('capability-changed');
     expect(second.failure?.kind).toBe('capability-changed');
     // The superseded plan is untouched — its `selected` is never rewritten.
-    expect(first.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(first.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
     expect(gate.getPlan()).toBe(second);
   });
 
@@ -221,7 +218,7 @@ describe('createSelectionGate: policy revision changed', () => {
       }),
       options: () => ({
         catalog: catalogOf([anthropic]),
-        deployment: { deniedProviders: ['anthropic'] },
+        deployment: { deniedProviders: ['alpha'] },
         now,
         newPlanId: freshNewPlanId(),
       }),
@@ -231,7 +228,7 @@ describe('createSelectionGate: policy revision changed', () => {
 
     expect(second.outcome).toBe('policy-changed');
     expect(second.failure?.kind).toBe('policy-changed');
-    expect(first.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(first.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
   });
 });
 
@@ -269,7 +266,7 @@ describe('createSelectionGate: availability-only change', () => {
     expect(second.failure?.kind).toBe('no-candidate');
     // Never silently falls back to the superseded plan's model.
     expect(second.selected).toBeUndefined();
-    expect(first.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(first.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
   });
 });
 
@@ -301,7 +298,7 @@ describe('createSelectionGate: the step’s input media (COR-716)', () => {
 
     expect(second.outcome).toBe('no-candidate');
     expect(second.failure?.exclusionCode).toBe('incompatible-modality');
-    expect(first.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(first.selected).toEqual({ provider: 'alpha', model: 'alpha-large' });
   });
 
   it('selects normally when the media is one the candidate accepts', () => {

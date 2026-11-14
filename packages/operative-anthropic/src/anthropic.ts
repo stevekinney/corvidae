@@ -8,8 +8,6 @@ import {
   extractSamplingParameterFields,
   isProviderContractError,
   ProviderError,
-  resolveAnthropicEffort,
-  resolveAnthropicModel,
   resolveCommonParameters,
   withBackendDescriptors,
   withInputLineage,
@@ -19,6 +17,7 @@ import {
   type SamplingParameterField,
 } from '@lostgradient/operative/provider-kit';
 import { anthropicPartsFromBlocks } from './anthropic-blocks.ts';
+import { resolveAnthropicEffort, resolveAnthropicModel } from './anthropic-catalog.ts';
 import { createAnthropicSdkClient, isAnthropicClient } from './anthropic-sdk.ts';
 import {
   anthropicDescriptorsFor,

@@ -12,7 +12,6 @@ import { chatStatusWord } from '../chat/session-groups.ts';
 import {
   attentionRows,
   checklistSteps,
-  missedRunCount,
   needsYouRows,
   recentChatRows,
   runningRows,
@@ -307,19 +306,6 @@ describe('viewerCadence', () => {
   });
 });
 
-describe('missedRunCount', () => {
-  test('sums the runs every schedule missed in the last seven days', () => {
-    expect(missedRunCount(SAMPLE_ATTENTION)).toBe(4);
-    expect(
-      missedRunCount([
-        ...SAMPLE_ATTENTION,
-        { ...SAMPLE_ATTENTION[2]!, scheduleId: 'other', count: 2 } as AttentionItem,
-      ]),
-    ).toBe(6);
-    expect(missedRunCount([])).toBe(0);
-  });
-});
-
 describe('recent chats', () => {
   const QUESTIONS = new Map([
     ['chat-refund', 'Refund order 4471 for $42.00?'],
@@ -411,6 +397,7 @@ describe('runningRows', () => {
         key: 'run-daily',
         title: 'Daily summary',
         line: 'Running, Schedule, Assistant, started 10:44 AM',
+        detail: 'Schedule, Assistant, started 10:44 AM',
         href: '/runs/run-daily',
       },
     ]);

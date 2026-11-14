@@ -9,19 +9,12 @@ import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import type {
-  ContentSource,
   ConversationHistory,
   MediaContent,
   Message,
   MultiModalContent,
 } from 'conversationalist';
-import {
-  Conversation,
-  toAnthropicMessages,
-  toGeminiMessages,
-  toOpenAIMessages,
-  UnsupportedContentError,
-} from 'conversationalist';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createSlidingWindowStrategy } from '../src/context/compaction-strategies';
@@ -38,11 +31,11 @@ import { AgentContractError, MediaAdmissionError, SelectionRevalidationError } f
 import type { OperativeHookMap } from '../src/hooks';
 import { withBackendDescriptors } from '../src/providers/backend-descriptor-attachment';
 import type { BackendDescriptor } from '../src/providers/model-catalog';
-import { createModelCatalog } from '../src/providers/model-catalog';
 import { createSelectionGate } from '../src/selection-gate';
 import { createSessionStore } from '../src/session/create-session-store';
 import { createSessionHandle } from '../src/session/session-handle';
 import { drainMicrotasks } from '../src/testing/drain-microtasks.test-support.ts';
+import { createFixtureCatalog } from '../src/testing/model-catalog.test-support.ts';
 import type {
   ContentSourceResolver,
   GenerateContext,
@@ -448,9 +441,9 @@ describe('compaction and retry preserve media', () => {
 });
 
 describe('media admission: a part is delivered or refused before generation', () => {
-  const catalog = createModelCatalog();
-  const anthropicRow = catalog.descriptors.find((d) => d.provider === 'anthropic')!;
-  const openAIRow = catalog.descriptors.find((d) => d.provider === 'openai')!;
+  const catalog = createFixtureCatalog();
+  const anthropicRow = catalog.descriptors.find((d) => d.provider === 'alpha')!;
+  const openAIRow = catalog.descriptors.find((d) => d.provider === 'beta')!;
   const managed: MediaContent = {
     type: 'document',
     source: { kind: 'managed-asset', assetId: 'asset-1', revision: 3 },
@@ -618,7 +611,7 @@ describe('media admission: a part is delivered or refused before generation', ()
   });
 
   it('refuses a request over a backend’s per-request media count, naming the parts past the cap', async () => {
-    const haiku = catalog.descriptors.find((d) => d.model === 'claude-haiku-4-5')!;
+    const haiku = catalog.descriptors.find((d) => d.model === 'alpha-medium')!;
     const inlineImage = (): MediaContent => ({
       type: 'image',
       mimeType: 'image/png',
@@ -640,7 +633,7 @@ describe('media admission: a part is delivered or refused before generation', ()
     const atCap = run(Array.from({ length: 100 }, inlineImage), {}, [haiku]);
     const atCapOutcome = await atCap.result;
     expect(atCapOutcome.finishReason).toBe('stop-condition');
-    const sonnet = catalog.descriptors.find((d) => d.model === 'claude-sonnet-5-5')!;
+    const sonnet = catalog.descriptors.find((d) => d.model === 'alpha-large')!;
     const wide = run(Array.from({ length: 101 }, inlineImage), {}, [sonnet]);
     const wideOutcome = await wide.result;
     expect(wideOutcome.finishReason).toBe('stop-condition');
@@ -954,99 +947,6 @@ describe('media admission: a part is delivered or refused before generation', ()
     await result;
     expect(compacted).toBe(true);
   });
-});
-
-describe('the static catalog and the adapters agree on what each backend accepts', () => {
-  const SOURCE_KINDS: ContentSource['kind'][] = [
-    'inline',
-    'data-url',
-    'remote-url',
-    'local-file',
-    'upload',
-    'provider-file',
-    'mcp-resource',
-    'a2a-reference',
-    'managed-asset',
-  ];
-  const MIME: Record<MediaContent['type'], string> = {
-    image: 'image/png',
-    audio: 'audio/mpeg',
-    video: 'video/mp4',
-    document: 'application/pdf',
-    file: 'application/zip',
-  };
-
-  function sourceFor(
-    provider: 'openai' | 'anthropic' | 'gemini',
-    kind: ContentSource['kind'],
-    type: MediaContent['type'],
-  ): ContentSource {
-    switch (kind) {
-      case 'inline':
-        return { kind, data: BYTES, encoding: 'base64' };
-      case 'data-url':
-        return { kind, url: `data:${MIME[type]};base64,${BYTES}` };
-      case 'remote-url':
-        return { kind, url: 'https://example.com/probe.bin' };
-      case 'local-file':
-        return { kind, path: '/tmp/probe.bin' };
-      case 'upload':
-        return { kind, uploadId: 'upload-1' };
-      case 'provider-file':
-        return { kind, provider, providerFileId: 'file-1' };
-      case 'mcp-resource':
-        return { kind, serverId: 'server', uri: 'resource://probe' };
-      case 'a2a-reference':
-        return { kind, agentCardUrl: 'https://agent.example', taskId: 't', artifactId: 'a' };
-      case 'managed-asset':
-        return { kind, assetId: 'asset' };
-    }
-  }
-
-  function adapterAccepts(
-    provider: 'openai' | 'anthropic' | 'gemini',
-    part: MediaContent,
-  ): boolean {
-    const history = new Conversation();
-    history.appendUserMessage([part]);
-    try {
-      if (provider === 'openai') toOpenAIMessages(history.current);
-      else if (provider === 'anthropic') toAnthropicMessages(history.current);
-      else toGeminiMessages(history.current);
-      return true;
-    } catch (error) {
-      if (error instanceof UnsupportedContentError) return false;
-      throw error;
-    }
-  }
-
-  const catalogByProvider = new Map(
-    createModelCatalog().descriptors.map((descriptor) => [descriptor.provider, descriptor]),
-  );
-
-  for (const provider of ['openai', 'anthropic', 'gemini'] as const) {
-    for (const type of ['image', 'audio', 'video', 'document', 'file'] as const) {
-      it(`${provider} ${type}: adapter acceptance equals the descriptor's declaration`, () => {
-        const descriptor = catalogByProvider.get(provider)!;
-        const entry = descriptor.modalities[type];
-        for (const kind of SOURCE_KINDS) {
-          const declared = entry.input && entry.sourceForms.includes(kind);
-          const part: MediaContent = {
-            type,
-            source: sourceFor(provider, kind, type),
-            mimeType: MIME[type],
-            name: 'probe',
-          };
-          expect([provider, type, kind, adapterAccepts(provider, part)]).toEqual([
-            provider,
-            type,
-            kind,
-            declared,
-          ]);
-        }
-      });
-    }
-  }
 });
 
 describe('lineage reaches the transcript on a step that only calls tools', () => {

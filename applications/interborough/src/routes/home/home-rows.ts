@@ -300,13 +300,6 @@ function alertRow(key: string, alert: Extract<AttentionItem, { kind: 'alert' }>)
   }
 }
 
-/** The missed runs the last seven days hold, across every schedule: the fourth count. */
-export function missedRunCount(items: readonly AttentionItem[]): number {
-  let total = 0;
-  for (const item of items) if (item.kind === 'missed-runs') total += item.count;
-  return total;
-}
-
 /** One chat, as Home's Recent chats card lists it. */
 export interface RecentChatRow {
   readonly id: string;
@@ -359,6 +352,8 @@ export interface RunningRow {
    * by commas ("Running, Schedule, Assistant, started 10:44 AM").
    */
   readonly line: string;
+  /** Line two after the status word, which the row draws as a dot and its word before this. */
+  readonly detail: string;
   /** The run's page, which "View run" opens. */
   readonly href: string;
 }
@@ -406,6 +401,7 @@ export function runningRows(tasks: readonly TaskView[], context: RunningContext)
       key: run.id,
       title,
       line: `${copy.status}, ${parts.join(', ')}`,
+      detail: parts.join(', '),
       href: workflowDetailPath(run.id),
     };
   });

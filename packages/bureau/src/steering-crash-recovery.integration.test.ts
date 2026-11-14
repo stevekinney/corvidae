@@ -37,6 +37,7 @@ import {
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const CHILD = join(import.meta.dir, 'test', 'steering-crash-child.ts');
 
@@ -84,6 +85,7 @@ async function runCrashingChild(
 /** A Bureau over a new handle on `database`, as a new process would open. */
 async function openBureau(database: PersistentBureauStorageFixture) {
   return createBureau<AgentDefinitions>({
+    models: { catalog: createVendorCatalog().descriptors },
     agents: {
       default: createAgent({
         allowedCandidates: STEERABLE_MODELS,
@@ -254,6 +256,7 @@ const outcomes = {
 
     let generateCalls = 0;
     const recovering = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         default: createAgent({
           allowedCandidates: STEERABLE_MODELS,
@@ -318,6 +321,7 @@ const outcomes = {
 
       let generateCalls = 0;
       const recovering = await createBureau<AgentDefinitions>({
+        models: { catalog: createVendorCatalog().descriptors },
         agents: {
           default: createAgent({
             allowedCandidates: STEERABLE_MODELS,
@@ -362,6 +366,7 @@ const outcomes = {
 
       let generateCalls = 0;
       const recovering = await createBureau<AgentDefinitions>({
+        models: { catalog: createVendorCatalog().descriptors },
         agents: {
           default: createAgent({
             allowedCandidates: STEERABLE_MODELS,

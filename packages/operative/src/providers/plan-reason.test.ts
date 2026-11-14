@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { SteeringDesiredState } from '../durable/types.ts';
-import { type BackendDescriptor, createModelCatalog, type ModelCatalog } from './model-catalog.ts';
+import { createFixtureCatalog } from '../testing/model-catalog.test-support.ts';
+import { type BackendDescriptor, type ModelCatalog } from './model-catalog.ts';
 import {
   derivePlanReason,
   MAXIMUM_PLAN_REJECTIONS,
@@ -21,7 +22,7 @@ import {
 } from './selection.ts';
 
 const FIXED_NOW = '2026-09-02T12:00:00.000Z';
-const SEED = createModelCatalog({ now: () => FIXED_NOW });
+const SEED = createFixtureCatalog({ now: () => FIXED_NOW });
 
 function descriptor(provider: string, model: string): BackendDescriptor {
   const found = SEED.descriptors.find((row) => row.provider === provider && row.model === model);
@@ -29,9 +30,9 @@ function descriptor(provider: string, model: string): BackendDescriptor {
   return found;
 }
 
-const anthropic = descriptor('anthropic', 'claude-fable-5');
-const openai = descriptor('openai', 'gpt-4o');
-const gemini = descriptor('gemini', 'gemini-2.5-pro');
+const anthropic = descriptor('alpha', 'alpha-large');
+const openai = descriptor('beta', 'beta-standard');
+const gemini = descriptor('gamma', 'gamma-pro');
 
 const priced = (model: string, price: number): BackendDescriptor => ({
   ...anthropic,
@@ -68,19 +69,19 @@ const options = (descriptors: readonly BackendDescriptor[], more: Partial<Select
 describe('the plan reason of a selection', () => {
   it('is pinned when a requested model override chose the model', () => {
     const plan = select(
-      request({ requestedValue: { target: 'model', override: 'gpt-4o' } }),
-      options([anthropic, openai], { user: { exactOverride: { provider: 'openai' } } }),
+      request({ requestedValue: { target: 'model', override: 'beta-standard' } }),
+      options([anthropic, openai], { user: { exactOverride: { provider: 'beta' } } }),
     );
 
     expect(plan.reason).toMatchObject({ code: 'pinned', rejected: [] });
-    expect(plan.reason?.detail).toContain('openai/gpt-4o');
+    expect(plan.reason?.detail).toContain('beta/beta-standard');
   });
 
   it('is pinned when the user’s standing exact override chose the model', () => {
     const plan = select(
       request(),
       options([anthropic, openai], {
-        user: { exactOverride: { provider: 'openai', model: 'gpt-4o' } },
+        user: { exactOverride: { provider: 'beta', model: 'beta-standard' } },
       }),
     );
 
@@ -95,11 +96,11 @@ describe('the plan reason of a selection', () => {
       options([anthropic, openai, gemini]),
     );
 
-    expect(plan.selected?.provider).toBe('gemini');
+    expect(plan.selected?.provider).toBe('gamma');
     expect(plan.reason?.code).toBe('capability');
     expect(plan.reason?.rejected).toEqual([
-      { provider: 'anthropic', model: 'claude-fable-5', code: 'capability' },
-      { provider: 'openai', model: 'gpt-4o', code: 'capability' },
+      { provider: 'alpha', model: 'alpha-large', code: 'capability' },
+      { provider: 'beta', model: 'beta-standard', code: 'capability' },
     ]);
     expect(plan.reason?.detail).toContain('incompatible-modality');
   });
@@ -107,12 +108,12 @@ describe('the plan reason of a selection', () => {
   it('is policy when the only eligible model is what the layered policy left', () => {
     const plan = select(
       request(),
-      options([anthropic, openai], { deployment: { deniedModels: ['gpt-4o'] } }),
+      options([anthropic, openai], { deployment: { deniedModels: ['beta-standard'] } }),
     );
 
     expect(plan.reason?.code).toBe('policy');
     expect(plan.reason?.rejected).toEqual([
-      { provider: 'openai', model: 'gpt-4o', code: 'policy' },
+      { provider: 'beta', model: 'beta-standard', code: 'policy' },
     ]);
   });
 
@@ -128,10 +129,10 @@ describe('the plan reason of a selection', () => {
       options([anthropic, { ...openai, availability: 'unavailable' }]),
     );
 
-    expect(plan.selected?.provider).toBe('anthropic');
+    expect(plan.selected?.provider).toBe('alpha');
     expect(plan.reason).toMatchObject({
       code: 'fallback',
-      rejected: [{ provider: 'openai', model: 'gpt-4o', code: 'fallback' }],
+      rejected: [{ provider: 'beta', model: 'beta-standard', code: 'fallback' }],
     });
   });
 
@@ -159,8 +160,8 @@ describe('the plan reason of a selection', () => {
 
     expect(plan.selected?.model).toBe('cheap');
     expect(plan.reason?.code).toBe('cost');
-    expect(plan.reason?.detail).toContain('anthropic/cheap');
-    expect(plan.reason?.detail).toContain('anthropic/expensive');
+    expect(plan.reason?.detail).toContain('alpha/cheap');
+    expect(plan.reason?.detail).toContain('alpha/expensive');
   });
 
   it('is policy, not cost, when two eligible models rank on the agent’s preferences alone', () => {
@@ -193,7 +194,7 @@ describe('the plan reason of a selection', () => {
 
   it('is latency when a latency preference gave the winner the larger advantage', () => {
     const candidate = (model: string, cost: number, latency: number): SelectionCandidate => ({
-      provider: 'anthropic',
+      provider: 'alpha',
       model,
       descriptorSnapshot: anthropic,
       eligible: true,
@@ -244,23 +245,26 @@ describe('the plan reason of a step', () => {
   it('is pinned when steering named a model the plan did not choose', () => {
     const plan = select(request(), options([anthropic, openai]));
 
-    const reason = planReasonForStep(plan, steering({ model: 'gpt-4o', modelProvider: 'openai' }));
+    const reason = planReasonForStep(
+      plan,
+      steering({ model: 'beta-standard', modelProvider: 'beta' }),
+    );
 
     expect(reason?.code).toBe('pinned');
-    expect(reason?.detail).toContain('gpt-4o');
+    expect(reason?.detail).toContain('beta-standard');
     expect(reason?.rejected).toEqual(plan.reason?.rejected ?? []);
   });
 
   it('is pinned for a steered run that has no plan at all', () => {
-    expect(planReasonForStep(undefined, steering({ model: 'gpt-4o' }))?.code).toBe('pinned');
+    expect(planReasonForStep(undefined, steering({ model: 'beta-standard' }))?.code).toBe('pinned');
   });
 
   it('is fallback when the provider answered with a model other than the planned one', () => {
     const plan = select(request(), options([anthropic, openai]));
     const diverged = recordEffectiveGeneration(plan, {
       planId: plan.planId,
-      provider: 'openai',
-      model: 'gpt-4o',
+      provider: 'beta',
+      model: 'beta-standard',
       divergedFromPlan: true,
     });
 

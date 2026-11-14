@@ -5,12 +5,7 @@
  * end a chat turn with an uploaded image before its first step, where the drain would have retried.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import {
-  createAgent,
-  createModelCatalog,
-  stopWhen,
-  withBackendDescriptors,
-} from '@lostgradient/operative';
+import { createAgent, stopWhen, withBackendDescriptors } from '@lostgradient/operative';
 import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
@@ -20,6 +15,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -31,7 +27,7 @@ afterEach(async () => {
 const echo = createAgent({
   generate: withBackendDescriptors(
     async () => ({ content: 'ok', toolCalls: [] }),
-    createModelCatalog().descriptors.filter((descriptor) => descriptor.provider === 'anthropic'),
+    createVendorCatalog().descriptors.filter((descriptor) => descriptor.provider === 'anthropic'),
   ),
   stopWhen: stopWhen.noToolCalls(),
 });

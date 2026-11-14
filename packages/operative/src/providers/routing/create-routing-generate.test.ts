@@ -4,12 +4,12 @@ import { Conversation } from 'conversationalist';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MediaAdmissionError } from '../../errors.ts';
+import { createFixtureCatalog } from '../../testing/model-catalog.test-support.ts';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../backend-descriptor-attachment.ts';
 import type { BackendDescriptor } from '../model-catalog.ts';
-import { createModelCatalog } from '../model-catalog.ts';
 import type { GenerateContext, GenerateFunction, GenerateResponse } from '../types.ts';
 import { createRoutingGenerate } from './create-routing-generate.ts';
 import { makeContext } from './strategies/test-helpers.ts';
@@ -264,10 +264,8 @@ describe('createRoutingGenerate', () => {
 describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () => {
   const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
-  function descriptorsFor(
-    provider: 'anthropic' | 'openai' | 'gemini',
-  ): readonly BackendDescriptor[] {
-    return createModelCatalog({ now: FIXED_NOW }).descriptors.filter(
+  function descriptorsFor(provider: 'alpha' | 'beta' | 'gamma'): readonly BackendDescriptor[] {
+    return createFixtureCatalog({ now: FIXED_NOW }).descriptors.filter(
       (descriptor) => descriptor.provider === provider,
     );
   }
@@ -291,10 +289,9 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
   });
 
   it('attaches the union of every route’s descriptors', () => {
-    const anthropic = descriptorsFor('anthropic')[0];
-    const openai = descriptorsFor('openai')[0];
-    if (!anthropic || !openai)
-      throw new Error('expected seed descriptors for anthropic and openai');
+    const anthropic = descriptorsFor('alpha')[0];
+    const openai = descriptorsFor('beta')[0];
+    if (!anthropic || !openai) throw new Error('expected fixture descriptors for alpha and beta');
 
     const generate = createRoutingGenerate({
       routes: [
@@ -312,8 +309,8 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
   });
 
   it('deduplicates by (provider, endpoint, model) across routes sharing the same descriptor', () => {
-    const anthropic = descriptorsFor('anthropic')[0];
-    if (!anthropic) throw new Error('expected at least one anthropic seed descriptor');
+    const anthropic = descriptorsFor('alpha')[0];
+    if (!anthropic) throw new Error('expected at least one alpha fixture descriptor');
 
     const generate = createRoutingGenerate({
       routes: [
@@ -328,10 +325,9 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
   });
 
   it('orders the union deterministically by (provider, endpoint, model) regardless of route declaration order', () => {
-    const anthropic = descriptorsFor('anthropic')[0];
-    const gemini = descriptorsFor('gemini')[0];
-    if (!anthropic || !gemini)
-      throw new Error('expected seed descriptors for anthropic and gemini');
+    const anthropic = descriptorsFor('alpha')[0];
+    const gemini = descriptorsFor('gamma')[0];
+    if (!anthropic || !gemini) throw new Error('expected fixture descriptors for alpha and gamma');
 
     const forward = createRoutingGenerate({
       routes: [
@@ -351,7 +347,7 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
     });
 
     expect(readBackendDescriptors(forward)).toEqual(readBackendDescriptors(reversed));
-    expect(readBackendDescriptors(forward)[0]?.provider).toBe('anthropic');
+    expect(readBackendDescriptors(forward)[0]?.provider).toBe('alpha');
   });
 
   it('resolves a same-triple collision to the same, conservative descriptor regardless of route order', () => {
@@ -360,17 +356,15 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
     // endpointAmbiguous/capability content. The union must pick the same
     // (ambiguous, conservative) descriptor no matter which route is declared
     // first — never the one that merely happened to be inserted first.
-    const catalog = createModelCatalog({ now: FIXED_NOW });
-    const official = catalog.descriptors.find((d) => d.provider === 'openai');
-    if (!official) throw new Error('expected at least one openai seed descriptor');
-    const ambiguousCatalog = createModelCatalog({
-      now: FIXED_NOW,
-      openAIBaseURL: 'https://proxy.internal.example/v1',
-    });
-    const ambiguous = ambiguousCatalog.descriptors.find(
-      (d) => d.provider === 'openai' && d.model === official.model,
-    );
-    if (!ambiguous) throw new Error('expected a matching ambiguous openai descriptor');
+    const catalog = createFixtureCatalog({ now: FIXED_NOW });
+    const official = catalog.descriptors.find((d) => d.provider === 'beta');
+    if (!official) throw new Error('expected at least one beta fixture descriptor');
+    const ambiguous: BackendDescriptor = {
+      ...official,
+      endpointAmbiguous: true,
+      batchInference: false,
+      availability: 'unknown',
+    };
     expect(ambiguous.endpointAmbiguous).toBe(true);
     expect(official.endpointAmbiguous).not.toBe(true);
 
@@ -403,14 +397,14 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
     // EXCEPT freshness — the case content-comparison alone (with freshness
     // excluded) cannot distinguish, so it must not silently fall back to
     // "whichever route was declared first".
-    const earlier = createModelCatalog({ now: () => '2026-01-01T00:00:00.000Z' }).descriptors.find(
-      (d) => d.provider === 'anthropic',
+    const earlier = createFixtureCatalog({
+      now: () => '2026-01-01T00:00:00.000Z',
+    }).descriptors.find((d) => d.provider === 'alpha');
+    if (!earlier) throw new Error('expected at least one alpha fixture descriptor');
+    const later = createFixtureCatalog({ now: () => '2026-06-01T00:00:00.000Z' }).descriptors.find(
+      (d) => d.provider === 'alpha' && d.model === earlier.model,
     );
-    if (!earlier) throw new Error('expected at least one anthropic seed descriptor');
-    const later = createModelCatalog({ now: () => '2026-06-01T00:00:00.000Z' }).descriptors.find(
-      (d) => d.provider === 'anthropic' && d.model === earlier.model,
-    );
-    if (!later) throw new Error('expected a matching later-freshness anthropic descriptor');
+    if (!later) throw new Error('expected a matching later-freshness alpha descriptor');
     expect(later.freshness).not.toBe(earlier.freshness);
 
     const earlierFirst = createRoutingGenerate({
@@ -441,10 +435,9 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
     // routeMap keeps only the LAST route for a repeated name — dispatch can
     // never reach the shadowed one, so its descriptor must not appear
     // either.
-    const anthropic = descriptorsFor('anthropic')[0];
-    const openai = descriptorsFor('openai')[0];
-    if (!anthropic || !openai)
-      throw new Error('expected seed descriptors for anthropic and openai');
+    const anthropic = descriptorsFor('alpha')[0];
+    const openai = descriptorsFor('beta')[0];
+    if (!anthropic || !openai) throw new Error('expected fixture descriptors for alpha and beta');
 
     const generate = createRoutingGenerate({
       routes: [
@@ -459,10 +452,9 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
   });
 
   it('is unaffected by a caller mutating a route object after construction (review)', () => {
-    const anthropic = descriptorsFor('anthropic')[0];
-    const openai = descriptorsFor('openai')[0];
-    if (!anthropic || !openai)
-      throw new Error('expected seed descriptors for anthropic and openai');
+    const anthropic = descriptorsFor('alpha')[0];
+    const openai = descriptorsFor('beta')[0];
+    if (!anthropic || !openai) throw new Error('expected fixture descriptors for alpha and beta');
 
     const route = routeWithDescriptors('fast', 'original-response', [anthropic]);
     const routes = [route];
@@ -482,10 +474,9 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
   });
 
   it('prevents a custom strategy from mutating the routes it receives, keeping dispatch and the descriptor union in sync (review)', async () => {
-    const anthropic = descriptorsFor('anthropic')[0];
-    const openai = descriptorsFor('openai')[0];
-    if (!anthropic || !openai)
-      throw new Error('expected seed descriptors for anthropic and openai');
+    const anthropic = descriptorsFor('alpha')[0];
+    const openai = descriptorsFor('beta')[0];
+    if (!anthropic || !openai) throw new Error('expected fixture descriptors for alpha and beta');
 
     const replacementGenerate = routeWithDescriptors('fast', 'replaced-response', [
       openai,
@@ -523,9 +514,11 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
 });
 
 describe('createRoutingGenerate: media constrains the routes (COR-716)', () => {
-  const catalog = createModelCatalog();
-  const openai = catalog.descriptors.find((d) => d.provider === 'openai' && d.model === 'gpt-4o')!;
-  const gemini = catalog.descriptors.find((d) => d.provider === 'gemini')!;
+  const catalog = createFixtureCatalog();
+  const openai = catalog.descriptors.find(
+    (d) => d.provider === 'beta' && d.model === 'beta-standard',
+  )!;
+  const gemini = catalog.descriptors.find((d) => d.provider === 'gamma')!;
 
   function recordingRoute(name: string, descriptor: BackendDescriptor, calls: string[]) {
     return {

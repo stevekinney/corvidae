@@ -11,16 +11,14 @@ import type {
 } from '@lostgradient/operative/provider-kit';
 import {
   concatenateTextParts,
-  createModelCatalog,
   isProviderContractError,
   ProviderError,
   resolveCommonParameters,
-  resolveOpenAIEffort,
-  resolveOpenAIModel,
   ToolCallParseError,
   withBackendDescriptors,
   withInputLineage,
 } from '@lostgradient/operative/provider-kit';
+import { openAIRows, resolveOpenAIEffort, resolveOpenAIModel } from './openai-catalog.ts';
 import { mapOpenAIMessage, mergeAssembledField } from './openai-parts.ts';
 import { toOpenAIResponseFormat } from './openai-response-format.ts';
 import { toOpenAIToolChoice } from './openai-tool-choice.ts';
@@ -96,7 +94,7 @@ function buildOpenAIUsage(
  * does for `getProviderCapabilities`.
  */
 function openAIDescriptorsFor(model: string, baseURL: string | undefined) {
-  return createModelCatalog({ openAIBaseURL: baseURL }).descriptors.filter(
+  return openAIRows({ baseURL }).filter(
     (descriptor) => descriptor.provider === 'openai' && descriptor.model === model,
   );
 }

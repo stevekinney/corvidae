@@ -31,6 +31,7 @@ The worker-facing rules have one source: `charterRules` in `scripts/chef/brief.t
 The governing rules behind some charter rules, which a dispatch restates when they apply:
 
 - `bun scripts/chef/review-threads.ts classes --pr <n>` exits 1 when one defect class has appeared in two or more review rounds; the worker pushes nothing more and returns blocked with its output.
+- A worker never runs a browser suite, design-review capture, `validate` or `harden` on the host: it pushes and runs `gh workflow run main.yml --ref <branch>`.
 - A test is deleted only with a recorded reason that its behavior no longer exists. A behavior difference from `main` is a regression unless the issue or a dated revision says otherwise.
 - Show each regression test red with its fix reverted, and name the command or manual check behind each Verified criterion.
 - A worker writes no Linear except moving its own issue to In Progress, and never edits the note.

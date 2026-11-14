@@ -5,7 +5,6 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   type GenerateContext,
   type GenerateResponse,
   MediaAdmissionError,
@@ -24,6 +23,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -54,7 +54,7 @@ const snapshotTool = createTool({
 });
 
 /** Anthropic rows take images in a tool result. */
-const descriptors = createModelCatalog()
+const descriptors = createVendorCatalog()
   .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
   .slice(0, 1);
 

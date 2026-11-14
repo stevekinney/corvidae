@@ -25,10 +25,10 @@ import { createAgent } from '../src/create-agent';
 import { MaximumStepsExceededError, OutputSchemaConversionError } from '../src/errors';
 import { readGenerationProfile } from '../src/generation-profile';
 import { withBackendDescriptors } from '../src/providers/backend-descriptor-attachment';
-import { createModelCatalog } from '../src/providers/model-catalog';
 import type { ProviderName } from '../src/providers/types';
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '../src/runnable-agent';
 import { waitForCondition } from '../src/test/index';
+import { createFixtureCatalog } from '../src/testing/model-catalog.test-support.ts';
 import type { ConversationHistory, GenerateFunction, GenerateResponse } from '../src/types';
 
 // ---------------------------------------------------------------------------
@@ -1151,8 +1151,8 @@ describe('createAgent — default stopWhen', () => {
 
 const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
-function seedDescriptor(provider: 'anthropic' | 'openai' | 'gemini') {
-  const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
+function seedDescriptor(provider: 'alpha' | 'beta' | 'gamma') {
+  const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
     (row) => row.provider === provider,
   );
   if (!descriptor)
@@ -1171,7 +1171,7 @@ describe('createAgent — generationProfile', () => {
   });
 
   it('reports mode: fixed for a GenerateFunction carrying exactly one attached descriptor', () => {
-    const descriptor = seedDescriptor('anthropic');
+    const descriptor = seedDescriptor('alpha');
     const generate = withBackendDescriptors<GenerateFunction>(
       async () => textResponse('hi'),
       [descriptor],
@@ -1185,7 +1185,7 @@ describe('createAgent — generationProfile', () => {
   it('reports mode: routed for a GenerateFunction carrying more than one attached descriptor', () => {
     const generate = withBackendDescriptors<GenerateFunction>(
       async () => textResponse('hi'),
-      [seedDescriptor('anthropic'), seedDescriptor('openai')],
+      [seedDescriptor('alpha'), seedDescriptor('beta')],
     );
     const agent = createAgent({ generate });
 

@@ -52,6 +52,7 @@ import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import type { CatalogRunRecoveryRecord } from './catalog-run-recovery-record';
 import { isSessionAuthorityAuthorized } from './session-authority';
 import { freshHandoff, pollUntil, transcriptOf } from './testing/goal-fixtures.test-support';
+import { gpt4oCostEstimation } from './testing/vendor-catalog.test-support';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const NOW = '2026-10-02T12:00:00.000Z';
@@ -1237,7 +1238,7 @@ describe('runValidator', () => {
           },
         },
       ],
-      resolveCostEstimation: () => Promise.resolve({ model: 'gpt-4o' }),
+      resolveCostEstimation: () => Promise.resolve(gpt4oCostEstimation),
     });
 
     await ports.runValidator(request);

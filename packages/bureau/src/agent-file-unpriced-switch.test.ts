@@ -6,7 +6,6 @@
  * answers the carry as rejected. An agent with no budget switches freely, and a priced model is
  * always allowed.
  */
-import { createModelCatalog } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -16,6 +15,7 @@ import { waitForTaskState } from './test';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const harnesses: FileBureauHarness[] = [];
 afterEach(async () => {
@@ -26,7 +26,7 @@ const OPUS_5 = { provider: 'anthropic', model: 'claude-opus-5' } as const;
 const GPT_4_1 = { provider: 'openai', model: 'gpt-4.1' } as const;
 
 /** The default catalog with `gpt-4.1` left without a price; every other row keeps its own. */
-const CATALOG = createModelCatalog().descriptors.map((row) =>
+const CATALOG = createVendorCatalog().descriptors.map((row) =>
   row.model === 'gpt-4.1' ? { ...row, pricing: undefined } : row,
 );
 
@@ -40,7 +40,7 @@ const UNBUDGETED = agentFileText({ model: KNOWN_MODEL, tools: '[lookup-order]' }
 /** `claude-opus-5` served by an unpriced `twin` provider ahead of the priced `anthropic` row. */
 const TWIN_CATALOG = [
   {
-    ...createModelCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!,
+    ...createVendorCatalog().descriptors.find((row) => row.model === 'claude-opus-5')!,
     provider: 'twin',
     pricing: undefined,
   },
@@ -329,7 +329,7 @@ describe('an agent that is tried and not saved', () => {
 
     // The catalog gains a price afterwards, so the switch is admitted; the agent was built before
     // that, and still cannot count the model.
-    harness.bureau.models.replace(createModelCatalog().descriptors);
+    harness.bureau.models.replace(createVendorCatalog().descriptors);
     const admitted = await steer(harness, tried.contextId, 'switch-again', GPT_4_1);
     expect(admitted.outcome).toBe('accepted');
     calls.length = 0;

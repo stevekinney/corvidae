@@ -1,15 +1,16 @@
 import type { Locator, Page } from '@playwright/test';
-import { openTouchPage, TOUCH_TARGET_MIN } from './editors-complex-support.ts';
+import { openTouchPage } from './editors-complex-support.ts';
+import { measureCloseButton } from './link-popover-close-support.ts';
 import { expect, test } from './review-editor-browser-errors.ts';
 
 const MARKDOWN_EDITOR_ROUTE = '/page/markdown-editor?snapshot=1';
 
 // The LinkPopover close button is pointer-aware (COR-463): 28px under a fine pointer so the
-// header stays within its 40px density budget, and the shared 44px touch target
-// (`--cinder-touch-target-min`) under a coarse pointer. `markdown-editor-toolbar.playwright.ts`
-// pins the exact fine-pointer size; these are floors for both pointer types.
+// header stays within its 40px density budget, and under a coarse pointer a 32px painted face
+// whose 44px hit area (`--cinder-touch-target-min`) takes no layout. `markdown-editor-toolbar
+// .playwright.ts` pins the exact fine-pointer size; the fine size is a floor here.
 const CLOSE_BUTTON_FINE_POINTER_MIN = 28;
-const CLOSE_BUTTON_COARSE_POINTER_MIN = TOUCH_TARGET_MIN;
+const CLOSE_BUTTON_COARSE_POINTER_FACE = 32;
 
 /**
  * Reveals the Link trigger on an already-loaded MarkdownEditor page, opening the
@@ -123,7 +124,7 @@ test.describe('markdown link popover', () => {
     expect(closeBox!.height).toBeGreaterThanOrEqual(CLOSE_BUTTON_FINE_POINTER_MIN - 0.5);
   });
 
-  test('the close button meets the 44px touch target under a coarse pointer', async ({
+  test('the close button is a 32px face with a 44px hit area under a coarse pointer', async ({
     browser,
   }) => {
     const { page, dispose } = await openTouchPage(browser, MARKDOWN_EDITOR_ROUTE, 'light');
@@ -138,10 +139,10 @@ test.describe('markdown link popover', () => {
       expect(await primaryPointerIsCoarse(page)).toBe(true);
       const closeButton = linkPopover.locator('.link-popover-close').first();
       await expect(closeButton).toBeVisible();
-      const closeBox = await closeButton.boundingBox();
-      expect(closeBox).not.toBeNull();
-      expect(closeBox!.width).toBeGreaterThanOrEqual(CLOSE_BUTTON_COARSE_POINTER_MIN - 0.5);
-      expect(closeBox!.height).toBeGreaterThanOrEqual(CLOSE_BUTTON_COARSE_POINTER_MIN - 0.5);
+      const measured = await measureCloseButton(closeButton);
+      expect(measured.width).toBeCloseTo(CLOSE_BUTTON_COARSE_POINTER_FACE, 0);
+      expect(measured.height).toBeCloseTo(CLOSE_BUTTON_COARSE_POINTER_FACE, 0);
+      expect(measured.reached).toEqual(['left', 'right', 'above', 'below']);
     } finally {
       await dispose();
     }

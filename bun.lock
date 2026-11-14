@@ -801,6 +801,7 @@
       "dependencies": {
         "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/operative": "workspace:*",
+        "@lostgradient/operative-anthropic": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
@@ -982,6 +983,9 @@
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
+        "@lostgradient/operative-anthropic": "workspace:*",
+        "@lostgradient/operative-gemini": "workspace:*",
+        "@lostgradient/operative-openai": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/weft": "workspace:*",

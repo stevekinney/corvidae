@@ -3,7 +3,6 @@
  * runs on the engine's real clock, so this sits in the slow lane.
  */
 import {
-  createModelCatalog,
   type GenerateContext,
   stopWhen,
   withBackendDescriptors,
@@ -18,6 +17,7 @@ import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 async function waitForReal(condition: () => boolean): Promise<true> {
   await waitUntil(condition, { message: 'waitForReal' });
@@ -36,7 +36,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
               seen.push(context);
               return { content: 'ok', toolCalls: [] };
             },
-            createModelCatalog().descriptors.filter(
+            createVendorCatalog().descriptors.filter(
               (descriptor) => descriptor.provider === 'anthropic',
             ),
           ),

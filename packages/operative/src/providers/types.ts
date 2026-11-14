@@ -23,7 +23,7 @@ export type ProviderName = string;
  * Provider-neutral reasoning-effort tier. Superset of Tribunal's
  * `effort IN ('low','medium','high','xhigh','max')` database CHECK
  * constraint. Each shipped provider maps this to its own native mechanism —
- * see `providers/shared/effort.ts` for the per-provider mapping table and
+ * see each provider package's effort resolver for its mapping table and
  * the fallback matrix used when a resolved model doesn't support a tier.
  */
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -34,8 +34,8 @@ export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface BaseProviderOptions {
   /**
    * Provider-native model ID, OR a shorthand alias resolved once at
-   * provider-construction time — see `providers/shared/model-registry.ts`
-   * for the per-provider alias table and its single resolution point.
+   * provider-construction time — see each provider package's model
+   * resolver for its alias table and its single resolution point.
    * Full provider-native IDs pass through unchanged. The alias `'inherit'`
    * is never resolved here; it is a caller-side concern (see that module's
    * doc comment).
@@ -44,7 +44,7 @@ export interface BaseProviderOptions {
   /**
    * Provider-neutral effort tier. Mapped to the resolved model's native
    * mechanism, with a deterministic fallback when unsupported — see
-   * `providers/shared/effort.ts`. The actually-used tier is reported back
+   * the provider package's effort resolver. The actually-used tier is reported back
    * on `GenerateResponse.metadata.effectiveEffort`.
    */
   effort?: Effort | undefined;

@@ -1,5 +1,5 @@
 import { definePlugin } from '@lostgradient/interborough-plugin';
-import { anthropicProvider } from '@lostgradient/operative-anthropic';
+import { anthropicProvider, anthropicRows } from '@lostgradient/operative-anthropic';
 import { z } from 'zod';
 
 /** The Bungalow secret that holds the Anthropic API key. It is the key the host has always used. */
@@ -15,8 +15,8 @@ export const anthropicConfiguration = z
   .strict();
 
 /**
- * The Anthropic plugin. It contributes the Anthropic provider and its catalog rows, which Operative
- * ships with the provider. It needs `anthropic-api-key`; without it the plugin is `needs-setup` and
+ * The Anthropic plugin. It contributes the Anthropic provider and its catalog rows, which
+ * `@lostgradient/operative-anthropic` ships with the provider. It needs `anthropic-api-key`; without it the plugin is `needs-setup` and
  * the host offers none of its models.
  */
 export default definePlugin({
@@ -26,5 +26,5 @@ export default definePlugin({
   description: 'Claude models for your agents.',
   configuration: anthropicConfiguration,
   secrets: [ANTHROPIC_API_KEY_SECRET],
-  setup: () => ({ providers: [anthropicProvider] }),
+  setup: () => ({ providers: [{ ...anthropicProvider, rows: anthropicRows() }] }),
 });

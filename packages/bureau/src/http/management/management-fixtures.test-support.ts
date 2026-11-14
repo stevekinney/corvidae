@@ -8,6 +8,7 @@ import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/oper
 import { type AuthConfig, type AuthorizationScope, principalFromApiKey } from '@lostgradient/weft';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
+import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -337,6 +338,8 @@ export async function openBureau(
       ? {}
       : { humanInput: options.humanInput }),
     ...options.bureauOptions,
+    // The vendors' rows: Bureau holds none, and these tests name real models.
+    models: { catalog: createVendorCatalog().descriptors, ...options.bureauOptions?.models },
   }).catch((error: unknown) => refused(error));
   let handler: ReturnType<typeof createBureauHandler>;
   try {

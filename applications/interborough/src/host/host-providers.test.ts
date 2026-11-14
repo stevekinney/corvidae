@@ -6,7 +6,7 @@
  */
 import { openBungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
-import { createAgent, createModelCatalog } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,6 +14,7 @@ import { join } from 'node:path';
 
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { vendorRows } from './provider-fixtures.test-support.ts';
 import { runTask } from './run-task.test-support.ts';
 
 const FIXTURE_KEY = 'fixture-anthropic-key-7f3a';
@@ -84,8 +85,8 @@ function pairsOf(host: Host): string[] {
 }
 
 function staticPairs(providers: readonly string[]): string[] {
-  return createModelCatalog()
-    .descriptors.filter((descriptor) => providers.includes(descriptor.provider))
+  return vendorRows()
+    .filter((descriptor) => providers.includes(descriptor.provider))
     .map((descriptor) => `${descriptor.provider}/${descriptor.model}`)
     .toSorted();
 }

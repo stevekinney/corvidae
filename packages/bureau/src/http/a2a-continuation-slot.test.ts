@@ -3,11 +3,7 @@
  * interleavings its cleanup must survive: an exact retry that claims afresh the moment a refused
  * attempt releases its claim, and a reservation write that commits with its response lost.
  */
-import {
-  createModelCatalog,
-  type GenerateFunction,
-  withBackendDescriptors,
-} from '@lostgradient/operative';
+import { type GenerateFunction, withBackendDescriptors } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
@@ -27,6 +23,7 @@ import { A2A_SEND_LEDGER_KEY_PREFIX } from './a2a-request-handler.ts';
 import { A2A_TASK_RECORD_KEY_PREFIX, createA2ATaskRecords } from './a2a-task-record.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { authentication } from './management/management-fixtures.test-support.ts';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 type Batch = ConditionalTextValueStore['conditionalBatch'];
 type Operations = Parameters<Batch>[1];
@@ -149,7 +146,7 @@ describe('a refused continuation’s history slot', () => {
 });
 
 describe('a reservation whose write committed with its response lost', () => {
-  const vision = createModelCatalog()
+  const vision = createVendorCatalog()
     .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
     .slice(0, 1);
 

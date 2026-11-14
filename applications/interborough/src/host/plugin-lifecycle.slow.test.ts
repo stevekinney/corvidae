@@ -106,12 +106,12 @@ const alive = (pid: number): boolean => {
 const pluginSource = (
   marker: string,
 ): string => `import { definePlugin } from '@lostgradient/interborough-plugin';
-import { createModelCatalog } from '@lostgradient/operative';
+import { anthropicRows } from '@lostgradient/operative-anthropic';
 import { createTool } from 'armorer';
 import { writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 
-const seed = createModelCatalog().descriptors[0];
+const seed = anthropicRows()[0];
 if (seed === undefined) throw new Error('The static catalog is empty.');
 
 const CALL_ID = 'e2e-call-1';

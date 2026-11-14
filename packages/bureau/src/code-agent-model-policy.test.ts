@@ -7,7 +7,6 @@
  */
 import {
   type BackendDescriptor,
-  createModelCatalog,
   type GenerateContext,
   type GenerateFunction,
   type GenerationMode,
@@ -20,8 +19,9 @@ import { describe, expect, it } from 'bun:test';
 import { holdGenerateToModelPolicy } from './code-agent-model-policy';
 import { ModelPolicyDeniedError } from './file-agent-generate';
 import type { BureauModelPolicyOptions } from './model-policy';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
-const rows = createModelCatalog().descriptors;
+const rows = createVendorCatalog().descriptors;
 const row = (provider: string, model: string): BackendDescriptor => {
   const found = rows.find(
     (candidate) => candidate.provider === provider && candidate.model === model,

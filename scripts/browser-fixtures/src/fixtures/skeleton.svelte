@@ -13,4 +13,8 @@
       <Skeleton height="0.875rem" width="30%" />
     </div>
   </div>
+  <!-- The grouped variant (COR-2329): a grouped list's rows, each with a button block. -->
+  <div data-testid="skeleton-grouped">
+    <Skeleton variant="grouped" rows={2} action label="Loading reviews" />
+  </div>
 </div>

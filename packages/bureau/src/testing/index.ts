@@ -7,6 +7,8 @@
  */
 export {
   createPluginTestHost,
+  pluginTestModelRows,
+  SCRIPTED_MODEL,
   type PluginScriptedRunOutcome,
   type PluginScriptedRunRequest,
   type PluginTestHost,

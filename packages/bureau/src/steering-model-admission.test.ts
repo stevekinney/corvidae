@@ -5,7 +5,6 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   createRoutingGenerate,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -35,6 +34,7 @@ import type { BureauContexts } from './bureau-types/contexts';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -75,7 +75,7 @@ async function openBureau(
     agents: { picker },
     storage: options.storage ?? new MemoryStorage(),
     ...(options.durable === false ? {} : { durable: true }),
-    ...(options.catalog === undefined ? {} : { models: options.catalog }),
+    models: options.catalog ?? { catalog: createVendorCatalog().descriptors },
     ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
   });
   cleanups.push(() => bureau.dispose());
@@ -394,7 +394,7 @@ describe('a steering log written before the provider field existed', () => {
 });
 
 describe('a routed or opaque agent lists no models', () => {
-  const rows = createModelCatalog().descriptors;
+  const rows = createVendorCatalog().descriptors;
   const rowOf = (choice: { provider: string; model: string }) =>
     rows.find((row) => row.provider === choice.provider && row.model === choice.model)!;
 
@@ -419,6 +419,7 @@ describe('a routed or opaque agent lists no models', () => {
   async function open(agent: ReturnType<typeof createAgent>, name: string, withPolicy = false) {
     const bureau = await createBureau<AgentDefinitions>({
       agents: { [name]: agent },
+      models: { catalog: createVendorCatalog().descriptors },
       storage: new MemoryStorage(),
       ...(withPolicy
         ? {

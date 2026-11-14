@@ -3,12 +3,7 @@
  * (a run's input, a session input, a schedule's input) names bytes the caller chose, so the host's
  * MCP reader would be asked to fetch a server and URI the caller picked. All three doors refuse it.
  */
-import {
-  createAgent,
-  createModelCatalog,
-  type GenerateContext,
-  withBackendDescriptors,
-} from '@lostgradient/operative';
+import { createAgent, type GenerateContext, withBackendDescriptors } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
 
@@ -18,6 +13,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice } from './testing/asset-fixtures.test-support';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -43,7 +39,7 @@ async function open() {
             seen.push(context);
             return { content: 'ok', toolCalls: [] };
           },
-          createModelCatalog().descriptors.filter(
+          createVendorCatalog().descriptors.filter(
             (descriptor) => descriptor.provider === 'anthropic',
           ),
         ),

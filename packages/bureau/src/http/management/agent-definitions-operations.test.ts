@@ -7,11 +7,7 @@
 import { readFile } from 'node:fs/promises';
 
 import { EventType } from '@ag-ui/core';
-import {
-  createModelCatalog,
-  projectDescriptor,
-  type BackendDescriptor,
-} from '@lostgradient/operative';
+import { projectDescriptor, type BackendDescriptor } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from '../../create-bureau.ts';
@@ -39,6 +35,7 @@ import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { runTask } from '../../test';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
 
 afterEach(disposeServed);
 
@@ -809,7 +806,7 @@ describe('faults', () => {
   });
 
   it('Unprocessable for a definition naming a row that only decides, saying so, and writes nothing (COR-2156)', async () => {
-    const [first] = createModelCatalog().descriptors;
+    const [first] = createVendorCatalog().descriptors;
     if (first === undefined) throw new Error('Expected the seed catalog to hold rows.');
     const decisionOnly: BackendDescriptor = {
       ...first,
@@ -1023,7 +1020,7 @@ describe('the audit trail', () => {
 describe('bureau.agents.catalog', () => {
   /** A model-catalog row that carries what the general audience must never see. */
   function rows(): readonly BackendDescriptor[] {
-    const [first, second, third] = createModelCatalog().descriptors;
+    const [first, second, third] = createVendorCatalog().descriptors;
     if (first === undefined || second === undefined || third === undefined) {
       throw new Error('Expected the seed catalog to hold rows.');
     }

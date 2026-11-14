@@ -33,12 +33,7 @@ import {
   isPluginName,
 } from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
-import {
-  createModelCatalog,
-  type GuardrailEntry,
-  guardrailActionOf,
-  guardrailOf,
-} from '@lostgradient/operative';
+import { type GuardrailEntry, guardrailActionOf, guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   formatToolId,
@@ -660,7 +655,7 @@ class Contributed {
   }
 }
 
-/** The providers a plugin's setup returned, each with the rows it carries or Operative's static ones. */
+/** The providers a plugin's setup returned, each with the rows it carries. */
 function providersOf(
   entry: BureauPluginEntry,
   configuration: unknown,
@@ -673,16 +668,13 @@ function providersOf(
     configuration,
     // `providerSecretProblems` has refused every other case: one declared secret is the key.
     secretKey: provider.secretKey ?? declared[0],
-    rows:
-      provider.rows ??
-      createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
+    rows: provider.rows ?? [],
   }));
 }
 
 /**
- * The `provider-empty` problems of the providers that gave no `rows` under a name Operative's
- * static catalog holds none for: they would contribute no model, which is never what a plugin
- * meant by a provider (COR-2145). The plugin keeps running with its other contributions.
+ * The `provider-empty` problems of the providers that gave no `rows`: they would contribute no
+ * model, which is never what a plugin meant by a provider (COR-2145). The plugin keeps running with its other contributions.
  */
 function providerEmptyProblems(
   result: PluginSetupResult,

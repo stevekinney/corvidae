@@ -7,7 +7,6 @@
 import {
   type BackendDescriptor,
   createMockGenerate,
-  createModelCatalog,
   type DecisionKind,
   type DecisionModel,
   type GenerateFunction,
@@ -21,13 +20,14 @@ import type { Bureau } from '../bureau-types/facade.ts';
 import { createBureau } from '../create-bureau.ts';
 import { ModelPolicyDeniedError } from '../file-agent-generate.ts';
 import type { BureauModelPolicyOptions } from '../model-policy.ts';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const bureaus: Bureau[] = [];
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
 });
 
-const seed = createModelCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
+const seed = createVendorCatalog().descriptors.find((row) => row.model === 'claude-haiku-5-5')!;
 
 /** The row the fallback uses: it is priced, available, and structured. */
 const FALLBACK_ROW: BackendDescriptor = {

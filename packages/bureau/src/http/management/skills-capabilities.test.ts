@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, createModelCatalog, withBackendDescriptors } from '@lostgradient/operative';
+import { createAgent, withBackendDescriptors } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -30,6 +30,7 @@ import { createBureauHandler } from '../create-bureau-handler.ts';
 import { callAs, disposeServed, listOf, serve } from './agent-definitions-fixtures.test-support.ts';
 import { authentication, rpc } from './management-fixtures.test-support.ts';
 import type { SkillsStanding } from './skills-operations.ts';
+import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
 
 const roots: string[] = [];
 
@@ -652,7 +653,7 @@ describe('bureau.agents.definitions.get for a code-defined agent', () => {
   });
 
   it('names the model a fixed agent attaches, and states nothing an agent does not declare', async () => {
-    const opus = createModelCatalog().descriptors.find(
+    const opus = createVendorCatalog().descriptors.find(
       (row) => row.provider === 'anthropic' && row.model === 'claude-opus-5',
     );
     if (opus === undefined) throw new Error('The model catalog has no claude-opus-5.');

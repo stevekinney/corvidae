@@ -2,26 +2,14 @@ import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradien
 import type { MediaLimits, MimeFamily, Modality, ModalityMatrix } from 'conversationalist';
 
 import type { DecisionKind } from '../decisions/types.ts';
-import { readEnvironmentConfiguration } from '../environment-configuration.ts';
-import { ANTHROPIC_LIMITS, GEMINI_LIMITS, OPENAI_LIMITS } from './model-catalog-data.ts';
-import {
-  buildAnthropicRow,
-  buildGeminiRow,
-  buildOpenAIRow,
-  deepFreeze,
-} from './model-catalog-rows.ts';
+import { deepFreeze } from './model-catalog-rows.ts';
 import { PROVIDER_NAME_PATTERN } from './provider-name.ts';
 import type { BaseProviderOptions, Effort, ProviderName } from './types.ts';
 
-export { requireLimits, requireModalities, type ModelLimitEntry } from './model-catalog-data.ts';
-
 /**
- * AB-64's ratified `BackendDescriptor`/`ModelCatalog` surface, implemented as
- * a static seed derived from the provider tables this package already ships
- * (`shared/effort.ts`, `shared/model-registry.ts`, `../cost-estimation.ts`),
- * never a hand-copied model list. See `model-catalog.test.ts` for the
- * computed-union assertions that keep the seed synchronized with those
- * tables, and AB-64's decision record (ratified 2026-09-01, amended
+ * AB-64's ratified `BackendDescriptor`/`ModelCatalog` surface. Operative holds no row of
+ * its own: each provider package ships the rows of its models, and a host passes them in
+ * (`CreateModelCatalogOptions.descriptors`). AB-64's decision record (ratified 2026-09-01, amended
  * 2026-09-02) for the shapes below, transcribed verbatim except where the
  * coordinator's `modalities: ModalityMatrix` amendment replaces the three
  * parallel `inputModalities`/`outputModalities`/`acceptedSourceForms` fields.
@@ -185,17 +173,7 @@ export interface ModelCatalog {
   readonly projection: CatalogProjection;
 }
 
-/**
- * The base URL the `openai` SDK would use when no explicit one is passed.
- * Mirrors `capabilities.ts`'s historical `readOpenAIBaseUrlOverride`, moved
- * here because `endpointAmbiguous` is now decided in this module.
- */
-function readOpenAIBaseUrlOverride(): string | undefined {
-  return readEnvironmentConfiguration().openaiBaseUrl;
-}
-
 export interface CreateModelCatalogOptions {
-  readonly openAIBaseURL?: string | undefined;
   readonly now?: (() => string) | undefined;
   /**
    * The AB-92/AB-252 `RuntimeServices` seam (AB-325) backing the default
@@ -205,22 +183,19 @@ export interface CreateModelCatalogOptions {
    */
   readonly runtime?: RuntimeServices | undefined;
   /**
-   * Rows a loaded provider contributes beyond the built-in seed, appended after it. A row's
+   * Rows a loaded provider contributes. Operative holds none of its own. A row's
    * `provider` is the contributing provider's name, so a provider package adds its rows without an
    * edit to this module.
    *
    * @throws {Error} When a row's `provider` does not match the provider-name grammar, or when two
-   * rows (a seed row included) carry one provider and model.
+   * rows carry one provider and model.
    */
   readonly descriptors?: readonly BackendDescriptor[] | undefined;
 }
 
 /** Snapshots and freezes the rows a provider contributes, after checking each is well formed and unique. */
-function contributedRows(
-  rows: readonly BackendDescriptor[],
-  seeded: readonly BackendDescriptor[],
-): readonly BackendDescriptor[] {
-  const seen = new Set(seeded.map((row) => `${row.provider}\u0000${row.model}`));
+function contributedRows(rows: readonly BackendDescriptor[]): readonly BackendDescriptor[] {
+  const seen = new Set<string>();
   return rows.map((row) => {
     if (!PROVIDER_NAME_PATTERN.test(row.provider)) {
       throw new Error(`model-catalog: "${row.provider}" is not a valid provider name`);
@@ -235,7 +210,7 @@ function contributedRows(
 }
 
 /**
- * Builds the static `ModelCatalog` seed: synchronous, side-effect-free, no
+ * Builds a static `ModelCatalog` from the rows it is given: synchronous, side-effect-free, no
  * network input or output, no timer, no `queueMicrotask`, and no background
  * work. `now` defaults to `options.runtime.clock.nowISO()` (the real
  * implementation when `runtime` is omitted) and is the only clock this
@@ -246,23 +221,8 @@ export function createModelCatalog(options?: CreateModelCatalogOptions): ModelCa
   const runtime = options?.runtime ?? createDefaultRuntimeServices();
   const now = options?.now ?? (() => runtime.clock.nowISO());
   const freshness = now();
-  const endpointAmbiguous = Boolean(options?.openAIBaseURL || readOpenAIBaseUrlOverride());
 
-  const anthropicDescriptors = Object.keys(ANTHROPIC_LIMITS).map((model) =>
-    deepFreeze(buildAnthropicRow(model, freshness)),
-  );
-  const openAIDescriptors = Object.keys(OPENAI_LIMITS).map((model) =>
-    deepFreeze(buildOpenAIRow(model, freshness, endpointAmbiguous)),
-  );
-  const geminiDescriptors = Object.keys(GEMINI_LIMITS).map((model) =>
-    deepFreeze(buildGeminiRow(model, freshness)),
-  );
-
-  const seeded = [...anthropicDescriptors, ...openAIDescriptors, ...geminiDescriptors];
-  const descriptors = Object.freeze([
-    ...seeded,
-    ...contributedRows(options?.descriptors ?? [], seeded),
-  ]);
+  const descriptors = Object.freeze(contributedRows(options?.descriptors ?? []));
 
   return Object.freeze({
     revision: 1,

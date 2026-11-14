@@ -2,7 +2,6 @@ import {
   createAgent,
   createDefaultRuntimeServices,
   createMockGenerate,
-  createModelCatalog,
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -17,6 +16,7 @@ import {
 } from './agent-catalog';
 import { AgentFileError, type AgentFileDefinitionInput } from './agent-file';
 import type { AgentFileCatalog } from './agent-file-catalog';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 function agent(name: string) {
   return createAgent({ generate: createMockGenerate([]), name });
@@ -148,7 +148,7 @@ describe('createAgentCatalog', () => {
 
 describe('createAgentCatalog: generationProfile (AB-64/AB-247/mod-02e)', () => {
   const FIXED_NOW = '2026-09-02T12:00:00.000Z';
-  const seedDescriptors = createModelCatalog({ now: () => FIXED_NOW }).descriptors;
+  const seedDescriptors = createVendorCatalog({ now: () => FIXED_NOW }).descriptors;
   function requireDescriptor(provider: (typeof seedDescriptors)[number]['provider']) {
     const descriptor = seedDescriptors.find((d) => d.provider === provider);
     if (!descriptor) throw new Error(`expected at least one seed descriptor for ${provider}`);
@@ -339,7 +339,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
   });
 
   it('copies one with its plugin’s tools named as the catalog holds them and the first catalog model', async () => {
-    const descriptors = createModelCatalog().descriptors;
+    const descriptors = createVendorCatalog().descriptors;
     const helper = Object.create(agent('tool-runner'), {
       toolNames: { value: ['lookup-order', 'shared-tool'] },
     }) as ReturnType<typeof agent>;
@@ -368,7 +368,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
   });
 
   it('keeps a tool of the disabled plugin as plugin:tool, and leaves one no plugin contributes as it is (COR-2236)', async () => {
-    const descriptors = createModelCatalog().descriptors;
+    const descriptors = createVendorCatalog().descriptors;
     const helper = Object.create(agent('tool-runner'), {
       toolNames: { value: ['lookup-order', 'mystery'] },
     }) as ReturnType<typeof agent>;
@@ -403,7 +403,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
         {},
         {
           files: withDuplicate,
-          descriptors: () => createModelCatalog().descriptors,
+          descriptors: () => createVendorCatalog().descriptors,
           unavailable: [{ id: 'demo:tool-runner', plugin: 'demo', agent: plugin, unavailable }],
         },
       );
@@ -436,7 +436,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
     it('names nothing for a code agent with none of them, and for a copy of a file agent', async () => {
       const plain = withBackendDescriptors(
         createMockGenerate([]),
-        createModelCatalog().descriptors.slice(0, 1),
+        createVendorCatalog().descriptors.slice(0, 1),
       );
       const result = await duplicatorOf(
         createAgent({ name: 'tool-runner', generate: plain }),
@@ -463,7 +463,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
         { 'demo:running': structured() },
         {
           files: { ...files, detail: async () => undefined } as unknown as AgentFileCatalog,
-          descriptors: () => createModelCatalog().descriptors,
+          descriptors: () => createVendorCatalog().descriptors,
           unavailable: [
             { id: 'demo:tool-runner', plugin: 'demo', agent: structured(), unavailable },
           ],
@@ -491,7 +491,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
   });
 
   describe('where a copy of a code agent came from (COR-2234)', () => {
-    const descriptors = createModelCatalog().descriptors;
+    const descriptors = createVendorCatalog().descriptors;
     const helper = () => agent('tool-runner');
     function catalogWith(details: Parameters<typeof createAgentCatalog>[1] = {}) {
       const { files, created } = recordingFiles([]);
@@ -548,7 +548,7 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
   });
 
   it('copies one onto the first model whose provider can be called, passing over an unavailable row (COR-2143)', async () => {
-    const all = createModelCatalog().descriptors;
+    const all = createVendorCatalog().descriptors;
     const unusable = all.find((row) => row.lifecycle !== 'retired');
     const usable = all.find(
       (row) => row.lifecycle !== 'retired' && row.provider !== unusable?.provider,

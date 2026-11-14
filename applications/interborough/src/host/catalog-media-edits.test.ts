@@ -2,7 +2,7 @@
  * COR-2413 — a catalog edit may lower a row's media limits and per-request part counts, and never
  * raise them. Stored edits without the fields load unchanged.
  */
-import { createModelCatalog } from '@lostgradient/operative';
+import { anthropicRows } from '@lostgradient/operative-anthropic';
 import { describe, expect, test } from 'bun:test';
 
 import { parseCatalogEdits } from './catalog-edits.ts';
@@ -13,7 +13,7 @@ import { selectCatalogRows } from './providers.ts';
 const PATH = '/home/interborough/configuration.json';
 const ALL = new Set(['anthropic', 'openai', 'gemini']);
 const NONE: ReadonlyMap<string, readonly string[]> = new Map();
-const seed = createModelCatalog().descriptors.find(
+const seed = anthropicRows().find(
   (row) => row.provider === 'anthropic' && row.model === 'claude-sonnet-5',
 );
 
@@ -147,7 +147,7 @@ describe('stored catalog edits without the media fields', () => {
   test('leave every row’s media limits as the seed states them', () => {
     const rows = rowsWith(stored);
     for (const row of rows) {
-      const origin = createModelCatalog().descriptors.find(
+      const origin = anthropicRows().find(
         (candidate) =>
           candidate.provider === row.provider &&
           (candidate.model === row.model || row.model === 'sonnet-next'),

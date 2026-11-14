@@ -5,11 +5,7 @@
  * compacting file over a forbidden summarizer is refused at `compaction`; a scan still lists such a
  * file ready.
  */
-import {
-  type AgentRunError,
-  createModelCatalog,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { type AgentRunError, type GenerateFunction } from '@lostgradient/operative';
 import { Conversation } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -23,6 +19,7 @@ import {
   KNOWN_MODEL,
   OTHER_MODEL,
 } from './testing/agent-file-fixtures.test-support';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const fixtures: AgentFileFixture[] = [];
 
@@ -52,7 +49,7 @@ probe.appendUserMessage(LONG_INPUT);
 /** A window the long input fills to 70%: over a threshold of 50. */
 const WINDOW = Math.floor(probe.estimateTokens() / 0.7);
 
-const descriptors = createModelCatalog().descriptors.map((row) =>
+const descriptors = createVendorCatalog().descriptors.map((row) =>
   row.provider === 'anthropic' && row.model === 'claude-opus-5-5'
     ? { ...row, contextWindowTokens: WINDOW }
     : row,

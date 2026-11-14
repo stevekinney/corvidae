@@ -1,5 +1,4 @@
 import {
-  createModelCatalog,
   type BackendDescriptor,
   type DecisionModel,
   type GenerateFunction,
@@ -23,8 +22,8 @@ import type { SettingsValues } from '../settings/settings-schema';
 export interface ModelsOptions {
   /**
    * The rows the deployment offers, or a factory that builds them once plugin setup has run, from
-   * the providers the plugins contributed (COR-1884). Defaults to `@lostgradient/operative`'s
-   * static seed. Rows a host supplies here are stamped `source: 'operator-override'`, the same
+   * the providers the plugins contributed (COR-1884). Defaults to no rows: Bureau holds none of
+   * its own, so a provider plugin contributes the rows of its models (COR-2151). Rows a host supplies here are stamped `source: 'operator-override'`, the same
    * stamp {@link Models.replace} gives, so a row's `source` says whether the host chose it. A
    * factory is called once, with nothing contributed when no plugin runs.
    */
@@ -264,10 +263,8 @@ export function createModels<D extends AgentDefinitions>(
   const supplied = given;
   let catalog: ModelCatalog = Object.freeze({
     revision: 1,
-    descriptors:
-      supplied === undefined
-        ? deepCloneAndFreeze(createModelCatalog().descriptors)
-        : stamp(supplied),
+    // No catalog given: Bureau holds no model of its own; a provider plugin contributes its rows.
+    descriptors: supplied === undefined ? Object.freeze([]) : stamp(supplied),
     generatedAt: now(),
     stale: false,
     projection: 'privileged' as const,

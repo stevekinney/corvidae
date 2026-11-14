@@ -12,7 +12,6 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import {
   createAgent,
-  createModelCatalog,
   stopWhen,
   withBackendDescriptors,
   type GenerateFunction,
@@ -52,6 +51,7 @@ import {
   type ReservedKeyFamily,
   SHARED_KEY_FAMILIES_OF_A_CHAT,
 } from './reserved-key-prefixes';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 /** What each content-bearing feature of a chat holds, by name; every chat has values of its own. */
 type Sentinels = Readonly<Record<string, string>>;
@@ -258,7 +258,7 @@ function agentsFor(
   suffix: string,
   helper: GenerateFunction,
   asker: GenerateFunction,
-  vision: ReturnType<typeof createModelCatalog>['descriptors'],
+  vision: ReturnType<typeof createVendorCatalog>['descriptors'],
   tools: Parameters<typeof createToolbox>[0],
   plan: { current: Sentinels },
 ) {
@@ -349,7 +349,7 @@ async function openWorld(
         })
       : answer();
   // The agents take an image, so a message's inline file is admitted as an asset.
-  const vision = createModelCatalog()
+  const vision = createVendorCatalog()
     .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
     .slice(0, 1);
   const bureau = await createBureau<AgentDefinitions>({

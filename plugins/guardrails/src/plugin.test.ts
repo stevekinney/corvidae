@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/bureau';
 import { agentFileDirectory } from '@lostgradient/bureau/sources';
-import { createPluginTestHost } from '@lostgradient/bureau/testing';
+import { createPluginTestHost, pluginTestModelRows } from '@lostgradient/bureau/testing';
 import { isGuardrailFactory, type PluginGuardrailFactory } from '@lostgradient/interborough-plugin';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
 import { guardrailOf } from '@lostgradient/operative';
@@ -55,7 +55,10 @@ async function run(
     agentSource: agentFileDirectory(directory),
     storage: new MemoryStorage(),
     durable: true,
-    models: { generate: () => async () => ({ content: reply, toolCalls: [] }) },
+    models: {
+      catalog: [...pluginTestModelRows],
+      generate: () => async () => ({ content: reply, toolCalls: [] }),
+    },
     plugins: [{ descriptor: guardrails, source: 'folder', location: guardrails.name }],
     pluginSecrets: { get: async () => undefined, watch: () => () => {} },
     pluginConfiguration: { guardrails: { enabled: true, configuration } },
@@ -97,7 +100,10 @@ async function bureauOf(
     agentSource: agentFileDirectory(directory),
     storage: new MemoryStorage(),
     durable: true,
-    models: { generate: () => async () => ({ content: reply, toolCalls: [] }) },
+    models: {
+      catalog: [...pluginTestModelRows],
+      generate: () => async () => ({ content: reply, toolCalls: [] }),
+    },
     plugins: [{ descriptor: guardrails, source: 'folder', location: guardrails.name }],
     pluginSecrets: { get: async () => undefined, watch: () => () => {} },
     pluginConfiguration: { guardrails: { enabled: true, configuration } },

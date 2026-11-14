@@ -11,7 +11,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
+import { type BackendDescriptor } from '@lostgradient/operative';
 
 import { AgentFileError, AgentSnapshotError } from './agent-file';
 import { readFileAgentBinding } from './agent-file-catalog';
@@ -27,6 +27,7 @@ import {
   OTHER_MODEL,
   validAgentFile,
 } from './testing/agent-file-fixtures.test-support';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const fixtures: AgentFileFixture[] = [];
 
@@ -344,13 +345,13 @@ describe('a write whose model cannot be set up', () => {
 });
 
 describe('a run resumed from its snapshot after a model alias moved (COR-2152)', () => {
-  const [first, second] = createModelCatalog().descriptors.filter(
+  const [first, second] = createVendorCatalog().descriptors.filter(
     (row) => row.provider === 'anthropic' && row.lifecycle !== 'retired',
   );
   const house = 'anthropic/house';
   /** The model catalog with the alias `house` pointing at `target`. */
   const catalogWith = (target: BackendDescriptor | undefined) =>
-    createModelCatalog().descriptors.map((row) => ({
+    createVendorCatalog().descriptors.map((row) => ({
       ...row,
       aliases: row.aliases.filter((alias) => alias.alias !== 'house'),
       ...(target !== undefined && row.model === target.model && row.provider === target.provider

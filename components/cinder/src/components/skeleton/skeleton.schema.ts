@@ -31,16 +31,22 @@ const schema = {
       default: 1,
     },
     variant: {
-      enum: ['row', 'card', 'list', 'form'],
+      enum: ['row', 'card', 'list', 'grouped', 'form'],
       description:
-        "Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the\n`lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'form'` draws\n`rows` fields, a label bar over a control bar each.",
+        "Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the\n`lines` bars in a bordered card; `'list'` draws `rows` status-first list rows; `'grouped'`\ndraws `rows` grouped-list rows; `'form'` draws `rows` fields, a label bar over a control bar\neach.",
       default: 'row',
     },
     rows: {
       type: 'number',
       description:
-        "Number of fields to draw when `variant` is `'form'`, and of list rows when it is `'list'`. Each row keeps the 8rem status\ncolumn reserved, then shows two text bars and a time bar, with no leading circle, so\nnothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.",
+        "Number of fields to draw when `variant` is `'form'`, of list rows when it is `'list'`, and of\ngrouped-list rows when it is `'grouped'`. A list row keeps the 8rem status\ncolumn reserved, then shows two text bars and a time bar, with no leading circle, so\nnothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.",
       default: 3,
+    },
+    action: {
+      type: 'boolean',
+      description:
+        "Draw a block the size of a small button at the end of each row when `variant` is `'grouped'`,\nfor a grouped list whose rows end in text actions. In a row narrower than 26rem, as on a phone,\nthe block drops under the text at full width, where the real buttons go. Ignored by other\nvariants.",
+      default: false,
     },
     statusMarker: {
       enum: ['bar', 'dot'],

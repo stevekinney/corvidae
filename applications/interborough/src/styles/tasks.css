@@ -283,28 +283,6 @@
   font-size: var(--cinder-text-xs);
 }
 
-.ib-run__spinner {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--cinder-border-strong);
-  border-top-color: var(--cinder-accent-solid);
-  border-radius: 50%;
-  animation: ib-run-spin 0.7s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ib-run__spinner {
-    animation-duration: 0.001ms;
-  }
-}
-
-@keyframes ib-run-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* The occurrences under an expanded missed-runs row on Runs: plain lines, one a line, not runs. */
 .ib-missed-runs__occurrences {
   display: grid;

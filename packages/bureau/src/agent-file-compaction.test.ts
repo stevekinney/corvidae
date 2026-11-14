@@ -4,7 +4,7 @@
  * enabled file compacts its conversation at the share of the model's context window it names,
  * with the summarizer model and not the agent's own.
  */
-import { createModelCatalog, type GenerateFunction } from '@lostgradient/operative';
+import { type GenerateFunction } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { Conversation } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -20,6 +20,7 @@ import {
   OTHER_MODEL,
 } from './testing/agent-file-fixtures.test-support';
 import { startFileBureau, type FileBureauHarness } from './testing/agent-file-bureau.test-support';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const fixtures: AgentFileFixture[] = [];
 const harnesses: FileBureauHarness[] = [];
@@ -50,7 +51,7 @@ function estimatedTokens(text: string): number {
 
 /** The default catalog with the agent's model given a context window of `tokens`. */
 function windowOf(tokens: number) {
-  return createModelCatalog().descriptors.map((row) =>
+  return createVendorCatalog().descriptors.map((row) =>
     row.provider === 'anthropic' && row.model === 'claude-opus-5-5'
       ? { ...row, contextWindowTokens: tokens }
       : row,
@@ -343,7 +344,7 @@ describe('the transcript of a tool interaction', () => {
 });
 
 describe('a Bureau with compaction-enabled file agents', () => {
-  const rows = createModelCatalog().descriptors;
+  const rows = createVendorCatalog().descriptors;
 
   async function bureauWith(script: Scripted, catalogRows = rows) {
     const harness = await startFileBureau({

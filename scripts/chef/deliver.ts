@@ -66,7 +66,16 @@
 //              the worktree (SIGTERM, then SIGKILL), since the delivered worker is done. A worktree
 //              it refuses (locked by a live session, uncommitted changes, a file held open inside
 //              it by a process elsewhere, outside the roots) is kept and the line says why; that
-//              never fails the delivery.
+//              never fails the delivery. A lock in the Agent tool's form
+//              (`claude agent agent-<id> (pid ...)`) names the parent session, which outlives the
+//              worker, so it does not keep a delivered, clean worktree with nothing running inside;
+//   ledger     right after the merge, whatever the later steps do: the delivered head is appended to
+//              `<main checkout>/tmp/chef/delivered-heads.log` (`delivery-ledger.ts`: time, `branch:<name>`
+//              or `pr:<n>`, head, merge commit), which `worktree.ts stale` reads to know a squashed
+//              worktree is delivered. Not behind a flag; a write failure is a warning line;
+//   sweep      last: `worktree.ts stale --remove`, keeping every branch, which removes the finished
+//              worktrees of earlier workers too and prints `swept: <n> removed, <m> kept`. A sweep
+//              failure prints `swept: failed (...)` and never fails the delivery.
 //
 // Output: at most six lines, or with `--json` one object: pr, branch, merged, mergeCommit,
 // mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail, worktree (`removed` and
@@ -80,6 +89,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { recordDelivery, type LedgerEntry } from './delivery-ledger.ts';
 import {
   directMergeExclusively,
   type DirectMergeOptions,
@@ -89,7 +99,14 @@ import { createClient, LinearError, postComment, setState, type LinearClient } f
 import { mergeGateExclusively, type MergeGateOptions, type MergeGateReport } from './merge-gate.ts';
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
-import { Refusal, removeWorktree, type RemoveOptions, type RemoveResult } from './worktree.ts';
+import { resolveMainCheckout } from './repository-locations.ts';
+import {
+  Refusal,
+  removeWorktree,
+  staleWorktrees,
+  type RemoveOptions,
+  type RemoveResult,
+} from './worktree.ts';
 
 export { UsageError };
 
@@ -148,6 +165,10 @@ export interface DeliverReport {
   leftOpen: string[];
   /** What happened to the delivered worktree; `null` when the step did not run. */
   worktree: { removed: boolean; detail: string } | null;
+  /** The sweep after the delivery: the counts, or the failure (never a failed delivery); `null` when it did not run. */
+  swept: { removed: number; kept: number } | { failure: string } | null;
+  /** Set when the delivered head could not be written to the ledger: a warning, never a failure. */
+  ledgerWarning: string | null;
 }
 
 export interface DeliverDependencies {
@@ -158,6 +179,10 @@ export interface DeliverDependencies {
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
   client: LinearClient;
   remove: (options: RemoveOptions) => RemoveResult;
+  /** Appends a delivered head to the delivery ledger (`delivery-ledger.ts`). */
+  record: (entry: LedgerEntry) => void;
+  /** The sweep of finished worktrees (`worktree.ts stale --remove`, keeping every branch). */
+  sweep: (configPath: string) => { removed: number; kept: number };
 }
 
 /**
@@ -272,6 +297,8 @@ export async function deliver(
     acceptedReverts: [],
     leftOpen: [],
     worktree: null,
+    swept: null,
+    ledgerWarning: null,
   };
   const fail = (step: string, detail: string): DeliverReport => {
     report.failedStep = step;
@@ -282,6 +309,23 @@ export async function deliver(
   // The commit this delivery lands: the pinned head, else the pull request's head, which the merge
   // gate requires to equal the worktree's HEAD. With neither, the ordinary delivered check applies.
   let deliveredTip: string | undefined = options.expectedHead;
+
+  // ledger: whenever the merge happened, even if a later step of it failed (a branch merge whose
+  // remote branch could not be deleted is merged), so a worktree holding the head is known to be
+  // delivered after a squash leaves its tip outside the default branch's history.
+  const writeLedger = () => {
+    if (!report.merged || deliveredTip === undefined || partial.record === undefined) return;
+    try {
+      partial.record({
+        pr: options.pr,
+        branch: options.branch,
+        head: deliveredTip,
+        mergeCommit: report.mergeCommit,
+      });
+    } catch (error) {
+      report.ledgerWarning = error instanceof Error ? error.message : String(error);
+    }
+  };
 
   // merge
   const usageFields =
@@ -306,7 +350,10 @@ export async function deliver(
     report.mainHealthWarning = direct.mainHealthWarning ?? null;
     report.guardsAlreadyFailing = direct.guardsAlreadyFailing ?? [];
     report.acceptedReverts = direct.acceptedReverts ?? [];
-    if (direct.failedStep !== null) return fail(direct.failedStep, direct.detail ?? '');
+    if (direct.failedStep !== null) {
+      writeLedger();
+      return fail(direct.failedStep, direct.detail ?? '');
+    }
   } else {
     const merge = partial.merge;
     if (merge === undefined) return fail('merge', 'no merge runner was provided.');
@@ -326,8 +373,12 @@ export async function deliver(
     report.mergeable = merged.mergeable;
     deliveredTip ??= merged.head ?? undefined;
     report.mainHealthWarning = merged.mainHealthWarning ?? null;
-    if (merged.failedStep !== null) return fail(merged.failedStep, merged.detail ?? '');
+    if (merged.failedStep !== null) {
+      writeLedger();
+      return fail(merged.failedStep, merged.detail ?? '');
+    }
   }
+  writeLedger();
 
   // issue
   for (const [index, identifier] of issues.entries()) {
@@ -381,6 +432,15 @@ export async function deliver(
       }
     }
   }
+
+  // sweep: finished worktrees of earlier workers go too; a failure here never fails the delivery.
+  if (partial.sweep !== undefined) {
+    try {
+      report.swept = partial.sweep(options.configPath);
+    } catch (error) {
+      report.swept = { failure: error instanceof Error ? error.message : String(error) };
+    }
+  }
   return report;
 }
 
@@ -394,6 +454,14 @@ export function renderDeliver(report: DeliverReport): string {
     lines.push(
       `worktree ${report.worktree.removed ? 'removed' : 'kept'}: ${report.worktree.detail}`,
     );
+  if (report.swept !== null)
+    lines.push(
+      'failure' in report.swept
+        ? `swept: failed (${report.swept.failure})`
+        : `swept: ${report.swept.removed} removed, ${report.swept.kept} kept`,
+    );
+  if (report.ledgerWarning !== null)
+    lines.push(`WARNING delivery ledger: not written (${report.ledgerWarning})`);
   if (report.mainHealthWarning !== null)
     lines.push(`WARNING main health: ${report.mainHealthWarning}`);
   if (report.acceptedReverts.length > 0)
@@ -504,6 +572,14 @@ function productionDependencies(): Partial<DeliverDependencies> {
         ),
       ),
     remove: (options) => removeWorktree(options),
+    record: (entry) => recordDelivery(resolveMainCheckout(), entry),
+    sweep: (configPath) => {
+      const result = staleWorktrees({ configPath, remove: true });
+      return {
+        removed: result.removed.length,
+        kept: result.entries.length - result.removed.length,
+      };
+    },
     client: createClient(),
   };
 }

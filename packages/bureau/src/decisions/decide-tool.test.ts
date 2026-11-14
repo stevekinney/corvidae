@@ -4,7 +4,6 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   type DecisionModel,
   type GenerateContext,
   type GenerateFunction,
@@ -23,6 +22,7 @@ import { createDecideToolbox, type DecideToolResult } from './decide-tool.ts';
 import type { DecisionSource } from './types.ts';
 import { hosted } from './hosted-decisions.test-support.ts';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 afterEach(async () => {
@@ -80,6 +80,8 @@ async function open(
     storage: new MemoryStorage(),
     durable: true,
     ...options,
+    // The vendors' rows: Bureau holds none, and these tests choose among real models.
+    models: { catalog: createVendorCatalog().descriptors, ...options.models },
   });
   bureaus.push(bureau);
   return bureau;
@@ -306,7 +308,7 @@ describe('createDecideToolbox', () => {
 
 describe('the decide tool under a model policy (COR-1996)', () => {
   it('answers a policy that leaves no model as a typed refusal the agent can read, not a thrown error', async () => {
-    const forbidden = createModelCatalog().descriptors.map((descriptor) => descriptor.model);
+    const forbidden = createVendorCatalog().descriptors.map((descriptor) => descriptor.model);
     let providerCalls = 0;
     const results: unknown[] = [];
     const bureau = await open(

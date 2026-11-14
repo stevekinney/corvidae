@@ -22,6 +22,15 @@ export type {
   GeminiEmbeddingModel,
 } from './embeddings/gemini.ts';
 export { resolveGeminiApiKey } from './gemini-api-key.ts';
+export {
+  GEMINI_MODEL_ALIASES,
+  GEMINI_THINKING_MODELS,
+  geminiPricingTable,
+  geminiRows,
+  resolveGeminiEffort,
+  resolveGeminiModel,
+} from './gemini-catalog.ts';
+export type { GeminiResolvedEffort, GeminiRowsOptions } from './gemini-catalog.ts';
 export { geminiProvider } from './gemini-definition.ts';
 export type { GeminiProviderConfiguration } from './gemini-definition.ts';
 export {

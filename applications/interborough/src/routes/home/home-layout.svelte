@@ -1,11 +1,12 @@
 <script lang="ts">
   /**
    * The layout Home's sections sit in, shared by the page and by its loading placeholders so the
-   * two are the same layout and nothing moves when data arrives: the date line, the four counts in
-   * one row, then two columns (what needs you, what is running and what needs attention at the
-   * left, the box that starts a chat at the right) and the chats you were last in across the full
-   * width below. On a phone every section is a row of one column, in the order the counts, Needs
-   * you, Running now, the box that starts a chat, Needs attention, Recent chats. While the first-run
+   * two are the same layout and nothing moves when data arrives: the date line, the Spotlight with
+   * the one count under it, then two columns (what needs you, what is running and what needs
+   * attention at the left, the box that starts a chat at the right) and the chats you were last in
+   * across the full width below. On a phone every section is a row of one column, in the order the
+   * Spotlight, Needs you, Running now, the box that starts a chat, Needs attention, Recent chats.
+   * While the first-run
    * checklist shows the box that starts a chat sits under it, in the left column.
    *
    * The sections draw no box (Cinder's `Section`), so space alone separates them: the gap between
@@ -20,8 +21,8 @@
     busy?: boolean;
     /** The line that leads the page. */
     date: Snippet;
-    /** The four counts; the checklist has none. */
-    counts?: Snippet | undefined;
+    /** The Spotlight and the one count under it; the checklist has neither. */
+    focus?: Snippet | undefined;
     /** What needs you, or the checklist. */
     primary?: Snippet | undefined;
     /** The Running now card, while a run is going. */
@@ -40,7 +41,7 @@
     mode,
     busy = false,
     date,
-    counts,
+    focus,
     primary,
     running,
     startChatBelow,
@@ -52,7 +53,7 @@
 
 <div class="ib-home" data-page="home" data-mode={mode} aria-busy={busy ? 'true' : undefined}>
   <p class="ib-home__date" data-testid="home-date">{@render date()}</p>
-  {#if counts}{@render counts()}{/if}
+  {#if focus}{@render focus()}{/if}
   <div class="ib-home__columns">
     <div class="ib-home__main">
       {#if primary}<div class="ib-home__needs-you">{@render primary()}</div>{/if}

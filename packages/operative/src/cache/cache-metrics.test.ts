@@ -9,7 +9,7 @@ import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../providers/backend-descriptor-attachment';
-import { createModelCatalog } from '../providers/model-catalog';
+import { createFixtureCatalog, fixturePricing } from '../testing/model-catalog.test-support.ts';
 import type { GenerateContext, GenerateFunction, GenerateResponse } from '../types';
 import { withCacheMetrics } from './cache-metrics';
 
@@ -132,15 +132,33 @@ describe('withCacheMetrics', () => {
     });
     const { generate: cached, metrics } = withCacheMetrics(generate, {
       store,
-      model: 'gpt-4o',
+      model: 'beta-standard',
+      pricing: { customPricing: fixturePricing },
     });
 
     await cached(makeContext());
     await cached(makeContext());
 
-    // gpt-4o pricing: prompt $2.5/M, completion $10/M
+    // beta-standard pricing: prompt $2.5/M, completion $10/M
     // Saved: $2.5 + $10 = $12.50
     expect(metrics.estimatedSavedCost).toBeCloseTo(12.5, 1);
+  });
+
+  it('keeps estimatedSavedCost at 0 for a model it is given no price for: Operative holds none', async () => {
+    const generate = createTrackingGenerate({
+      content: 'response',
+      toolCalls: [],
+      usage: { prompt: 1_000_000, completion: 1_000_000, total: 2_000_000 },
+    });
+    const { generate: cached, metrics } = withCacheMetrics(generate, {
+      store,
+      model: 'beta-standard',
+    });
+
+    await cached(makeContext());
+    await cached(makeContext());
+
+    expect(metrics.estimatedSavedCost).toBe(0);
   });
 
   it('returns 0 estimatedSavedCost when model is not provided', async () => {
@@ -203,8 +221,8 @@ describe('withCacheMetrics — backend-descriptor propagation (AB-64, AB-245, AB
   const FIXED_NOW = () => '2026-09-03T12:00:00.000Z';
 
   function anthropicDescriptor() {
-    const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
-      (row) => row.provider === 'anthropic',
+    const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
+      (row) => row.provider === 'alpha',
     );
     if (!descriptor)
       throw new Error('expected at least one anthropic descriptor in the seed catalog');

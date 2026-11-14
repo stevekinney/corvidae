@@ -1,7 +1,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
-  createModelCatalog,
   stopWhen,
   waitForCondition,
   withBackendDescriptors,
@@ -18,6 +17,7 @@ import {
   BUREAU_RESERVED_KEY_PREFIXES,
   SHARED_KEY_FAMILIES_OF_A_CHAT,
 } from './reserved-key-prefixes';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 /**
  * Constants whose name ends in `PREFIX`, `KEY`, or `NAMESPACE` that hold something other than a
@@ -238,7 +238,7 @@ describe('BUREAU_RESERVED_KEY_PREFIXES', () => {
    */
   it('covers every key a running Bureau writes, beyond the durable engine and session store', async () => {
     const storage = new MemoryStorage();
-    const descriptors = createModelCatalog().descriptors.filter(
+    const descriptors = createVendorCatalog().descriptors.filter(
       (descriptor) => descriptor.provider === 'anthropic',
     );
     const bureau = await createBureau<AgentDefinitions>({

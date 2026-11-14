@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/bureau';
 import { agentFileDirectory } from '@lostgradient/bureau/sources';
-import { createPluginTestHost } from '@lostgradient/bureau/testing';
+import { createPluginTestHost, pluginTestModelRows } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
 import type { BackendDescriptor, DecisionModel } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -370,6 +370,7 @@ describe('typesafe:prompt-injection', () => {
         storage: new MemoryStorage(),
         durable: true,
         models: {
+          catalog: [...pluginTestModelRows],
           generate: () => async () => {
             calls += 1;
             return calls === 1

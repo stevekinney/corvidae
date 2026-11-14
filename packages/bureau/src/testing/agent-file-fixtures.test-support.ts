@@ -7,11 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
-import {
-  type BackendDescriptor,
-  createModelCatalog,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, type GenerateFunction } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import { createTool } from 'armorer';
 import { z } from 'zod';
@@ -29,6 +25,7 @@ import type { DirectorySourceOptions } from '../sources/directory-source.ts';
 import { agentFileDirectory } from '../sources/agent-file-directory.ts';
 import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
 import { createModels, type Models } from '../models/create-models.ts';
+import { createVendorCatalog } from './vendor-catalog.test-support';
 
 /** A model the default catalog holds, written the way an agent file names it. */
 export const KNOWN_MODEL = 'anthropic/claude-opus-5-5';
@@ -153,7 +150,7 @@ export async function createAgentFileFixture(
 ): Promise<AgentFileFixture> {
   const root = options.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-agent-files-')));
   const directory = options.subdirectory === undefined ? root : join(root, options.subdirectory);
-  const descriptors = options.descriptors ?? createModelCatalog().descriptors;
+  const descriptors = options.descriptors ?? createVendorCatalog().descriptors;
   let summarizerModel = options.summarizerModel;
   const models = createModels({
     options: { catalog: descriptors },

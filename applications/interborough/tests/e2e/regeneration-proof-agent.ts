@@ -5,11 +5,11 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   stopWhen,
   withBackendDescriptors,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { anthropicRows } from '@lostgradient/operative-anthropic';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -57,7 +57,7 @@ const generate: GenerateFunction = async ({ conversation, toolbox }) => {
 };
 
 const regenerationModel =
-  createModelCatalog().descriptors.find(
+  anthropicRows().find(
     (descriptor) => descriptor.provider === 'anthropic' && descriptor.model === 'claude-sonnet-5',
   ) ??
   (() => {

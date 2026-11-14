@@ -12,6 +12,9 @@ Its source imports Operative only through `@lostgradient/operative/provider-kit`
 
 - `createAnthropicProvider(options)` returns a `GenerateFunction` backed by the Messages API. `createAnthropicProviderStream(options)` returns the streaming counterpart.
 - `anthropicProvider` is the `ProviderDefinition` a host registers by name. Its `AnthropicProviderConfiguration` is the shared `ProviderConfigurationBase` plus every factory option.
+- `anthropicRows(options?)` is the provider's catalog rows, one per Claude model and frozen: limits, modalities, effort support and degradation, parameter compatibility, price and availability. `options.freshness` stamps every row (the time of the call by default). The Anthropic plugin passes them as its provider's `rows`, so repricing a model or adding one is an edit to this package alone.
+- `anthropicPricingTable` is the Claude list prices by model (`ModelPricing`), the source of each row's `pricing`; a host that prices a run passes it as `customPricing`.
+- `resolveAnthropicModel(model)` resolves an alias in `ANTHROPIC_MODEL_ALIASES` to its model and passes any other name through, `inherit` included. `resolveAnthropicEffort(tier, model)` degrades an effort tier to the highest one the model takes (`ANTHROPIC_EFFORT_SUPPORT`), or `undefined` for a model with none.
 - `createAnthropicBatchClient(options)` wraps `client.messages.batches`.
 - `createAnthropicTokenCounter(options)` wraps `client.messages.countTokens`.
 - `normalizeAnthropicStream` turns a stream of Messages API events into Operative stream events.

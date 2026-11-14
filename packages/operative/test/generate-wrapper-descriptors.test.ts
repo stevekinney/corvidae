@@ -17,15 +17,15 @@ import {
   withBackendDescriptors,
 } from '../src/providers/backend-descriptor-attachment';
 import { createFalloverGenerate } from '../src/providers/fallover/create-fallover-generate';
-import { createModelCatalog } from '../src/providers/model-catalog';
 import { createRoutingGenerate } from '../src/providers/routing/create-routing-generate';
 import { withRoutingMetrics } from '../src/providers/routing/routing-metrics';
 import { withStreaming } from '../src/streaming';
 import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
+import { createFixtureCatalog } from '../src/testing/model-catalog.test-support.ts';
 import type { GenerateFunction, GenerateMiddleware, StreamingGenerateFunction } from '../src/types';
 
-const descriptors = createModelCatalog().descriptors.filter(
-  (descriptor) => descriptor.provider === 'anthropic',
+const descriptors = createFixtureCatalog().descriptors.filter(
+  (descriptor) => descriptor.provider === 'alpha',
 );
 
 function inner(): GenerateFunction {

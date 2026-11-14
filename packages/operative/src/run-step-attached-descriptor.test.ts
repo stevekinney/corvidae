@@ -9,14 +9,11 @@ import { Conversation, type MediaContent } from 'conversationalist';
 
 import { createActiveRun } from './create-run';
 import { MediaAdmissionError } from './errors';
-import {
-  createModelCatalog,
-  withBackendDescriptors,
-  type BackendDescriptor,
-} from './providers/index';
+import { withBackendDescriptors, type BackendDescriptor } from './providers/index';
+import { createFixtureCatalog } from './testing/model-catalog.test-support.ts';
 import type { GenerateFunction } from './types';
 
-const seed = createModelCatalog().descriptors.find((row) => row.provider === 'anthropic')!;
+const seed = createFixtureCatalog().descriptors.find((row) => row.provider === 'alpha')!;
 
 /** About 3 KiB once decoded: inside the seed row's 10 MiB per-part image cap. */
 const image: MediaContent = {

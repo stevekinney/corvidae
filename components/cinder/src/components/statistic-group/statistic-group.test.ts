@@ -397,6 +397,30 @@ describe('StatisticGroup', () => {
     );
   });
 
+  // COR-2329: Home sets one stat under its Spotlight, in the page flow with no card around it.
+  test('a plain group draws no frame and sets its values a step smaller', async () => {
+    const { container } = render(StatisticGroup, {
+      children: textSnippet('x'),
+      variant: 'plain',
+      edge: 'shadow',
+    });
+    const root = container.querySelector('.cinder-statistic-group');
+    expect(root?.getAttribute('data-cinder-variant')).toBe('plain');
+    expect(root?.hasAttribute('data-cinder-edge')).toBe(false);
+    const css = normalizeCss(
+      await readFile(new URL('./statistic-group.css', import.meta.url), 'utf8'),
+    );
+    const plainRules = [
+      ...css.matchAll(/([^{}]*\[data-cinder-variant='plain'\][^{}]*)\{([^}]*)\}/g),
+    ];
+    expect(plainRules.map((match) => match[2]?.replace(/\/\*.*?\*\//g, '').trim())).toEqual([
+      '--cinder-statistic-value-font-size: var(--cinder-text-2xl);',
+    ]);
+    for (const [, , body] of plainRules) {
+      expect(body).not.toMatch(/border|padding|background|box-shadow/);
+    }
+  });
+
   test('the edge only means something to the cards variant', () => {
     const { container } = render(StatisticGroup, {
       children: textSnippet('x'),

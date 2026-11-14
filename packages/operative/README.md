@@ -1588,6 +1588,15 @@ const { generate: metered, metrics } = withCacheMetrics(generate, {
   store: kvStore,
   keyStrategy: 'conversation-hash',
   model: 'claude-sonnet-4-20250514', // optional, for cost-savings estimation
+  pricing: {
+    // The model's price: Operative holds none, so a host passes it (a vendor package ships a table).
+    customPricing: {
+      'claude-sonnet-4-20250514': {
+        promptCostPerMillionTokens: 3,
+        completionCostPerMillionTokens: 15,
+      },
+    },
+  },
 });
 
 const activeRun = createActiveRun({
@@ -2227,15 +2236,32 @@ Tasks submitted through `submit()` and `submitImmediate()` (not `dispatch()`) st
 ```typescript
 import { estimateCost, createCostBudgetMonitor } from '@lostgradient/operative';
 
+// Operative holds no price: a model is priced only when the call names its price (a vendor
+// package ships a table of them).
+const pricing = {
+  customPricing: {
+    'claude-opus-4-20250514': {
+      promptCostPerMillionTokens: 15,
+      completionCostPerMillionTokens: 75,
+    },
+    'claude-sonnet-4-20250514': {
+      promptCostPerMillionTokens: 3,
+      completionCostPerMillionTokens: 15,
+    },
+  },
+};
+
 const estimate = estimateCost(
   { prompt: 5000, completion: 800, total: 5800 },
   'claude-opus-4-20250514',
+  pricing,
 );
 // estimate.totalCost—total dollar cost for this call
 
 const monitor = createCostBudgetMonitor({
   budget: 0.1, // $0.10 USD
   model: 'claude-sonnet-4-20250514',
+  pricing,
   thresholds: [0.5, 0.8], // warn at 50% and 80%
   onThreshold: (event) => console.warn(`${event.threshold * 100}% of budget used`),
   onExceeded: (event) => console.error('Budget exceeded at $' + event.currentCost.toFixed(4)),
@@ -2265,7 +2291,7 @@ const agent = createAgent({
 });
 ```
 
-The budget is measured against the cost the run already accumulates for its terminal `costEstimate`, each request priced at its own model's rate, so it belongs to one run and cannot be spent by another. After each step, a run that has spent `perRunUsd` ends with the finish reason `budget-exceeded` and a `BudgetExceededError` that names `perRunUsd`, and a step that crosses a `warnAt` fraction (each strictly between 0 and 1, at most `RUN_COST_BUDGET_MAXIMUM_WARNINGS`) dispatches one `budget.threshold` event, which the run event feed (`operative.runs.events`) publishes with the `step`, `threshold`, `currentCost`, `budget` and `model`. The check runs after the step that spent the money, so a run can pass its budget by up to one step's cost. A durable run keeps its accumulated cost in its cursor, so a recovered run counts what it spent before the restart and does not, as a rule, announce a fraction twice; a warning can repeat if the host crashes after it is sent but before the step is saved. The step's spend is measured from where the step began, so a billed response the step discarded (an `onError` skip, for one) still counts toward both the warnings and the limit. A step on a model a session was switched to is priced at that model when `costEstimation.pricing` knows it. Otherwise a run with a `costBudget` ends with `budget-exceeded` and an error naming the model, before the step asks it anything (COR-1921), because counting it at another model's rate would let the budget be spent unseen; a run with no budget counts it at `costEstimation.model`. A `customPricing` entry set to `null` says a model has no price and keeps the built-in table from pricing it, and a switch that names its provider is priced by `customPricing[providerModelPricingKey(provider, model)]` when that exists, since two providers can serve one model name at different prices or none. `costBudget.perChatUsd` and `priorChatSpendUsd` (COR-1915) let a host that keeps chats stop the run that follows a chat's last: Operative does not know chats, so the host passes the dollars the chat's earlier runs spent as `priorChatSpendUsd` in the run's `costBudget`, and a run that begins with that at or above `perChatUsd` ends at its first step with `budget-exceeded` and an error naming `perChatUsd`, before it asks the model anything. A run past its first step, one recovered mid-run included, is never stopped by it. A call the toolbox's own `budget` (`maxCalls`, `maxDurationMs`) refuses also ends the run `budget-exceeded`, whatever the `errorMode`: every later call would be refused the same way. `createAgent` throws for a `costBudget` with no `costEstimation`, with a model that has no price, or with a `perRunUsd` or `warnAt` that is not valid, because a limit that cannot be measured cannot be enforced.
+The budget is measured against the cost the run already accumulates for its terminal `costEstimate`, each request priced at its own model's rate, so it belongs to one run and cannot be spent by another. After each step, a run that has spent `perRunUsd` ends with the finish reason `budget-exceeded` and a `BudgetExceededError` that names `perRunUsd`, and a step that crosses a `warnAt` fraction (each strictly between 0 and 1, at most `RUN_COST_BUDGET_MAXIMUM_WARNINGS`) dispatches one `budget.threshold` event, which the run event feed (`operative.runs.events`) publishes with the `step`, `threshold`, `currentCost`, `budget` and `model`. The check runs after the step that spent the money, so a run can pass its budget by up to one step's cost. A durable run keeps its accumulated cost in its cursor, so a recovered run counts what it spent before the restart and does not, as a rule, announce a fraction twice; a warning can repeat if the host crashes after it is sent but before the step is saved. The step's spend is measured from where the step began, so a billed response the step discarded (an `onError` skip, for one) still counts toward both the warnings and the limit. A step on a model a session was switched to is priced at that model when `costEstimation.pricing` knows it. Otherwise a run with a `costBudget` ends with `budget-exceeded` and an error naming the model, before the step asks it anything (COR-1921), because counting it at another model's rate would let the budget be spent unseen; a run with no budget counts it at `costEstimation.model`. A `customPricing` entry set to `null` says a model has no price and keeps any other price for it from applying, and a switch that names its provider is priced by `customPricing[providerModelPricingKey(provider, model)]` when that exists, since two providers can serve one model name at different prices or none. `costBudget.perChatUsd` and `priorChatSpendUsd` (COR-1915) let a host that keeps chats stop the run that follows a chat's last: Operative does not know chats, so the host passes the dollars the chat's earlier runs spent as `priorChatSpendUsd` in the run's `costBudget`, and a run that begins with that at or above `perChatUsd` ends at its first step with `budget-exceeded` and an error naming `perChatUsd`, before it asks the model anything. A run past its first step, one recovered mid-run included, is never stopped by it. A call the toolbox's own `budget` (`maxCalls`, `maxDurationMs`) refuses also ends the run `budget-exceeded`, whatever the `errorMode`: every later call would be refused the same way. `createAgent` throws for a `costBudget` with no `costEstimation`, with a model that has no price, or with a `perRunUsd` or `warnAt` that is not valid, because a limit that cannot be measured cannot be enforced.
 
 #### A toolbox of a run's own (COR-1913)
 
@@ -2303,18 +2329,21 @@ It is exclusive with `toolbox` (a type error, and `createAgent` throws for a cas
 
 ### Model Catalog (AB-64)
 
-`createModelCatalog` (`@lostgradient/operative`) builds a static, synchronous, side-effect-free `ModelCatalog`—one `BackendDescriptor` row per `(provider, endpoint, model)` this package ships a generate function for. Each descriptor names its `modalities` (an AB-70 `ModalityMatrix`, re-exported from `conversationalist`), context/output limits, effort support and degradation, parameter compatibility, pricing (derived from `defaultPricingTable`, never fabricated), and availability/health. `voyage` and `ollama` are embedding-only and get no row. `CreateModelCatalogOptions.runtime?: RuntimeServices` (AB-325) backs the default `now` when `options.now` is not supplied—defaults to the real implementation; an explicit `now` still takes precedence over `runtime` when both are given.
+`createModelCatalog` (`@lostgradient/operative`) builds a static, synchronous, side-effect-free `ModelCatalog` from the `BackendDescriptor` rows it is given (`CreateModelCatalogOptions.descriptors`): this package holds no row, price or model resolver of its own, and each provider package ships the rows of its models, one per `(provider, endpoint, model)` (`anthropicRows` in `@lostgradient/operative-anthropic`, `openAIRows` in `@lostgradient/operative-openai`, `geminiRows` in `@lostgradient/operative-gemini`; a provider plugin passes them as its provider's `rows`). Each descriptor names its `modalities` (an AB-70 `ModalityMatrix`, re-exported from `conversationalist`), context/output limits, effort support and degradation, parameter compatibility, pricing (a provider package derives it from its own price table, never fabricated), and availability/health. `voyage` and `ollama` are embedding-only and get no row. `CreateModelCatalogOptions.runtime?: RuntimeServices` (AB-325) backs the default `now` when `options.now` is not supplied—defaults to the real implementation; an explicit `now` still takes precedence over `runtime` when both are given.
 
 ```typescript
-import { createModelCatalog } from '@lostgradient/operative';
+import { createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
 
-const catalog = createModelCatalog();
+// A provider package's rows, such as `anthropicRows()` from `@lostgradient/operative-anthropic`.
+declare const rows: readonly BackendDescriptor[];
+
+const catalog = createModelCatalog({ descriptors: rows });
 // catalog.revision, catalog.descriptors, catalog.projection ('privileged')
 
-const anthropicRows = catalog.descriptors.filter((d) => d.provider === 'anthropic');
+const anthropicRowsOnly = catalog.descriptors.filter((d) => d.provider === 'anthropic');
 ```
 
-`getProviderCapabilities` is now implemented as a projection over `createModelCatalog`'s descriptors—every previously published answer is unchanged.
+`getProviderCapabilities(name, { descriptors })` answers from the rows it is given: a provider none of them names reports every flag `false`, and an OpenAI endpoint the rows mark ambiguous reports no batch inference (`openAIRows({ baseURL })` decides that).
 
 `ProviderName` is an open `string`, not a union of the built-in names. A well-formed name matches `PROVIDER_NAME_PATTERN` (`^[a-z](?:[a-z0-9-]*[a-z0-9])?$`, the plugin-name grammar, bare with no `plugin:` prefix), and `isProviderName` narrows an `unknown` to it. A provider package contributes its own rows with `createModelCatalog({ descriptors })` and its capability answer with `getProviderCapabilities(name, { descriptors })`; no edit to this package is needed. A name that no loaded row carries is unavailable: every capability flag is `false`, and a selection restricted to it by `allowedProviders` returns `no-candidate`.
 
@@ -2333,23 +2362,25 @@ import {
   createModelCatalog,
   readBackendDescriptors,
   withBackendDescriptors,
+  type BackendDescriptor,
   type GenerateContext,
   type GenerateFunction,
 } from '@lostgradient/operative';
 
-// A provider factory attaches the single seed descriptor matching its resolved
+// A provider factory attaches the single descriptor of its package's rows matching its resolved
 // model automatically—nothing to do here. `generate` stands for one, and an agent
 // built on it reads 'fixed'. (createGeminiProviderStream is the one exception:
-// the seed catalog's Gemini row describes `generateContent`, not the distinct
+// the Gemini catalog's row describes `generateContent`, not the distinct
 // `generateContentStream` operation this factory calls, so it deliberately
 // attaches nothing.) A bare function with no descriptors reads 'opaque'.
 declare const generate: GenerateFunction;
+declare const rows: readonly BackendDescriptor[]; // a provider package's rows
 const agent = createAgent({ generate });
 agent.generationProfile.mode;
 
 // A custom GenerateFunction can attach its own descriptor(s)—e.g. one
-// resolved from the seed catalog for a model this package doesn't wrap.
-const catalog = createModelCatalog();
+// resolved from a catalog for a model this package doesn't wrap.
+const catalog = createModelCatalog({ descriptors: rows });
 const customDescriptor = catalog.descriptors[0];
 const custom = withBackendDescriptors(
   async (context: GenerateContext) => {
@@ -2382,9 +2413,11 @@ Every generate-function wrapper this package ships preserves whatever descriptor
 `composePolicy` (`@lostgradient/operative`) is a pure, synchronous function that composes AB-64's five precedence layers—deployment invariants, Bureau invariants, Agent requirements and preferences, delegated authority, and user constraints and preferences—over a fixed set of `BackendDescriptor`s. Each layer only narrows what the layer above allowed; the first layer to exclude a candidate owns its `exclusionCode`, and no later layer can overwrite it or re-admit a candidate a higher layer denied.
 
 ```typescript
-import { composePolicy, createModelCatalog } from '@lostgradient/operative';
+import { composePolicy, createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
 
-const { descriptors } = createModelCatalog();
+declare const rows: readonly BackendDescriptor[]; // a provider package's rows
+
+const { descriptors } = createModelCatalog({ descriptors: rows });
 
 const result = composePolicy({
   descriptors,
@@ -2409,9 +2442,16 @@ Ranking, tie-breaking, the deterministic selector, and the `SelectionPlan` itsel
 `select(request, options)` (`@lostgradient/operative`) is a pure, synchronous function: no input or output, no clock read except the injected `options.now`/`options.runtime`. It calls `composePolicy` internally for hard-constraint filtering, applies effort compatibility within the eligible set, then ranks by `costPreference`/`latencyPreference`/`preferredProviders`/`preferredModels`, breaking ties by `(provider, model)` lexicographic order. Two calls with the same recorded input produce deeply equal plans. `SelectOptions.runtime?: RuntimeServices` (AB-325) backs the default `now`/`newPlanId` when those are not supplied, defaulting to the real implementation; explicit `now`/`newPlanId` still take precedence over `runtime` when both are given.
 
 ```typescript
-import { composePolicy, createModelCatalog, select } from '@lostgradient/operative';
+import {
+  composePolicy,
+  createModelCatalog,
+  select,
+  type BackendDescriptor,
+} from '@lostgradient/operative';
 
-const catalog = createModelCatalog();
+declare const rows: readonly BackendDescriptor[]; // a provider package's rows
+
+const catalog = createModelCatalog({ descriptors: rows });
 
 const plan = select(
   {

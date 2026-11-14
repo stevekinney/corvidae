@@ -1,15 +1,16 @@
 /**
  * Home (`/`) on the sample world (`fixtures/sample-world-seed.ts`, the showcase host) at the
  * browser's sample clock, Monday, Nov 2, 10:46 AM Central time: the overview of what needs you and
- * what needs attention (COR-2016, design rows 01a to 01k, 01s to 01v). The date line, the four
- * counts, the two reviews waiting on the person, the three system problems, the box that starts a
- * chat and the chats last in are each read as the design words them.
+ * what needs attention (COR-2016, design rows 01a to 01k, 01s to 01v; COR-2329 replaces row 01d's
+ * four counts with one Spotlight and one count). The date line, the Spotlight and the count under
+ * it, the two reviews waiting on the person, the three system problems, the box that starts a chat
+ * and the chats last in are each read as the design words them.
  *
  * Captioned states the sample world does not hold are made by answering the Bureau's own
  * operations with what a different world would answer (`answerBureau`), so the screen is the one
  * the real application draws, and each is captured for the design review under its own name: a
- * host with no storage rule (Needs attention has two rows), a person with nothing to review (every
- * count reads zero, and the cards read as caught up), a run going (rows 01w and 01x), and a new
+ * host with no storage rule (Needs attention has two rows), a person with nothing to review (the
+ * Spotlight says nothing needs you, and the sections read as caught up), a run going (rows 01w and 01x), and a new
  * installation that lists Assistant, the first-run checklist (rows 01y to 02b, 13c to 13j, 14c to
  * 14j). The fresh installation's own host lists no Assistant, so `first-run.spec.ts` reads the
  * checklist there as it completes and without one.
@@ -119,22 +120,31 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     );
   });
 
-  test('says four counts in one row, as Health does: 0, 2, 0 and 4 (01d)', async ({ page }) => {
+  // COR-2329 reverses row 01d (owner, 2026-11-13): one Spotlight and one quiet count, not four tiles.
+  test('leads with one Spotlight, 2 need you, and one unframed count under it', async ({
+    page,
+  }) => {
     await openHome(page);
+    const spotlight = page.getByTestId('home-spotlight');
+    await expect(spotlight).toHaveText('2 need you');
     const counts = page.getByTestId('home-counts');
-    await expect(counts.locator('.cinder-statistic')).toHaveText([
-      /Running now\s*0/,
-      /Needs you\s*2/,
-      /Failed in 24 hours\s*0/,
-      /Missed schedule runs \(7 days\)\s*4/,
-    ]);
-    const boxes = await counts.locator('.cinder-statistic').evaluateAll((elements) =>
-      elements.map((element) => {
-        const { top } = element.getBoundingClientRect();
-        return Math.round(top);
-      }),
-    );
-    expect(new Set(boxes).size, 'the four counts share one row').toBe(1);
+    await expect(counts.locator('.cinder-statistic')).toHaveText([/Failed in 24 hours\s*0/]);
+    // The count draws no card: no border and no surface of its own.
+    await expect(counts.locator('.cinder-statistic')).toHaveCSS('border-top-width', '0px');
+    await expect(counts).toHaveCSS('border-top-width', '0px');
+    // The Spotlight is the largest text on the page, and the count sits under it.
+    const sizes = await page.evaluate(() => ({
+      spotlight: parseFloat(
+        getComputedStyle(document.querySelector('.cinder-spotlight__value')!).fontSize,
+      ),
+      count: parseFloat(
+        getComputedStyle(document.querySelector('.cinder-statistic__value')!).fontSize,
+      ),
+    }));
+    expect(sizes.spotlight).toBeGreaterThan(sizes.count);
+    const spotlightBox = await spotlight.boundingBox();
+    const countBox = await counts.boundingBox();
+    expect(countBox!.y).toBeGreaterThan(spotlightBox!.y + spotlightBox!.height - 1);
   });
 
   test('lists the two reviews waiting on you, oldest first, kind first on line two (01f, 01g)', async ({
@@ -283,13 +293,9 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     checkA11y,
   }) => {
     await openHome(page);
+    await expect(page.getByTestId('home-spotlight')).toHaveText('Nothing needs you');
     const counts = page.getByTestId('home-counts');
-    await expect(counts.locator('.cinder-statistic')).toHaveText([
-      /Running now\s*0/,
-      /Needs you\s*0/,
-      /Failed in 24 hours\s*0/,
-      /Missed schedule runs \(7 days\)\s*0/,
-    ]);
+    await expect(counts.locator('.cinder-statistic')).toHaveText([/Failed in 24 hours\s*0/]);
     await expect(counts.locator('[data-cinder-attention]')).toHaveCount(0);
     await expect(
       page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ }),
@@ -305,8 +311,8 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     await expect(empty).toContainText('Approvals and questions from your agents show up here.');
     await expect(empty.getByRole('link', { name: 'Open Reviews' })).toBeVisible();
     const clear = page.getByTestId('attention-clear');
-    await expect(clear).toContainText(
-      'Nothing needs attention. Storage, schedules, providers and hooks are fine.',
+    await expect(clear.getByRole('group', { name: 'Nothing needs attention' })).toContainText(
+      'Storage, schedules, providers and hooks are fine.',
     );
     await expect(clear.getByRole('link', { name: 'Open Health' })).toBeVisible();
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
@@ -471,7 +477,7 @@ test.describe('Home on a new installation that lists Assistant', () => {
 });
 
 test.describe('Home with a run going', () => {
-  test('counts 1 with no dot and lists the run under Needs you (01w, 01x)', async ({
+  test('lists the run under Needs you, its status leading line two (01w, 01x)', async ({
     page,
     checkA11y,
   }) => {
@@ -516,19 +522,18 @@ test.describe('Home with a run going', () => {
       ...everythingDecided,
     });
     await openHome(page);
-    await expect(page.getByTestId('home-counts').locator('.cinder-statistic').first()).toHaveText(
-      /Running now\s*1/,
-    );
-    await expect(
-      page.getByTestId('home-counts').locator('.cinder-statistic').first(),
-    ).not.toHaveAttribute('data-cinder-attention', '');
     const card = page.locator('[data-home-card="Running now"]');
     await expect(card.getByRole('heading', { level: 2, name: 'Running now' })).toBeVisible();
     const row = card.getByRole('listitem');
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('Daily summary');
-    await expect(row).toContainText('Running, Schedule, Assistant, started 10:44 AM');
-    await expect(row.locator('.cinder-status-dot')).toHaveAttribute('data-cinder-status', 'info');
+    // Line two leads with the status, a dot and its word, then what started the run.
+    const dot = row.locator('.cinder-grouped-list-item__subtitle .cinder-status-dot');
+    await expect(dot).toHaveAttribute('data-cinder-status', 'info');
+    await expect(dot).toHaveText('Running');
+    await expect(row.locator('.cinder-grouped-list-item__subtitle')).toContainText(
+      ', Schedule, Assistant, started 10:44 AM',
+    );
     await expect(row.getByRole('link', { name: 'View run' })).toHaveAttribute(
       'href',
       '/runs/running-daily-summary',
@@ -598,27 +603,28 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(body).toHaveAttribute('data-mode', 'loading');
     // The page region is marked busy.
     await expect(body).toHaveAttribute('aria-busy', 'true');
-    // The date line, the four count labels and the section headings are real text.
+    // The date line, the count's label and the section headings are real text.
     await expect(page.getByTestId('home-date')).toHaveText(
       'Monday, Nov 2. Times show in Central time (CST).',
     );
     const counts = page.getByTestId('home-loading-counts').locator('.cinder-statistic');
-    await expect(counts.locator('.cinder-statistic__label')).toHaveText([
-      'Running now',
-      'Needs you',
-      'Failed in 24 hours',
-      'Missed schedule runs (7 days)',
-    ]);
-    // The values, the rows and the composer are placeholders.
-    await expect(counts.locator('.cinder-statistic__value .cinder-skeleton')).toHaveCount(4);
-    await expect(counts.locator('.cinder-statistic__value')).toHaveText(['', '', '', '']);
+    await expect(counts.locator('.cinder-statistic__label')).toHaveText(['Failed in 24 hours']);
+    // The Spotlight, the value, the rows and the composer are placeholders.
+    await expect(
+      page.getByTestId('home-loading-focus').locator('> .cinder-skeleton').first(),
+    ).toBeVisible();
+    await expect(counts.locator('.cinder-statistic__value .cinder-skeleton')).toHaveCount(1);
+    await expect(counts.locator('.cinder-statistic__value')).toHaveText(['']);
     await expect(body.getByRole('heading', { level: 2 })).toHaveText([
       'Needs you',
       'Needs attention',
       'Start a chat',
       'Recent chats',
     ]);
-    await expect(body.getByTestId('home-skeleton-rows')).toHaveCount(3);
+    // The rows are Cinder's grouped placeholders, in the grouped lists' own shape.
+    await expect(body.locator('.cinder-skeleton-group[data-cinder-variant="grouped"]')).toHaveCount(
+      3,
+    );
     await expect(body.getByRole('textbox')).toHaveCount(0);
     await expect(body.getByRole('listitem')).toHaveCount(0);
     // The skeleton shimmers, and is static under reduced motion (the suite's default).
@@ -699,8 +705,8 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
     // The event feed's catch-up asks every list again, which would heal the card at once; it is
     // held, so the failure stays on screen for the test to read.
     await holdBureauFeed(page);
-    // Four things read the problems in this order: the sidebar's Health dot, the notification bell,
-    // Home's Needs attention card, then the counts row, which asks on its own. The third fails.
+    // Three things read the problems in this order: the sidebar's Health dot, the notification bell,
+    // then Home's Needs attention section. The third fails.
     let reads = 0;
     let healed = false;
     await page.route('**/bureau/jsonrpc', async (route) => {
@@ -741,12 +747,10 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
     await expect(card.getByRole('heading', { level: 2, name: 'Needs attention' })).toBeVisible();
     await expect(card.getByRole('link')).toHaveCount(0);
     await expect(card.getByRole('listitem')).toHaveCount(0);
-    // The counts row has its own read and is unchanged (0, 2, 0, 4).
+    // The Spotlight and the count have reads of their own and are unchanged.
+    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
     await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
-      /Running now\s*0/,
-      /Needs you\s*2/,
       /Failed in 24 hours\s*0/,
-      /Missed schedule runs \(7 days\)\s*4/,
     ]);
     // Needs you, Start a chat and Recent chats render normally.
     await expect(needsYou(page).getByRole('listitem')).toHaveCount(2);
@@ -814,12 +818,10 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     expect(bannerBox!.y).toBeGreaterThanOrEqual(topBar!.y + topBar!.height - 1);
     expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(date!.y);
 
-    // Old data keeps full contrast (never dimmed with opacity), and the counts are not zeroed.
+    // Old data keeps full contrast (never dimmed with opacity), and nothing is zeroed.
+    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
     await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
-      /Running now\s*0/,
-      /Needs you\s*2/,
       /Failed in 24 hours\s*0/,
-      /Missed schedule runs \(7 days\)\s*4/,
     ]);
     const opacity = (locator: Locator) =>
       locator.first().evaluate((element) => {
@@ -836,6 +838,7 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
       await opacity(needsYou(page).getByText('Which environment should the release go to?')),
     ).toBe(1);
     expect(await opacity(page.getByTestId('home-counts'))).toBe(1);
+    expect(await opacity(page.getByTestId('home-spotlight'))).toBe(1);
     // Only the controls that change something are inert.
     const disabledColour = await page.evaluate(() => {
       const probe = document.createElement('span');
@@ -913,7 +916,7 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
 test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  test('has a menu button, Home and three icon buttons, a two by two grid of counts, and full-width 44px buttons under each review (05c, 05o, 05p, 05q)', async ({
+  test('has a menu button, Home and three icon buttons, the Spotlight over one count, and full-width 44px buttons under each review (05c, 05o, 05p, 05q)', async ({
     page,
     checkA11y,
   }) => {
@@ -933,25 +936,11 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
     await expect(page.getByTestId('home-date')).toHaveText(
       'Monday, Nov 2. Times show in Central time (CST).',
     );
-    // Four count cards in two columns, with a dot only on a non-zero bad count.
+    // The Spotlight, then one count under it with no dot while nothing failed.
+    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
     const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
-    await expect(stats).toHaveText([
-      /Running now\s*0/,
-      /Needs you\s*2/,
-      /Failed in 24 hours\s*0/,
-      /Missed schedule runs \(7 days\)\s*4/,
-    ]);
-    const boxes = await stats.evaluateAll((elements) =>
-      elements.map((element) => {
-        const { x, y } = element.getBoundingClientRect();
-        return { x: Math.round(x), y: Math.round(y) };
-      }),
-    );
-    expect(new Set(boxes.map((box) => box.x)).size, 'two columns').toBe(2);
-    expect(new Set(boxes.map((box) => box.y)).size, 'two rows').toBe(2);
-    await expect(stats.locator('xpath=self::*[@data-cinder-attention]')).toHaveCount(2);
-    await expect(stats.nth(1)).toHaveAttribute('data-cinder-attention', '');
-    await expect(stats.nth(3)).toHaveAttribute('data-cinder-attention', '');
+    await expect(stats).toHaveText([/Failed in 24 hours\s*0/]);
+    await expect(stats.locator('xpath=self::*[@data-cinder-attention]')).toHaveCount(0);
     // Needs you, oldest first: each button is full width and 44px, under its text.
     const rows = needsYou(page).getByRole('listitem');
     await expect(rows).toHaveCount(2);
@@ -975,10 +964,10 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
       expect(box!.width, `${name} is the row's width`).toBeGreaterThan(row!.width - 40);
     }
     await expect(needsYou(page).getByRole('button', { name: 'More actions' })).toHaveCount(0);
-    // The phone's order: counts, Needs you, the composer card, then Needs attention and Recent chats.
+    // The phone's order: the Spotlight, Needs you, the composer card, then Needs attention and Recent chats.
     const tops = await Promise.all(
       [
-        page.getByTestId('home-counts'),
+        page.getByTestId('home-focus'),
         needsYou(page),
         page.getByTestId('home-start-chat'),
         page.locator('[data-home-card="Needs attention"]'),
@@ -1032,7 +1021,7 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
 });
 
 test.describe('Home on a tablet (05s)', () => {
-  test('keeps the 76px rail, the full top bar, the four counts across and the buttons trailing their rows', async ({
+  test('keeps the 76px rail, the full top bar, the Spotlight and the buttons trailing their rows', async ({
     page,
     checkA11y,
   }) => {
@@ -1045,13 +1034,7 @@ test.describe('Home on a tablet (05s)', () => {
     await expect(
       page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ }),
     ).toContainText('2');
-    const tops = await page
-      .getByTestId('home-counts')
-      .locator('.cinder-statistic')
-      .evaluateAll((elements) =>
-        elements.map((element) => Math.round(element.getBoundingClientRect().y)),
-      );
-    expect(new Set(tops).size, 'four counts across').toBe(1);
+    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
     const rows = needsYou(page).getByRole('listitem');
     for (const [index, name] of [
       [0, 'Answer'],

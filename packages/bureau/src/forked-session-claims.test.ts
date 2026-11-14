@@ -5,7 +5,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
-  createModelCatalog,
   createSessionHandle,
   SESSION_OWNER_METADATA_KEY,
   stopWhen,
@@ -19,6 +18,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -31,7 +31,7 @@ const FLOOR_MILLISECONDS = 1_000;
 const PAST_THE_FLOOR = 5_000;
 const png = pngBytes(4, 3);
 
-const imageOutputDescriptors = createModelCatalog()
+const imageOutputDescriptors = createVendorCatalog()
   .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
   .slice(0, 1)
   .map((descriptor) => ({

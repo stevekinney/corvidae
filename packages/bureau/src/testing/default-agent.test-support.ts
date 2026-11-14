@@ -7,7 +7,8 @@
 
 import type { AgentDefinitions } from '../agent-catalog';
 import type { CreateAgentOptions } from '@lostgradient/operative';
-import { createAgent, createModelCatalog } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
+import { createVendorCatalog } from './vendor-catalog.test-support';
 
 /** The catalog name {@link withDefaultAgent} registers the agent under. */
 export const DEFAULT_AGENT_NAME = 'default';
@@ -60,7 +61,7 @@ export function withDefaultAgent<
  * override is held to what the session's agent allows (COR-1559), so a test that steers a model
  * by name gives its agent this.
  */
-export const STEERABLE_MODELS = createModelCatalog().descriptors.map(({ provider, model }) => ({
+export const STEERABLE_MODELS = createVendorCatalog().descriptors.map(({ provider, model }) => ({
   provider,
   model,
 }));

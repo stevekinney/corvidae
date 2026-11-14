@@ -7,7 +7,6 @@ import {
   type BackendDescriptor,
   createAgent,
   createLazyAgent,
-  createModelCatalog,
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -15,10 +14,11 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { agentFileText, KNOWN_MODEL } from '../../testing/agent-file-fixtures.test-support.ts';
 import { callAs, disposeServed, serve } from './agent-definitions-fixtures.test-support.ts';
 import { rpc } from './management-fixtures.test-support.ts';
+import { createVendorCatalog } from '../../testing/vendor-catalog.test-support';
 
 afterEach(disposeServed);
 
-const catalogRows = createModelCatalog().descriptors;
+const catalogRows = createVendorCatalog().descriptors;
 const rowOf = (provider: string, model: string): BackendDescriptor => {
   const row = catalogRows.find((entry) => entry.provider === provider && entry.model === model);
   if (row === undefined) throw new Error(`The catalog has no ${provider}/${model}.`);

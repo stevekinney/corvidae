@@ -112,23 +112,6 @@ export type {
   SelectionRequest,
   TaskClassification,
 } from './selection.ts';
-export {
-  ANTHROPIC_EFFORT_SUPPORT,
-  GEMINI_THINKING_MODELS,
-  OPENAI_REASONING_MODELS,
-  resolveAnthropicEffort,
-  resolveGeminiEffort,
-  resolveOpenAIEffort,
-} from './shared/effort.ts';
-export type { GeminiResolvedEffort } from './shared/effort.ts';
-export {
-  ANTHROPIC_MODEL_ALIASES,
-  GEMINI_MODEL_ALIASES,
-  OPENAI_MODEL_ALIASES,
-  resolveAnthropicModel,
-  resolveGeminiModel,
-  resolveOpenAIModel,
-} from './shared/model-registry.ts';
 export { REPLAY_DATA_DROPPED_METADATA_KEY, readDroppedReplayData } from './shared/replay-data.ts';
 export type { DroppedReplayData } from './shared/replay-data.ts';
 export type { ResponseFormat, ToolChoice } from './structured-output/index.ts';

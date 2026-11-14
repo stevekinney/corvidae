@@ -1,13 +1,10 @@
-import {
-  type BackendDescriptor,
-  createModelCatalog,
-  type DecisionKind,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, type DecisionKind } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import { definePlugin } from '../define-plugin.ts';
+import { catalogRow } from './catalog-row.test-support.ts';
 import { canonicalJson, pluginIdentities, schemaDigest } from './plugin-identities.ts';
 
 const base = { name: 'example', version: '1.2.0', description: 'An example plugin.' };
@@ -145,9 +142,7 @@ describe('pluginIdentities', () => {
   });
 
   describe('a provider (COR-2158)', () => {
-    const [first] = createModelCatalog().descriptors;
-    if (first === undefined) throw new Error('Expected the seed catalog to hold rows.');
-    const seed: BackendDescriptor = first;
+    const seed: BackendDescriptor = catalogRow;
 
     function providerPlugin(
       options: {

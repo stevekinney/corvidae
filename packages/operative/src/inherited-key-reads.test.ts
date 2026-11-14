@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
+import { getModelPricing } from './cost-estimation';
 import { createScratchpad } from './create-scratchpad';
 import {
   createSessionInputDeliveryStore,
@@ -15,11 +16,11 @@ import {
   planSessionInputPromotion,
 } from './durable/session-input-delivery-store';
 import { valueAtFieldPath } from './fresh-attempt/field-path';
-import { requireLimits } from './providers/model-catalog-data';
 
 describe('a model named after a name every object inherits', () => {
-  test('has no catalog row, so the completeness check fails loudly', () => {
-    expect(() => requireLimits('anthropic', 'constructor')).toThrow(/no MODEL_LIMITS entry/);
+  test('has no price, in the table a host passes or without one', () => {
+    expect(getModelPricing('constructor')).toBeUndefined();
+    expect(getModelPricing('constructor', { customPricing: {} })).toBeUndefined();
   });
 });
 

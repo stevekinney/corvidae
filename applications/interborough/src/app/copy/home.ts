@@ -1,25 +1,26 @@
 import { nameList } from './shared.ts';
 
 /**
- * The words of Home (`/`): the date line, the four counts, what needs you, what needs attention,
- * the box that starts a chat, and the chats you were last in. The four counts use the labels and
- * windows the agreed design gives Health and Home both; Health says them in its own batch.
+ * The words of Home (`/`): the date line, the Spotlight that says how many reviews wait on you and
+ * the one count under it, what needs you, what needs attention, the box that starts a chat, and
+ * the chats you were last in. The count uses the label and window Health uses for it.
  */
 export const HOME_COPY = {
   /** The screen-reader heading; the breadcrumb already says Home, so none is drawn. */
   heading: 'Home',
-  /** The accessible name of the four counts. */
+  /** The accessible name of the count under the Spotlight. */
   countsLabel: 'Home counts',
   counts: {
-    running: 'Running now',
-    needsYou: 'Needs you',
+    /** The one count: the runs that failed in the last day, the one Home lists nowhere else. */
     failed: 'Failed in 24 hours',
-    missed: 'Missed schedule runs (7 days)',
   },
   /** The value of a count that could not be read. */
   unavailable: '—',
   /** The words of a row's link to where the rest lives, such as "Open Reviews". */
   needsYou: {
+    /** The Spotlight that leads Home: how many reviews wait on you, from the list under it. */
+    spotlight: (count: number): string =>
+      count === 0 ? 'Nothing needs you' : `${String(count)} ${count === 1 ? 'needs' : 'need'} you`,
     title: 'Needs you',
     link: 'Open Reviews',
     /** The accessible name of the list of reviews waiting on the person. */

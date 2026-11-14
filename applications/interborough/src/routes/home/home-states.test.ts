@@ -105,15 +105,18 @@ describe('Home while it loads (02c, 02d)', () => {
     expect(page?.getAttribute('data-mode')).toBe('loading');
     // The page region is marked busy.
     expect(page?.getAttribute('aria-busy')).toBe('true');
-    // The date line, the four count labels and the four headings are real text.
+    // The date line, the count's label and the four headings are real text.
     expect(words(getByTestId('home-date'))).toBe(
       'Monday, Nov 2. Times show in Central time (CST).',
     );
+    // The Spotlight is a placeholder block, and the count under it a label over a placeholder.
+    const focus = getByTestId('home-loading-focus');
+    expect(focus.firstElementChild?.classList.contains('cinder-skeleton')).toBe(true);
     const stats = [...getByTestId('home-loading-counts').querySelectorAll('.cinder-statistic')];
     expect(
       stats.map((stat) => words(stat.querySelector('.cinder-statistic__label') as Element)),
-    ).toEqual(['Running now', 'Needs you', 'Failed in 24 hours', 'Missed schedule runs (7 days)']);
-    // The values are placeholders, and no number is read before it is.
+    ).toEqual(['Failed in 24 hours']);
+    // The value is a placeholder, and no number is read before it is.
     expect(stats.every((stat) => stat.querySelector('.cinder-skeleton') !== null)).toBe(true);
     expect(
       stats.every(
@@ -123,8 +126,15 @@ describe('Home while it loads (02c, 02d)', () => {
     expect(
       [...container.querySelectorAll('h2')].map((heading) => heading.textContent?.trim()),
     ).toEqual(['Needs you', 'Needs attention', 'Start a chat', 'Recent chats']);
-    // Rows and the composer are placeholders: no list, no link, no message box.
-    expect(container.querySelectorAll('[data-testid="home-skeleton-rows"]')).toHaveLength(3);
+    // Rows are Cinder's grouped placeholders, with a button block where a row has a button.
+    const placeholders = [
+      ...container.querySelectorAll('.cinder-skeleton-group[data-cinder-variant="grouped"]'),
+    ];
+    expect(placeholders).toHaveLength(3);
+    expect(
+      placeholders.map((group) => group.querySelectorAll('.cinder-skeleton-action-bar').length),
+    ).toEqual([2, 3, 0]);
+    // The composer is a placeholder too: no list, no link, no message box.
     expect(container.querySelector('textarea')).toBeNull();
     expect(container.querySelector('[role="listitem"], [role="list"]')).toBeNull();
     // The links to the pages that hold the rest wait for the rows.
@@ -227,7 +237,7 @@ describe('One card that cannot be read (01n, 01o)', () => {
     let healed = false;
     installed?.stub.on('bureau.health.attention', () => {
       calls += 1;
-      // The first call is Home's card; the counts row asks on its own, later.
+      // The first call is Home's: it fails once, and the section's Try again heals it.
       if (!healed && calls === 1) throw new StubFault('Unavailable', 503, 'Unavailable');
       return { items: SAMPLE_ATTENTION, count: SAMPLE_ATTENTION.length, checks: [] };
     });
@@ -250,16 +260,12 @@ describe('One card that cannot be read (01n, 01o)', () => {
     // The failed card draws no link to Health and no row, and never claims all is well.
     expect(within(card).queryByRole('link')).toBeNull();
     expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
-    // The counts row has its own read: it is unchanged (0, 2, 0, 4).
+    // The Spotlight and the count have reads of their own: they are unchanged.
+    await waitFor(() => expect(words(getByTestId('home-spotlight'))).toBe('2 need you'));
     await waitFor(() =>
       expect(
         [...getByTestId('home-counts').querySelectorAll('.cinder-statistic')].map(words),
-      ).toEqual([
-        'Running now 0',
-        'Needs you 2',
-        'Failed in 24 hours 0',
-        'Missed schedule runs (7 days) 4',
-      ]),
+      ).toEqual(['Failed in 24 hours 0']),
     );
     // Needs you, Start a chat and Recent chats render normally.
     expect(within(cardOf(container, 'Needs you')).getAllByRole('listitem')).toHaveLength(2);

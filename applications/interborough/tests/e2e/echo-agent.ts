@@ -9,13 +9,13 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   stopWhen,
   withBackendDescriptors,
   type BackendDescriptor,
   type GenerateContext,
   type GenerateResponse,
 } from '@lostgradient/operative';
+import { anthropicRows } from '@lostgradient/operative-anthropic';
 
 export const IMAGE_ECHO_AGENT_NAME = 'echo-image';
 
@@ -24,9 +24,7 @@ export const ECHO_NOTHING_REPLY = 'There was no image to echo.';
 
 /** The first Anthropic catalog row, made to put images out as well as take them in. */
 function imageOutputDescriptor(): BackendDescriptor {
-  const row = createModelCatalog().descriptors.find(
-    (descriptor) => descriptor.provider === 'anthropic',
-  );
+  const [row] = anthropicRows();
   if (row === undefined) throw new Error('The model catalog holds no Anthropic row.');
   return {
     ...row,

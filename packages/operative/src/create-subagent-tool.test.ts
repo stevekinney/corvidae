@@ -12,10 +12,10 @@ import { GuardrailTripwireError, SubagentRunError } from './errors';
 import type { CombinedOperativeEventMap } from './events';
 import { ChildWorkflowStartedEvent } from './events';
 import type { OperativeHookMap } from './hooks';
-import { createModelCatalog } from './providers/model-catalog.ts';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import { select } from './providers/selection.ts';
 import type { AgentInput, AgentRunContext, RunnableAgent } from './runnable-agent';
+import { createFixtureCatalog } from './testing/model-catalog.test-support.ts';
 import type { GenerateFunction, GenerateResponse, RunResult } from './types';
 
 // ---------------------------------------------------------------------------
@@ -1631,7 +1631,7 @@ describe('createSubagentTool', () => {
 
   describe('AB-300 — parent delegatedAuthority forwarded into dispatchChildRun', () => {
     const parentGrant: DelegatedAuthority = {
-      grantedProviders: ['anthropic', 'gemini'],
+      grantedProviders: ['alpha', 'gamma'],
       policyVersion: 'ab-300-parent-v1',
     };
 
@@ -1654,7 +1654,7 @@ describe('createSubagentTool', () => {
     it("attenuates the parent run's delegatedAuthority with the tool's own narrowing before forwarding", async () => {
       const { agent: child, calls } = makeMockAgent(() => makeSuccessfulResult());
       const toolNarrowing: DelegatedAuthority = {
-        grantedProviders: ['anthropic'],
+        grantedProviders: ['alpha'],
         policyVersion: 'ab-300-tool-v1',
       };
       const tool = createSubagentTool({
@@ -1673,13 +1673,13 @@ describe('createSubagentTool', () => {
       expect(calls[0]?.context?.delegatedAuthority).toEqual(
         attenuateDelegatedAuthority(parentGrant, toolNarrowing),
       );
-      expect(calls[0]?.context?.delegatedAuthority?.grantedProviders).toEqual(['anthropic']);
+      expect(calls[0]?.context?.delegatedAuthority?.grantedProviders).toEqual(['alpha']);
     });
 
     it("forwards the tool's own narrowing unchanged when the parent run carries no grant", async () => {
       const { agent: child, calls } = makeMockAgent(() => makeSuccessfulResult());
       const toolNarrowing: DelegatedAuthority = {
-        grantedProviders: ['openai'],
+        grantedProviders: ['beta'],
         policyVersion: 'ab-300-tool-only-v1',
       };
       const tool = createSubagentTool({
@@ -1717,8 +1717,8 @@ describe('createSubagentTool', () => {
         null,
         {}, // missing the required policyVersion
         { policyVersion: 42 }, // policyVersion not a string
-        { policyVersion: 'v1', grantedProviders: 'anthropic' }, // not an array
-        { policyVersion: 'v1', grantedModels: 'claude-fable-5' }, // not an array
+        { policyVersion: 'v1', grantedProviders: 'alpha' }, // not an array
+        { policyVersion: 'v1', grantedModels: 'alpha-large' }, // not an array
         { policyVersion: 'v1', maximumEffort: 3 }, // not a string
         // A "looks-valid" string that is nonetheless outside the closed
         // `Effort` union or the provider-name grammar must be rejected too — otherwise
@@ -1726,9 +1726,9 @@ describe('createSubagentTool', () => {
         // unknown tier's `EFFORT_ORDER.indexOf(-1)` as "lower" than every
         // real tier, silently WIDENING authority instead of narrowing it.
         { policyVersion: 'v1', maximumEffort: 'supermax' }, // not a real Effort tier
-        { policyVersion: 'v1', grantedProviders: ['anthropic', 42] }, // non-string element
+        { policyVersion: 'v1', grantedProviders: ['alpha', 42] }, // non-string element
         { policyVersion: 'v1', grantedProviders: ['Not A Provider'] }, // outside the provider-name grammar
-        { policyVersion: 'v1', grantedModels: ['claude-fable-5', 42] }, // non-string element
+        { policyVersion: 'v1', grantedModels: ['alpha-large', 42] }, // non-string element
       ];
 
       for (const value of malformedValues) {
@@ -1780,19 +1780,19 @@ describe('createSubagentTool', () => {
 
     it("excludes a child-forbidden candidate from its own plan record with 'exceeds-delegated-authority'; a parent with no grant still dispatches with delegatedAuthority undefined", async () => {
       const now = () => '2026-09-03T12:00:00.000Z';
-      const catalog = createModelCatalog({ now });
+      const catalog = createFixtureCatalog({ now });
       const anthropic = catalog.descriptors.find(
-        (d) => d.provider === 'anthropic' && d.model === 'claude-fable-5',
+        (d) => d.provider === 'alpha' && d.model === 'alpha-large',
       );
       const gemini = catalog.descriptors.find(
-        (d) => d.provider === 'gemini' && d.model === 'gemini-2.5-pro',
+        (d) => d.provider === 'gamma' && d.model === 'gamma-pro',
       );
       if (!anthropic || !gemini) {
         throw new Error('fixture descriptor not found in the default model catalog');
       }
 
       const forbiddingGrant: DelegatedAuthority = {
-        grantedProviders: ['anthropic'],
+        grantedProviders: ['alpha'],
         policyVersion: 'ab-300-forbidding-v1',
       };
 
@@ -1835,11 +1835,11 @@ describe('createSubagentTool', () => {
         },
       );
 
-      const geminiCandidate = plan.candidates.find((c) => c.provider === 'gemini');
+      const geminiCandidate = plan.candidates.find((c) => c.provider === 'gamma');
       expect(geminiCandidate?.eligible).toBe(false);
       expect(geminiCandidate?.exclusionCode).toBe('exceeds-delegated-authority');
 
-      const anthropicCandidate = plan.candidates.find((c) => c.provider === 'anthropic');
+      const anthropicCandidate = plan.candidates.find((c) => c.provider === 'alpha');
       expect(anthropicCandidate?.eligible).toBe(true);
       expect(anthropicCandidate?.exclusionCode).toBeUndefined();
 
@@ -2033,11 +2033,11 @@ describe('child-run hook isolation and correlation (COR-1269)', () => {
 
   it('cannot widen a grandchild’s grant through a child-tier hook', async () => {
     const parentGrant: DelegatedAuthority = {
-      grantedProviders: ['anthropic', 'gemini'],
+      grantedProviders: ['alpha', 'gamma'],
       policyVersion: 'cor-1269-parent-v1',
     };
     const grandchildNarrowing: DelegatedAuthority = {
-      grantedProviders: ['anthropic'],
+      grantedProviders: ['alpha'],
       policyVersion: 'cor-1269-tool-v1',
     };
     const { agent: grandchild, calls } = makeMockAgent(() => makeSuccessfulResult());
@@ -2094,7 +2094,7 @@ describe('child-run hook isolation and correlation (COR-1269)', () => {
     expect(calls[0]?.context?.delegatedAuthority).toEqual(
       attenuateDelegatedAuthority(parentGrant, grandchildNarrowing),
     );
-    expect(calls[0]?.context?.delegatedAuthority?.grantedProviders).toEqual(['anthropic']);
+    expect(calls[0]?.context?.delegatedAuthority?.grantedProviders).toEqual(['alpha']);
     expect(calls[0]?.context?.delegatedAuthority).not.toEqual(parentGrant);
   });
 });

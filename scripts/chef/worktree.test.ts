@@ -15,6 +15,7 @@ import {
   branchOwner,
   createWorktree,
   endProcessesInside,
+  isAgentLockReason,
   parseWorktreeList,
   Refusal,
   removeWorktree,
@@ -656,6 +657,17 @@ describe('removeWorktree under the Agent tool directory and a locked worktree', 
       'worktree /a\nHEAD 1\nlocked\n\nworktree /b\nHEAD 2\nlocked because\n\nworktree /c\nHEAD 3\n\n',
     );
     expect(entries.map((entry) => entry.locked)).toEqual([true, true, false]);
+    expect(entries.map((entry) => entry.lockReason)).toEqual([undefined, 'because', undefined]);
+  });
+
+  test('isAgentLockReason accepts the Agent tool form for its own directory only', () => {
+    const reason = 'claude agent agent-a1b2c3 (pid 86565 start Tue Nov 10 19:59:31 2026)';
+    expect(isAgentLockReason(reason, '/r/.claude/worktrees/agent-a1b2c3')).toBe(true);
+    expect(isAgentLockReason(reason, '/r/.claude/worktrees/agent-other')).toBe(false);
+    expect(isAgentLockReason('live session', '/r/agent-a1b2c3')).toBe(false);
+    expect(isAgentLockReason(undefined, '/r/agent-a1b2c3')).toBe(false);
+    expect(isAgentLockReason(`${reason} extra`, '/r/agent-a1b2c3')).toBe(false);
+    expect(isAgentLockReason('claude agent agent-a1b2c3 (pid x)', '/r/agent-a1b2c3')).toBe(false);
   });
 
   test('removes a worktree the Agent tool made, by name', () => {

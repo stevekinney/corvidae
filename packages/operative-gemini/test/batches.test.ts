@@ -20,9 +20,9 @@
  * `withOpenAIBaseUrl`.
  *
  * That variable is why the capability suite at the bottom pins it too:
- * `getProviderCapabilities('openai')` reports on the *effective* endpoint, so
- * an `OPENAI_BASE_URL` inherited from the shell would otherwise decide the
- * answer those assertions are making.
+ * `openAIRows()` reads the *effective* endpoint, so an `OPENAI_BASE_URL`
+ * inherited from the shell would otherwise decide the answer those assertions
+ * are making.
  */
 import { ProviderError } from '@lostgradient/operative/provider-kit';
 import { describe, expect, it } from 'bun:test';

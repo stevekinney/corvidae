@@ -19,6 +19,7 @@ import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -50,7 +51,7 @@ it('writes the file as the agent after a restart, for a session run that was in 
       agents: {},
       agentSource: agentFileDirectory(agents),
       workflowSource: workflowFileDirectory(workflows),
-      models: { generate: () => generate },
+      models: { catalog: createVendorCatalog().descriptors, generate: () => generate },
       storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },

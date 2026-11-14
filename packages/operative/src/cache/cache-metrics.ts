@@ -5,7 +5,7 @@
  * metrics like hit rate, saved tokens, and estimated cost savings.
  */
 
-import { estimateCost } from '../cost-estimation';
+import { estimateCost, type CostEstimationOptions } from '../cost-estimation';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
@@ -19,6 +19,11 @@ import { withCache } from './with-cache';
 export type CacheMetricsOptions = CacheOptions & {
   /** Model identifier used for cost estimation. When omitted, `estimatedSavedCost` stays at 0. */
   model?: string | undefined;
+  /**
+   * The model's prices, in the shape `estimateCost` takes. Operative holds no price of its own, so a
+   * model is priced only when named here; without a price `estimatedSavedCost` stays at 0.
+   */
+  pricing?: CostEstimationOptions | undefined;
 };
 
 /** Resolves the key strategy option to a concrete key function. */
@@ -44,7 +49,7 @@ export function withCacheMetrics(
   generate: GenerateFunction,
   options: CacheMetricsOptions,
 ): { generate: GenerateFunction; metrics: CacheMetrics } {
-  const { model, onHit, onMiss, ...rest } = options;
+  const { model, pricing, onHit, onMiss, ...rest } = options;
 
   let hits = 0;
   let misses = 0;
@@ -83,10 +88,10 @@ export function withCacheMetrics(
 
       if (model) {
         try {
-          const cost = estimateCost(response.usage, model);
+          const cost = estimateCost(response.usage, model, pricing);
           estimatedSavedCost += cost.totalCost;
         } catch {
-          // Unknown model — skip cost estimation
+          // A model with no price — skip cost estimation
         }
       }
     }

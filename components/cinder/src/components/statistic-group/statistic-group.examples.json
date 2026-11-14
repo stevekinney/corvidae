@@ -40,6 +40,12 @@
       "code": "<script lang=\"ts\">\n  import { StatisticGroup } from '@lostgradient/cinder';\n</script>\n\n<StatisticGroup label=\"Pipeline health\" columns={3}>\n  <StatisticGroup.Statistic label=\"Builds\" value={412} />\n  <StatisticGroup.Statistic label=\"Passed\" value={397} />\n  <StatisticGroup.Statistic label=\"Failed\" value={15} />\n  <StatisticGroup.Statistic label=\"Median duration\" value=\"6m 12s\" />\n  <StatisticGroup.Statistic label=\"Cache hit rate\" value=\"91%\" />\n  <StatisticGroup.Statistic label=\"Flaky reruns\" value={4} />\n</StatisticGroup>\n"
     },
     {
+      "id": "plain-variant",
+      "title": "Plain variant under a spotlight",
+      "description": "The `plain` variant draws no surface, border, padding or divider and sets its values a step smaller, so one stat can sit in the page flow under a Spotlight without competing with it.",
+      "code": "<script lang=\"ts\">\n  import { Spotlight, StatisticGroup } from '@lostgradient/cinder';\n</script>\n\n<Spotlight value=\"2 need you\" />\n<StatisticGroup label=\"Home counts\" columns={1} variant=\"plain\">\n  <StatisticGroup.Statistic label=\"Failed in 24 hours\" value={3} attention />\n</StatisticGroup>\n"
+    },
+    {
       "id": "shared-borders-variant",
       "title": "Shared-borders variant",
       "description": "The `shared-borders` variant wraps the whole set in a single outer border and divides the tiles with 1px gap rules, keeping the grid visually unified.",

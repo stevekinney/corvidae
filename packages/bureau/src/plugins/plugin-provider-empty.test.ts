@@ -3,12 +3,12 @@
  * plugin, which keeps running with its other contributions.
  */
 import { definePlugin, type PluginProvider } from '@lostgradient/interborough-plugin';
-import { createModelCatalog } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { composePlugins } from './compose-plugins';
 import type { PluginModelContributions } from './plugin-types';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const provider = (name: string, rows?: PluginProvider['rows']): PluginProvider => ({
   name,
@@ -52,7 +52,7 @@ describe('a provider that contributes no rows', () => {
   });
 
   it('names only the empty provider among several', async () => {
-    const [row] = createModelCatalog().descriptors;
+    const [row] = createVendorCatalog().descriptors;
     if (row === undefined) throw new Error('the seed catalog has no rows');
     const { record } = await compose([
       provider('nowhere'),
@@ -62,17 +62,17 @@ describe('a provider that contributes no rows', () => {
   });
 
   it('records no problem when the provider carries rows', async () => {
-    const [row] = createModelCatalog().descriptors;
+    const [row] = createVendorCatalog().descriptors;
     if (row === undefined) throw new Error('the seed catalog has no rows');
     const { record } = await compose([provider('stocked', [{ ...row, provider: 'stocked' }])]);
     expect(record?.status).toBe('running');
     expect(record?.problems).toEqual([]);
   });
 
-  it('records no problem when the seed knows the provider’s name', async () => {
-    const [row] = createModelCatalog().descriptors;
-    if (row === undefined) throw new Error('the seed catalog has no rows');
+  it('records provider-empty for a name the vendors ship rows for, when it passes none (COR-2151)', async () => {
+    const [row] = createVendorCatalog().descriptors;
+    if (row === undefined) throw new Error('the vendor catalog has no rows');
     const { record } = await compose([provider(row.provider)]);
-    expect(record?.problems).toEqual([]);
+    expect(record?.problems).toEqual([{ code: 'provider-empty', provider: row.provider }]);
   });
 });

@@ -27,6 +27,7 @@ import { createAttemptForwarder } from './goal-forwarder';
 import { attemptSignalId, createGoalState, goalTransitionId } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { pollUntil } from './testing/goal-fixtures.test-support';
+import { gpt4oCostEstimation } from './testing/vendor-catalog.test-support';
 import type { BureauDiagnostic } from './bureau-types/options';
 
 const NOW = '2026-10-02T12:00:00.000Z';
@@ -174,7 +175,7 @@ async function world(
     getDurable: () => durable,
     resolveCostEstimation: (runId) => {
       costRunIds.push(runId);
-      return forwarding.resolveCostEstimation?.() ?? Promise.resolve({ model: 'gpt-4o' });
+      return forwarding.resolveCostEstimation?.() ?? Promise.resolve(gpt4oCostEstimation);
     },
     conversations: {
       settle: async (_record, attemptIndex, runId) => {
@@ -346,7 +347,7 @@ describe('createAttemptForwarder', () => {
             failures -= 1;
             return Promise.reject(new Error('pricing service hiccup'));
           }
-          return Promise.resolve({ model: 'gpt-4o' });
+          return Promise.resolve(gpt4oCostEstimation);
         },
       },
     );
@@ -496,7 +497,7 @@ describe('createAttemptForwarder', () => {
       {
         resolveCostEstimation: async () => {
           await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
-          return { model: 'gpt-4o' };
+          return gpt4oCostEstimation;
         },
       },
     );
@@ -936,7 +937,7 @@ describe('createAttemptForwarder — releasing the attempt’s claims (COR-1630)
       {
         resolveCostEstimation: async () => {
           await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
-          return { model: 'gpt-4o' };
+          return gpt4oCostEstimation;
         },
       },
     );
@@ -974,7 +975,7 @@ describe('createAttemptForwarder — releasing the attempt’s claims (COR-1630)
       {
         resolveCostEstimation: async () => {
           close();
-          return { model: 'gpt-4o' };
+          return gpt4oCostEstimation;
         },
       },
     );

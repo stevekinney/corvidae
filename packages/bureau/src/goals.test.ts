@@ -35,6 +35,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { spyOnPrune } from './testing/prune-spy.test-support';
+import { gpt4oCostEstimation } from './testing/vendor-catalog.test-support';
 import type { Bureau } from './bureau-types/facade';
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -935,7 +936,7 @@ describe('bureau.goals', () => {
           resolved.push(input);
           return resolveOptions
             .call(base, input, context)
-            .then((options) => ({ ...options, costEstimation: { model: 'gpt-4o' } }));
+            .then((options) => ({ ...options, costEstimation: gpt4oCostEstimation }));
         },
       },
     }) as RunnableAgent<unknown, boolean>;
