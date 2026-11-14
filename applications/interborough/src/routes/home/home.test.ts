@@ -218,6 +218,18 @@ describe('Home', () => {
     expect(router.current.route?.pattern).toBe('/reviews');
   });
 
+  test('the way out to Health is Cinder’s more link, the page restyles nothing, and it opens in place', async () => {
+    const { container } = await open();
+    const card = cardOf(container, 'Needs attention');
+    const link = await within(card).findByRole('link', { name: 'Open Health' });
+    expect(link.classList.contains('cinder-link')).toBe(true);
+    expect(link.getAttribute('data-variant')).toBe('more');
+    expect(link.querySelector('.cinder-link__chevron')).not.toBeNull();
+    expect(container.querySelector('.ib-home-link')).toBeNull();
+    await fireEvent.click(link);
+    expect(router.current.route?.pattern).toBe('/health');
+  });
+
   test('opens a review inside the application when its button is clicked', async () => {
     const { container } = await open();
     const card = cardOf(container, 'Needs you');

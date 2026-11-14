@@ -10,11 +10,11 @@
    * It reads the same list as Reviews (`waitingReviewsQuery`), and the Spotlight above reads it too,
    * so none of them can disagree. A read that fails is this section's own failure, said in place
    * with a Try again, and no other section is held; while it has not answered the section holds
-   * Cinder's grouped placeholder rows in the rows' own shape. On a phone each button is full width
-   * under the row's text, and while the server does not answer each is held like every control
+   * Cinder's grouped placeholder rows in the rows' own shape. On a phone each button drops under the
+   * row's text at its own width, and while the server does not answer each is held like every control
    * that changes something.
    */
-  import { EmptyState, GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, GroupedList, GroupedListItem, Link, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -27,7 +27,6 @@
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
-  import HomeLink from './home-link.svelte';
   import { openInApplication } from './home-navigation.ts';
   import { useAgentList } from './home-queries.svelte.ts';
   import { NEEDS_YOU_ROW_LIMIT, needsYouRows } from './home-rows.ts';
@@ -73,7 +72,11 @@
       description={copy.empty.description}
     >
       {#snippet action()}
-        <HomeLink path="/reviews" label={copy.link} />
+        <Link
+          variant="more"
+          href={router.href('/reviews')}
+          onclick={(event: MouseEvent) => openInApplication(event, '/reviews')}>{copy.link}</Link
+        >
       {/snippet}
     </EmptyState>
   {:else}

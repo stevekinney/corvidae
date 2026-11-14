@@ -15,7 +15,7 @@
    * while it has not answered the section holds Cinder's grouped placeholder rows. While the server
    * does not answer each row's button is held like every control that changes something.
    */
-  import { EmptyState, GroupedList, GroupedListItem, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, GroupedList, GroupedListItem, Link, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
@@ -25,7 +25,6 @@
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
-  import HomeLink from './home-link.svelte';
   import { openInApplication } from './home-navigation.ts';
   import { useAgentList, useAttentionItems } from './home-queries.svelte.ts';
   import { attentionRows } from './home-rows.ts';
@@ -76,7 +75,11 @@
       description={copy.clear.description}
     >
       {#snippet action()}
-        <HomeLink path="/health" label={copy.link} />
+        <Link
+          variant="more"
+          href={router.href('/health')}
+          onclick={(event: MouseEvent) => openInApplication(event, '/health')}>{copy.link}</Link
+        >
       {/snippet}
     </EmptyState>
   </div>
