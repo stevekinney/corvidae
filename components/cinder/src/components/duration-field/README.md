@@ -6,6 +6,8 @@
 
 Set `unitSelectable` to `false` for a setting that always counts in one unit: the unit becomes text inside the number's own frame ("15 seconds") and there is no select. Inside a [`FormField`](../form-field/README.md) or [`SettingRow`](../setting-row/README.md) leave out `label`, which the row supplies.
 
+By default the number reports when the field is left or Enter is pressed. Set `commitWhileTyping` for a field whose value writes through at once, such as a builder that shows what the page will say as you type: each number is then reported as it is typed, and an emptied field reports `null`. Text that is not a number yet (a lone `-`) is held until the field is left. Choosing another unit reports nothing, because the stored value does not change; the number is shown in the new unit, and the next number typed is counted in it. Pass `units` to offer other units than milliseconds to hours, such as days, and `size` to match the controls around the field.
+
 `SchemaForm` renders a numeric property with this field when its schema says it is a duration: `format: "duration-ms"`, `unit: "milliseconds"`, or a name ending in `Ms`, `_ms` or `Milliseconds`. To show a duration read-only, format it with the `formatDuration` utility instead.
 
 ## Usage
@@ -27,6 +29,7 @@ Set `unitSelectable` to `false` for a setting that always counts in one unit: th
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged with `.cinder-duration-field`. |
+| `commitWhileTyping` | `boolean` | no | `false` | Reports each duration as the number is typed, not only when the field is left or Enter is pressed, for a field whose value writes through at once (a builder that shows its result as you type). Text that is not a number yet (such as `-`) is not reported. Changing the unit reports nothing: the stored value stays the same, and the number is shown in the new unit. |
 | `description` | `string` | no | — | Helper text announced with the field. |
 | `disabled` | `boolean` | no | — | Disables the number and the unit. |
 | `error` | `string` | no | — | Validation error; marks the field invalid. |
@@ -35,6 +38,7 @@ Set `unitSelectable` to `false` for a setting that always counts in one unit: th
 | `label` | `string` | no | — | Visible label. Omit inside a FormField or SettingRow, which supplies the label. |
 | `name` | `string` | no | — | Form field name for the number as typed (in the shown unit). |
 | `required` | `boolean` | no | — | Marks the field required. |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale, for the number and the unit: `sm` 28px, `md` 32px, `lg` 40px. |
 | `unit` | `string` | no | — | The unit the number is shown in, by its `value`. Starts as the largest unit that shows the value as a whole number, and follows the person's choice. Bindable. |
 | `unitSelectable` | `boolean` | no | `true` | Whether the person can change the unit. When `false` the unit is fixed text inside the field's frame ("30 seconds"), as a setting that always counts in seconds draws it. |
 | `value` | `number` \| `null` | no | — | The duration in milliseconds, or `null` when the field is empty. Bindable. |

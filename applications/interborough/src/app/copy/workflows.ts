@@ -642,14 +642,13 @@ export const WORKFLOW_COPY = {
     signalDescription:
       'The run reads Waiting, with this signal named, until it arrives. It doesn’t show in Reviews.',
     signalLabel: (where: string): string => `Signal ${where} waits for`,
+    /** The wait's length is a number and a unit in one Cinder DurationField, which names its select "For unit". */
     amountFieldLabel: 'For',
-    unitFieldLabel: 'Unit',
-    unitLabel: (where: string): string => `Unit of the wait in ${where}`,
     units: { seconds: 'seconds', minutes: 'minutes', hours: 'hours', days: 'days' },
-    /** A wait whose duration For and Unit cannot say, such as a bare number of milliseconds. */
+    /** A wait whose duration For and its unit cannot say, such as a bare number of milliseconds. */
     durationFieldLabel: 'How long',
     durationDescription: 'A bare number is milliseconds. Or write 30s, 5m, 1h.',
-    /** The wait's For field, or its How long field when For and Unit cannot say its duration. */
+    /** The group of a wait's For field and its unit, or its How long field when they cannot say its duration. */
     durationLabel: (where: string): string => `How long ${where} waits`,
     /**
      * A wait for a person or a signal can give up: after the limit the run goes on without it. The
@@ -658,7 +657,6 @@ export const WORKFLOW_COPY = {
     timeoutLabel: 'Stop waiting after',
     timeoutDescription: 'If nothing arrives, the run goes on without it.',
     timeoutAmountLabel: (where: string): string => `How long ${where} waits before it stops`,
-    timeoutUnitLabel: (where: string): string => `Unit of the limit on the wait in ${where}`,
     timeoutText: (where: string): string => `Limit on the wait in ${where}`,
     timeoutTextDescription:
       'A bare number is milliseconds. Or write 30s, 5m, 1h. Empty, there is no limit.',

@@ -42,6 +42,20 @@ export type DurationFieldProps = {
    * @default true
    */
   unitSelectable?: boolean | undefined;
+  /**
+   * Reports each duration as the number is typed, not only when the field is left or Enter is
+   * pressed, for a field whose value writes through at once (a builder that shows its result as
+   * you type). Text that is not a number yet (such as `-`) is not reported. Changing the unit
+   * reports nothing: the stored value stays the same, and the number is shown in the new unit.
+   * @default false
+   */
+  commitWhileTyping?: boolean | undefined;
+  /**
+   * Height step from the shared `--cinder-control-height-*` scale, for the number and the unit:
+   * `sm` 28px, `md` 32px, `lg` 40px.
+   * @default "md"
+   */
+  size?: 'sm' | 'md' | 'lg' | undefined;
   /** Called when the number loses focus. */
   onblur?: HTMLInputAttributes['onblur'] | undefined;
   /** Additional class merged with `.cinder-duration-field`. */

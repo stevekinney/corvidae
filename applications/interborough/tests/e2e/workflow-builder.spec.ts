@@ -39,6 +39,18 @@ const editor = (page: Page) => page.locator('[data-page="workflow-editor"]');
 /** The name of a top-level step in a label: "step 1". */
 const step = BUILDER.where.step;
 
+/** The group of a wait's length and its unit, named for its step. */
+const waitGroup = (root: Locator, number: number) =>
+  root.getByRole('group', { name: BUILDER.durationLabel(step(number)) });
+
+/** The number of a wait's length: Cinder's DurationField labels it For. */
+const waitLength = (root: Locator, number: number) =>
+  waitGroup(root, number).getByLabel(BUILDER.amountFieldLabel, { exact: true });
+
+/** The unit of a wait's length, which the field names "For unit". */
+const waitUnit = (root: Locator, number: number) =>
+  waitGroup(root, number).getByLabel(`${BUILDER.amountFieldLabel} unit`, { exact: true });
+
 /**
  * Adds a step by its exact words in the menu of "Add a step", which opens from the one button under
  * the steps: "Wait" is also the start of two other items.
@@ -171,8 +183,8 @@ test.describe('a workflow built from cards', () => {
     document.steps = [{ kind: 'sleep', duration: '45s' }];
     await json.fill(JSON.stringify(document, null, 2));
     await openTab(root, BUILDER.builderTab);
-    await expect(root.getByLabel(BUILDER.durationLabel(step(1)))).toHaveValue('45');
-    await expect(root.getByLabel(BUILDER.unitLabel(step(1)))).toHaveValue('seconds');
+    await expect(waitLength(root, 1)).toHaveValue('45');
+    await expect(waitUnit(root, 1)).toHaveValue('seconds');
     await expect(root.getByLabel(BUILDER.agentLabel(step(1)))).toHaveCount(0);
   });
 
@@ -224,7 +236,7 @@ test.describe('the builder’s fields', () => {
     const name = root.getByLabel(BUILDER.idLabel, { exact: true });
     await name.fill(id);
     await name.press('Enter');
-    await root.getByLabel(BUILDER.durationLabel(step(1))).press('Enter');
+    await waitLength(root, 1).press('Enter');
     await expect(
       root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }),
     ).toBeEnabled();
@@ -287,10 +299,10 @@ test.describe('the editor’s builder', () => {
       },
     });
 
-    await root.getByLabel(BUILDER.durationLabel(step(1))).fill('5');
+    await waitLength(root, 1).fill('5');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root.getByText(WORKFLOW_COPY.editor.changedOnDisk.title)).toBeVisible();
-    await expect(root.getByLabel(BUILDER.durationLabel(step(1)))).toHaveValue('5');
+    await expect(waitLength(root, 1)).toHaveValue('5');
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/edit$`));
   });
 });

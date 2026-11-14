@@ -19,6 +19,19 @@ export interface NumberInputSchemaProps {
   class?: string;
   /** Optional non-interactive text rendered before the stepper controls. */
   adornment?: string;
+  /**
+   * Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,
+   * `lg` 40px, the same heights as an Input of that size.
+   * @default "md"
+   */
+  size?: 'sm' | 'md' | 'lg';
+  /**
+   * Reports each number as it is typed, not only when the field is left or Enter is pressed. Text
+   * that is not a number yet (such as `-`) is not reported and does not mark the field invalid
+   * until the field is left.
+   * @default false
+   */
+  commitWhileTyping?: boolean;
 }
 export type NumberInputProps = Omit<
   HTMLInputAttributes,
@@ -78,5 +91,19 @@ export type NumberInputProps = Omit<
   class?: string;
   /** Optional non-interactive adornment rendered before the stepper controls. */
   adornment?: Snippet | string;
+  /**
+   * Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,
+   * `lg` 40px, the same heights as an Input of that size. Replaces the native character-width
+   * `size` attribute, which Cinder does not forward.
+   * @default "md"
+   */
+  size?: 'sm' | 'md' | 'lg';
+  /**
+   * Reports each number as it is typed, not only when the field is left or Enter is pressed. Text
+   * that is not a number yet (such as `-`) is not reported and does not mark the field invalid
+   * until the field is left.
+   * @default false
+   */
+  commitWhileTyping?: boolean;
   onValueChange?: (value: number | null) => void;
 };

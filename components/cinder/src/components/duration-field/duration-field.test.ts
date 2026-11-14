@@ -43,6 +43,65 @@ describe('DurationField', () => {
     expect(onValueChange).toHaveBeenLastCalledWith(45_000);
   });
 
+  test('reports nothing while typing by default, and each duration as it is typed with commitWhileTyping', async () => {
+    const waiting = mock();
+    const { container } = render(DurationField, {
+      props: { id: 'timeout', label: 'Timeout', value: 30_000, onValueChange: waiting },
+    });
+    await fireEvent.focus(numberOf(container));
+    await fireEvent.input(numberOf(container), { target: { value: '45' } });
+    expect(waiting).not.toHaveBeenCalled();
+    cleanup();
+
+    const typed = mock();
+    const { container: live } = render(DurationField, {
+      props: {
+        id: 'timeout',
+        label: 'Timeout',
+        value: 30_000,
+        commitWhileTyping: true,
+        onValueChange: typed,
+      },
+    });
+    await fireEvent.focus(numberOf(live));
+    await fireEvent.input(numberOf(live), { target: { value: '4' } });
+    await fireEvent.input(numberOf(live), { target: { value: '45' } });
+    expect(typed.mock.calls).toEqual([[4000], [45_000]]);
+    // Emptying the number reports null, and the unit chosen stays for the next number.
+    await fireEvent.input(numberOf(live), { target: { value: '' } });
+    expect(typed).toHaveBeenLastCalledWith(null);
+    expect(unitOf(live).value).toBe('s');
+  });
+
+  test('a unit chosen while typing counts the number that follows, and reports no value of its own', async () => {
+    const typed = mock();
+    const { container } = render(DurationField, {
+      props: {
+        id: 'timeout',
+        label: 'Timeout',
+        value: null,
+        commitWhileTyping: true,
+        onValueChange: typed,
+      },
+    });
+    await fireEvent.change(unitOf(container), { target: { value: 'h' } });
+    expect(typed).not.toHaveBeenCalled();
+    await fireEvent.focus(numberOf(container));
+    await fireEvent.input(numberOf(container), { target: { value: '2' } });
+    expect(typed).toHaveBeenLastCalledWith(7_200_000);
+  });
+
+  test('the number and the unit share the size', () => {
+    const { container } = render(DurationField, {
+      props: { id: 'timeout', label: 'Timeout', value: 1000, size: 'sm' },
+    });
+    const sizes = [...container.querySelectorAll('[data-cinder-size]')].map((element) =>
+      element.getAttribute('data-cinder-size'),
+    );
+    expect(sizes.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(sizes)).toEqual(new Set(['sm']));
+  });
+
   test('a unit chosen by the person survives their own edit coming back', async () => {
     const { container, rerender } = render(DurationField, {
       props: { id: 'timeout', label: 'Timeout', value: 60_000 },

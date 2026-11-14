@@ -51,6 +51,16 @@
     "adornment": {
       "type": "string",
       "description": "Optional non-interactive text rendered before the stepper controls."
+    },
+    "size": {
+      "enum": ["sm", "md", "lg"],
+      "description": "Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,\n`lg` 40px, the same heights as an Input of that size.",
+      "default": "md"
+    },
+    "commitWhileTyping": {
+      "type": "boolean",
+      "description": "Reports each number as it is typed, not only when the field is left or Enter is pressed. Text\nthat is not a number yet (such as `-`) is not reported and does not mark the field invalid\nuntil the field is left.",
+      "default": false
     }
   },
   "additionalProperties": false,

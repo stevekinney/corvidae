@@ -534,7 +534,7 @@ describe('the builder', () => {
     await addStep(container, BUILDER.add.wait);
     await waitFor(() => expect(field(container, 'workflow-builder-step-1-duration')).toBeTruthy());
     expect(field(container, 'workflow-builder-step-1-duration').value).toBe('1');
-    expect(field(container, 'workflow-builder-step-1-unit').value).toBe('minutes');
+    expect(field(container, 'workflow-builder-step-1-duration-unit').value).toBe('minutes');
     await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
       target: { value: '15' },
     });
@@ -555,7 +555,7 @@ describe('the builder', () => {
     );
     await fireEvent.click(builderTab(container));
     await ready(container);
-    expect(field(container, 'workflow-builder-step-1-unit')).toBeNull();
+    expect(field(container, 'workflow-builder-step-1-duration-unit')).toBeNull();
     expect(container.textContent).toContain(BUILDER.durationDescription);
     expect(summary(container)).toContain('wait 5000 ms');
   });
@@ -565,8 +565,8 @@ describe('the builder', () => {
     await ready(container);
     await fireEvent.click(button(container, BUILDER.remove(step(1))));
     await addStep(container, BUILDER.add.wait);
-    await waitFor(() => expect(field(container, 'workflow-builder-step-1-unit')).toBeTruthy());
-    await fireEvent.change(field(container, 'workflow-builder-step-1-unit'), {
+    await waitFor(() => expect(field(container, 'workflow-builder-step-1-duration-unit')).toBeTruthy());
+    await fireEvent.change(field(container, 'workflow-builder-step-1-duration-unit'), {
       target: { value: 'hours' },
     });
     await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
@@ -581,7 +581,7 @@ describe('the builder', () => {
     await waitFor(() =>
       expect(field(container, 'workflow-builder-step-1-duration').value).toBe(''),
     );
-    expect(field(container, 'workflow-builder-step-1-unit').value).toBe('hours');
+    expect(field(container, 'workflow-builder-step-1-duration-unit').value).toBe('hours');
     await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
       target: { value: '3' },
     });
@@ -594,11 +594,11 @@ describe('the builder', () => {
     await waitFor(() =>
       expect(field(container, 'workflow-builder-step-1-duration').value).toBe(''),
     );
-    await fireEvent.change(field(container, 'workflow-builder-step-1-unit'), {
+    await fireEvent.change(field(container, 'workflow-builder-step-1-duration-unit'), {
       target: { value: 'days' },
     });
     await waitFor(() =>
-      expect(field(container, 'workflow-builder-step-1-unit').value).toBe('days'),
+      expect(field(container, 'workflow-builder-step-1-duration-unit').value).toBe('days'),
     );
     await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
       target: { value: '4' },
@@ -608,6 +608,35 @@ describe('the builder', () => {
     await openJson(container);
     expect(JSON.parse(textarea(container).value)).toMatchObject({
       steps: [{ kind: 'sleep', duration: '4d' }],
+    });
+  });
+
+  test('a wait shows its length in another unit without changing it, and the number typed next is counted in that unit', async () => {
+    const { container } = open();
+    await ready(container);
+    await fireEvent.click(button(container, BUILDER.remove(step(1))));
+    await addStep(container, BUILDER.add.wait);
+    await waitFor(() => expect(field(container, 'workflow-builder-step-1-duration')).toBeTruthy());
+    await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
+      target: { value: '90' },
+    });
+    await waitFor(() => expect(summary(container)).toContain('wait 90 minutes'));
+
+    // The length is the same 90 minutes, read in hours: nothing is written until a number is.
+    await fireEvent.change(field(container, 'workflow-builder-step-1-duration-unit'), {
+      target: { value: 'hours' },
+    });
+    await waitFor(() =>
+      expect(field(container, 'workflow-builder-step-1-duration').value).toBe('1.5'),
+    );
+    expect(summary(container)).toContain('wait 90 minutes');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
+      target: { value: '2' },
+    });
+    await waitFor(() => expect(summary(container)).toContain('wait 2 hours'));
+    await openJson(container);
+    expect(JSON.parse(textarea(container).value)).toMatchObject({
+      steps: [{ kind: 'sleep', duration: '2h' }],
     });
   });
 
@@ -721,7 +750,7 @@ describe('the builder', () => {
     expect(start(container, 'schedule').getAttribute('aria-checked')).toBe('true');
     expect(field(container, 'workflow-builder-trigger-field').value).toBe('5m');
     expect(field(container, 'workflow-builder-step-1-duration').value).toBe('30');
-    expect(field(container, 'workflow-builder-step-1-unit').value).toBe('seconds');
+    expect(field(container, 'workflow-builder-step-1-duration-unit').value).toBe('seconds');
     expect(container.querySelector('#workflow-builder-step-1-agent')).toBeNull();
   });
 

@@ -59,6 +59,8 @@
     inputAttachment,
     class: className,
     adornment,
+    size,
+    commitWhileTyping = false,
     onValueChange,
     onblur: consumerBlur,
     'aria-describedby': consumerDescribedBy,
@@ -328,6 +330,14 @@
       malformedError = false;
       inputElement?.setCustomValidity('');
     }
+    // Text that is not a number yet is left for the blur to judge, so typing `-` or a lone
+    // separator never flags the field or reports a value. Anything else commits as a blur would.
+    if (
+      commitWhileTyping &&
+      parseLocaleNumber(editorBuffer, resolvedLocale, format).status !== 'malformed'
+    ) {
+      commitFromText('typed', editorBuffer);
+    }
   }
 
   const stepController = createStepController({
@@ -466,6 +476,7 @@
     {...label === undefined ? {} : { label }}
     {...description === undefined ? {} : { description }}
     {...error === undefined ? {} : { error }}
+    {...size === undefined ? {} : { size }}
     disabled={resolvedDisabled}
     required={resolvedRequired}
     class="cinder-number-input__input"

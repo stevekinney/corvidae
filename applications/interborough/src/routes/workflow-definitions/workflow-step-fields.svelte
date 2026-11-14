@@ -8,7 +8,7 @@
    * a failed read, when no running plugin provides it, and when its registration declares no schema,
    * the step's `input` is kept exactly as the file writes it and a note says why it is not drawn.
    */
-  import { Button, Input, Select, Textarea } from '@lostgradient/cinder';
+  import { Button, DurationField, Input, Select, Textarea } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
@@ -26,7 +26,12 @@
     type StepPath,
     type WaitUnit,
   } from './workflow-builder-model.ts';
-  import WorkflowDurationPair from './workflow-duration-pair.svelte';
+  import {
+    amountOf,
+    isWaitUnit,
+    millisecondsOf,
+    WAIT_DURATION_UNITS,
+  } from './workflow-duration-units.ts';
 
   interface Props {
     step: Exclude<BuilderStep, { kind: 'branch' | 'parallel' | 'map' }>;
@@ -50,22 +55,37 @@
     step.kind === 'activity' ? host.activityTitle(step.handler) : copy.stepKinds[step.kind],
   );
 
-  /** The unit a limit that is still empty is counted in, so choosing a unit first keeps it. */
+  /**
+   * The unit a limit is shown and typed in. The field keeps the milliseconds when the person
+   * chooses another unit, so the file holds nothing of it until a number is typed: a limit that is
+   * still empty keeps the unit the person chose, and the number typed next is counted in it.
+   */
   // svelte-ignore state_referenced_locally
-  let limitUnit = $state<WaitUnit>(
+  let limitUnit = $state<string | undefined>(
     step.kind === 'person' || step.kind === 'signal'
       ? (step.timeout?.parts?.unit ?? 'minutes')
       : 'minutes',
   );
+  /** The same for a wait's own length. */
+  // svelte-ignore state_referenced_locally
+  let waitUnit = $state<string | undefined>(
+    step.kind === 'wait' ? (step.parts?.unit ?? 'minutes') : 'minutes',
+  );
 
-  // A limit the file holds sets the unit; an empty one keeps the unit the person chose.
+  // A length the file holds sets the unit; an empty one keeps the unit the person chose.
   $effect.pre(() => {
-    if (step.kind !== 'person' && step.kind !== 'signal') return;
-    const parts = step.timeout?.parts;
-    if (parts !== undefined && parts !== null && parts.amount !== '') {
-      untrack(() => (limitUnit = parts.unit));
+    if (step.kind === 'person' || step.kind === 'signal') {
+      const parts = step.timeout?.parts;
+      if (parts !== undefined && parts !== null && parts.amount !== '') {
+        untrack(() => (limitUnit = parts.unit));
+      }
+    } else if (step.kind === 'wait') {
+      const parts = step.parts;
+      if (parts !== null && parts.amount !== '') untrack(() => (waitUnit = parts.unit));
     }
   });
+
+  const unitOf = (unit: string | undefined): WaitUnit => (isWaitUnit(unit) ? unit : 'minutes');
 
   /** The workflows a `workflow` step's select offers: the one the file names stays even when no plugin lists it. */
   function workflowOptions(
@@ -102,20 +122,21 @@
       onValueChange={(next) => host.commit(setStepTimeout(host.text, path, next))}
     />
   {:else}
-    <WorkflowDurationPair
-      amountId={`${id}-timeout`}
-      unitId={`${id}-timeout-unit`}
-      amount={timeout?.parts?.amount ?? ''}
-      unit={limitUnit}
-      amountLabel={copy.timeoutLabel}
-      amountName={copy.timeoutAmountLabel(where)}
-      unitLabel={copy.unitFieldLabel}
-      unitName={copy.timeoutUnitLabel(where)}
-      onChange={(amount: string, unit: WaitUnit) => {
-        limitUnit = unit;
-        host.commit(setTimeoutDuration(host.text, path, amount, unit));
-      }}
-    />
+    <div role="group" aria-label={copy.timeoutAmountLabel(where)}>
+      <DurationField
+        id={`${id}-timeout`}
+        label={copy.timeoutLabel}
+        size="sm"
+        commitWhileTyping
+        units={WAIT_DURATION_UNITS}
+        value={millisecondsOf(timeout?.parts?.amount ?? '', timeout?.parts?.unit ?? 'minutes')}
+        bind:unit={limitUnit}
+        onValueChange={(next) =>
+          host.commit(
+            setTimeoutDuration(host.text, path, amountOf(next, unitOf(limitUnit)), unitOf(limitUnit)),
+          )}
+      />
+    </div>
     <p class="weft-step-fields__note">{copy.timeoutDescription}</p>
   {/if}
 {/snippet}
@@ -196,20 +217,23 @@
   {@render limit(step.timeout)}
 {:else if step.kind === 'wait' && step.parts !== null}
   {@const parts = step.parts}
-  <WorkflowDurationPair
-    amountId={`${id}-duration`}
-    unitId={`${id}-unit`}
-    amount={parts.amount}
-    unit={parts.unit}
-    amountLabel={copy.amountFieldLabel}
-    amountName={copy.durationLabel(where)}
-    unitLabel={copy.unitFieldLabel}
-    unitName={copy.unitLabel(where)}
-    required
-    error={host.errorOf(stepFieldId(address, 'duration'))}
-    onChange={(amount: string, unit: WaitUnit) =>
-      host.commit(setWaitDuration(host.text, path, amount, unit))}
-  />
+  <div role="group" aria-label={copy.durationLabel(where)}>
+    <DurationField
+      id={`${id}-duration`}
+      label={copy.amountFieldLabel}
+      size="sm"
+      required
+      commitWhileTyping
+      units={WAIT_DURATION_UNITS}
+      value={millisecondsOf(parts.amount, parts.unit)}
+      bind:unit={waitUnit}
+      {...host.errorOf(stepFieldId(address, 'duration'))}
+      onValueChange={(next) =>
+        host.commit(
+          setWaitDuration(host.text, path, amountOf(next, unitOf(waitUnit)), unitOf(waitUnit)),
+        )}
+    />
+  </div>
 {:else if step.kind === 'wait'}
   <Input
     id={`${id}-duration`}

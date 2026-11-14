@@ -55,6 +55,16 @@
       "description": "Whether the person can change the unit. When `false` the unit is fixed text inside the field's\nframe (\"30 seconds\"), as a setting that always counts in seconds draws it.",
       "default": true
     },
+    "commitWhileTyping": {
+      "type": "boolean",
+      "description": "Reports each duration as the number is typed, not only when the field is left or Enter is\npressed, for a field whose value writes through at once (a builder that shows its result as\nyou type). Text that is not a number yet (such as `-`) is not reported. Changing the unit\nreports nothing: the stored value stays the same, and the number is shown in the new unit.",
+      "default": false
+    },
+    "size": {
+      "enum": ["sm", "md", "lg"],
+      "description": "Height step from the shared `--cinder-control-height-*` scale, for the number and the unit:\n`sm` 28px, `md` 32px, `lg` 40px.",
+      "default": "md"
+    },
     "class": {
       "type": "string",
       "description": "Additional class merged with `.cinder-duration-field`."
