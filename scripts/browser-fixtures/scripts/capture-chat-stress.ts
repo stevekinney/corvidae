@@ -2576,8 +2576,34 @@ export async function readAttachmentStripProblems(page: Page): Promise<string[]>
         }
         const text = name.textContent ?? '';
         const label = text.length > 24 ? `${text.slice(0, 24)}…` : text;
-        if (text.includes('…') || (chip.getAttribute('title') ?? '').indexOf(text) !== 0) {
+        // The chip shows the file's own name, or a start of its stem, one ellipsis, and its whole
+        // extension with nothing between them. The full name is in the chip's title either way.
+        const title = chip.getAttribute('title') ?? '';
+        const stemText = stem.textContent ?? '';
+        const extensionText = extension.textContent ?? '';
+        const shortened = stemText.endsWith('…');
+        const shownStart = shortened ? stemText.slice(0, -1) : stemText;
+        const ownName = shortened
+          ? shownStart.length > 0 &&
+            !shownStart.includes('…') &&
+            title.startsWith(shownStart) &&
+            title.includes(extensionText) &&
+            stem.hasAttribute('data-fitted')
+          : !text.includes('…') && title.indexOf(text) === 0;
+        if (!ownName) {
           problems.push(`attachment chip "${label}" shows a name that is not the file's own`);
+        }
+        // A shortened stem's ellipsis touches the extension: no gap reads as a detached fragment.
+        if (shortened) {
+          const gap =
+            getComputedStyle(name).direction === 'rtl'
+              ? stem.getBoundingClientRect().left - extension.getBoundingClientRect().right
+              : extension.getBoundingClientRect().left - stem.getBoundingClientRect().right;
+          if (Math.abs(gap) > 1) {
+            problems.push(
+              `attachment chip "${label}" leaves ${gap.toFixed(2)}px between its ellipsis and its extension`,
+            );
+          }
         }
         const nameBox = name.getBoundingClientRect();
         const extensionBox = extension.getBoundingClientRect();

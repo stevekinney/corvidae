@@ -38,6 +38,7 @@
   import { classNames } from '../../../utilities/class-names.ts';
   import { DEFAULT_CHAT_LABELS } from '../chat-labels.ts';
   import { attachmentGlyph, canRetry, splitFileName, uploadPercent } from './attachment-tile.ts';
+  import { fitFileName } from './fit-file-name.ts';
 
   let {
     attachment,
@@ -94,7 +95,7 @@
       <FileGlyph class="cinder-icon-sm" aria-hidden="true" />
     {/if}
   </span>
-  <span class="chat-attachment-preview-name" dir="auto"
+  <span class="chat-attachment-preview-name" dir="auto" {@attach fitFileName(parts.stem)}
     ><span class="chat-attachment-preview-stem">{parts.stem}</span><span
       class="chat-attachment-preview-extension">{parts.extension}</span
     ></span
@@ -228,6 +229,14 @@
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* Once the stem's text itself was shortened to fit (fit-file-name.ts), its box is its text: no
+   * clip of its own, so the ellipsis and the extension touch. */
+  .chat-attachment-preview-stem:global([data-fitted]) {
+    flex: none;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   .chat-attachment-preview-extension {

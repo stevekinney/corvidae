@@ -2347,7 +2347,10 @@
     display: flex;
     flex: none;
     min-inline-size: 0;
-    max-inline-size: min(100%, 16rem);
+    /* A chip is never wider than 14rem or 70% of the strip, whichever is less (owner, 2026-11-13):
+     * a long name ellipsizes sooner, and at least a third of the next chip shows at the edge to
+     * say there are more. */
+    max-inline-size: min(70%, 14rem);
   }
 
   /* The one line a failure that blocks Send gets, with its action at the trailing end. */
