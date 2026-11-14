@@ -350,8 +350,21 @@ function dynamicExtensions(options: JsonEditorDynamicOptions): Extension[] {
 /** Create a CodeMirror editor for JSON in `options.parent`. */
 export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
   const dynamic = new Compartment();
+  // CodeMirror skips measuring an editor that is wholly outside the window, so one that mounts
+  // below the fold draws its gutter from a 14px line estimate with no top padding, and the line
+  // numbers drift further from their lines the further down they are, until the editor scrolls
+  // into view. A capture beyond the viewport never scrolls it there. An initial scroll target is
+  // the one thing that makes the first measure run anyway; this handler swallows that scroll, so
+  // mounting never moves the page.
+  let initialScrollPending = true;
+  const swallowInitialScroll = EditorView.scrollHandler.of(() => {
+    if (!initialScrollPending) return false;
+    initialScrollPending = false;
+    return true;
+  });
   const view = new EditorView({
     parent: options.parent,
+    scrollTo: EditorView.scrollIntoView(0),
     state: EditorState.create({
       doc: options.document,
       extensions: [
@@ -380,6 +393,7 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
           ...foldKeymap,
         ]),
         theme,
+        swallowInitialScroll,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           if (
@@ -415,6 +429,8 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
       const target = view.state.doc.line(
         Math.min(Math.max(1, Math.trunc(line)), view.state.doc.lines),
       );
+      // A scroll asked for before the first measure replaces the initial one and must happen.
+      initialScrollPending = false;
       view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
       view.focus();
     },
