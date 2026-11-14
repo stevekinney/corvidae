@@ -314,10 +314,27 @@
     isFocused = true;
   }
 
+  /**
+   * Commits the text of a field that is being left (blur, Enter, or a form submit). With
+   * `commitWhileTyping` a number was already reported as it was typed, and a number nobody typed is
+   * only the value shown back, rounded for display (90 minutes read in hours is `1.5`, 1 minute is
+   * `0.017`), so committing it would change the value. Only text still to judge (empty, or not a
+   * number) is committed.
+   */
+  function commitLeftText(text: string): void {
+    if (
+      commitWhileTyping &&
+      parseLocaleNumber(text, resolvedLocale, format).status === 'valid'
+    ) {
+      return;
+    }
+    commitFromText('typed', text);
+  }
+
   function onBlur(event: FocusEvent & { currentTarget: EventTarget & HTMLInputElement }) {
     const buffered = editorBuffer;
     isFocused = false;
-    commitFromText('typed', buffered);
+    commitLeftText(buffered);
     consumerBlur?.(event);
   }
 
@@ -361,7 +378,7 @@
     if (resolvedDisabled) return;
     if (event.key === 'Enter') {
       event.preventDefault();
-      commitFromText('typed', isFocused ? editorBuffer : '');
+      commitLeftText(isFocused ? editorBuffer : '');
       const form = inputElement?.closest('form');
       if (!form) return;
       if (form.checkValidity()) {
@@ -384,7 +401,7 @@
       clearEnterKeyFlush: () => {
         enterKeyFlushed = false;
       },
-      flushSubmit: () => commitFromText('typed', editorBuffer),
+      flushSubmit: () => commitLeftText(editorBuffer),
       reset: () => commitFromNumber('reset', resetTarget, resetTarget === null ? 'empty' : 'valid'),
     });
   });

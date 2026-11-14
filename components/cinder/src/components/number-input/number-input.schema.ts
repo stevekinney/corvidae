@@ -63,7 +63,7 @@ const schema = {
     commitWhileTyping: {
       type: 'boolean',
       description:
-        'Reports each number as it is typed, not only when the field is left or Enter is pressed. Text\nthat is not a number yet (such as `-`) is not reported and does not mark the field invalid\nuntil the field is left.',
+        'Reports each number as it is typed, not only when the field is left or Enter is pressed. Text\nthat is not a number yet (such as `-`) is not reported and does not mark the field invalid\nuntil the field is left. Leaving the field reports nothing for a number, because it was\nreported as it was typed, so a value shown rounded is not changed by a visit.',
       default: false,
     },
   },

@@ -852,6 +852,24 @@ export function setStepField(
   });
 }
 
+/**
+ * `text` with the `workflow` step at `path` running another code workflow. Its `input` belonged to
+ * the workflow it had, which may refuse another's keys, so the step takes `input`, the starting
+ * input of the workflow chosen, or none for a workflow that declares no input schema.
+ */
+export function setStepWorkflow(
+  text: string,
+  path: StepPath,
+  workflow: string,
+  input?: Readonly<Record<string, unknown>>,
+): string {
+  return replaceStep(text, path, (step) => {
+    if (step['kind'] !== 'workflow') return undefined;
+    const { input: _previous, ...rest } = step;
+    return { ...rest, workflow, ...(input === undefined ? {} : { input }) };
+  });
+}
+
 /** `text` with the wait at `path` lasting `amount` of `unit`, as "For" and "Unit" set it. */
 export function setWaitDuration(
   text: string,

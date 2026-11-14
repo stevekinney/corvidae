@@ -91,6 +91,25 @@ describe('DurationField', () => {
     expect(typed).toHaveBeenLastCalledWith(7_200_000);
   });
 
+  test('a unit chosen and the number left without typing keeps the stored value', async () => {
+    const typed = mock();
+    const { container } = render(DurationField, {
+      props: {
+        id: 'timeout',
+        label: 'Timeout',
+        value: 60_000,
+        commitWhileTyping: true,
+        onValueChange: typed,
+      },
+    });
+    // One minute, read in hours, is 0.017 on screen, and leaving the field must not store that.
+    await fireEvent.change(unitOf(container), { target: { value: 'h' } });
+    expect(numberOf(container).value).toBe('0.017');
+    await fireEvent.focus(numberOf(container));
+    await fireEvent.blur(numberOf(container));
+    expect(typed).not.toHaveBeenCalled();
+  });
+
   test('the number and the unit share the size', () => {
     const { container } = render(DurationField, {
       props: { id: 'timeout', label: 'Timeout', value: 1000, size: 'sm' },

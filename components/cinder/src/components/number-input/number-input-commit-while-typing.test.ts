@@ -18,7 +18,7 @@ describe('commitWhileTyping', () => {
     expect(calls).toEqual([25]);
   });
 
-  test('reports each number as it is typed, and again as it is left', async () => {
+  test('reports each number once as it is typed, and nothing again as it is left', async () => {
     const calls: Array<number | null> = [];
     const { container } = render(NumberInput, {
       props: {
@@ -35,7 +35,37 @@ describe('commitWhileTyping', () => {
     await type(input, '25');
     expect(calls).toEqual([2, 25]);
     await blur(input);
-    expect(calls).toEqual([2, 25, 25]);
+    expect(calls).toEqual([2, 25]);
+    expect(input.value).toBe('25');
+  });
+
+  test('leaving a number nobody typed reports nothing, so a value shown rounded is not changed by a visit', async () => {
+    const calls: Array<number | null> = [];
+    // 0.0166… is shown as 0.017; committing that text would change the value.
+    const { container } = render(NumberInput, {
+      props: {
+        id: 'n',
+        value: 1 / 60,
+        locale: 'en-US',
+        commitWhileTyping: true,
+        onValueChange: (v) => calls.push(v),
+      },
+    });
+    const input = getInput(container);
+    expect(input.value).toBe('0.017');
+    await focus(input);
+    await blur(input);
+    expect(calls).toEqual([]);
+
+    // Without the prop, leaving the field reports its number, as it always has.
+    const plain: Array<number | null> = [];
+    const other = render(NumberInput, {
+      props: { id: 'p', value: 1 / 60, locale: 'en-US', onValueChange: (v) => plain.push(v) },
+    });
+    const untouched = getInput(other.container, 'p');
+    await focus(untouched);
+    await blur(untouched);
+    expect(plain).toEqual([0.017]);
   });
 
   test('reports an emptied field as null, without marking a required field invalid while it is focused', async () => {

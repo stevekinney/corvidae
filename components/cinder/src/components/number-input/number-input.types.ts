@@ -28,7 +28,8 @@ export interface NumberInputSchemaProps {
   /**
    * Reports each number as it is typed, not only when the field is left or Enter is pressed. Text
    * that is not a number yet (such as `-`) is not reported and does not mark the field invalid
-   * until the field is left.
+   * until the field is left. Leaving the field reports nothing for a number, because it was
+   * reported as it was typed, so a value shown rounded is not changed by a visit.
    * @default false
    */
   commitWhileTyping?: boolean;
@@ -101,7 +102,8 @@ export type NumberInputProps = Omit<
   /**
    * Reports each number as it is typed, not only when the field is left or Enter is pressed. Text
    * that is not a number yet (such as `-`) is not reported and does not mark the field invalid
-   * until the field is left.
+   * until the field is left. Leaving the field reports nothing for a number, because it was
+   * reported as it was typed, so a value shown rounded is not changed by a visit.
    * @default false
    */
   commitWhileTyping?: boolean;

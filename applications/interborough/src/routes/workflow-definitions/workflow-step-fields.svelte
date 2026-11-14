@@ -20,12 +20,14 @@
     setStepInput,
     setStepTimeout,
     setStepTitle,
+    setStepWorkflow,
     setTimeoutDuration,
     setWaitDuration,
     type BuilderStep,
     type StepPath,
     type WaitUnit,
   } from './workflow-builder-model.ts';
+  import { startingInput } from './workflow-step-input.ts';
   import {
     amountOf,
     isWaitUnit,
@@ -293,6 +295,11 @@
     {/if}
   {/if}
 {:else if step.kind === 'workflow'}
+  {@const workflows = host.workflows}
+  {@const entry =
+    workflows.status === 'ready'
+      ? workflows.entries.find((candidate) => candidate.id === step.workflow)
+      : undefined}
   {#if host.workflows.status === 'failed'}
     <div class="weft-step-fields__group" data-testid="step-workflow-error">
       <p class="weft-step-fields__note" role="alert">{copy.workflowCard.failed}</p>
@@ -310,13 +317,16 @@
     {...host.errorOf(stepFieldId(address, 'workflow'))}
     value={step.workflow}
     options={workflowOptions(step.workflow)}
-    onValueChange={(next: string) => host.commit(setStepField(host.text, path, 'workflow', next))}
+    onValueChange={(next: string) => {
+      const chosen =
+        workflows.status === 'ready'
+          ? workflows.entries.find((candidate) => candidate.id === next)
+          : undefined;
+      host.commit(
+        setStepWorkflow(host.text, path, next, startingInput(next, chosen?.inputSchema ?? null)),
+      );
+    }}
   />
-  {@const workflows = host.workflows}
-  {@const entry =
-    workflows.status === 'ready'
-      ? workflows.entries.find((candidate) => candidate.id === step.workflow)
-      : undefined}
   {#if step.input === null}
     <p class="weft-step-fields__note" data-testid="step-input-note">
       {copy.workflowCard.inputNotObject}

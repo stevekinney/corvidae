@@ -29,7 +29,7 @@ By default the number reports when the field is left or Enter is pressed. Set `c
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged with `.cinder-duration-field`. |
-| `commitWhileTyping` | `boolean` | no | `false` | Reports each duration as the number is typed, not only when the field is left or Enter is pressed, for a field whose value writes through at once (a builder that shows its result as you type). Text that is not a number yet (such as `-`) is not reported. Changing the unit reports nothing: the stored value stays the same, and the number is shown in the new unit. |
+| `commitWhileTyping` | `boolean` | no | `false` | Reports each duration as the number is typed, not only when the field is left or Enter is pressed, for a field whose value writes through at once (a builder that shows its result as you type). Text that is not a number yet (such as `-`) is not reported, and leaving the field reports nothing for a number. Changing the unit reports nothing: the stored value stays the same, and the number is shown in the new unit, rounded for display. |
 | `description` | `string` | no | — | Helper text announced with the field. |
 | `disabled` | `boolean` | no | — | Disables the number and the unit. |
 | `error` | `string` | no | — | Validation error; marks the field invalid. |

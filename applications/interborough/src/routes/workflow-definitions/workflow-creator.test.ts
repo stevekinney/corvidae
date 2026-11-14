@@ -696,6 +696,27 @@ describe('the builder', () => {
     await waitFor(() => expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(1));
   });
 
+  test('does not save from Enter in the number of a wait, which submits its form as a number field does', async () => {
+    const { container } = open();
+    await ready(container);
+    await fireEvent.click(button(container, BUILDER.remove(step(1))));
+    await addStep(container, BUILDER.add.wait);
+    const length = await waitFor(() => {
+      const found = field(container, 'workflow-builder-step-1-duration');
+      expect(found).toBeTruthy();
+      return found;
+    });
+    // Typing happens in a focused field, which is what Enter commits.
+    await fireEvent.focus(length);
+    await fireEvent.input(length, { target: { value: '7' } });
+    await fireEvent.keyDown(length, { key: 'Enter' });
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+    expect(router.pathname).toBe('/workflows/new');
+    // The 7 was written as it was typed and is still the length after Enter.
+    await waitFor(() => expect(summary(container)).toContain('wait 7 minutes'));
+    expect(field(container, 'workflow-builder-step-1-duration').value).toBe('7');
+  });
+
   test('leaves a file it cannot represent to the JSON tab: no add, no step fields, no trigger edit', async () => {
     const { container, findByTestId } = open();
     await ready(container);

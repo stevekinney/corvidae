@@ -64,7 +64,7 @@ const schema = {
     commitWhileTyping: {
       type: 'boolean',
       description:
-        'Reports each duration as the number is typed, not only when the field is left or Enter is\npressed, for a field whose value writes through at once (a builder that shows its result as\nyou type). Text that is not a number yet (such as `-`) is not reported. Changing the unit\nreports nothing: the stored value stays the same, and the number is shown in the new unit.',
+        'Reports each duration as the number is typed, not only when the field is left or Enter is\npressed, for a field whose value writes through at once (a builder that shows its result as\nyou type). Text that is not a number yet (such as `-`) is not reported, and leaving the field\nreports nothing for a number. Changing the unit reports nothing: the stored value stays the\nsame, and the number is shown in the new unit, rounded for display.',
       default: false,
     },
     size: {

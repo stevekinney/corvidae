@@ -45,8 +45,9 @@ export type DurationFieldProps = {
   /**
    * Reports each duration as the number is typed, not only when the field is left or Enter is
    * pressed, for a field whose value writes through at once (a builder that shows its result as
-   * you type). Text that is not a number yet (such as `-`) is not reported. Changing the unit
-   * reports nothing: the stored value stays the same, and the number is shown in the new unit.
+   * you type). Text that is not a number yet (such as `-`) is not reported, and leaving the field
+   * reports nothing for a number. Changing the unit reports nothing: the stored value stays the
+   * same, and the number is shown in the new unit, rounded for display.
    * @default false
    */
   commitWhileTyping?: boolean | undefined;

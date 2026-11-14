@@ -468,10 +468,29 @@ describe('a workflow card', () => {
       expect(select.querySelector('option[value="demo:other-workflow"]')).toBeTruthy(),
     );
     await fireEvent.change(select, { target: { value: 'demo:other-workflow' } });
+    // The input belonged to the first workflow, so another's step starts without it.
     await waitFor(async () =>
-      expect(stepsOf(await textOf(container))[1]).toMatchObject({
+      expect(stepsOf(await textOf(container))[1]).toEqual({
         kind: 'workflow',
         workflow: 'demo:other-workflow',
+      }),
+    );
+  });
+
+  test('chooses a workflow with a schema by replacing the input with its starting input', async () => {
+    const { container } = await openBuilder(
+      file([{ kind: 'workflow', workflow: 'demo:other-workflow', input: { raw: [1] } }]),
+    );
+    const select = field(container, 'workflow-builder-step-1-workflow');
+    await waitFor(() =>
+      expect(select.querySelector('option[value="demo:echo-workflow"]')).toBeTruthy(),
+    );
+    await fireEvent.change(select, { target: { value: 'demo:echo-workflow' } });
+    await waitFor(async () =>
+      expect(stepsOf(await textOf(container))[0]).toEqual({
+        kind: 'workflow',
+        workflow: 'demo:echo-workflow',
+        input: { team: '' },
       }),
     );
   });

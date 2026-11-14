@@ -28,7 +28,7 @@ Numeric text input with increment and decrement stepper controls.
 </p>
 ```
 
-By default the number is reported when the field is left, when Enter is pressed, or by a stepper. Set `commitWhileTyping` to report each number as it is typed, for a field whose value writes through at once; text that is not a number yet (a lone `-`) is held until the field is left, and an emptied field reports `null` without marking a required field invalid while it has focus.
+By default the number is reported when the field is left, when Enter is pressed, or by a stepper. Set `commitWhileTyping` to report each number as it is typed, for a field whose value writes through at once; text that is not a number yet (a lone `-`) is held until the field is left, leaving the field reports nothing for a number (it was reported as it was typed, so a value shown rounded is not changed by a visit), and an emptied field reports `null` without marking a required field invalid while it has focus.
 
 ## Props
 
@@ -38,7 +38,7 @@ By default the number is reported when the field is left, when Enter is pressed,
 | --- | --- | --- | --- | --- |
 | `adornment` | `string` | no | — | Optional non-interactive text rendered before the stepper controls. |
 | `class` | `string` | no | — |  |
-| `commitWhileTyping` | `boolean` | no | `false` | Reports each number as it is typed, not only when the field is left or Enter is pressed. Text that is not a number yet (such as `-`) is not reported and does not mark the field invalid until the field is left. |
+| `commitWhileTyping` | `boolean` | no | `false` | Reports each number as it is typed, not only when the field is left or Enter is pressed. Text that is not a number yet (such as `-`) is not reported and does not mark the field invalid until the field is left. Leaving the field reports nothing for a number, because it was reported as it was typed, so a value shown rounded is not changed by a visit. |
 | `description` | `string` | no | — |  |
 | `disabled` | `boolean` | no | — |  |
 | `error` | `string` | no | — |  |
