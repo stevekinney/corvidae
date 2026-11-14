@@ -31,6 +31,25 @@
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* On a coarse pointer the trigger paints at a Button's painted height, as a Button beside it does,
+     and reaches 44px through a positioned pseudo-element that takes no layout space: the raised
+     `--cinder-button-height-md` would otherwise draw it 44px tall in a row of 32px buttons. A fine
+     pointer keeps the rule above unchanged. `min()` keeps a trigger already 44px or more from
+     shrinking its own region. */
+  @media (any-pointer: coarse) {
+    .cinder-dropdown-trigger {
+      position: relative;
+      min-block-size: var(--_cinder-painted-height-md);
+    }
+
+    .cinder-dropdown-trigger::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
   /* Inert (a stale region's mutating menu): muted like a disabled button, but it keeps focus. */
   .cinder-dropdown-trigger[aria-disabled='true'] {
     cursor: not-allowed;

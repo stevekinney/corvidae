@@ -154,6 +154,36 @@
     }
   }
 
+  /* On a coarse pointer the current page's popover trigger paints 30px and its hit area reaches
+     44px through a positioned pseudo-element that takes no layout space. The trail's list clips
+     what overflows it, and the trigger clipped its own overflow too, so a hit area drawn past the
+     trigger's edge would be cut back to 30px: the trigger lets its overflow show (its label
+     truncates itself), and the list gains room inside its clip with padding that a matching
+     negative margin gives back, so the trail's layout does not move. */
+  @media (any-pointer: coarse) {
+    .cinder-breadcrumbs__trigger {
+      position: relative;
+      overflow: visible;
+    }
+
+    .cinder-breadcrumbs__trigger::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
+
+    .cinder-breadcrumbs__list:has(> .cinder-breadcrumbs__item > .cinder-breadcrumbs__trigger) {
+      --_cinder-breadcrumbs-hit-overhang: max(
+        0px,
+        calc((var(--cinder-touch-target-min) - 1.875rem) / 2)
+      );
+
+      padding-block: var(--_cinder-breadcrumbs-hit-overhang);
+      margin-block: calc(var(--_cinder-breadcrumbs-hit-overhang) * -1);
+    }
+  }
+
   .cinder-breadcrumbs__popover-text {
     margin: 0;
     max-inline-size: 24rem;

@@ -183,6 +183,43 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await connected.close();
   });
 
+  test('the header’s More and the title switcher paint compact and answer a 44px press (COR-2327 B2)', async ({
+    page,
+  }) => {
+    await openRefundFromList(page);
+    await expect(trail(page).getByRole('button', { name: REFUND })).toBeVisible();
+    // One layout, read once: each control's painted height, and whether presses at its centre and
+    // 21px above and below it land on it.
+    const read = await page.evaluate(() => {
+      const measure = (control: Element | null) => {
+        if (control === null) return null;
+        const box = control.getBoundingClientRect();
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        const lands = (at: number) => {
+          const hit = document.elementFromPoint(x, at);
+          return hit !== null && control.contains(hit);
+        };
+        return { height: box.height, centre: lands(y), above: lands(y - 21), below: lands(y + 21) };
+      };
+      return {
+        more: measure(
+          document.querySelector('[data-testid="chat-header"] .cinder-dropdown-trigger'),
+        ),
+        title: measure(document.querySelector('.cinder-breadcrumbs__trigger')),
+      };
+    });
+    expect(read.more).not.toBeNull();
+    expect(read.more!.height).toBeLessThanOrEqual(32.5);
+    expect(read.title).not.toBeNull();
+    expect(read.title!.height).toBeLessThanOrEqual(30.5);
+    for (const control of [read.more!, read.title!]) {
+      expect(control.centre).toBe(true);
+      expect(control.above).toBe(true);
+      expect(control.below).toBe(true);
+    }
+  });
+
   test('at 320 by 640 the waiting approval’s Deny and Approve are in view and not covered, with the reminder and the blocked row one row each (COR-2327 B1)', async ({
     page,
   }) => {
