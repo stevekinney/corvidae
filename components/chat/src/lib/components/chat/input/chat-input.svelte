@@ -812,10 +812,12 @@
     const bar = noticeElement;
     if (bar === null || typeof ResizeObserver === 'undefined') return;
     const measure = (): void => {
-      const message = bar.querySelector('.chat-input-blocked-message')?.getBoundingClientRect();
-      const actions = bar.querySelector('.chat-input-blocked-actions')?.getBoundingClientRect();
+      const wordsBox = bar.querySelector('.chat-input-blocked-message')?.getBoundingClientRect();
+      const buttonsBox = bar.querySelector('.chat-input-blocked-actions')?.getBoundingClientRect();
       noticeWrapped =
-        message !== undefined && actions !== undefined && actions.top >= message.bottom - 0.5;
+        wordsBox !== undefined &&
+        buttonsBox !== undefined &&
+        buttonsBox.top >= wordsBox.bottom - 0.5;
     };
     measure();
     const observer = new ResizeObserver(measure);
