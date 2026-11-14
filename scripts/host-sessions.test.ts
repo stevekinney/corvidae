@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
 import type { ProcessEntry, ProcessTable } from './bun-test-pool.ts';
 import { neverStartedLimitMilliseconds, workerPlaces } from './host-sessions-model.ts';
 import {
@@ -631,9 +632,9 @@ describe('release', () => {
       'released session session-A: 2 place(s)',
     ]);
     expect(await places(directory)).toBe(0);
-    await expect(releasePlace(directory, 'nothing-here', releaseOptions)).rejects.toThrow(
-      'no session, pending dispatch or running agent is named nothing-here',
-    );
+    expect(
+      await throwingRejectionOf(releasePlace(directory, 'nothing-here', releaseOptions)),
+    ).toThrow('no session, pending dispatch or running agent is named nothing-here');
   });
 });
 

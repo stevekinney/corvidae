@@ -413,14 +413,16 @@ export type Admission =
   | { readonly admitted: false; readonly waitedMilliseconds: number; readonly held: string[] };
 
 function ownerFor(
-  identity: ProcessIdentity,
+  processIdentity: ProcessIdentity,
   command: string,
   cwd: string,
   at: number,
 ): OwnerRecord {
   return {
-    pid: identity.pid,
-    ...(identity.pidStartedAt === undefined ? {} : { pidStartedAt: identity.pidStartedAt }),
+    pid: processIdentity.pid,
+    ...(processIdentity.pidStartedAt === undefined
+      ? {}
+      : { pidStartedAt: processIdentity.pidStartedAt }),
     command,
     cwd,
     acquiredAt: new Date(at).toISOString(),
