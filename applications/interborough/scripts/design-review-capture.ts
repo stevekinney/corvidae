@@ -71,7 +71,9 @@ const SPECIFICATIONS = {
  * (`chat-new-states.spec.ts`), and choosing an agent, typing, sending the first message, starting
  * from Workflows and the chat that came of it (`chat-new-workflows.spec.ts`), Duplicate on a
  * plugin's code agent with its confirmation of what the copy leaves out, and a copy's page with a
- * changed source and an unchanged one (`agent-duplicate.spec.ts`), and an open chat with no
+ * changed source and an unchanged one (`agent-duplicate.spec.ts`), a plugin's code agent edited in
+ * place on its Settings and Access tabs with its versions and Restore, and the read-only tabs of an
+ * agent whose plugin is disabled (`agent-plugin-editing.spec.ts`), and an open chat with no
  * message yet, one deleted while open, and both with no model provider (`chat-availability.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
@@ -109,6 +111,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
+  'tests/e2e/agent-plugin-editing.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
 ] as const;
 
