@@ -2255,6 +2255,7 @@ async function measure(
   problems.push(...(await readActionRowProblems(opened.page)));
   problems.push(...(await readLabelFitProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
+  problems.push(...(await readCalloutInsetProblems(opened.page)));
   problems.push(...(await readIconSizeProblems(opened.page)));
   problems.push(...(await readAttachmentStripProblems(opened.page)));
   problems.push(...(await readEdgeFadeProblems(opened.page)));
@@ -2752,6 +2753,106 @@ export async function readCalloutSpacingProblems(page: Page): Promise<string[]> 
       (gap) =>
         `notice progress line is ${gap.textToBar.toFixed(1)}px under the text but ${gap.barToAction.toFixed(1)}px above the action row`,
     );
+}
+
+/** How far a notice's top and bottom ink insets may differ, in pixels (owner review, 2026-11-14). */
+export const CALLOUT_INSET_TOLERANCE = 1;
+
+/** One notice's distance from its border to the first ink and from the last ink to its border. */
+export interface CalloutInsets {
+  readonly label: string;
+  /** From the inside of the top border to the highest ink: capitals, a glyph's drawing or a button face. */
+  readonly top: number;
+  /** From the lowest ink, a baseline, a glyph's drawing, a button face or the progress line, to the inside of the bottom border. */
+  readonly bottom: number;
+}
+
+/**
+ * Measures, for every visible notice, how far its ink stands from its border above and below
+ * (owner review of 2026-11-14: a notice read heavier on top). Ink is what is drawn: a line of
+ * text runs from the top of its capitals to its baseline (read from the font's ascent and the
+ * height of an `H`, as {@link readStepRowSpacing} does); a glyph runs over its own drawing, from
+ * its `getBBox` with the stroke; a button is its face, and its label is not measured again; the
+ * progress line is its bar. The dismiss button is a corner control and is left out. A box's air
+ * (the leading of a line, the room round a glyph) is not ink.
+ */
+export async function readCalloutInsets(page: Page): Promise<CalloutInsets[]> {
+  return page.evaluate(() => {
+    const canvas = document.createElement('canvas').getContext('2d');
+    if (canvas === null) return [];
+    const skipped = '.cinder-sr-only, [role="tooltip"], [hidden], .cinder-callout__dismiss';
+    const result: { label: string; top: number; bottom: number }[] = [];
+    for (const callout of document.querySelectorAll<HTMLElement>('.cinder-callout')) {
+      const box = callout.getBoundingClientRect();
+      if (box.height === 0 || getComputedStyle(callout).display === 'none') continue;
+      const style = getComputedStyle(callout);
+      const innerTop = box.top + parseFloat(style.borderTopWidth);
+      const innerBottom = box.bottom - parseFloat(style.borderBottomWidth);
+      const spans: [number, number][] = [];
+      const visible = (element: Element): boolean =>
+        element.closest(skipped) === null && element.getClientRects().length > 0;
+      for (const button of callout.querySelectorAll<HTMLElement>('button, a')) {
+        if (!visible(button)) continue;
+        const face = button.getBoundingClientRect();
+        spans.push([face.top, face.bottom]);
+      }
+      for (const bar of callout.querySelectorAll<HTMLElement>('[role="progressbar"]')) {
+        if (!visible(bar)) continue;
+        const face = bar.getBoundingClientRect();
+        spans.push([face.top, face.bottom]);
+      }
+      for (const glyph of callout.querySelectorAll<SVGSVGElement>('svg')) {
+        if (!visible(glyph) || glyph.closest('button, a, [role="progressbar"]') !== null) continue;
+        const drawn = glyph.getBBox({ fill: true, stroke: true });
+        const frame = glyph.getBoundingClientRect();
+        const view = glyph.viewBox.baseVal;
+        const scale = view.height > 0 ? frame.height / view.height : 1;
+        const top = frame.top + (drawn.y - view.y) * scale;
+        spans.push([top, top + drawn.height * scale]);
+      }
+      const walker = document.createTreeWalker(callout, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        const holder = node.parentElement;
+        if (holder === null || (node.textContent ?? '').trim() === '') continue;
+        if (!visible(holder) || holder.closest('button, a, [role="progressbar"]') !== null)
+          continue;
+        const holderStyle = getComputedStyle(holder);
+        canvas.font = `${holderStyle.fontStyle} ${holderStyle.fontWeight} ${holderStyle.fontSize} ${holderStyle.fontFamily}`;
+        const measured = canvas.measureText('H');
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const line of range.getClientRects()) {
+          if (line.height === 0) continue;
+          const baseline = line.top + measured.fontBoundingBoxAscent;
+          spans.push([baseline - measured.actualBoundingBoxAscent, baseline]);
+        }
+      }
+      if (spans.length === 0) continue;
+      const highest = Math.min(...spans.map(([top]) => top));
+      const lowest = Math.max(...spans.map(([, bottom]) => bottom));
+      result.push({
+        label: (callout.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40),
+        top: highest - innerTop,
+        bottom: innerBottom - lowest,
+      });
+    }
+    return result;
+  });
+}
+
+/** A notice's ink stands as far under its top border as over its bottom one. */
+export function calloutInsetProblems(insets: readonly CalloutInsets[]): string[] {
+  return insets
+    .filter((inset) => Math.abs(inset.top - inset.bottom) > CALLOUT_INSET_TOLERANCE)
+    .map(
+      (inset) =>
+        `notice "${inset.label}" has ${inset.top.toFixed(1)}px from its top border to the first ink but ${inset.bottom.toFixed(1)}px from the last ink to its bottom border`,
+    );
+}
+
+/** The notices on the page whose top and bottom ink insets differ by more than a pixel. */
+export async function readCalloutInsetProblems(page: Page): Promise<string[]> {
+  return calloutInsetProblems(await readCalloutInsets(page));
 }
 
 /** How far a glyph may exceed the line height of the text beside it, in pixels. */

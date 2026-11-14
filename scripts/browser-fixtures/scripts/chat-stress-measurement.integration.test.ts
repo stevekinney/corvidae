@@ -2,11 +2,13 @@ import { chromium } from '@playwright/test';
 import { describe, expect, it } from 'bun:test';
 
 import {
+  calloutInsetProblems,
   locate,
   measureInPage,
   readActionRowProblems,
   readAttachmentStripProblems,
   readCalloutGaps,
+  readCalloutInsets,
   readCalloutSpacingProblems,
   readEdgeFadeProblems,
   readFailureSummaryProblems,
@@ -1334,6 +1336,84 @@ describe('chat stress visual measurement', () => {
       expect(await problemsFor(row(48, 'flex-direction: column;'))).toEqual([]);
       const alone = row(48).replace('<span>Read the October ledger</span>', '');
       expect(await problemsFor(alone)).toEqual([]);
+    });
+  });
+
+  describe('notice ink inset guard', () => {
+    // The shipped stylesheet on the real markup of a notice: a glyph, the words, and an action that
+    // is stacked under the words on a phone and beside them on a wide notice.
+    const stylesheet = Bun.file(
+      new URL('../../../components/cinder/src/components/callout/callout.css', import.meta.url),
+    ).text();
+    const glyph =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
+    const notice = (options: { action?: boolean; icon?: boolean; wide?: boolean }) => {
+      const icon = options.icon === false ? '' : `<div class="cinder-callout__icon">${glyph}</div>`;
+      const content =
+        '<div class="cinder-callout__content"><p style="margin:0">Restored your unsent draft from yesterday at 4:12 PM.</p></div>';
+      const action = '<div class="cinder-callout__action"><button>Discard draft</button></div>';
+      const classes = [
+        'cinder-callout',
+        'cinder-callout--inline-action',
+        options.icon === false ? '' : 'cinder-callout--with-icon',
+      ].join(' ');
+      const inner = options.action
+        ? `<div class="cinder-callout__body"><div class="cinder-callout__message">${icon}${content}</div>${action}</div>`
+        : `${icon}${content}`;
+      return `<div class="${classes}" role="note" data-cinder-variant="neutral" style="width:${options.wide ? 640 : 296}px">${inner}</div>`;
+    };
+
+    const insetsFor = async (markup: string, extra = '') => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 700, height: 400 } });
+        await page.setContent(`
+          <style>
+            :root { --cinder-space-0-5: 2px; --cinder-space-2: 8px; --cinder-space-3: 12px; --cinder-text-sm: 13px; --cinder-leading-normal: 1.6; --cinder-leading-snug: 1.3; --cinder-border: #999; --cinder-radius-md: 6px; --cinder-surface: #fff; --cinder-text-default: #111; }
+            body { margin: 0; font-family: system-ui, sans-serif; }
+            button { font: inherit; height: 28px; padding: 0 12px; box-sizing: border-box; }
+            ${await stylesheet}
+            ${extra}
+          </style>${markup}`);
+        return await readCalloutInsets(page);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a notice with a glyph and no action, with an action under it, and one beside it', async () => {
+      for (const markup of [
+        notice({}),
+        notice({ action: true }),
+        notice({ action: true, wide: true }),
+        notice({ icon: false }),
+        notice({ icon: false, action: true }),
+      ]) {
+        const insets = await insetsFor(markup);
+        expect(insets).toHaveLength(1);
+        expect(calloutInsetProblems(insets)).toEqual([]);
+      }
+    });
+
+    it('measures the glyph, the letters and the button face, not their boxes', async () => {
+      const [stacked] = await insetsFor(notice({ action: true }));
+      // The button face is the last ink, at the inset; the glyph's drawing is the first.
+      expect(Math.abs(stacked!.bottom - 12)).toBeLessThan(0.5);
+      expect(Math.abs(stacked!.top - 12)).toBeLessThan(1);
+    });
+
+    it('fails a notice that pads every side alike, whose first line stands lower than its last ink', async () => {
+      const heavy = `.cinder-callout { padding-block: 12px !important; }
+        .cinder-callout__message { margin-block: 0 !important; }`;
+      for (const markup of [notice({}), notice({ action: true })]) {
+        const problems = calloutInsetProblems(await insetsFor(markup, heavy));
+        expect(problems).toEqual([expect.stringContaining('from its top border to the first ink')]);
+      }
+    });
+
+    it('fails a notice whose last line of text has more air under it than its first has above', async () => {
+      const light = '.cinder-callout { padding-block-end: 20px !important; }';
+      expect(calloutInsetProblems(await insetsFor(notice({}), light))).toHaveLength(1);
     });
   });
 
