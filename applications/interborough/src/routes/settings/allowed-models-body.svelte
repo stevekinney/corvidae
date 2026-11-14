@@ -55,12 +55,9 @@
     type ModelPolicy,
     type PreferChoice,
   } from './model-policy-edit.ts';
-  import {
-    formatModelAbilities,
-    modelDisplayName,
-    providerDisplayName,
-  } from './models/format-model.ts';
+  import { formatModelAbilities, modelDisplayName } from './models/format-model.ts';
   import ModelName from './models/model-name.svelte';
+  import { createProviderTitles } from './models/provider-titles.svelte.ts';
   import { controlFor, MODEL_POLICY_KEY, type Control } from './settings-controls.ts';
   import { formSchemaOf, numbersCommitted } from './settings-form-schema.ts';
   import { SettingsForm } from './settings-form.svelte.ts';
@@ -163,6 +160,9 @@
     );
     failure = undefined;
   }
+
+  // The name of each provider's group: its plugin's title, as on Settings › Models.
+  const providerNames = createProviderTitles();
 
   // The models the connected providers offer.
   const providers = createQuery(
@@ -324,7 +324,7 @@
   {#if groups.length > 0}
     <FormSection grouped heading={copy.models.title} description={copy.models.description}>
       {#each groups as group (group.provider)}
-        <h3 class="weft-allowed__provider">{providerDisplayName(group.provider)}</h3>
+        <h3 class="weft-allowed__provider">{providerNames.title(group.provider)}</h3>
         {#each group.models as model (model.model)}
           {@const denied = deniedProviders.includes(model.provider)}
           <div class="weft-allowed__model" data-model={`${model.provider}/${model.model}`}>

@@ -621,13 +621,49 @@ describe('a fallback model the Bureau’s fallback never uses', () => {
     const { container, findByRole } = open({ served });
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
+    // The model is named one way on the screen: the select and the warning both say "Jev, TypeSafe".
     await waitFor(() =>
       expect(row(container, 'decisions.fallbackModel').textContent).toContain(
-        copy.fallbackModel.unusable('typesafe/jev'),
+        copy.fallbackModel.unusable('Jev, TypeSafe'),
       ),
     );
+    expect(
+      trigger(container, 'decisions.fallbackModel').textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe('Jev, TypeSafe');
+    expect(row(container, 'decisions.fallbackModel').textContent).not.toContain('typesafe/jev');
     expect(row(container, 'decisions.model').textContent).not.toContain(
-      copy.fallbackModel.unusable('typesafe/jev'),
+      copy.fallbackModel.unusable('Jev, TypeSafe'),
+    );
+  });
+
+  test('keeps the raw id for a stored fallback the Bureau does not list', async () => {
+    const served = servedSettings();
+    served.values['decisions.fallbackModel'] = 'acme/vanished';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    expect(trigger(container, 'decisions.fallbackModel').textContent).toContain('acme/vanished');
+  });
+
+  test('reads the key’s own default in the empty option of the fallback while the rows are missing, as it does once they load', async () => {
+    const served = servedSettings({
+      effective: { 'decisions.fallbackModel': 'anthropic/claude-haiku-5-5' },
+    });
+    delete served.values['decisions.fallbackModel'];
+    const { container, findByRole } = open({
+      served,
+      rowsFor: () => {
+        throw new StubFault('Unavailable', 503, 'The rows did not come back.');
+      },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
+    );
+
+    expect(trigger(container, 'decisions.fallbackModel').textContent).toContain(
+      SETTINGS_COPY.defaultOption('Claude Haiku 5.5'),
     );
   });
 

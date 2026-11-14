@@ -26,8 +26,6 @@
     type SettingsSchema,
     type SettingsSnapshot,
   } from '../../../lib/bureau-settings.ts';
-  import { listContributedProviders } from '../../../lib/bureau-plugin-kinds.ts';
-  import { getPlugins } from '../../../lib/host-plugins.ts';
   import { getProviders, HostProviderError } from '../../../lib/host-providers.ts';
   import { returnPathOf } from '../../../lib/provider-return.ts';
   import { queryKeys } from '../../../lib/query.ts';
@@ -41,8 +39,8 @@
   import { SettingsRevert } from '../settings-revert.svelte.ts';
   import DecisionsSection from './decisions-section.svelte';
   import ModelsSection, { type CatalogFailure } from './models-section.svelte';
-  import { providerConfigurationSources, providerTitle } from './provider-configuration.ts';
   import ProvidersSection from './providers-section.svelte';
+  import { createProviderTitles } from './provider-titles.svelte.ts';
 
   interface Props {
     schema: SettingsSchema;
@@ -62,28 +60,11 @@
     undefined,
   );
 
-  // TypeSafe is a plugin; its decision model has no key while the plugin is `needs-setup`.
-  const plugins = createQuery(
-    () => ({
-      queryKey: queryKeys.hostPlugins(),
-      queryFn: ({ signal }) => getPlugins({ signal }),
-      retry: false,
-    }),
-    undefined,
-  );
-  // A provider's plugin holds its configuration: the schema comes from the Bureau and the stored
-  // value from the host's plugins (the one Settings › Plugins edits).
-  const contributed = createQuery(
-    () => ({
-      queryKey: queryKeys.contributedProviders(),
-      queryFn: ({ signal }) => listContributedProviders({ signal }),
-      retry: false,
-    }),
-    undefined,
-  );
-  const configurations = $derived(
-    providerConfigurationSources(contributed.data ?? [], plugins.data?.plugins ?? []),
-  );
+  // The plugins name each provider and hold its configuration; the same lookup names the groups of
+  // Allowed models. TypeSafe is a plugin; its decision model has no key while it is `needs-setup`.
+  const names = createProviderTitles();
+  const plugins = names.plugins;
+  const configurations = $derived(names.configurations);
   const typesafeNeedsKey = $derived(
     (plugins.data?.plugins ?? []).some(
       (plugin) => plugin.descriptor.name === 'typesafe' && plugin.status === 'needs-setup',
@@ -116,7 +97,7 @@
     return {
       providers: providers.data.providers
         .filter((entry) => entry.connected)
-        .map((entry) => providerTitle(entry.name, configurations)),
+        .map((entry) => names.title(entry.name)),
       status: error instanceof HostProviderError ? error.status : undefined,
     };
   });
@@ -277,7 +258,7 @@
     {stateOf}
     effective={snapshot.effective}
     {typesafeNeedsKey}
-    providerTitle={(provider: string) => providerTitle(provider, configurations)}
+    providerTitle={names.title}
   />
 </div>
 

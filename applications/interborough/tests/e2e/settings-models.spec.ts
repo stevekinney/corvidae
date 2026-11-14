@@ -8,7 +8,7 @@
  * Each captioned state is captured for the design review (`design-review-capture.ts`) at the widths
  * Settings is drawn at.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -38,6 +38,22 @@ async function open(page: Page, origin: string) {
   await page.goto(`${origin}${ROUTE}`);
   await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
   await expect(page.getByRole('heading', { level: 1, name: 'Models' })).toBeVisible();
+}
+
+/**
+ * Leaves a select's list open and on screen, whatever a resize or a scroll did to it. Each viewport
+ * change (and the capture at 320 by 640) can leave the select below the fold, with its list clipped
+ * or closed, so the select is scrolled into view first (the list hangs from it), then closed with
+ * Escape, which a closed select ignores, and opened again, so the state does not depend on whether
+ * the scroll or the resize closed it. It runs again before each screenshot, so it is idempotent.
+ */
+async function showListOpen(page: Page, select: Locator) {
+  await select.scrollIntoViewIfNeeded();
+  await select.press('Escape');
+  await expect(select).toHaveAttribute('aria-expanded', 'false');
+  await select.click();
+  await expect(select).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('listbox')).toBeVisible();
 }
 
 const providerRow = (page: Page, name: string) => page.locator(`[data-provider="${name}"]`);
@@ -232,16 +248,9 @@ test.describe('Settings › Models, provider connected', () => {
       MODELS_COPY.decisions.needsSetup,
     );
     await checkA11y('settings models, decision model open, at 1280px');
-    // Each viewport change (and the capture at 320 by 640) can leave the select below the fold, with
-    // its listbox clipped or closed: bring the select into view, open the listbox again if the
-    // resize closed it, and scroll the listbox into view, before the pixels.
-    const listbox = page.getByRole('listbox');
-    await captureAtEveryWidth(page, 'decision-model-open', async () => {
-      await model.getByRole('combobox').scrollIntoViewIfNeeded();
-      if (!(await listbox.isVisible())) await model.getByRole('combobox').click();
-      await expect(listbox).toBeVisible();
-      await listbox.scrollIntoViewIfNeeded();
-    });
+    await captureAtEveryWidth(page, 'decision-model-open', () =>
+      showListOpen(page, model.getByRole('combobox')),
+    );
   });
 
   test('Decisions, the fallback model open: only the rows the fallback can use, the decision-only row left out', async ({
@@ -348,8 +357,9 @@ test.describe('Settings › Models, provider connected', () => {
     await open(page, E2E_BASE_URL);
     const fallback = page.locator('[data-setting="decisions.fallbackModel"]');
     await expect(fallback).toContainText(
-      MODELS_COPY.decisions.fallbackModel.unusable('typesafe/jev'),
+      MODELS_COPY.decisions.fallbackModel.unusable('Jev, TypeSafe'),
     );
+    await expect(fallback.getByRole('combobox')).toContainText('Jev, TypeSafe');
     await expect(fallback.locator('[aria-invalid="true"]')).toHaveCount(0);
     await checkA11y('settings models, fallback model unusable, at 1280px');
     await captureAtEveryWidth(page, 'fallback-unusable');
@@ -416,7 +426,9 @@ test.describe('Settings › Models, provider connected', () => {
     // Opened, the stored name is still an option, unmarked, beside the rows the Bureau lists.
     await model.getByRole('combobox').click();
     await expect(page.getByRole('option', { name: 'acme/vanished' })).toBeVisible();
-    await captureAtEveryWidth(page, 'decision-model-missing-open');
+    await captureAtEveryWidth(page, 'decision-model-missing-open', () =>
+      showListOpen(page, model.getByRole('combobox')),
+    );
   });
 });
 

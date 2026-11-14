@@ -20,6 +20,11 @@ import { landAt } from '../chat/pages.test-support.ts';
 import { LOCAL_PROFILE } from './model-policy-edit.ts';
 import { installFakeHost, model, type FakeHost } from './models/models-host.test-support.ts';
 import {
+  installFakePluginHost,
+  type FakePluginHost,
+  type PluginFixture,
+} from './plugins/plugins-host.test-support.ts';
+import {
   installSettingsBureau,
   servedSettings,
   SETTING_VALUES,
@@ -38,9 +43,12 @@ const SAMPLE_POLICY = {
 
 let stub: BureauStub | undefined;
 let host: FakeHost | undefined;
+let pluginHost: FakePluginHost | undefined;
 afterEach(() => {
   cleanup();
   // Newest first: each stand-in restores the fetch it found.
+  pluginHost?.restore();
+  pluginHost = undefined;
   host?.restore();
   host = undefined;
   stub?.restore();
@@ -61,6 +69,8 @@ function open(
     /** Providers that declare no secret (a local Ollama): connected with no key saved. */
     keyless?: Record<string, ReturnType<typeof model>[]>;
     extra?: Record<string, (params: Record<string, unknown>) => unknown>;
+    /** The host's plugins, which title each provider's group. */
+    plugins?: PluginFixture[];
   } = {},
 ) {
   stub = installSettingsBureau(options.served ?? served(), options.extra ?? {});
@@ -69,6 +79,7 @@ function open(
     keyless: Object.keys(options.keyless ?? {}),
     offered: { anthropic: [OPUS, SONNET, HAIKU], ...options.keyless },
   });
+  if (options.plugins !== undefined) pluginHost = installFakePluginHost(options.plugins);
   landAt('/settings/allowed-models');
   return render(RouteOutletHarness, {
     props: {
@@ -142,6 +153,25 @@ describe('with only a keyless provider connected (COR-2414)', () => {
     // Anthropic holds no key here, so its models are not offered.
     expect(view.queryByRole('checkbox', { name: 'Claude Opus 5.5' })).toBeNull();
     expect(view.queryByTestId('allowed-models-empty')).toBeNull();
+  });
+
+  test('titles the group by its plugin, as Settings › Models does, not by the lowercase identifier', async () => {
+    const view = await ready(
+      open({
+        plugins: [{ name: 'ollama', title: 'Ollama' }],
+        keyless: { ollama: [model('ollama', 'llama-3-2', {})] },
+        extra: {
+          'bureau.plugins.contributions': () => ({
+            providers: [{ plugin: 'ollama', name: 'ollama', configuration: null }],
+            triggers: [],
+            reactions: [],
+          }),
+        },
+      }),
+    );
+    await view.findByRole('checkbox', { name: 'Llama 3.2' });
+    expect(await view.findByRole('heading', { level: 3, name: 'Ollama' })).not.toBeNull();
+    expect(view.queryByRole('heading', { level: 3, name: 'ollama' })).toBeNull();
   });
 });
 

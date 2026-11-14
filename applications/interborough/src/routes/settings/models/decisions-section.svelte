@@ -147,8 +147,13 @@
   const fallbackWarning = $derived.by(() => {
     const stored = form.draft('decisions.fallbackModel');
     if (typeof stored !== 'string' || stored === '') return undefined;
-    const unusable = listed?.some((row) => !row.canBeFallback && decisionRowName(row) === stored);
-    return unusable === true ? copy.fallbackModel.unusable(stored) : undefined;
+    const unusable = listed?.find((row) => !row.canBeFallback && decisionRowName(row) === stored);
+    // Named as its select names it ("Jev, TypeSafe"), not by its raw id.
+    return unusable === undefined
+      ? undefined
+      : copy.fallbackModel.unusable(
+          `${modelDisplayName(unusable.model)}, ${providerTitle(unusable.provider)}`,
+        );
   });
 
   /**
@@ -176,19 +181,35 @@
         ...(row.availability === 'needs-setup' ? { note: copy.needsSetup } : {}),
       };
     });
-    // A stored row the list does not hold keeps its own name, unmarked, beside the warning.
-    return typeof current === 'string' &&
-      current !== '' &&
-      !options.some((option) => option.value === current)
-      ? [{ value: current, label: current }, ...options]
-      : options;
+    if (typeof current !== 'string' || current === '') return options;
+    if (options.some((option) => option.value === current)) return options;
+    // A stored row the Bureau lists but this select does not offer (the fallback's `unusable`) is
+    // named as the other row names it. One the Bureau does not list keeps its own id, unmarked,
+    // beside the warning.
+    const known = listed?.find((row) => decisionRowName(row) === current);
+    return [
+      known === undefined
+        ? { value: current, label: current }
+        : {
+            value: current,
+            label: modelDisplayName(known.model),
+            triggerSuffix: providerTitle(known.provider),
+          },
+      ...options,
+    ];
   }
 
-  /** The empty option of the fallback: the row the Bureau says the fallback uses while it is empty. */
+  /**
+   * The empty option of the fallback: the row the Bureau says the fallback uses while it is empty.
+   * While the rows are not here it is `undefined`, so the field names the key's own default (the
+   * value in force) as it does for any other select, and reads the same as it does once loaded.
+   */
   const fallbackEmpty = $derived(
-    fallbackRow === undefined
-      ? SETTINGS_COPY.notSet
-      : SETTINGS_COPY.defaultOption(modelDisplayName(fallbackRow.model)),
+    listed === undefined
+      ? undefined
+      : fallbackRow === undefined
+        ? SETTINGS_COPY.notSet
+        : SETTINGS_COPY.defaultOption(modelDisplayName(fallbackRow.model)),
   );
 
   function openTypesafe(event: MouseEvent): void {
@@ -214,7 +235,7 @@
     descriptionAction?: typeof connectTypesafe | undefined;
     loadFailure?: { message: string; retry: () => void; retryLabel: string } | undefined;
     rowChoices?: readonly SelectOption[];
-    emptyLabel?: string;
+    emptyLabel?: string | undefined;
     warning?: string | undefined;
     disabled?: boolean;
   } = {},
