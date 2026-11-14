@@ -2288,7 +2288,7 @@ describe('ApprovalCard outcome', () => {
 
     expect(
       squash(container.querySelector('.cinder-approval-card__decision-note')?.textContent),
-    ).toBe('Your note Check the carrier’s claim first. Sent to the agent as the reason.');
+    ).toBe('Your note: Check the carrier’s claim first. Sent to the agent as the reason.');
   });
 
   test('keeps the input line on a decided row', () => {

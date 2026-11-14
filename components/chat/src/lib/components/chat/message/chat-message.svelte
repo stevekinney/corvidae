@@ -1234,8 +1234,10 @@
   {#if transcript}
     <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
-         line again, and so does an empty one, which carries its time there. -->
-    {#if !isEditing && !systemRow && turnPresentation.line}
+         line again, and so does an empty one, which carries its time there. What the agent says
+         while it works (narration) is not an answer, so it has no time, Copy, Quote or Regenerate
+         unless the turn ended on it. -->
+    {#if !isEditing && !systemRow && turnPresentation.line && !(narration && turnState === undefined)}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
