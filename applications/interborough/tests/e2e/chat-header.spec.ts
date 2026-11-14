@@ -199,6 +199,7 @@ for (const viewport of VIEWPORTS) {
       new RegExp(MORE.rename),
       new RegExp(MORE.branch),
       new RegExp(MORE.export),
+      new RegExp(MORE.archive),
       new RegExp(MORE.delete),
     ]);
     await checkA11y(`the chat's More menu, at ${viewport.width} pixels`);
