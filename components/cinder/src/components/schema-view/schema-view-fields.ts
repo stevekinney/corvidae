@@ -35,7 +35,31 @@ export type SchemaViewField = {
   fields: SchemaViewField[];
   /** True when nested fields were left out because they are deeper than `maxDepth`. */
   truncated: boolean;
+  /** What kind of value the field takes, for its type mark. */
+  kind: SchemaViewKind;
+  /** The quiet facts about the value: allowed values, the default, the format, its limits. */
+  facts: SchemaViewFact[];
 };
+
+/** The kinds of value a type mark names, each with its own word and hue. */
+export type SchemaViewKind = 'text' | 'number' | 'boolean' | 'object' | 'list' | 'choice' | 'any';
+
+/** The word a type mark shows for each kind. */
+export const SCHEMA_VIEW_KIND_WORDS: Readonly<Record<SchemaViewKind, string>> = {
+  text: 'text',
+  number: 'number',
+  boolean: 'yes or no',
+  object: 'object',
+  list: 'list',
+  choice: 'choice',
+  any: 'any',
+};
+
+/**
+ * One fact about a field's value, read as `label`, then `detail` in words, then `values` in the
+ * code face: "Default `thorough`", "One of `quick`, `thorough`", "Format date and time".
+ */
+export type SchemaViewFact = { label: string; detail?: string; values?: string[] };
 
 /**
  * Splits a description into the line a person reads and the text written for a model. The first
@@ -411,6 +435,107 @@ type FieldScope = {
   branch?: string;
 };
 
+/** The types a schema declares, without `null`, and whether `null` was one of them. */
+function declaredTypes(schema: SchemaRecord): { types: string[]; nullable: boolean } {
+  const declared = schema['type'];
+  const all = typeof declared === 'string' ? [declared] : stringList(declared);
+  return { types: all.filter((type) => type !== 'null'), nullable: all.includes('null') };
+}
+
+const KIND_BY_TYPE = new Map<string, SchemaViewKind>([
+  ['string', 'text'],
+  ['number', 'number'],
+  ['integer', 'number'],
+  ['boolean', 'boolean'],
+  ['object', 'object'],
+  ['array', 'list'],
+]);
+
+/** What kind of value a (flattened) schema takes. */
+function fieldKind(schema: SchemaRecord, isChoice: boolean): SchemaViewKind {
+  if (isChoice || Array.isArray(schema['enum']) || 'const' in schema) return 'choice';
+  const { types } = declaredTypes(schema);
+  if (types.length === 1) return KIND_BY_TYPE.get(types[0] ?? '') ?? 'any';
+  if (types.length === 0) {
+    if (isRecord(schema['properties'])) return 'object';
+    if (isRecord(schema['items'])) return 'list';
+  }
+  return 'any';
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** A limit in words: `1 to 3 items`, `At least 1 character`, `At most 1`. */
+function rangeFact(minimum: unknown, maximum: unknown, unit = ''): SchemaViewFact | undefined {
+  const low = finiteNumber(minimum);
+  const high = finiteNumber(maximum);
+  const of = (count: number) => (unit === '' ? '' : ` ${count === 1 ? unit : `${unit}s`}`);
+  if (low !== undefined && high !== undefined) {
+    return { label: low === high ? `Exactly ${low}${of(low)}` : `${low} to ${high}${of(high)}` };
+  }
+  if (low !== undefined) return { label: `At least ${low}${of(low)}` };
+  if (high !== undefined) return { label: `At most ${high}${of(high)}` };
+  return undefined;
+}
+
+/**
+ * The quiet facts about a field's value, in reading order: what kind of number or text it is,
+ * what it holds, the values it allows, its default, and its limits.
+ */
+function fieldFacts(
+  schema: SchemaRecord,
+  kind: SchemaViewKind,
+  type: string,
+  choices: Choices | undefined,
+): SchemaViewFact[] {
+  const facts: SchemaViewFact[] = [];
+  const { types, nullable } = declaredTypes(schema);
+  if (types.length === 1 && types[0] === 'integer') facts.push({ label: 'Whole number' });
+  const format = schema['format'];
+  if (kind === 'text' && typeof format === 'string') {
+    facts.push({ label: 'Format:', detail: FORMAT_WORDS.get(format) ?? format });
+  }
+  if (kind === 'list' && type.startsWith('list of ')) {
+    facts.push({ label: 'Holds', detail: type.slice('list of '.length) });
+  }
+  if (kind === 'any' && type !== 'anything') facts.push({ label: type });
+  const values = schema['enum'];
+  if (Array.isArray(values)) {
+    const shown = values.slice(0, ENUM_VALUES_SHOWN).map(plain);
+    facts.push({
+      label: 'One of',
+      values: values.length > ENUM_VALUES_SHOWN ? [...shown, '…'] : shown,
+    });
+  } else if ('const' in schema) {
+    facts.push({ label: 'Always', values: [plain(schema['const'])] });
+  } else if (choices) {
+    facts.push({
+      label: 'One of',
+      detail: choices.members.map((member) => member.name).join(', '),
+    });
+  }
+  if (nullable) facts.push({ label: 'Or none' });
+  if ('default' in schema) facts.push({ label: 'Default', values: [plain(schema['default'])] });
+  const limits =
+    kind === 'text'
+      ? rangeFact(schema['minLength'], schema['maxLength'], 'character')
+      : kind === 'list'
+        ? rangeFact(schema['minItems'], schema['maxItems'], 'item')
+        : kind === 'number'
+          ? rangeFact(
+              schema['minimum'] ?? schema['exclusiveMinimum'],
+              schema['maximum'] ?? schema['exclusiveMaximum'],
+            )
+          : undefined;
+  if (limits) facts.push(limits);
+  if (typeof schema['pattern'] === 'string') {
+    facts.push({ label: 'Matches', values: [schema['pattern']] });
+  }
+  return facts;
+}
+
 function describeField(field: SchemaViewField, schema: SchemaRecord): SchemaViewField {
   const description = schema['description'];
   if (typeof description === 'string' && description.trim() !== '') {
@@ -466,16 +591,20 @@ function buildFields(
       }
       if (choices) children.push(...buildBranchFields(walk, choices, below, depth + 1, fieldPath));
     }
+    const type = describeType(root, schema, typePath, label);
+    const kind = fieldKind(schema, choices !== undefined);
     fields.push(
       describeField(
         {
           key,
           path: fieldPath,
           label: shownLabel,
-          type: describeType(root, schema, typePath, label),
+          type,
           required: required.has(key),
           fields: children,
           truncated: hasChildren && !expand,
+          kind,
+          facts: fieldFacts(schema, kind, type, choices),
         },
         schema,
       ),
@@ -544,14 +673,18 @@ export function readSchemaFields(schema: unknown, requestedDepth = 8): SchemaVie
     ];
   }
   if (Object.keys(root).length === 0) return [];
+  const type = describeType(schema, root, path, 'Value');
+  const kind = fieldKind(root, choices !== undefined);
   const field: SchemaViewField = {
     key: 'value',
     path: 'value',
     label: 'Value',
-    type: describeType(schema, root, path, 'Value'),
+    type,
     required: false,
     fields: [],
     truncated: false,
+    kind,
+    facts: fieldFacts(root, kind, type, choices),
   };
   return [describeField(field, root)];
 }
