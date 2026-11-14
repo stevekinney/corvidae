@@ -2254,6 +2254,12 @@ async function measure(
   if (stressCase.slug === 'narration-folded-open') {
     problems.push(...(await readNarrationStyleProblems(opened.page)));
   }
+  if (stressCase.id === 82) {
+    problems.push(...(await readNarrationLineProblems(opened.page, 'bare')));
+  }
+  if (stressCase.id === 39) {
+    problems.push(...(await readNarrationLineProblems(opened.page, 'asking')));
+  }
   problems.push(...(await readActionRowProblems(opened.page)));
   problems.push(...(await readLabelFitProblems(opened.page)));
   problems.push(...(await readCalloutSpacingProblems(opened.page)));
@@ -3543,6 +3549,47 @@ export async function readNarrationStyleProblems(page: Page): Promise<string[]> 
     }
     return problems;
   });
+}
+
+/**
+ * What sits under an assistant line that was written while the agent works (owner decision of
+ * 2026-11-14). Bare narration, text the agent wrote and then kept working, has no message line: no
+ * time and no Copy, Quote or Regenerate. Narration that asks, directly before a pending approval,
+ * question or tool input, is the agent talking to the person and keeps its time and its actions.
+ * Judged from the DOM under every narration wrapper, so a hidden or absent control cannot pass as
+ * the other kind.
+ *
+ * @param page - The captured page
+ * @param kind - `'bare'` expects no time and no action buttons; `'asking'` expects both
+ */
+export async function readNarrationLineProblems(
+  page: Page,
+  kind: 'bare' | 'asking',
+): Promise<string[]> {
+  return page.evaluate((expected) => {
+    const wrappers = [...document.querySelectorAll('.chat-message-wrapper[data-narration]')].filter(
+      (wrapper) => wrapper.closest('.chat-tool-call-timeline') === null,
+    );
+    if (wrappers.length === 0) return ['no narration message was found on the page'];
+    const problems: string[] = [];
+    for (const wrapper of wrappers) {
+      const label = (wrapper.querySelector('.chat-message-body')?.textContent ?? '')
+        .trim()
+        .slice(0, 40);
+      const times = wrapper.querySelectorAll('.chat-message-line time').length;
+      const buttons = wrapper.querySelectorAll('.chat-message-line-actions button').length;
+      if (expected === 'bare') {
+        if (times > 0) problems.push(`the narration "${label}" has a time under it`);
+        if (buttons > 0) {
+          problems.push(`the narration "${label}" has ${buttons} action buttons under it`);
+        }
+      } else {
+        if (times === 0) problems.push(`the asking text "${label}" has no time under it`);
+        if (buttons === 0) problems.push(`the asking text "${label}" has no action buttons`);
+      }
+    }
+    return problems;
+  }, kind);
 }
 
 interface RunState {

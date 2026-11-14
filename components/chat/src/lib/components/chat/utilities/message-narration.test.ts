@@ -59,18 +59,89 @@ describe('classifyAssistantText', () => {
     expect(roles([user('u'), text('n'), result('r', 'x')])).toEqual({ n: 'narration' });
   });
 
-  test('text then a pending approval is narration', () => {
-    const pending = call('c');
-    const approval = message({
-      id: 'r',
+  const asks = (id: string, callId: string, type: 'approval' | 'input'): Message =>
+    message({
+      id,
       role: 'tool-result',
       toolResult: {
-        callId: 'c-call',
+        callId,
         outcome: 'action_required',
-        action: { type: 'approval', message: 'Send the email?' },
+        action:
+          type === 'approval'
+            ? { type: 'approval', message: 'Send the email?' }
+            : { type: 'input', schema: { type: 'object' } },
       } as Message['toolResult'],
     });
-    expect(roles([user('u'), text('n'), pending, approval])).toEqual({ n: 'narration' });
+
+  test('text then a pending approval is asking', () => {
+    expect(roles([user('u'), text('n'), call('c'), asks('r', 'c-call', 'approval')])).toEqual({
+      n: 'asking',
+    });
+  });
+
+  test('text, a finished step, then a pending approval is asking', () => {
+    expect(
+      roles([
+        user('u'),
+        text('n'),
+        call('s'),
+        result('sr', 's-call'),
+        call('c'),
+        asks('r', 'c-call', 'approval'),
+      ]),
+    ).toEqual({ n: 'asking' });
+  });
+
+  test('text then a pending question or tool input is asking', () => {
+    expect(roles([user('u'), text('n'), call('c'), asks('r', 'c-call', 'input')])).toEqual({
+      n: 'asking',
+    });
+  });
+
+  test('only the text directly before the ask is asking; earlier text is narration', () => {
+    expect(
+      roles([
+        user('u'),
+        text('first'),
+        call('s'),
+        result('sr', 's-call'),
+        text('second'),
+        call('c'),
+        asks('r', 'c-call', 'approval'),
+      ]),
+    ).toEqual({ first: 'narration', second: 'asking' });
+  });
+
+  test('an approval decided later in the transcript leaves plain narration', () => {
+    const decided = message({
+      id: 'r2',
+      role: 'tool-result',
+      toolResult: { callId: 'c-call', outcome: 'success', content: { ok: true } },
+    });
+    expect(
+      roles([user('u'), text('n'), call('c'), asks('r', 'c-call', 'approval'), decided, text('a')]),
+    ).toEqual({ n: 'narration', a: 'answer' });
+  });
+
+  test('an ask the person answered in this chat leaves plain narration', () => {
+    const transcript = [user('u'), text('n'), call('c'), asks('r', 'c-call', 'approval')];
+    const answeredCallIds = new Set(['c-call']);
+    expect(Object.fromEntries(classifyAssistantText(transcript, { answeredCallIds }))).toEqual({
+      n: 'narration',
+    });
+  });
+
+  test('an ask in an earlier turn does not make a later turn narration an ask', () => {
+    expect(
+      roles([
+        user('u1'),
+        call('c'),
+        asks('r', 'c-call', 'approval'),
+        user('u2'),
+        text('n'),
+        call('d'),
+      ]),
+    ).toEqual({ n: 'narration' });
   });
 
   test('a turn that stopped after narration and a tool has narration and no answer', () => {

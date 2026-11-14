@@ -17,6 +17,7 @@ import {
   readIconSizeProblems,
   readLabelFitProblems,
   readNarrationFoldProblems,
+  readNarrationLineProblems,
   readNarrationStyleProblems,
   readQuestionStepsProblems,
   readRepeatedSummaryProblems,
@@ -1561,6 +1562,65 @@ describe('chat stress visual measurement', () => {
       expect(await problemsFor(narration + notice)).toEqual([
         'the step row not found in the stopped turn',
       ]);
+    });
+  });
+
+  describe('narration line guard', () => {
+    const line = (parts: { time?: boolean; actions?: boolean; sources?: boolean }): string =>
+      `<div class="chat-message-line">${parts.time === false ? '' : '<time>9:01 AM</time>'}${
+        parts.actions === false
+          ? ''
+          : '<span class="chat-message-line-actions"><button>Copy</button><button>Quote</button></span>'
+      }${parts.sources === true ? '<span class="chat-message-line-sources"><button>1 source</button></span>' : ''}</div>`;
+    const narrationWith = (lineMarkup: string): string =>
+      `<div class="chat-message-wrapper" data-narration><div class="chat-message-body"><p>Looking up the order.</p></div>${lineMarkup}</div>`;
+
+    const problemsFor = async (markup: string, kind: 'bare' | 'asking'): Promise<string[]> => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 400, height: 400 } });
+        await page.setContent(markup);
+        return await readNarrationLineProblems(page, kind);
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes bare narration with no line, or with its sources control alone', async () => {
+      expect(await problemsFor(narrationWith(''), 'bare')).toEqual([]);
+      expect(
+        await problemsFor(
+          narrationWith(line({ time: false, actions: false, sources: true })),
+          'bare',
+        ),
+      ).toEqual([]);
+    });
+
+    it('fails bare narration that has a time or action buttons under it', async () => {
+      expect(await problemsFor(narrationWith(line({})), 'bare')).toEqual([
+        'the narration "Looking up the order." has a time under it',
+        'the narration "Looking up the order." has 2 action buttons under it',
+      ]);
+    });
+
+    it('passes asking text that keeps its time and actions, and fails one that lost either', async () => {
+      expect(await problemsFor(narrationWith(line({})), 'asking')).toEqual([]);
+      expect(await problemsFor(narrationWith(''), 'asking')).toEqual([
+        'the asking text "Looking up the order." has no time under it',
+        'the asking text "Looking up the order." has no action buttons',
+      ]);
+    });
+
+    it('reports a page with no narration, and ignores narration folded into a step row', async () => {
+      expect(await problemsFor('<p>Nothing.</p>', 'bare')).toEqual([
+        'no narration message was found on the page',
+      ]);
+      expect(
+        await problemsFor(
+          `<section class="chat-tool-call-timeline">${narrationWith(line({}))}</section>`,
+          'bare',
+        ),
+      ).toEqual(['no narration message was found on the page']);
     });
   });
 

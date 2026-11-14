@@ -713,7 +713,19 @@
   const activeTurnMessageIds = $derived(transcript.activeTurnMessageIds);
   // What each assistant text message is within its turn: narration (a tool message follows it) or
   // the answer. Derived from position alone, so nothing stored or sent changes.
-  const assistantTextRoles = $derived(classifyAssistantText(messages));
+  // Narration directly before a pending approval, question or tool input is the agent talking to
+  // the person, so it is `asking` and keeps its message line. An ask the person has answered stops
+  // counting before its result stops asking.
+  const assistantTextRoles = $derived(
+    classifyAssistantText(messages, {
+      answeredCallIds: new Set([
+        ...questions.answers.keys(),
+        ...[...commandActions.approvalStates]
+          .filter(([, state]) => state !== 'pending')
+          .map(([callId]) => callId),
+      ]),
+    }),
+  );
   const progressState = $derived(transcript.progressState);
   const toolCallPairsByCallId = $derived(transcript.toolCallPairsByCallId);
   const toolResultMessagesByResult = $derived(transcript.toolResultMessagesByResult);
@@ -2540,7 +2552,8 @@
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           presentation={variant === 'transcript' ? 'transcript' : 'default'}
-          narration={assistantTextRoles.get(message.id) === 'narration'}
+          narration={['narration', 'asking'].includes(assistantTextRoles.get(message.id) ?? '')}
+          asking={assistantTextRoles.get(message.id) === 'asking'}
           section={rowPart === 'outcome'
             ? 'outcome'
             : deferredOutcomeIds.has(message.id)

@@ -43,6 +43,13 @@
      */
     narration?: boolean;
     /**
+     * Whether that narration is the agent talking to the person: no other text sits between it and
+     * a pending approval, question or tool input. Narration that is not asking has no message line
+     * while the turn goes on (its sources control stays when it has sources); asking narration
+     * keeps its time, actions and metadata. Only read with `narration`. Default `false`.
+     */
+    asking?: boolean;
+    /**
      * Which part of a message this renders, for a turn the container draws in two places. A
      * stopped or failed turn that said only what it was doing sits its step row between the two:
      * `'body'` is the text alone, and `'outcome'` the notice, the line under it and the run's notes.
@@ -276,6 +283,7 @@
     onRetry,
     presentation = 'default',
     narration = false,
+    asking = false,
     section = 'whole',
     notSent,
     notSentOpen = $bindable(false),
@@ -336,6 +344,16 @@
     ),
   );
   const turnPresentation = $derived(presentTurnState(turn));
+  // Narration the agent wrote while it worked and did not address to the person: it is not an
+  // answer and asks nothing, so its line carries no time, actions or metadata, only its sources
+  // when it has some. A stopped or failed turn keeps its line, and so does narration that asks.
+  const bareNarration = $derived(
+    narration &&
+      !asking &&
+      message.role === 'assistant' &&
+      turnState?.kind !== 'stopped' &&
+      turnState?.kind !== 'failed',
+  );
   const turnWords = $derived(resolveTurnLabels(turnLabels));
   const messageLabels = $derived(resolveChatLabels(labels));
   // Text arrives with a caret only in a state that draws one: a reconnecting turn's partial text
@@ -893,10 +911,10 @@
           Remove
         </Button>
       {/if}
-    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice}
+    {:else if createdAtValue && formattedCreatedAt && !approvalOnlyTurn && !timeInNotice && !bareNarration}
       <time datetime={createdAtValue}><bdi>{formattedCreatedAt}</bdi></time>
     {/if}
-    {#if !isPending && !streaming}
+    {#if !isPending && !streaming && !bareNarration}
       <span class="chat-message-line-actions">
         {@render messageIconActions()}
         {#if actions}
@@ -1253,8 +1271,9 @@
   {#if transcript && section !== 'body'}
     <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
-         line again, and so does an empty one, which carries its time there. -->
-    {#if !isEditing && !systemRow && turnPresentation.line}
+         line again, and so does an empty one, which carries its time there. Narration that does not
+         ask the person anything is not an answer, so it has no line unless it has sources. -->
+    {#if !isEditing && !systemRow && turnPresentation.line && (!bareNarration || shownSources)}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
