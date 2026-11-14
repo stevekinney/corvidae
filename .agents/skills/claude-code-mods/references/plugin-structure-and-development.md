@@ -15,7 +15,7 @@ A mod is a plugin whose `hooks/hooks.json` names a hooks module. Everything else
 
 `hooks.json` names exactly one module. A second entry is refused with `hooks.json \`modules\` names one hooks module per plugin; a second entry is refused`(observed on 2.1.295, 2.1.309, 2.1.316, and 2.1.321). A`hooks.json`with no`modules`key validates cleanly but lists no`hooks:`line, because the plugin then has no mod at all ([troubleshooting](https://code.claude.com/docs/en/plugins/mods/troubleshoot)). Split code across files with relative`import` declarations from the one module.
 
-Settings hooks and a mod can share `hooks/hooks.json`, and they are different things. The `hooks` key holds command, HTTP, prompt, and agent hooks in the same shape as `settings.json`. They run as processes, and they receive `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_DATA}`, `${CLAUDE_PROJECT_DIR}`, and `CLAUDE_PLUGIN_OPTION_<KEY>` ([manifest reference](https://code.claude.com/docs/en/plugins-reference)). The `modules` key names code that runs inside Claude Code and reaches all of that through `$` instead.
+Settings hooks and a mod can share `hooks/hooks.json`, and they are different things. The `hooks` key holds command, HTTP, MCP tool, prompt, and agent hooks in the same shape as `settings.json`. They run outside Claude Code, and they receive `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_DATA}`, `${CLAUDE_PROJECT_DIR}`, and `CLAUDE_PLUGIN_OPTION_<KEY>` ([manifest reference](https://code.claude.com/docs/en/plugins/manifest-reference)). The `modules` key names code that runs inside Claude Code and reaches all of that through `$` instead. [Plugin hooks and mod hooks](plugin-hooks-and-mod-hooks.md) compares the two, and [plugins and components](plugins-and-components.md) covers every other component a plugin can carry.
 
 ## Manifest fields a mod uses
 
@@ -62,7 +62,7 @@ mods-repository/
 }
 ```
 
-These rules come from the [marketplace page](https://code.claude.com/docs/en/plugin-marketplaces):
+These rules come from the [marketplace page](https://code.claude.com/docs/en/plugins/create-marketplace), and [publishing and marketplaces](publishing-and-marketplaces.md) has the full file format, sources, and versioning:
 
 - **Paths from the marketplace root**: write each relative `source` from the directory that contains `.claude-plugin/`. A path with `..` is invalid, and a path to a missing directory passes validation and fails at install.
 - **Same name twice**: keep each entry's `name` equal to the plugin's manifest `name`. The entry name is the install id (`<entry>@<marketplace>`) and the `enabledPlugins` key.

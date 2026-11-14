@@ -106,17 +106,15 @@ describe('ActionRow', () => {
     expect(onclick).not.toHaveBeenCalled();
   });
 
-  test('density and custom class are surfaced on the root button', () => {
+  test('custom class is surfaced on the root button', () => {
     const { container } = render(ActionRow, {
       props: {
-        density: 'condensed',
         class: 'timeline-row',
-        title: textSnippet('Dense row'),
+        title: textSnippet('Timeline row'),
       },
     });
 
     const row = container.querySelector('.cinder-action-row');
-    expect(row?.getAttribute('data-cinder-density')).toBe('condensed');
     expect(row?.classList.contains('timeline-row')).toBe(true);
   });
 

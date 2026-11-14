@@ -84,6 +84,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'escalations',
   'interceptors',
   'approvals',
+  'from',
 ] as const;
 
 /** Why a file cannot be used as an agent. Carried on the listing, and on a refused write. */
@@ -148,6 +149,23 @@ export const agentSkillDescriptorSchema = z.strictObject({
   inputModes: z.array(z.string()).optional(),
   outputModes: z.array(z.string()).optional(),
 });
+
+/**
+ * Where a copy came from (COR-2234): `agent` is the identifier of the agent Duplicate copied
+ * (`plugin:name`), and `version` is that agent's version when it was copied: the `hash` of its file
+ * for a file agent, or, for a plugin's code agent, the version drift pinning compares (its own, else
+ * its plugin's). Strict, so a `from` of any other shape is refused at `from`, never ignored.
+ */
+export const agentFileFromSchema = z.strictObject({
+  agent: z.string().min(1),
+  version: z.string().min(1),
+});
+
+/** Where a copy came from; see {@link agentFileFromSchema}. */
+export interface AgentFileFrom {
+  readonly agent: string;
+  readonly version: string;
+}
 
 /**
  * The contributions a file's `guardrails` and `interceptors` keys name: each is a contribution id,
@@ -562,6 +580,12 @@ export const agentFileFrontmatterSchema = z
      */
     approvals: agentToolApprovalSchema.nullish(),
     /**
+     * Where a copy came from (COR-2234): the agent Duplicate copied and its version at the time (a
+     * file agent's `hash`, a code agent's version). Nothing runs on it; the Bureau answers the
+     * source's version now as `fromNow` beside it, and the agent page compares the two.
+     */
+    from: agentFileFromSchema.nullish(),
+    /**
      * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
      * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
      */
@@ -773,6 +797,8 @@ const agentFileDefinitionObjectSchema = z.object({
   skillDescriptors: z.array(agentSkillDescriptorSchema).optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   approvals: agentToolApprovalSchema.optional(),
+  /** Where a copy came from (see the frontmatter's `from`); absent for a file that is not a copy. */
+  from: agentFileFromSchema.optional(),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
   examples: agentExamplesSchema.optional(),
   instructions: z.string(),
@@ -956,6 +982,11 @@ export interface AgentFileDefinition {
    */
   readonly approvals?: Readonly<Record<string, ToolApprovalMode>>;
   /**
+   * Where the file was copied from (COR-2234), as Duplicate writes it. Absent for a file that is
+   * not a copy. Only Duplicate sets it; an update that omits it keeps the file's value.
+   */
+  readonly from?: AgentFileFrom;
+  /**
    * Prompts that show what a person might ask the agent, as the file's `examples` lists them.
    * Absent when it lists none. A caller never supplies them: they stay in the file through a write.
    */
@@ -986,6 +1017,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   escalations: true,
   interceptors: true,
   approvals: true,
+  from: true,
   examples: true,
   instructions: true,
 };
@@ -1074,6 +1106,11 @@ export interface AgentFileDefinitionInput {
    * `null`, or an empty map, removes it.
    */
   readonly approvals?: Readonly<Record<string, ToolApprovalMode>> | null | undefined;
+  /**
+   * See {@link AgentFileDefinition.from}. Only Duplicate supplies it; no wire operation takes it. An
+   * update that omits it keeps the file's value.
+   */
+  readonly from?: AgentFileFrom | undefined;
   readonly instructions: string;
 }
 
@@ -1254,6 +1291,10 @@ function compactionOf(compaction: AgentCompaction): AgentCompaction {
 }
 
 /** Apply the schema's defaults to validated frontmatter. */
+function fromOf(from: AgentFileFrom): AgentFileFrom {
+  return { agent: from.agent, version: from.version };
+}
+
 function toDefinition(
   id: string,
   frontmatter: AgentFileFrontmatter,
@@ -1287,6 +1328,7 @@ function toDefinition(
       ? {}
       : { interceptors: [...frontmatter.interceptors] }),
     ...optionalToolApproval(frontmatter.approvals),
+    ...(frontmatter.from == null ? {} : { from: fromOf(frontmatter.from) }),
     ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
   };
@@ -1405,6 +1447,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   }
   const approvals = definition.approvals == null ? undefined : toolApprovalOf(definition.approvals);
   if (approvals !== undefined) known['approvals'] = approvals;
+  if (definition.from != null) known['from'] = fromOf(definition.from);
   return known;
 }
 
@@ -1449,6 +1492,7 @@ export function resolveAgentFileDefinition(
       ? {}
       : { interceptors: [...input.interceptors] }),
     ...optionalToolApproval(input.approvals),
+    ...(input.from == null ? {} : { from: fromOf(input.from) }),
     instructions: input.instructions,
   };
 }
@@ -1497,7 +1541,7 @@ export function serializeUpdatedAgentFile(
 ): Uint8Array | undefined {
   const before = existing.definition;
   // A key the caller leaves out (`effort`, `skills`, `children`, `a2a`, `limits`, `retry`, `compaction`,
-  // `references`, `guardrails`, `interceptors`, `approvals`) is not a change
+  // `references`, `guardrails`, `interceptors`, `approvals`, `from`) is not a change
   // to it: the file keeps the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
@@ -1514,6 +1558,7 @@ export function serializeUpdatedAgentFile(
     ...(input.escalations === undefined ? { escalations: before.escalations } : {}),
     ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
     ...(input.approvals === undefined ? { approvals: before.approvals } : {}),
+    ...(input.from === undefined ? { from: before.from } : {}),
   });
   // `examples` is the file's own and an input never carries it, so it is not a change.
   const { examples: _kept, ...beforeKnown } = before;
@@ -1542,6 +1587,7 @@ export function serializeUpdatedAgentFile(
         ...(input.escalations === undefined ? { escalations: before.escalations } : {}),
         ...(input.interceptors === undefined ? { interceptors: before.interceptors } : {}),
         ...(input.approvals === undefined ? { approvals: before.approvals } : {}),
+        ...(input.from === undefined ? { from: before.from } : {}),
       }),
       AGENT_FILE_KNOWN_KEYS,
       existing.lineEnding,

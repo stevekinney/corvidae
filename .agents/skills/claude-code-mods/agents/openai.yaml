@@ -1,4 +1,4 @@
 interface:
-  display_name: 'Claude Code mods'
-  short_description: 'Design, build, test, debug, and ship Claude Code mods and their companion services'
-  default_prompt: 'Use $claude-code-mods to build or change a Claude Code mod: choose the smallest suitable approach, start from a verified template, keep $ calls at the boundary, give every hook an explicit failure policy, and verify with claude plugin validate, a type-check, and claude plugin test against the installed build.'
+  display_name: 'Claude Code mods and plugins'
+  short_description: 'Design, build, test, configure, and publish Claude Code plugins, mods, and their companion services'
+  default_prompt: 'Use $claude-code-mods to build, configure, or publish a Claude Code plugin or mod: choose the smallest suitable approach, tell settings hooks that run outside Claude Code from mod hooks that run inside it, start from a verified template, give every hook an explicit failure policy, and verify with claude plugin validate, a type-check, and claude plugin test against the installed build.'

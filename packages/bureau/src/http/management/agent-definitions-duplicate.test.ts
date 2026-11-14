@@ -96,6 +96,53 @@ describe('bureau.agents.definitions.duplicate', () => {
     expect(again.result).toBeUndefined();
   });
 
+  it('records where the copy came from, and an edit of the copy keeps it (COR-2234)', async () => {
+    const { served, owner } = await serveLayered();
+    const source = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'linear:triager',
+    });
+    const sourceHash = source.result?.['hash'];
+    expect(typeof sourceHash).toBe('string');
+
+    await callAs(served.owner, 'bureau.agents.definitions.duplicate', { id: 'linear:triager' });
+    const text = await readFile(join(owner, 'triager.md'), 'utf8');
+    expect(text).toContain(`from:\n  agent: linear:triager\n  version: ${String(sourceHash)}\n`);
+
+    const copy = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'triager' });
+    const from = { agent: 'linear:triager', version: sourceHash };
+    expect(copy.result?.['definition']).toMatchObject({ from });
+    // The source's version now is its file's hash; a file agent states nothing dropped.
+    expect(copy.result?.['fromNow']).toBe(sourceHash);
+    expect(source.result?.['dropped']).toEqual([]);
+    expect(source.result?.['fromNow']).toBeNull();
+
+    // An editor sends back the definition it read, `from` included or left out: neither changes it,
+    // and a `from` a caller makes up is never written.
+    const read = (copy.result?.['definition'] ?? {}) as Record<string, unknown>;
+    const { from: _from, ...definition } = read;
+    const omitted = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'triager',
+      expectedHash: copy.result?.['hash'],
+      definition: { ...definition, description: 'Edited' },
+    });
+    expect(omitted.error).toBeUndefined();
+    const forged = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'triager',
+      expectedHash: omitted.result?.['hash'],
+      definition: {
+        ...definition,
+        description: 'Edited again',
+        from: { agent: 'x', version: 'y' },
+      },
+    });
+    expect(forged.error).toBeUndefined();
+    const after = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'triager' });
+    expect(after.result?.['definition']).toMatchObject({ description: 'Edited again', from });
+
+    // A file that is not a copy reads `from` as null.
+    expect(source.result?.['definition']).toMatchObject({ from: null });
+  });
+
   it('refuses an agent that is not a plugin’s, and one that is not loaded', async () => {
     const { served } = await serveLayered();
     const notPlugin = await callAs(served.owner, 'bureau.agents.definitions.duplicate', {
@@ -277,6 +324,8 @@ describe('a disabled plugin’s agents (COR-2009)', () => {
     // file must name one.
     expect(text).toMatch(/^model: [a-z]+\/[\w.-]+$/mu);
     expect(text).toContain('Draft the release notes.');
+    // COR-2234: the Bureau holds no version for a disabled plugin's agent, so its copy records none.
+    expect(text).not.toContain('from:');
 
     await bureau.agents.refresh();
     expect(bureau.agents.list().find(({ id }) => id === 'release-helper')).toMatchObject({
@@ -352,6 +401,40 @@ describe('a disabled plugin’s agents (COR-2009)', () => {
     expect(calls).toEqual({ setup: 1, start: 1 });
     const run = await bureau.tasks.start('demo:release-helper', 'Draft them');
     expect(run.id).toBeString();
+  });
+
+  it('states what a copy loses before any write, records the plugin’s version, and answers the source’s version now (COR-2232, COR-2234)', async () => {
+    const { served, owner } = await serveDemo(true);
+    const before = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'demo:release-helper',
+    });
+    // The same list the duplicate answers, and nothing was written to read it.
+    expect(before.result?.['dropped']).toEqual(['generate']);
+    expect(await rejectionOf(readFile(join(owner, 'release-helper.md'), 'utf8'))).toBeInstanceOf(
+      Error,
+    );
+    const orderHelper = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'demo:order-helper',
+    });
+    expect(orderHelper.result?.['dropped']).toEqual(['generate']);
+
+    const copied = await callAs(served.owner, 'bureau.agents.definitions.duplicate', {
+      id: 'demo:release-helper',
+    });
+    expect(copied.result?.['dropped']).toEqual(before.result?.['dropped']);
+    const text = await readFile(join(owner, 'release-helper.md'), 'utf8');
+    expect(text).toContain('from:\n  agent: demo:release-helper\n  version: 1.0.0\n');
+
+    await served.bureau.agents.refresh();
+    const copy = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'release-helper',
+    });
+    expect(copy.result?.['definition']).toMatchObject({
+      from: { agent: 'demo:release-helper', version: '1.0.0' },
+    });
+    expect(copy.result?.['fromNow']).toBe('1.0.0');
+    expect(copy.result?.['dropped']).toEqual([]);
+    expect(before.result?.['fromNow']).toBeNull();
   });
 });
 

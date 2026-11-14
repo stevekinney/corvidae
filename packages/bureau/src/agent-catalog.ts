@@ -527,6 +527,26 @@ export function createAgentCatalog<D extends AgentDefinitions>(
   };
   // A Map, so a code agent named `constructor` or `__proto__` reads no inherited member.
   const pluginDetails = new Map(Object.entries(options?.details ?? {}));
+  /**
+   * COR-2232 — what `duplicate(id)` would report as `dropped`, read from the same agent by the same
+   * function, so a caller states the loss before any write. Empty for a file agent and a built-in one.
+   */
+  const droppedBeforeCopy = (id: string): DroppedCodeAgentBehavior[] => {
+    const agent = pluginCodeAgent(id);
+    return agent === undefined ? [] : droppedBehaviorsOf(agent, descriptors(), modelPolicy());
+  };
+  /**
+   * COR-2234 — the version of the agent a copy was made from, as `from.version` compares it: a code
+   * agent's own `version` else its plugin's (what a durable run pins), a file agent's `hash`; `null`
+   * when that agent is not loaded or states none.
+   */
+  const versionNow = async (agentId: string): Promise<string | null> => {
+    if (pluginCodeAgent(agentId) !== undefined) {
+      return pluginDetails.get(agentId)?.version ?? null;
+    }
+    const source = await files?.detail(agentId);
+    return source?.definitionHash ?? null;
+  };
   const codeListing = (entry: AgentCatalogEntry<D>): AgentListing => {
     const details = pluginDetails.get(entry.name);
     return {
@@ -679,6 +699,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
           ...codeListing(code),
           text: null,
           definition: null,
+          dropped: droppedBeforeCopy(id),
           // COR-2009: a built-in agent as its runs get it, with the overrides in force.
           codeDefinition: describeCodeAgent(
             effectiveOf(id, code.agent),
@@ -693,10 +714,16 @@ export function createAgentCatalog<D extends AgentDefinitions>(
           ...unavailableListing(disabled),
           text: null,
           definition: null,
+          dropped: droppedBeforeCopy(id),
           codeDefinition: describeCodeAgent(disabled.agent, descriptors(), modelPolicy()),
         };
       }
-      return files?.detail(id);
+      const detail = await files?.detail(id);
+      const from = detail?.definition?.from;
+      if (detail === undefined || from === undefined) return detail;
+      // COR-2234: a copy states the version its source is at now, so a client compares the two
+      // without a second read.
+      return { ...detail, fromNow: await versionNow(from.agent) };
     },
     models(name) {
       const code = byName.get(name);
@@ -759,6 +786,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
           ...writer.tools().map((tool) => tool.name),
           ...(options?.unavailableTools ?? []),
         ]),
+        version: pluginDetails.get(id)?.version,
       });
       const written = await writer.create(id.slice(id.indexOf(':') + 1), definition, writeOptions);
       return { ...written, dropped };
@@ -809,9 +837,11 @@ function copyOfCodeAgent(
     readonly descriptors: readonly BackendDescriptor[];
     readonly policy: BureauModelPolicyOptions | undefined;
     readonly toolNames: ReadonlySet<string>;
+    /** COR-2234 — the version drift pinning compares; a code agent with none writes no `from`. */
+    readonly version: string | undefined;
   },
 ): { readonly definition: AgentFileDefinitionInput; readonly dropped: DroppedCodeAgentBehavior[] } {
-  const { descriptors, policy, toolNames } = deployment;
+  const { descriptors, policy, toolNames, version } = deployment;
   const plugin = id.slice(0, id.indexOf(':'));
   const stated = describeCodeAgent(agent, descriptors, policy);
   const models = describeAgentModels(agent, descriptors, policy);
@@ -847,20 +877,25 @@ function copyOfCodeAgent(
     ),
     card: stated.skillDescriptors,
     ...(stated.skills.length === 0 ? {} : { skills: stated.skills }),
+    // COR-2234: where the copy came from, as a version a later read compares.
+    ...(version === undefined || version === '' ? {} : { from: { agent: id, version } }),
     instructions: stated.instructions ?? '',
   };
-  return { definition, dropped: droppedBehaviorsOf(agent, models.default === null) };
+  return { definition, dropped: droppedBehaviorsOf(agent, descriptors, policy) };
 }
 
 /**
  * COR-2231 — what a code agent has that a file cannot state: its own `generate` where it names no
  * model (a scripted or routed agent), and the stop condition, approval rules, output schema and
- * guardrails it declares. Each is listed only when the agent has it.
+ * guardrails it declares. Each is listed only when the agent has it. COR-2232 — `duplicate` reports
+ * this after the write and the source's detail before it, both from here.
  */
 function droppedBehaviorsOf(
   agent: AnyRunnableAgent,
-  hasOwnGenerate: boolean,
+  descriptors: readonly BackendDescriptor[],
+  policy: BureauModelPolicyOptions | undefined,
 ): DroppedCodeAgentBehavior[] {
+  const hasOwnGenerate = describeAgentModels(agent, descriptors, policy).default === null;
   const stated = agent as {
     readonly stopWhen?: unknown;
     readonly approvals?: unknown;

@@ -1,16 +1,17 @@
 ---
 name: claude-code-mods
-description: Use when building, changing, debugging, testing, or shipping a Claude Code mod, a plugin whose hooks module registers on(event, hook) functions against the $ mods API. Covers panes, the band above the prompt, restyled transcript and tool rows, slash commands, tools Claude calls, tool-call and prompt guards with explicit failure policies, $.state and $.store, model calls, subagents, cross-session messages, and companion services reached over $.http. Also use when diagnosing hot reload, lifecycle, or claude plugin validate and claude plugin test failures, when checking what an installed build's mods API supports, or when deciding whether a skill, settings hook, MCP server, or Agent SDK application fits better than a mod.
+description: Use when building, changing, debugging, testing, configuring, or publishing a Claude Code plugin, and above all a mod, a plugin whose hooks module registers on(event, hook) functions against the $ mods API. Covers mod panes, the band above the prompt, restyled rows, slash commands, tools, guards with explicit failure policies, $.state and $.store, model calls, subagents, cross-session messages, and companion services; every other plugin component (skills, agents, commands, settings hooks, MCP and LSP servers, output styles, monitors, channels, userConfig); how plugin settings hooks, which run outside Claude Code, differ from mod hooks, which run inside it; and marketplaces, versions, private repositories, Anthropic's directory, and evals. Also use when diagnosing hot reload, lifecycle, or claude plugin validate and claude plugin test failures, or when deciding whether a skill, settings hook, MCP server, mod, or Agent SDK application fits best.
 ---
 
-# Claude Code mods
+# Claude Code mods and plugins
 
-A mod is a Claude Code plugin whose `hooks/hooks.json` names one hooks module. That module exports `register(on, options)`, and each `on(event, matcher?, hook)` adds a `($, e, next)` function that runs inside Claude Code when the event happens: `$` is the mods API, `e` the frozen event, and `next(e)` the rest of the chain. This skill supplies the architecture, verification discipline, and lifecycle rules for building one well. It was checked on 2026-11-12 against Claude Code 2.1.321 (the target), with `validate` and `plugin test` also run on 2.1.316, 2.1.309, and 2.1.295. [Sources and compatibility](references/sources-and-compatibility.md) has the details and the known mismatches between documentation and builds.
+A plugin is a directory of components that Claude Code installs, enables, and updates as one unit: skills, agents, commands, settings hooks, MCP and LSP servers, output styles, monitors, channels, and a mod. A mod is the plugin component whose `hooks/hooks.json` names one hooks module. That module exports `register(on, options)`, and each `on(event, matcher?, hook)` adds a `($, e, next)` function that runs inside Claude Code when the event happens: `$` is the mods API, `e` the frozen event, and `next(e)` the rest of the chain. This skill supplies the architecture, verification discipline, and lifecycle rules for building one well, plus [the other components](references/plugins-and-components.md) and [publishing](references/publishing-and-marketplaces.md) for any plugin. It was checked on 2026-11-12 against Claude Code 2.1.321 (the target), with `validate` and `plugin test` also run on 2.1.316, 2.1.309, and 2.1.295. [Sources and compatibility](references/sources-and-compatibility.md) has the details and the known mismatches between documentation and builds.
 
 The built-in `plugin-authoring` skill covers the same ground for the running build: it names where that build's declaration file is and where a mod Claude writes in the session goes. Load it as well when writing a mod in this session. Its declaration file outranks anything here for the build it describes.
 
 ## Gotchas
 
+- **Two kinds of hook share `hooks/hooks.json`**: the `hooks` key holds settings hooks, which run outside Claude Code as commands, HTTP requests, MCP tool calls, prompts, or subagents, with any language and package and full access to the machine. The `modules` key names a mod, which runs inside Claude Code with only what `$` offers but can rewrite, answer, draw, and keep state ([plugin hooks and mod hooks](references/plugin-hooks-and-mod-hooks.md)).
 - **The installed build's declarations are the authority**: the `claude-code/index.d.ts` the build writes outranks documentation, this skill, and the copy on GitHub. That copy was written by 2.1.277 and is ten thousand lines shorter than 2.1.321's. There is no `/plugin-types` command. Types appear in `<mod>/.claude-plugin/types/` only after an interactive session loads the mod from a watched folder, and `validate` and `plugin test` write nothing.
 - **One hooks module per plugin**: a second `modules` entry is refused. Split code with relative `import` declarations from that one module.
 - **The validator reads the source**: spell every call as `$.noun.method(...)`. Never alias, destructure, or index `$`. Event names, `$.env` names, and `$.state` keys must be string literals. Imports are relative files plus `claude-code` only, with no `import()` and no npm packages.
@@ -34,11 +35,12 @@ Pick the smallest mechanism that does the job:
 | The need | Use |
 | :-- | :-- |
 | Claude should know or follow a procedure | A skill |
-| Block, allow, or log an event with a script you have | A settings hook (`hooks` in a settings file or a plugin's `hooks.json`) |
+| Block, allow, or log an event with a script you have, or a rule that must hold even where user mods are restricted | A settings hook (`hooks` in a settings file or a plugin's `hooks.json`) with `onFailure: "block"` for a guard |
 | Give Claude access to an external system | An MCP server, or `$.tool.register` when the tool needs the session's own state |
 | A pane, a band, a restyled row, a command that runs code at once, rewriting or answering an event | A mod |
 | Durable or shared state, an SDK or database, credentials kept away from the mod, cross-session coordination | A mod plus a [companion service](references/companion-services-and-coordination.md) |
 | Agent runs you start, supervise, and end from your own program | An Agent SDK application |
+| Several of these installed, updated, and shared as one unit | A plugin carrying them ([components](references/plugins-and-components.md)) |
 
 A mod can ship in the same plugin as a skill, agent types, and MCP servers. Before choosing a mod, decide where each value lives, because UI state, configuration, conversation history, agent execution state, live presence, and durable business state are not interchangeable ([state](references/state-configuration-and-environment.md)).
 
@@ -53,7 +55,7 @@ A mod can ship in the same plugin as a skill, agent types, and MCP servers. Befo
 7. Type-check against the build's declarations, as the [templates index](assets/templates/README.md) describes.
 8. Run `claude plugin test <folder>`, with each drawing on every surface it supports and each failure mode in the [testing matrix](references/security-testing-and-distribution.md).
 9. Load the mod in the real engine: `claude -p "/command" --plugin-dir <folder> --debug-file <log>` for a command the mod answers itself (no model turn), then `claude --debug-file <log> --plugin-dir <folder>` interactively for drawing, focus, and reloads.
-10. Record the tested builds and the minimum version in the README, then distribute through a marketplace.
+10. Record the tested builds and the minimum version in the README, then distribute through a marketplace ([publishing](references/publishing-and-marketplaces.md)).
 
 Report only checks that ran. When a tool is unavailable, say which check is unexecuted instead of implying it passed.
 
@@ -71,7 +73,10 @@ Report only checks that ran. When a tool is unavailable, say which check is unex
 | Read | When |
 | :-- | :-- |
 | [Sources and compatibility](references/sources-and-compatibility.md) | Before relying on a version-sensitive claim, or when the target build is not 2.1.321 |
-| [Plugin structure and development](references/plugin-structure-and-development.md) | Laying out files, manifests, marketplaces, scopes, and the reload loop, including in the Desktop app |
+| [Plugins and components](references/plugins-and-components.md) | Any plugin component other than the mod, `plugin.json` fields, `userConfig`, path variables, install scopes, dependencies, trust, and organization controls |
+| [Plugin hooks and mod hooks](references/plugin-hooks-and-mod-hooks.md) | Choosing between a settings hook and a mod hook, settings hook types, events, exit codes, JSON output, and how the two order on one event |
+| [Publishing and marketplaces](references/publishing-and-marketplaces.md) | Marketplace files, plugin sources, version schemes, renames, private repositories, Anthropic's directory, evals, and suggestions |
+| [Plugin structure and development](references/plugin-structure-and-development.md) | Laying out a mod's files, several plugins in one repository, where plugins are enabled, and the reload loop, including in the Desktop app |
 | [Runtime and API](references/runtime-and-api.md) | Imports, static analysis, the adapter pattern, and the capability map of `$` |
 | [Events and lifecycle](references/events-and-lifecycle.md) | Middleware, ordering, failure handling, budgets, interruption, and lifecycle transitions |
 | [State, configuration, and environment](references/state-configuration-and-environment.md) | `$.state`, `$.store`, `userConfig`, `$.config`, `$.settings`, `$.env`, and paths |

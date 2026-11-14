@@ -195,6 +195,43 @@ export function versionLine(
   return AGENT_PAGE_COPY.instructions.version(version.revision, day, version.savedBy !== null);
 }
 
+/** A file's fingerprint, as the Bureau's `hash` writes it: a long hexadecimal string, no version a person reads. */
+const FILE_FINGERPRINT = /^[0-9a-f]{64}$/u;
+
+/**
+ * The line on a copy whose source has changed since it was copied (COR-2234), or `undefined` when
+ * nothing is said: the file is not a copy, is invalid, its source is not loaded (the Bureau answers
+ * no current version), or the version the copy recorded is the version the source is at now. The
+ * Bureau computes the source's version now; this compares the two strings and derives nothing
+ * else. `versions` is `null` where a version is a file's fingerprint, which a person cannot read, so
+ * the line says only that the source changed. The source is named as the agent list names it, or by
+ * its identifier when the list does not hold it or names it as the copy is named (`copyName`), which
+ * would read as the copy pointing at itself.
+ */
+export function copiedFromNotice(
+  detail: Pick<AgentDetail, 'definition' | 'fromNow'> | undefined,
+  agents: readonly Pick<AgentSummary, 'name' | 'displayName'>[] | undefined,
+  copyName?: string,
+):
+  | {
+      readonly agent: string;
+      readonly name: string;
+      readonly versions: { readonly copied: string; readonly now: string } | null;
+    }
+  | undefined {
+  const from = detail?.definition?.from;
+  const now = detail?.fromNow;
+  if (from === null || from === undefined || now === null || now === undefined) return undefined;
+  if (from.version === now) return undefined;
+  const readable = !FILE_FINGERPRINT.test(from.version) && !FILE_FINGERPRINT.test(now);
+  const sourceName = agents?.find((entry) => entry.name === from.agent)?.displayName;
+  return {
+    agent: from.agent,
+    name: sourceName === undefined || sourceName === copyName ? from.agent : sourceName,
+    versions: readable ? { copied: from.version, now } : null,
+  };
+}
+
 /**
  * A reference document's size as its row says it: "4 KB", "1.5 KB" or "210 B", or `undefined` when
  * the Bureau did not say. A whole number of units drops its decimal ("4.0 KB" is "4 KB").

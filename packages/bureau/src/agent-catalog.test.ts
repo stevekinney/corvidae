@@ -10,7 +10,11 @@ import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { type AnyRunnableAgent, createAgentCatalog } from './agent-catalog';
+import {
+  type AnyRunnableAgent,
+  createAgentCatalog,
+  type DroppedCodeAgentBehavior,
+} from './agent-catalog';
 import { AgentFileError, type AgentFileDefinitionInput } from './agent-file';
 import type { AgentFileCatalog } from './agent-file-catalog';
 
@@ -440,6 +444,106 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
       expect(result.dropped).toEqual([]);
       const copied = await duplicatorOf(agent('x')).duplicate('demo:file-agent');
       expect(copied).toEqual({ id: 'file-agent', hash: 'hash', dropped: [] });
+    });
+  });
+
+  describe('what a copy loses, stated before any write (COR-2232)', () => {
+    const structured = () =>
+      createAgent({
+        name: 'tool-runner',
+        generate: createMockGenerate([]),
+        output: z.object({ answer: z.string() }),
+        guardrails: false,
+        stopWhen: [stopWhen.noToolCalls()],
+      });
+
+    it('answers the same dropped list on the source’s detail as the duplicate result, for a disabled and a running agent', async () => {
+      const { files } = recordingFiles([]);
+      const catalog = createAgentCatalog(
+        { 'demo:running': structured() },
+        {
+          files: { ...files, detail: async () => undefined } as unknown as AgentFileCatalog,
+          descriptors: () => createModelCatalog().descriptors,
+          unavailable: [
+            { id: 'demo:tool-runner', plugin: 'demo', agent: structured(), unavailable },
+          ],
+        },
+      );
+      const disabled = await catalog.detail('demo:tool-runner');
+      const expected: DroppedCodeAgentBehavior[] = [
+        'generate',
+        'stopWhen',
+        'outputSchema',
+        'guardrails',
+      ];
+      expect([...(disabled?.dropped ?? [])]).toEqual(expected);
+      const copied = await catalog.duplicate('demo:tool-runner');
+      expect(copied.dropped).toEqual(expected);
+      const running = await catalog.detail('demo:running');
+      expect([...(running?.dropped ?? [])]).toEqual(expected);
+    });
+
+    it('answers nothing dropped for a built-in code agent', async () => {
+      const catalog = createAgentCatalog({ assistant: structured() });
+      const builtIn = await catalog.detail('assistant');
+      expect(builtIn?.dropped ?? []).toEqual([]);
+    });
+  });
+
+  describe('where a copy of a code agent came from (COR-2234)', () => {
+    const descriptors = createModelCatalog().descriptors;
+    const helper = () => agent('tool-runner');
+    function catalogWith(details: Parameters<typeof createAgentCatalog>[1] = {}) {
+      const { files, created } = recordingFiles([]);
+      return {
+        created,
+        catalog: createAgentCatalog(
+          {},
+          {
+            files,
+            descriptors: () => descriptors,
+            unavailable: [{ id: 'demo:tool-runner', plugin: 'demo', agent: helper(), unavailable }],
+            ...details,
+          },
+        ),
+      };
+    }
+
+    it('records the version drift pinning compares: the agent’s own, or else its plugin’s', async () => {
+      const { catalog, created } = catalogWith({
+        details: { 'demo:tool-runner': { plugin: 'demo', version: '2.1.0' } },
+      });
+      await catalog.duplicate('demo:tool-runner');
+      expect(created[0]?.definition.from).toEqual({ agent: 'demo:tool-runner', version: '2.1.0' });
+    });
+
+    it('writes no from for a code agent with no version', async () => {
+      const { catalog, created } = catalogWith();
+      await catalog.duplicate('demo:tool-runner');
+      expect(created[0]?.definition.from).toBeUndefined();
+    });
+
+    it('answers the version of a code source now, and null when it is not loaded, on the copy’s detail', async () => {
+      const { files } = recordingFiles([]);
+      const copy = (agentId: string) => ({
+        id: 'tool-runner',
+        definition: { from: { agent: agentId, version: '1.0.0' } },
+      });
+      const catalog = createAgentCatalog(
+        { 'demo:running': helper() },
+        {
+          files: {
+            ...files,
+            detail: async (id: string) =>
+              id === 'tool-runner' ? copy('demo:running') : copy('demo:gone'),
+          } as unknown as AgentFileCatalog,
+          details: { 'demo:running': { plugin: 'demo', version: '2.0.0' } },
+        },
+      );
+      const loaded = await catalog.detail('tool-runner');
+      expect(loaded?.fromNow).toBe('2.0.0');
+      const gone = await catalog.detail('other');
+      expect(gone?.fromNow).toBeNull();
     });
   });
 
