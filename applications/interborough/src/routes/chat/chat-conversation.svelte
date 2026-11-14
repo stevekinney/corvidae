@@ -342,11 +342,21 @@
     return Number.isNaN(milliseconds) ? null : milliseconds;
   }
   // The last breadcrumb names the chat and opens its details (`chat-details.svelte`). A new chat has
-  // no session to name yet, and a chat that is gone has no details to give.
+  // no session to name yet. A chat that is gone keeps the title it was last read with, or reads
+  // "This chat", never its identifier, and has no details to give (COR-2327 B5).
   const crumbPath = $derived(chatSessionPath(sessionId));
-  const hasCrumb = $derived(!choosing && !gone);
-  usePageLabel(() => ({ path: crumbPath, label: hasCrumb ? displayTitle : undefined }));
-  usePageDetails(() => ({ path: crumbPath, content: hasCrumb ? detailsPopover : undefined }));
+  const crumbLabel = $derived(
+    choosing
+      ? undefined
+      : gone
+        ? (context.data?.title ?? title ?? CHAT_COPY.load.crumb)
+        : displayTitle,
+  );
+  usePageLabel(() => ({ path: crumbPath, label: crumbLabel }));
+  usePageDetails(() => ({
+    path: crumbPath,
+    content: choosing || gone ? undefined : detailsPopover,
+  }));
 
   /** Reads the session again, for the settings' controls, and says whether it could. */
   async function reloadContext(): Promise<boolean> {
@@ -1951,8 +1961,7 @@
           headingLevel={1}
           flush
           {...context.data?.parentContextId ? { description: details } : {}}
-          actions={headerActions}
-          status={headerStatus}
+          {...gone ? {} : { actions: headerActions, status: headerStatus }}
           statusPlacement="inline"
         />
       {/if}

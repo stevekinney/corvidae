@@ -6,6 +6,7 @@
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -69,6 +70,33 @@ describe('a chat deleted while its page is open', () => {
     expect(back.getAttribute('data-cinder-variant')).toBe('primary');
     await fireEvent.click(back);
     expect(router.pathname).toBe('/chats');
+  });
+
+  test('keeps a header that agrees: no status, no context ring, no More, and a crumb that names the chat, never its identifier (COR-2327 B5)', async () => {
+    let deleted = false;
+    serve(TURNS, {
+      'bureau.contexts.get': () => (deleted ? gone() : CONTEXT),
+    });
+    const view = mount();
+    await view.findByText('Second answer');
+    const header = view.getByTestId('chat-header');
+    await waitFor(() => expect(header.textContent).toContain(CHAT_COPY.status.done));
+    expect(within(header).queryByRole('button', { name: MORE.label })).not.toBeNull();
+
+    deleted = true;
+    await view.client.invalidateQueries({ queryKey: ['contexts'] });
+    await untilDeleted(view);
+
+    const after = view.getByTestId('chat-header');
+    for (const word of Object.values(CHAT_COPY.status)) {
+      expect(after.textContent).not.toContain(word);
+    }
+    expect(within(after).queryByRole('button', { name: MORE.label })).toBeNull();
+    expect(after.querySelector('.cinder-page-header__actions')).toBeNull();
+    const crumb = breadcrumbTrail('/chats/session-1').at(-1);
+    expect(crumb?.label).toBe(CONTEXT.title);
+    expect(crumb?.label).not.toBe('session-1');
+    expect(crumb).not.toHaveProperty('popover');
   });
 
   test('offers no Edit, and sends nothing', async () => {
