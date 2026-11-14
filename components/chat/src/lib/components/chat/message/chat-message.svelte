@@ -2451,6 +2451,14 @@
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
+  /* The rendered Markdown sets its own size and leading, so the step down is set on it too. The
+   * lines are a whole 21px at the 13px size, so what follows starts on a pixel boundary. */
+  .chat-message-wrapper[data-presentation='transcript'][data-narration]
+    :global(.cinder-markdown-content) {
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    line-height: calc(21 / 13);
+  }
+
   /* An answer that stopped short ends in a muted ellipsis, on the last line of its last text block,
    * so the cut is visible where it happened and not only in the notice. It is drawn, not content:
    * it is not read aloud (the notice says the answer is partial) and is not copied. It shows only
