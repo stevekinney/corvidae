@@ -69,6 +69,10 @@ A form with more than eight fields (an object group counts as the fields inside 
 
 A failed submit clears the filter and opens every group that holds an error, so focus always has a field to land on.
 
+## Hosted in another surface
+
+Set `hosted` when the form sits inside a card, a panel or a page's own `<form>`, as a workflow step's input does. The root is a `div` with `role="group"`, because a `<form>` inside a `<form>` is invalid; it never submits, draws no Submit button and no hidden output field, and offers no Edit as JSON panel, so the host reads the value through `onDraftChange`. A group is a legend line over its fields, indented one step with no border, and the items of an array are told apart by a hairline instead of a dashed box, so the host's own border is the only box. A large form keeps Find a field but draws its groups open.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -76,6 +80,7 @@ A failed submit clears the filter and opens every group that holds an error, so 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Custom class merged with `.cinder-schema-form`. |
+| `hosted` | `boolean` | no | — | Whether the form is drawn inside another surface, such as a card or a page's own form. A hosted form is a `div` with `role="group"` and no `<form>` of its own, which a `<form>` in a `<form>` would be, so it never submits, draws no submit button and offers no Edit as JSON panel. A group inside it is a legend line with its fields indented and no border, and the items of an array are told apart by a hairline instead of a dashed box, so the host's own border is the only box. Read the value through `onDraftChange`. Defaults to `false`. |
 | `jsonEditable` | `boolean` | no | — | Whether a large form offers its own Edit as JSON panel. Defaults to `true`; set `false` when the host already provides a JSON entry point for the same payload, so the page does not show two. Find a field and the other large-form affordances are unaffected. |
 | `name` | `string` | no | — | Name of the hidden serialized output field. Defaults to `value`. |
 | `submitLabel` | `string` | no | — | Label for the built-in submit button. Defaults to `Submit`. |

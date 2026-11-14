@@ -62,6 +62,15 @@ export type SchemaFormProps = Omit<HTMLFormAttributes, 'class' | 'onsubmit'> & {
    * `id`. Without the built-in button a form with several fields does not submit on Enter. Defaults to `true`.
    */
   submitVisible?: boolean;
+  /**
+   * Whether the form is drawn inside another surface, such as a card or a page's own form. A hosted
+   * form is a `div` with `role="group"` and no `<form>` of its own, which a `<form>` in a `<form>`
+   * would be, so it never submits, draws no submit button and offers no Edit as JSON panel. A group
+   * inside it is a legend line with its fields indented and no border, and the items of an array
+   * are told apart by a hairline instead of a dashed box, so the host's own border is the only box.
+   * Read the value through `onDraftChange`. Defaults to `false`.
+   */
+  hosted?: boolean;
   /** Custom class merged with `.cinder-schema-form`. */
   class?: string;
   /** Called after validation passes with the schema-conformant output value. */

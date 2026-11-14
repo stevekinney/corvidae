@@ -113,9 +113,11 @@
     if (pendingMoveFocus === null || !rowEl) return;
     const preferred = pendingMoveFocus;
     pendingMoveFocus = null;
-    const target =
-      rowEl.querySelector<HTMLElement>(`[data-cinder-move="${preferred}"]`) ??
-      rowEl.querySelector<HTMLElement>('[data-cinder-move]');
+    // A row may hold a list of its own, whose rows have move buttons too: only this row's count.
+    const own = [...rowEl.querySelectorAll<HTMLElement>('[data-cinder-move]')].filter(
+      (button) => button.closest('[data-sortable-row]') === rowEl,
+    );
+    const target = own.find((button) => button.dataset['cinderMove'] === preferred) ?? own[0];
     target?.focus();
   }
 

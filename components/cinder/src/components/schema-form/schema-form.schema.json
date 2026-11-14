@@ -23,6 +23,10 @@
       "type": "boolean",
       "description": "Whether the form draws its own submit button. Set `false` when the host submits the form from\na button elsewhere on the page, such as a footer, whose `form` attribute names this form's\n`id`. Without the built-in button a form with several fields does not submit on Enter. Defaults to `true`."
     },
+    "hosted": {
+      "type": "boolean",
+      "description": "Whether the form is drawn inside another surface, such as a card or a page's own form. A hosted\nform is a `div` with `role=\"group\"` and no `<form>` of its own, which a `<form>` in a `<form>`\nwould be, so it never submits, draws no submit button and offers no Edit as JSON panel. A group\ninside it is a legend line with its fields indented and no border, and the items of an array\nare told apart by a hairline instead of a dashed box, so the host's own border is the only box.\nRead the value through `onDraftChange`. Defaults to `false`."
+    },
     "class": {
       "type": "string",
       "description": "Custom class merged with `.cinder-schema-form`."

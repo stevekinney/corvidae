@@ -125,6 +125,32 @@
     border-radius: var(--cinder-radius-md);
   }
 
+  /* A hosted form sits inside a surface that already has its box, so a group is a legend line over
+     its fields, indented one step, and the items of an array are told apart by a hairline. */
+  .cinder-schema-form[data-cinder-hosted] .cinder-schema-form__fieldset {
+    padding: 0;
+    padding-inline-start: var(--cinder-space-3);
+    border: 0;
+    border-radius: 0;
+  }
+
+  .cinder-schema-form[data-cinder-hosted] .cinder-schema-form__legend {
+    padding-inline: 0;
+  }
+
+  .cinder-schema-form[data-cinder-hosted] .cinder-schema-form__array-item {
+    padding: 0;
+    padding-block-start: var(--cinder-space-3);
+    border: 0;
+    border-block-start: 1px solid var(--cinder-border-muted);
+    border-radius: 0;
+  }
+
+  .cinder-schema-form[data-cinder-hosted] .cinder-schema-form__array-item:first-child {
+    padding-block-start: 0;
+    border-block-start: 0;
+  }
+
   .cinder-schema-form__secondary-button:focus-visible,
   .cinder-schema-form__submit:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
