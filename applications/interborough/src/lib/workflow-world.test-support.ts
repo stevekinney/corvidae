@@ -360,6 +360,24 @@ export type World = {
   failBureauSchedules: boolean;
   /** Makes `bureau.workflows.list` answer with a fault, as a Bureau that is down would. */
   failBureauFiles: boolean;
+  /** The plugin code workflows `bureau.workflows.list` lists after the files, each with `kind: 'code'`. */
+  codeWorkflows: Array<{
+    id: string;
+    name: string;
+    title: string;
+    plugin: string;
+    version: string;
+  }>;
+  /**
+   * The activities `bureau.workflows.catalog` lists, with the title and input schema a step's card is
+   * drawn from. Empty by default: a host that serves no such operation is a host with no plugin activity.
+   */
+  activities: Array<{
+    id: string;
+    title: string | null;
+    description: string | null;
+    inputSchema: Record<string, unknown> | null;
+  }>;
   /** What `bureau.health.attention` lists: the problems that need a person, such as `no-provider` and `missed-runs`. */
   attention: Array<Record<string, unknown>>;
   /** Why a Bureau schedule will not start, by schedule id, and the status the Bureau reads it as then. */
@@ -406,6 +424,8 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     failContexts: false,
     failBureauSchedules: false,
     failBureauFiles: false,
+    codeWorkflows: [],
+    activities: [],
     attention: [],
     scheduleBlockers: {},
     savedSteps: {},
@@ -724,13 +744,21 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       if (world.failBureauFiles) throw workflowFaults.unavailable();
       // The Bureau counts a file's instances only for a caller that asks, as it does.
       return {
-        workflows: world.files.map((file) => ({
-          ...listing(file),
-          runs: params['includeRuns'] === true ? file.runs : null,
-        })),
+        workflows: [
+          ...world.files.map((file) => ({
+            ...listing(file),
+            runs: params['includeRuns'] === true ? file.runs : null,
+          })),
+          ...world.codeWorkflows.map((code) => ({ kind: 'code', ...code })),
+        ],
         nextOffset: null,
       };
     },
+    'bureau.workflows.catalog': () => ({
+      activities: world.activities,
+      stepKinds: [],
+      triggers: [],
+    }),
     'bureau.workflows.create': (params) => {
       const id = String(params['id']);
       if (find(id) !== undefined) {

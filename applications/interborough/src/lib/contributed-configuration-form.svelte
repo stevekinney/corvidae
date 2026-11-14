@@ -6,7 +6,8 @@
    * reports every committed draft: a number still being typed is not reported until it is a number.
    * The form reports nothing before the first edit, so the draft it shows at mount (a choice's first
    * option, a switch off) is reported once as well, and an untouched form saves what it displays.
-   * A kind whose schema has no fields says so, and one the form cannot draw says that.
+   * A kind whose schema has no fields says so, and one the form cannot draw says that. The form
+   * draws no Submit button: the page's own action saves what the form reports.
    */
   import { SchemaForm, schemaFormInitialDraft } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
@@ -23,9 +24,32 @@
     value?: unknown;
     /** Takes the configuration after each edit. */
     onChange: (value: Record<string, unknown>) => void;
+    /**
+     * Whether the form sits inside another form or a card, as a workflow's trigger and a step's
+     * input do: it is then a group, not a `<form>` of its own, and its groups draw no borders.
+     */
+    hosted?: boolean;
+    /**
+     * Whether the draft the form shows at mount is reported once, so an untouched form saves what
+     * it displays. A step's input turns it off: a step is given its starting input when it is
+     * added, and opening a file is not an edit.
+     */
+    reportInitialDraft?: boolean;
+    /** What it says when the schema takes no fields, and when the form cannot draw it. Default to the plugin words. */
+    noFieldsText?: string;
+    unavailableText?: string;
   }
 
-  let { kindId, schema, value, onChange }: Props = $props();
+  let {
+    kindId,
+    schema,
+    value,
+    onChange,
+    hosted = false,
+    reportInitialDraft = true,
+    noFieldsText = PLUGIN_KINDS_COPY.noFields,
+    unavailableText = PLUGIN_KINDS_COPY.fieldsUnavailable,
+  }: Props = $props();
 
   /** The schema as the form reads it, without the dialect marker Zod writes. */
   const formSchema = $derived.by(() => {
@@ -57,7 +81,7 @@
   // The form emits no draft until an edit, so the one it shows at mount is reported here, once per
   // schema. `value` is read untracked: the report changes it, and must not run this again.
   $effect(() => {
-    if (formSchema === undefined || !hasFields) return;
+    if (!reportInitialDraft || formSchema === undefined || !hasFields) return;
     const shown = schemaFormInitialDraft(
       formSchema,
       untrack(() => value),
@@ -113,9 +137,9 @@
 
 <div class="ib-contributed-configuration" data-testid="contributed-configuration">
   {#if formSchema === undefined}
-    <p class="ib-contributed-configuration__note">{PLUGIN_KINDS_COPY.fieldsUnavailable}</p>
+    <p class="ib-contributed-configuration__note">{unavailableText}</p>
   {:else if !hasFields}
-    <p class="ib-contributed-configuration__note">{PLUGIN_KINDS_COPY.noFields}</p>
+    <p class="ib-contributed-configuration__note">{noFieldsText}</p>
   {:else}
     {#key kindId}
       <SchemaForm
@@ -123,6 +147,8 @@
         name={`configuration-${kindId}`}
         {value}
         jsonEditable={false}
+        submitVisible={false}
+        {hosted}
         onDraftChange={draft}
       />
     {/key}

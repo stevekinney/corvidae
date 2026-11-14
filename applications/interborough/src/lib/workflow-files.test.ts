@@ -12,6 +12,7 @@ import {
   deleteWorkflowFile,
   getWorkflowFile,
   isIdentifierTaken,
+  listCodeWorkflows,
   listWorkflowFileRuns,
   listWorkflowFiles,
   listWorkflowRevisions,
@@ -316,6 +317,17 @@ describe('the listing of a file', () => {
     }));
     const listed = await listWorkflowFiles();
     expect(listed.map((listing) => listing.id)).toEqual(['one']);
+    // The same entry is what the builder offers as a `workflow` step.
+    expect(await listCodeWorkflows()).toEqual([
+      {
+        kind: 'code',
+        id: 'kit:sync',
+        name: 'sync',
+        title: 'Sync issues',
+        plugin: 'kit',
+        version: '1.0.0',
+      },
+    ]);
   });
 
   test('refuses an answer without the counts the Bureau now sends, instead of showing a zero', async () => {
