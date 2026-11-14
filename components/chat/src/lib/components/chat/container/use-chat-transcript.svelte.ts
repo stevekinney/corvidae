@@ -13,6 +13,7 @@ import {
   getActiveTurnMessageIds,
   useChatMessageGroups,
   type ChatRenderRow,
+  type ChatRenderRowOptions,
 } from './use-chat-message-groups.svelte.ts';
 
 export interface UseChatTranscriptOptions {
@@ -32,6 +33,11 @@ export interface UseChatTranscriptOptions {
     (() => ((message: Message) => ChatTurnState | undefined) | undefined) | undefined;
   /** Tool calls whose question was answered here, which keep their own row. */
   getAnsweredToolCallIds?: (() => Iterable<string>) | undefined;
+  /**
+   * Whether a narration message may fold into its turn's step group. False for one that draws more
+   * than its text, which a fold would drop. Absent, every plain narration message may fold.
+   */
+  getCanFoldNarration?: (() => ((message: Message) => boolean) | undefined) | undefined;
 }
 
 export interface UseChatTranscriptReturn {
@@ -78,15 +84,14 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       ? {}
       : { getAnsweredToolCallIds: options.getAnsweredToolCallIds }),
     getRenderOptions: () => {
-      const renderOptions: {
-        firstUnreadId: string | null;
-        showTypingIndicator: boolean;
-        ungroupedToolCallIds?: ReadonlySet<string>;
-      } = {
+      const renderOptions: ChatRenderRowOptions = {
         firstUnreadId: options.getFirstUnreadId(),
         showTypingIndicator:
           showTypingIndicator && !options.getSuppressTypingIndicator?.() && !turnReconnects,
+        unsettledMessageIds,
       };
+      const canFoldNarration = options.getCanFoldNarration?.();
+      if (canFoldNarration !== undefined) renderOptions.canFoldNarration = canFoldNarration;
       if (options.getUngroupAllToolCalls()) {
         renderOptions.ungroupedToolCallIds = new Set(
           messages.flatMap((message) => (message.toolCall?.id ? [message.toolCall.id] : [])),
@@ -121,6 +126,24 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
     if (!options.getStreaming()) return new Set<string>();
     const activeMessageId = options.getStreamingMessageId() ?? messages.at(-1)?.id;
     return getActiveTurnMessageIds(messages, activeMessageId ?? undefined);
+  });
+  // The turns that are not settled: the active stream's, and any with a message still marked
+  // streaming or one the host says is streaming or reconnecting. A turn folds into its step group
+  // only once it is not one of these.
+  const unsettledMessageIds = $derived.by(() => {
+    const ids = new Set(activeTurnMessageIds);
+    const declared = options.getMessageTurnState?.();
+    messages.forEach((message, index) => {
+      const kind = resolveMessageTurnState(message, declared)?.kind;
+      if (!isStreamingMessage(message) && kind !== 'streaming' && kind !== 'reconnecting') return;
+      let start = index;
+      while (start > 0 && messages[start]?.role !== 'user') start -= 1;
+      for (let at = start; at < messages.length; at += 1) {
+        if (at > index && messages[at]?.role === 'user') break;
+        ids.add(messages[at]!.id);
+      }
+    });
+    return ids;
   });
   const toolActivity = $derived.by(() => {
     if (!options.getStreaming()) return false;
