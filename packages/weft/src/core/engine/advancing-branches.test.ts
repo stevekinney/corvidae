@@ -43,7 +43,12 @@ function advancingHarness(
     (function* () {
       let last: unknown;
       for (const [position, activityName] of shape[name]!.entries()) {
-        // `~go` waits for the signal `go`; any other name is an activity of that name.
+        // `=twice` is an `all` that waits on the signal `x` twice; `~go` waits for the signal `go`;
+        // any other name is an activity of that name.
+        if (activityName === '=twice') {
+          last = yield* ctx.all([ctx.waitForSignal('x'), ctx.waitForSignal('x')]);
+          continue;
+        }
         if (activityName.startsWith('~')) {
           last = yield* ctx.waitForSignal(activityName.slice(1));
           continue;
@@ -104,11 +109,9 @@ function advancingHarness(
             : undefined;
       if (name === undefined) throw new Error(`unexpected ${operation.type}`);
       executed.push(name);
-      let gate = gates.get(name);
-      if (gate === undefined) {
-        gate = Promise.withResolvers();
-        gates.set(name, gate);
-      }
+      // A name a branch asks for again gets a gate of its own: `settle` resolves the latest.
+      const gate: Gate = Promise.withResolvers();
+      gates.set(name, gate);
       signal?.addEventListener('abort', () => gate.reject(signal.reason), { once: true });
       const settled = await gate.promise;
       // A wait resolves with a deferred-consume envelope, which stages its consume when finalized.
@@ -303,56 +306,30 @@ describe('the engine side of an advancing parallel step', () => {
     expect(finalEntry.branches.map((slot) => slot.status)).toEqual(['rejected', 'fulfilled']);
   });
 
-  it('fails the step at once when a branch opens a wait on a signal a sibling already waits on', async () => {
-    const ctx = new Context({
-      workflowId: WORKFLOW_ID,
-      workflowType: 'test',
-      startedAt: 1000,
-      abortController: new AbortController(),
-    });
-    const branches = [
-      (function* () {
-        yield* ctx.run(async () => 'seed');
-        return yield* ctx.waitForSignal('shared');
-      })(),
-      (function* () {
-        return yield* ctx.waitForSignal('shared');
-      })(),
-    ];
-    const generator = advanceBranchesOf(ctx, branches);
-    const request = generator.next().value as Extract<
-      ContextOperationRequest,
-      { type: 'parallel' }
-    >;
-    let outcome: { error?: unknown; value?: unknown } = {};
-    const internals = {
-      inlineStrategy: null,
-      durableInlineOperations: new Map([
-        [WORKFLOW_ID, { operationId: request.operationId, workflowExecutionToken: undefined }],
-      ]),
-      checkpoints: new Map(),
-      pendingTimelineEntries: new Map(),
-    } as unknown as EngineInternals;
-    const activityDone = Promise.withResolvers<unknown>();
-    await processParallelOperation(internals, WORKFLOW_ID, request, {
-      executeSubOperation: (_id, operation, signal) => {
-        if (operation.type === 'activity') {
-          queueMicrotask(() => activityDone.resolve('seeded'));
-          return activityDone.promise;
-        }
-        return new Promise((_resolve, reject) =>
-          signal?.addEventListener('abort', () => reject(signal.reason), { once: true }),
-        );
-      },
-      runOperationWithResult: async (_id, _operation, execute) => {
-        try {
-          outcome = { value: await execute() };
-        } catch (error) {
-          outcome = { error };
-        }
-      },
-    });
-    expect((outcome.error as Error).message).toContain('same signal "shared"');
+  it('holds a branch whose next wait is on a signal a sibling waits on, until that wait ends', async () => {
+    // Two waiters on one signal name would share a waiter key. The lockstep rounds never had both
+    // open at once, so a document that runs is not refused: the second wait opens when the first ends.
+    const harness = advancingHarness({ a: ['A1', '~shared'], b: ['~shared'] });
+    await waitUntil(async () => harness.executed.length === 2);
+    await harness.settle('A1');
+    await quietFor(20);
+    // `a` has finished its first step, and its wait is not open yet.
+    expect(harness.executed).toEqual(['A1', '~shared']);
+    await harness.settle('~shared', 'first');
+    await waitUntil(async () => harness.executed.filter((name) => name === '~shared').length === 2);
+    await harness.settle('~shared', 'second');
+    await harness.done;
+    expect(harness.outcome()).toEqual({ value: ['second', 'first'] });
+    // The held wait is named by a commit once it opens, so its start is recorded.
+    expect(harness.commits.some((commit) => commit.active.includes('wait-signal'))).toBe(true);
+  });
+
+  it('fails the step at once for an operation that waits on one signal twice within itself', async () => {
+    const harness = advancingHarness({ a: ['A1', '=twice'], b: ['B1'] });
+    await harness.settle('A1');
+    await waitUntil(async () => harness.outcome().error !== undefined);
+    expect((harness.outcome().error as Error).message).toContain('same signal "x"');
+    await harness.done;
   });
 
   it('fails the step with the commit failure, and commits no later step', async () => {

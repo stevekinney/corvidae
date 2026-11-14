@@ -68,6 +68,16 @@ export type AdvancingResult = {
   commitFailure: { error: unknown } | undefined;
 };
 
+/** The outcome with a fulfilled value finalized: the consume of a wait's signal is staged. */
+async function finalizeOutcome(settled: BranchOutcome): Promise<BranchOutcome> {
+  if (settled.status === 'rejected') return settled;
+  try {
+    return { status: 'fulfilled', value: await finalizeAndUnwrap(settled.value) };
+  } catch (error) {
+    return { status: 'rejected', error };
+  }
+}
+
 /**
  * Run every branch to its end and return the settled slots. Never rejects for a branch's failure:
  * the caller rethrows `firstError` once every branch has settled, as `ctx.all` does.
@@ -84,6 +94,8 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     driver.first.done ? undefined : driver.first.request,
   );
   const active = new Map<number, ContextOperationRequest>();
+  /** The next operation of a branch held back by a sibling's wait on the same signal. */
+  const deferred = new Map<number, ContextOperationRequest>();
   for (const [index, driver] of drivers.entries()) {
     if (!driver.first.done) active.set(index, driver.first.request);
   }
@@ -102,6 +114,17 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
   let commitFailure: AdvancingResult['commitFailure'];
   let chain: Promise<void> = Promise.resolve();
 
+  /**
+   * Wakes the branches held back by {@link conflictsWithSibling}: told whenever a branch's open
+   * operation ends or the step fails. A promise per change, so a branch awaits the next one.
+   */
+  let changed = Promise.withResolvers<void>();
+  const notifyChanged = () => {
+    const previous = changed;
+    changed = Promise.withResolvers<void>();
+    previous.resolve();
+  };
+
   const rejectBranch = (index: number, error: unknown) => {
     slots[index] = {
       status: 'rejected',
@@ -109,6 +132,27 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
       operationId: operationIds[index]!,
     };
     captureFirstRejection(capture, error);
+    active.delete(index);
+    deferred.delete(index);
+    notifyChanged();
+  };
+
+  /**
+   * Whether `request`, the next operation of branch `index`, waits on a signal an operation a
+   * sibling has open waits on. Two waiters on one signal name would share one waiter key, so such a
+   * branch is held until the sibling's wait ends: the lockstep rounds this step replaced never had
+   * both open at once either.
+   */
+  const conflictsWithSibling = (index: number, request: ContextOperationRequest): boolean => {
+    const siblings = [...active.entries()]
+      .filter(([other]) => other !== index)
+      .map(([, open]) => open);
+    try {
+      assertSupportedSignalBranches([...siblings, request]);
+      return false;
+    } catch {
+      return true;
+    }
   };
 
   const commitProgress = async () => {
@@ -158,16 +202,6 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     }
   };
 
-  /** The outcome with a fulfilled value finalized: the consume of a wait's signal is staged. */
-  const finalizeOutcome = async (settled: BranchOutcome): Promise<BranchOutcome> => {
-    if (settled.status === 'rejected') return settled;
-    try {
-      return { status: 'fulfilled', value: await finalizeAndUnwrap(settled.value) };
-    } catch (error) {
-      return { status: 'rejected', error };
-    }
-  };
-
   /** Resume a branch with an outcome; a branch that throws is over, and its error is kept. */
   const resumeBranch = (index: number, outcome: BranchOutcome): BranchStep | undefined => {
     try {
@@ -179,25 +213,30 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
   };
 
   /**
-   * Take a branch to where `next` puts it. A branch that opens a wait on a signal a sibling is
-   * waiting on ends the whole step, since the two would share one waiter. Returns whether it goes on.
+   * Take a branch to where `next` puts it: finished, open on its next operation, or held back until
+   * a sibling's wait on the same signal ends. An operation that waits on one signal twice within
+   * itself ends the whole step. Returns whether the branch goes on.
    */
   const placeBranch = (index: number, next: BranchStep): boolean => {
     if (next.done) {
       slots[index] = { status: 'fulfilled', value: next.value, operationId: operationIds[index]! };
       return true;
     }
-    lastRequests[index] = next.request;
-    active.set(index, next.request);
     try {
-      assertSupportedSignalBranches(activeRequests());
-      return true;
+      assertSupportedSignalBranches([next.request]);
     } catch (error) {
       fatal = { error };
       controller.abort(error);
       rejectBranch(index, error);
       return false;
     }
+    if (conflictsWithSibling(index, next.request)) {
+      deferred.set(index, next.request);
+    } else {
+      lastRequests[index] = next.request;
+      active.set(index, next.request);
+    }
+    return true;
   };
 
   /** Whether this branch must stop: the step failed fast, or its run is no longer the current one. */
@@ -227,6 +266,7 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     const outcome = await finalizeOutcome(settled);
     if (mustStop(index)) return undefined;
     active.delete(index);
+    notifyChanged();
     if (outcome.status === 'fulfilled') {
       recordSettledStep(run.internals, run.workflowId, requestCompletion(request, outcome.value));
     }
@@ -236,11 +276,28 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     return next;
   };
 
+  /**
+   * Hold a branch whose next operation waits on a signal a sibling waits on until that wait ends,
+   * then open it and commit, so the commit records its start. Returns whether the branch goes on.
+   */
+  const startDeferred = async (index: number, request: ContextOperationRequest) => {
+    while (conflictsWithSibling(index, request)) {
+      await changed.promise;
+      if (mustStop(index)) return false;
+    }
+    deferred.delete(index);
+    lastRequests[index] = request;
+    active.set(index, request);
+    await inOrder(commitProgress);
+    return true;
+  };
+
   const runBranch = async (index: number): Promise<void> => {
     let step: BranchStep = drivers[index]!.first;
     // A run that was cancelled, or replaced, while a sibling still waited starts nothing more.
     while (!step.done && !mustStop(index)) {
       const request = step.request;
+      if (deferred.get(index) === request && !(await startDeferred(index, request))) return;
       const settled = await settleRequest(request);
       const next = await inOrder(() => settleStep(index, request, settled));
       if (next === undefined) return;

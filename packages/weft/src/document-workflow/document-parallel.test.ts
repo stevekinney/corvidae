@@ -117,6 +117,12 @@ const host: DocumentWorkflowHost = {
       calls.push(labelOf(input));
       return hangRestart ? new Promise(() => undefined) : input;
     },
+    pair: () => ({ items: ['fast', 'slow'] }),
+    // A map item: `slow` hangs until the test restarts the engine.
+    hold: ({ previous }) => {
+      calls.push(labelOf(previous));
+      return previous === 'slow' && hangRestart ? new Promise(() => undefined) : previous;
+    },
     boom: () => {
       throw new Error('branch exploded');
     },
@@ -630,6 +636,38 @@ describe('the version of a document with a parallel step', () => {
   });
 });
 
+describe('a map batch across restarts (COR-2416)', () => {
+  it('commits an item that finished beside one still running, and runs only the one that had not', async () => {
+    // A `map` batch runs its items through `ctx.allSettled`, whose settled items commit on their
+    // own now: the item that finished is not run again after a restart. (Only the first round is
+    // covered; a batch that parks after a settled round is the matrix's row D16, left as it was.)
+    calls.length = 0;
+    hangRestart = true;
+    const storage = new MemoryStorage();
+    const id = 'map-batch-restart-run';
+    const document = doc('map-batch-restart', [
+      { kind: 'activity', handler: 'pair' },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'hold' }] },
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      await original.start('map-batch-restart', null, { id });
+      await waitUntil(async () => calls.length === 2, { message: 'both items to start' });
+      await waitUntil(async () => hasCommittedSlot(storage, id, 'fulfilled'), {
+        message: 'the finished item to be committed',
+      });
+    }
+    hangRestart = false;
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [handle] = await restarted.recoverAll();
+    expect(await handle!.result()).toEqual(['fast', 'slow']);
+    const count = (label: string) => calls.filter((call) => call === label).length;
+    expect({ fast: count('fast'), slow: count('slow') }).toEqual({ fast: 1, slow: 2 });
+  });
+});
+
 describe('a parallel step across restarts (COR-2416)', () => {
   it('resumes a branch after a settled step and a settled sibling, and runs each activity once', async () => {
     // Before, a restart after a settled round recovered with the wrong values: the next round's
@@ -702,8 +740,9 @@ describe('a parallel step across restarts (COR-2416)', () => {
     expect(calls).not.toContain('after');
   });
 
-  it('refuses a branch that opens a wait on a signal a sibling is already waiting on', async () => {
-    // The lockstep rounds never held two such waits at once; branches that advance on their own can.
+  it('holds a branch`s wait on a signal a sibling already waits on until that wait ends (matrix row D11)', async () => {
+    // The lockstep rounds never held two such waits at once, and a document that runs there is
+    // not refused now: the branch's wait opens when its sibling's has taken a signal.
     await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
     await registerWorkflowDocuments(engine, host, {
       active: [
@@ -721,7 +760,19 @@ describe('a parallel step across restarts (COR-2416)', () => {
     const run = await engine.start('parallel-same-signal-later', null, {
       id: 'parallel-same-signal-later-run',
     });
-    expect(await throwingRejectionOf(run.result())).toThrow('same signal');
+    await waitUntil(async () => (await waitingCount(engine, run.id)) === 1, {
+      message: 'the sibling`s wait to open',
+    });
+    await run.signal('shared', 'first');
+    await waitUntil(
+      async () => {
+        const events = await engine.getEvents(run.id);
+        return events.filter((event) => event.type === 'file-workflow:signal-waiting').length === 2;
+      },
+      { message: 'the held wait to open' },
+    );
+    await run.signal('shared', 'second');
+    expect(await run.result()).toEqual({ a: 'second', b: 'first' });
   });
 
   const orders: readonly [string, readonly [string, string]][] = [

@@ -457,6 +457,7 @@ describe('lifecycle history of steps nested in a coordinator', () => {
       data: { status: 'completed' },
     });
     expect(fileEvents).toHaveLength(17);
-    expect((await engine.get('legacy-nested-history-run'))?.status).toBe('completed');
+    const state = await engine.get('legacy-nested-history-run');
+    expect(state?.status).toBe('completed');
   });
 });

@@ -25,6 +25,8 @@ import { registerWorkflowDocuments } from './register.ts';
 
 const calls: string[] = [];
 let flakyAttempts = 0;
+let gatedAttempts = 0;
+let gate = Promise.withResolvers<string>();
 
 /** A step input as the call log records it: a string as written, anything else as JSON. */
 function labelOf(input: unknown): string {
@@ -54,6 +56,15 @@ const host: DocumentWorkflowHost = {
         calls.push(labelOf(input));
         if (flakyAttempts === 1) throw new Error('first attempt fails');
         return `settled after ${String(flakyAttempts)}`;
+      },
+    },
+    // Fails once, then holds its second attempt until the test lets it go.
+    gatedFlaky: {
+      retry: { maxAttempts: 2, initialBackoff: 5, backoffMultiplier: 1, maxBackoff: 5 },
+      execute: () => {
+        gatedAttempts += 1;
+        if (gatedAttempts === 1) throw new Error('first attempt fails');
+        return gate.promise;
       },
     },
     each: ({ previous }) => {
@@ -165,6 +176,36 @@ describe('what a branch of a parallel step may hold', () => {
     expect(result).toEqual({ a: { x: 'x', y: 'y' }, m: ['x', 'y'], b: 'signalled' });
   });
 
+  it('keeps the retry state of an activity per branch, though two branches have a step with the same number', async () => {
+    // Branch `a` retries its activity at its step 1 and holds the retry's second attempt open;
+    // branch `b` then runs a plain activity at its own step 1. The retry state `a` keeps in the
+    // checkpoint is qualified by its branch, or `b`'s activity would find an attempt it never made.
+    calls.length = 0;
+    gatedAttempts = 0;
+    gate = Promise.withResolvers<string>();
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    engine.register(child);
+    await registerWorkflowDocuments(engine, host, {
+      active: [
+        doc('branch-retry-state', [
+          parallel({
+            a: [
+              { kind: 'activity', handler: 'count', input: 'a0' },
+              { kind: 'activity', handler: 'gatedFlaky' },
+            ],
+            b: [wait('go'), { kind: 'activity', handler: 'count', input: 'b1' }],
+          }),
+        ]),
+      ],
+    });
+    const run = await engine.start('branch-retry-state', null, { id: 'branch-retry-state-run' });
+    await waitUntil(async () => gatedAttempts === 2, { message: 'the retry to begin its attempt' });
+    await run.signal('go', 'signalled');
+    await waitUntil(async () => calls.includes('b1'), { message: 'the sibling`s activity to run' });
+    gate.resolve('retried');
+    expect(await run.result()).toEqual({ a: 'retried', b: 'b1' });
+  });
+
   it('runs branches of uneven length, each to its own last step', async () => {
     calls.length = 0;
     await using engine = new Engine({ storage: new MemoryStorage() });
@@ -213,6 +254,35 @@ describe('a timed wait in a branch of a parallel step', () => {
     restoreRealTimers();
   });
 
+  it('keeps a deadline per branch: the shorter timeout wins first, and the longer one is not cut short', async () => {
+    // Each branch's wait races a sleep at its own step 0 and 1. The deadline a sleep keeps in the
+    // checkpoint is qualified by its branch, or the second branch would reuse the first's.
+    useFakeTimers(0);
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    await registerWorkflowDocuments(engine, host, {
+      active: [
+        doc('branch-deadlines', [
+          parallel({
+            short: [{ kind: 'await-signal', signal: 'one', timeout: '1h' }],
+            long: [{ kind: 'await-signal', signal: 'two', timeout: '3h' }],
+          }),
+        ]),
+      ],
+    });
+    const run = await engine.start('branch-deadlines', null, { id: 'branch-deadlines-run' });
+    await waitUntil(async () => (await waitingLabel(engine, run.id)) === 'one,two', {
+      message: 'both branches to wait',
+    });
+    await advanceTimersByTime(60 * 60 * 1000);
+    await waitUntil(async () => (await waitingLabel(engine, run.id)) === 'two', {
+      message: 'the shorter timeout to win',
+    });
+    // An hour in, the longer timeout has two to go: the wait is still open.
+    expect(await waitingLabel(engine, run.id)).toBe('two');
+    await advanceTimersByTime(2 * 60 * 60 * 1000);
+    expect(await run.result()).toEqual({ short: { timedOut: true }, long: { timedOut: true } });
+  });
+
   it('stops waiting for its signal when the timeout wins, across a restart, while a sibling waits on', async () => {
     useFakeTimers(0);
     const storage = new MemoryStorage();
@@ -227,11 +297,11 @@ describe('a timed wait in a branch of a parallel step', () => {
       await using original = new Engine({ storage });
       await registerWorkflowDocuments(original, host, { active: [document] });
       await original.start('branch-timed-wait', null, { id });
-      await waitUntil(async () => (await waitingNames(original, id)).length === 2, {
+      await waitUntil(async () => (await waitingLabel(original, id)) === 'go,two', {
         message: 'both branches to wait',
       });
       await advanceTimersByTime(60 * 60 * 1000);
-      await waitUntil(async () => (await waitingNames(original, id)).toString() === 'two', {
+      await waitUntil(async () => (await waitingLabel(original, id)) === 'two', {
         message: 'the timed wait to stop',
       });
       await waitUntil(async () => hasFulfilledSlot(storage, id), {
@@ -253,4 +323,10 @@ describe('a timed wait in a branch of a parallel step', () => {
 async function waitingNames(engine: Engine, id: string): Promise<readonly string[]> {
   const state = await engine.get(id);
   return state?.waitingForSignals ?? [];
+}
+
+/** The names a run waits on, sorted and joined: `go,two`. */
+async function waitingLabel(engine: Engine, id: string): Promise<string> {
+  const names = await waitingNames(engine, id);
+  return names.toSorted().join(',');
 }
