@@ -106,4 +106,11 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * done, and a secondary button for a not-found or blocked state.
    */
   action?: Snippet;
+  /**
+   * Supporting content under the call to action, such as the steps of a manual set-up; the action
+   * stays buttons. It follows `align`, takes the full width of the state with no measure of its
+   * own, and draws no border or background. Drawn only in the `'stacked'` layout; a `'row'` or
+   * `'inline'` state ignores it.
+   */
+  children?: Snippet;
 };

@@ -193,10 +193,10 @@ describe('RestartState failed', () => {
   test('has Keep waiting and no way to restart again', async () => {
     const onKeepWaiting = mock(() => {});
     const { container } = render(RestartState, { props: { ...failed, onKeepWaiting } });
-    const labels = Array.from(card(container).querySelectorAll('button')).map((button) =>
-      text(button),
+    const labels = Array.from(card(container).querySelectorAll('button')).map(
+      (button) => button.getAttribute('aria-label') ?? text(button),
     );
-    expect(labels).toEqual(['Copy', 'Keep waiting']);
+    expect(labels).toEqual(['Copy the command', 'Keep waiting']);
     expect(labels.join(' ')).not.toMatch(/restart/i);
     const keep = requiredInstance(
       Array.from(card(container).querySelectorAll('button')).at(-1) ?? null,
@@ -236,23 +236,43 @@ describe('RestartState failed', () => {
     expect(card(container).querySelector('.cinder-restart-state__command')).toBeNull();
   });
 
-  test('Copy puts the exact command on the clipboard and says so', async () => {
+  test('Copy is the copy icon at the end of the command row, and says what it copied', async () => {
     const writeText = mock(async () => {});
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText },
       configurable: true,
     });
     const { container } = render(RestartState, { props: failed });
+    const row = requiredInstance(
+      card(container).querySelector('.cinder-restart-state__command-row'),
+      HTMLElement,
+    );
     const copy = requiredInstance(
-      Array.from(card(container).querySelectorAll('button')).at(0) ?? null,
+      row.querySelector('button.cinder-copy-button'),
       HTMLButtonElement,
     );
+    // The command comes first in the row and the copy after it, so the copy sits at the end.
+    const code = requiredInstance(row.querySelector('code'), HTMLElement);
+    expect(code.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(copy.getAttribute('aria-label')).toBe('Copy the command');
+    expect(copy.querySelector('svg.lucide-copy')).not.toBeNull();
+    expect(text(row.querySelector('code'))).toBe('bun run start');
     await fireEvent.click(copy);
-    await waitUntil(() => text(copy) === 'Copied');
+    await waitUntil(() => writeText.mock.calls.length > 0);
     expect(writeText).toHaveBeenCalledWith('bun run start');
-    expect(
-      text(card(container).querySelector('.cinder-restart-state__command [role="status"]')),
-    ).toBe('Copied the command.');
+    await waitUntil(() =>
+      text(card(container).querySelector('.cinder-restart-state__command')).includes(
+        'Copied the command.',
+      ),
+    );
+  });
+
+  test('what to check is flat on the card, not an inset box', () => {
+    const check = cssText.slice(cssText.indexOf('.cinder-restart-state__check {'));
+    const body = check.slice(0, check.indexOf('}'));
+    expect(body).not.toMatch(/background|border|padding/);
+    const command = cssText.slice(cssText.indexOf('.cinder-restart-state__command-text {'));
+    expect(command.slice(0, command.indexOf('}'))).not.toMatch(/background|border/);
   });
 });
 

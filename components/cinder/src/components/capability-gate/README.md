@@ -26,6 +26,8 @@ Present feature availability and next action for browser permission or support s
 </div>
 ```
 
+The `actions` snippet holds Cinder `Button`s and `Link`s; the gate lays them out and never restyles them. Make the action that grants access a `variant="primary"` Button: Button's default `soft` face is a faint wash that, on a tinted warning or error gate beside a white secondary, reads as disabled.
+
 ## Guidance
 
 ### Use When

@@ -112,8 +112,10 @@ describe('MultiSelect', () => {
   test('renders trigger, placeholder, and listbox semantics', async () => {
     const { container } = render(MultiSelect, { id: 'fruits', items });
     expect(container.querySelector('#fruits')?.textContent).toContain('Select options');
-    const chevron = container.querySelector('.cinder-multi-select__chevron');
-    expect(chevron?.querySelector('svg')).not.toBeNull();
+    // The chevron is the shared field chevron Select and Combobox draw, inside the trigger.
+    const chevron = container.querySelector('#fruits .cinder-multi-select__chevron');
+    expect(chevron?.classList.contains('cinder-_field-chevron')).toBe(true);
+    expect(chevron?.getAttribute('aria-hidden')).toBe('true');
     expect(chevron?.textContent?.trim()).toBe('');
     await openMenu(container);
     const listbox = container.querySelector('[role="listbox"]');
@@ -146,8 +148,9 @@ describe('MultiSelect', () => {
     await fireEvent.mouseDown(apple);
 
     const trigger = container.querySelector('#fruits');
-    expect(trigger?.textContent).toContain('1 selected');
-    expect(container.querySelector('.cinder-multi-select__count')?.textContent?.trim()).toBe('1');
+    // The summary carries the count; no separate count chip repeats it.
+    expect(trigger?.textContent?.trim()).toBe('1 selected');
+    expect(container.querySelector('.cinder-multi-select__count')).toBeNull();
     expect(apple.getAttribute('aria-selected')).toBe('true');
     expect(
       apple
@@ -167,7 +170,31 @@ describe('MultiSelect', () => {
     expect(clearButton).not.toBeNull();
     await fireEvent.click(clearButton!);
     expect(container.querySelector('#fruits')?.textContent).toContain('Select options');
-    expect(container.querySelector('.cinder-multi-select__count')).toBeNull();
+    expect(container.querySelector('.cinder-multi-select__clear')).toBeNull();
+  });
+
+  test('the clear button is an icon-only button with a name, an x icon and a tooltip', async () => {
+    const { container } = render(MultiSelect, {
+      id: 'fruits',
+      items,
+      selectedIds: ['apple'],
+    });
+    const clearButton = container.querySelector<HTMLButtonElement>('.cinder-multi-select__clear');
+    if (!clearButton) throw new Error('clear button not found');
+    expect(clearButton.getAttribute('aria-label')).toBe('Clear selected items');
+    expect(clearButton.textContent?.trim()).toBe('');
+    expect(clearButton.querySelector('svg.lucide-x')?.getAttribute('aria-hidden')).toBe('true');
+    // Laid out beside the trigger, not inside it: a button never nests in a button.
+    expect(clearButton.closest('.cinder-multi-select__trigger')).toBeNull();
+    expect(clearButton.parentElement?.classList.contains('cinder-multi-select__control')).toBe(
+      true,
+    );
+    await fireEvent.pointerEnter(clearButton);
+    await fireEvent.focus(clearButton);
+    await waitFor(() => {
+      const tooltip = document.querySelector('[role="tooltip"]');
+      expect(tooltip?.textContent?.trim()).toBe('Clear selected items');
+    });
   });
 
   test('clear button returns focus to trigger when selections are removed', async () => {

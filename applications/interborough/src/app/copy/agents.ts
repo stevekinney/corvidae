@@ -692,6 +692,12 @@ export const AGENT_PAGE_COPY = {
     enable: 'Enable and restart',
     /** Why New chat is held: the reason its tooltip gives. */
     newChatReason: (plugin: string): string => `Enable ${plugin} to start a chat`,
+    /**
+     * The one muted line on a tab of such an agent: the reason (`Plugin Demo is disabled`, as the
+     * Bureau says it) and why the tab is read-only, with Duplicate in the header the way to a copy.
+     */
+    readOnly: (plugin: string): string =>
+      `Plugin ${plugin} is disabled, so this agent can’t be changed here. Duplicate it to make a copy you can edit.`,
   },
   /**
    * The Chats tab (board PageAgent, rows 38e to 38g and 39p): one filter row of the state segments
@@ -726,8 +732,26 @@ export const AGENT_PAGE_COPY = {
   /** A plugin's agent: read-only, with Duplicate to make a copy the owner can edit (COR-1873). */
   plugin: {
     duplicate: 'Duplicate',
+    /** The one muted line on each tab of a plugin's agent that is a file, which the page cannot change. */
     note: (plugin: string): string =>
       `The ${plugin} plugin ships this agent, so it is read-only. Duplicate it to make a copy you can edit.`,
+    /**
+     * The one muted line on each tab of an agent defined in code that the page can change
+     * (COR-2229): a running plugin's, named by its title, or a built-in agent.
+     */
+    overridable: (plugin: string | null): string =>
+      plugin === null
+        ? 'This agent is built in. Your changes are saved as versions over its own settings.'
+        : `${plugin} ships this agent. Your changes are saved as versions over its own settings.`,
+    /**
+     * After that line on the Access tab, when the agent states Asks or guardrails of its own: a save
+     * of either replaces the agent's whole set, so the tab leaves them as they are. A change to the
+     * tools drops the agent's own Asks too, so the tools stay with them.
+     */
+    overridableKept: (kept: readonly string[]): string => {
+      const names = kept.flatMap((key) => (key === 'approvals' ? ['tools', 'Asks'] : [key]));
+      return `Its own ${nameList(names)} stay as they are here, because a change would replace all of them.`;
+    },
     exists: (name: string): string =>
       `You already have an agent named ${name}. Open it, or rename or delete it to duplicate this one again.`,
     notLoaded: 'This agent is not loaded now, so it cannot be duplicated.',
@@ -753,6 +777,10 @@ export const AGENT_PAGE_COPY = {
   instructions: {
     heading: 'Instructions',
     builtIn: 'This agent is built in, so its instructions cannot be edited here.',
+    /** The line over the document of a code agent the page can change: where its instructions are edited (COR-2229). */
+    changeBefore: 'Change them on the ',
+    changeSettings: 'Settings tab',
+    changeAfter: '.',
     emptyTitle: 'No instructions',
     emptyDescription: 'This agent has no instructions of its own.',
     emptyAction: 'Add instructions',
@@ -904,6 +932,18 @@ export const AGENT_PAGE_COPY = {
     none: 'No limit',
     notSet: 'Not set',
     builtIn: 'This agent is built in, so its settings cannot be changed here.',
+    /**
+     * The Instructions section of a code agent's form (COR-2229): its instructions are changed here,
+     * and saved with the rest by the one Save changes. An agent file's are changed in the editor.
+     */
+    instructionsHeading: 'Instructions',
+    instructionsLabel: 'Instructions',
+    instructionsNote:
+      'Used in place of the agent’s own while this version is current. Leave it empty to use the agent’s own.',
+    /** The model of an agent that names none, such as a scripted one. */
+    modelNone: 'No model',
+    /** What the Model select shows while the agent names no model. */
+    modelChoose: 'Choose a model',
     /** The form's actions and what a save makes (row 38w). */
     save: 'Save changes',
     discard: 'Discard',
@@ -914,6 +954,7 @@ export const AGENT_PAGE_COPY = {
     saveFailed: 'The settings could not be saved.',
     /** What the leave question calls each part of the form. */
     parts: {
+      instructions: 'Instructions',
       model: 'Model',
       models: 'Can switch to',
       effort: 'Effort',
@@ -998,6 +1039,8 @@ export const AGENT_PAGE_COPY = {
       limits: 'Limits',
       approvals: 'Asks',
       guardrails: 'Guardrails',
+      interceptors: 'Interceptors',
+      escalations: 'Escalations',
       skills: 'Skills',
       references: 'Reference documents',
       a2a: 'A2A',
@@ -1027,7 +1070,7 @@ export const AGENT_PAGE_COPY = {
       changedFrom: (revision: number, summary: string): string =>
         `Changed from Version ${String(revision)}: ${summary}`,
       note: (current: number): string =>
-        `Instructions, tools and guardrails are shown as they were; nothing here can be edited. Version ${String(current)} is the current version.`,
+        `Instructions, tools and guardrails are shown as they were. Version ${String(current)} is the current version.`,
       instructions: 'Instructions',
       tools: 'Tools',
       /** A tool the version allows, with when it asks first: "Lookup order (Never)". */
@@ -1037,6 +1080,12 @@ export const AGENT_PAGE_COPY = {
       guardrails: 'Guardrails',
       noGuardrails: 'Only the default guardrails',
       noDefinition: 'This version holds no definition to show.',
+      /** A code agent's version holds only what was changed; the rest is the agent's own (COR-2229). */
+      ownInstructions: 'Not changed in this version. The agent’s own instructions apply.',
+      ownTools: 'Not changed in this version. The agent’s own tools apply.',
+      ownGuardrails: 'Not changed in this version. The agent’s own guardrails apply.',
+      overridesNote: (current: number): string =>
+        `Only what this version changed is shown. Version ${String(current)} is the current version.`,
     },
     restoreFailed: 'That version could not be restored.',
     restoreStale:

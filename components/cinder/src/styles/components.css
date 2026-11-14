@@ -12,6 +12,7 @@
 @import './components/_option-group.css';
 @import './components/_row-item.css';
 @import './components/_input-frame.css';
+@import './components/_field-chevron.css';
 
 @import '../components/access-gate/access-gate.css';
 @import '../components/accordion-item/accordion-item.css';

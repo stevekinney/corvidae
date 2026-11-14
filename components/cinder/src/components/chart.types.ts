@@ -115,6 +115,12 @@ export type BarChartPlacedBar = {
   height: number;
   color: string;
   hidden: boolean;
+  /**
+   * The bar's rounded end, on the side away from the baseline: `top` or `bottom` for a vertical
+   * bar, `right` or `left` for a horizontal one. In a stack only the outermost visible segment on
+   * each side of the baseline has one, so every join is square. A zero-length bar has none.
+   */
+  roundedEnd?: 'top' | 'bottom' | 'left' | 'right';
 };
 
 export type ChartMarkContext<TSeries = ChartCartesianSeries, TPoint = PlacedPoint> = {

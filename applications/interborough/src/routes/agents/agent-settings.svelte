@@ -19,8 +19,12 @@
    * read-only in the form's place, and last a demoted Delete agent, which asks first with the
    * agent's identifier typed to confirm and names what stops finding it (row 39a).
    *
-   * An agent defined in code, and a plugin's agent, show their model and the models a chat may be
-   * switched to read-only, with no Delete and no versions.
+   * An agent defined in code that the page can change (a built-in agent, or a running plugin's,
+   * COR-2229) is the same form, with an Instructions section first, saved by the same Save changes
+   * as a version of the agent's overrides (`agent-overrides.ts`) and listed with Restore in the
+   * same versions list; it has no Delete, because Restore is the way back. A plugin's agent that is
+   * a file, or whose plugin is disabled, shows its model and the models a chat may be switched to
+   * read-only, with no Delete and no versions, and says why in one line.
    *
    * Every write names the hash of the file the page read, so a file that changed since is refused
    * instead of overwritten, and the page says so. A read of the file that lands while the form
@@ -41,6 +45,7 @@
     SectionHeading,
     Select,
     Skeleton,
+    Textarea,
     type SelectOption,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -72,6 +77,7 @@
     NO_RESTRICTIONS,
   } from '../agent-editor/agent-editor-models.ts';
   import { providerDisplayName } from '../settings/models/format-model.ts';
+  import type { OverridesWriter } from './agent-overrides.ts';
   import AgentPluginNote from './agent-plugin-note.svelte';
   import AgentVersions from './agent-versions.svelte';
   import {
@@ -97,9 +103,31 @@
     name: string;
     /** How many chats were had with the agent, which the delete question says stay; `undefined` until known. */
     chats?: number | undefined;
+    /** The plugin's title, as Settings › Plugins shows it, for the line that names the plugin. */
+    pluginTitle?: string;
+    /** Whether the agent's plugin is disabled, so the tab is read-only and says why. */
+    unavailable?: boolean;
+    /**
+     * Set for a code agent the page changes (COR-2229): `detail` is then its definition with the
+     * overrides applied, and a save is written through `write` as a version of the overrides.
+     */
+    overrides?:
+      | {
+          readonly write: OverridesWriter;
+          readonly ownTools: readonly string[];
+        }
+      | undefined;
   }
 
-  let { id, detail, name, chats }: Props = $props();
+  let {
+    id,
+    detail,
+    name,
+    chats,
+    pluginTitle = '',
+    unavailable = false,
+    overrides,
+  }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.settings;
   const queryClient = useQueryClient();
@@ -110,9 +138,15 @@
   const plugin = $derived(pluginOfAgent(id));
   const isFile = $derived(detail?.source === 'file');
   const hash = $derived(detail?.hash ?? null);
-  /** An agent file the owner keeps, that loaded: a form, Delete and versions. A plugin's file is read-only. */
+  /**
+   * An agent file the owner keeps, that loaded: a form, Delete and versions; or a code agent the
+   * page changes through overrides: the form and versions, no Delete. A plugin's file is read-only.
+   */
   const writable = $derived(
-    isFile && plugin === null && detail?.definition != null && detail.hash !== null,
+    isFile &&
+      (plugin === null || overrides !== undefined) &&
+      detail?.definition != null &&
+      detail.hash !== null,
   );
   const settings = $derived(detail === undefined ? undefined : settingsOf(detail));
 
@@ -159,12 +193,13 @@
   let models = $state<string[]>([]);
   let effort = $state<Effort | ''>('');
   let stepLimit = $state('');
+  let instructions = $state('');
   /** Set by a submit: from then on the step limit says at its field why it cannot be saved. */
   let attempted = $state(false);
   /** The hash of the file the form was filled from, or last saved as. */
   let seededHash: string | null = null;
 
-  const form = $derived<SettingsForm>({ model, models, effort, stepLimit });
+  const form = $derived<SettingsForm>({ model, models, effort, stepLimit, instructions });
   const changed = $derived(baseline === undefined ? [] : changedParts(baseline, form));
   const dirty = $derived(changed.length > 0);
   const stepError = $derived(attempted ? stepLimitError(stepLimit, baseline?.stepLimit) : '');
@@ -175,6 +210,7 @@
     models = [...next.models];
     effort = next.effort;
     stepLimit = next.stepLimit;
+    instructions = next.instructions;
     attempted = false;
     seededHash = at;
   }
@@ -226,9 +262,10 @@
             }),
       })),
     );
+    // An agent that names no model, such as a scripted one, shows it as such.
     return offered.some((option) => option.value === model)
       ? offered
-      : [{ value: model, label: modelName(model) }, ...offered];
+      : [{ value: model, label: model === '' ? copy.modelNone : modelName(model) }, ...offered];
   });
 
   /** What the chosen model can do, in one muted line. */
@@ -298,6 +335,7 @@
       case 'stale':
         problem = copy.stale;
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.agents.overrides(id) });
         return;
       case 'forbidden':
         problem = copy.forbidden;
@@ -318,7 +356,12 @@
       readonly expectedHash: string;
       readonly definition: AgentDefinitionInput;
       readonly form: SettingsForm;
-    }) => updateAgent(id, input.expectedHash, input.definition),
+      readonly filled: AgentDefinitionInput;
+    }) =>
+      // A code agent's save is a version of its overrides; an agent file's is a write to the file.
+      overrides === undefined
+        ? updateAgent(id, input.expectedHash, input.definition)
+        : overrides.write(input.expectedHash, input.definition, input.filled),
     onMutate: () => {
       problem = null;
     },
@@ -328,6 +371,7 @@
       seededHash = result.hash;
       attempted = false;
       if (toasts) showToast(copy.saved(nextVersion), { variant: 'success' });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.overrides(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.versions(id) });
@@ -356,10 +400,12 @@
     const definition = detail?.definition ?? null;
     const expectedHash = seededHash;
     if (!dirty || definition === null || expectedHash === null || save.isPending) return;
-    const snapshot: SettingsForm = { model, models: [...models], effort, stepLimit };
+    const snapshot: SettingsForm = { model, models: [...models], effort, stepLimit, instructions };
     save.mutate({
       expectedHash,
       definition: settingsDefinition(definition, snapshot),
+      // What the form was filled with, or last saved, as a write: the part of the write that is no change.
+      filled: settingsDefinition(definition, baseline ?? snapshot),
       form: snapshot,
     });
   }
@@ -430,7 +476,11 @@
     {#if !writable}
       <section class="ib-agent-section" aria-label={copy.heading}>
         {#if plugin !== null}
-          <AgentPluginNote {plugin} />
+          <AgentPluginNote
+            {plugin}
+            title={pluginTitle}
+            mode={unavailable ? 'unavailable' : 'read-only'}
+          />
         {:else if !isFile}
           <p class="ib-agent-note" data-testid="agent-built-in">{copy.builtIn}</p>
         {/if}
@@ -471,6 +521,9 @@
       </section>
     {:else}
       {#if viewing === null}
+        {#if overrides !== undefined}
+          <AgentPluginNote {plugin} title={pluginTitle} mode="editable" />
+        {/if}
         <form
           class="ib-agent-settings__form"
           aria-label={copy.heading}
@@ -478,11 +531,25 @@
           novalidate
           onsubmit={submit}
         >
+          {#if overrides !== undefined}
+            <!-- A code agent's instructions are changed here, and saved with the rest by the one Save changes. -->
+            <section class="ib-agent-section" aria-label={copy.instructionsHeading}>
+              <SectionHeading level={2} title={copy.instructionsHeading} />
+              <Textarea
+                id="agent-settings-instructions"
+                aria-label={copy.instructionsLabel}
+                description={copy.instructionsNote}
+                rows={10}
+                disabled={save.isPending}
+                bind:value={instructions}
+              />
+            </section>
+          {/if}
           <!-- The Model section (rows 38u, 38v). -->
           <section class="ib-agent-section" aria-label={copy.modelLabel}>
             <SectionHeading level={2} title={copy.modelLabel} />
             <p class="ib-agent-settings__model" data-testid="agent-settings-model">
-              {modelLineOf(model)}
+              {model === '' ? copy.modelNone : modelLineOf(model)}
             </p>
             {#if abilityLine !== ''}
               <p class="ib-agent-note" data-testid="agent-settings-abilities">{abilityLine}</p>
@@ -510,6 +577,7 @@
               label={copy.modelLabel}
               {...hiddenLabel}
               presentation="listbox"
+              placeholder={copy.modelChoose}
               options={modelOptions}
               value={model}
               disabled={save.isPending}
@@ -593,9 +661,15 @@
         </form>
       {/if}
 
-      <AgentVersions {id} currentHash={hash} current={detail.definition} bind:viewing />
+      <AgentVersions
+        {id}
+        currentHash={hash}
+        current={detail.definition}
+        ownTools={overrides?.ownTools}
+        bind:viewing
+      />
 
-      {#if viewing === null}
+      {#if viewing === null && overrides === undefined}
         <!-- Demoted: the dialog holds the solid danger button (row 39a). -->
         <section class="ib-agent-section" aria-label={copy.deleteHeading}>
           <SectionHeading level={2} title={copy.deleteHeading} description={copy.deleteNote} />

@@ -721,10 +721,14 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(toggle.getAttribute('data-cinder-size')).toBe('sm');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.querySelector('.cinder-button__icon svg')).not.toBeNull();
-    expect(toggle.closest('.cinder-approval-card__note-toggle-tip')).not.toBeNull();
-    expect(container.querySelector('[role="tooltip"]')?.textContent ?? 'Add a note').toContain(
-      'Add a note',
-    );
+    const tip = toggle.closest('.cinder-approval-card__note-toggle-tip');
+    expect(tip).not.toBeNull();
+    expect(
+      tip?.querySelector('[role="tooltip"]')?.textContent ??
+        container.querySelector('.cinder-approval-card__note-toggle-tip [role="tooltip"]')
+          ?.textContent ??
+        'Add a note',
+    ).toContain('Add a note');
   });
 
   test('Add a note keeps space-3 before Deny and hides only its words under 30rem', () => {

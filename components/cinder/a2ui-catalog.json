@@ -83,9 +83,9 @@
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
               "description": "Accessible label for the copied state — what `aria-live=\"polite\"` announces\nwhen the copy succeeds. Defaults to \"Copied\". Override this when `label` is\ncustomized so the live-region announcement reflects what just happened\n(e.g. label=\"Copy code\" + copiedLabel=\"Code copied\")."
             },
-            "iconOnly": {
+            "textVisible": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
-              "description": "Render the button with only an icon and a visually hidden label.\nWhen true, defaults to a Copy icon (idle) and a Check icon (copied)."
+              "description": "Shows the words \"Copy\", and \"Copied\" after a copy, after the icon. By default the button is\nthe Copy icon alone (a Check after a copy), named by `label`, which also shows as a tooltip.\nThe button keeps one width in both states."
             },
             "value": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
@@ -403,6 +403,10 @@
             "nameDetail": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
               "description": "Words that follow the visible label in the accessible name only, such as the thing the switch\nbelongs to (\"Daily summary schedule\" makes the name \"Active, Daily summary schedule\"). The\nvisible label stays first, so the name keeps WCAG 2.5.3 (Label in Name). The name is then the\nswitch's `aria-label`, written as one string so every platform reads it alike."
+            },
+            "pending": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Shows that the setting is being read or changed and a press has to wait, such as a switch\nwhose consequence is still being looked up. The switch announces `aria-busy=\"true\"` and\n`aria-disabled=\"true\"`, shows a small spinner in its thumb, and ignores a press on the track,\nthe label or the state words. It stays focusable, so focus is not lost when it starts or\nstops, and it keeps its value and its colour (unlike `disabled`, which greys it)."
             },
             "readonly": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",

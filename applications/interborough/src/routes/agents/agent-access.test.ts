@@ -739,9 +739,9 @@ describe('the states', () => {
     expect(queryByRole('checkbox', { name: 'Allow Lookup order' })).toBeNull();
   });
 
-  test('shows an agent in code read-only, with the tools it states and every control off', async () => {
-    landAt('/agents/assistant/access');
-    const served = serve({
+  /** A built-in agent that states one tool, with `overrides` in force over it. */
+  function serveBuiltIn(overrides: Record<string, unknown>) {
+    return serve({
       'bureau.agents.list': () => ({ agents: [{ ...AGENT, name: 'assistant', kind: 'code' }] }),
       'bureau.agents.definitions.get': () => ({
         ...readyAgent({ id: 'assistant' }),
@@ -758,16 +758,68 @@ describe('the states', () => {
           card: [],
           instructions: null,
         },
+        // A built-in agent reports nothing it would drop: its own policy is not on the wire.
+        dropped: [],
       }),
+      'bureau.agents.overrides.get': () => ({
+        id: 'assistant',
+        hash: 'hash-0',
+        version: null,
+        overrides,
+        ownTools: ['lookup-order'],
+      }),
+      'bureau.agents.overrides.update': () => ({ id: 'assistant', hash: 'hash-1', version: 1 }),
     });
+  }
+
+  test('shows a built-in agent’s tools and holds them, with the Asks, because its own policy cannot be read (COR-2229)', async () => {
+    landAt('/agents/assistant/access');
+    const served = serveBuiltIn({});
     const { container, findByTestId } = mount();
 
     await findByTestId('agent-built-in');
     const lookup = await rowOf(container, 'lookup-order');
     const box = lookup.querySelector<HTMLInputElement>('input[type="checkbox"]');
     expect(box?.checked).toBe(true);
+    // An override of the tools rebuilds the run's toolbox with only the Asks it states, so a change
+    // to the tools would drop the agent's own policy: the box is held as the select is.
     expect(box?.disabled).toBe(true);
     expect(selectOf(lookup).disabled).toBe(true);
+
+    await fireEvent.click(box!);
+    expect(
+      served.calls.filter((call) => call.method === 'bureau.agents.overrides.update'),
+    ).toHaveLength(0);
+  });
+
+  test('saves a change to a built-in agent’s tools as a version of its overrides once its Asks are overridden, not to a file (COR-2229)', async () => {
+    landAt('/agents/assistant/access');
+    const served = serveBuiltIn({ approvals: { 'lookup-order': 'always' } });
+    const { container, findByTestId } = mount();
+
+    await findByTestId('agent-built-in');
+    const lookup = await rowOf(container, 'lookup-order');
+    const box = lookup.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(box?.checked).toBe(true);
+    expect(box?.disabled).toBe(false);
+    expect(selectOf(lookup).disabled).toBe(false);
+
+    await fireEvent.click(box!);
+
+    await waitFor(() =>
+      expect(
+        served.calls.filter((call) => call.method === 'bureau.agents.overrides.update'),
+      ).toHaveLength(1),
+    );
+    const [call] = served.calls.filter(
+      (entry) => entry.method === 'bureau.agents.overrides.update',
+    );
+    expect(call?.params).toEqual({
+      id: 'assistant',
+      expectedHash: 'hash-0',
+      // The withdrawn tool's Asks are left out of the write: the Bureau refuses one for a tool the agent may not use.
+      overrides: { tools: [] },
+    });
     expect(updatesOf(served)).toHaveLength(0);
   });
 

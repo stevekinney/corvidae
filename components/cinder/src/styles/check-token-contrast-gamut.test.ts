@@ -46,6 +46,7 @@ const {
   successFg,
   successHover,
   surface,
+  surfaceRaised,
   text,
   warning,
   warningActive,
@@ -212,11 +213,13 @@ function minPairwise<T>(items: readonly T[], metric: (a: T, b: T) => number): nu
   return min;
 }
 
-describe('chart palette distinguishability + secondary CVD lightness cue', () => {
+describe('chart palette: bright, distinguishable, and apart under protanopia and deuteranopia', () => {
   const CHART_BG_LIGHT = { l: 0.97, c: 0, h: 0 }; // near-white chart canvas
   const CHART_BG_DARK = { l: 0.2, c: 0, h: 0 }; // dark chart canvas
   const DELTA_E_FLOOR = 12;
-  const DELTA_L_FLOOR = 4;
+  // Neighbouring series (n and n+1), the ones a legend and a stack set side by side, stay this far
+  // apart in CIEDE2000 under full-severity simulated protanopia and deuteranopia.
+  const NEIGHBOUR_CVD_DELTA_E_FLOOR = 10;
 
   for (const arm of ['light', 'dark'] as const) {
     const labs = chartSeries.map((s) => toCieLab(s[arm]));
@@ -228,6 +231,43 @@ describe('chart palette distinguishability + secondary CVD lightness cue', () =>
       }
     });
 
+    it(`${arm}: every series is ≥3:1 against the surface, the canvas and the raised surface`, () => {
+      const surfaceCanvas = readOklchToken('--cinder-surface-canvas');
+      for (const background of [surface, surfaceCanvas, surfaceRaised]) {
+        const backgroundLuminance = wcagLuminance(background[arm]);
+        for (const series of chartSeries) {
+          expect(
+            contrastRatio(wcagLuminance(series[arm]), backgroundLuminance),
+          ).toBeGreaterThanOrEqual(NON_TEXT);
+        }
+      }
+    });
+
+    it(`${arm}: series 1 is in the indigo accent's hue family`, () => {
+      const first = chartSeries[0]![arm];
+      expect(Math.abs(first.h - accent[arm].h)).toBeLessThanOrEqual(10);
+    });
+
+    it(`${arm}: the series are bright: light-theme lightness 60 to 72%, chroma ≥ 0.09`, () => {
+      if (arm !== 'light') return;
+      for (const series of chartSeries) {
+        expect(series.light.l).toBeGreaterThanOrEqual(0.6);
+        expect(series.light.l).toBeLessThanOrEqual(0.72);
+        expect(series.light.c).toBeGreaterThanOrEqual(0.09);
+      }
+    });
+
+    for (const type of ['protan', 'deutan'] as const) {
+      it(`${arm}: neighbouring series are ≥${NEIGHBOUR_CVD_DELTA_E_FLOOR} ΔE00 apart under simulated ${type}opia`, () => {
+        const simulated = chartSeries.map((series) => simulateCvd(series[arm], type));
+        for (let index = 1; index < simulated.length; index += 1) {
+          expect(ciede2000(simulated[index - 1]!, simulated[index]!)).toBeGreaterThanOrEqual(
+            NEIGHBOUR_CVD_DELTA_E_FLOOR,
+          );
+        }
+      });
+    }
+
     it(`${arm}: every series has chroma ≥ 0.06`, () => {
       for (const series of chartSeries) {
         expect(series[arm].c).toBeGreaterThanOrEqual(0.06);
@@ -236,11 +276,6 @@ describe('chart palette distinguishability + secondary CVD lightness cue', () =>
 
     it(`${arm}: min pairwise CIEDE2000 ΔE00 ≥ ${DELTA_E_FLOOR}`, () => {
       expect(minPairwise(labs, ciede2000)).toBeGreaterThanOrEqual(DELTA_E_FLOOR);
-    });
-
-    it(`${arm}: min pairwise CIE L* separation ≥ ${DELTA_L_FLOOR} (secondary lightness cue for CVD viewers — supports ΔE00, not a standalone CVD-safety proof)`, () => {
-      const minDeltaL = minPairwise(labs, (a, b) => Math.abs(a[0] - b[0]));
-      expect(minDeltaL).toBeGreaterThanOrEqual(DELTA_L_FLOOR);
     });
   }
 

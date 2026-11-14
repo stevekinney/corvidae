@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
@@ -412,7 +412,8 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
     },
     async listOperations() {
       assertOpen();
-      const versionIds = [...new Bun.Glob('op-*').scanSync({ cwd: versions, onlyFiles: true })]
+      const versionIds = regularFileNames(versions)
+        .filter((name) => name.startsWith('op-'))
         .map((name) => name.slice(3))
         .filter((id) => ID_PATTERN.test(id));
       return [...new Set([...readdirSafe(operations), ...versionIds])]
@@ -451,11 +452,21 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
   };
 }
 
+/**
+ * The names of the regular files directly in `directory`, as a `*` glob matches them: no
+ * subdirectory, no symbolic link (which is not followed), and no name starting with `.`.
+ */
+function regularFileNames(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
+    .map((entry) => entry.name);
+}
+
 function readdirSafe(directory: string): string[] {
   try {
-    return [...new Bun.Glob('*.json').scanSync({ cwd: directory, onlyFiles: true })].map((name) =>
-      name.slice(0, -5),
-    );
+    return regularFileNames(directory)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -5));
   } catch (error) {
     return fsError('list secret operations', error);
   }

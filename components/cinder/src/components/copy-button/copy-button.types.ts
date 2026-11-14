@@ -41,14 +41,18 @@ export type CopyButtonProps = Omit<
    * customized so the live-region announcement reflects what just happened
    * (e.g. label="Copy code" + copiedLabel="Code copied"). */
   copiedLabel?: string;
-  /** Render the button with only an icon and a visually hidden label.
-   * When true, defaults to a Copy icon (idle) and a Check icon (copied). */
-  iconOnly?: boolean;
+  /**
+   * Shows the words "Copy", and "Copied" after a copy, after the icon. By default the button is
+   * the Copy icon alone (a Check after a copy), named by `label`, which also shows as a tooltip.
+   * The button keeps one width in both states.
+   * @default false
+   */
+  textVisible?: boolean;
   /** Additional class names merged with `.cinder-copy-button`. */
   class?: string;
-  /** Default content (idle state). */
+  /** The words of the text face at rest, after the Copy icon. Passing them shows the text face. */
   children?: Snippet;
-  /** Content rendered while in the "copied" state. */
+  /** The words of the text face once copied, after the Check icon. Defaults to "Copied". */
   confirmation?: Snippet;
   /** Called when the clipboard write fails (permission denied, insecure context, or the legacy execCommand fallback also failing). */
   onError?: () => void;

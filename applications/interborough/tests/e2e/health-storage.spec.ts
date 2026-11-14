@@ -548,12 +548,11 @@ test.describe('Health › Storage writes and states', () => {
     // 80m: the line, the key, then the buttons and the menu at the end of the row.
     await expect(pane.getByTestId('storage-key-summary')).toHaveText(BANNER_SUMMARY);
     await expect(pane.getByTestId('storage-key-name')).toHaveText(BANNER);
-    await expect(pane.locator('.ib-storage-key__actions').first().getByRole('button')).toHaveText([
-      'Copy key',
-      'Copy value',
-      'Edit',
-      'More actions',
-    ]);
+    // Rendered text: a Copy button lays out its hidden "Copied" word too, so it keeps one width.
+    await expect(pane.locator('.ib-storage-key__actions').first().getByRole('button')).toHaveText(
+      ['Copy key', 'Copy value', 'Edit', 'More actions'],
+      { useInnerText: true },
+    );
     await expect(pane.getByRole('button', { name: 'Delete' })).toHaveCount(0);
     const fields = pane.getByRole('group', { name: 'Value' });
     await expect(fields.getByText('Dismissed', { exact: true })).toBeVisible();
@@ -868,7 +867,7 @@ test.describe('Health › Storage writes and states', () => {
 
     await expect(pane.getByTestId('storage-key-summary')).toHaveText('Chat sessions');
     await expect(pane.getByTestId('storage-key-name')).toHaveText(key);
-    await expect(pane.getByRole('button')).toHaveText(['Copy key']);
+    await expect(pane.getByRole('button')).toHaveText(['Copy key'], { useInnerText: true });
     await expect(pane.getByRole('button', { name: 'Copy key' })).toBeDisabled();
     await page.clock.runFor(300);
     await expect(pane.locator('.cinder-skeleton')).not.toHaveCount(0);

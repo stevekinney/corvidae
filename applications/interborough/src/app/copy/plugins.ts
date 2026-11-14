@@ -156,6 +156,8 @@ export const PLUGINS_COPY = {
       `${String(count)} ${count === 1 ? 'schedule' : 'schedules'}`,
     waitingRuns: (count: number): string =>
       `${String(count)} waiting ${count === 1 ? 'run' : 'runs'}`,
+    /** The runs of the plugin's agents that are going now, which turning it off fails (COR-2235). */
+    inFlightRuns: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'}`,
   },
   banner: {
     changes: (count: number): string =>
@@ -183,14 +185,29 @@ export const PLUGINS_COPY = {
       count === 1 ? `uses ${ids} and shows as unavailable.` : `use ${ids} and show as unavailable.`,
     schedules: (count: number, ids: string): string =>
       `${count === 1 ? 'starts' : 'start'} runs through ${ids}. ${count === 1 ? 'It stays' : 'They stay'} listed and ${count === 1 ? 'does' : 'do'} nothing until it is back.`,
+    /** A run of the plugin's agents that is going now fails when Interborough restarts (COR-2235, COR-2230). */
+    inFlightRuns: (title: string, names: readonly string[], more: number): string => {
+      const listed = nameList([...names, ...(more > 0 ? [`${String(more)} more`] : [])]);
+      return `of ${title}’s agents ${names.length + more === 1 ? 'is' : 'are'} going now: ${listed}. ${names.length + more === 1 ? 'It stops' : 'They stop'} and ${names.length + more === 1 ? 'is' : 'are'} marked failed when Interborough restarts.`;
+    },
+    /** The lead of the line when the runs could not be read. */
+    inFlightRunsUnknownLead: 'Runs',
+    inFlightRunsUnknown: (title: string): string =>
+      `of ${title}’s agents could not be checked. Any that is going or waiting now will stop and be marked failed when Interborough restarts.`,
     waitingRuns: (count: number, ids: string): string =>
       count === 1
-        ? `waits on ${ids}. It shows as unavailable instead of resuming.`
-        : `wait on ${ids}. They show as unavailable instead of resuming.`,
+        ? `waits on ${ids}. It won’t resume until the plugin is back.`
+        : `wait on ${ids}. They won’t resume until the plugin is back.`,
     alsoWrites: 'Restarting also saves these changes, which are waiting:',
     alsoSwitchedOn: 'switched on',
     alsoSwitchedOff: 'switched off',
     reassurance: 'Nothing is deleted. Enable it again and restart, and it works as before.',
+    /** The note once runs are listed: what comes back and what does not. */
+    reassuranceWithRuns:
+      'Nothing is deleted. Enable it again and restart, and its agents work again; the runs listed above don’t resume.',
+    /** The note when the runs could not be read: the same fate for the runs as the line above it. */
+    reassuranceRunsUnknown:
+      'Nothing is deleted. Enable it again and restart, and its agents work again; runs that were going don’t resume.',
     cancel: 'Cancel',
     confirm: 'Disable and restart',
   },

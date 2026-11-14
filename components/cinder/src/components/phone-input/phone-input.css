@@ -11,8 +11,6 @@
     flex-direction: column;
     gap: var(--cinder-space-1-5);
     inline-size: 100%;
-    container-type: inline-size;
-    container-name: cinder-phone-input;
   }
 
   .cinder-phone-input-field__label {
@@ -30,50 +28,72 @@
     cursor: not-allowed;
   }
 
+  /* One field: the country control as wide as its closed text, the number in the rest of the
+     line, joined at a single shared border. The country part stays small, so a narrow container
+     keeps both on one line instead of stacking them. */
   .cinder-phone-input {
     display: grid;
-    grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr);
-    gap: var(--cinder-space-2);
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: stretch;
   }
 
-  @container cinder-phone-input (max-width: 22rem) {
-    .cinder-phone-input {
-      grid-template-columns: 1fr;
-    }
-  }
-
+  /* The visible summary ("US +1") sizes the country control. The native select shares its grid
+     cell and fills it, but contributes no width of its own (an inline size of 0 and a percentage
+     minimum), so its longest option ("United Arab Emirates +971") never widens the field. The
+     open list is the platform's own: full country names, as wide as they need, with type-ahead
+     by country name. */
   .cinder-phone-input__country {
-    position: relative;
+    display: grid;
     min-inline-size: 0;
   }
 
   .cinder-phone-input__country .cinder-select-field {
-    inline-size: 100%;
+    grid-area: 1 / 1;
+    inline-size: 0;
+    min-inline-size: 100%;
   }
 
   .cinder-phone-input__country .cinder-select {
     color: transparent;
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
   }
 
   .cinder-phone-input__country .cinder-select option {
     color: var(--cinder-text-default);
   }
 
+  /* The summary's end padding clears the shared field chevron (12px in, 18px wide) with a 6px gap. */
   .cinder-phone-input__country-summary {
-    position: absolute;
+    grid-area: 1 / 1;
+    align-self: center;
     z-index: 1;
-    inset-block-start: 50%;
-    inset-inline-start: var(--cinder-space-3);
-    max-inline-size: calc(100% - var(--cinder-space-10));
-    overflow: hidden;
+    padding-inline: var(--cinder-space-3)
+      calc(var(--cinder-space-3) + 1.125rem + var(--cinder-space-1-5));
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-sm);
     line-height: 1;
-    text-overflow: ellipsis;
     white-space: nowrap;
     pointer-events: none;
-    transform: translateY(-50%);
+  }
+
+  /* The number input's start border lies on the select's end border, so the seam is one line. */
+  .cinder-phone-input > .cinder-input-field {
+    /* Stretched to its cell, so the negative margin widens it rather than pulling it short. */
+    inline-size: auto;
+    min-inline-size: 0;
+    margin-inline-start: -1px;
+  }
+
+  .cinder-phone-input .cinder-phone-input__national {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+
+  /* Whichever half has focus draws its ring over the shared border. */
+  .cinder-phone-input__country:focus-within,
+  .cinder-phone-input > .cinder-input-field:focus-within {
+    z-index: 2;
   }
 
   .cinder-phone-input__country[data-disabled] .cinder-phone-input__country-summary {

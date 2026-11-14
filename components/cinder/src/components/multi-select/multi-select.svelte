@@ -22,7 +22,7 @@
 </script>
 
 <script lang="ts" generics="T extends string = string">
-  import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import X from '@lucide/svelte/icons/x';
   import { tick, untrack } from 'svelte';
 
   import CheckboxIndicatorShell from '../_internal/checkbox-indicator-shell.svelte';
@@ -40,7 +40,10 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { createPortalAttachment } from '../portal/index.ts';
   import { findNearestOpenTopLayer } from '../portal/portal.utilities.svelte.ts';
+  import Tooltip from '../tooltip/tooltip.svelte';
   import type { MultiSelectItem, MultiSelectProps } from './multi-select.types.ts';
+
+  const CLEAR_LABEL = 'Clear selected items';
 
   let {
     id,
@@ -117,6 +120,7 @@
   let openedAtLeastOnce = $state(false);
   let triggerElement = $state<HTMLButtonElement | null>(null);
   let controlElement = $state<HTMLDivElement | null>(null);
+  let clearElement = $state<HTMLButtonElement | null>(null);
   let panelElement = $state<HTMLDivElement | null>(null);
   let filterElement = $state<HTMLInputElement | null>(null);
   let listboxElement = $state<HTMLElement | null>(null);
@@ -497,24 +501,22 @@
       onclick={() => (open ? closeMenu() : openMenu())}
       onkeydown={handleTriggerKeydown}
     >
+      <!-- The summary carries the count ("3 selected"); a separate count chip only repeated it. -->
       <span class="cinder-multi-select__summary cinder-_truncate">{triggerSummary}</span>
-      {#if selectedCount > 0}
-        <span class="cinder-multi-select__count" aria-hidden="true">{selectedCount}</span>
-      {/if}
-      <span class="cinder-multi-select__chevron" aria-hidden="true">
-        <ChevronDown size={16} strokeWidth={2} />
-      </span>
+      <span class="cinder-_field-chevron cinder-multi-select__chevron" aria-hidden="true"></span>
     </button>
 
     {#if selectedCount > 0 && !field.disabled && !readonly}
       <button
+        bind:this={clearElement}
         type="button"
         class="cinder-multi-select__clear"
-        aria-label="Clear selected items"
+        aria-label={CLEAR_LABEL}
         onclick={clearSelection}
       >
-        ×
+        <X size={16} strokeWidth={2} aria-hidden="true" />
       </button>
+      <Tooltip text={CLEAR_LABEL} describe={false} triggerRef={clearElement} />
     {/if}
 
     {#if open}

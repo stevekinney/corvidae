@@ -117,47 +117,104 @@ function clamp01(value: number): number {
   return value;
 }
 
+/** The colours a heatmap's values run between. */
+export type HeatmapRamp = {
+  /** The sequential ramp's lowest value. */
+  readonly low: string;
+  /** The sequential ramp's highest value. */
+  readonly high: string;
+  /** The diverging ramp's negative end. */
+  readonly negative: string;
+  /** The diverging ramp's middle, where a value is zero. */
+  readonly neutral: string;
+  /** The diverging ramp's positive end. */
+  readonly positive: string;
+};
+
+/** Cinder's shared chart ramp tokens: a faint blue tint to vivid blue, and blue to orange. */
+export const DEFAULT_HEATMAP_RAMP: HeatmapRamp = {
+  low: 'var(--cinder-chart-ramp-low)',
+  high: 'var(--cinder-chart-ramp-high)',
+  negative: 'var(--cinder-chart-ramp-negative)',
+  neutral: 'var(--cinder-chart-ramp-neutral)',
+  positive: 'var(--cinder-chart-ramp-positive)',
+};
+
+/** The fill of a cell with no value: the page canvas, which a hairline outlines. */
+export const HEATMAP_EMPTY_FILL = 'var(--cinder-surface-canvas)';
+
 /**
- * CSS `color-mix` fill for a heatmap cell. `null` (missing) returns the inset
- * surface. Sequential mixes the primary series colour; diverging mixes a cool
- * colour below the midpoint and a warm colour above it, both fading to the inset
- * surface at the neutral midpoint.
+ * The ramp a chart uses. Without a custom palette it is Cinder's ramp tokens. A custom palette
+ * keeps its own hues: its first colour is the sequential ramp's strong end over a faint tint of
+ * itself, and its fifth and third (or second, for a short palette) the diverging ends, through
+ * the chart background.
+ */
+export function heatmapRamp(
+  palette: readonly string[] | undefined,
+  background = 'var(--cinder-chart-ramp-neutral)',
+): HeatmapRamp {
+  if (!palette || palette.length === 0) return DEFAULT_HEATMAP_RAMP;
+  const first = chartPaletteColor(0, palette);
+  const negative = chartPaletteColor(4, palette);
+  let positive = chartPaletteColor(2, palette);
+  // Short custom palettes wrap around. Keep the two diverging ends distinct whenever callers
+  // provide at least two colors.
+  if (palette.length >= 2 && positive === negative) positive = chartPaletteColor(1, palette);
+  return {
+    low: `color-mix(in oklch, ${first} 10%, ${background})`,
+    high: first,
+    negative,
+    neutral: background,
+    positive,
+  };
+}
+
+/**
+ * CSS `color-mix` fill for a heatmap cell. `null` (missing) returns the page canvas, so an empty
+ * cell never reads as the lowest value. Sequential mixes from the ramp's low tint to its strong
+ * end; diverging mixes from the neutral middle toward the negative end below zero and the
+ * positive end above it.
  */
 export function heatmapCellFill(
   value: number | null,
   domain: HeatmapDomain,
   scale: HeatmapColorScale = 'sequential',
-  palette?: readonly string[],
-  background = 'var(--cinder-surface-inset)',
+  ramp: HeatmapRamp = DEFAULT_HEATMAP_RAMP,
 ): string {
-  if (value === null) return background;
+  if (value === null) return HEATMAP_EMPTY_FILL;
   const normalized = normalizeHeatmapValue(value, domain, scale);
 
+  // Diverging mixes in Oklab, not OKLCH: the neutral middle has almost no chroma, and an OKLCH mix
+  // would swing the hue from the middle's blue to the orange through pink.
   if (scale === 'diverging') {
-    const coolColor = chartPaletteColor(4, palette);
-    let warmColor = chartPaletteColor(2, palette);
-    // Short custom palettes wrap around. Keep the two diverging ends distinct
-    // whenever callers provide at least two colors.
-    if (palette && palette.length >= 2 && warmColor === coolColor) {
-      warmColor = chartPaletteColor(1, palette);
-    }
     if (normalized < 0.5) {
       const ratio = (0.5 - normalized) * 2;
-      return `color-mix(in oklch, ${coolColor} ${Math.round(ratio * 100)}%, ${background})`;
+      return `color-mix(in oklab, ${ramp.negative} ${Math.round(ratio * 100)}%, ${ramp.neutral})`;
     }
     const ratio = (normalized - 0.5) * 2;
-    return `color-mix(in oklch, ${warmColor} ${Math.round(ratio * 100)}%, ${background})`;
+    return `color-mix(in oklab, ${ramp.positive} ${Math.round(ratio * 100)}%, ${ramp.neutral})`;
   }
 
-  return `color-mix(in oklch, ${chartPaletteColor(0, palette)} ${Math.round(normalized * 100)}%, ${background})`;
+  return `color-mix(in oklch, ${ramp.high} ${Math.round(normalized * 100)}%, ${ramp.low})`;
 }
 
 /**
- * Provide the opaque source colour used by the MatrixChart's difference blend.
- * The browser composites this against the actual rendered cell, so arbitrary
- * custom palettes remain readable without guessing their luminance in JavaScript.
+ * The relative luminance at which a cell's number switches from white to black. White on a cell
+ * darker than this, and black on a cell lighter, each keep at least 4.5:1: white needs a cell
+ * luminance of 0.183 or less, black one of 0.175 or more, and the switch sits between them. Along
+ * a ramp whose luminance only rises (or only falls), the switch happens once.
  */
-export function heatmapLabelFill(value: number | null, muted = 'currentColor'): string {
-  if (value === null) return muted;
-  return 'var(--cinder-text-inverse)';
+export const HEATMAP_LABEL_LUMINANCE_SWITCH = 0.1815;
+
+/**
+ * The fill of a cell's number: white or black, never a ramp or series colour, chosen from the
+ * luminance of the cell's own resolved fill with CSS relative colour, so it holds in both themes
+ * and for a custom palette. The XYZ (D65) `y` channel is the WCAG relative luminance; each channel
+ * is the white point's times a step that is 1 below the switch and 0 above it. A cell with no
+ * value takes the muted colour.
+ */
+export function heatmapLabelFill(cellFill: string | null, muted = 'currentColor'): string {
+  if (cellFill === null) return muted;
+  const white = `clamp(0, (${HEATMAP_LABEL_LUMINANCE_SWITCH} - y) * 100000, 1)`;
+  return `color(from ${cellFill} xyz-d65 calc(0.9505 * ${white}) calc(${white}) calc(1.089 * ${white}))`;
 }

@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { fixtureRoute } from './layout-fixture.ts';
 
 export type ChartDefinition = {
   slug: 'area-chart' | 'line-chart' | 'bar-chart';
@@ -63,8 +64,9 @@ export const charts: ChartDefinition[] = [
   },
 ];
 
+/** The chart's assertion fixture, named, so a chart that also has named fixtures opens the right one. */
 export function routeFor(chart: ChartDefinition): string {
-  return `/page/${chart.slug}?snapshot=1`;
+  return fixtureRoute(chart.slug);
 }
 
 export function targetSelector(chart: ChartDefinition): string {

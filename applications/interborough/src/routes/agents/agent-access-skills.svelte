@@ -77,7 +77,9 @@
   }
 
   function locked(skill: Skill): boolean {
-    return !form.editable || skillGrantLocked(skill, skills.data ?? [], form.isGranted(skill.name));
+    return (
+      !form.skillsEditable || skillGrantLocked(skill, skills.data ?? [], form.isGranted(skill.name))
+    );
   }
 </script>
 
@@ -207,7 +209,7 @@
             id={`access-skill-unlisted-${name}`}
             aria-label={copy.grantLabel(name)}
             checked={form.isGranted(name)}
-            disabled={!form.editable || !form.isGranted(name)}
+            disabled={!form.skillsEditable || !form.isGranted(name)}
             mutating
             data-changes
             onValueChange={(next) => grant(name, next)}

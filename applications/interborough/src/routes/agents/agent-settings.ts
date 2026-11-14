@@ -76,6 +76,12 @@ export interface SettingsForm {
   readonly effort: Effort | '';
   /** The step limit as typed; empty is the default. */
   readonly stepLimit: string;
+  /**
+   * The instructions, which only a code agent's form shows, because its instructions are changed
+   * here (an agent file's are changed in the editor). A file agent's form holds its file's and
+   * writes them back as they are.
+   */
+  readonly instructions: string;
 }
 
 /** The form as the file fills it. */
@@ -85,6 +91,7 @@ export function settingsFormOf(definition: FileDefinition): SettingsForm {
     models: definition.models ?? [],
     effort: definition.effort ?? '',
     stepLimit: definition.limits.steps === null ? '' : String(definition.limits.steps),
+    instructions: definition.instructions,
   };
 }
 
@@ -101,7 +108,7 @@ export function stepLimitError(text: string, kept = ''): string {
 }
 
 /** The parts of the form, in the order the leave question names them. */
-const FORM_PARTS = ['model', 'models', 'effort', 'stepLimit'] as const;
+const FORM_PARTS = ['instructions', 'model', 'models', 'effort', 'stepLimit'] as const;
 
 /** What `form` changed from `baseline`, as the leave question names the parts (row 39b). */
 export function changedParts(baseline: SettingsForm, form: SettingsForm): string[] {
@@ -150,7 +157,7 @@ export function settingsDefinition(
     ...(definition.approvals === null ? {} : { approvals: definition.approvals }),
     // Only the step limit: a limit left out of `limits` keeps the file's.
     limits: { steps },
-    instructions: definition.instructions,
+    instructions: form.instructions,
   };
 }
 
@@ -224,16 +231,53 @@ function changeOf(
 }
 
 /**
+ * One changed key of a code agent's version against the version before it, in words. A version holds
+ * only the keys that were overridden, so a key the earlier version did not override reads "None".
+ */
+function overrideChangeOf(
+  key: string,
+  version: NonNullable<AgentVersion['overrides']>,
+  previous: AgentVersion['overrides'],
+): string {
+  const words = AGENT_PAGE_COPY.versions.change;
+  const label = keyLabel(key);
+  if (key === 'model' || key === 'effort') {
+    const now = version[key];
+    const before = previous?.[key] ?? null;
+    const named = (value: string | null): string => {
+      if (value === null) return words.none;
+      const effort = EFFORTS.find((entry) => entry === value);
+      return key === 'effort' && effort !== undefined ? EFFORT_LABELS[effort] : modelName(value);
+    };
+    return words.fromTo(label, named(before), named(now));
+  }
+  if (key === 'tools' && version.tools !== null && previous?.tools != null) {
+    const added = version.tools.filter((tool) => !previous.tools?.includes(tool));
+    const removed = previous.tools.filter((tool) => !version.tools?.includes(tool));
+    if (added.length > 0 || removed.length > 0) {
+      return `${label}: ${words.tools(added.map(humanizeName), removed.map(humanizeName))}`;
+    }
+  }
+  return words.edited(label);
+}
+
+/**
  * What a version changed from the one before it, in one line: "Model: Claude Haiku 5.5 to Claude
- * Sonnet 5.5; Tools: added Issue refund". The first version says Created, and a save that changed
- * nothing says so. `previous` is the version before it, when it is still kept.
+ * Sonnet 5.5; Tools: added Issue refund". The first version of an agent file says Created, and a
+ * save that changed nothing says so. A code agent's first version is its first override, so it
+ * names what it changed like any other. `previous` is the version before it, when it is still kept.
  */
 export function versionChanges(version: AgentVersion, previous: AgentVersion | undefined): string {
   const words = AGENT_PAGE_COPY.versions;
-  if (version.revision === 1) return words.created;
+  if (version.revision === 1 && version.overrides === null) return words.created;
   if (version.changedKeys.length === 0) return words.nothingChanged;
+  const overrides = version.overrides;
   return version.changedKeys
-    .map((key) => changeOf(key, version.definition, previous?.definition ?? null))
+    .map((key) =>
+      overrides === null
+        ? changeOf(key, version.definition, previous?.definition ?? null)
+        : overrideChangeOf(key, overrides, previous?.overrides ?? null),
+    )
     .join('; ');
 }
 

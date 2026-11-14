@@ -14,7 +14,9 @@
    * its identifier small and monospaced beside it, its description, a status line (what its chats
    * are doing and how many there are), and, for an agent that needs a model while no provider is
    * connected, the reason it cannot answer with a link to connect one. Its actions are Edit for an
-   * agent file the owner keeps, Duplicate for one that cannot be edited here, and New chat, the one
+   * agent file the owner keeps, Duplicate for one defined in code or shipped by a plugin (the way to
+   * a file of one's own; a running code agent is also changed in place, on its Settings and Access
+   * tabs, as versions of its overrides), and New chat, the one
    * primary action, except that it is secondary while the Chats tab shows its own empty state,
    * whose New chat is then the page's only primary (row 39p). The tab bar carries each tab's count
    * once it is known. Choosing a tab writes its address and keeps the page mounted, so the header
@@ -61,7 +63,12 @@
     pluginOfAgent,
     type AgentTab,
   } from '../../lib/agent-paths.ts';
-  import { agentFaultOf, duplicateAgent, getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import {
+    agentFaultOf,
+    duplicateAgent,
+    getAgentDefinition,
+    getAgentOverrides,
+  } from '../../lib/agent-definitions.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { listAllContexts } from '../../lib/bureau-client.ts';
@@ -74,6 +81,7 @@
   import { router } from '../../lib/router.svelte.ts';
   import AgentAccess from './agent-access.svelte';
   import type { ChatCounts } from './agent-chat-filters.ts';
+  import { AgentOverridesBinding, isOverridable, overridableDetail } from './agent-overrides.ts';
   import AgentChats from './agent-chats.svelte';
   import AgentDuplicateDialog from './agent-duplicate-dialog.svelte';
   import AgentFacts from './agent-facts.svelte';
@@ -124,6 +132,74 @@
     undefined,
   );
   const unavailable = $derived(listed === undefined && definition.data?.state === 'unavailable');
+
+  // An agent defined in code that the catalog runs (a built-in agent, or a running plugin's) is
+  // changed through its overrides (COR-2229): they are read here, beside its definition, and the
+  // Settings and Access tabs are given the agent as a definition with them applied, and a writer
+  // that saves each change as the next version of the overrides (`agent-overrides.ts`).
+  const overridable = $derived(isOverridable(definition.data));
+  const overrides = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.overrides(id),
+      queryFn: ({ signal }) => getAgentOverrides(id, { signal }),
+      enabled: overridable,
+      retry: false,
+    }),
+    undefined,
+  );
+  const overridesBinding = new AgentOverridesBinding(id);
+  $effect(() => {
+    const state = overrides.data;
+    if (state !== undefined && overridable) overridesBinding.sync(state);
+  });
+  /** The agent as the Settings and Access tabs take it: a code agent with its overrides applied. */
+  const tabDetail = $derived(
+    overridable && definition.data !== undefined && overrides.data !== undefined
+      ? overridableDetail(definition.data, overrides.data)
+      : definition.data,
+  );
+  /** What the tabs write overrides through, once the overrides are read. */
+  const settingsOverrides = $derived(
+    overridable && overrides.data !== undefined
+      ? { write: overridesBinding.writerFor('settings'), ownTools: overrides.data.ownTools }
+      : undefined,
+  );
+  // An override replaces the agent's own Asks or guardrails whole, so while the agent states some
+  // (the Bureau reports them as what a copy would drop) that are not overridden yet, the Access tab
+  // holds them as they are. Changing the tools drops the agent's own Asks as well (an override of
+  // the tools rebuilds the run's toolbox with only the Asks the overrides state), so the tools are
+  // held with them. A built-in agent reports nothing it would drop, because its own policy cannot
+  // be read, so for it both are held until they are overridden.
+  const keptOwn = $derived(
+    overridable && overrides.data !== undefined && definition.data !== undefined
+      ? (['approvals', 'guardrails'] as const).filter(
+          (key) =>
+            (plugin === null || definition.data?.dropped.includes(key) === true) &&
+            overrides.data?.overrides[key] === null,
+        )
+      : [],
+  );
+  const accessOverrides = $derived(
+    overridable && overrides.data !== undefined
+      ? {
+          write: overridesBinding.writerFor('access'),
+          ownTools: overrides.data.ownTools,
+          keptOwn,
+        }
+      : undefined,
+  );
+  // Both reads make a tab: it waits for the overrides too, and a failure of either is its failure.
+  const editPending = $derived(definition.isPending || (overridable && overrides.isPending));
+  const editError = $derived(definition.error ?? (overridable ? overrides.error : null));
+  const editUpdatedAt = $derived(
+    overridable
+      ? Math.min(definition.dataUpdatedAt, overrides.dataUpdatedAt)
+      : definition.dataUpdatedAt,
+  );
+  function retryEdit(): void {
+    void definition.refetch();
+    if (overridable) void overrides.refetch();
+  }
   /** The agent's name as a person reads it, and its description: the listing's, or its definition's. */
   const name = $derived(
     listed?.displayName ??
@@ -183,12 +259,13 @@
       !providers.data.providers.some((provider) => provider.hasKey),
   );
 
-  // The plugin's title, as Settings › Plugins shows it, for the words about a disabled one.
+  // The plugin's title, as Settings › Plugins shows it, for the one line on each tab that names the
+  // plugin of any plugin's agent, and the words about a disabled one.
   const plugins = createQuery(
     () => ({
       queryKey: queryKeys.hostPlugins(),
       queryFn: ({ signal }) => getPlugins({ signal }),
-      enabled: unavailable,
+      enabled: plugin !== null,
       retry: false,
     }),
     undefined,
@@ -272,7 +349,8 @@
     return words.failed;
   }
 
-  // A plugin's agent cannot be edited here; Duplicate writes a copy into the owner's agents and opens it.
+  // Duplicate writes a copy of a plugin's agent into the owner's agents and opens it: the way to an
+  // agent file of one's own, beside changing the agent in place through its overrides.
   const duplicate = createMutation(() => ({
     mutationFn: () => duplicateAgent(id),
     onMutate: () => {
@@ -372,7 +450,8 @@
 
 {#snippet headerActions()}
   {#if plugin !== null}
-    <!-- A plugin's agent, running or held back, is changed through a copy the owner keeps. -->
+    <!-- A plugin's agent, running or held back, has Duplicate here for a copy the owner keeps. A
+         running agent defined in code is also changed in place, on its Settings and Access tabs. -->
     <Button
       data-changes
       variant="secondary"
@@ -555,20 +634,34 @@
             updatedAt={definition.dataUpdatedAt}
             onRetry={() => void definition.refetch()}
           >
-            <AgentInstructions {id} {editPath} {plugin} detail={definition.data} />
+            <AgentInstructions
+              {id}
+              {editPath}
+              {plugin}
+              detail={definition.data}
+              {pluginTitle}
+              {unavailable}
+              {overridable}
+            />
           </AgentTabState>
         </Tabs.Panel>
         <Tabs.Panel value="access">
           {@render unavailableBanner()}
           <AgentTabState
             tab={copy.tabs.access}
-            shape="form"
-            pending={definition.isPending}
-            error={definition.error}
-            updatedAt={definition.dataUpdatedAt}
-            onRetry={() => void definition.refetch()}
+            shape="rows"
+            pending={editPending}
+            error={editError}
+            updatedAt={editUpdatedAt}
+            onRetry={retryEdit}
           >
-            <AgentAccess {id} detail={definition.data} />
+            <AgentAccess
+              {id}
+              detail={tabDetail}
+              {pluginTitle}
+              {unavailable}
+              overrides={accessOverrides}
+            />
           </AgentTabState>
         </Tabs.Panel>
         <Tabs.Panel value="hooks">
@@ -584,16 +677,19 @@
           <AgentTabState
             tab={copy.tabs.settings}
             shape="form"
-            pending={definition.isPending}
-            error={definition.error}
-            updatedAt={definition.dataUpdatedAt}
-            onRetry={() => void definition.refetch()}
+            pending={editPending}
+            error={editError}
+            updatedAt={editUpdatedAt}
+            onRetry={retryEdit}
           >
             <AgentSettings
               {id}
-              detail={definition.data}
+              detail={tabDetail}
               name={name ?? id}
               chats={chats.data === undefined ? undefined : (usage?.count ?? 0)}
+              {pluginTitle}
+              {unavailable}
+              overrides={settingsOverrides}
             />
           </AgentTabState>
         </Tabs.Panel>

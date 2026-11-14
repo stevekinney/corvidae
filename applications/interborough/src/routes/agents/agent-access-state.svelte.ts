@@ -151,10 +151,15 @@ export type SaveOutcome =
   | { readonly kind: 'unchanged' }
   | { readonly kind: 'failed'; readonly error: unknown };
 
-/** Sends one write: the definition, over the hash of the file as last read or written. */
+/**
+ * Sends one write: the definition, over the hash of the file as last read or written, and the
+ * definition the table was filled with or last wrote (`filled`), which a code agent's writer
+ * compares the definition with to find what the person changed.
+ */
 export type AccessWriter = (
   expectedHash: string,
   definition: AgentDefinitionInput,
+  filled: AgentDefinitionInput,
 ) => Promise<{ readonly hash: string }>;
 
 /** One change a row makes: which row it is, what to call it if it fails, and how to apply and undo it. */
@@ -170,12 +175,49 @@ export interface AccessChange {
 
 type Definition = NonNullable<AgentDetail['definition']>;
 
+/** What a code agent's table needs beyond its definition (COR-2229). */
+export interface AccessStateOptions {
+  /** The tools the agent states itself, before any override, which the table offers to allow again. */
+  readonly ownTools?: readonly string[];
+  /**
+   * The plugin that ships the agent. A plugin's agent states its tools by their own names
+   * (`lookup-order`) while the catalog lists them under the plugin's (`demo:lookup-order`): the
+   * table shows one row for the tool, under the catalog's name, and writes the agent's own, so a
+   * save never swaps the agent's own tool for the catalog's.
+   */
+  readonly namespace?: string | undefined;
+  /** Whether skills can be granted: `false` for an agent whose overrides carry no skills. */
+  readonly skillsEditable?: boolean;
+  /**
+   * Whether the tools can be allowed or withdrawn. Held with the Asks: a tools override rebuilds
+   * the run's toolbox with only the Asks the override states, so a change to the tools would drop
+   * the approval policy the agent states itself, even with the Asks left alone.
+   */
+  readonly toolsEditable?: boolean;
+  /**
+   * Whether the Asks of its tools can be changed. An override replaces the agent's own set whole,
+   * so while the agent states approvals of its own that are not yet overridden, they are held:
+   * a change to one tool would drop the rest.
+   */
+  readonly approvalsEditable?: boolean;
+  /** Whether guardrails can be turned on or off, held for the same reason as the Asks. */
+  readonly guardrailsEditable?: boolean;
+}
+
 export class AgentAccessState {
   /** The hash of the file as last read or written; the next write names it. */
   hash = $state('');
   readonly rows: readonly AccessTool[];
   /** Whether a change here is saved; `false` for an agent the page cannot write. */
   readonly editable: boolean;
+  /** Whether a skill can be granted or withdrawn; `false` where only the tools and guardrails are saved. */
+  readonly skillsEditable: boolean;
+  /** Whether a tool can be allowed or withdrawn; held while the agent's own Asks would be dropped. */
+  readonly toolsEditable: boolean;
+  /** Whether the Asks of the tools can be changed; held while the agent's own would be replaced. */
+  readonly approvalsEditable: boolean;
+  /** Whether a guardrail can be turned on or off; held while the agent's own would be replaced. */
+  readonly guardrailsEditable: boolean;
   /** The skills the file defines itself, which the tab lists as granted (sweep S65). */
   readonly ownSkills: readonly {
     readonly id: string;
@@ -185,6 +227,8 @@ export class AgentAccessState {
   readonly #definition: Definition | null;
   readonly #writer: AccessWriter | undefined;
   readonly #fallbacks: ReadonlyMap<string, ToolApproval>;
+  /** A plugin tool's catalog name, by the name its agent states it under (`demo:lookup-order` to `lookup-order`). */
+  readonly #ownNames: ReadonlyMap<string, string>;
   /** The definition last on disk, as text, so a change a write already carried is not written again. */
   #committed = '';
   /** The hashes this state's own writes returned, so a refetch that reads one is not a change. */
@@ -223,21 +267,41 @@ export class AgentAccessState {
     definition: Definition | null,
     catalog: AgentCatalog,
     writer: AccessWriter | undefined,
+    options: AccessStateOptions = {},
   ) {
     this.hash = detail.hash ?? '';
     this.#definition = definition;
     this.#writer = writer;
     this.editable = writer !== undefined && definition !== null && detail.hash !== null;
+    this.skillsEditable = this.editable && options.skillsEditable !== false;
+    this.toolsEditable = this.editable && options.toolsEditable !== false;
+    this.approvalsEditable = this.editable && options.approvalsEditable !== false;
+    this.guardrailsEditable = this.editable && options.guardrailsEditable !== false;
     const listed = definition?.tools ?? detail.codeDefinition?.tools ?? [];
     const offered = new Set(catalog.tools.map((tool) => tool.name));
+    // A code agent's own tools the host no longer offers are listed too, so a tool a person took
+    // away can be allowed again.
+    const stated = [...new Set([...listed, ...(options.ownTools ?? [])])];
+    // A plugin's agent states a tool by its own name while the catalog lists it under the plugin's:
+    // one row, under the catalog's name, that reads and writes the agent's own.
+    const namespace = options.namespace;
+    const ownNames = new Map<string, string>();
+    if (namespace !== undefined && namespace !== '') {
+      for (const tool of stated) {
+        const qualified = `${namespace}:${tool}`;
+        if (!offered.has(tool) && offered.has(qualified)) ownNames.set(qualified, tool);
+      }
+    }
+    this.#ownNames = ownNames;
+    const aliased = new Set(ownNames.values());
     this.rows = [
       ...catalog.tools.map((tool) => ({
         name: tool.name,
         catalog: tool,
         fallback: defaultAsks(tool),
       })),
-      ...listed
-        .filter((tool) => !offered.has(tool))
+      ...stated
+        .filter((tool) => !offered.has(tool) && !aliased.has(tool))
         .map((tool) => ({ name: tool, catalog: undefined, fallback: DEFAULT_APPROVAL })),
     ];
     this.#fallbacks = new Map(this.rows.map((row) => [row.name, row.fallback]));
@@ -268,6 +332,7 @@ export class AgentAccessState {
     detail: AgentDetail,
     catalog: AgentCatalog,
     writer?: AccessWriter,
+    options?: AccessStateOptions,
   ): AgentAccessState | undefined {
     if (detail.source === 'file') {
       if (detail.definition === null) return undefined;
@@ -276,6 +341,7 @@ export class AgentAccessState {
         detail.definition,
         catalog,
         detail.hash === null ? undefined : writer,
+        options,
       );
     }
     // An agent in code states its own tools; one a disabled plugin ships states none the page can
@@ -283,18 +349,29 @@ export class AgentAccessState {
     return new AgentAccessState(detail, null, catalog, undefined);
   }
 
-  /** Whether the agent may call the tool. */
-  isAllowed(name: string): boolean {
-    return this.tools.includes(name);
+  /** The name the agent's definition states the row's tool under: its own for a plugin tool, else the row's. */
+  #writtenName(name: string): string {
+    return this.tools.includes(name) ? name : (this.#ownNames.get(name) ?? name);
   }
 
-  /** Allows or withdraws one tool. A withdrawn tool's approval stays in the state and is left out of the write. */
+  /** Whether the agent may call the tool, under either name a plugin's tool is stated by. */
+  isAllowed(name: string): boolean {
+    const own = this.#ownNames.get(name);
+    return this.tools.includes(name) || (own !== undefined && this.tools.includes(own));
+  }
+
+  /**
+   * Allows or withdraws one tool. A tool a plugin's agent states itself is allowed under its own
+   * name, and withdrawn under either. A withdrawn tool's approval stays in the state and is left
+   * out of the write.
+   */
   setAllowed(name: string, allowed: boolean): void {
     if (allowed) {
-      if (!this.tools.includes(name)) this.tools = [...this.tools, name];
+      if (!this.isAllowed(name)) this.tools = [...this.tools, this.#ownNames.get(name) ?? name];
       return;
     }
-    this.tools = this.tools.filter((tool) => tool !== name);
+    const own = this.#ownNames.get(name);
+    this.tools = this.tools.filter((tool) => tool !== name && tool !== own);
   }
 
   /** Whether the agent may activate the skill. */
@@ -332,7 +409,11 @@ export class AgentAccessState {
 
   /** When the tool asks first: the file's statement, or the tool's own default. */
   approvalOf(name: string): ToolApproval {
-    return this.approvals.get(name) ?? this.fallbackOf(name);
+    return (
+      this.approvals.get(this.#writtenName(name)) ??
+      this.approvals.get(name) ??
+      this.fallbackOf(name)
+    );
   }
 
   /**
@@ -343,10 +424,13 @@ export class AgentAccessState {
    * tool allowed for the rest of a chat.
    */
   setApproval(name: string, approval: ToolApproval): void {
+    const stated = this.#writtenName(name);
     if (approval === DEFAULT_APPROVAL && this.fallbackOf(name) === DEFAULT_APPROVAL) {
+      this.approvals.delete(stated);
       this.approvals.delete(name);
     } else {
-      this.approvals.set(name, approval);
+      this.approvals.delete(name);
+      this.approvals.set(stated, approval);
     }
   }
 
@@ -357,12 +441,12 @@ export class AgentAccessState {
 
   /** How many tools are allowed. */
   get allowedCount(): number {
-    return this.tools.length;
+    return this.allowedAmong(this.rows);
   }
 
   /** How many of `rows` are allowed: a group header's count. */
   allowedAmong(rows: readonly AccessTool[]): number {
-    return rows.filter((row) => this.tools.includes(row.name)).length;
+    return rows.filter((row) => this.isAllowed(row.name)).length;
   }
 
   /** The spend limit as typed: no limit (`null`), an amount, or `undefined` when it is not one the Bureau takes. */
@@ -410,7 +494,9 @@ export class AgentAccessState {
         return { kind: 'unchanged' };
       }
       try {
-        const result = await writer(this.hash, definition);
+        // `#committed` is the definition last on disk as text, so it is a copy no later change reaches.
+        const filled: AgentDefinitionInput = JSON.parse(this.#committed);
+        const result = await writer(this.hash, definition, filled);
         this.hash = result.hash;
         this.#written.add(result.hash);
         this.#committed = text;

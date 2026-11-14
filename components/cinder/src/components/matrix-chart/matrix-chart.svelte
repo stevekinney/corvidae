@@ -30,6 +30,7 @@
     heatmapCellFill,
     heatmapDomain,
     heatmapLabelFill,
+    heatmapRamp,
     toFiniteOrNull,
   } from '../../_internal/chart/heatmap-utilities.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -193,14 +194,11 @@
   // zero-centred inside the utility so 0 always maps to the neutral midpoint.
   const domain = $derived(heatmapDomain(cells.map((cell) => cell.value)));
 
+  // Cinder's shared ramp tokens, unless the page passes its own palette.
+  const ramp = $derived(heatmapRamp(theme?.palette, theme?.background));
+
   function cellFill(value: number | null): string {
-    return heatmapCellFill(
-      value,
-      domain,
-      colorScale,
-      resolvedTheme.palette,
-      theme?.background ?? 'var(--cinder-surface-inset)',
-    );
+    return heatmapCellFill(value, domain, colorScale, ramp);
   }
 
   // Hoisted so a dense grid's ~3x(rows*cols) formatting calls (tooltip
@@ -213,8 +211,9 @@
     return numberFormatter.format(value);
   }
 
+  // Black or white, whichever keeps 4.5:1 on the cell's own fill; never a ramp colour.
   function cellLabelFill(value: number | null): string {
-    return heatmapLabelFill(value, resolvedTheme.muted);
+    return heatmapLabelFill(value === null ? null : cellFill(value), resolvedTheme.muted);
   }
 
   const hasDataTable = $derived(dataTableVisibility !== 'hidden');
@@ -324,6 +323,7 @@
                 height={cell.height}
                 fill={cellFill(cell.value)}
                 aria-hidden="true"
+                data-cinder-empty={cell.value === null ? '' : undefined}
                 data-cinder-x={cell.xLabel}
                 data-cinder-y={cell.yLabel}
                 data-cinder-active={hoveredCellKey === cell.key ? '' : undefined}
@@ -342,7 +342,7 @@
                   y={cell.y + cell.height / 2}
                   text-anchor="middle"
                   dominant-baseline="middle"
-                  fill={cellLabelFill(cell.value)}
+                  style:fill={cellLabelFill(cell.value)}
                   aria-hidden="true">{formatValue(cell.value)}</text
                 >
               {/if}
