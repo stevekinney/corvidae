@@ -25,7 +25,7 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment.ts';
-import { createModelCatalog, type BackendDescriptor } from './providers/model-catalog.ts';
+import type { BackendDescriptor } from './providers/model-catalog.ts';
 import type { ProviderDefinition } from './providers/provider-definition.ts';
 import type { GenerateContext, StreamingHandle } from './types.ts';
 
@@ -47,7 +47,9 @@ export interface ProviderContractMockClient<Call extends object = object> {
 export interface ProviderContractFixtures<Call extends object = object> {
   /** The name the provider's definition registers under. */
   readonly name: string;
-  /** A provider-native model identifier the model catalog has a row for. */
+  /** The catalog rows the provider's package ships; the suite checks the factories attach these. */
+  readonly rows: readonly BackendDescriptor[];
+  /** A provider-native model identifier `rows` has a row for. */
   readonly model: string;
   /** A model identifier the model catalog has no row for. */
   readonly unknownModel: string;
@@ -153,7 +155,7 @@ export function runProviderContract<Call extends object>(
     it('attaches exactly the backend descriptor matching the resolved model', () => {
       const mock = subject.createMockClient('generate');
       const generate = generateFactory(configure(fixtures.model, mock.client));
-      const expected = createModelCatalog().descriptors.find(
+      const expected = fixtures.rows.find(
         (descriptor) =>
           descriptor.provider === fixtures.name && descriptor.model === fixtures.model,
       );

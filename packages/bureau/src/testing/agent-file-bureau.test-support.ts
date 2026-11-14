@@ -19,6 +19,7 @@ import { createBureau } from '../create-bureau.ts';
 import type { Bureau } from '../bureau-types/facade.ts';
 import type { BureauOptions } from '../bureau-types/options.ts';
 import { lookupTool } from './agent-file-fixtures.test-support.ts';
+import { createVendorCatalog } from './vendor-catalog.test-support.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import { agentFileDirectory } from '../sources/agent-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -133,6 +134,8 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
     ...options.overrides,
     // Merged, so an override of the catalog or of the generate keeps the other.
     models: {
+      // The vendors' rows: Bureau holds none, and these tests name real models.
+      catalog: createVendorCatalog().descriptors,
       generate: (descriptor) => generateFor(descriptor, scripts, observed, thinking),
       ...options.overrides?.models,
     },

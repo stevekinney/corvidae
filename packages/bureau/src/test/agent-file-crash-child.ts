@@ -13,6 +13,7 @@
 import { publishChildFile } from './child-output-file';
 
 import { createBureau } from '../create-bureau';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 import { lookupTool } from '../testing/agent-file-fixtures.test-support';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
@@ -32,6 +33,7 @@ const bureau = await createBureau<AgentDefinitions>({
   agents: {},
   agentSource: agentFileDirectory(agentsPath, { tools: { 'lookup-order': lookupTool } }),
   models: {
+    catalog: createVendorCatalog().descriptors,
     generate:
       () =>
       async ({ step }) => {

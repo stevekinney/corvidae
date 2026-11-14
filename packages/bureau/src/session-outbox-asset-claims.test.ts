@@ -9,7 +9,6 @@ import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgr
 import {
   createAgent,
   createAgentSession,
-  createModelCatalog,
   SESSION_OWNER_METADATA_KEY,
   stopWhen,
   waitForCondition,
@@ -33,6 +32,7 @@ import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, bob, pngBytes } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './bureau-types/facade';
 import type { BureauDiagnostic } from './bureau-types/options';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -50,7 +50,7 @@ const png = pngBytes(4, 3);
 const echo = createAgent({
   generate: withBackendDescriptors(
     async () => ({ content: 'ok', toolCalls: [] }),
-    createModelCatalog().descriptors.filter((descriptor) => descriptor.provider === 'anthropic'),
+    createVendorCatalog().descriptors.filter((descriptor) => descriptor.provider === 'anthropic'),
   ),
   stopWhen: stopWhen.noToolCalls(),
 });

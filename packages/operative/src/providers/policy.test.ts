@@ -9,7 +9,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { type BackendDescriptor, createModelCatalog } from './model-catalog.ts';
+import { createFixtureCatalog } from '../testing/model-catalog.test-support.ts';
+import { type BackendDescriptor } from './model-catalog.ts';
 import {
   type BureauInvariants,
   composePolicy,
@@ -20,7 +21,7 @@ import {
 
 const FIXED_NOW = '2026-09-02T12:00:00.000Z';
 
-const CATALOG = createModelCatalog({ now: () => FIXED_NOW });
+const CATALOG = createFixtureCatalog({ now: () => FIXED_NOW });
 
 function descriptor(provider: string, model: string): BackendDescriptor {
   const found = CATALOG.descriptors.find((row) => row.provider === provider && row.model === model);
@@ -30,14 +31,14 @@ function descriptor(provider: string, model: string): BackendDescriptor {
   return found;
 }
 
-const anthropic = descriptor('anthropic', 'claude-fable-5');
-const openai = descriptor('openai', 'gpt-4o');
-const gemini = descriptor('gemini', 'gemini-2.5-pro');
+const anthropic = descriptor('alpha', 'alpha-large');
+const openai = descriptor('beta', 'beta-standard');
+const gemini = descriptor('gamma', 'gamma-pro');
 // o3's portable effort tiers stop at 'high' (no xhigh/max), giving a
-// non-empty-but-not-maximal `highestPortableEffort`, unlike claude-fable-5
-// (tops out at 'max', so nothing can exceed it) or gpt-4o (empty, so the
+// non-empty-but-not-maximal `highestPortableEffort`, unlike alpha-large
+// (tops out at 'max', so nothing can exceed it) or beta-standard (empty, so the
 // exceeds check never reaches the "highest is defined" branch).
-const openaiO3 = descriptor('openai', 'o3');
+const openaiO3 = descriptor('beta', 'beta-reasoning');
 
 describe('composePolicy: availability and health', () => {
   it('excludes a descriptor whose availability is unavailable', () => {
@@ -57,7 +58,7 @@ describe('composePolicy: availability and health', () => {
 
 describe('composePolicy: deployment invariants', () => {
   it('excludes a denied provider with denied-by-deployment', () => {
-    const deployment: DeploymentInvariants = { deniedProviders: ['anthropic'] };
+    const deployment: DeploymentInvariants = { deniedProviders: ['alpha'] };
     const [candidate] = composePolicy({ descriptors: [anthropic], deployment });
     expect(candidate?.eligible).toBe(false);
     expect(candidate?.exclusionCode).toBe('denied-by-deployment');
@@ -71,8 +72,8 @@ describe('composePolicy: deployment invariants', () => {
   });
 
   it('reports denied-by-deployment for a candidate denied by both deployment and the user', () => {
-    const deployment: DeploymentInvariants = { deniedProviders: ['anthropic'] };
-    const user: UserModelConfiguration = { deniedProviders: ['anthropic'] };
+    const deployment: DeploymentInvariants = { deniedProviders: ['alpha'] };
+    const user: UserModelConfiguration = { deniedProviders: ['alpha'] };
     const [candidate] = composePolicy({ descriptors: [anthropic], deployment, user });
     expect(candidate?.eligible).toBe(false);
     expect(candidate?.exclusionCode).toBe('denied-by-deployment');
@@ -81,14 +82,14 @@ describe('composePolicy: deployment invariants', () => {
 
 describe('composePolicy: Bureau invariants', () => {
   it('excludes a candidate the Bureau layer denies with denied-by-bureau', () => {
-    const bureau: BureauInvariants = { deniedProviders: ['openai'] };
+    const bureau: BureauInvariants = { deniedProviders: ['beta'] };
     const [candidate] = composePolicy({ descriptors: [openai], bureau });
     expect(candidate?.eligible).toBe(false);
     expect(candidate?.exclusionCode).toBe('denied-by-bureau');
   });
 
   it('never re-admits a candidate the deployment layer denied, regardless of the Bureau value', () => {
-    const deployment: DeploymentInvariants = { deniedProviders: ['anthropic'] };
+    const deployment: DeploymentInvariants = { deniedProviders: ['alpha'] };
     const bureau: BureauInvariants = {}; // does not deny anthropic itself
     const [candidate] = composePolicy({ descriptors: [anthropic], deployment, bureau });
     expect(candidate?.eligible).toBe(false);
@@ -97,7 +98,7 @@ describe('composePolicy: Bureau invariants', () => {
 
   it('never re-admits a candidate even when the Bureau value explicitly allows it via an unrelated field', () => {
     const deployment: DeploymentInvariants = { deniedModels: [gemini.model] };
-    const bureau: BureauInvariants = { deniedProviders: ['openai'] };
+    const bureau: BureauInvariants = { deniedProviders: ['beta'] };
     const [candidate] = composePolicy({ descriptors: [gemini], deployment, bureau });
     expect(candidate?.eligible).toBe(false);
     expect(candidate?.exclusionCode).toBe('denied-by-deployment');
@@ -127,7 +128,7 @@ describe('composePolicy: Agent requirements and preferences', () => {
   it('excludes nothing for preferredProviders and preferredModels, carrying them through untouched', () => {
     const [candidate] = composePolicy({
       descriptors: [openai],
-      agent: { preferredProviders: ['anthropic'], preferredModels: ['claude-fable-5'] },
+      agent: { preferredProviders: ['alpha'], preferredModels: ['alpha-large'] },
     });
     expect(candidate?.eligible).toBe(true);
   });
@@ -138,9 +139,9 @@ describe('composePolicy: Agent requirements and preferences', () => {
       agent: { requiredInputModalities: [{ modality: 'audio' }] },
     });
     expect(verdicts.map((candidate) => [candidate.provider, candidate.eligible])).toEqual([
-      ['anthropic', false],
-      ['openai', false],
-      ['gemini', true],
+      ['alpha', false],
+      ['beta', false],
+      ['gamma', true],
     ]);
     expect(verdicts[0]?.exclusionCode).toBe('missing-required-capability');
     expect(verdicts[0]?.exclusionReason).toBe('missing required input modality: audio');
@@ -170,7 +171,7 @@ describe('composePolicy: Agent requirements and preferences', () => {
   });
 
   it('treats a non-empty array-valued field as a present capability', () => {
-    // `aliases` is array-typed; claude-fable-5 has at least one alias in the
+    // `aliases` is array-typed; alpha-large has at least one alias in the
     // seed, so this exercises hasCapability's Array.isArray branch on the
     // "present" side and lets the requiredCapabilities loop run to completion
     // without excluding.
@@ -209,7 +210,7 @@ describe('composePolicy: Agent requirements and preferences', () => {
 describe('composePolicy: delegated authority', () => {
   it('excludes a provider not in grantedProviders with exceeds-delegated-authority and a traceable policyVersion', () => {
     const delegated: DelegatedAuthority = {
-      grantedProviders: ['openai'],
+      grantedProviders: ['beta'],
       policyVersion: 'grant-v1',
     };
     const [candidate] = composePolicy({ descriptors: [anthropic], delegated });
@@ -219,7 +220,10 @@ describe('composePolicy: delegated authority', () => {
   });
 
   it('excludes a model not in grantedModels with exceeds-delegated-authority', () => {
-    const delegated: DelegatedAuthority = { grantedModels: ['gpt-4.1'], policyVersion: 'grant-v1' };
+    const delegated: DelegatedAuthority = {
+      grantedModels: ['beta-mini'],
+      policyVersion: 'grant-v1',
+    };
     const [candidate] = composePolicy({ descriptors: [openai], delegated });
     expect(candidate?.eligible).toBe(false);
     expect(candidate?.exclusionCode).toBe('exceeds-delegated-authority');
@@ -228,7 +232,7 @@ describe('composePolicy: delegated authority', () => {
 
   it('excludes an effort above the candidate supported tier when the candidate supports no effort at all', () => {
     const delegated: DelegatedAuthority = { maximumEffort: 'low', policyVersion: 'grant-v1' };
-    // gpt-4o's portable effort tiers are empty, so any maximumEffort exceeds it.
+    // beta-standard's portable effort tiers are empty, so any maximumEffort exceeds it.
     const [candidate] = composePolicy({ descriptors: [openai], delegated });
     expect(candidate?.eligible).toBe(false);
     expect(candidate?.exclusionCode).toBe('exceeds-delegated-authority');
@@ -260,7 +264,7 @@ describe('composePolicy: delegated authority', () => {
 
 describe('composePolicy: user constraints and preferences', () => {
   it('excludes a denied provider with denied-by-user', () => {
-    const user: UserModelConfiguration = { deniedProviders: ['anthropic'] };
+    const user: UserModelConfiguration = { deniedProviders: ['alpha'] };
     const [candidate] = composePolicy({ descriptors: [anthropic], user });
     expect(candidate?.eligible).toBe(false);
     expect(candidate?.exclusionCode).toBe('denied-by-user');
@@ -274,7 +278,7 @@ describe('composePolicy: user constraints and preferences', () => {
   });
 
   it('excludes everything not named when allowedProviders is present', () => {
-    const user: UserModelConfiguration = { allowedProviders: ['gemini'] };
+    const user: UserModelConfiguration = { allowedProviders: ['gamma'] };
     const [candidate] = composePolicy({ descriptors: [anthropic], user });
     expect(candidate?.eligible).toBe(false);
     expect(candidate?.exclusionCode).toBe('denied-by-user');
@@ -314,10 +318,10 @@ describe('composePolicy: user constraints and preferences', () => {
 
 describe('composePolicy: exactOverride', () => {
   it('rejects an override denied at the Bureau layer with denied-by-bureau, never denied-by-user', () => {
-    const bureau: BureauInvariants = { deniedProviders: ['openai'] };
+    const bureau: BureauInvariants = { deniedProviders: ['beta'] };
     const user: UserModelConfiguration = {
-      deniedProviders: ['anthropic', 'gemini'], // would also deny everything else, proving the override skips this
-      exactOverride: { provider: 'openai', model: openai.model },
+      deniedProviders: ['alpha', 'gamma'], // would also deny everything else, proving the override skips this
+      exactOverride: { provider: 'beta', model: openai.model },
     };
     const result = composePolicy({ descriptors: [anthropic, openai, gemini], bureau, user });
     expect(result).toHaveLength(1);
@@ -327,18 +331,18 @@ describe('composePolicy: exactOverride', () => {
 
   it('honors an override that clears every layer above the user, bypassing the general user deny list', () => {
     const user: UserModelConfiguration = {
-      deniedProviders: ['anthropic'], // would normally deny this candidate
-      exactOverride: { provider: 'anthropic', model: anthropic.model },
+      deniedProviders: ['alpha'], // would normally deny this candidate
+      exactOverride: { provider: 'alpha', model: anthropic.model },
     };
     const result = composePolicy({ descriptors: [anthropic, openai], user });
     expect(result).toHaveLength(1);
     expect(result[0]?.eligible).toBe(true);
-    expect(result[0]?.provider).toBe('anthropic');
+    expect(result[0]?.provider).toBe('alpha');
   });
 
   it('yields an empty result when the override names no matching descriptor', () => {
     const user: UserModelConfiguration = {
-      exactOverride: { provider: 'anthropic', model: 'no-such-model' },
+      exactOverride: { provider: 'alpha', model: 'no-such-model' },
     };
     const result = composePolicy({ descriptors: [anthropic, openai], user });
     expect(result).toHaveLength(0);
@@ -348,7 +352,7 @@ describe('composePolicy: exactOverride', () => {
     // An "exact" override must identify exactly one descriptor; provider
     // alone could match many, so it resolves to none rather than an
     // ambiguous multi-candidate result.
-    const user: UserModelConfiguration = { exactOverride: { provider: 'anthropic' } };
+    const user: UserModelConfiguration = { exactOverride: { provider: 'alpha' } };
     const result = composePolicy({ descriptors: [anthropic, openai, gemini], user });
     expect(result).toHaveLength(0);
   });
@@ -388,11 +392,11 @@ describe('composePolicy: general contract', () => {
   });
 
   it('is deterministic: composing the same input twice yields deeply equal output, including exclusion ordering', () => {
-    const deployment: DeploymentInvariants = { deniedProviders: ['gemini'] };
+    const deployment: DeploymentInvariants = { deniedProviders: ['gamma'] };
     const bureau: BureauInvariants = { deniedModels: [openai.model] };
     const agent = { minimumContextWindowTokens: 1000 };
     const delegated: DelegatedAuthority = {
-      grantedProviders: ['anthropic', 'openai', 'gemini'],
+      grantedProviders: ['alpha', 'beta', 'gamma'],
       policyVersion: 'v1',
     };
     const user: UserModelConfiguration = { deniedRegions: ['eu'] };

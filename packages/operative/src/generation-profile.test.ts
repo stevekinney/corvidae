@@ -8,13 +8,13 @@ import { describe, expect, it } from 'bun:test';
 
 import { readGenerationProfile } from './generation-profile.ts';
 import type { BackendDescriptor } from './providers/model-catalog.ts';
-import { createModelCatalog } from './providers/model-catalog.ts';
 import type { RunnableAgent } from './runnable-agent.ts';
+import { createFixtureCatalog } from './testing/model-catalog.test-support.ts';
 
 const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';
 
-function seedDescriptor(provider: 'anthropic' | 'openai' | 'gemini'): BackendDescriptor {
-  const descriptor = createModelCatalog({ now: FIXED_NOW }).descriptors.find(
+function seedDescriptor(provider: 'alpha' | 'beta' | 'gamma'): BackendDescriptor {
+  const descriptor = createFixtureCatalog({ now: FIXED_NOW }).descriptors.find(
     (row) => row.provider === provider,
   );
   if (!descriptor)
@@ -59,7 +59,7 @@ describe('readGenerationProfile — an agent with no generationProfile', () => {
 
 describe('readGenerationProfile — an agent with its own generationProfile', () => {
   it('fixed mode: exactly one descriptor', () => {
-    const descriptor = seedDescriptor('anthropic');
+    const descriptor = seedDescriptor('alpha');
     const agent = agentWithProfile({
       mode: 'fixed',
       revision: 1,
@@ -79,7 +79,7 @@ describe('readGenerationProfile — an agent with its own generationProfile', ()
       mode: 'routed',
       revision: 1,
       projection: 'privileged',
-      descriptors: [seedDescriptor('anthropic'), seedDescriptor('openai')],
+      descriptors: [seedDescriptor('alpha'), seedDescriptor('beta')],
       freshness: FIXED_NOW(),
       selector: 'unavailable',
     });
@@ -123,7 +123,7 @@ describe('readGenerationProfile — an agent with its own generationProfile', ()
       mode: 'fixed',
       revision: 1,
       projection: 'privileged',
-      descriptors: [seedDescriptor('gemini')],
+      descriptors: [seedDescriptor('gamma')],
       freshness: FIXED_NOW(),
       selector: 'unavailable',
     });

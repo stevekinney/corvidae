@@ -4,22 +4,25 @@ When a runtime starts work, the useful question is not only whether it eventuall
 
 ## Provider capability matrix
 
-Operative's provider surface uses progressive enhancement for native features. The matrix is the result of `getProviderCapabilities(provider, options?)` in `packages/operative/src/providers/capabilities.ts`; it performs a synchronous, side-effect-free read. The [Anthropic Messages API](https://docs.anthropic.com/en/api/messages), [OpenAI API](https://platform.openai.com/docs/api-reference), and [Google Gemini API](https://ai.google.dev/api) are therefore represented by the capabilities the installed SDK surfaces actually provide.
+Operative's provider surface uses progressive enhancement for native features. The matrix is the result of `getProviderCapabilities(provider, { descriptors })` in `packages/operative/src/providers/capabilities.ts`; it performs a synchronous, side-effect-free read. Operative holds no catalog row of its own: the answer folds the rows the caller passes for `provider`, which a provider's package ships (`anthropicRows()`, `openAIRows()`, `geminiRows()`). The [Anthropic Messages API](https://docs.anthropic.com/en/api/messages), [OpenAI API](https://platform.openai.com/docs/api-reference), and [Google Gemini API](https://ai.google.dev/api) are therefore represented by the capabilities each package's rows state.
 
-| Provider or endpoint | Batch inference | Explicit thinking request | Request-controlled caching | Server-side token counting |
+| Provider, with its package's rows | Batch inference | Explicit thinking request | Request-controlled caching | Server-side token counting |
 | --- | --- | --- | --- | --- |
 | `anthropic` | yes | yes | yes | yes |
 | `openai` default endpoint | yes | no | no | no |
 | `openai` custom `baseURL` or `OPENAI_BASE_URL` | no | no | no | no |
 | `gemini` | yes | no | yes | yes |
-| `voyage` and `ollama` | no | no | no | no |
+| a provider whose rows are not passed, `voyage` and `ollama` included | no | no | no | no |
 
-The OpenAI-compatible case is deliberately conservative: a local server can copy the chat request shape without implementing `/v1/batches` or any of the other native surfaces. A `false` capability lets a caller choose a fallback; a `true` capability that later 404s is a broken promise. Unsupported features are absent from the relevant batch module at compile time, and dynamic callers can inspect the matrix before offering an option.
+The answer is deliberately conservative: a provider with no passed rows reports every capability `false`, so a caller that forgot to pass the rows falls back rather than offering a feature nothing backs. The OpenAI-compatible case is deliberately conservative too: a local server can copy the chat request shape without implementing `/v1/batches` or any of the other native surfaces. `openAIRows({ baseURL })` reads the endpoint, the `baseURL` option or the `OPENAI_BASE_URL` environment variable, and marks the rows ambiguous when either is set, so they report no batch inference and an `unknown` availability. The function itself reads nothing: the endpoint rule lives in the rows, so it applies to the rows you pass. A `false` capability lets a caller choose a fallback; a `true` capability that later 404s is a broken promise. Unsupported features are absent from the relevant batch module at compile time, and dynamic callers can inspect the matrix before offering an option.
 
 ```typescript
 import { getProviderCapabilities } from '@lostgradient/operative';
+import { openAIRows } from '@lostgradient/operative-openai';
 
-const capabilities = getProviderCapabilities('openai', { baseURL: 'http://localhost:11434/v1' });
+const capabilities = getProviderCapabilities('openai', {
+  descriptors: openAIRows({ baseURL: 'http://localhost:11434/v1' }),
+});
 if (!capabilities.batchInference) {
   // Use ordinary generation or an application-owned queue.
 }

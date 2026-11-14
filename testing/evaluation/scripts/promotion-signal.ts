@@ -29,6 +29,9 @@ import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { anthropicRows } from '@lostgradient/operative-anthropic';
+import { geminiRows } from '@lostgradient/operative-gemini';
+import { openAIRows } from '@lostgradient/operative-openai';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
@@ -284,6 +287,7 @@ export async function runPromotionSignalCommand(
       currentRevision: (options.currentRevision ?? (() => gitHeadRevision()))(),
       loadEvaluator: (module) => load(resolve(EVALUATION_PACKAGE_DIRECTORY, module)),
       packageSourceRevision: options.packageSourceRevision ?? gitPackageSourceRevision,
+      modelCatalog: [...anthropicRows(), ...openAIRows(), ...geminiRows()],
       now: options.now,
     };
     outcome =

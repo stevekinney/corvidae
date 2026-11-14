@@ -7,7 +7,6 @@
  */
 import {
   createAgent,
-  createModelCatalog,
   type GenerateFunction,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -17,6 +16,7 @@ import { base64Of, pngBytes } from '../testing/asset-fixtures.test-support.ts';
 import { waitForCondition } from '../test';
 import { MAXIMUM_DATA_PART_BYTES } from './a2a-reply-parts.ts';
 import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
+import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
 
 const PUBLIC_URL = 'http://localhost';
 
@@ -24,7 +24,7 @@ const PUBLIC_URL = 'http://localhost';
 type Json = any;
 
 /** A model that takes images in and puts images, documents and files out, as no catalog row does. */
-const multimodal = createModelCatalog()
+const multimodal = createVendorCatalog()
   .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
   .slice(0, 1)
   .map((descriptor) => ({

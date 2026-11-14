@@ -30,7 +30,6 @@ import {
   createAgent,
   createAgentSession,
   createMockGenerate as createSequentialGenerate,
-  createModelCatalog,
   createScheduleWakeupTool,
   createSessionStore,
   createStore,
@@ -142,6 +141,7 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
+import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 
 function createTextStoreProxy(
   backingStore: ConditionalTextValueStore,
@@ -5004,7 +5004,7 @@ describe('createBureau', () => {
 
 describe('createBureau: AB-64/AB-250 selection planning wiring', () => {
   it('flips selectorAvailable to true so a selectable Agent’s catalog-read profile reports selector: available', async () => {
-    const seed = createModelCatalog();
+    const seed = createVendorCatalog();
     const geminiDescriptor = seed.descriptors.find(
       (descriptor) => descriptor.provider === 'gemini',
     );
@@ -5025,7 +5025,7 @@ describe('createBureau: AB-64/AB-250 selection planning wiring', () => {
   });
 
   it('a profile read directly off a standalone createAgent agent still reports unavailable, unaffected by Bureau wiring', async () => {
-    const seed = createModelCatalog();
+    const seed = createVendorCatalog();
     const geminiDescriptor = seed.descriptors.find(
       (descriptor) => descriptor.provider === 'gemini',
     );
@@ -5051,7 +5051,7 @@ describe('createBureau: AB-64/AB-250 selection planning wiring', () => {
   });
 
   it('bureau.models.plan builds a full SelectionPlan without starting a run or changing the catalog', async () => {
-    const seed = createModelCatalog();
+    const seed = createVendorCatalog();
     const anthropicDescriptor = seed.descriptors.find(
       (descriptor) => descriptor.provider === 'anthropic',
     );
@@ -6615,6 +6615,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         steered,
         default: createAgent({
@@ -6678,6 +6679,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         steered,
         default: createAgent({
@@ -6729,6 +6731,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       name: 'steered',
     });
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         steered,
         default: createAgent({
@@ -6771,6 +6774,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       name: 'steered',
     });
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         steered,
         default: createAgent({
@@ -6907,6 +6911,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
       agents: {
         steered,
         default: createAgent({
@@ -12794,13 +12799,17 @@ describe('Bureau.models', () => {
     return { ...runtime, clock: { ...runtime.clock, nowISO: () => '2026-10-26T00:00:00.000Z' } };
   };
 
-  it('is present regardless of D, and defaults to operative’s static catalog at revision 1', async () => {
-    const bureau = await createBureau({ agents: {}, runtime: stampedClock() });
+  it('is present regardless of D, and holds the rows it was given at revision 1', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      runtime: stampedClock(),
+      models: { catalog: createVendorCatalog().descriptors },
+    });
     try {
       const catalog = bureau.models.catalog();
       const pair = (row: BackendDescriptor) => `${row.provider}/${row.model}`;
-      expect(catalog.descriptors.map(pair)).toEqual(createModelCatalog().descriptors.map(pair));
-      expect(catalog.descriptors.every((row) => row.source === 'static')).toBe(true);
+      expect(catalog.descriptors.map(pair)).toEqual(createVendorCatalog().descriptors.map(pair));
+      expect(catalog.descriptors.every((row) => row.source === 'operator-override')).toBe(true);
       expect(catalog.revision).toBe(1);
       expect(catalog.stale).toBe(false);
       expect(catalog.generatedAt).toBe('2026-10-26T00:00:00.000Z');
@@ -12811,7 +12820,10 @@ describe('Bureau.models', () => {
   });
 
   it('catalog() returns the same object across two reads, and a new one with the revision incremented after replace', async () => {
-    const bureau = await createBureau({ agents: {} });
+    const bureau = await createBureau({
+      agents: {},
+      models: { catalog: createVendorCatalog().descriptors },
+    });
     try {
       const first = bureau.models.catalog();
       expect(bureau.models.catalog()).toBe(first);
@@ -12838,7 +12850,7 @@ describe('Bureau.models', () => {
   });
 
   it('offers exactly the rows of models.catalog, stamped as the host’s, at revision 1', async () => {
-    const [row] = createModelCatalog().descriptors;
+    const [row] = createVendorCatalog().descriptors;
     if (row === undefined) throw new Error('expected a seed row');
     const bureau = await createBureau({ agents: {}, models: { catalog: [row] } });
     try {
@@ -12852,7 +12864,7 @@ describe('Bureau.models', () => {
   });
 
   it('models.generate is the host’s generate, and NOT_CONFIGURED when the host supplied none', async () => {
-    const [row] = createModelCatalog().descriptors;
+    const [row] = createVendorCatalog().descriptors;
     if (row === undefined) throw new Error('expected a seed row');
     const generate = createMockGenerate();
     const configured = await createBureau({ agents: {}, models: { generate: () => generate } });

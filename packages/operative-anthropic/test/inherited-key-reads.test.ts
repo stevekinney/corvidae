@@ -9,11 +9,8 @@
 import { describe, expect, test } from 'bun:test';
 
 import { getModelPricing } from '@lostgradient/operative';
-import {
-  anthropicSamplingSupport,
-  resolveAnthropicEffort,
-  resolveAnthropicModel,
-} from '@lostgradient/operative/provider-kit';
+import { anthropicSamplingSupport } from '@lostgradient/operative/provider-kit';
+import { resolveAnthropicEffort, resolveAnthropicModel } from '../src/anthropic-catalog';
 import { anthropicDisabledThinkingRule } from '../src/anthropic-thinking';
 
 describe('a model named after a name every object inherits', () => {

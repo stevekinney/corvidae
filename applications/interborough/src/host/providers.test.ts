@@ -1,8 +1,4 @@
-import {
-  createModelCatalog,
-  type BackendDescriptor,
-  type DecisionModel,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, type DecisionModel } from '@lostgradient/operative';
 import { anthropicProvider } from '@lostgradient/operative-anthropic';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -10,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
-import { contributedFixtures } from './provider-fixtures.test-support.ts';
+import { contributedFixtures, vendorRows } from './provider-fixtures.test-support.ts';
 import {
   createCatalogDecide,
   createCatalogGenerate,
@@ -24,7 +20,7 @@ import {
 } from './providers.ts';
 
 const PATH = '/home/interborough/configuration.json';
-const STATIC_ROWS = createModelCatalog().descriptors;
+const STATIC_ROWS = vendorRows();
 const contributed = contributedFixtures;
 
 const ALL = new Set(['anthropic', 'openai', 'gemini']);

@@ -14,7 +14,11 @@ import { createCostBudgetMonitor } from '../src/cost-budget-monitor';
 import { GuardrailTripwireError } from '../src/errors';
 import type { OperativeHookMap } from '../src/hooks';
 import { executeLoop } from '../src/loop';
+import { fixturePricing } from '../src/testing/model-catalog.test-support.ts';
 import type { GenerateResponse } from '../src/types';
+
+/** Prices passed the way a host passes its own: Operative holds none. */
+const pricing = { customPricing: fixturePricing };
 
 function usageResponse(content: string, usage: GenerateResponse['usage']): GenerateResponse {
   return { content, toolCalls: [], usage };
@@ -33,15 +37,15 @@ describe('RunResult terminal usage + costEstimate parity', () => {
       },
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
-      costEstimation: { model: 'gpt-4o' },
+      costEstimation: { model: 'beta-standard', pricing },
     });
 
     expect(result.finishReason).toBe('error');
     expect(result.error).toBeInstanceOf(Error);
     expect(result.usage).toEqual({ prompt: 100, completion: 50, total: 150 });
-    // gpt-4o: prompt=$2.50/M, completion=$10/M
+    // beta-standard: prompt=$2.50/M, completion=$10/M
     expect(result.costEstimate).toBeDefined();
-    expect(result.costEstimate!.model).toBe('gpt-4o');
+    expect(result.costEstimate!.model).toBe('beta-standard');
     expect(result.costEstimate!.totalCost).toBeCloseTo(
       (100 / 1_000_000) * 2.5 + (50 / 1_000_000) * 10,
       10,
@@ -67,7 +71,7 @@ describe('RunResult terminal usage + costEstimate parity', () => {
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       signal: controller.signal,
-      costEstimation: { model: 'gpt-4o' },
+      costEstimation: { model: 'beta-standard', pricing },
     });
 
     expect(result.finishReason).toBe('aborted');
@@ -80,7 +84,7 @@ describe('RunResult terminal usage + costEstimate parity', () => {
   });
 
   it('a createCostBudgetMonitor stop still yields a terminal result with usage and costEstimate', async () => {
-    const monitor = createCostBudgetMonitor({ budget: 0.001, model: 'gpt-4o' });
+    const monitor = createCostBudgetMonitor({ pricing, budget: 0.001, model: 'beta-standard' });
     let calls = 0;
     const result = await executeLoop({
       generate: async () => {
@@ -90,7 +94,7 @@ describe('RunResult terminal usage + costEstimate parity', () => {
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       stopWhen: monitor.stopCondition,
-      costEstimation: { model: 'gpt-4o' },
+      costEstimation: { model: 'beta-standard', pricing },
     });
 
     // The budget monitor's stop condition fires as an ordinary stop-condition,
@@ -123,7 +127,7 @@ describe('RunResult terminal usage + costEstimate parity', () => {
     });
     expect(aborted.costEstimate).toBeUndefined();
 
-    const monitor = createCostBudgetMonitor({ budget: 0.001, model: 'gpt-4o' });
+    const monitor = createCostBudgetMonitor({ pricing, budget: 0.001, model: 'beta-standard' });
     const stopped = await executeLoop({
       generate: async () => usageResponse('x', { prompt: 1000, completion: 500, total: 1500 }),
       toolbox: createTestToolbox([]),
@@ -157,7 +161,7 @@ describe('RunResult terminal usage + costEstimate parity', () => {
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       hooks,
-      costEstimation: { model: 'gpt-4o' },
+      costEstimation: { model: 'beta-standard', pricing },
     });
 
     expect(result.finishReason).toBe('tripwire');

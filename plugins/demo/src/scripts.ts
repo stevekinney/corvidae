@@ -7,12 +7,12 @@
  */
 
 import {
-  createModelCatalog,
   withBackendDescriptors,
   type GenerateFunction,
   type GenerateResponse,
   type ScriptedGenerateStep,
 } from '@lostgradient/operative';
+import { anthropicRows } from '@lostgradient/operative-anthropic';
 
 /** How many times a script repeats before it runs out. */
 const SCRIPT_REPETITIONS = 200;
@@ -93,7 +93,7 @@ export function modelSwitcherReply(model: string): string {
  */
 export function modelSwitcherGenerate(): GenerateFunction {
   const [first] = MODEL_SWITCHER_MODELS;
-  const row = createModelCatalog().descriptors.find(
+  const row = anthropicRows().find(
     (descriptor) => descriptor.provider === first.provider && descriptor.model === first.model,
   );
   if (row === undefined) throw new Error(`The model catalog has no ${first.model} row.`);
