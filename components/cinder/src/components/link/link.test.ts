@@ -84,6 +84,49 @@ describe('Link underline prop', () => {
 });
 
 describe('Link variant prop (COR-2329)', () => {
+  // The first cut of the more form put the chevron in a shared snippet, and the whitespace before
+  // it rendered into every inline link: "LoDo" read "LoDo ", which broke every caller that reads a
+  // link's text or sets links in a line. An inline link renders its children and nothing else.
+  test('an inline link renders its children alone: no trailing whitespace, chevron or extra node', () => {
+    for (const disabled of [false, true]) {
+      const { container, unmount } = render(Link, {
+        props: { href: '/places/lodo', disabled, children: textSnippet('LoDo') },
+      });
+      const root = container.querySelector('.cinder-link');
+      expect(root?.textContent).toBe('LoDo');
+      expect([...(root?.children ?? [])].map((child) => child.outerHTML)).toEqual([
+        '<span>LoDo</span>',
+      ]);
+      const textNodes = [...(root?.childNodes ?? [])].filter(
+        (node) => node.nodeType === Node.TEXT_NODE,
+      );
+      expect(textNodes).toEqual([]);
+      unmount();
+    }
+    // Byte for byte what the link rendered before the more form existed.
+    const { container } = render(Link, {
+      props: { href: '/a', children: textSnippet('LoDo') },
+    });
+    expect(container.querySelector('a')?.outerHTML).toBe(
+      '<a href="/a" class="cinder-link" data-cinder-link="true" data-underline="hover" data-color="primary"><span>LoDo</span><!----></a>',
+    );
+  });
+
+  test('a more link reads as its words alone, the chevron straight after them', () => {
+    for (const disabled of [false, true]) {
+      const { container, unmount } = render(Link, {
+        props: { href: '/reviews', variant: 'more', disabled, children: textSnippet('Open') },
+      });
+      const root = container.querySelector('.cinder-link');
+      expect(root?.textContent).toBe('Open');
+      expect([...(root?.children ?? [])].map((child) => child.tagName.toLowerCase())).toEqual([
+        'span',
+        'svg',
+      ]);
+      unmount();
+    }
+  });
+
   test('an inline link has no variant attribute and no chevron', () => {
     const { container } = render(Link, {
       props: { href: '/reviews', children: textSnippet('Open Reviews') },

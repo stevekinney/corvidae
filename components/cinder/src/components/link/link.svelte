@@ -85,15 +85,37 @@
   const more = $derived(variant === 'more');
 </script>
 
-<!-- The "more" form ends in a chevron, which says the link leads on to a page of its own. -->
-{#snippet content()}
-  {@render children()}
-  {#if more}
-    <ChevronRight class="cinder-link__chevron" aria-hidden="true" />
-  {/if}
-{/snippet}
-
-{#if disabled}
+<!-- The "more" form ends in a chevron, which says the link leads on to a page of its own. It has
+     branches of its own, so an inline link renders exactly what it always did: its children and
+     nothing else, with no whitespace, chevron or block anchor beside them (COR-2329). The chevron
+     follows the words with no whitespace between them, so the text is the words alone. -->
+{#if more && disabled}
+  <span
+    {...spanAttributes}
+    class={resolvedClass}
+    aria-disabled="true"
+    data-cinder-link
+    data-underline={underline}
+    data-color={color}
+    data-variant="more"
+    data-disabled
+    >{@render children()}<ChevronRight class="cinder-link__chevron" aria-hidden="true" /></span
+  >
+{:else if more}
+  <a
+    {...rest}
+    {href}
+    {tabindex}
+    target={resolvedTarget}
+    rel={resolvedRel}
+    class={resolvedClass}
+    data-cinder-link
+    data-underline={underline}
+    data-color={color}
+    data-variant="more"
+    >{@render children()}<ChevronRight class="cinder-link__chevron" aria-hidden="true" /></a
+  >
+{:else if disabled}
   <!--
     Disabled link: rendered as <span> with aria-disabled="true" so assistive technology
     understands the element is not interactive. The href is intentionally withheld — a
@@ -106,10 +128,9 @@
     data-cinder-link
     data-underline={underline}
     data-color={color}
-    data-variant={more ? 'more' : undefined}
     data-disabled
   >
-    {@render content()}
+    {@render children()}
   </span>
 {:else}
   <a
@@ -122,8 +143,7 @@
     data-cinder-link
     data-underline={underline}
     data-color={color}
-    data-variant={more ? 'more' : undefined}
   >
-    {@render content()}
+    {@render children()}
   </a>
 {/if}
