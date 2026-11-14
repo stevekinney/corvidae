@@ -76,9 +76,65 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-on-edit.sh"
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Agent(chef-worker)",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Agent(chef-worker)",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "chef-worker",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "chef-worker",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook"
+          }
+        ]
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Agent(chef-worker)",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/host-sessions.ts hook",
+            "timeout": 1260,
+            "onFailure": "block"
+          }
+        ]
+      },
       {
         "matcher": "Bash",
         "hooks": [
