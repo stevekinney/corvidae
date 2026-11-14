@@ -85,6 +85,7 @@
     chatRenderRowKey,
     findRenderRowIndexByMessageId,
     type ChatRenderRow,
+    type ToolCallRunEntry,
   } from './use-chat-message-groups.svelte.ts';
   import { ChatVirtualizer } from './use-chat-virtualizer.svelte.ts';
   import { useChatDisclosureState } from './use-chat-disclosure-state.svelte.ts';
@@ -663,6 +664,19 @@
     // expansion callback leave grouping on (COR-2289).
     getUngroupAllToolCalls: () =>
       Boolean(row || messagePart || searchState.isOpen || rollbackMessageId),
+    // A settled turn's narration folds into its step group on the transcript presentation, and only
+    // when the message draws nothing but its text: the group draws the text and nothing else.
+    getCanFoldNarration: () =>
+      variant === 'transcript'
+        ? (message) =>
+            (resolveMessageReasoning(message, messageReasoning) ?? '') === '' &&
+            resolveMessageSteps(message, messageSteps) === undefined &&
+            resolveMessageNotes(message) === undefined &&
+            sourcesByMessageId?.get(message.id) === undefined &&
+            ['complete', undefined].includes(
+              resolveMessageTurnState(message, messageTurnState)?.kind,
+            )
+        : () => false,
   });
 
   /**
@@ -770,6 +784,32 @@
       const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
       return pair ? [{ message, pair }] : [];
     });
+  }
+
+  /**
+   * The lines a folded turn said between its steps, each with how many of the group's drawn steps
+   * came before it, so the timeline draws it in its place among them.
+   */
+  function groupNarration(
+    entries: readonly ToolCallRunEntry[] | undefined,
+    drawnPairs: readonly { message: Message }[],
+  ): { id: string; beforePairIndex: number; content: string }[] {
+    if (entries === undefined) return [];
+    const drawnIds = new Set(drawnPairs.map(({ message }) => message.id));
+    let before = 0;
+    const lines: { id: string; beforePairIndex: number; content: string }[] = [];
+    for (const entry of entries) {
+      if (entry.type === 'step') {
+        if (drawnIds.has(entry.message.id)) before += 1;
+      } else {
+        lines.push({
+          id: entry.message.id,
+          beforePairIndex: before,
+          content: getMessageText(entry.message),
+        });
+      }
+    }
+    return lines;
   }
 
   function actionRequiredApprovalMessages(groupMessages: readonly Message[]): Message[] {
@@ -2626,6 +2666,8 @@
                 ? (pair) => describeToolCallSafely(pair.call, pair.result)
                 : undefined}
               pairs={ordinaryPairs.map(({ pair }) => pair)}
+              narration={groupNarration(renderRow.entries, ordinaryPairs)}
+              {markdownNode}
               approvalStates={commandActions.approvalStates}
               durations={toolCallDurations(ordinaryPairs)}
               startTimes={toolCallStartTimes(ordinaryPairs)}

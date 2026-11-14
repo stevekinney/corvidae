@@ -1,3 +1,15 @@
+<script lang="ts" module>
+  /** A line the agent said between a settled turn's steps. */
+  export type ToolCallTimelineNarration = {
+    /** The message the line came from. */
+    id: string;
+    /** How many of the group's steps come before the line. */
+    beforePairIndex: number;
+    /** The line's markdown. */
+    content: string;
+  };
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import {
@@ -23,6 +35,8 @@
   import type { ToolCallPair } from '../conversation-model.ts';
   import type { ToolCallPresentation } from '../utilities/types.ts';
   import { formatToolCallProse } from '../utilities/utilities.ts';
+  import type { MarkdownNodeOverride } from './chat-message-parts.ts';
+  import MessageContent from './message-content.svelte';
   import RetryButton from './retry-button.svelte';
   import ToolPayloadCode from './tool-payload-code.svelte';
   import { resolveTurnLabels, type ChatTurnLabels } from './turn-labels.ts';
@@ -40,6 +54,7 @@
     toolCallSummaryParts,
     totalToolCallDuration,
     type ToolCallRowStatus,
+    type ToolCallStep,
   } from './tool-call-summary.ts';
 
   let {
@@ -55,8 +70,19 @@
     onRetryStep,
     cardOwnedCallIds,
     labels,
+    narration,
+    markdownNode,
   }: {
     pairs: ToolCallPair[];
+    /**
+     * What the agent said between the steps of a settled turn, which the group draws when open.
+     * Each line sits before the step at `beforePairIndex` (a count of `pairs`, so a line after the
+     * last step has `pairs.length`). Lines are not steps: the count, the position and the summary
+     * count steps only. Without it the group is its steps alone.
+     */
+    narration?: readonly ToolCallTimelineNarration[] | undefined;
+    /** Per-node override for code blocks, tables, and Mermaid blocks inside a narration line's markdown. */
+    markdownNode?: MarkdownNodeOverride | undefined;
     messageId?: string;
     describeToolCall?: ((pair: ToolCallPair) => ToolCallPresentation | undefined) | undefined;
     expanded?: boolean;
@@ -147,10 +173,38 @@
   function repeatKey(row: TimelineRow): string | undefined {
     return row.status === 'succeeded' ? `${row.pair.call.name}\u0000${row.prose ?? ''}` : undefined;
   }
-  const steps = $derived(foldRepeatedSteps(rows, repeatKey));
+  // A line the agent said between steps ends a run of identical calls: the calls on either side of
+  // it are not consecutive, so they never fold across it. The list is the steps and the lines in
+  // the order they happened.
+  const listEntries = $derived.by(() => {
+    const lines = [...(narration ?? [])].sort((a, b) => a.beforePairIndex - b.beforePairIndex);
+    const entries: (
+      | { kind: 'narration'; line: ToolCallTimelineNarration }
+      | { kind: 'step'; step: ToolCallStep<TimelineRow> }
+    )[] = [];
+    let from = 0;
+    const addSteps = (to: number): void => {
+      for (const step of foldRepeatedSteps(rows.slice(from, to), repeatKey)) {
+        entries.push({ kind: 'step', step });
+      }
+      from = Math.max(from, to);
+    };
+    for (const line of lines) {
+      addSteps(Math.min(line.beforePairIndex, rows.length));
+      entries.push({ kind: 'narration', line });
+    }
+    addSteps(rows.length);
+    return entries;
+  });
+  const steps = $derived(
+    listEntries.flatMap((entry) => (entry.kind === 'step' ? [entry.step] : [])),
+  );
   const hasRepeatedSummary = $derived(steps.some((step) => step.kind === 'repeated'));
-  function stepKey(step: (typeof steps)[number]): string {
+  function stepKey(step: ToolCallStep<TimelineRow>): string {
     return step.kind === 'single' ? step.row.key : `repeated:${step.rows[0].key}`;
+  }
+  function entryKey(entry: (typeof listEntries)[number]): string {
+    return entry.kind === 'narration' ? `narration:${entry.line.id}` : stepKey(entry.step);
   }
   // A call that has no answer yet and that the host words in the present tense ("Using Lookup
   // order…") is what the group's line says while it runs, in place of the past-tense count.
@@ -506,91 +560,100 @@
     </button>
   </h3>
   <ol id={listId} class="chat-tool-call-list" aria-label={callsLabel} hidden={!groupOpen}>
-    {#each steps as step (stepKey(step))}
-      {#if step.kind === 'single'}
-        {@const row = step.row}
-        {@const open = isStepOpen(row.key, isProblemStatus(row.status))}
-        <li class="chat-tool-call-item" data-cinder-tool-call-status={row.status}>
-          {#if row.deniedApproval}
-            <div class="chat-tool-call-row chat-tool-call-row-summary">
-              {@render statusIcon(row.status, false)}
-              <code class="chat-tool-call-name">{row.pair.call.name}</code>
-              <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
-            </div>
-          {:else}
+    {#each listEntries as entry (entryKey(entry))}
+      {#if entry.kind === 'narration'}
+        <!-- What the agent said before the next step: muted, one step smaller than the answer, and
+             on the steps' text edge. It is a list item so a screen reader meets it in order. -->
+        <li class="chat-tool-call-narration">
+          <MessageContent content={entry.line.content} {markdownNode} />
+        </li>
+      {:else}
+        {@const step = entry.step}
+        {#if step.kind === 'single'}
+          {@const row = step.row}
+          {@const open = isStepOpen(row.key, isProblemStatus(row.status))}
+          <li class="chat-tool-call-item" data-cinder-tool-call-status={row.status}>
+            {#if row.deniedApproval}
+              <div class="chat-tool-call-row chat-tool-call-row-summary">
+                {@render statusIcon(row.status, false)}
+                <code class="chat-tool-call-name">{row.pair.call.name}</code>
+                <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
+              </div>
+            {:else}
+              <button
+                type="button"
+                class="chat-tool-call-row"
+                aria-expanded={open}
+                aria-controls={row.detailsId}
+                onclick={() => toggleStep(row.key, isProblemStatus(row.status))}
+              >
+                {@render statusIcon(row.status, row.active)}
+                {#if row.presentation}
+                  <span class="chat-tool-call-label">{row.prose}</span>
+                  <code class="chat-tool-call-name">{row.pair.call.name}</code>
+                {:else}
+                  <code class="chat-tool-call-name">{row.pair.call.name}</code>
+                  {#if row.keyArgument}<span>{row.keyArgument}</span>{/if}
+                {/if}
+                <span class="chat-tool-call-result">
+                  {#if row.status !== 'failed' && row.resultLine}→ {row.resultLine}{/if}
+                </span>
+                {#if row.status !== 'succeeded' && row.status !== 'failed'}
+                  <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
+                {/if}
+                {#if row.duration !== undefined}
+                  <span class="chat-tool-call-duration">{formatDuration(row.duration)}</span>
+                {/if}
+              </button>
+              <div id={row.detailsId} class="chat-tool-call-details" hidden={!open}>
+                {#if open}
+                  {@render payload(words.input, row.pair.call.arguments)}
+                  {@render output(row.pair, row.status)}
+                {/if}
+              </div>
+            {/if}
+          </li>
+        {:else}
+          {@const first = step.rows[0]}
+          {@const key = stepKey(step)}
+          {@const open = isStepOpen(key, false)}
+          {@const total = totalToolCallDuration(step.rows.map((row) => row.duration))}
+          <li
+            class="chat-tool-call-item"
+            data-cinder-tool-call-status="succeeded"
+            data-cinder-tool-call-repeat={step.rows.length}
+          >
             <button
               type="button"
               class="chat-tool-call-row"
               aria-expanded={open}
-              aria-controls={row.detailsId}
-              onclick={() => toggleStep(row.key, isProblemStatus(row.status))}
+              aria-controls={`${first.detailsId}-repeated`}
+              onclick={() => toggleStep(key, false)}
             >
-              {@render statusIcon(row.status, row.active)}
-              {#if row.presentation}
-                <span class="chat-tool-call-label">{row.prose}</span>
-                <code class="chat-tool-call-name">{row.pair.call.name}</code>
-              {:else}
-                <code class="chat-tool-call-name">{row.pair.call.name}</code>
-                {#if row.keyArgument}<span>{row.keyArgument}</span>{/if}
-              {/if}
-              <span class="chat-tool-call-result">
-                {#if row.status !== 'failed' && row.resultLine}→ {row.resultLine}{/if}
-              </span>
-              {#if row.status !== 'succeeded' && row.status !== 'failed'}
-                <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
-              {/if}
-              {#if row.duration !== undefined}
-                <span class="chat-tool-call-duration">{formatDuration(row.duration)}</span>
+              {@render statusIcon('succeeded', false)}
+              {#if first.prose}<span class="chat-tool-call-label">{first.prose}</span>{/if}
+              <code class="chat-tool-call-name">{first.pair.call.name} ×{step.rows.length}</code>
+              <span class="chat-tool-call-result"></span>
+              {#if total !== undefined}
+                <span class="chat-tool-call-duration">{formatDuration(total)}</span>
               {/if}
             </button>
-            <div id={row.detailsId} class="chat-tool-call-details" hidden={!open}>
+            <div id={`${first.detailsId}-repeated`} class="chat-tool-call-details" hidden={!open}>
               {#if open}
-                {@render payload(words.input, row.pair.call.arguments)}
-                {@render output(row.pair, row.status)}
+                {#each step.rows as member, memberIndex (member.key)}
+                  <div class="chat-tool-call-repeated-call">
+                    <span class="chat-tool-call-repeated-heading">
+                      {memberIndex + 1} of {step.rows.length}{#if member.keyArgument}
+                        {' '}{member.keyArgument}{/if}
+                    </span>
+                    {@render payload(words.input, member.pair.call.arguments)}
+                    {@render output(member.pair, member.status)}
+                  </div>
+                {/each}
               {/if}
             </div>
-          {/if}
-        </li>
-      {:else}
-        {@const first = step.rows[0]}
-        {@const key = stepKey(step)}
-        {@const open = isStepOpen(key, false)}
-        {@const total = totalToolCallDuration(step.rows.map((row) => row.duration))}
-        <li
-          class="chat-tool-call-item"
-          data-cinder-tool-call-status="succeeded"
-          data-cinder-tool-call-repeat={step.rows.length}
-        >
-          <button
-            type="button"
-            class="chat-tool-call-row"
-            aria-expanded={open}
-            aria-controls={`${first.detailsId}-repeated`}
-            onclick={() => toggleStep(key, false)}
-          >
-            {@render statusIcon('succeeded', false)}
-            {#if first.prose}<span class="chat-tool-call-label">{first.prose}</span>{/if}
-            <code class="chat-tool-call-name">{first.pair.call.name} ×{step.rows.length}</code>
-            <span class="chat-tool-call-result"></span>
-            {#if total !== undefined}
-              <span class="chat-tool-call-duration">{formatDuration(total)}</span>
-            {/if}
-          </button>
-          <div id={`${first.detailsId}-repeated`} class="chat-tool-call-details" hidden={!open}>
-            {#if open}
-              {#each step.rows as member, memberIndex (member.key)}
-                <div class="chat-tool-call-repeated-call">
-                  <span class="chat-tool-call-repeated-heading">
-                    {memberIndex + 1} of {step.rows.length}{#if member.keyArgument}
-                      {' '}{member.keyArgument}{/if}
-                  </span>
-                  {@render payload(words.input, member.pair.call.arguments)}
-                  {@render output(member.pair, member.status)}
-                </div>
-              {/each}
-            {/if}
-          </div>
-        </li>
+          </li>
+        {/if}
       {/if}
     {/each}
   </ol>
@@ -865,6 +928,24 @@
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  /* What the agent said between steps. It starts on the steps' text edge (the status icon and its
+   * gap in), is muted and at the notice size, one step under the answer's body size, and keeps the
+   * message gap above and below. The rendered Markdown sets its own size and leading, so the size
+   * is set on it too; the lines are a whole 21px at 13px. */
+  .chat-tool-call-narration {
+    margin-block: var(--cinder-space-1);
+    padding-inline-start: calc(12px + var(--cinder-space-2));
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-weight: var(--cinder-font-normal, 400);
+  }
+
+  .chat-tool-call-narration :global(.cinder-markdown-content) {
+    color: inherit;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    line-height: calc(21 / 13);
   }
 
   .chat-tool-call-list[hidden],
