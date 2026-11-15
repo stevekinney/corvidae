@@ -307,7 +307,7 @@ describe('Try it', () => {
     );
   });
   test('with no model provider connected the shared blocked row stands in for the composer, over an empty transcript', async () => {
-    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: false }] });
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: false, connected: false }] });
     const view = mount();
 
     await view.findByText('Connect a model provider to chat');
@@ -321,8 +321,17 @@ describe('Try it', () => {
     ).toBe(true);
   });
 
+  test('with only a keyless provider the composer is there, and no connect-a-provider row stands in for it (COR-2414)', async () => {
+    bureau({}, { hostProviders: [{ name: 'ollama', hasKey: false, connected: true }] });
+    const view = mount();
+
+    expect(await view.findByRole('textbox', { name: 'Message' })).toBeDefined();
+    expect(view.queryByText('Connect a model provider to chat')).toBeNull();
+    expect(view.queryByText('Connect a provider')).toBeNull();
+  });
+
   test('the composer is one line, “Send a test message”, with the line about real tools under it', async () => {
-    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const view = mount();
 
     const field = await view.findByRole('textbox', { name: 'Message' });
@@ -353,7 +362,7 @@ describe('Try it', () => {
           'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
           'bureau.contexts.get': () => ({ id: 'ctx-1' }),
         },
-        { hostProviders: [{ name: 'anthropic', hasKey: true }], agUi },
+        { hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }], agUi },
       );
       return mount();
     }
@@ -457,7 +466,7 @@ describe('Try it', () => {
 
 describe('Try it, where it is drawn', () => {
   test('at desktop width it is a panel always open beside the form, titled Try it, with what it uses and Reset (row 41n)', async () => {
-    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const view = mount(null);
     const panel = await view.findByTestId('agent-try-panel');
 
@@ -475,7 +484,7 @@ describe('Try it, where it is drawn', () => {
   });
 
   test('says the provider is connected beside what it uses, with no separator glyph (row 43g)', async () => {
-    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const view = mount(null);
 
     const provider = await view.findByTestId('agent-try-provider');

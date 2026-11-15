@@ -7,6 +7,7 @@ import {
   appendTimelineBatchOperations,
   persistCheckpoint,
   pruneCheckpointHistory,
+  type MidOperationCommitReport,
   type PersistCheckpointCallbacks,
 } from './checkpoint-io.ts';
 import type { Engine } from './index.ts';
@@ -56,6 +57,10 @@ export function createCheckpointPersistenceCallbacks<
   };
 }
 
+/**
+ * Commit a checkpoint for an operation that is still running, keeping its pending timeline entry:
+ * a memo's durable retry sleep, or a `ctx.all` branch that settled before its siblings.
+ */
 export function persistCheckpointForDataOperation<
   TWorkflows extends object,
   TActivities extends object,
@@ -63,6 +68,7 @@ export function persistCheckpointForDataOperation<
   engine: Engine<TWorkflows, TActivities>,
   workflowId: string,
   operation: ContextOperationRequest,
+  report: MidOperationCommitReport = {},
 ): Promise<void> {
   const internals = getInternals(engine);
   return persistCheckpointAbandoningOnConflict(internals, workflowId, () =>
@@ -72,7 +78,7 @@ export function persistCheckpointForDataOperation<
       operation,
       undefined,
       createCheckpointPersistenceCallbacks(engine),
-      { timeline: 'preserve-pending' },
+      { timeline: 'preserve-pending', ...report },
     ),
   );
 }

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 import { Engine } from '../core/engine/index.ts';
 import { WorkflowDocumentReviewRejectedError } from './document-errors.ts';
@@ -97,12 +98,10 @@ const rows: readonly Row[] = [
 
 describe('a rejected review (COR-2238)', () => {
   // Matrix row R6 (a crash after the rejection payload was checkpointed but before the run settled)
-  // has no test of its own, by construction. `runAwaitSignal` asks `isRejection` of the value the
-  // wait returned and throws on the same line, before the generator yields another operation, so no
-  // later step is requested on the live run. A replay takes the checkpointed payload as that wait's
-  // result and reaches the same line, so it throws before it requests one either; the "recovers a
-  // run at a rejected wait" test below is that replay. There is no point between the checkpoint of
-  // the payload and the throw at which a crash could leave a later step started.
+  // has its own tests below, "a crash after the rejection was read". `runAwaitSignal` asks
+  // `isRejection` of the value the wait returned and throws on the same line, before the generator
+  // yields another operation, so no later step is requested on the live run, and a replay of the
+  // payload reaches the same line.
   for (const [index, row] of rows.entries()) {
     it(`${row.outcome === 'rejected' ? 'fails the run' : 'continues'} for ${row.name}`, async () => {
       ran.length = 0;
@@ -256,6 +255,83 @@ describe('a rejected review (COR-2238)', () => {
     ).toBe(true);
   });
 
+  it('keeps a rejection in a parallel branch across a restart once a sibling has committed (matrix row D14)', async () => {
+    // The rejected branch's wait took `decision`, and the sibling's later commit lands that consume:
+    // the branch's progress must be in that commit, or a restart shows the review again.
+    ran.length = 0;
+    const storage = new MemoryStorage();
+    const id = 'rejection-parallel-restart-run';
+    const definition = {
+      name: 'rejection-parallel-restart',
+      trigger: { kind: 'manual' },
+      steps: [
+        {
+          kind: 'parallel',
+          branches: {
+            review: [
+              { kind: 'await-signal', signal: 'decision' },
+              { kind: 'activity', handler: 'after' },
+            ],
+            other: [{ kind: 'await-signal', signal: 'other' }],
+            third: [{ kind: 'await-signal', signal: 'third' }],
+          },
+        },
+        { kind: 'activity', handler: 'after' },
+      ],
+    };
+    const waiting = async (engine: Engine): Promise<string[]> => {
+      const state = await engine.get(id);
+      return (state?.waitingForSignals ?? []).toSorted();
+    };
+    const isWaitingOn = async (engine: Engine, name: string) => {
+      const names = await waiting(engine);
+      return names.includes(name);
+    };
+    const statusOf = async (engine: Engine) => {
+      const state = await engine.get(id);
+      return state?.status;
+    };
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, hostWithHook, { active: [definition] });
+      const run = await original.start(definition.name, null, { id });
+      await waitUntil(
+        async () =>
+          (await isWaitingOn(original, 'decision')) &&
+          (await isWaitingOn(original, 'other')) &&
+          (await isWaitingOn(original, 'third')),
+        { message: 'every branch to wait' },
+      );
+      await run.signal('decision', { rejected: true, reason: 'no' });
+      await waitUntil(async () => !(await isWaitingOn(original, 'decision')), {
+        message: 'the review to take its decision',
+      });
+      await run.signal('other', 'done');
+      await waitUntil(async () => !(await isWaitingOn(original, 'other')), {
+        message: 'the sibling to take its signal',
+      });
+      // The sibling's step settles in a commit: wait until the decision's consume is durable.
+      await waitUntil(async () => (await storage.count(`sig:${id}:decision:`)) === 0, {
+        message: 'the decision to be consumed durably',
+      });
+    }
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, hostWithHook, { active: [definition] });
+    const [handle] = await restarted.recoverAll();
+    await waitUntil(async () => isWaitingOn(restarted, 'third'), {
+      message: 'the last branch to wait again',
+    });
+    expect(await waiting(restarted)).toEqual(['third']);
+    await handle!.signal('third', 'done');
+    // The review is not shown again: the run settles once its last branch has its signal.
+    await waitUntil(async () => (await statusOf(restarted)) !== 'running', {
+      message: 'the run to settle once its last branch takes its signal',
+    });
+    expect(await throwingRejectionOf(handle!.result())).toThrow('review-rejected');
+    expect(ran).toEqual([]);
+    expect(await statusOf(restarted)).toBe('failed');
+  });
+
   it('recovers a run at a rejected wait to the same end after a restart', async () => {
     ran.length = 0;
     const storage = new MemoryStorage();
@@ -276,6 +352,114 @@ describe('a rejected review (COR-2238)', () => {
     const state = await restarted.get(`${name}-run`);
     expect(state?.status).toBe('failed');
     expect(state?.error).toBe('review-rejected');
+  });
+
+  describe('a crash after the rejection was read (matrix row R6, COR-2418)', () => {
+    /**
+     * A store that stops writing the moment the host reads a rejection: the next `allowance` writes
+     * go through and every one after is refused, which freezes the durable state at that point as
+     * a crash would. `armed` is set by the host's `isRejection`, the one place the run is known to
+     * have read the rejection payload.
+     */
+    class CrashingStorage extends MemoryStorage {
+      armed = false;
+      allowance = 0;
+      admitted = 0;
+      refused = 0;
+
+      #admit(): void {
+        if (!this.armed) return;
+        if (this.admitted < this.allowance) {
+          this.admitted += 1;
+          return;
+        }
+        this.refused += 1;
+        throw new Error('the process died');
+      }
+
+      override async put(...parameters: Parameters<MemoryStorage['put']>) {
+        this.#admit();
+        return super.put(...parameters);
+      }
+
+      override async delete(...parameters: Parameters<MemoryStorage['delete']>) {
+        this.#admit();
+        return super.delete(...parameters);
+      }
+
+      override async batch(...parameters: Parameters<MemoryStorage['batch']>) {
+        this.#admit();
+        return super.batch(...parameters);
+      }
+
+      override async conditionalBatch(
+        ...parameters: Parameters<MemoryStorage['conditionalBatch']>
+      ) {
+        this.#admit();
+        return super.conditionalBatch(...parameters);
+      }
+    }
+
+    /**
+     * Where the crash falls, in writes the run gets through after it read the rejection. The
+     * rejection's payload commits in the same write as the failure it causes, so there is no state
+     * between "payload checkpointed" and "run failed": a crash before that write leaves the run
+     * `running` with the decision still buffered, and one after it leaves it `failed`.
+     */
+    const crashPoints: readonly {
+      readonly name: string;
+      readonly writesBeforeCrash: number;
+      readonly durableStatus: 'running' | 'failed';
+    }[] = [
+      { name: 'before the write that settles it', writesBeforeCrash: 0, durableStatus: 'running' },
+      { name: 'after the write that settles it', writesBeforeCrash: 1, durableStatus: 'failed' },
+    ];
+
+    for (const point of crashPoints) {
+      it(`fails the run as rejected with no later step started, for a crash ${point.name}`, async () => {
+        ran.length = 0;
+        const storage = new CrashingStorage();
+        storage.allowance = point.writesBeforeCrash;
+        const name = `rejection-crash-${String(point.writesBeforeCrash)}`;
+        const id = `${name}-run`;
+        const document_ = document(name);
+        const crashingHost: DocumentWorkflowHost = {
+          ...hostWithHook,
+          isRejection: (payload) => {
+            const rejection = rejects(payload);
+            if (rejection) storage.armed = true;
+            return rejection;
+          },
+        };
+        {
+          await using crashed = new Engine({ storage });
+          await registerWorkflowDocuments(crashed, crashingHost, { active: [document_] });
+          await crashed.start(name, null, { id });
+          await waitForParked(crashed, id);
+          await crashed.signal(id, 'decision', { rejected: true, reason: 'no' });
+          // The run read the rejection, and every write after the allowed ones was refused.
+          await waitUntil(async () => storage.refused > 0);
+        }
+        // What is durable now is what a crash left. The run never started a later step.
+        storage.armed = false;
+        await using recovered = new Engine({ storage });
+        await registerWorkflowDocuments(recovered, hostWithHook, { active: [document_] });
+        const before = await recovered.get(id);
+        expect(before?.status).toBe(point.durableStatus);
+        const handles = await recovered.recoverAll();
+        const handle = handles.find((candidate) => candidate.id === id);
+        if (point.durableStatus === 'running') {
+          // The decision is still buffered: recovery consumes it and fails the run as rejected.
+          expect(await throwingRejectionOf(handle!.result())).toThrow('review-rejected');
+        } else {
+          expect(handle).toBeUndefined();
+        }
+        const after = await recovered.get(id);
+        expect(after?.status).toBe('failed');
+        expect(after?.error).toBe('review-rejected');
+        expect(ran).toEqual([]);
+      });
+    }
   });
 
   it('still continues for an approval after a restart', async () => {

@@ -108,6 +108,44 @@ export async function clearSignalWait(
   );
 }
 
+/** The clears of waits that lost a race, still writing, by workflow: see {@link trackSignalWaitClear}. */
+const PENDING_CLEARS = new WeakMap<object, Map<string, Set<Promise<void>>>>();
+
+/**
+ * Hold the clear of a wait that lost its race to a timeout or a sibling, so the race that settled
+ * can await it ({@link settleSignalWaitClears}): a branch that lost has nothing awaiting it, and its
+ * clear would otherwise land after the operation that followed it. A reader told that operation
+ * settled (a commit's feed, a terminal event) then finds the list without the wait.
+ */
+export function trackSignalWaitClear(
+  internals: EngineInternals,
+  workflowId: string,
+  cleared: Promise<void>,
+): void {
+  const byWorkflow = PENDING_CLEARS.get(internals) ?? new Map<string, Set<Promise<void>>>();
+  PENDING_CLEARS.set(internals, byWorkflow);
+  const pending = byWorkflow.get(workflowId) ?? new Set<Promise<void>>();
+  byWorkflow.set(workflowId, pending);
+  pending.add(cleared);
+  void cleared.finally(() => {
+    pending.delete(cleared);
+    if (pending.size === 0 && byWorkflow.get(workflowId) === pending) byWorkflow.delete(workflowId);
+  });
+}
+
+/**
+ * Wait for the clears {@link trackSignalWaitClear} holds for `workflowId`. Returns without a turn
+ * of its own when there are none, which is every race a signal won.
+ */
+export function settleSignalWaitClears(
+  internals: EngineInternals,
+  workflowId: string,
+): Promise<void> | undefined {
+  const pending = PENDING_CLEARS.get(internals)?.get(workflowId);
+  if (pending === undefined || pending.size === 0) return undefined;
+  return Promise.all(pending).then(() => undefined);
+}
+
 /**
  * Apply `change` to the persisted list. Returns whether it wrote. `run` was
  * captured when the wait started, so a change requested by one run never lands

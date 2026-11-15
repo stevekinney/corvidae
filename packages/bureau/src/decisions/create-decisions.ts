@@ -179,8 +179,24 @@ export function validateDecisionsModelChoice(
   );
 }
 
+/**
+ * Whether a row can ever be the language-model fallback: it returns structured output. A row that
+ * does not (a decision-only row, TypeSafe's) is skipped by {@link chooseFallbackRow} however it is
+ * saved. `bureau.decisions.models` reports it per row (`canBeFallback`) so a page offers only rows
+ * the fallback can use, without copying the rule.
+ */
+function canBeFallback(row: BackendDescriptor): boolean {
+  return row.structuredOutput;
+}
+
+/** A row the fallback uses now: one that can be the fallback and is not `unavailable`. */
 function eligible(row: BackendDescriptor): boolean {
-  return row.availability !== 'unavailable' && row.structuredOutput;
+  return row.availability !== 'unavailable' && canBeFallback(row);
+}
+
+/** Whether a row can decide at all: it declares decision kinds of its own, or it returns structured output. */
+function canDecide(row: BackendDescriptor): boolean {
+  return row.structuredOutput || (row.decisions?.kinds.length ?? 0) > 0;
 }
 
 function matchesFallback(row: BackendDescriptor, provider: string, model: string): boolean {
@@ -283,15 +299,33 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
   const maximumPerTask = (): number =>
     dependencies.settings()['decisions.maximumPerTask'] ?? DEFAULT_DECISIONS_PER_TASK;
 
-  function fallback(): Answerer {
+  /**
+   * The catalog rows the policy leaves, and the one of them the language-model fallback uses. A
+   * forbidden row is skipped when choosing, so the policy narrows the fallback and does not end it
+   * while another row can answer.
+   */
+  function fallbackNow(): {
+    readonly descriptors: readonly BackendDescriptor[];
+    readonly permitted: readonly BackendDescriptor[];
+    readonly policy: BureauModelPolicyOptions | undefined;
+    readonly row: BackendDescriptor | undefined;
+  } {
     const descriptors = dependencies.models.catalog().descriptors;
     const policy = dependencies.modelPolicy?.();
-    // A forbidden row is skipped when choosing, so the policy narrows the fallback and does not
-    // end it while another row can answer. Only when it leaves none is the decision refused.
-    const row = chooseFallbackRow(
-      descriptors.filter((candidate) => modelPolicyDenialOf(candidate, policy) === undefined),
-      fallbackModelNow(),
+    const permitted = descriptors.filter(
+      (candidate) => modelPolicyDenialOf(candidate, policy) === undefined,
     );
+    return {
+      descriptors,
+      permitted,
+      policy,
+      row: chooseFallbackRow(permitted, fallbackModelNow()),
+    };
+  }
+
+  function fallback(): Answerer {
+    const { descriptors, policy, row } = fallbackNow();
+    // Only when the policy leaves no row is the decision refused.
     if (row === undefined) {
       const forbidden = chooseFallbackRow(descriptors, fallbackModelNow());
       const denial = forbidden === undefined ? undefined : modelPolicyDenialOf(forbidden, policy);
@@ -400,6 +434,28 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
   }
 
   const decisions: BureauDecisions = {
+    models() {
+      const { permitted, policy, row: fallbackRow } = fallbackNow();
+      // The row `modelFor` goes to: the one `decisions.model` names when it is in the catalog, can
+      // decide and is not `unavailable` (a policy that forbids it refuses the decision, so no row
+      // answers), else the fallback's. Read from the same lookups `decide` uses.
+      const chosen = chosenRowNow();
+      const answering =
+        chosen !== undefined && canDecide(chosen)
+          ? modelPolicyDenialOf(chosen, policy) === undefined
+            ? chosen
+            : undefined
+          : fallbackRow;
+      return permitted.filter(canDecide).map((row) => ({
+        provider: row.provider,
+        model: row.model,
+        availability: row.availability === 'unavailable' ? 'needs-setup' : 'available',
+        decisionOnly: row.decisions?.only === true,
+        answering: row === answering,
+        fallback: row === fallbackRow,
+        canBeFallback: canBeFallback(row),
+      }));
+    },
     async decide<Request extends DecisionRequest>(
       request: Request,
       decideOptions: BureauDecideOptions = {},

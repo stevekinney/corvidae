@@ -145,15 +145,19 @@ describe('the controls', () => {
   });
 
   test('give a key that names a model a choice of models, never a typed provider and model', () => {
-    for (const key of ['decisions.fallbackModel', 'context.summarizerModel']) {
+    expect(
+      controlFor(
+        'context.summarizerModel',
+        published.properties['context.summarizerModel'] as SchemaNode,
+      ),
+    ).toEqual({ kind: 'choice', source: 'catalog-rows' });
+    // The decision keys choose among the rows the Bureau says can answer, not the agent catalog.
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
       expect(controlFor(key, published.properties[key] as SchemaNode)).toEqual({
         kind: 'choice',
-        source: 'catalog-rows',
+        source: 'decision-rows',
       });
     }
-    expect(controlFor('decisions.model', published.properties['decisions.model'] as never)).toEqual(
-      { kind: 'choice', source: 'decision-models' },
-    );
   });
 
   test('fall to the JSON editor for a shape nothing more specific reads, and never to an unsupported one', () => {

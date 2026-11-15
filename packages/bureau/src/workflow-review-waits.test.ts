@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { MemoryStorage } from '@lostgradient/storage';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey, type WorkflowState } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -24,7 +24,11 @@ import {
 } from './testing/workflow-bureau.test-support';
 import { AGENT_STEP } from './testing/workflow-file-fixtures.test-support';
 import type { PendingHumanWaitReview } from './bureau-types/reviews';
-import { workflowReviewId } from './workflow-review-waits';
+import {
+  createWorkflowReviewWaits,
+  workflowReviewId,
+  type WorkflowReviewEngine,
+} from './workflow-review-waits';
 
 describe('workflowReviewId', () => {
   it('keeps flat ids and distinguishes encoded iteration addresses', () => {
@@ -456,5 +460,97 @@ describe('a workflow review step', () => {
       payload: { note: 'Ship it' },
     });
     await waitUntil(async () => (await statusOf(second, runId)) === 'completed');
+  });
+});
+
+/**
+ * The module against an engine the test drives by hand: a run waits at a review until the test
+ * says it does not, and a commit is a call of every feed listener the module subscribed.
+ */
+function scriptedReviews() {
+  let waiting = ['approve'];
+  const listeners = new Set<() => void>();
+  const gate = Promise.withResolvers<void>();
+  const reading = Promise.withResolvers<void>();
+  const tracked: Promise<unknown>[] = [];
+  const engine = {
+    get: async () =>
+      ({
+        id: 'run',
+        type: 'release-notes',
+        status: 'running',
+        waitingForSignals: waiting,
+        versionTuple: { workflowVersion: 'v1' },
+        updatedAt: 1,
+      }) as unknown as WorkflowState,
+    getTimeline: async () => [],
+    getEvents: async () => [],
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    subscribeWorkflowFeedCommits: (_runId: string, _selector: unknown, listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  } as unknown as WorkflowReviewEngine;
+  const reviews = createWorkflowReviewWaits({
+    engine: () => engine,
+    // The read of the file holds until the test lets it go: the window a commit can land in.
+    revisionSteps: async () => {
+      reading.resolve();
+      await gate.promise;
+      return {
+        workflow: 'release-notes',
+        title: null,
+        steps: [{ kind: 'await-signal', signal: 'approve', review: true }],
+      };
+    },
+    inFlightRunIds: async () => [],
+    now: () => 1,
+    announce: () => undefined,
+    released: () => undefined,
+    track: (promise) => {
+      tracked.push(promise);
+    },
+    diagnose: () => undefined,
+  });
+  return {
+    reviews,
+    listeners,
+    /** Resolves once the first read has the run's state and is reading its file. */
+    reading: reading.promise,
+    release: () => gate.resolve(),
+    /** The wait ends and the operation after it commits. */
+    commitEnd: () => {
+      waiting = [];
+      for (const listener of listeners) listener();
+    },
+    settleTracked: () => Promise.all(tracked),
+  };
+}
+
+describe('following the commits of a run read for a review', () => {
+  it('reads the run again when a commit lands while the first read is in flight', async () => {
+    const scripted = scriptedReviews();
+    const refreshed = scripted.reviews.refresh('run');
+    await scripted.reading;
+    // The timeout won and the next step committed while the module was still reading the run.
+    scripted.commitEnd();
+    scripted.release();
+    await refreshed;
+    await scripted.settleTracked();
+    expect(scripted.reviews.list()).toEqual([]);
+  });
+
+  it('leaves no commit feed open when it is closed during a read', async () => {
+    const scripted = scriptedReviews();
+    const refreshed = scripted.reviews.refresh('run');
+    await scripted.reading;
+    scripted.reviews.close();
+    scripted.release();
+    await refreshed;
+    expect(scripted.listeners.size).toBe(0);
+    expect(scripted.reviews.list()).toEqual([]);
   });
 });
