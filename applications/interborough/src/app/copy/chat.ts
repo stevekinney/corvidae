@@ -91,10 +91,9 @@ export const CHAT_COPY = {
     segments: { all: 'All', waiting: 'Waiting on you', done: 'Done' },
     /**
      * The archived chats (COR-2285 V5): the row at the end of the list that opens them, which is
-     * also the title of their view, and that view's way back.
+     * also the title of their view. The view's way back is labelled with the list's own title.
      */
     archivedTitle: 'Archived chats',
-    backToChats: 'Back to chats',
     archivedEmpty: {
       title: 'No archived chats',
       description: 'Archive a chat from its menu to put it away here.',

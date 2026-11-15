@@ -148,9 +148,11 @@ for (const viewport of VIEWPORTS) {
       // The row opens the archived chats in the same pane, with Chats as the way back.
       await archivedEntry(page).click();
       await expect(page).toHaveURL(/\/chats\?view=archived$/);
-      const back = page.getByRole('link', { name: LIST.backToChats, exact: true });
+      // Its visible label is its name, and no tooltip opens on the focus it is given.
+      const back = page.locator('[data-chats-view-back]');
       await expect(back).toBeFocused();
-      await expect(back).toHaveText(CHAT_COPY.sessionsTitle);
+      await expect(back).toHaveAccessibleName(CHAT_COPY.sessionsTitle);
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
       await expect(chatRow(page, threadId)).toBeVisible();
       await expect(archivedEntry(page)).toHaveCount(0);
       await checkA11y(`the archived chats at ${viewport.width}px`);

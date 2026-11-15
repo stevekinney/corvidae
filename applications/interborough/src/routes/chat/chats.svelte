@@ -623,21 +623,19 @@
     {#snippet header({ listToggle })}
       <div class="ib-chats__controls" bind:clientWidth={paneWidth}>
         {#if showingArchived}
-          <!-- The archived view's way back to the chats, above its title. -->
+          <!-- The archived view's way back to the chats, above its title. Its label says where it
+               goes, so it needs no tooltip, which would open on the focus it is given on arrival. -->
           <div class="ib-chats__back-row">
-            <Tooltip text={CHAT_COPY.list.backToChats}>
-              <Button
-                data-chats-view-back
-                href={router.href(viewPath(false))}
-                variant="ghost"
-                size="sm"
-                aria-label={CHAT_COPY.list.backToChats}
-                onclick={(event: MouseEvent) => void switchView(event, false)}
-              >
-                <ChevronLeft aria-hidden="true" size={16} />
-                {CHAT_COPY.sessionsTitle}
-              </Button>
-            </Tooltip>
+            <Button
+              data-chats-view-back
+              href={router.href(viewPath(false))}
+              variant="ghost"
+              size="sm"
+              onclick={(event: MouseEvent) => void switchView(event, false)}
+            >
+              <ChevronLeft aria-hidden="true" size={16} />
+              {CHAT_COPY.sessionsTitle}
+            </Button>
           </div>
         {/if}
         <div class="ib-chats__title-row">

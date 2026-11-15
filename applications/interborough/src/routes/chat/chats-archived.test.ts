@@ -136,8 +136,11 @@ describe('the chat list and archived chats', () => {
     expect(within(region).getByRole('heading', { name: LIST.archivedTitle })).not.toBeNull();
     // The status segments count the chats that are not archived, so the view has none.
     expect(within(region).queryByRole('radiogroup', { name: LIST.segmentsLabel })).toBeNull();
-    const back = within(region).getByRole('link', { name: LIST.backToChats });
-    expect(back.textContent?.trim()).toBe(CHAT_COPY.sessionsTitle);
+    // Its visible label is its name, with no tooltip to open on the focus it is given.
+    const back = within(region).getByRole('link', { name: CHAT_COPY.sessionsTitle });
+    expect(back.hasAttribute('data-chats-view-back')).toBe(true);
+    expect(back.hasAttribute('aria-label')).toBe(false);
+    expect(back.hasAttribute('aria-describedby')).toBe(false);
     expect(document.activeElement === back).toBe(true);
     // Each archived chat opens as any chat does, and keeps the view.
     expect(region.querySelector('[data-chat="archived-1"] a[href]')?.getAttribute('href')).toBe(
