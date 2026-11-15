@@ -96,7 +96,10 @@ export function* all(
           `ctx.all branch count changed across retry: expected ${cached.subOperationCount}, got ${operations.length}. Branch count must be deterministic.`,
         );
       }
-      if (settle === 'settled') {
+      // A settled cache holds every outcome unless a branch had not settled when it was committed
+      // (a slot committed before its siblings): then the branches that did settle are reused and
+      // the rest dispatch again, as in a partial `ctx.all` cache.
+      if (settle === 'settled' && !cached.branches.some((slot) => slot.status === 'pending')) {
         primeCachedBranches(operations, cached.subOperationCount);
         return reconstructSettledResult(cached);
       }

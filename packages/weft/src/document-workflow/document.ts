@@ -234,8 +234,12 @@ export type WorkflowDocumentStep =
       /**
        * Step lists that run together, each from the step before the `parallel` step. The step's
        * result is an object keyed by branch name, each value the result of that branch's last step.
-       * Rounds are cached whole: an activity finished beside an open wait runs again after a restart
-       * (at-least-once, as in `ctx.all`); the wait resumes once. A failing branch fails the step.
+       * Each branch moves on as soon as its own current step settles, without waiting for the
+       * others', and every step a branch settles is committed while a sibling is still running: a
+       * restart resumes each branch where it stopped, so a finished activity beside an open wait
+       * does not run again (an activity that was running at the crash does, at-least-once as in
+       * `ctx.all`). Two branches may not wait on the same signal at once. A failing branch fails
+       * the step once its siblings have settled.
        */
       branches: Readonly<Record<string, readonly WorkflowDocumentStep[]>>;
     }>;

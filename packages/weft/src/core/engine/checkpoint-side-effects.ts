@@ -1,6 +1,8 @@
 import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 
+import type { ContextOperationRequest } from '../context.ts';
 import type { EngineInternals } from './internals.ts';
+import { capturedSideEffectSinkOf } from './side-effect-capture.ts';
 
 export type AtomicWorkflowCommitSideEffects = {
   conditions: ConditionalBatchCondition[];
@@ -17,23 +19,8 @@ export function stageAtomicWorkflowCommitSideEffects(
   if (sideEffects.conditions.length === 0 && sideEffects.operations.length === 0) {
     return;
   }
-
   if (bindToExecutionGeneration) {
-    internals.pendingOperationAtomicWorkflowCommitSideEffects ??= new Map();
-    const byToken =
-      internals.pendingOperationAtomicWorkflowCommitSideEffects.get(workflowId) ?? new Map();
-    const tokenKey = workflowExecutionToken ?? '';
-    const pending = byToken.get(tokenKey);
-    if (pending === undefined) {
-      byToken.set(tokenKey, {
-        conditions: [...sideEffects.conditions],
-        operations: [...sideEffects.operations],
-      });
-    } else {
-      pending.conditions.push(...sideEffects.conditions);
-      pending.operations.push(...sideEffects.operations);
-    }
-    internals.pendingOperationAtomicWorkflowCommitSideEffects.set(workflowId, byToken);
+    stageBoundSideEffects(internals, workflowId, sideEffects, workflowExecutionToken);
     return;
   }
   const pending = internals.pendingAtomicWorkflowCommitSideEffects.get(workflowId);
@@ -47,6 +34,57 @@ export function stageAtomicWorkflowCommitSideEffects(
 
   pending.conditions.push(...sideEffects.conditions);
   pending.operations.push(...sideEffects.operations);
+}
+
+/**
+ * Stage side effects `operation` asked for, for the next checkpoint: into the capture a
+ * coordinator attached to the operation, which commits them with the operation's result (see
+ * `side-effect-capture.ts`), or else into the workflow's staged buffer.
+ */
+export function stageOperationSideEffects(
+  internals: EngineInternals,
+  workflowId: string,
+  operation: ContextOperationRequest | undefined,
+  sideEffects: AtomicWorkflowCommitSideEffects,
+  workflowExecutionToken?: string,
+  bindToExecutionGeneration = false,
+): void {
+  const sink = operation === undefined ? undefined : capturedSideEffectSinkOf(operation);
+  if (sink === undefined) {
+    stageAtomicWorkflowCommitSideEffects(
+      internals,
+      workflowId,
+      sideEffects,
+      workflowExecutionToken,
+      bindToExecutionGeneration,
+    );
+  } else if (sideEffects.conditions.length > 0 || sideEffects.operations.length > 0) {
+    sink(sideEffects, workflowExecutionToken, bindToExecutionGeneration);
+  }
+}
+
+/** Stage side effects bound to the run generation `workflowExecutionToken` names. */
+function stageBoundSideEffects(
+  internals: EngineInternals,
+  workflowId: string,
+  sideEffects: AtomicWorkflowCommitSideEffects,
+  workflowExecutionToken: string | undefined,
+): void {
+  internals.pendingOperationAtomicWorkflowCommitSideEffects ??= new Map();
+  const byToken =
+    internals.pendingOperationAtomicWorkflowCommitSideEffects.get(workflowId) ?? new Map();
+  const tokenKey = workflowExecutionToken ?? '';
+  const pending = byToken.get(tokenKey);
+  if (pending === undefined) {
+    byToken.set(tokenKey, {
+      conditions: [...sideEffects.conditions],
+      operations: [...sideEffects.operations],
+    });
+  } else {
+    pending.conditions.push(...sideEffects.conditions);
+    pending.operations.push(...sideEffects.operations);
+  }
+  internals.pendingOperationAtomicWorkflowCommitSideEffects.set(workflowId, byToken);
 }
 
 export function takePendingAtomicWorkflowCommitSideEffects(
@@ -82,6 +120,27 @@ export function takePendingAtomicWorkflowCommitSideEffects(
     conditions: [...pending.conditions],
     operations: [...pending.operations],
   };
+}
+
+/**
+ * The side effects a checkpoint commit writes: the `held` ones a coordinator passes for a commit
+ * made while its operation still runs (see `held-side-effects.ts`), which leaves the staged buffer
+ * to the commit that settles the operation, or else the staged buffer itself. `fromStaged` says
+ * whether the buffer was taken, so the commit clears it once it lands.
+ */
+export function takeCommitSideEffects(
+  internals: EngineInternals,
+  workflowId: string,
+  workflowExecutionToken: string | undefined,
+  held: AtomicWorkflowCommitSideEffects | undefined,
+): { sideEffects: AtomicWorkflowCommitSideEffects | undefined; fromStaged: boolean } {
+  if (held !== undefined) return { sideEffects: held, fromStaged: false };
+  const staged = takePendingAtomicWorkflowCommitSideEffects(
+    internals,
+    workflowId,
+    workflowExecutionToken,
+  );
+  return { sideEffects: staged, fromStaged: staged !== undefined };
 }
 
 export function clearPendingAtomicWorkflowCommitSideEffects(

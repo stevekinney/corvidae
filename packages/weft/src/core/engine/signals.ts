@@ -14,6 +14,7 @@ import type { SignalDeliveryOptions, WorkflowState } from '../types.ts';
 import { commitAnonymousSignalOperations } from './anonymous-signal-sequence.ts';
 import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import { assertWorkflowMessageDeclared } from './declared-messages.ts';
+import type { SideEffectHold } from './held-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import { validateSignalsForWorkflow } from './payload-validation.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
@@ -451,28 +452,40 @@ export async function consumeSignal(
   return { found: true, payload: decode(record.value) };
 }
 
+/**
+ * Consume the first buffered `signalName` record by staging its delete into the workflow's next
+ * commit, or, given `hold`, by handing the delete to the coordinator that commits it with the
+ * result it produced (see `held-side-effects.ts`).
+ */
 export async function consumeSignalWithAtomicWorkflowCommit(
   internals: EngineInternals,
   workflowId: string,
   signalName: string,
   canConsume?: () => boolean,
   workflowExecutionToken?: string,
+  hold?: SideEffectHold,
 ): Promise<ConsumedSignalResult> {
   const record = await findBufferedSignalRecord(internals, workflowId, signalName);
   if (record === null) return { found: false };
   if (canConsume !== undefined && !canConsume()) return { found: false };
 
-  stageAtomicWorkflowCommitSideEffects(
-    internals,
-    workflowId,
-    {
-      conditions: [{ key: record.key, expectedValue: new Uint8Array(record.value) }],
-      operations: [{ type: 'delete', key: record.key }],
-    },
-    workflowExecutionToken,
-    true,
-  );
-  return { found: true, payload: decode(record.value) };
+  const payload = decode(record.value);
+  const sideEffects = {
+    conditions: [{ key: record.key, expectedValue: new Uint8Array(record.value) }],
+    operations: [{ type: 'delete' as const, key: record.key }],
+  };
+  if (hold === undefined) {
+    stageAtomicWorkflowCommitSideEffects(
+      internals,
+      workflowId,
+      sideEffects,
+      workflowExecutionToken,
+      true,
+    );
+  } else {
+    hold(sideEffects, workflowExecutionToken);
+  }
+  return { found: true, payload };
 }
 
 /**

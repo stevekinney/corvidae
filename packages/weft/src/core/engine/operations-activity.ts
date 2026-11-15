@@ -14,12 +14,12 @@ import {
 import { resolvePerAttemptTimeout, withPerAttemptTimeout } from './activity-per-attempt-timeout.ts';
 import {
   buildActivityReconciliationReference,
+  buildActivityReconciliationTransitionSideEffects,
   buildActivityVerificationContext,
   commitActivityReconciliationTransitionWithFencedWrite,
   createCompletedActivityReconciliationRecord,
   resolveActivityIdempotencyKey,
   resolveStartedActivityReconciliationRecord,
-  stageActivityReconciliationTransitionWithAtomicWorkflowCommit,
   validateActivityResultForReconciliation,
   type ActivityReconciliationMetadata,
 } from './activity-reconciliation.ts';
@@ -30,6 +30,7 @@ import {
   parkDeferredAsyncActivity,
 } from './async-activity-completion.ts';
 import { deriveAsyncActivityToken } from './async-activity-records.ts';
+import { stageOperationSideEffects } from './checkpoint-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callActivityFunction } from './state-utilities.ts';
@@ -539,12 +540,13 @@ export async function executeActivityOperationResult(
         finishImmediateReconciliationCommit?.();
       }
     } else {
-      stageActivityReconciliationTransitionWithAtomicWorkflowCommit(
+      // With the checkpoint that records this activity's result: for a branch of a coordinator that
+      // commits while its branches run, that branch's commit (`side-effect-capture.ts`).
+      stageOperationSideEffects(
         internals,
         workflowId,
-        reference,
-        started,
-        completedRecord,
+        operation,
+        buildActivityReconciliationTransitionSideEffects(reference, started, completedRecord),
       );
     }
     // Step succeeded durably: drop its tracked heartbeat. Guarded on the
