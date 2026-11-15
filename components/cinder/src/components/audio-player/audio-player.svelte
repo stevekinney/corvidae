@@ -8,8 +8,7 @@
    * @tag audio
    * @useWhen Playing a single audio track from an https, http, or blob URL with accessible controls.
    * @avoidWhen You need streaming protocols, caption authoring, or playlists — wire those separately.
-   * @avoidWhen You only need playback buttons for media you control elsewhere — use media-controls.
-   * @related media-controls, video-player
+   * @related video-player
    */
   export type { AudioPlayerProps } from './audio-player.types.ts';
 </script>
@@ -17,7 +16,7 @@
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
   import { MediaPlayerState } from '../_internal/media-player-state.svelte.ts';
-  import MediaControls from '../media-controls/media-controls.svelte';
+  import MediaControls from '../_internal/media-controls.svelte';
   import type { AudioPlayerProps } from './audio-player.types.ts';
 
   let { src, label, class: customClassName, ...rest }: AudioPlayerProps = $props();

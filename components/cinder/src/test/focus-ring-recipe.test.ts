@@ -47,7 +47,7 @@ const tokensBaseCss = loadCss('../styles/tokens-base.css');
 // transparent-outline + var(--_cinder-focus-ring-shadow) recipe from issue #460's
 // remediation set; Button diverges on purpose, composing its ring from
 // var(--_cinder-button-ring, ...) so variants can retint it.
-const mediaControlsCss = loadCss('../components/media-controls/media-controls.css');
+const mediaControlsCss = loadCss('../components/_internal/media-controls.css');
 const permissionMatrixCss = loadCss('../components/permission-matrix/permission-matrix.css');
 const shareCardCss = loadCss('../components/share-card/share-card.css');
 const transferListCss = loadCss('../components/transfer-list/transfer-list.css');

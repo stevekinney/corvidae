@@ -119,7 +119,6 @@ export { default as mapMarkerVariables } from '../components/map-marker/map-mark
 export { default as marqueeVariables } from '../components/marquee/marquee.variables.ts';
 export { default as masonryVariables } from '../components/masonry/masonry.variables.ts';
 export { default as matrixChartVariables } from '../components/matrix-chart/matrix-chart.variables.ts';
-export { default as mediaControlsVariables } from '../components/media-controls/media-controls.variables.ts';
 export { default as megaMenuVariables } from '../components/mega-menu/mega-menu.variables.ts';
 export { default as menuBarVariables } from '../components/menu-bar/menu-bar.variables.ts';
 export { default as messageVariables } from '../components/message/message.variables.ts';

@@ -294,7 +294,6 @@ const SIDEBAR_BASELINE = [
   'marquee',
   'masonry',
   'matrix-chart',
-  'media-controls',
   'mega-menu',
   'menu-bar',
   'message',

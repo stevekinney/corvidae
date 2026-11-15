@@ -26,7 +26,6 @@ Native video element with Cinder media controls for play, pause, replay, and see
 ### Avoid When
 
 - You need streaming protocols, caption authoring, or playlists — wire those separately.
-- You only need playback buttons for media you control elsewhere — use media-controls.
 
 ## Props
 

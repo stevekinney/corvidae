@@ -1,19 +1,7 @@
-<script lang="ts" module>
-  /**
-   * @cinder
-   * @category action
-   * @status alpha
-   * @purpose Accessible playback controls for play, pause, and replay actions with optional progress display.
-   * @tag action
-   * @tag media
-   * @useWhen Embedding play/pause/replay controls for audio or video content.
-   * @useWhen Rendering media controls inside a toolbar or standalone on a card.
-   * @avoidWhen You need waveform visualization or Web Audio integration — wire that separately.
-   * @related button, toolbar, progress, tooltip, video-player, audio-player
-   */
-  export type { MediaControlsLayout, MediaControlsProps } from './media-controls.types.ts';
-</script>
-
+<!--
+  Private playback controls shared by AudioPlayer and VideoPlayer. Not exported from
+  `@lostgradient/cinder`: the players are the public surface.
+-->
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
   import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';

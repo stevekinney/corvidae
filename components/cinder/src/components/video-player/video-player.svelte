@@ -9,8 +9,7 @@
    * @useWhen Playing a single video from an https, http, or blob URL with accessible controls.
    * @useWhen Showing a poster image until the viewer starts playback.
    * @avoidWhen You need streaming protocols, caption authoring, or playlists — wire those separately.
-   * @avoidWhen You only need playback buttons for media you control elsewhere — use media-controls.
-   * @related media-controls, audio-player, image
+   * @related audio-player, image
    */
   export type { VideoPlayerProps } from './video-player.types.ts';
 </script>
@@ -18,7 +17,7 @@
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
   import { MediaPlayerState } from '../_internal/media-player-state.svelte.ts';
-  import MediaControls from '../media-controls/media-controls.svelte';
+  import MediaControls from '../_internal/media-controls.svelte';
   import type { VideoPlayerProps } from './video-player.types.ts';
 
   let { src, label, poster, class: customClassName, ...rest }: VideoPlayerProps = $props();

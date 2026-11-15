@@ -2,7 +2,7 @@
 
 ## Pattern
 
-AudioPlayer renders a native `<audio>` element without its built-in controls and drives it with Cinder's `MediaControls`. The player is a `group` named by `label`, and the seek slider is named "`label` position".
+AudioPlayer renders a native `<audio>` element without its built-in controls and drives it with its own playback controls. The player is a `group` named by `label`, and the seek slider is named "`label` position".
 
 Purpose: Native audio element with Cinder media controls for play, pause, replay, and seeking.
 
@@ -13,11 +13,10 @@ Purpose: Native audio element with Cinder media controls for play, pause, replay
 ## Avoid when
 
 - You need streaming protocols, caption authoring, or playlists — wire those separately.
-- You only need playback buttons for media you control elsewhere — use media-controls.
 
 ## Keyboard and focus
 
-The play, pause, and replay button is a native button, so Enter and Space activate it. Once the duration is known, the seek control is a native range input: the arrow, Home, End, and Page keys move the playback position. Focus indicators come from `MediaControls`.
+The play, pause, and replay button is a native button, so Enter and Space activate it. Once the duration is known, the seek control is a native range input: the arrow, Home, End, and Page keys move the playback position. Every control shows Cinder's focus ring.
 
 ## Names, roles, and state
 
@@ -29,4 +28,4 @@ The play, pause, and replay button is a native button, so Enter and Space activa
 - Confirm the unavailable state for a `data:` or `javascript:` source.
 - Check focus visibility in light, dark, and forced-colors modes.
 
-Related components: `media-controls`, `video-player`.
+Related components: `video-player`.

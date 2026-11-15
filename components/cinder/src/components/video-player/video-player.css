@@ -1,4 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../_internal/media-controls.css';
 @layer cinder.components {
   .cinder-video-player {
     display: grid;
