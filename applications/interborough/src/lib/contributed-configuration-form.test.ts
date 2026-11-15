@@ -141,7 +141,7 @@ describe('the form of a contributed kind', () => {
 
   test('draws the record editor for a kind whose settings are free keys, and reports its entries', async () => {
     const received: Array<Record<string, unknown>> = [];
-    const { getByRole, queryByText } = render(ContributedConfigurationForm, {
+    const { getAllByRole, getByRole, queryByText } = render(ContributedConfigurationForm, {
       props: {
         kindId: 'pager:page',
         schema: {
@@ -154,10 +154,10 @@ describe('the form of a contributed kind', () => {
       },
     });
     expect(queryByText(PLUGIN_KINDS_COPY.noFields)).toBeNull();
-    await fireEvent.click(getByRole('button', { name: /^Add .* entry$/ }));
+    // The record editor's empty row adds an entry when typed into; a new empty row then follows.
     const key = await waitFor(() => getByRole('textbox', { name: /key/i }));
     await fireEvent.input(key, { target: { value: 'region' } });
-    const entry = getByRole('textbox', { name: /value/i });
+    const entry = getAllByRole('textbox', { name: /value/i })[0]!;
     await fireEvent.input(entry, { target: { value: 'eu' } });
     await waitFor(() => expect(received.at(-1)).toEqual({ region: 'eu' }));
   });

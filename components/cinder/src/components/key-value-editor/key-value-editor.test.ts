@@ -22,8 +22,9 @@ describe('KeyValueEditor', () => {
     const second = render(KeyValueEditor, {
       entries: [{ id: 'host', key: 'Host', value: 'localhost' }],
     });
-    expect(first.container.querySelectorAll('input')).toHaveLength(2);
-    expect(second.container.querySelectorAll('input')).toHaveLength(2);
+    // One pair plus the empty row that adds the next one.
+    expect(first.container.querySelectorAll('input')).toHaveLength(4);
+    expect(second.container.querySelectorAll('input')).toHaveLength(4);
     expect(first.container.querySelector('input')?.id).not.toBe(
       second.container.querySelector('input')?.id,
     );
@@ -54,32 +55,115 @@ describe('KeyValueEditor', () => {
     const { container } = render(KeyValueEditor, {
       entries: [{ id: 'host', key: 'Host', value: 'localhost' }],
     });
-    expect(container.querySelectorAll('input')).toHaveLength(2);
+    expect(container.querySelectorAll('.cinder-key-value-editor__row')).toHaveLength(2);
+    expect(
+      container.querySelectorAll('.cinder-key-value-editor__row[data-cinder-pending]'),
+    ).toHaveLength(1);
   });
 
-  test('focuses the new key input after adding a pair, minting a unique id for the new row', async () => {
+  test('typing into the empty last row adds a pair without moving focus, and a new empty row follows', async () => {
     const updates: KeyValueEntry[][] = [];
     const { container } = render(KeyValueEditor, {
       entries: [{ id: 'host', key: 'Host', value: 'localhost' }],
       onValueChange: (next: KeyValueEntry[]) => updates.push(next),
     });
-    const addButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-      (button) => button.textContent?.trim() === 'Add pair',
+    const pendingKey = requiredInstance(
+      container.querySelector('.cinder-key-value-editor__row[data-cinder-pending] input'),
+      HTMLInputElement,
     );
-    await fireEvent.click(addButton!);
+    pendingKey.focus();
+    await fireEvent.input(pendingKey, { target: { value: 'P' } });
     await tick();
 
     expect(updates).toHaveLength(1);
     const [firstRow, secondRow] = updates[0]!;
     expect(firstRow).toEqual({ id: 'host', key: 'Host', value: 'localhost' });
-    expect(secondRow).toMatchObject({ key: '', value: '' });
+    expect(secondRow).toMatchObject({ key: 'P', value: '' });
     expect(typeof secondRow?.id).toBe('string');
     expect(secondRow?.id.length).toBeGreaterThan(0);
     expect(secondRow?.id).not.toBe(firstRow?.id);
 
-    const source = readFileSync(new URL('./key-value-editor.svelte', import.meta.url), 'utf8');
-    expect(source).toContain("querySelectorAll<HTMLInputElement>('input')");
-    expect(source).toContain('[newIndex * 2]?.focus({ preventScroll: true })');
+    // The input typed into is the same node, still focused, now in a real row with a Remove.
+    expect(document.activeElement).toBe(pendingKey);
+    expect(pendingKey.value).toBe('P');
+    const promotedRow = requiredInstance(
+      pendingKey.closest('.cinder-key-value-editor__row'),
+      HTMLElement,
+    );
+    expect(promotedRow.hasAttribute('data-cinder-pending')).toBe(false);
+    expect(promotedRow.querySelector('[aria-label="Remove P"]')).not.toBeNull();
+
+    // A new empty row follows, and the next keystroke edits the added pair, not a third one.
+    const rowsAfter = container.querySelectorAll('.cinder-key-value-editor__row');
+    expect(rowsAfter).toHaveLength(3);
+    expect(rowsAfter[2]?.hasAttribute('data-cinder-pending')).toBe(true);
+    await fireEvent.input(pendingKey, { target: { value: 'PORT' } });
+    expect(updates.at(-1)).toEqual([
+      { id: 'host', key: 'Host', value: 'localhost' },
+      { id: secondRow!.id, key: 'PORT', value: '' },
+    ]);
+  });
+
+  test('typing a value first into the empty row adds a pair with an empty key', async () => {
+    const updates: KeyValueEntry[][] = [];
+    const { container } = render(KeyValueEditor, {
+      onValueChange: (next: KeyValueEntry[]) => updates.push(next),
+    });
+    const inputs = container.querySelectorAll<HTMLInputElement>('input');
+    expect(inputs).toHaveLength(2);
+    await fireEvent.input(inputs[1]!, { target: { value: 'eu' } });
+    expect(updates.at(-1)).toMatchObject([{ key: '', value: 'eu' }]);
+  });
+
+  test('the empty row is not in entries and has no Remove control', () => {
+    const updates: KeyValueEntry[][] = [];
+    const { container } = render(KeyValueEditor, {
+      entries: [],
+      onValueChange: (next: KeyValueEntry[]) => updates.push(next),
+    });
+    const pending = requiredInstance(
+      container.querySelector('.cinder-key-value-editor__row[data-cinder-pending]'),
+      HTMLElement,
+    );
+    expect(pending.querySelector('button')).toBeNull();
+    expect(updates).toHaveLength(0);
+  });
+
+  test('the empty row keeps the key and value names and is described by the add label', () => {
+    const { container, getAllByRole } = render(KeyValueEditor, {
+      entries: [{ id: 'host', key: 'Host', value: 'localhost' }],
+      addLabel: 'Add header',
+    });
+    expect(getAllByRole('textbox', { name: 'Key' })).toHaveLength(2);
+    expect(getAllByRole('textbox', { name: 'Value' })).toHaveLength(2);
+    const pendingInputs = container.querySelectorAll<HTMLInputElement>(
+      '.cinder-key-value-editor__row[data-cinder-pending] input',
+    );
+    for (const input of pendingInputs) {
+      const description = input
+        .getAttribute('aria-describedby')
+        ?.split(' ')
+        .map((id) => document.getElementById(id)?.textContent?.trim())
+        .join(' ');
+      expect(description).toBe('Add header');
+    }
+    const realKey = requiredInstance(container.querySelector('input'), HTMLInputElement);
+    expect(realKey.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  test('draws Key and Value once as headings hidden from assistive technology', () => {
+    const { container } = render(KeyValueEditor, {
+      entries: [
+        { id: 'host', key: 'Host', value: 'localhost' },
+        { id: 'port', key: 'Port', value: '443' },
+      ],
+      keyLabel: 'Name',
+    });
+    const headings = container.querySelectorAll('.cinder-key-value-editor__headings');
+    expect(headings).toHaveLength(1);
+    expect(headings[0]?.getAttribute('aria-hidden')).toBe('true');
+    expect(headings[0]?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Name Value');
+    expect(container.querySelectorAll('label:not(.cinder-sr-only)')).toHaveLength(0);
   });
   test('marks secret cells as password inputs', () => {
     const { container } = render(KeyValueEditor, {
@@ -89,30 +173,36 @@ describe('KeyValueEditor', () => {
     expect(container.querySelector('input[type="password"]')).not.toBeNull();
   });
 
-  test('composes add and remove actions from Button', () => {
+  test('composes an icon-only Remove from Button at the end of each row', () => {
     const { container } = render(KeyValueEditor, {
       entries: [{ id: 'host', key: 'Host', value: 'localhost' }],
     });
-    expect(container.querySelectorAll('.cinder-button')).toHaveLength(2);
-    expect(container.querySelector('[aria-label="Remove Host"]')?.classList).toContain(
-      'cinder-button',
+    expect(container.querySelectorAll('.cinder-button')).toHaveLength(1);
+    const remove = requiredInstance(
+      container.querySelector('[aria-label="Remove Host"]'),
+      HTMLButtonElement,
     );
+    expect(remove.classList).toContain('cinder-button');
+    expect(remove.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(remove.textContent?.trim()).toBe('');
+    // Three grid cells, key field, value field, Remove: the narrow layout places them by position.
+    expect(remove.parentElement?.children).toHaveLength(3);
+    expect(remove.parentElement?.lastElementChild).toBe(remove);
   });
 
-  test('restores focus to Add pair after removing the final row', async () => {
+  test('restores focus to the empty row after removing the final row', async () => {
     const { container } = render(KeyValueEditor, {
       entries: [{ id: 'host', key: 'Host', value: 'localhost' }],
     });
     const removeButton = container.querySelector<HTMLButtonElement>('[aria-label="Remove Host"]');
-    const addButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-      (button) => button.textContent?.trim() === 'Add pair',
-    );
 
     expect(removeButton).not.toBeNull();
-    expect(addButton).not.toBeNull();
     await fireEvent.click(removeButton!);
 
-    expect(document.activeElement).toBe(requiredInstance(addButton, HTMLButtonElement));
+    const pendingKey = container.querySelector(
+      '.cinder-key-value-editor__row[data-cinder-pending] input',
+    );
+    expect(document.activeElement).toBe(requiredInstance(pendingKey, HTMLInputElement));
   });
 
   test('restores focus to the preceding row Remove button after removing a later row', async () => {
@@ -135,24 +225,26 @@ describe('KeyValueEditor', () => {
     expect(entry).toContain("import '../input/input.css';");
     expect(entry).toContain("import '../button/button.css';");
     expect(entry).not.toContain('secret-value-field.css');
+    expect(entry).not.toContain('grid.css');
   });
 
-  test('stacks key-value rows within narrow containers', () => {
+  // happy-dom does not apply @container rules, so the layout is pinned on the stylesheet text;
+  // the browser fixture shows the rendered rows at desktop and phone widths.
+  test('keeps a row on one line and, when very narrow, stacks key over value with Remove beside the key', () => {
+    const css = readFileSync(new URL('./key-value-editor.css', import.meta.url), 'utf8');
+    expect(css).toContain(
+      'grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) var(--cinder-control-height-md);',
+    );
+    expect(css).toContain('@container cinder-key-value-editor (max-width: 20rem)');
+    expect(css).toMatch(/__row > :nth-child\(3\) \{\s*grid-column: 2;\s*grid-row: 1;/);
     const source = readFileSync(new URL('./key-value-editor.svelte', import.meta.url), 'utf8');
-    const { container } = render(KeyValueEditor, {
-      entries: [{ id: 'host', key: 'Host', value: 'localhost' }],
-    });
-    expect(container.querySelector('.cinder-key-value-editor__row')).not.toBeNull();
-    expect(source).toContain('narrowCollapseEnabled');
-    expect(source).toContain('columns="minmax(8rem, 1fr) minmax(12rem, 2fr) auto"');
+    expect(source).not.toContain('narrowCollapseEnabled');
   });
 
   test('composes primitives through public component subpaths', async () => {
     const source = await Bun.file(new URL('./key-value-editor.svelte', import.meta.url)).text();
-    expect(source).toContain("from '../grid/index.ts';");
     expect(source).toContain("from '../input/index.ts';");
     expect(source).toContain("from '../button/index.ts';");
-    expect(source).not.toContain("from '../grid/grid.svelte'");
     expect(source).not.toContain("from '../input/input.svelte'");
     expect(source).not.toContain("from '../button/button.svelte'");
   });
@@ -262,7 +354,7 @@ describe('KeyValueEditor', () => {
       expect(document.activeElement).toBe(container.querySelector('[aria-label="Remove Bravo"]'));
     });
 
-    test('when the parent removes the only (focused) row, focus falls back to Add pair', async () => {
+    test('when the parent removes the only (focused) row, focus falls back to the empty row', async () => {
       const { container, rerender } = render(KeyValueEditor, {
         entries: [{ id: 'a', key: 'Alpha', value: '1' }],
       });
@@ -275,10 +367,10 @@ describe('KeyValueEditor', () => {
       await tick();
       await tick();
 
-      const addButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-        (button) => button.textContent?.trim() === 'Add pair',
+      const pendingKey = container.querySelector(
+        '.cinder-key-value-editor__row[data-cinder-pending] input',
       );
-      expect(document.activeElement).toBe(requiredInstance(addButton, HTMLButtonElement));
+      expect(document.activeElement).toBe(requiredInstance(pendingKey, HTMLInputElement));
     });
 
     test('a parent update that does not remove the focused row moves no focus', async () => {
@@ -332,7 +424,7 @@ describe('KeyValueEditor as a labelled group (row 33q)', () => {
   });
 
   test('key and value names, the add label and the remove label follow the vocabulary', () => {
-    const { getByRole, getByLabelText } = render(KeyValueEditor, {
+    const { getByRole, getAllByLabelText, getByText } = render(KeyValueEditor, {
       entries: [{ id: 'token', key: 'GITHUB_TOKEN', value: 'private' }],
       keyLabel: 'Name',
       valueLabel: 'Value',
@@ -340,10 +432,10 @@ describe('KeyValueEditor as a labelled group (row 33q)', () => {
       removeLabel: (key: string) => `Remove ${key}`,
       secret: () => true,
     });
-    expect((getByLabelText('Name') as HTMLInputElement).value).toBe('GITHUB_TOKEN');
-    expect((getByLabelText('Value') as HTMLInputElement).type).toBe('password');
-    expect(getByRole('button', { name: 'Add variable' })).toBeTruthy();
-    expect(getByRole('button', { name: 'Remove GITHUB_TOKEN' }).textContent?.trim()).toBe('Remove');
+    expect((getAllByLabelText('Name')[0] as HTMLInputElement).value).toBe('GITHUB_TOKEN');
+    expect((getAllByLabelText('Value')[0] as HTMLInputElement).type).toBe('password');
+    expect(getByText('Add variable').classList).toContain('cinder-sr-only');
+    expect(getByRole('button', { name: 'Remove GITHUB_TOKEN' }).textContent?.trim()).toBe('');
   });
 
   test('monospace draws both inputs in the code face', () => {
@@ -352,7 +444,7 @@ describe('KeyValueEditor as a labelled group (row 33q)', () => {
       monospace: true,
     });
     const inputs = container.querySelectorAll('input');
-    expect(inputs).toHaveLength(2);
+    expect(inputs).toHaveLength(4);
     for (const input of inputs) {
       expect(input.closest('[data-cinder-variant]')?.getAttribute('data-cinder-variant')).toBe(
         'code',

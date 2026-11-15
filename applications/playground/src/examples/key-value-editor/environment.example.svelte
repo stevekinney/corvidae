@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Environment variables';
   export const description =
-    'A labelled list of masked variables: a name field and a masked value field per row with a text Remove button, an "Add variable" button, and help under it. Every value is masked, so the help says they are never shown again.';
+    'A labelled list of masked variables: one line per row with a name box, a masked value box and an icon Remove at the end, Name and Value headings once above the rows, an empty last row that adds a variable when typed into, and help under it. Every value is masked, so the help says they are never shown again.';
 </script>
 
 <script lang="ts">

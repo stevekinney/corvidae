@@ -13,9 +13,9 @@
 </script>
 
 <script lang="ts">
+  import X from '@lucide/svelte/icons/x';
   import { tick } from 'svelte';
   import { default as Button } from '../button/index.ts';
-  import { default as Grid } from '../grid/index.ts';
   import { default as Input } from '../input/index.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import type { KeyValueEditorProps, KeyValueEntry } from './key-value-editor.types.ts';
@@ -37,6 +37,11 @@
   let rows = $state<KeyValueEntry[]>(entries);
   let editorElement = $state<HTMLDivElement>();
   let lastExternalEntries = entries;
+  // The empty row after the last pair. It is not in `entries` until a person types into it; its id
+  // is minted up front, so the first keystroke turns it into a real row in the same keyed slot and
+  // the input being typed into keeps its DOM node and focus.
+  let pendingId = $state(crypto.randomUUID());
+  const shownRows = $derived([...rows, { id: pendingId, key: '', value: '' }]);
   // The id of the row whose key input, value input, or remove control held
   // focus immediately before the current `entries` update patches the DOM —
   // captured in `$effect.pre` below, since a parent-removed row's DOM node
@@ -49,6 +54,13 @@
     onValueChange?.(next);
   }
   function update(id: string, field: 'key' | 'value', value: string) {
+    if (id === pendingId) {
+      // Typing into the empty row adds it as a pair, and a new empty row takes its place.
+      const added: KeyValueEntry = { id, key: '', value: '', [field]: value };
+      pendingId = crypto.randomUUID();
+      commit([...rows, added]);
+      return;
+    }
     commit(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   }
   function focusedRowId(): string | null {
@@ -60,18 +72,13 @@
     await tick();
     const target =
       rows.length === 0
-        ? editorElement?.querySelector<HTMLButtonElement>('.cinder-key-value-editor__add')
-        : editorElement?.querySelectorAll<HTMLButtonElement>(
-            '.cinder-key-value-editor__row button',
-          )[Math.min(removedIndex - 1 >= 0 ? removedIndex - 1 : removedIndex, rows.length - 1)];
+        ? editorElement?.querySelector<HTMLElement>(
+            '.cinder-key-value-editor__row[data-cinder-pending] input',
+          )
+        : editorElement?.querySelectorAll<HTMLButtonElement>('.cinder-key-value-editor__remove')[
+            Math.min(removedIndex - 1 >= 0 ? removedIndex - 1 : removedIndex, rows.length - 1)
+          ];
     target?.focus();
-  }
-  async function addRow(): Promise<void> {
-    const newIndex = rows.length;
-    commit([...rows, { id: crypto.randomUUID(), key: '', value: '' }]);
-    await tick();
-    const inputElements = editorElement?.querySelectorAll<HTMLInputElement>('input');
-    inputElements?.[newIndex * 2]?.focus({ preventScroll: true });
   }
   async function removeRow(index: number): Promise<void> {
     commit(rows.filter((_, i) => i !== index));
@@ -88,10 +95,10 @@
     lastExternalEntries = entries;
 
     const focusedId = focusedRowIdBeforePatch;
-    if (focusedId === null || rows.some((row) => row.id === focusedId)) return;
+    if (focusedId === null || shownRows.some((row) => row.id === focusedId)) return;
 
     // The parent removed the row that held focus: fall back to the previous
-    // row's Remove control, else the next row's, else Add pair — the same
+    // row's Remove control, else the next row's, else the empty row — the same
     // policy user-triggered removal already uses.
     const formerIndex = previousRows.findIndex((row) => row.id === focusedId);
     if (formerIndex !== -1) void focusRemoveFallback(formerIndex);
@@ -109,21 +116,26 @@
   {#if label}
     <div id={`${instanceId}-label`} class="cinder-key-value-editor__label">{label}</div>
   {/if}
-  <Grid columns={1} gap="var(--cinder-space-2)" class="cinder-key-value-editor__rows" role="list">
-    {#each rows as row, index (row.id)}
-      <Grid
-        columns="minmax(8rem, 1fr) minmax(12rem, 2fr) auto"
-        gap="var(--cinder-space-2)"
-        narrowCollapseEnabled
+  <!-- The column headings are for sight only: every box carries its own accessible name. -->
+  <div class="cinder-key-value-editor__headings" aria-hidden="true">
+    <span>{keyLabel}</span>
+    <span>{valueLabel}</span>
+  </div>
+  <div class="cinder-key-value-editor__rows" role="list">
+    {#each shownRows as row, index (row.id)}
+      {@const pending = row.id === pendingId}
+      <div
         class="cinder-key-value-editor__row"
         role="listitem"
         data-cinder-row-id={row.id}
+        data-cinder-pending={pending ? '' : undefined}
       >
         <Input
           id={`${instanceId}-key-${row.id}`}
           label={keyLabel}
           labelVisible={false}
           variant={monospace ? 'code' : 'default'}
+          aria-describedby={pending ? `${instanceId}-add` : undefined}
           value={row.key}
           onValueChange={(next) => update(row.id, 'key', next)}
         />
@@ -132,26 +144,26 @@
           label={valueLabel}
           labelVisible={false}
           variant={monospace ? 'code' : 'default'}
+          aria-describedby={pending ? `${instanceId}-add` : undefined}
           type={secret?.(row.key) ? 'password' : 'text'}
           value={row.value}
           onValueChange={(next) => update(row.id, 'value', next)}
         />
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label={removeLabel(row.key)}
-          onclick={() => removeRow(index)}>Remove</Button
-        >
-      </Grid>
+        {#if !pending}
+          <Button
+            variant="ghost"
+            iconOnly
+            class="cinder-key-value-editor__remove"
+            aria-label={removeLabel(row.key)}
+            onclick={() => removeRow(index)}
+          >
+            <X aria-hidden="true" />
+          </Button>
+        {/if}
+      </div>
     {/each}
-  </Grid>
-  <Button
-    type="button"
-    variant="secondary"
-    size="sm"
-    class="cinder-key-value-editor__add"
-    onclick={addRow}>{addLabel}</Button
-  >
+  </div>
+  <span id={`${instanceId}-add`} class="cinder-sr-only">{addLabel}</span>
   {#if description}
     <p id={`${instanceId}-description`} class="cinder-key-value-editor__description">
       {description}
