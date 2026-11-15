@@ -701,7 +701,12 @@ for (const viewport of VIEWPORTS) {
       if (viewport.width < 500) {
         // Use the visible host action, not a test-only scroll or focus operation. The Chat handler
         // must bring the approval card into view and focus the non-answering card; then normal
-        // keyboard traversal must reach a real decision control inside it.
+        // keyboard traversal must reach a real decision control inside it. The reminder that holds
+        // Review is drawn only while the decision row is out of view (COR-2327 B1), and the page
+        // opens with it in view, so the person first reads back up the transcript.
+        await page.locator('.chat-timeline').first().hover();
+        await page.mouse.wheel(0, -4000);
+        await expect(page.locator('[data-chat-approval-drawer]')).toBeVisible();
         const reviewApproval = page
           .getByRole('button', { name: 'Review approval', exact: true })
           .last();
