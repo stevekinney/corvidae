@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Decision receipt';
   export const description =
-    'A decided approval stays in the transcript with a check badge, who decided where and when, and the note, result and command behind Details.';
+    'A decided approval stays in the transcript as the action with one status line saying what was decided and by whom, and the note, result and command behind Details.';
 </script>
 
 <script lang="ts">
@@ -19,7 +19,6 @@
   decidedBy="Priya Raman"
   decidedIn="Reviews"
   decidedInHref="/reviews"
-  decidedAt="2026-11-02T10:46:00.000Z"
   decisionNote="Checked the order first."
   result="Refunded $42.00 to the original card."
 />

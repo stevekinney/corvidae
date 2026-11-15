@@ -623,6 +623,7 @@ describe('injected deployment secrets', () => {
     const factory: DeploymentSecretsFactory = (context) => {
       contexts.push(context);
       return {
+        writable: true,
         async read(key) {
           context.assertOpen();
           return values.get(key);
@@ -822,5 +823,72 @@ describe('openTemporaryBungalow', () => {
     expect(await throwingRejectionOf(openTemporaryBungalow({ name: '../x' }))).toThrow(
       BungalowInputError,
     );
+  });
+});
+
+describe('capabilities', () => {
+  test('a local home is held by one process on a personal machine', async () => {
+    const expected = { sharedBetweenInstances: false, personalMachine: true };
+    using explicit = await openLocalBungalow({ name: TEST_NAME, root: temporaryDirectory() });
+    expect(explicit.capabilities).toEqual(expected);
+    using environment = await openIn(temporaryDirectory());
+    expect(environment.capabilities).toEqual(expected);
+    using temporary = await openTemporaryBungalow({ name: TEST_NAME });
+    expect(temporary.capabilities).toEqual(expected);
+  });
+});
+
+describe('deployment secrets writable', () => {
+  test('is true for the local file store, which writes', async () => {
+    using handle = await openLocalBungalow({ name: TEST_NAME, root: temporaryDirectory() });
+    expect(handle.deploymentSecrets.writable).toBe(true);
+    await handle.deploymentSecrets.write('api-key', 'stored');
+    expect(await handle.deploymentSecrets.read('api-key')).toBe('stored');
+  });
+
+  test.each([
+    ['has no writable', {}],
+    ['has a writable that is not a boolean', { writable: 'yes' }],
+    ['has a writable that is undefined', { writable: undefined }],
+  ])(
+    'an injected store that %s refuses the open with BungalowInputError and releases the root',
+    async (_name, extra) => {
+      const root = temporaryDirectory();
+      const error = await throwingRejectionOf(
+        openLocalBungalow({
+          name: TEST_NAME,
+          root,
+          deploymentSecrets: () =>
+            ({
+              read: async () => undefined,
+              write: async () => undefined,
+              location: (key: string) => key,
+              ...extra,
+            }) as never,
+        }),
+      );
+      expect(error).toThrow(BungalowInputError);
+      using reopened = await openLocalBungalow({ name: TEST_NAME, root });
+      expect(reopened.mode).toBe('local');
+    },
+  );
+
+  test('an injected store that says writable false is used as it is: Bungalow does not wrap it', async () => {
+    const written: string[] = [];
+    using handle = await openLocalBungalow({
+      name: TEST_NAME,
+      root: temporaryDirectory(),
+      deploymentSecrets: () => ({
+        writable: false,
+        read: async () => undefined,
+        write: async (key) => {
+          written.push(key);
+        },
+        location: (key) => key,
+      }),
+    });
+    expect(handle.deploymentSecrets.writable).toBe(false);
+    await handle.deploymentSecrets.write('api-key', 'accepted');
+    expect(written).toEqual(['api-key']);
   });
 });

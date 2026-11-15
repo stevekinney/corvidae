@@ -22,7 +22,8 @@ import type { Fetcher } from './bureau-client.ts';
 import { classifyFault } from './faults.ts';
 import {
   getWorkflowFile,
-  listWorkflowFiles,
+  listWorkflowEntries,
+  type CodeWorkflowListing,
   type WorkflowDocument,
   type WorkflowFileDetail,
   type WorkflowFileListing,
@@ -118,18 +119,27 @@ export type CatalogRow = {
 };
 
 /**
- * The engine's name for a plugin's workflow: `plugin:name` with the colon written `__`, each
- * segment as the Bureau's `namespaced-identifier` grammar allows (a letter first, no underscore).
+ * The name the engine holds a plugin's code workflow under: its listed `plugin:name` with the colon
+ * written `__` (`demo:echo-input` is `demo__echo-input`). Derived from the Bureau's own listing, so
+ * this module keeps no copy of the identifier grammar to drift from it.
  */
-const PLUGIN_WORKFLOW_NAME = /^[a-z](?:[a-z0-9-]*[a-z0-9])?__[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
+function engineNameOf(code: CodeWorkflowListing): string {
+  return code.id.replace(':', '__');
+}
 
-/** Joins the engine's definitions with the Bureau's files on the name. See the module's rules. */
+/**
+ * Joins the engine's definitions with the Bureau's files on the name. See the module's rules. The
+ * code workflows plugins contributed (`code`, the listing's `kind: 'code'` entries) are the
+ * builder's to offer, so the list leaves out the engine's definition of each.
+ */
 export function joinCatalog(
   definitions: readonly DefinitionSummary[],
   files: readonly WorkflowFileListing[],
+  code: readonly CodeWorkflowListing[] = [],
 ): CatalogRow[] {
   const byName = new Map(definitions.map((definition) => [definition.name, definition]));
   const fileIds = new Set(files.map((file) => file.id));
+  const pluginNames = new Set(code.map(engineNameOf));
   const rows: CatalogRow[] = [];
 
   for (const file of files) {
@@ -154,9 +164,9 @@ export function joinCatalog(
     if (fileIds.has(definition.name)) continue;
     // A source with no file is a deleted file the engine has not yet forgotten.
     if (definition.origin === 'source') continue;
-    // A plugin's code workflow is the engine's `plugin__name`; the list shows files and the
-    // Bureau's own types until COR-2247 gives code workflows their own interface.
-    if (PLUGIN_WORKFLOW_NAME.test(definition.name)) continue;
+    // A plugin's code workflow is the engine's `plugin__name`, and the Bureau lists it as a `code`
+    // entry; the builder offers it as a step, and the list shows files and the Bureau's own types.
+    if (pluginNames.has(definition.name)) continue;
     rows.push({
       name: definition.name,
       kind: 'code',
@@ -189,11 +199,11 @@ function compareNames(first: string, second: string): number {
 
 /** The list: every definition and every file, joined. */
 export async function loadCatalog(client: HttpClient, options?: Options): Promise<CatalogRow[]> {
-  const [definitions, files] = await Promise.all([
+  const [definitions, entries] = await Promise.all([
     listDefinitions(client),
-    listWorkflowFiles({ ...options, includeRuns: true }),
+    listWorkflowEntries({ ...options, includeRuns: true }),
   ]);
-  return joinCatalog(definitions, files);
+  return joinCatalog(definitions, entries.files, entries.code);
 }
 
 /** What one workflow type is, with what each service says of it. */

@@ -44,8 +44,14 @@ describe('chat message action buttons', () => {
     // `content-visibility: auto` contains paint at the message's edge and would cut the 44px
     // area of the receipt's Change action where the message ends.
     expect(source).toMatch(
-      /\.chat-message:has\(:global\(\.chat-question-receipt\)\),\s*\.chat-message:has\(:global\(\.chat-question-choices\)\) \{\s*content-visibility: visible;/,
+      /\.chat-message:has\(:global\(\.chat-question-receipt\)\),\s*\.chat-message:has\(:global\(\.chat-question-choices\)\),[^{]*\.chat-message:has\(:global\(\.chat-tool-call-timeline\)\) \{\s*content-visibility: visible;/,
     );
+  });
+
+  test('a message that holds a step group is never content-skipped', () => {
+    // A step row is painted at its text height and its 44px hit area overhangs it by about 12px;
+    // paint containment at the message's padding edge would cut that overhang off.
+    expect(source).toContain(':has(:global(.chat-tool-call-timeline))');
   });
 
   test('a message that holds an open question is never content-skipped either', () => {
@@ -56,12 +62,12 @@ describe('chat message action buttons', () => {
 
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
     const lineRule = extractRule(source, '.chat-message-line {\n    position: relative;');
-    expect(lineRule).toContain('gap: var(--cinder-space-1)');
+    expect(lineRule).toContain('gap: var(--cinder-space-2)');
     // The actions' 44px hit areas overhang the line; a stacking position keeps the next bubble
     // (a `content-visibility: auto` stacking context) from painting over that overhang.
     expect(lineRule).toContain('z-index: 1;');
     const actionsRule = extractRule(source, '\n  .chat-message-line-actions {');
-    expect(actionsRule).toContain('gap: var(--cinder-space-1)');
+    expect(actionsRule).toContain('gap: var(--cinder-space-2)');
     const buttonRule = extractRule(
       source,
       '.chat-message-line :global(.chat-message-action-button) {',
@@ -71,13 +77,25 @@ describe('chat message action buttons', () => {
     expect(buttonRule).toContain('min-inline-size: 1.5rem;');
   });
 
-  test('on a touch screen each line action keeps its painted box and takes a layout-free 44px hit region (C#3)', () => {
+  test('on a touch screen each line action keeps its painted box and takes a layout-free hit region that is under 44px and clear of text (C#3, COR-2406)', () => {
     const coarse = extractMediaBlock(
       source,
       '@media (any-pointer: coarse) {',
       ':global(.chat-message-action-button:not(.cinder-button))::after',
     );
-    expect(coarse).toContain('inset: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
+    // Owner decision of 2026-11-15 (COR-2406): the region is the line's box plus the gap below it,
+    // smaller than 44px, with no reach above into the answer's text and half the action gap across.
+    expect(coarse).toContain('inset-block-start: 0;');
+    expect(coarse).toContain('inset-block-end: calc(var(--_cinder-chat-row-gap, 0px) * -1);');
+    expect(coarse).toContain('inset-inline: calc(var(--cinder-space-2) / -2);');
+    expect(coarse.replace(/\s+/g, ' ')).toContain(
+      ".chat-message-line :global(.cinder-button.chat-message-action-button[data-cinder-hit-target='44'])::before",
+    );
+    // Copy draws its own region from a pseudo-element of its own, which takes the same split.
+    expect(coarse.replace(/\s+/g, ' ')).toContain(
+      '.chat-message-line :global(.cinder-copy-button.chat-message-action-button)::before',
+    );
+    expect(coarse).not.toContain('inset: calc');
     expect(source).not.toContain(
       'min-block-size: var(--cinder-touch-target-min);\n      margin-block',
     );

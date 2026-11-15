@@ -62,15 +62,43 @@ type StressStepAction =
   | { action: 'expect-source-contract' }
   | { action: 'expect-approval-review' }
   | { action: 'expect-question-layout' }
+  | { action: 'expect-question-dock'; choices: number }
+  /** The docked question's header for several questions: `Question <position> of <total>` and the two buttons. */
+  | { action: 'expect-question-steps'; position: number; total: number }
+  | { action: 'expect-source-control' }
   | { action: 'expect-offscreen'; selector: string }
   | { action: 'expect-absent'; selector: string }
-  | { action: 'expect-attachment-shelf'; total: number; reveal?: boolean }
+  /**
+   * The composer's attachment strip: `total` chips in one row, `uploading` of them with a ring and
+   * `failed` of them failed. `cut` says whether the row scrolls (a chip cut by the trailing edge).
+   * `line` is the failure line's text, `lineAction` the label of its action; with neither, the line
+   * must not be there.
+   */
+  | {
+      action: 'expect-attachment-strip';
+      total: number;
+      uploading?: number;
+      failed?: number;
+      cut?: boolean;
+      line?: string;
+      lineAction?: string;
+    }
   | { action: 'measure-composer-top'; name: 'before' | 'after' }
   | { action: 'expect-empty-streaming-assistant' }
   | { action: 'expect-streaming-assistant-text'; text: string }
   | { action: 'upload'; files: readonly StressUpload[] }
   /** `by: 'wheel'` scrolls with the mouse wheel over the transcript, so it is real user input. */
-  | { action: 'scroll'; to: 'top' | 'bottom'; by?: 'wheel' };
+  | { action: 'scroll'; to: 'top' | 'bottom'; by?: 'wheel' }
+  /**
+   * Scrolls a cut-off list to its start, its middle or its end, and waits for the edge fades to
+   * settle: the composer's attachment strip (sideways) or the docked question's choices.
+   */
+  | { action: 'scroll-list'; target: StressList; to: 'start' | 'middle' | 'end' };
+
+/** The cut-off lists a `scroll-list` step scrolls. */
+export const STRESS_LISTS = ['attachment-strip', 'question-choices'] as const;
+
+export type StressList = (typeof STRESS_LISTS)[number];
 
 /** A file the `upload` step hands to the composer's real file input. */
 export interface StressUpload {
@@ -92,7 +120,7 @@ export interface StressVariant {
 
 /** One stress case. */
 export interface StressCase {
-  /** The case number, 1 to 80, unique. */
+  /** The case number, 1 to 81, unique. */
   readonly id: number;
   /** A short kebab-case name. */
   readonly slug: string;
@@ -128,8 +156,12 @@ export interface StressCase {
 /** The sample world's "now": every case runs with the browser's clock fixed here, so a date reads Today. */
 export const STRESS_NOW = '2026-11-02T16:46:00.000Z';
 
-/** The number of cases the board requires. */
-export const STRESS_CASE_COUNT = 80;
+/**
+ * The number of cases the board requires: the 80 of COR-2289, and case 81, the docked question with
+ * four questions asked together (2026-11-13 owner review), and cases 82 to 85, the four situations of
+ * a turn's narration (working, folded and closed, folded and open, stopped before an answer).
+ */
+export const STRESS_CASE_COUNT = 85;
 
 /** Required owner-audit scenarios and the durable case/variant that captures each one. */
 export const OWNER_AUDIT_SCENARIO_MAPPING = [
@@ -144,7 +176,7 @@ export const OWNER_AUDIT_SCENARIO_MAPPING = [
   [61, 79, 'discard-drawer'],
   [62, 9, undefined],
   [63, 63, 'empty-and-ready'],
-  [64, 51, 'long-middle-filename'],
+  [64, 51, 'long-name'],
   [65, 6, undefined],
   [66, 4, undefined],
   [67, 1, undefined],
@@ -211,14 +243,18 @@ const STEP_ACTIONS = [
   'expect-source-contract',
   'expect-approval-review',
   'expect-question-layout',
+  'expect-question-dock',
+  'expect-question-steps',
+  'expect-source-control',
   'expect-offscreen',
   'expect-absent',
-  'expect-attachment-shelf',
+  'expect-attachment-strip',
   'measure-composer-top',
   'expect-empty-streaming-assistant',
   'expect-streaming-assistant-text',
   'upload',
   'scroll',
+  'scroll-list',
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -250,6 +286,12 @@ function problemsInStep(step: unknown, where: string): string[] {
   if (action === 'scroll' && step['by'] !== undefined && step['by'] !== 'wheel') {
     problems.push(`${where}: scroll goes by wheel or not at all`);
   }
+  if (action === 'scroll-list') {
+    if (!(STRESS_LISTS as readonly unknown[]).includes(step['target']))
+      problems.push(`${where}: scroll-list target is one of ${STRESS_LISTS.join(', ')}`);
+    if (step['to'] !== 'start' && step['to'] !== 'middle' && step['to'] !== 'end')
+      problems.push(`${where}: scroll-list goes to the start, the middle or the end`);
+  }
   if (needsRole) {
     if (typeof step['role'] !== 'string' || step['role'] === '')
       problems.push(`${where}: ${action} needs a role`);
@@ -266,9 +308,38 @@ function problemsInStep(step: unknown, where: string): string[] {
     problems.push(`${where}: expect-text needs text`);
   if (action === 'expect-tooltip' && typeof step['text'] !== 'string')
     problems.push(`${where}: expect-tooltip needs text`);
-  if (action === 'expect-attachment-shelf') {
+  if (action === 'expect-attachment-strip') {
     if (!Number.isInteger(step['total']) || (step['total'] as number) < 1)
-      problems.push(`${where}: attachment shelf total must be positive`);
+      problems.push(`${where}: attachment strip total must be positive`);
+    for (const key of ['uploading', 'failed'] as const) {
+      const count = step[key];
+      if (count !== undefined && (!Number.isInteger(count) || (count as number) < 0))
+        problems.push(`${where}: attachment strip ${key} must be a count`);
+    }
+    if (step['cut'] !== undefined && typeof step['cut'] !== 'boolean')
+      problems.push(`${where}: attachment strip cut must be true or false`);
+    for (const key of ['line', 'lineAction'] as const) {
+      if (step[key] !== undefined && typeof step[key] !== 'string')
+        problems.push(`${where}: attachment strip ${key} must be text`);
+    }
+  }
+  if (action === 'expect-question-dock') {
+    if (!Number.isInteger(step['choices']) || (step['choices'] as number) < 1)
+      problems.push(`${where}: expect-question-dock needs a positive number of choices`);
+  }
+  if (action === 'expect-question-steps') {
+    const { position, total } = step;
+    if (
+      !Number.isInteger(position) ||
+      !Number.isInteger(total) ||
+      (position as number) < 1 ||
+      (total as number) < 2 ||
+      (position as number) > (total as number)
+    ) {
+      problems.push(
+        `${where}: expect-question-steps needs a position from 1 to a total of at least 2`,
+      );
+    }
   }
   if (action === 'measure-composer-top' && step['name'] !== 'before' && step['name'] !== 'after')
     problems.push(`${where}: measure-composer-top name must be before or after`);

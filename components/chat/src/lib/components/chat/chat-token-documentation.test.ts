@@ -18,7 +18,7 @@ describe('Chat tokens in the Cinder token reference', () => {
     const chatCss = readFileSync(join(chatComponentDirectory, 'chat.css'), 'utf8');
     const tokenDocumentation = readFileSync(tokenDocumentationPath, 'utf8');
 
-    expect(chatCss).toContain('--cinder-chat-font-size: 1rem');
+    expect(chatCss).toContain('--cinder-chat-font-size: 0.875rem');
     expect(chatCss).toContain('--_cinder-chat-text-base: clamp(');
     expect(tokenDocumentation).toContain('`--cinder-chat-font-size`');
   });

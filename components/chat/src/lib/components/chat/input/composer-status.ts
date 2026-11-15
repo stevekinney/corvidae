@@ -1,3 +1,5 @@
+import { keepPhraseTogether, keepTimeTogether } from '../utilities/keep-together.ts';
+
 /**
  * An action in the blocked row: a button or a quiet link that does something or goes somewhere.
  * With `href` it is a link; otherwise it is a button that calls `onclick`.
@@ -5,12 +7,6 @@
 export interface ChatComposerBlockedAction {
   /** What the action says, such as `Connect a provider`. */
   readonly label: string;
-  /**
-   * What the action reads in a narrow composer, such as `Connect`, so the reason beside it keeps
-   * the room to wrap to at most two lines. Its accessible name stays `label`, which must contain
-   * these words. Without it the action reads `label` at every width.
-   */
-  readonly shortLabel?: string | undefined;
   /** Where a link goes. When omitted the action is a button. */
   readonly href?: string | undefined;
   /** Called when the action is activated. A link may also pass one, for client-side navigation. */
@@ -136,11 +132,15 @@ export function isComposerDrawerStatus(
 /** The words a status shows: on the line under the composer, or in its drawer. */
 export function composerStatusText(status: ChatComposerStatus): string {
   if (status.kind === 'blocked') return status.reason;
-  if (status.kind === 'archived') return `Archived ${status.when}`;
+  // The date holds together, so a narrow bar moves its buttons to a row of their own and never
+  // breaks the date.
+  if (status.kind === 'archived') return `Archived ${keepPhraseTogether(status.when)}`;
   if (status.kind === 'read-only') return COMPOSER_READ_ONLY_LABEL;
   if (status.kind === 'offline') return COMPOSER_OFFLINE_TEXT;
   if (status.kind === 'drawer-notice') return status.text;
-  if (status.kind === 'draft-restored') return `Restored your unsent draft from ${status.when}.`;
+  if (status.kind === 'draft-restored') {
+    return keepTimeTogether(`Restored your unsent draft from ${status.when}.`);
+  }
   if (status.kind === 'steering') return 'A message now steers the run.';
   if (status.kind === 'note') return status.text;
   if (status.kind === 'waiting') {

@@ -7,7 +7,6 @@
 
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -81,48 +80,13 @@ describe('R3: reconnecting', () => {
     expect(container.textContent).toContain('Order 4398 shipped with Parcelly on');
   });
 
-  test('the warning on the turn reads the exact template, with Retry now and a draining bar', async () => {
-    const retryConnection = mock((_messageId: string) => undefined);
-    const { container, getByRole } = mount({
-      turnState: reconnecting,
-      onRetryConnection: retryConnection,
-    });
-    const warning = outcome(container);
-    expect(warning?.getAttribute('data-kind')).toBe('reconnecting');
-    // The warning belongs to the turn: it sits in the message's wrapper, not the composer.
-    expect(warning?.closest('.chat-message-wrapper')).not.toBeNull();
-    expect(warning?.querySelector('[role="note"]')?.getAttribute('data-cinder-variant')).toBe(
-      'warning',
-    );
-    expect(warning?.querySelector('.cinder-callout--inline-action')).not.toBeNull();
-    expect(warning?.querySelector('.cinder-callout__action button')?.textContent?.trim()).toBe(
-      'Retry',
-    );
-    expect(warning?.querySelector('.chat-turn-text')?.textContent?.trim()).toBe(
-      'Connection lost. Reconnecting, attempt 2 of 5. Next try in 8s.',
-    );
-
-    const bar = getByRole('progressbar', { name: 'Time until the next try' });
-    expect(bar.getAttribute('aria-valuenow')).toBe('80');
-    expect(bar.getAttribute('aria-valuetext')).toBe('8s');
-
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
-    expect(retryConnection).toHaveBeenCalledWith('a1');
-  });
-
-  test('the bar drains as the host counts the next try down', async () => {
-    const view = mount({ turnState: reconnecting });
-    await view.rerender({ turnState: { ...reconnecting, nextTryIn: 3 } });
-    await tick();
-    const bar = view.getByRole('progressbar', { name: 'Time until the next try' });
-    expect(bar.getAttribute('aria-valuenow')).toBe('30');
-    expect(view.container.querySelector('.chat-turn-text')?.textContent).toContain(
-      'Next try in 3s.',
-    );
-  });
-
-  test('without the callback there is no Retry now', () => {
-    const { queryByRole } = mount({ turnState: reconnecting });
+  test('the connection notice does not sit under the partial reply; it stands by the composer', () => {
+    const { container, queryByRole } = mount({ turnState: reconnecting });
+    // Chat draws the notice beside the composer (chat-connection-notice.test.ts), so the turn
+    // itself carries no outcome row, no warning and no Retry.
+    expect(outcome(container)).toBeNull();
+    expect(container.querySelector('[data-cinder-variant="warning"]')).toBeNull();
+    expect(container.textContent).not.toContain('Connection lost');
     expect(queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });
@@ -145,7 +109,8 @@ describe('R4: stopped', () => {
     const buttons = Array.from(row?.querySelectorAll('button') ?? [], (button) =>
       button.textContent?.trim(),
     );
-    expect(buttons).toEqual(['Continue', 'Discard']);
+    // Discard first and the primary, Continue, last: it is the trailing-most control.
+    expect(buttons).toEqual(['Discard', 'Continue']);
     expect(
       getByRole('button', { name: 'Continue' }).getAttribute('aria-describedby'),
     ).not.toBeNull();
@@ -326,5 +291,92 @@ describe('approval receipt timestamp', () => {
     const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
     expect(source).toContain("part.type === 'tool-approval'");
     expect(source).toMatch(/createdAtValue\s*&&\s*formattedCreatedAt\s*&&\s*!approvalOnlyTurn/u);
+  });
+});
+
+describe('a turn that said only what it was doing', () => {
+  const narration = {
+    narration: true,
+    message: reply({ content: 'Reading the refund policy first.' }),
+  };
+
+  test('a stopped one does not claim an answer', () => {
+    const { container } = mount({ ...narration, turnState: { kind: 'stopped' } });
+    expect(outcome(container)?.textContent).toContain('Stopped before an answer.');
+    expect(outcome(container)?.textContent).not.toContain('answer above');
+  });
+
+  test('a stopped one with an answer keeps the partial-answer words', () => {
+    const { container } = mount({ turnState: { kind: 'stopped' } });
+    expect(outcome(container)?.textContent).toContain('Stopped. The answer above is partial.');
+  });
+
+  test('a failed one says it failed before an answer, and a host can say both its own way', () => {
+    const { container } = mount({
+      ...narration,
+      turnState: { kind: 'failed', cause: 'The provider dropped the connection.' },
+    });
+    expect(outcome(container)?.textContent).toContain('Failed before an answer.');
+    expect(outcome(container)?.textContent).not.toContain('This answer is incomplete.');
+
+    cleanup();
+    const hosted = mount({
+      ...narration,
+      turnState: { kind: 'stopped' },
+      turnLabels: { stoppedBeforeAnswer: 'Arrete avant une reponse.' },
+    });
+    expect(outcome(hosted.container)?.textContent).toContain('Arrete avant une reponse.');
+  });
+
+  test('the body part draws the text alone and the outcome part the notice and the line alone', () => {
+    const props = { ...narration, turnState: { kind: 'stopped' } };
+    const body = mount({ ...props, section: 'body' });
+    expect(body.container.querySelector('article')).not.toBeNull();
+    expect(outcome(body.container)).toBeNull();
+    expect(body.container.querySelector('.chat-message-line')).toBeNull();
+
+    cleanup();
+    const tail = mount({ ...props, section: 'outcome' });
+    expect(tail.container.querySelector('article')).toBeNull();
+    expect(outcome(tail.container)?.getAttribute('data-kind')).toBe('stopped');
+    expect(tail.container.querySelector('.chat-message-line')).not.toBeNull();
+  });
+});
+
+describe('the stopped-short ellipsis', () => {
+  const wrapperOf = (content: string) => {
+    cleanup();
+    const { container } = mount({
+      message: reply({ content }),
+      turnState: { kind: 'stopped' },
+    });
+    return container.querySelector('.chat-message-wrapper');
+  };
+
+  test('is skipped when the text already ends where a sentence ends', () => {
+    for (const content of [
+      'Reading the refund policy first.',
+      'Is it done?',
+      'Done!',
+      'Wait…',
+      'He said "stop."',
+      'It is **done.**',
+    ]) {
+      expect(wrapperOf(content)?.hasAttribute('data-ends-in-punctuation')).toBe(true);
+    }
+  });
+
+  test('is kept when the text stops mid-sentence', () => {
+    for (const content of ['Order 4398 shipped with Parcelly on', 'The ledger has 3.5', 'First,']) {
+      expect(wrapperOf(content)?.hasAttribute('data-ends-in-punctuation')).toBe(false);
+    }
+  });
+
+  test('is drawn by a rule that the punctuation mark switches off', async () => {
+    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
+    const rule = /content: '\\2026' \/ '';/u.exec(source);
+    expect(rule).not.toBeNull();
+    // Both selectors of the rule (a text block, and the last list item) carry the switch.
+    expect(source.split(':not([data-ends-in-punctuation])')).toHaveLength(3);
   });
 });

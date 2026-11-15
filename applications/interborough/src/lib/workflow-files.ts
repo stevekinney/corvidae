@@ -76,8 +76,8 @@ export type WorkflowFileListing = z.infer<typeof listingSchema>;
 
 /**
  * A code workflow a plugin contributed, which the list shows after the files with an explicit
- * `kind` and none of a file's members (no state, hash or trigger). The workflow pages show files,
- * so {@link listWorkflowFiles} reads the entry and leaves it out rather than fail the page.
+ * `kind` and none of a file's members (no state, hash or trigger). {@link listWorkflowFiles} leaves
+ * it out, so the workflow pages show files; the builder reads the code workflows from the catalog.
  */
 const codeListingSchema = z.object({
   kind: z.literal('code'),
@@ -87,6 +87,9 @@ const codeListingSchema = z.object({
   plugin: z.string(),
   version: z.string(),
 });
+
+/** A code workflow a plugin contributed: `id` is `plugin:name`, the `workflow` of a `workflow` step. */
+export type CodeWorkflowListing = z.infer<typeof codeListingSchema>;
 
 const detailSchema = fileSchema.extend({
   text: z.string().nullable(),
@@ -188,7 +191,19 @@ const LISTING_PAGE_SIZE = 100;
 export async function listWorkflowFiles(
   options?: Options & { readonly includeRuns?: boolean },
 ): Promise<readonly WorkflowFileListing[]> {
+  const { files } = await listWorkflowEntries(options);
+  return files;
+}
+
+/** Everything `bureau.workflows.list` answers: the files, and the code workflows plugins contributed. */
+export async function listWorkflowEntries(
+  options?: Options & { readonly includeRuns?: boolean },
+): Promise<{
+  readonly files: readonly WorkflowFileListing[];
+  readonly code: readonly CodeWorkflowListing[];
+}> {
   const listings: WorkflowFileListing[] = [];
+  const code: CodeWorkflowListing[] = [];
   let offset: number | null = 0;
   const pageSchema = z.object({
     workflows: z.array(z.union([codeListingSchema, listingSchema])),
@@ -206,10 +221,13 @@ export async function listWorkflowFiles(
         options,
       ),
     );
-    for (const entry of page.workflows) if (!('kind' in entry)) listings.push(entry);
+    for (const entry of page.workflows) {
+      if ('kind' in entry) code.push(entry);
+      else listings.push(entry);
+    }
     offset = page.nextOffset;
   }
-  return listings;
+  return { files: listings, code };
 }
 
 /** One workflow file. A file that is gone is a `NotFound` fault. */

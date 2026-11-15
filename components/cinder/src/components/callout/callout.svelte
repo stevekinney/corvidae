@@ -68,7 +68,9 @@
   {...restWithoutForbidden}
   class={classNames(
     'cinder-callout',
-    actionLayout === 'inline' && 'cinder-callout--inline-action',
+    actionLayout !== 'stacked' && 'cinder-callout--inline-action',
+    actionLayout === 'beside' && 'cinder-callout--beside-action',
+    actionLayout === 'fit' && 'cinder-callout--fit-action',
     icon && 'cinder-callout--with-icon',
     onDismiss && 'cinder-callout--dismissible',
     variant !== 'neutral' && 'cinder-_status-surface',
@@ -79,15 +81,20 @@
   role={semantic === 'note' ? 'note' : undefined}
   aria-label={ariaLabel}
 >
-  {#if icon}
-    <div class="cinder-callout__icon" aria-hidden="true">
-      {@render icon()}
-    </div>
+  {#if icon && !(actionLayout !== 'stacked' && action)}
+    {@render iconBlock()}
   {/if}
 
-  {#if actionLayout === 'inline' && action}
+  {#if actionLayout !== 'stacked' && action}
     <div class="cinder-callout__body">
-      {@render contentBlock()}
+      <!-- The glyph and the message stand together, so the action centres against both and the
+           glyph stays on the message's first line wherever the row puts it. -->
+      <div class="cinder-callout__message">
+        {#if icon}
+          {@render iconBlock()}
+        {/if}
+        {@render contentBlock()}
+      </div>
       <div class="cinder-callout__action">
         {@render action()}
       </div>
@@ -122,6 +129,12 @@
     </button>
   {/if}
 </svelte:element>
+
+{#snippet iconBlock()}
+  <div class="cinder-callout__icon" aria-hidden="true">
+    {@render icon?.()}
+  </div>
+{/snippet}
 
 {#snippet contentBlock()}
   <div class="cinder-callout__content">

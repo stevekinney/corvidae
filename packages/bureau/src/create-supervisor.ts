@@ -78,9 +78,17 @@ export function createSupervisor<D extends AgentDefinitions>(
   // through `resolveRoutedNames`'s validation) still reports an unknown
   // stage `agentName` as a failed stage rather than throwing out of
   // `pipeline()` itself.
-  async function runAgent(task: string, agentName: AgentNames<D>): Promise<SupervisorTaskResult> {
+  async function runAgent(
+    task: string,
+    agentName: AgentNames<D>,
+    runId?: string,
+  ): Promise<SupervisorTaskResult> {
     try {
-      const context: AgentRunContext = { agentName, ...(signal ? { signal } : {}) };
+      const context: AgentRunContext = {
+        agentName,
+        ...(runId === undefined ? {} : { runId }),
+        ...(signal ? { signal } : {}),
+      };
       const run = catalog.get(agentName).run(task, context);
       const settled: unknown = await run.result();
       // Validate before classifying so a hand-written or JavaScript catalog
@@ -115,8 +123,8 @@ export function createSupervisor<D extends AgentDefinitions>(
   }
 
   /** Validates every routed name against the catalog before retrieving any agent. */
-  async function resolveRoutedNames(task: string): Promise<AgentNames<D>[]> {
-    const routingResult = await routing(task, describeAgents(catalog));
+  async function resolveRoutedNames(task: string, routingId: string): Promise<AgentNames<D>[]> {
+    const routingResult = await routing(task, describeAgents(catalog), { routingId });
     const names: readonly AgentNames<D>[] = Array.isArray(routingResult)
       ? routingResult
       : [routingResult];
@@ -140,7 +148,10 @@ export function createSupervisor<D extends AgentDefinitions>(
 
     signal?.throwIfAborted();
 
-    const agentNames = await resolveRoutedNames(task);
+    // The step's id exists before the strategy runs, so a decision it asks is recorded under it
+    // even when no run follows (COR-2420); each run the step starts takes its id from it.
+    const routingId = `routing-${crypto.randomUUID()}`;
+    const agentNames = await resolveRoutedNames(task, routingId);
 
     // Recheck after the (possibly asynchronous) routing strategy resolves —
     // a caller-supplied `RoutingStrategy` may itself await external state (a
@@ -158,16 +169,11 @@ export function createSupervisor<D extends AgentDefinitions>(
       throw new Error(`Maximum delegations (${maximumDelegations}) exceeded`);
     }
 
-    events.dispatch(new TaskRoutedEvent(task, agentNames));
+    events.dispatch(new TaskRoutedEvent(task, agentNames, routingId));
 
-    let agentResults: SupervisorTaskResult[];
-
-    if (agentNames.length === 1) {
-      const result = await runAgent(task, agentNames[0]!);
-      agentResults = [result];
-    } else {
-      agentResults = await Promise.all(agentNames.map((name) => runAgent(task, name)));
-    }
+    const agentResults: SupervisorTaskResult[] = await Promise.all(
+      agentNames.map((name, index) => runAgent(task, name, `${routingId}-${index}`)),
+    );
 
     events.dispatch(new SynthesisStartedEvent(task, agentResults));
     const synthesisResult = await synthesis(agentResults);

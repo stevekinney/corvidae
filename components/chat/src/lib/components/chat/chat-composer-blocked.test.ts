@@ -50,64 +50,21 @@ describe('a blocked composer', () => {
     expect(message).toContain('flex: 1 1 6rem;');
   });
 
-  test('on a phone-width composer the actions stay at the row’s end at their own width, never a full-width bar (COR-2327 B1)', async () => {
+  test('on a phone-width composer the actions take a line of their own that ends at the trailing edge, compact', async () => {
     const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
-    // The rule of its own, not the archived or read-only bar's (`.chat-input-notice ...`).
-    const actions = /\n {2}\.chat-input-blocked-actions \{([^}]*)\}/u.exec(source)?.[1];
+    const rest = source.slice(source.indexOf('.chat-input-blocked-actions {'));
+    const base = /\n {2}\.chat-input-blocked-actions \{([^}]*)\}/u.exec(source)?.[1];
+    const narrow = /@media \(max-width: 639\.98px\) \{([\s\S]*?)\n  \}\n/u.exec(rest)?.[1];
 
-    expect(actions).toContain('flex: none;');
-    expect(actions).toContain('margin-inline-start: auto;');
-    // No width rule stretches the actions, or their buttons, across a line of their own.
-    expect(source).not.toContain('flex: 1 0 100%;');
-    expect(source).not.toMatch(/\.chat-input-blocked-actions :global\(\.cinder-button\)/u);
-    // The buttons are small: they paint 28px and reach 44px through their own hit area.
-    const { container } = render(ChatInput, {
-      id: 'blocked-small',
-      status: {
-        kind: 'blocked',
-        reason: BLOCKED_REASON,
-        action: { label: 'Connect a provider', onclick: () => undefined },
-      },
-    });
-    expect(
-      container
-        .querySelector('.chat-input-blocked-actions .cinder-button')
-        ?.getAttribute('data-cinder-size'),
-    ).toBe('sm');
-  });
-
-  test('an action with a short form reads it in a narrow composer and keeps its whole name (COR-2327 B1)', async () => {
-    const { container, getByRole } = render(ChatInput, {
-      id: 'blocked-short',
-      status: {
-        kind: 'blocked',
-        reason: 'Connect a model provider',
-        action: { label: 'Connect provider', shortLabel: 'Connect', onclick: () => undefined },
-      },
-    });
-    const button = getByRole('button', { name: 'Connect provider' });
-    expect(button.querySelector('.chat-input-blocked-action-full')?.textContent).toBe(
-      'Connect provider',
-    );
-    const short = button.querySelector('.chat-input-blocked-action-short');
-    expect(short?.textContent).toBe('Connect');
-    expect(short?.getAttribute('aria-hidden')).toBe('true');
-    const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
-    expect(source).toMatch(
-      /@container \(inline-size < 30rem\) \{\s*\.chat-input-blocked-action-full \{\s*display: none;/u,
-    );
-
-    // Without a short form, the action reads its label as it always has.
-    const plain = render(ChatInput, {
-      id: 'blocked-plain',
-      status: {
-        kind: 'blocked',
-        reason: BLOCKED_REASON,
-        action: { label: 'Connect a provider', onclick: () => undefined },
-      },
-    });
-    expect(plain.container.querySelector('.chat-input-blocked-action-short')).toBeNull();
-    expect(container.querySelectorAll('.chat-input-blocked-action-short')).toHaveLength(1);
+    // The row ends at the trailing edge on every line it occupies, the primary last.
+    expect(base).toContain('justify-content: flex-end;');
+    expect(base).toContain('margin-inline-start: auto;');
+    expect(narrow).toContain('flex: 1 0 100%;');
+    // A Button keeps its compact painted width and height; its 44px hit area is its own
+    // pseudo-element. Never equal or full width.
+    expect(narrow).toMatch(/\.cinder-button\) \{[^}]*flex: 0 0 auto;/u);
+    expect(narrow).not.toContain('flex: 1 1 auto');
+    expect(narrow).not.toContain('min-block-size');
   });
 
   test('draws one row with the reason, and no text box, controls or Send', () => {
@@ -142,15 +99,16 @@ describe('a blocked composer', () => {
     const buttons = [
       ...container.querySelectorAll<HTMLButtonElement>('.chat-input-blocked button'),
     ];
+    // The quiet link leads and the action ends the row, at the trailing edge.
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      'Connect a provider',
       'Use Assistant',
+      'Connect a provider',
     ]);
-    expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('secondary');
 
-    await fireEvent.click(buttons[0]!);
     await fireEvent.click(buttons[1]!);
+    await fireEvent.click(buttons[0]!);
     expect(calls).toEqual(['connect', 'assistant']);
   });
 

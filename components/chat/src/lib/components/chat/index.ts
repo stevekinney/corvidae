@@ -193,6 +193,7 @@ export type {
 export {
   applyComposerFormat,
   ChatAttachmentPreview,
+  ChatAttachmentUploadError,
   ChatComposerSettings,
   ChatInput,
   COMPOSER_FOLD_WIDTH,
@@ -207,6 +208,7 @@ export type {
   ChatAttachment,
   ChatAttachmentErrorFormatter,
   ChatAttachmentFailure,
+  ChatAttachmentFailureKind,
   ChatAttachmentReference,
   ChatAttachmentUpload,
   ChatComposerBlockedAction,

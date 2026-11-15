@@ -98,7 +98,7 @@ describe('the read-back sentence', () => {
         steps: [
           { kind: 'sleep', duration: 60000 },
           { kind: 'await-signal', signal: '' },
-          { kind: 'branch', on: 'x', cases: {} },
+          { kind: 'activity', handler: 'agent', input: 'not an object' },
         ],
       }),
     ).toBe(
@@ -112,6 +112,69 @@ describe('the read-back sentence', () => {
     );
     expect(readBack({ trigger: { kind: 'manual' }, steps: [agentStep('', '')] })).toBe(
       'Fill in step 1 to see what this workflow does.',
+    );
+  });
+
+  test('says a call of an activity by its title, and of a code workflow by its title', () => {
+    const file = {
+      trigger: { kind: 'manual' },
+      steps: [
+        { kind: 'activity', handler: 'demo:echo-input', input: { text: 'hi' } },
+        { kind: 'workflow', workflow: 'demo:morning-briefing' },
+      ],
+    };
+    // Without the catalog a name is the id in words.
+    expect(readBack(file)).toBe(
+      'Run it when you press Start run, then run Demo echo input, then run the workflow Demo morning briefing.',
+    );
+    const view = readBuilder(JSON.stringify(file), {
+      now: NOVEMBER,
+      activityName: () => 'Echo input',
+      workflowName: () => 'Morning briefing',
+    });
+    expect(view?.readBack).toBe(
+      'Run it when you press Start run, then run Echo input, then run the workflow Morning briefing.',
+    );
+    expect(
+      readBack({ trigger: { kind: 'manual' }, steps: [{ kind: 'workflow', workflow: '' }] }),
+    ).toContain('run a workflow');
+  });
+
+  test('says each control-flow step in one clause that never says what it holds', () => {
+    const inner = { kind: 'await-signal', signal: 'deep', timeout: '1h' };
+    expect(
+      readBack({
+        trigger: { kind: 'manual' },
+        steps: [
+          { kind: 'branch', on: 'status', cases: { a: [inner], b: [inner] } },
+          { kind: 'parallel', branches: { x: [inner], y: [], z: [inner] } },
+          { kind: 'map', over: 'files', steps: [inner, inner] },
+        ],
+      }),
+    ).toBe(
+      'Run it when you press Start run, then choose a path by status (2 cases), run 3 lists side by side, then repeat 2 steps for each item in files.',
+    );
+    const words = WORKFLOW_COPY.builder.readBack;
+    expect(words.choosePath('', 1)).toBe('choose a path by a value (1 case)');
+    expect(words.choosePath('status', 0)).toBe('choose a path by status (no cases yet)');
+    expect(words.sideBySide(1)).toBe('run 1 list side by side');
+    expect(words.repeat(1, '')).toBe('repeat 1 step for each item');
+    expect(words.repeat(0, 'files')).toBe('repeat the steps for each item in files');
+  });
+
+  test('says how long a wait for a person or a signal lasts before the run goes on without it', () => {
+    expect(
+      readBack({
+        trigger: { kind: 'manual' },
+        steps: [
+          { kind: 'await-signal', signal: 'review-1', review: true, timeout: '2h' },
+          { kind: 'await-signal', signal: 'go', timeout: '1m' },
+          { kind: 'await-signal', signal: '', timeout: 5000 },
+          { kind: 'await-signal', signal: 'plain' },
+        ],
+      }),
+    ).toBe(
+      'Run it when you press Start run, then wait up to 2 hours for a person to review it, wait up to 1 minute for go, wait up to 5000 ms for a signal, then wait for plain.',
     );
   });
 

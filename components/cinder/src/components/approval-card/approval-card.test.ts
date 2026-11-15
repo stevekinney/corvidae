@@ -325,8 +325,8 @@ describe('ApprovalCard', () => {
       button.textContent?.trim(),
     );
 
-    // Add a note opens the row at its start; the decisions follow, the primary last.
-    expect(buttons).toEqual(['Add a note', 'Deny', 'Approve with edits', 'Approve']);
+    // Add note opens the row at its start; the decisions follow, the primary last.
+    expect(buttons).toEqual(['Add note', 'Deny', 'Approve with edits', 'Approve']);
   });
 
   test('does not render a Remember action button', () => {
@@ -367,7 +367,7 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ editableArgs: false, onResolve }),
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(getByRole('button', { name: 'Add note' }));
     await fireEvent.input(getByLabelText('Note'), {
       target: { value: 'Outside the deployment window.' },
     });
@@ -398,7 +398,7 @@ describe('ApprovalCard', () => {
       }),
     });
 
-    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
     await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Applies only to the first approval.' },
     });
@@ -415,7 +415,7 @@ describe('ApprovalCard', () => {
 
     // A new request starts with the note closed and empty.
     expect(view.queryByLabelText('Note')).toBeNull();
-    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
     expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe('');
     expect(
       requiredInstance(
@@ -439,7 +439,7 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ onResolve, idempotencyKey: 'approval-one' }),
     });
 
-    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
     await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Still drafting this reason.' },
     });
@@ -1331,7 +1331,7 @@ describe('ApprovalCard card layout anatomy', () => {
     );
   });
 
-  test('offers Deny as secondary, a closed note behind Add a note and no Allow checkbox for an Always tool', () => {
+  test('offers Deny as secondary, a closed note behind Add note and no Allow checkbox for an Always tool', () => {
     const { getByRole, queryByLabelText, queryByRole } = render(ApprovalCard, {
       props: refundRow({ layout: 'card', rememberScope: undefined }),
     });
@@ -1340,7 +1340,7 @@ describe('ApprovalCard card layout anatomy', () => {
       'secondary',
     );
     expect(queryByLabelText('Note')).toBeNull();
-    expect(getByRole('group', { name: 'Approval actions' }).textContent).toContain('Add a note');
+    expect(getByRole('group', { name: 'Approval actions' }).textContent).toContain('Add note');
     expect(queryByRole('checkbox')).toBeNull();
   });
 
@@ -1350,9 +1350,15 @@ describe('ApprovalCard card layout anatomy', () => {
     expect(css).not.toMatch(/\[data-cinder-risk='high'\] \.cinder-approval-card__header/);
     expect(css).not.toMatch(/readonly-summary\[data-cinder-state='denied'\]/);
     // Only the inline failure message is red-toned; no surface or header ever is.
-    expect(css.replace(/\.cinder-approval-card__failure \{[^}]*\}/, '')).not.toContain(
-      '--cinder-status-danger',
-    );
+    // The facts line's "Can't be undone" is the one other danger text, never a fill.
+    expect(
+      css
+        .replace(/\.cinder-approval-card__failure \{[^}]*\}/, '')
+        .replace(
+          /\.cinder-approval-card__facts-line-fact\[data-cinder-tone='danger'\] \{[^}]*\}/,
+          '',
+        ),
+    ).not.toContain('--cinder-status-danger');
   });
 
   test('shows an unavailable card read-only with its reason', () => {
@@ -1418,7 +1424,7 @@ describe('ApprovalCard row layout', () => {
       container.querySelector('.cinder-approval-card__command .cinder-code-block--wrap'),
     ).not.toBeNull();
     expect(container.querySelector('pre.cinder-approval-card__command')).toBeNull();
-    expect(getByRole('button', { name: 'Add a note' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Add note' })).not.toBeNull();
     expect(container.querySelector('.cinder-approval-card__details')).toBeNull();
   });
 
@@ -1439,9 +1445,11 @@ describe('ApprovalCard row layout', () => {
       }),
     ).toBeTruthy();
     expect(container.querySelectorAll('.cinder-approval-card__row-question')).toHaveLength(1);
-    expect(container.querySelector('.cinder-approval-card__expired-row')).not.toBeNull();
-    expect(container.querySelector('.cinder-approval-card__countdown')?.textContent).toContain(
-      '10:15 AM',
+    expect(container.querySelector('.cinder-approval-card__settled-row')).not.toBeNull();
+    // The time is not in the card: the host writes it under the card, as it writes a message's.
+    expect(container.textContent).not.toContain('10:15 AM');
+    expect(container.querySelector('.cinder-approval-card__settled-note')?.textContent).toBe(
+      'Expired before a decision',
     );
     expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__risk-icon')).toBeNull();
@@ -1645,14 +1653,14 @@ describe('ApprovalCard row layout', () => {
   });
 
   for (const layout of ['card', 'row', 'decision', 'detail'] as const) {
-    test(`the ${layout} layout keeps its note closed behind Add a note, beside Deny, and focuses it on open`, async () => {
+    test(`the ${layout} layout keeps its note closed behind Add note, beside Deny, and focuses it on open`, async () => {
       const onResolve = mock((_resolution: unknown) => undefined);
       const view = render(ApprovalCard, { props: refundRow({ layout, onResolve }) });
 
       expect(view.queryByRole('textbox', { name: /note/i })).toBeNull();
       expect(view.container.textContent).not.toContain('(optional)');
       const actions = view.getByRole('group', { name: 'Approval actions' });
-      const toggle = view.getByRole('button', { name: 'Add a note' });
+      const toggle = view.getByRole('button', { name: 'Add note' });
       // The toggle sits in the actions row, before Deny.
       expect(actions.contains(toggle)).toBe(true);
       const deny = view.getByRole('button', { name: 'Deny' });
@@ -1662,7 +1670,7 @@ describe('ApprovalCard row layout', () => {
       await tick();
       const field = requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement);
       expect(document.activeElement).toBe(field);
-      expect(view.queryByRole('button', { name: 'Add a note' })).toBeNull();
+      expect(view.queryByRole('button', { name: 'Add note' })).toBeNull();
 
       // A typed note keeps the field open through an unrelated re-render.
       await fireEvent.input(field, { target: { value: 'Check the carrier first.' } });
@@ -1673,14 +1681,14 @@ describe('ApprovalCard row layout', () => {
     });
   }
 
-  test('Add a note opens the Note field, and the note travels with Approve and Deny', async () => {
+  test('Add note opens the Note field, and the note travels with Approve and Deny', async () => {
     const onResolve = mock((_resolution: unknown) => undefined);
     const { getByLabelText, getByRole, getByText, queryByLabelText } = render(ApprovalCard, {
       props: refundRow({ onResolve }),
     });
     expect(queryByLabelText('Note')).toBeNull();
 
-    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(getByRole('button', { name: 'Add note' }));
 
     const field = requiredInstance(getByLabelText('Note'), HTMLTextAreaElement);
     expect(field.placeholder).toBe('Add a note for the agent or the record');
@@ -1708,7 +1716,7 @@ describe('ApprovalCard row layout', () => {
       idempotencyKey: 'one',
     });
     const view = render(ApprovalCard, { props });
-    await fireEvent.click(view.getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
     await fireEvent.input(view.getByLabelText('Note'), {
       target: { value: 'Draft for the first.' },
     });
@@ -1795,7 +1803,7 @@ describe('ApprovalCard row layout', () => {
       await fireEvent.click(button);
     }
     expect(onResolve).not.toHaveBeenCalled();
-    expect(getByRole('button', { name: 'Add a note' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Add note' })).not.toBeNull();
     expect(getByRole('button', { name: /^Input/ })).not.toBeNull();
   });
 
@@ -1874,7 +1882,7 @@ describe('ApprovalCard row layout', () => {
       'Pending',
     );
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
-    expect(queryByRole('button', { name: 'Add a note' })).toBeNull();
+    expect(queryByRole('button', { name: 'Add note' })).toBeNull();
   });
 
   test('writes the time the approval was asked as a time element and drops it once decided', () => {
@@ -2056,7 +2064,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         const note = container.querySelector('textarea');
         if (note !== null) expect(note.disabled).toBe(true);
         else
-          expect((getByRole('button', { name: 'Add a note' }) as HTMLButtonElement).disabled).toBe(
+          expect((getByRole('button', { name: 'Add note' }) as HTMLButtonElement).disabled).toBe(
             true,
           );
       });
@@ -2090,7 +2098,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
       });
 
       test('an expired approval is read-only and says when it expired', () => {
-        const { getByText, queryByRole, getByRole } = render(ApprovalCard, {
+        const { getByText, queryByText, queryByRole, getByRole } = render(ApprovalCard, {
           props: refundRow({
             layout,
             expiresAt: '2026-11-02T10:15:00.000Z',
@@ -2101,9 +2109,16 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         expect(getByRole('article').getAttribute('data-cinder-state')).toBe('expired');
         expect(queryByRole('button', { name: 'Approve' })).toBeNull();
         expect(queryByRole('button', { name: 'Deny' })).toBeNull();
-        expect(
-          getByText('This approval expired at 10:15 AM UTC, the time its request set.'),
-        ).toBeTruthy();
+        // The row and the decision layouts say it in one small line and leave the time to the host,
+        // under the card; the card and the detail keep the sentence that carries the time.
+        if (layout === 'row') {
+          expect(getByText('Expired before a decision')).toBeTruthy();
+          expect(queryByText(/the time its request set/)).toBeNull();
+        } else {
+          expect(
+            getByText('This approval expired at 10:15 AM UTC, the time its request set.'),
+          ).toBeTruthy();
+        }
       });
 
       test('a notice from the host replaces the default expiry sentence', () => {
@@ -2399,7 +2414,7 @@ describe('ApprovalCard outcome', () => {
 
     expect(
       squash(container.querySelector('.cinder-approval-card__decision-note')?.textContent),
-    ).toBe('Your note Check the carrier’s claim first. Sent to the agent as the reason.');
+    ).toBe('Your note: Check the carrier’s claim first. Sent to the agent as the reason.');
   });
 
   test('keeps the input line on a decided row', () => {
@@ -2795,11 +2810,32 @@ describe('ApprovalCard on a phone', () => {
     ).not.toBeNull();
   });
 
-  test('keeps Deny and the primary decision equal, full-width 44px targets in a narrow card', () => {
+  test('keeps Deny and the primary decision compact 44px targets at the trailing edge in a narrow card', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    // Intrinsic width, never equal or full width.
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \.cinder-button\[data-cinder-size\] \{\s*flex: 0 1 auto;\s*min-height: var\(--cinder-touch-target-min\);/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \{\s*flex: 1 1 100%;\s*justify-content: flex-end;/,
+    );
+  });
+
+  test('every approval action row ends at the trailing edge with the primary last and the note toggle leading', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
     expect(css).toMatch(
-      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \.cinder-button\[data-cinder-size\] \{\s*flex: 1 1 0;\s*min-height: var\(--cinder-touch-target-min\);/,
+      /\.cinder-approval-card__row-actions \{[\s\S]*?justify-content: flex-end;[\s\S]*?\}/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__note-toggle-tip \{[\s\S]*?margin-inline-end: auto;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__settled-actions \{[\s\S]*?justify-content: flex-end;[\s\S]*?margin-inline-start: auto;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__editor-actions \{[\s\S]*?justify-content: flex-end;/,
     );
   });
 
@@ -2817,11 +2853,14 @@ describe('ApprovalCard on a phone', () => {
     );
   });
 
-  test('a receipt card keeps room under its last row for the 44px Details area', () => {
+  test('a receipt card has the padding and gap an expired card has, with room for the 44px Details area', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
+    // No rule gives a receipt its own padding: the three settled states share the decision card's.
+    expect(css).not.toMatch(/\.cinder-approval-card--decision:has\(/);
+    // The card's own block padding (12px) holds the 10px the Details control's hit area overhangs.
     expect(css).toMatch(
-      /\.cinder-approval-card--decision:has\(> \.cinder-approval-card__receipt\) \{[\s\S]*?padding-block-end: var\(--cinder-space-2-5\);/,
+      /\.cinder-approval-card--decision \{[\s\S]*?padding: var\(--cinder-space-3\);/,
     );
   });
 
@@ -2837,6 +2876,33 @@ describe('ApprovalCard on a phone', () => {
     );
     expect(css).toMatch(
       /\.cinder-approval-card__row-actions \.cinder-button\[data-cinder-size\] \{[\s\S]*?min-inline-size: var\(--cinder-touch-target-min\);/,
+    );
+  });
+});
+
+describe('ApprovalCard receipt details', () => {
+  const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+    /\s+/gu,
+    ' ',
+  );
+
+  test('the note and the result share one label style and one gap after it', () => {
+    // One rule for both labels: the same ink and weight, and no margin of its own, so the single
+    // space the markup leaves after each is the whole gap.
+    expect(css).toMatch(
+      /\.cinder-approval-card__decision-note-label, \.cinder-approval-card__result-label \{ color: var\(--cinder-text-default\); font-weight: var\(--cinder-font-semibold\); \}/u,
+    );
+    const label = /\.cinder-approval-card__decision-note-label \{([^}]*)\}/u.exec(css);
+    expect(label).toBeNull();
+  });
+
+  test('both values are in the default ink in the details, whatever the note is elsewhere', () => {
+    expect(css).toMatch(
+      /\.cinder-approval-card__receipt-details \.cinder-approval-card__decision-note \{ color: var\(--cinder-text-default\); \}/u,
+    );
+    // Outside the details the note stays muted.
+    expect(css).toMatch(
+      /\.cinder-approval-card__decision-note \{[^}]*color: var\(--cinder-text-muted\);/u,
     );
   });
 });

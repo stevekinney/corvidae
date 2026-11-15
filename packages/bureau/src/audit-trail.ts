@@ -1187,6 +1187,8 @@ export const AUDIT_REDACTION_KEPT_DETAIL_FIELDS: readonly string[] = [
   'decision',
   'owner',
   'inputForm',
+  // COR-2420: the supervisor routing step a `decision.made` record was asked for, an id.
+  'routingId',
 ];
 
 /** The fields of a review snapshot (`detail.review`) a redacted entry keeps: ids, kind and status. */

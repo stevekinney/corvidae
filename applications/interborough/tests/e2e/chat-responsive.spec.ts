@@ -232,7 +232,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     }
   });
 
-  test('at 320 by 640 the waiting approval’s Deny and Approve are in view and not covered, with the reminder and the blocked row one row each (COR-2327 B1)', async ({
+  test('at 320 by 640 the waiting approval’s Deny and Approve are in view and not covered, the whole card fits, and the reminder is one row (COR-2327 B1)', async ({
     page,
   }) => {
     await page.clock.setFixedTime(SAMPLE_NOW);
@@ -282,9 +282,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     expect(transcript.height - card.height).toBeGreaterThanOrEqual(12);
     // The reminder is for an approval out of view, so with Deny and Approve in view it is not drawn.
     expect(read.drawer).toBeNull();
-    // The blocked row is one row with its action beside the reason, the reason on two lines at most.
+    // The blocked row stands under the transcript; its action has a line of its own (06m).
     expect(read.blocked).not.toBeNull();
-    expect(read.blocked!.height).toBeLessThanOrEqual(64);
 
     // Scrolled back up, the approval leaves the view and the reminder comes: one row, its glyph,
     // its words and a small Review at the row's end, never a button stacked under the words.
@@ -348,6 +347,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     // One row, in reading order, the primary decision last.
     expect(Math.abs(deny.y - approve.y)).toBeLessThan(1);
     expect(approve.x).toBeGreaterThanOrEqual(deny.x + deny.width - 1);
+    // The primary ends the row at the card's trailing content edge (its padding lies between).
+    expect(rowBox.x + rowBox.width - (approve.x + approve.width)).toBeLessThan(32);
     // Compact to the eye, never a full-width phone slab.
     expect(deny.height).toBeLessThanOrEqual(32);
     expect(approve.height).toBeLessThanOrEqual(32);
@@ -361,7 +362,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     }
   });
 
-  test('with no provider the composer is the blocked row: the reason wraps, and "Connect provider" stays beside it at the row’s end, a small button with a 44px hit area (06m, 04y, COR-2327 B1)', async ({
+  test('with no provider the composer is the blocked row: the reason wraps, and "Connect provider" drops to its own compact 44px line beneath, ending at the trailing edge (06m, 04y)', async ({
     page,
   }) => {
     await openRefundFromList(page);
@@ -372,29 +373,19 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
 
+    const reason = await boxOf(row.getByText(REASON));
     const action = row.getByRole('button', { name: CONNECT });
+    const actionBox = await boxOf(action);
+    const rowBox = await boxOf(row);
+    // Beneath the text, never over it, and across the row.
+    expect(actionBox.y).toBeGreaterThanOrEqual(reason.y + reason.height - 1);
     expect(await touchHeight(action)).toBeGreaterThanOrEqual(44);
-    // Read in one pass: the reason, the action and the row.
-    const { reason, actionBox, rowBox } = await row.evaluate((element, connect) => {
-      const box = (node: Element | null) => {
-        const rect = node!.getBoundingClientRect();
-        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-      };
-      const buttons = [...element.querySelectorAll('button, a')];
-      return {
-        reason: box(element.querySelector('.chat-input-blocked-reason')),
-        // Found by its name: on a phone it reads Connect, its name stays Connect provider.
-        actionBox: box(buttons.find((node) => node.getAttribute('aria-label') === connect) ?? null),
-        rowBox: box(element),
-      };
-    }, CONNECT);
-    // Beside the reason, at the row's end, at its own width: never a full-width bar under it.
-    expect(actionBox.x).toBeGreaterThanOrEqual(reason.x + reason.width - 1);
-    expect(actionBox.y).toBeLessThan(reason.y + reason.height);
-    expect(actionBox.width).toBeLessThan(rowBox.width * 0.6);
-    expect(rowBox.x + rowBox.width - (actionBox.x + actionBox.width)).toBeLessThan(20);
-    // One row: well under the 75px the stacked bar took.
-    expect(rowBox.height).toBeLessThanOrEqual(64);
+    // Compact, never a full-width slab, and ending at the row's trailing content edge (the row's
+    // own padding lies between the action and its border).
+    expect(actionBox.width).toBeLessThan(rowBox.width * 0.7);
+    const trailingGap = rowBox.x + rowBox.width - (actionBox.x + actionBox.width);
+    expect(trailingGap).toBeGreaterThanOrEqual(0);
+    expect(trailingGap).toBeLessThan(24);
     // Nothing is queued and nothing pretends to be pending.
     await expect(page.getByText(/queued|sending|pending/i)).toHaveCount(0);
     expect(await scrollsSideways(page)).toBe(false);
@@ -538,8 +529,8 @@ test.describe('Chat on a tablet (06n)', () => {
     await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
     await expect(row.getByRole('combobox')).toHaveCount(0);
     await expect(openChat(page).getByRole('combobox')).toHaveCount(0);
-    // The pane is as narrow as a phone's screen: the reason wraps and the action stays at its
-    // right, never under it (06n), as it does on a phone (COR-2327 B1).
+    // The pane is as narrow as a phone's screen, but the screen is a tablet's: the reason wraps and
+    // the action stays at its right, never under it (06n). Only a phone stacks them (06m).
     const reason = await boxOf(row.getByText(REASON));
     const action = await boxOf(row.getByRole('button', { name: CONNECT }));
     expect(action.x).toBeGreaterThanOrEqual(reason.x + reason.width - 1);

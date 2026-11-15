@@ -20,7 +20,7 @@ describe('Chat scoped typography ramp', () => {
       '--cinder-text-sm',
       '--cinder-text-xs',
     ]);
-    expect(chatCss).toContain('--cinder-chat-font-size: 1rem');
+    expect(chatCss).toContain('--cinder-chat-font-size: 0.875rem');
 
     // The readability cap is registered, not declared on the component root:
     // a root declaration would beat a consumer's `:root` or wrapper override

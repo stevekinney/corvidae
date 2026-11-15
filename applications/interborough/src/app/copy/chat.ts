@@ -509,11 +509,6 @@ export const CHAT_COPY = {
      * person, who adds the provider themselves: there is no admin to wait for (COR-2327 N1).
      */
     unconfiguredDescription: 'The agent needs a model to answer. Add one in Settings.',
-    /**
-     * What Connect provider reads in the blocked row on a phone, so "Connect a model provider"
-     * beside it takes at most two lines; its accessible name stays Connect provider (COR-2327 B1).
-     */
-    connectProviderShort: 'Connect',
     connectProvider: 'Connect a provider',
     useAssistant: 'Use Assistant',
     /** Said in the blocked row of a chat started from Workflows when no agent has the tool. */

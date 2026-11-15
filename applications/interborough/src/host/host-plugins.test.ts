@@ -210,6 +210,7 @@ function managerHome(options: { readonly outcome?: 'conflict' | 'unknown' } = {}
         return { outcome: 'committed' as const };
       },
       deploymentSecrets: {
+        writable: true,
         read: async (key: string) => state.secrets.get(key),
         write: async (key: string, value: string) => void state.secrets.set(key, value),
         location: (key: string) => `/home/secrets/${key}`,
@@ -687,6 +688,7 @@ describe('a remote home', () => {
           return { outcome: 'read-only' as const };
         },
         deploymentSecrets: {
+          writable: false,
           read: async (key: string) => environment[key],
           write: async () => {
             writes.push('secret');
@@ -883,6 +885,7 @@ describe('a secret preparation that fails before publication', () => {
         readConfiguration: async () => ({ text: undefined, revision: null }),
         writeConfiguration: async () => ({ outcome: 'committed' as const }),
         deploymentSecrets: {
+          writable: true,
           read: async (key: string) => stored.get(key),
           write: async (key: string, value: string) => {
             stored.set(key, value);

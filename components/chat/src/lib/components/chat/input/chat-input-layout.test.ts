@@ -74,15 +74,34 @@ describe('ChatInput layout CSS', () => {
     expect(chatInputSource).not.toContain('ProseMirror');
   });
 
-  test('keeps the collapsed attachment rows content-sized and reserves overflow only after reveal', async () => {
+  test('keeps the attachment strip one content-sized row that scrolls sideways', async () => {
     const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
-    expect(chatInputSource).toMatch(/data-expanded=\{attachmentsExpanded \|\| undefined\}/);
-    expect(chatInputSource).toMatch(
-      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*max-block-size:\s*12rem;[^}]*overflow-y:\s*auto;/,
-    );
+    expect(chatInputSource).not.toContain('data-expanded');
     const base = cssBlocks(chatInputSource, '.chat-input-attachments {')[0] ?? '';
+    expectDeclaration(base, 'flex-flow', 'row nowrap');
+    expectDeclaration(base, 'overflow-x', 'auto');
     expect(base).not.toContain('max-block-size');
     expect(base).not.toContain('overflow-y');
+  });
+
+  test('moves the notice bar actions to a row of their own instead of clipping its words under them', async () => {
+    const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
+    // `nowrap` on the reason let a narrow bar run its date under the buttons ("Archived N").
+    expect(chatInputSource).not.toMatch(/\.chat-input-blocked-reason \{[^}]*white-space:\s*nowrap/);
+    // The glyph and its words keep at least their longest word, so the row wraps before it squeezes.
+    const message = cssBlocks(
+      chatInputSource,
+      '.chat-input-notice .chat-input-blocked-message {',
+    )[0];
+    expect(message).toBeDefined();
+    expectDeclaration(message ?? '', 'min-inline-size', 'min-content');
+    // The archived bar asks for its whole line, so its actions leave as soon as both do not fit.
+    const archived = cssBlocks(
+      chatInputSource,
+      ".chat-input-notice[data-chat-composer-status='archived'] .chat-input-blocked-message {",
+    )[0];
+    expect(archived).toBeDefined();
+    expectDeclaration(archived ?? '', 'flex-basis', 'auto');
   });
 
   test('keeps the editor as tall as Send and centres its first line, trimming only surrounding inset', async () => {

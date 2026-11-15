@@ -76,6 +76,7 @@
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
+  import ChatConnectionNotice from './chat-connection-notice.svelte';
   import ChatQuestionDock from '../question/chat-question-dock.svelte';
   import ChatHistoryTrigger from './chat-history-trigger.svelte';
   import ChatStatusAnnouncer from './chat-status-announcer.svelte';
@@ -84,6 +85,7 @@
     chatRenderRowKey,
     findRenderRowIndexByMessageId,
     type ChatRenderRow,
+    type ToolCallRunEntry,
   } from './use-chat-message-groups.svelte.ts';
   import { ChatVirtualizer } from './use-chat-virtualizer.svelte.ts';
   import { useChatDisclosureState } from './use-chat-disclosure-state.svelte.ts';
@@ -112,6 +114,7 @@
   import { useChatQuoteSelection } from './use-chat-quote-selection.svelte.ts';
   import ChatQuoteChips from './chat-quote-chips.svelte';
   import { MAX_QUOTES, composeQuotedContent } from '../utilities/quote-composition.ts';
+  import { classifyAssistantText } from '../utilities/message-narration.ts';
   import { useChatHistoryLifecycle } from './use-chat-history-lifecycle.svelte.ts';
   import { useChatHistoryRestoration } from './use-chat-history-restoration.svelte.ts';
   import { useChatAutoScroll } from './use-chat-auto-scroll.svelte.ts';
@@ -176,6 +179,7 @@
     questionLabels,
     empty,
     trailing,
+    trailingAskPending = false,
     emptyTitle = 'No messages yet',
     emptyDescription,
     emptyPrompts,
@@ -189,7 +193,6 @@
     typingParticipants,
     readReceipts,
     sourcesByMessageId,
-    sourcePresentation = 'compact',
     adapter,
     onAdapterError,
     onPushMessage,
@@ -340,7 +343,7 @@
     onRemeasureRow: remeasureRow,
     defaultExpanded: true,
   });
-  // The expandable source lists (`sourcePresentation="list"`), collapsed by default.
+  // The source lists opened in place under a message line, collapsed by default.
   const sourcesState = useChatDisclosureState({ onRemeasureRow: remeasureRow });
 
   /**
@@ -488,15 +491,38 @@
   );
   provideQuestionStore(questions);
 
-  // The first open question that is docked takes the composer's place; Reply in chat instead puts
+  // The first open question that is docked takes the composer's place; Reply in chat puts
   // it back in its row and gives the composer back.
-  const dockedQuestion = $derived(questions.dockedQuestions[0]);
-  const dockedPosition = $derived(questions.dockedAnswered + 1);
-  const dockedTotal = $derived(questions.dockedAnswered + questions.dockedQuestions.length);
+  // The dock shows the first open question, or the one the previous and next buttons moved it to,
+  // which may be one already answered; it closes when none is open. `Question 2 of 4` counts through
+  // the round: the open questions and the answered ones that can still be changed.
+  const dockRound = $derived(questions.dockRound);
+  const firstOpenQuestion = $derived(dockRound.find((target) => target.answer === undefined));
+  const dockedQuestion = $derived(
+    firstOpenQuestion === undefined
+      ? undefined
+      : (dockRound.find((target) => target.toolCallId === questions.viewedDock) ??
+          firstOpenQuestion),
+  );
+  const dockedPosition = $derived(
+    dockedQuestion === undefined ? 1 : dockRound.indexOf(dockedQuestion) + 1,
+  );
+  const dockedTotal = $derived(dockRound.length);
+
+  // Once every question of the round is answered the dock has nothing to ask: the round ends, so a
+  // question asked later starts a new one.
+  $effect(() => {
+    if (dockRound.length > 0 && firstOpenQuestion === undefined) questions.closeDockRound();
+  });
 
   function replyInChatInstead(toolCallId: string): void {
     questions.dismissDock(toolCallId);
     void tick().then(() => inputRef?.focus());
+  }
+
+  function moveDock(direction: -1 | 1): void {
+    const target = dockRound[dockedPosition - 1 + direction];
+    if (target !== undefined) questions.viewDock(target.toolCallId);
   }
 
   const commandActions = useChatCommandActions({
@@ -639,6 +665,26 @@
     // expansion callback leave grouping on (COR-2289).
     getUngroupAllToolCalls: () =>
       Boolean(row || messagePart || searchState.isOpen || rollbackMessageId),
+    // A settled turn's narration folds into its step group on the transcript presentation, and only
+    // when the message draws nothing but its text: the group draws the text and nothing else.
+    getCanFoldNarration: () =>
+      variant === 'transcript'
+        ? (message) =>
+            (resolveMessageReasoning(message, messageReasoning) ?? '') === '' &&
+            resolveMessageSteps(message, messageSteps) === undefined &&
+            resolveMessageNotes(message) === undefined &&
+            sourcesByMessageId?.get(message.id) === undefined &&
+            ['complete', undefined].includes(
+              resolveMessageTurnState(message, messageTurnState)?.kind,
+            )
+        : () => false,
+    getDeferOutcome: () =>
+      variant === 'transcript'
+        ? (message) =>
+            ['stopped', 'failed'].includes(
+              resolveMessageTurnState(message, messageTurnState)?.kind ?? '',
+            )
+        : undefined,
   });
 
   /**
@@ -666,10 +712,32 @@
     messages.findLast((candidate) => candidate.role === 'assistant')?.id,
   );
   const activeTurnMessageIds = $derived(transcript.activeTurnMessageIds);
+  // What each assistant text message is within its turn: narration (a tool message follows it) or
+  // the answer. Derived from position alone, so nothing stored or sent changes.
+  // Narration directly before a pending approval, question or tool input is the agent talking to
+  // the person, so it is `asking` and keeps its message line. An ask the person has answered stops
+  // counting before its result stops asking.
+  const assistantTextRoles = $derived(
+    classifyAssistantText(messages, {
+      trailingAskPending,
+      answeredCallIds: new Set([
+        ...questions.answers.keys(),
+        ...[...commandActions.approvalStates]
+          .filter(([, state]) => state !== 'pending')
+          .map(([callId]) => callId),
+      ]),
+    }),
+  );
   const progressState = $derived(transcript.progressState);
   const toolCallPairsByCallId = $derived(transcript.toolCallPairsByCallId);
   const toolResultMessagesByResult = $derived(transcript.toolResultMessagesByResult);
   const renderRows = $derived(transcript.renderRows);
+  // The messages whose notice is drawn after their step row, as a row of its own.
+  const deferredOutcomeIds = $derived(
+    new Set(
+      renderRows.flatMap((entry) => (entry.type === 'turn-outcome' ? [entry.message.id] : [])),
+    ),
+  );
   let selectedArtifactId = $state<string | undefined>(undefined);
   const resolvedArtifactsById = $derived.by(() => {
     const artifacts = new Map<string, ResolvedChatArtifact>();
@@ -743,6 +811,32 @@
       const pair = pairs.find((candidate) => candidate.call === message.toolCall) ?? pairs[0];
       return pair ? [{ message, pair }] : [];
     });
+  }
+
+  /**
+   * The lines a folded turn said between its steps, each with how many of the group's drawn steps
+   * came before it, so the timeline draws it in its place among them.
+   */
+  function groupNarration(
+    entries: readonly ToolCallRunEntry[] | undefined,
+    drawnPairs: readonly { message: Message }[],
+  ): { id: string; beforePairIndex: number; content: string }[] {
+    if (entries === undefined) return [];
+    const drawnIds = new Set(drawnPairs.map(({ message }) => message.id));
+    let before = 0;
+    const lines: { id: string; beforePairIndex: number; content: string }[] = [];
+    for (const entry of entries) {
+      if (entry.type === 'step') {
+        if (drawnIds.has(entry.message.id)) before += 1;
+      } else {
+        lines.push({
+          id: entry.message.id,
+          beforePairIndex: before,
+          content: getMessageText(entry.message),
+        });
+      }
+    }
+    return lines;
   }
 
   function actionRequiredApprovalMessages(groupMessages: readonly Message[]): Message[] {
@@ -1473,6 +1567,17 @@
   // The line under the composer is the host's. A pending approval is shown in the transcript, so
   // the composer keeps its hint and stays live (a message sent now steers the run).
   const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(composerStatus);
+  // A dropped stream is about the connection, so its notice stands by the composer and not under
+  // the partial reply: the latest assistant turn the host reports as reconnecting supplies it.
+  const reconnectingTurn = $derived.by(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message === undefined || message.role !== 'assistant') continue;
+      const state = resolveMessageTurnState(message, messageTurnState);
+      if (state?.kind === 'reconnecting') return { messageId: message.id, state };
+    }
+    return undefined;
+  });
   // A conversation that is not available (loading, canceled, failed or deleted) stands in the
   // transcript's place; a failed or deleted one has nothing to send to, so it takes the composer's
   // place too, while a loading or canceled one keeps the editor and Send waits for the history.
@@ -1502,12 +1607,7 @@
       return {
         kind: 'blocked',
         reason: words.unconfiguredTitle,
-        action: {
-          label: words.connectProvider,
-          shortLabel: words.connectProviderShort,
-          onclick: availability.onConnect,
-          primary: true,
-        },
+        action: { label: words.connectProvider, onclick: availability.onConnect, primary: true },
       };
     }
     return undefined;
@@ -1544,9 +1644,9 @@
   // The room the reminder takes from the transcript (its height and margins), last read while it
   // was on screen; the estimate holds until the first read. It is not state: nothing renders from
   // it, and it only keeps the box the row is judged against the same with the reminder on and off.
-  // One row: a small button (28px) inside 6px of padding and a hairline each way, and 4px of
-  // margin above and below.
-  let approvalReminderBlockSize = 50;
+  // One row of the neutral Callout: a small button (28px) between its 12px insets and a hairline
+  // each way, and 4px of margin above and below.
+  let approvalReminderBlockSize = 62;
   /**
    * Reads the reminder from the page, not from state: what the transcript's box excludes is what is
    * drawn now, and a state update the page has not yet drawn would count the reminder twice.
@@ -1714,6 +1814,9 @@
   // Whether the transcript sits where a waiting item's lift put it, and not where the person did.
   // Jump to latest stays hidden then: the lift is the end of what there is to read (C#7).
   let attentionLifted = $state(false);
+  // Whether Jump to latest is drawn. The transcript gives up the band the button floats in while
+  // it shows, so the button never lies on a line of text; the band is not there otherwise.
+  const jumpButtonShown = $derived(scrollState.showJumpButton && !attentionLifted);
   $effect(() => {
     const scroller = viewport;
     if (scroller === null || typeof ResizeObserver === 'undefined') return undefined;
@@ -2319,6 +2422,7 @@
     data-cinder-density={density}
     data-cinder-variant={variant}
     data-composer-placement={composerCentered ? 'centered' : 'docked'}
+    data-jump-visible={jumpButtonShown ? '' : undefined}
     role="region"
     aria-label="Chat conversation"
     onkeydown={handleKeyDown}
@@ -2393,6 +2497,7 @@
       messageRow: ChatMessageRenderRow,
       suppressToolCall = false,
       approvalLayout: 'decision' | 'row' = 'decision',
+      rowPart: 'whole' | 'outcome' = 'whole',
     )}
       {@const message = messageRow.message}
       {@const pairs = message.toolCall?.id
@@ -2467,6 +2572,13 @@
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           presentation={variant === 'transcript' ? 'transcript' : 'default'}
+          narration={['narration', 'asking'].includes(assistantTextRoles.get(message.id) ?? '')}
+          asking={assistantTextRoles.get(message.id) === 'asking'}
+          section={rowPart === 'outcome'
+            ? 'outcome'
+            : deferredOutcomeIds.has(message.id)
+              ? 'body'
+              : 'whole'}
           {notSent}
           onRemoveQueued={commandActions.canRemoveQueued &&
           !commandActions.removingMessageIds.has(message.id)
@@ -2517,12 +2629,10 @@
           toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}
           onSuggestionSelect={handleSuggestionSelect}
           sources={message.role === 'assistant' ? sourcesByMessageId?.get(message.id) : undefined}
-          {sourcePresentation}
           sourcesExpanded={sourcesState.isExpanded(message.id)}
           onsourcestoggle={() => void toggleSources(message.id)}
           turnState={resolveMessageTurnState(message, messageTurnState)}
           {turnLabels}
-          {onRetryConnection}
           {onContinueTurn}
           {onDiscardTurn}
           {onRetryTurn}
@@ -2547,7 +2657,7 @@
             {/if}
           {/snippet}
         </ChatMessage>
-        {#if artifact}
+        {#if artifact && rowPart !== 'outcome'}
           <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">
             {@render renderArtifactAction(artifact)}
           </div>
@@ -2608,6 +2718,8 @@
                 ? (pair) => describeToolCallSafely(pair.call, pair.result)
                 : undefined}
               pairs={ordinaryPairs.map(({ pair }) => pair)}
+              narration={groupNarration(renderRow.entries, ordinaryPairs)}
+              {markdownNode}
               approvalStates={commandActions.approvalStates}
               durations={toolCallDurations(ordinaryPairs)}
               startTimes={toolCallStartTimes(ordinaryPairs)}
@@ -2637,8 +2749,28 @@
             {/each}
           </div>
         {/if}
+      {:else if renderRow.type === 'turn-outcome'}
+        {@render renderMessageRow(
+          { type: 'message', message: renderRow.message },
+          false,
+          'decision',
+          'outcome',
+        )}
       {:else}
         {@render renderMessageRow(renderRow)}
+      {/if}
+    {/snippet}
+
+    {#snippet connectionNotice()}
+      {#if reconnectingTurn !== undefined}
+        {@const reconnecting = reconnectingTurn}
+        <ChatConnectionNotice
+          turn={reconnecting.state}
+          {turnLabels}
+          onRetry={onRetryConnection === undefined
+            ? undefined
+            : () => onRetryConnection(reconnecting.messageId)}
+        />
       {/if}
     {/snippet}
 
@@ -2774,7 +2906,7 @@
     <!-- Input Area with Jump Buttons -->
     <div class="chat-input-wrapper" style:display={composerHidden ? 'none' : undefined}>
       <ChatJumpControls
-        showJumpButton={scrollState.showJumpButton && !attentionLifted}
+        showJumpButton={jumpButtonShown}
         hasNewMessageIndicator={unreadState.newMessageIndicatorVisible}
         unreadCount={unreadState.unreadCount}
         displayUnreadCount={unreadState.displayUnreadCount}
@@ -2828,17 +2960,24 @@
             onremove={removeQueuedFollowUp}
           />
         {/if}
-        {#if dockedQuestion !== undefined}
-          {#key dockedQuestion.toolCallId}
-            <ChatQuestionDock
-              id={`${id}-question-dock`}
-              question={dockedQuestion}
-              position={dockedPosition}
-              total={dockedTotal}
-              onReply={() => replyInChatInstead(dockedQuestion.toolCallId)}
-              labels={questionDockLabels}
-            />
-          {/key}
+        {#if dockedQuestion !== undefined && firstOpenQuestion !== undefined}
+          <!-- One dock for the whole round, so focus stays on the previous or next button that was
+               pressed; the dock resets its own choice when the question changes. Reply in chat
+               gives back the composer, which only an open question can: on an answered one it
+               puts the first open question back in its row. -->
+          <ChatQuestionDock
+            id={`${id}-question-dock`}
+            question={dockedQuestion}
+            position={dockedPosition}
+            total={dockedTotal}
+            onReply={() =>
+              replyInChatInstead(
+                (dockedQuestion.answer === undefined ? dockedQuestion : firstOpenQuestion)
+                  .toolCallId,
+              )}
+            onNavigate={moveDock}
+            labels={questionDockLabels}
+          />
         {/if}
         <ChatInput
           labels={chatLabels}
@@ -2852,6 +2991,7 @@
           hint={composerHint}
           controls={composerControls}
           header={composerHeader}
+          connectionNotice={reconnectingTurn === undefined ? undefined : connectionNotice}
           disabled={streaming && (!followUpsEnabled || composerCompact)}
           paused={disabled}
           {pausedReason}
@@ -2974,6 +3114,21 @@
     background: transparent;
   }
 
+  /* Jump to latest floats over the transcript's bottom edge: its painted size and the space above
+   * the composer are named here, for the button (chat-jump-controls.svelte) and for the band the
+   * transcript gives up while it shows, so the one reads what the other draws. */
+  .chat-container {
+    --_cinder-chat-jump-size: 2rem;
+    --_cinder-chat-jump-offset: var(--cinder-space-2);
+  }
+
+  /* While the button shows, the transcript ends above it: a line scrolled to the bottom edge is
+   * cut there, never drawn under the button. The viewport's top and the scroll position do not
+   * move, so the reader's place holds; with the button hidden there is no band. */
+  .chat-container[data-jump-visible] > .chat-timeline {
+    margin-block-end: calc(var(--_cinder-chat-jump-size) + var(--_cinder-chat-jump-offset));
+  }
+
   /* ==========================================================================
    * Density tokens — intermediate contract between container and its children.
    * ONLY the container reads `data-cinder-density`; children consume the
@@ -3045,7 +3200,9 @@
     padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-chat-message-gap);
+    /* The gap between rows, named so a row that adjusts its own spacing reads the width's value. */
+    --_cinder-chat-row-gap: var(--cinder-chat-message-gap);
+    gap: var(--_cinder-chat-row-gap);
   }
 
   /* The inner implementation is also rendered directly by package fixtures.
@@ -3310,9 +3467,11 @@
   .chat-typing-indicator {
     display: flex;
     align-items: center;
-    gap: var(--cinder-space-1);
+    /* The dots are as far apart as they are wide, so they read as three marks and not one
+     * smudge, and the row stands a full step clear of the text above it. */
+    gap: 0.375rem;
     /* Quiet and inline: no bubble, on the same edge as the assistant's text above it. */
-    padding: var(--cinder-space-1) 0;
+    padding: var(--cinder-space-2) 0 var(--cinder-space-1);
     max-width: max-content;
     animation: typing-indicator-enter var(--cinder-duration-base) var(--cinder-ease-decelerate);
   }
@@ -3334,10 +3493,12 @@
     font-style: italic;
   }
 
+  /* Drawn in the body text colour and never fainter than 55%: at rest a dot is then at least
+   * 4:1 against the page in both themes. The muted colour at 40% fell under 3:1 on dark. */
   .chat-typing-dot {
-    width: 0.5rem;
-    height: 0.5rem;
-    background: var(--cinder-text-muted);
+    width: 0.375rem;
+    height: 0.375rem;
+    background: var(--cinder-text-default);
     border-radius: var(--cinder-radius-full);
     animation: typing-bounce 1.4s ease-in-out infinite;
   }
@@ -3358,7 +3519,7 @@
     0%,
     60%,
     100% {
-      opacity: 0.4;
+      opacity: 0.55;
       transform: translateY(0);
     }
     30% {
@@ -3375,7 +3536,7 @@
     @keyframes typing-pulse {
       0%,
       100% {
-        opacity: 0.4;
+        opacity: 0.55;
       }
       50% {
         opacity: 1;
@@ -3463,11 +3624,55 @@
     min-inline-size: 0;
   }
 
+  /* The answer under a collapsed step row stands as far from the row's text as a message's own
+   * text stands from the time under it, measured between the letters (R06, owner decision of
+   * 2026-11-13), at every width. Between the baseline of the message's last line and the capitals
+   * of its time stand the line's gap and pull, and the part of the line's height above the
+   * time's capitals, half of what the height leaves round them. The answer's first line has the
+   * same air above its capitals as the message's last line has below its baseline, so the two
+   * cancel; the step row's own air below its last baseline is taken off its toggle (the browser
+   * puts a baseline on a whole pixel, so that air is a whole number of pixels: half the leading
+   * round the capitals, rounded down), and the gap to the answer is these terms less the row gap
+   * the timeline puts between rows. The timeline takes the time's size for this one gap, so
+   * `1cap` in it is the time's capitals. Only a collapsed row with nothing after it in its group
+   * is spaced this way, and only above an assistant's text: an open row ends in a step's own box,
+   * not in the row's text, and the notice that ends a stopped turn is a box with no leading above
+   * its first ink, and the next person's message a bubble, so those keep the row gap. */
+  .chat-tool-call-group:has(
+      + :global(.chat-message-wrapper[data-role='assistant']:not([data-section='outcome']))
+    )
+    > :global(.chat-tool-call-timeline):has(
+      :global(.chat-tool-call-toggle[aria-expanded='false'])
+    ):has(+ .chat-approval-group-rows:empty:last-child)
+    :global(.chat-tool-call-toggle) {
+    margin-block-end: calc(round(down, (1lh - 1cap) / 2, 1px) * -1);
+  }
+
+  .chat-tool-call-group:has(
+      + :global(.chat-message-wrapper[data-role='assistant']:not([data-section='outcome']))
+    )
+    > :global(.chat-tool-call-timeline):has(
+      :global(.chat-tool-call-toggle[aria-expanded='false'])
+    ):has(+ .chat-approval-group-rows:empty:last-child) {
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    margin-block-end: calc(
+      var(--_cinder-chat-line-gap, var(--cinder-space-1)) +
+        var(--_cinder-chat-line-pull, calc(var(--cinder-space-1) * -1.5)) +
+        (var(--_cinder-chat-line-block-size, 1.5rem) - 1cap) / 2 - var(--_cinder-chat-row-gap)
+    );
+  }
+
   .chat-approval-group-rows {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-3);
     min-inline-size: 0;
+  }
+
+  /* A group with no approval cards leaves no empty row at its end: the gap between its children
+   * would otherwise stand under the step row as a band no one can see. */
+  .chat-approval-group-rows:empty {
+    display: none;
   }
 
   .chat-approval-group-rows :global(.chat-message-wrapper) {
@@ -3550,7 +3755,7 @@
   @container (max-width: 480px) {
     .chat-timeline {
       padding: var(--cinder-chat-narrow-padding);
-      gap: var(--cinder-chat-narrow-gap);
+      --_cinder-chat-row-gap: var(--cinder-chat-narrow-gap);
     }
 
     .chat-input-area {

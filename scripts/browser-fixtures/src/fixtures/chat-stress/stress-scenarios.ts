@@ -76,7 +76,6 @@ export interface StressSetup {
   reasoning: Record<number, ReasoningInfo>;
   /** Sources by the assistant turn's position, from zero. */
   sources: Record<number, CitationSource[]>;
-  sourcePresentation?: 'compact' | 'list' | 'inline';
   /** Shows Regenerate, Copy and Quote under replies. */
   regenerate: boolean;
   /** A draft the host puts back in the composer when the page loads. */
@@ -321,6 +320,29 @@ const ENVIRONMENT_SCHEMA = {
   },
 };
 
+/** More choices than a short viewport holds, so the docked list proves it shows every one. */
+const LEDGER_SCHEMA = {
+  enum: ['staging', 'production', 'canary', 'qa', 'preview', 'sandbox', 'demo'],
+  'x-labels': {
+    staging: 'Staging',
+    production: 'Production',
+    canary: 'Canary',
+    qa: 'QA',
+    preview: 'Preview',
+    sandbox: 'Sandbox',
+    demo: 'Demo',
+  },
+  'x-descriptions': {
+    staging: 'Safe to break',
+    production: 'Customers see it',
+    canary: 'A tenth of customers',
+    qa: 'The test team',
+    preview: 'One branch',
+    sandbox: 'Throwaway data',
+    demo: 'Sales calls',
+  },
+};
+
 const ENVIRONMENT_OR_OTHER_SCHEMA = {
   anyOf: [{ enum: ['staging', 'production', 'canary'] }, { type: 'string', maxLength: 80 }],
   'x-allowOther': true,
@@ -384,8 +406,13 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       'kind',
       'loading',
     );
+    // A conversation with no message yet is the one the unconfigured state replaces whole (COR-2285
+    // V4); with history Chat keeps the transcript and blocks the composer, which the blocked
+    // composer case holds. Every other availability stands in over a conversation with a turn.
     const setup = baseSetup(
-      plainTurn('stress-availability', 'Where did the refund go?', 'It was issued on Nov 1.'),
+      kind === 'unconfigured'
+        ? start('stress-availability')
+        : plainTurn('stress-availability', 'Where did the refund go?', 'It was issued on Nov 1.'),
     );
     if (kind === 'loading') {
       setup.availability = {
@@ -499,14 +526,67 @@ const scenarios: Record<StressScenarioName, Scenario> = {
   },
 
   'tool-group': (stressCase) => {
-    const shape = param<'repeat' | 'steps' | 'approval' | 'identifier' | 'failed' | 'running'>(
-      stressCase,
-      'shape',
-      'steps',
-    );
+    const shape = param<
+      | 'repeat'
+      | 'steps'
+      | 'approval'
+      | 'identifier'
+      | 'failed'
+      | 'running'
+      | 'narration-working'
+      | 'narration-settled'
+      | 'narration-stopped'
+    >(stressCase, 'shape', 'steps');
     let conversation = appendUserMessage(start('stress-tools'), 'Check the refund queue.');
     const setup = baseSetup(conversation);
-    if (shape === 'running') {
+    if (shape === 'narration-working') {
+      // The agent said what it is doing, a step finished, and the run goes on: the narration is
+      // muted where it falls, and the working dots sit under the last part.
+      conversation = appendAssistantMessage(conversation, 'Reading the refund policy first.');
+      conversation = withCall(
+        conversation,
+        'read-policy',
+        'read_policy',
+        { document: 'refunds' },
+        { status: 'ok' },
+      );
+      setup.streaming = true;
+      setup.runInput = true;
+    } else if (shape === 'narration-settled') {
+      // Two steps with a line said before each, then the answer: when the turn is settled the
+      // lines fold into the step row and the turn reads as that row and the answer.
+      conversation = appendAssistantMessage(conversation, 'Reading the refund policy first.');
+      conversation = withCall(
+        conversation,
+        'read-policy',
+        'read_policy',
+        { document: 'refunds' },
+        { status: 'ok' },
+      );
+      conversation = appendAssistantMessage(conversation, 'Now the recent orders.');
+      conversation = withCall(
+        conversation,
+        'read-orders',
+        'list_orders',
+        { limit: 20 },
+        { status: 'ok' },
+      );
+      conversation = appendAssistantMessage(
+        conversation,
+        'The policy and the orders agree on the 4471 refund.',
+      );
+    } else if (shape === 'narration-stopped') {
+      // The run was stopped after a line and a step, before any answer: the line stays, muted.
+      conversation = appendAssistantMessage(conversation, 'Reading the refund policy first.');
+      conversation = withCall(
+        conversation,
+        'read-policy',
+        'read_policy',
+        { document: 'refunds' },
+        { status: 'ok' },
+      );
+      setup.turnStates[0] = { kind: 'stopped' };
+    } else if (shape === 'running') {
       // A call with no result yet is a step that is running: the run is live and waits on it.
       conversation = appendToolCall(conversation, {
         id: 'read-ledger',
@@ -718,7 +798,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
           url: 'https://docs.example.com/refunds',
         },
       ];
-      setup.sourcePresentation = 'list';
     } else {
       conversation = withApproval(
         conversation,
@@ -757,11 +836,26 @@ const scenarios: Record<StressScenarioName, Scenario> = {
   },
 
   question: (stressCase) => {
-    const shape = param<'single' | 'other' | 'three' | 'identifier'>(stressCase, 'shape', 'single');
+    const shape = param<'single' | 'other' | 'three' | 'four' | 'identifier'>(
+      stressCase,
+      'shape',
+      'single',
+    );
     let conversation = appendUserMessage(start('stress-question'), 'Deploy the build.');
     const setup = baseSetup(conversation);
     setup.runInput = true;
-    if (shape === 'three') {
+    if (shape === 'four') {
+      conversation = withQuestion(conversation, 'ask-1', 'Which environment?', ENVIRONMENT_SCHEMA);
+      conversation = withQuestion(conversation, 'ask-2', 'Which region?', {
+        enum: ['east', 'west', 'north'],
+      });
+      conversation = withQuestion(conversation, 'ask-3', 'Notify the channel?', {
+        type: 'boolean',
+      });
+      conversation = withQuestion(conversation, 'ask-4', 'Which support tier?', {
+        enum: ['free', 'paid'],
+      });
+    } else if (shape === 'three') {
       conversation = withQuestion(conversation, 'ask-1', 'Which environment?', ENVIRONMENT_SCHEMA);
       conversation = withQuestion(conversation, 'ask-2', 'Which region?', {
         enum: ['east', 'west', 'north'],
@@ -781,7 +875,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         conversation,
         'ask-1',
         `Which ledger should ${LONG_TOOL} export?`,
-        ENVIRONMENT_SCHEMA,
+        LEDGER_SCHEMA,
       );
     } else {
       conversation = withQuestion(conversation, 'ask-1', 'Which environment?', ENVIRONMENT_SCHEMA);
@@ -830,7 +924,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
   },
 
   citations: (stressCase) => {
-    const presentation = param<'inline' | 'compact' | 'list'>(stressCase, 'presentation', 'inline');
     const setup = baseSetup(
       plainTurn(
         'stress-citations',
@@ -842,7 +935,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       param<'contract' | undefined>(stressCase, 'sourceSet', undefined) === 'contract'
         ? SOURCE_LIST_CONTRACT_SOURCES
         : SAMPLE_SOURCES;
-    setup.sourcePresentation = presentation;
     setup.withdrawable = param(stressCase, 'withdrawable', false);
     return setup;
   },
@@ -855,7 +947,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         'The order was charged twice.',
       ),
     );
-    setup.sourcePresentation = 'list';
     setup.sources[0] = [];
     return setup;
   },
@@ -870,7 +961,6 @@ const scenarios: Record<StressScenarioName, Scenario> = {
     );
     setup.direction = 'rtl';
     setup.sources[0] = [{ label: 'سياسة الاسترداد', url: 'https://docs.example.com/refunds' }];
-    setup.sourcePresentation = 'inline';
     return setup;
   },
 

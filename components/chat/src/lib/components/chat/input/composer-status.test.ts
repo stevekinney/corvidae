@@ -23,7 +23,8 @@ describe('composerStatusText', () => {
 
   test('reads the draft-restored drawer with when the draft is from', () => {
     expect(composerStatusText({ kind: 'draft-restored', when: 'yesterday at 4:12 PM' })).toBe(
-      'Restored your unsent draft from yesterday at 4:12 PM.',
+      // The time and its PM are one unit: a narrow drawer never leaves "PM." alone on a line.
+      'Restored your unsent draft from yesterday at 4:12 PM.',
     );
   });
 

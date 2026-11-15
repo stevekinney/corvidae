@@ -187,36 +187,30 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
   });
 
-  test('is one row, the glyph, the words and Review at its end, which reads Review in a narrow column and keeps its name (COR-2327 B1)', async () => {
+  test('is the neutral notice, its action kept beside the words while both fit, reading Review in a narrow column and keeping its name (COR-2327 B1)', async () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-one-row',
       conversation: approvalConversation('drawer-one-row'),
     });
     const drawer = drawerOf(container)!;
-    const row = drawer.querySelector('.chat-approval-drawer-row')!;
 
-    // The glyph, the words and the button are siblings in one row: the button never sits on a line
-    // of its own under the words, as a Callout's action does under 30rem.
-    expect(drawer.querySelector('.cinder-callout')).toBeNull();
-    expect([...row.children].map((child) => child.getAttribute('class') ?? '')).toEqual([
-      expect.stringContaining('chat-approval-drawer-glyph'),
-      expect.stringContaining('chat-approval-drawer-text'),
-      expect.stringContaining('chat-approval-drawer-actions'),
-    ]);
+    // Cinder's notice recipe, with the fit layout: on a phone the action stays beside the words
+    // while both fit, rather than dropping to a line of its own as the inline layout does.
+    expect(drawer.classList.contains('cinder-callout')).toBe(true);
+    expect(drawer.getAttribute('data-cinder-variant')).toBe('neutral');
+    expect(drawer.classList.contains('cinder-callout--fit-action')).toBe(true);
     const review = getByRole(drawer, 'button', { name: 'Review approval' });
     expect(review.getAttribute('data-cinder-size')).toBe('sm');
     expect(review.querySelector('.chat-approval-drawer-action-short')?.textContent).toBe('Review');
 
-    // The short words show only in a narrow column: the row asks its own width, not the screen's.
+    // The short words show only in a narrow column: the Callout is its own inline-size container,
+    // so the question is the notice's width, not the screen's.
     const source = await Bun.file(
       new URL('./container/chat-approval-drawer.svelte', import.meta.url),
     ).text();
-    expect(source).toContain('container-type: inline-size;');
     const narrow = /@container \(inline-size < 30rem\) \{([\s\S]*?)\n {2}\}\n/u.exec(source)?.[1];
     expect(narrow).toMatch(/\.chat-approval-drawer-action-full \{\s*display: none;/u);
     expect(narrow).toMatch(/\.chat-approval-drawer-action-short \{\s*display: inline;/u);
-    expect(source).toMatch(/\.chat-approval-drawer-row \{[^}]*display: flex;[^}]*\}/u);
-    expect(source).not.toMatch(/\.chat-approval-drawer-row \{[^}]*flex-wrap: wrap;[^}]*\}/u);
   });
 
   test('says the short Review in a host’s own words', () => {
@@ -591,7 +585,7 @@ describe('Chat approval receipt', () => {
     });
     const card = getByRole(container, 'article', { name: QUESTION });
 
-    await fireEvent.click(getByRole(card, 'button', { name: 'Add a note' }));
+    await fireEvent.click(getByRole(card, 'button', { name: 'Add note' }));
     await fireEvent.input(card.querySelector('textarea')!, {
       target: { value: 'Checked the order' },
     });
@@ -599,10 +593,10 @@ describe('Chat approval receipt', () => {
     await tick();
 
     const receipt = getByRole(container, 'article', { name: 'Approved: Refund' });
-    expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
-    expect(receipt.querySelector('.cinder-approval-card__receipt-by')?.textContent?.trim()).toMatch(
-      /^by you, \d{1,2}:\d{2} [AP]M$/,
+    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
+      'Approved by you',
     );
+    expect(receipt.nextElementSibling?.textContent?.trim()).toMatch(/\d{1,2}:\d{2} [AP]M$/);
     expect(queryByRole(receipt, 'button', { name: 'Refund' })).toBeNull();
   });
 
@@ -628,7 +622,9 @@ describe('Chat approval receipt', () => {
 
     const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
-    expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
+    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
+      'Approved by you',
+    );
     expect(drawerOf(view.container)).toBeNull();
   });
 
@@ -658,7 +654,9 @@ describe('Chat approval receipt', () => {
 
     const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
-    expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
+    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
+      'Approved by you',
+    );
   });
 
   test('a decided call keeps its own row beside a neighbouring completed call, so the receipt is not folded into a group', async () => {

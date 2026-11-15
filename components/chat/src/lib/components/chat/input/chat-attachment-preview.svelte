@@ -6,10 +6,15 @@
   export interface ChatAttachmentPreviewProps {
     attachment: ChatAttachment;
     class?: string;
-    /** The upload failure reason, rendered inside the file tile. */
-    error?: string | undefined;
-    /** Stable identifier retained for attachment error assertions and host styling. */
-    errorId?: string | undefined;
+    /**
+     * What activating the chip's main area does: retries a failed upload, or shows why one of
+     * several failed. Without it the main area is plain content.
+     */
+    onactivate?: (() => void) | undefined;
+    /** The accessible name of the main area while it is a control. */
+    activateLabel?: string | undefined;
+    /** Whether the chip is the failed file the line under the strip is explaining. */
+    picked?: boolean | undefined;
     /** A control drawn at the end of the chip, inside its border, such as Remove. */
     action?: Snippet | undefined;
     labels?: ChatLabels;
@@ -17,141 +22,127 @@
 </script>
 
 <script lang="ts">
+  import {
+    FileIcon,
+    FileArchive,
+    FileAudio,
+    FileCode,
+    FileImage,
+    FileSpreadsheet,
+    FileText,
+    FileVideo,
+    Progress,
+    RotateCcw,
+    TriangleAlert,
+  } from '@lostgradient/cinder';
   import { classNames } from '../../../utilities/class-names.ts';
   import { DEFAULT_CHAT_LABELS } from '../chat-labels.ts';
-  import { formatBytes } from '../../../utilities/format-bytes.ts';
-  import { fileTypeBadge, middleEllipsisFileName, uploadPercent } from './attachment-tile.ts';
+  import { attachmentGlyph, canRetry, splitFileName, uploadPercent } from './attachment-tile.ts';
+  import { fitFileName } from './fit-file-name.ts';
 
   let {
     attachment,
     class: className,
-    error,
-    errorId,
+    onactivate,
+    activateLabel,
+    picked,
     action,
     labels = DEFAULT_CHAT_LABELS,
   }: ChatAttachmentPreviewProps = $props();
 
-  const badge = $derived(fileTypeBadge(attachment.file.name, attachment.kind));
-  let nameElement = $state<HTMLElement | null>(null);
-  let displayName = $state('');
+  const glyph = $derived(
+    attachmentGlyph(attachment.file.name, attachment.file.type, attachment.kind),
+  );
+  const GLYPHS = {
+    image: FileImage,
+    document: FileText,
+    spreadsheet: FileSpreadsheet,
+    archive: FileArchive,
+    audio: FileAudio,
+    video: FileVideo,
+    code: FileCode,
+    file: FileIcon,
+  } as const;
+  const FileGlyph = $derived(GLYPHS[glyph]);
+  const parts = $derived(splitFileName(attachment.file.name));
   const percent = $derived(
     attachment.status === 'uploading' ? uploadPercent(attachment.progress) : undefined,
   );
-
-  $effect(() => {
-    const element = nameElement;
-    const fullName = attachment.file.name;
-    if (element === null || typeof ResizeObserver === 'undefined') {
-      displayName = fullName;
-      return;
-    }
-    const update = (): void => {
-      const context = document.createElement('canvas').getContext('2d');
-      if (context === null) {
-        displayName = fullName;
-        return;
-      }
-      const style = getComputedStyle(element);
-      context.font = `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-      displayName = middleEllipsisFileName(
-        fullName,
-        // Whole pixels rounded down: `clientWidth` rounds to the nearest pixel, so a name measured to
-        // fit 218px in a 217.7px box would overflow it by a fraction of a pixel.
-        Math.floor(element.getBoundingClientRect().width),
-        (value) => context.measureText(value).width,
-      );
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    // The fit is measured in the font that is current when it runs. A web font that finishes
-    // loading later changes the width of the same text without resizing the box, so a fit made in
-    // the fallback font is refitted when fonts are ready and whenever a later load completes.
-    let disposed = false;
-    const refit = (): void => {
-      if (!disposed) update();
-    };
-    const fonts = typeof document === 'undefined' ? undefined : document.fonts;
-    void fonts?.ready.then(refit);
-    fonts?.addEventListener('loadingdone', refit);
-    return () => {
-      disposed = true;
-      fonts?.removeEventListener('loadingdone', refit);
-      observer.disconnect();
-    };
-  });
+  const busy = $derived(attachment.status === 'pending' || attachment.status === 'uploading');
+  const failed = $derived(attachment.status === 'error');
 </script>
 
 <!--
-  An attached file is a tile: a type badge, the file's name (truncated in the middle, so the
-  extension always shows), its size and, while it uploads, how far along it is, then an optional
-  control at its end. A file that failed keeps its tile, in the danger colour; its reason is drawn
-  inside the same tile.
+  An attached file is a chip: the glyph of its kind of file, its name (the stem shortens at its end
+  and the extension stays whole), and an optional control at its end. While it uploads a ring takes
+  the glyph's place; a file that failed has a danger outline and a retry or a warning glyph.
+  Everything a failure says goes in the line under the strip, never in the chip.
 -->
+{#snippet content()}
+  <span class="chat-attachment-preview-glyph" aria-hidden={busy ? undefined : 'true'}>
+    {#if busy}
+      <Progress
+        variant="ring"
+        size="xs"
+        {...percent === undefined ? {} : { value: percent }}
+        ariaLabel={attachment.status === 'uploading' ? labels.uploadingFile : labels.readingFile}
+      />
+    {:else if failed && canRetry(attachment)}
+      <RotateCcw class="cinder-icon-sm" aria-hidden="true" />
+    {:else if failed}
+      <TriangleAlert class="cinder-icon-sm" aria-hidden="true" />
+    {:else}
+      <FileGlyph class="cinder-icon-sm" aria-hidden="true" />
+    {/if}
+  </span>
+  <span class="chat-attachment-preview-name" dir="auto" {@attach fitFileName(parts.stem)}
+    ><span class="chat-attachment-preview-stem">{parts.stem}</span><span
+      class="chat-attachment-preview-extension">{parts.extension}</span
+    ></span
+  >
+{/snippet}
 <span
   class={classNames('chat-attachment-preview', className)}
   data-kind={attachment.kind}
+  data-glyph={glyph}
   data-state={attachment.status}
-  data-error={attachment.status === 'error' || undefined}
-  data-pending={attachment.status === 'pending' || attachment.status === 'uploading' || undefined}
+  data-error={failed || undefined}
+  data-failure-kind={failed ? (attachment.failureKind ?? 'unknown') : undefined}
+  data-picked={picked || undefined}
+  data-pending={busy || undefined}
+  title={failed && attachment.error !== undefined
+    ? `${attachment.file.name}. ${attachment.error}`
+    : attachment.file.name}
 >
-  <span class="chat-attachment-preview-main">
-    <span class="chat-attachment-preview-badge" aria-hidden="true">{badge}</span>
-    <span
-      bind:this={nameElement}
-      class="chat-attachment-preview-name"
-      title={attachment.file.name}
-      dir="auto">{displayName}</span
+  {#if onactivate}
+    <button
+      type="button"
+      class="chat-attachment-preview-main"
+      aria-label={activateLabel}
+      aria-pressed={picked === undefined ? undefined : picked}
+      onclick={onactivate}
     >
-    <span class="chat-attachment-preview-size">{formatBytes(attachment.file.size)}</span>
-    {#if percent !== undefined}
-      <span class="chat-attachment-preview-state">{percent}%</span>
-    {/if}
-    {#if action}
-      <span class="chat-attachment-preview-actions">{@render action()}</span>
-    {/if}
-  </span>
-  {#if percent !== undefined}
-    <span
-      class="chat-attachment-preview-loading"
-      role="progressbar"
-      aria-label={labels.uploadingFile}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={percent}
-    >
-      <span class="chat-attachment-preview-progress-bar" style:inline-size={`${percent}%`}></span>
-    </span>
-  {:else if attachment.status === 'pending' || attachment.status === 'uploading'}
-    <span
-      class="chat-attachment-preview-loading"
-      role="status"
-      aria-label={attachment.status === 'uploading' ? labels.uploadingFile : labels.readingFile}
-    >
-      <span class="chat-attachment-preview-loading-bar"></span>
-    </span>
+      {@render content()}
+    </button>
+  {:else}
+    <span class="chat-attachment-preview-main">{@render content()}</span>
   {/if}
-
-  {#if attachment.status === 'error'}
-    <span class="chat-attachment-preview-error" data-attachment-error={errorId} dir="auto">
-      {error ?? labels.uploadFailed}
-    </span>
+  {#if action}
+    <span class="chat-attachment-preview-actions">{@render action()}</span>
   {/if}
 </span>
 
 <style>
+  /* One height for every chip, whatever it holds: a glyph, a ring, or a retry. */
   .chat-attachment-preview {
     position: relative;
     display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-0-5, 0.125rem);
+    flex: 1 1 auto;
+    align-items: center;
     min-inline-size: 0;
-    inline-size: 100%;
-    max-inline-size: 100%;
+    block-size: var(--_cinder-painted-height-sm, 1.75rem);
     box-sizing: border-box;
-    padding-block: var(--cinder-space-1);
-    padding-inline: var(--cinder-space-3);
-    overflow: visible;
+    padding-inline-start: var(--cinder-space-2);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-raised);
@@ -161,113 +152,120 @@
 
   .chat-attachment-preview-main {
     display: flex;
+    flex: 1 1 auto;
     align-items: center;
-    gap: var(--cinder-space-0-5, 0.125rem);
+    gap: var(--cinder-space-1-5, 0.375rem);
     min-inline-size: 0;
-    inline-size: 100%;
+    block-size: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
   }
 
-  /* The type badge: the extension in capitals, in a quiet box. */
-  .chat-attachment-preview-badge {
-    flex: none;
-    padding-inline: var(--cinder-space-1);
+  button.chat-attachment-preview-main {
+    cursor: pointer;
     border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-inset);
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-    font-weight: var(--cinder-font-medium);
-    letter-spacing: 0.02em;
   }
 
-  /* The name truncates in the middle: the stem ellipsizes and the extension never shrinks. */
+  /* The inset recipe: the ring sits inside the chip's own border, where the strip cannot clip it. */
+  button.chat-attachment-preview-main:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  /* On a touch screen the chip paints compact and its main area reaches 44px tall by a positioned
+   * pseudo-element that takes no layout. */
+  @media (any-pointer: coarse) {
+    button.chat-attachment-preview-main {
+      position: relative;
+    }
+
+    button.chat-attachment-preview-main::before {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min, 44px)) / 2));
+    }
+  }
+
+  @media (forced-colors: active) {
+    button.chat-attachment-preview-main:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
+  /* The glyph is 1rem, never taller than the name's line, and is centred on it by the row. */
+  .chat-attachment-preview-glyph {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1rem;
+    block-size: 1rem;
+    color: var(--cinder-text-muted);
+  }
+
+  .chat-attachment-preview-glyph :global(.cinder-progress) {
+    display: flex;
+  }
+
+  /* The stem shortens at its end; the extension never shrinks, so "quarterly-rep….pdf" reads. */
   .chat-attachment-preview-name {
-    display: block;
-    flex: 1 1 0;
+    display: flex;
+    flex: 1 1 auto;
     min-inline-size: 0;
-    overflow: hidden;
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-medium);
     white-space: nowrap;
   }
 
-  .chat-attachment-preview-state {
-    flex: none;
-    margin-inline-start: var(--cinder-space-2);
-    color: var(--cinder-text-muted);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+  .chat-attachment-preview-stem {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .chat-attachment-preview-size {
+  /* Once the stem's text itself was shortened to fit (fit-file-name.ts), its box is its text: no
+   * clip of its own, so the ellipsis and the extension touch. */
+  .chat-attachment-preview-stem:global([data-fitted]) {
     flex: none;
-    color: var(--cinder-text-muted);
-    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .chat-attachment-preview-extension {
+    flex: none;
   }
 
   .chat-attachment-preview-actions {
     display: inline-flex;
     flex: none;
     align-items: center;
-    gap: var(--cinder-space-0-5, 0.125rem);
-    min-inline-size: max-content;
+    margin-inline-start: var(--cinder-space-1);
+    padding-inline-end: var(--cinder-space-0-5, 0.125rem);
   }
 
-  .chat-attachment-preview-error {
-    flex: none;
-    min-inline-size: 0;
+  /* A failed file keeps its chip and gains the danger outline; its glyph is the only other change. */
+  .chat-attachment-preview[data-error] {
+    border-color: var(--cinder-status-danger-border, var(--cinder-status-danger-text));
+  }
+
+  .chat-attachment-preview[data-error] .chat-attachment-preview-glyph {
     color: var(--cinder-status-danger-text);
-    font-size: var(--cinder-text-xs);
-    line-height: var(--cinder-leading-snug);
-    overflow-wrap: anywhere;
-    white-space: normal;
   }
 
-  /* A failed file keeps its chip and the red of its reason, with no red border: one layer of
-   * emphasis, and the row stays the same weight as its neighbours. */
-  .chat-attachment-preview[data-error] .chat-attachment-preview-badge {
-    background: var(--cinder-surface-inset);
-    color: var(--cinder-text-muted);
+  .chat-attachment-preview[data-failure-kind='too-large'] .chat-attachment-preview-glyph,
+  .chat-attachment-preview[data-failure-kind='unsupported-type'] .chat-attachment-preview-glyph {
+    color: var(--cinder-status-warning-text);
   }
 
-  .chat-attachment-preview-loading {
-    position: absolute;
-    inset-block-end: 0;
-    inset-inline: 0;
-    block-size: 2px;
-    overflow: hidden;
-    /* A status line along the tile's lower edge; the tile's Remove button reaches that edge, and
-     * a tap there is the button's. */
-    pointer-events: none;
-    background: var(--cinder-surface-inset);
-  }
-
-  .chat-attachment-preview-progress-bar {
-    display: block;
-    block-size: 100%;
-    background: var(--cinder-accent-solid);
-  }
-
-  .chat-attachment-preview-loading-bar {
-    display: block;
-    inline-size: 40%;
-    block-size: 100%;
-    background: var(--cinder-accent-solid);
-    animation: loading-slide 1.2s ease-in-out infinite;
-  }
-
-  @keyframes loading-slide {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(350%);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .chat-attachment-preview-loading-bar {
-      animation: none;
-      inline-size: 100%;
-    }
+  .chat-attachment-preview[data-picked] {
+    background: var(--cinder-status-danger-background, var(--cinder-surface-inset));
   }
 </style>

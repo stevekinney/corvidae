@@ -562,10 +562,7 @@
       return {
         kind: 'unconfigured',
         onConnect: () => router.navigate('/settings/models'),
-        labels: {
-          unconfiguredDescription: CHAT_COPY.composer.unconfiguredDescription,
-          connectProviderShort: CHAT_COPY.composer.connectProviderShort,
-        },
+        labels: { unconfiguredDescription: CHAT_COPY.composer.unconfiguredDescription },
       };
     }
     return undefined;
@@ -2049,6 +2046,7 @@
         {emptyDescription}
         {emptyPrompts}
         streaming={session.streaming && !choosing}
+        trailingAskPending={!session.streaming && session.humanRequests.length > 0}
         surfaceMode="transparent"
         variant="transcript"
         notSent={connection.unreachable

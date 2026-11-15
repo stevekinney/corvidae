@@ -14,6 +14,7 @@
    */
   import {
     ApprovalCard,
+    formatTimeOfDay,
     type ApprovalFailure,
     type ApprovalOperation,
     type ApprovalResolution,
@@ -111,6 +112,15 @@
         Number.isFinite(Date.parse(expiresAt)) &&
         Date.parse(expiresAt) <= Date.now()),
   );
+  // The moment the approval lapsed, as the host knows it: the action's own deadline, else the
+  // entry's.
+  const lapsedAt = $derived(
+    expiresAt !== undefined && Number.isFinite(Date.parse(expiresAt))
+      ? expiresAt
+      : entry.approvalExpiresAt === undefined
+        ? undefined
+        : new Date(entry.approvalExpiresAt).toISOString(),
+  );
 </script>
 
 <ApprovalCard
@@ -173,6 +183,13 @@
       }
     : {}}
 />
+{#if decision === undefined && unavailableReason === undefined && expired && lapsedAt !== undefined}
+  <!-- When it lapsed is a line under the card in a message's time style (Chat's rule for
+       `.chat-approval-time`), not text inside the card. -->
+  <div class="chat-approval-time">
+    <time datetime={lapsedAt}><bdi>{formatTimeOfDay(lapsedAt)}</bdi></time>
+  </div>
+{/if}
 {#if decision === undefined && unavailableReason === undefined && providerNote !== undefined}
   <p class="weft-chat-approval__provider-note">{providerNote}</p>
 {/if}

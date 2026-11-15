@@ -503,7 +503,7 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
       'aria-disabled',
       'true',
     );
-    await expect(approval.getByRole('button', { name: 'Add a note' })).toBeEnabled();
+    await expect(approval.getByRole('button', { name: 'Add note' })).toBeEnabled();
     await expect(page.getByRole('searchbox', { name: 'Search chats' })).toBeEnabled();
     await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
     await captureForDesignReview(page, {

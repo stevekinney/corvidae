@@ -78,26 +78,21 @@ describe('empty and ready (C1, C2)', () => {
     expect(source).not.toContain('data-offline');
     expect(source).toMatch(/\.chat-input-editor\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
     expect(source).toMatch(/\.chat-input-markdown\s*\{[^}]*font-size: var\(--cinder-text-base\);/s);
-    // The opened list ends on a whole row with no fade over a part row; a line under it counts
-    // the files still below.
+    // The fade over a cut chip is Cinder's edge mask, not an overlay of Chat's own.
     expect(source).not.toContain('attachmentScrollFade');
-    expect(source).not.toContain('.chat-input-attachments[data-expanded]::after');
+    expect(source).not.toContain('.chat-input-attachments::after');
     expect(source).toContain('align-items: center;');
-    expect(source).toContain('class="chat-input-attachment-scroll-cue"');
-    expect(source).toContain('labels.moreAttachments(hiddenListedAttachments)');
   });
 
-  test('an opened list shows whole rows and takes its hit-area room back from the layout', async () => {
+  test('the strip takes its hit-area room above back from the layout, and a chip scrolled in stops short of the edge', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
-    expect(source).toContain('{@attach wholeAttachmentRows}');
-    expect(source).toContain('function wholeAttachmentRows(node: HTMLElement)');
     expect(source).toMatch(
-      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-input-attachments\s*\{[^}]*padding-block:\s*var\(--cinder-space-2\);[^}]*margin-block-start:\s*calc\(var\(--cinder-space-2\) \* -1\);/s,
     );
-    // A row scrolled into view stops one padding short of either edge, so its hit area is not clipped.
-    expect(source).toMatch(
-      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*scroll-padding-block:\s*var\(--cinder-space-2\);/s,
-    );
+    // The strip fades where chips are cut off by Cinder's mask attachment, whose scroll padding is
+    // the fade's size, so a chip scrolled to an edge stops clear of the fade; Chat sets no padding of its own.
+    expect(source).toContain("{@attach scrollEdgeFade('inline')}");
+    expect(source).not.toMatch(/\.chat-input-attachments\s*\{[^}]*scroll-padding-inline/s);
   });
 });
 
@@ -320,7 +315,7 @@ describe('the draft-restored drawer (C7)', () => {
     const drawer = container.querySelector<HTMLElement>(
       '[data-chat-composer-drawer="draft-restored"]',
     )!;
-    expect(drawer.textContent).toContain('Restored your unsent draft from yesterday at 4:12 PM.');
+    expect(drawer.textContent).toContain('Restored your unsent draft from yesterday at 4:12 PM.');
     // A restored draft can still be sent.
     expect(sendOf(container).disabled).toBe(false);
 

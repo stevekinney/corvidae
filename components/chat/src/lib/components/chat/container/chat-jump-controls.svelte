@@ -81,11 +81,12 @@
 {/if}
 
 <style>
-  /* The controls float over the transcript's bottom edge, above the composer, and take no height
-   * of their own: no band is reserved, so no line of the transcript is ever sliced by one. */
+  /* The controls float above the composer and take no height of their own: while the button shows,
+   * the chat gives up a band of its size and offset at the transcript's end (chat.svelte), so the
+   * button never lies on a line of the transcript. */
   .chat-jump-dock {
     position: absolute;
-    inset-block-end: calc(100% + var(--cinder-space-2));
+    inset-block-end: calc(100% + var(--_cinder-chat-jump-offset, var(--cinder-space-2)));
     inset-inline: 0;
     z-index: 1;
     display: flex;
@@ -102,7 +103,10 @@
    * chat, where a parent's clip or the page beside it would take a tap at its edge. */
   .chat-jump-dock[data-jump-latest] {
     justify-content: end;
-    padding-inline-end: calc((var(--cinder-touch-target-min) - 2rem) / 2 + var(--cinder-space-1));
+    padding-inline-end: calc(
+      (var(--cinder-touch-target-min) - var(--_cinder-chat-jump-size, 2rem)) / 2 +
+        var(--cinder-space-1)
+    );
   }
 
   .chat-jump-dock[data-inline] {
@@ -125,8 +129,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: var(--_cinder-chat-jump-size, 2rem);
+    height: var(--_cinder-chat-jump-size, 2rem);
     padding: 0;
     /* --cinder-surface-raised does not exist in tokens; use --cinder-surface and
      * lean on the shadow + border for elevation against the inset chat timeline. */
@@ -149,7 +153,7 @@
     position: absolute;
     /* An absolute box insets from the padding edge, inside the 1px border, so the border is
      * added back: the area is 44 px, centred on the painted 32 px. */
-    inset: calc((2rem - var(--cinder-touch-target-min)) / 2 - 1px);
+    inset: calc((var(--_cinder-chat-jump-size, 2rem) - var(--cinder-touch-target-min)) / 2 - 1px);
   }
 
   .chat-jump-button > :global(svg) {
