@@ -29,6 +29,30 @@
     </GroupedListItem>
   </GroupedList>
 
+  <!-- Time-led rows beside a basic row: the lead's number sits on the title's first line, and the
+       title and subtitle are the basic row's own. -->
+  <GroupedList header="Open now" data-testid="grouped-list-timed">
+    <GroupedListItem href="/places/basic" data-testid="row-basic">
+      {#snippet title()}The Rooftop{/snippet}
+      {#snippet subtitle()}Half-price wells until 8:00 pm{/snippet}
+      {#snippet trailing()}0.4 mi{/snippet}
+    </GroupedListItem>
+    <GroupedListItem href="/places/rooftop" leadValue={45} leadUnit="min left" urgency="urgent">
+      {#snippet title()}The Rooftop{/snippet}
+      {#snippet subtitle()}Half-price wells until 8:00 pm{/snippet}
+      {#snippet trailing()}0.4 mi{/snippet}
+    </GroupedListItem>
+    <GroupedListItem href="/places/lantern" leadValue="4:30" leadUnit="starts" urgency="soon">
+      {#snippet title()}Lantern Room, which has a much longer name that wraps onto a second line{/snippet}
+      {#snippet subtitle()}Two-dollar drafts{/snippet}
+      {#snippet trailing()}1.2 mi{/snippet}
+    </GroupedListItem>
+    <GroupedListItem href="/places/pier" leadValue="Fri" staleAge="3d">
+      {#snippet title()}The Pier{/snippet}
+      {#snippet subtitle()}Oysters and rosé{/snippet}
+    </GroupedListItem>
+  </GroupedList>
+
   <!-- Text actions (COR-2329): trailing buttons, full width under the text on a phone. -->
   <GroupedList aria-label="Waiting on you" data-testid="grouped-list-actions">
     <GroupedListItem actions={[{ label: 'Answer', href: '/reviews/1', changes: true }]}>
