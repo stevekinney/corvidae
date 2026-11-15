@@ -126,6 +126,11 @@ export type ChatSegment = 'all' | 'waiting' | 'done';
 /** The segments in the order the control draws them. */
 export const CHAT_SEGMENTS: readonly ChatSegment[] = ['all', 'waiting', 'done'];
 
+/** Whether a chat is archived: the Bureau gives it the time it was archived. */
+export function isArchivedChat(context: Pick<ChatContext, 'archivedAt'>): boolean {
+  return context.archivedAt !== undefined && context.archivedAt !== null;
+}
+
 /**
  * Whether a row is in a segment: `waiting` holds the chats that wait on the person and `done` the
  * ones that finished. A chat that ended, failed or is running is only in `all`.

@@ -224,6 +224,81 @@ describe('kanban board styles', () => {
   });
 });
 
+describe('KanbanBoard built-in card layout', () => {
+  function metaSnippet() {
+    return createRawSnippet<[Card]>((getCard) => ({
+      render: () => `<span class="test-assignee">Owner of ${getCard().title}</span>`,
+      setup: () => {},
+    }));
+  }
+  function trailingSnippet() {
+    return createRawSnippet<[Card]>((getCard) => ({
+      render: () => `<span class="test-priority">High ${getCard().id}</span>`,
+      setup: () => {},
+    }));
+  }
+
+  test('without a card snippet, draws the card label as the title on top', () => {
+    const { container } = renderBoard({ card: undefined });
+    const content = requiredInstance(
+      container.querySelector('.cinder-kanban-board__card-content'),
+      HTMLElement,
+    );
+    expect(content.getAttribute('data-cinder-layout')).toBe('built-in');
+    const title = requiredInstance(content.firstElementChild, HTMLElement);
+    expect(title.classList).toContain('cinder-kanban-board__card-title');
+    expect(title.textContent).toBe('Alpha');
+    // No meta snippets: no empty meta row.
+    expect(content.querySelector('.cinder-kanban-board__card-meta')).toBeNull();
+  });
+
+  test('draws cardMeta and cardTrailing on one row under the title, trailing last', () => {
+    const { container } = renderBoard({
+      card: undefined,
+      cardMeta: metaSnippet(),
+      cardTrailing: trailingSnippet(),
+    });
+    const content = requiredInstance(
+      container.querySelector('.cinder-kanban-board__card-content'),
+      HTMLElement,
+    );
+    const [title, meta] = Array.from(content.children);
+    expect(title?.classList).toContain('cinder-kanban-board__card-title');
+    expect(meta?.classList).toContain('cinder-kanban-board__card-meta');
+    const [start, trailing] = Array.from(meta!.children);
+    expect(start?.classList).toContain('cinder-kanban-board__card-meta-start');
+    expect(start?.textContent).toBe('Owner of Alpha');
+    expect(trailing?.classList).toContain('cinder-kanban-board__card-trailing');
+    expect(trailing?.textContent).toBe('High a');
+    expect(meta!.lastElementChild).toBe(trailing!);
+  });
+
+  test('a card snippet replaces the built-in body, and the meta snippets are not drawn', () => {
+    const { container } = renderBoard({ cardMeta: metaSnippet(), cardTrailing: trailingSnippet() });
+    const content = requiredInstance(
+      container.querySelector('.cinder-kanban-board__card-content'),
+      HTMLElement,
+    );
+    expect(content.hasAttribute('data-cinder-layout')).toBe(false);
+    expect(content.querySelector('.cinder-kanban-board__card-title')).toBeNull();
+    expect(container.querySelector('.test-assignee')).toBeNull();
+    expect(content.textContent).toBe('Alpha');
+  });
+
+  test('styles the meta row quiet with the trailing item at the inline end', () => {
+    const rule = (selector: string) => {
+      const start = kanbanBoardCss.indexOf(`${selector} {`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      return kanbanBoardCss.slice(start, kanbanBoardCss.indexOf('}', start));
+    };
+    expect(rule('.cinder-kanban-board__card-meta-start')).toContain(
+      'color: var(--cinder-text-muted);',
+    );
+    expect(rule('.cinder-kanban-board__card-trailing')).toContain('margin-inline-start: auto;');
+    expect(rule('.cinder-kanban-board__card-meta')).toContain('align-items: center;');
+  });
+});
+
 describe('KanbanBoard', () => {
   test('renders zero columns without throwing', () => {
     const { container } = renderBoard({ columns: [] });

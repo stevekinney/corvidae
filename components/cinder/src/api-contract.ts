@@ -391,6 +391,51 @@ export const CONTRACT: Record<string, ComponentContract> = {
     },
   },
 
+  // The card body is built in (the getCardLabel title, then cardMeta with cardTrailing at its
+  // inline end) unless `card` replaces it.
+  'kanban-board': {
+    kind: 'literal',
+    generics: [{ name: 'Card' }],
+    props: {
+      columns: { optional: false, type_kind: 'TSArrayType', default: REQUIRED },
+      getCardKey: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
+      getCardLabel: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
+      onColumnsChange: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
+      label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      collapsible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      reorderColumns: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+    },
+    snippets: {
+      card: sp(2, true),
+      cardMeta: sp(2, true),
+      cardTrailing: sp(2, true),
+      columnHeader: sp(2, true),
+      columnActions: sp(2, true),
+      emptyColumn: sp(1, true),
+    },
+  },
+
+  // One line per row with an icon-only Remove; an empty last row adds a pair, described by addLabel.
+  'key-value-editor': {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      entries: { optional: true, type_kind: 'TSArrayType', default: B([]) },
+      onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      secret: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      addLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Add pair') },
+      removeLabel: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      keyLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Key') },
+      valueLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Value') },
+      monospace: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+    },
+    snippets: {},
+  },
+
   input: {
     kind: 'intersection',
     html_attrs: 'HTMLInputAttributes',

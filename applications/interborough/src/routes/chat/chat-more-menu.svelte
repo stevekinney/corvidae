@@ -1,13 +1,21 @@
 <script lang="ts">
   /**
    * The chat header's More menu: rename the chat, branch it from its last reply, export it as a
-   * Markdown file, and delete it. It draws the menu and owns the two actions that need a question
+   * Markdown file, archive it (or unarchive an archived one), and delete it. It draws the menu and owns the two actions that need a question
    * first, a title for Rename (`chat-rename-dialog.svelte`) and a confirmation for Delete, which
    * names the chat and says what happens to a run that is going. The page owns what Branch and
    * Export need from the conversation, and passes them in.
    */
   import { ConfirmDialog, Dropdown, VisuallyHidden } from '@lostgradient/cinder';
-  import { Download, Ellipsis, GitBranch, Pencil, Trash2 } from '@lucide/svelte';
+  import {
+    Archive,
+    ArchiveRestore,
+    Download,
+    Ellipsis,
+    GitBranch,
+    Pencil,
+    Trash2,
+  } from '@lucide/svelte';
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
@@ -30,8 +38,15 @@
     branching: boolean;
     /** Whether the chat has anything to export. */
     canExport: boolean;
+    /** Whether the chat is archived, so the menu offers Unarchive in place of Archive. */
+    archived: boolean;
     onBranch: (messageId: string) => void;
     onExport: () => void;
+    /**
+     * Archives the chat (`true`) or unarchives it (`false`). No question is asked first: archiving
+     * is undone by Unarchive. The page says why one was refused.
+     */
+    onArchive: (archive: boolean) => void;
   }
 
   let {
@@ -41,8 +56,10 @@
     branchTarget,
     branching,
     canExport,
+    archived,
     onBranch,
     onExport,
+    onArchive,
   }: Props = $props();
 
   const copy = CHAT_COPY.more;
@@ -135,6 +152,15 @@
     >
       <Download aria-hidden="true" size={14} />
       {copy.export}
+    </Dropdown.Item>
+    <Dropdown.Item data-changes onclick={() => onArchive(!archived)}>
+      {#if archived}
+        <ArchiveRestore aria-hidden="true" size={14} />
+        {copy.unarchive}
+      {:else}
+        <Archive aria-hidden="true" size={14} />
+        {copy.archive}
+      {/if}
     </Dropdown.Item>
     <Dropdown.Item data-changes variant="danger" onclick={() => (confirmingDelete = true)}>
       <Trash2 aria-hidden="true" size={14} />

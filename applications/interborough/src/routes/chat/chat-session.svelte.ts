@@ -20,6 +20,7 @@
 import {
   appendMessages,
   assertRunInputAccepted,
+  ChatRunFailureError,
   countQueuedFollowUps,
   createChatSessionController,
   createConversationHistory,
@@ -36,6 +37,7 @@ import { parseStepRowIdentifier } from '@lostgradient/operative';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import {
   forgetContextGrants,
+  forkRefusalReason,
   regenerateContext,
   retractContextInput,
   sendContextInput,
@@ -89,6 +91,13 @@ export type ChatSessionOptions = {
    * caller who cannot change the chat is given, so the page reads the chat again to learn which.
    */
   readonly onNotFound?: () => void;
+  /**
+   * Told when a send was refused because the chat is archived (another window archived it): the
+   * door's `THREAD_ARCHIVED`, or a `Conflict` with reason `context-archived`. The page reads the
+   * chat again, which turns the composer into the Archived bar; the refusal's own words are not
+   * shown, and the message stays on its row, not sent.
+   */
+  readonly onArchived?: () => void;
   /** Told when a grant the person asked for did not loosen the tool (see the run wiring). */
   readonly onGrantNotLoosened?: (notice: GrantNotLoosened) => void;
   /** The Bureau's clock as the page reads it; a fresh one when omitted, for tests to replace. */
@@ -109,7 +118,23 @@ function isNotFound(error: unknown): boolean {
   );
 }
 
-/** The text a follow-up sends: the Bureau takes text, or a list of parts, as session input. */
+/**
+ * Whether a send was refused because the chat is archived: the door's `THREAD_ARCHIVED` (as the
+ * refusal, or as the run failure it became) or the Bureau's `Conflict` with reason
+ * `context-archived` on a follow-up.
+ */
+function isArchivedRefusal(error: unknown, refusal: Refusal | undefined): boolean {
+  if (refusal?.code === 'THREAD_ARCHIVED') return true;
+  if (
+    error instanceof ChatRunFailureError &&
+    (error.runError.backendCode ?? error.runError.code) === 'THREAD_ARCHIVED'
+  ) {
+    return true;
+  }
+  return forkRefusalReason(error) === 'context-archived';
+}
+
+/** The text a follow-up sends:the Bureau takes text, or a list of parts, as session input. */
 function inputPayload(message: MessageInput): string {
   if (typeof message.content === 'string') return message.content;
   return message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
@@ -396,6 +421,13 @@ export class ChatSessionState {
             runFailureMessage(error, { hadAttachments: this.#turnHadAttachments }) ??
             (error instanceof Error ? error.message : String(error));
           const refusal = this.#wiring.takeRefusal();
+          // Another window archived the chat: the Archived bar says so once the chat is read
+          // again, and the refusal's own words are not shown. The message stays on its row.
+          if (isArchivedRefusal(error, refusal)) {
+            this.failureWasTransport = false;
+            options.onArchived?.();
+            return;
+          }
           if (refusal?.resume === true) this.#refused = refusal;
           // A busy thread is not told when it refused a resume: the next send repeats it. A start
           // refused as busy, and every other refusal, is.

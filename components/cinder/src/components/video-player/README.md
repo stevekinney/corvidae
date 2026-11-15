@@ -1,6 +1,8 @@
 # VideoPlayer
 
-Native video element with Cinder media controls for play, pause, replay, and seeking.
+Native video element with its own controls for play, pause, replay, seeking, elapsed and total time, mute, and full screen.
+
+The controls are one flat row under the video: the filled play button, the seek slider, the elapsed and total time (`1:05 / 3:20`, or `1:02:05` from an hour up) once the length is known, then the mute and full-screen toggles at the inline end. The arrow keys move the slider five seconds and Page Up and Page Down a tenth of the video; Home and End go to the start and the end. Full screen takes the whole player, controls included, and its toggle shows only where the document may go full screen. The player shows no captions yet: pair spoken video with a transcript.
 
 ## Usage
 
@@ -26,7 +28,6 @@ Native video element with Cinder media controls for play, pause, replay, and see
 ### Avoid When
 
 - You need streaming protocols, caption authoring, or playlists — wire those separately.
-- You only need playback buttons for media you control elsewhere — use media-controls.
 
 ## Props
 

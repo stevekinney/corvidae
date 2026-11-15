@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Badge, KanbanBoard, type KanbanBoardColumn } from '@lostgradient/cinder';
+  import { Avatar, Badge, KanbanBoard, type KanbanBoardColumn } from '@lostgradient/cinder';
 
   type WorkItem = {
     id: string;
     title: string;
-    owner: string;
+    assignee: string;
     priority: 'Low' | 'Medium' | 'High';
   };
 
@@ -13,23 +13,48 @@
       id: 'backlog',
       title: 'Backlog',
       cards: [
-        { id: 'inventory-alerts', title: 'Inventory alerts', owner: 'Mina', priority: 'High' },
-        { id: 'weekly-report', title: 'Weekly report export', owner: 'Dev', priority: 'Medium' },
+        {
+          id: 'inventory-alerts',
+          title: 'Inventory alerts',
+          assignee: 'Mina Okafor',
+          priority: 'High',
+        },
+        {
+          id: 'weekly-report',
+          title: 'Weekly report export',
+          assignee: 'Dev Patel',
+          priority: 'Medium',
+        },
       ],
     },
     {
       id: 'active',
       title: 'Active',
       cards: [
-        { id: 'shipment-map', title: 'Shipment map filters', owner: 'Rae', priority: 'High' },
-        { id: 'cycle-count', title: 'Cycle count cleanup', owner: 'Alex', priority: 'Low' },
+        {
+          id: 'shipment-map',
+          title: 'Shipment map filters',
+          assignee: 'Rae Lindqvist',
+          priority: 'High',
+        },
+        {
+          id: 'cycle-count',
+          title: 'Cycle count cleanup',
+          assignee: 'Alex Moreno',
+          priority: 'Low',
+        },
       ],
     },
     {
       id: 'done',
       title: 'Done',
       cards: [
-        { id: 'store-pulse', title: 'Store pulse summary', owner: 'Nia', priority: 'Medium' },
+        {
+          id: 'store-pulse',
+          title: 'Store pulse summary',
+          assignee: 'Nia Brooks',
+          priority: 'Medium',
+        },
       ],
     },
   ]);
@@ -45,15 +70,18 @@
     columns = nextColumns;
   }}
 >
-  {#snippet card(item)}
-    <strong>{item.title}</strong>
-    <span>{item.owner}</span>
+  {#snippet cardMeta(item)}
+    <Avatar name={item.assignee} size="xs" aria-hidden="true" />
+    <span>{item.assignee}</span>
+  {/snippet}
+
+  {#snippet cardTrailing(item)}
     <Badge
       variant={item.priority === 'High'
         ? 'danger'
         : item.priority === 'Medium'
           ? 'warning'
-          : 'neutral'}
+          : 'success'}
     >
       {item.priority}
     </Badge>

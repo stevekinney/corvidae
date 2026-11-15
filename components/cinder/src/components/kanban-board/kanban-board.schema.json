@@ -27,7 +27,17 @@
       {
         "name": "card",
         "reason": "function-or-snippet",
-        "required": true
+        "description": "Replaces the card's whole body. Leave it out to use the built-in layout: the card's title (its\n`getCardLabel` text) on top, then one quiet row of `cardMeta` with `cardTrailing` at its inline\nend. When `card` is set, `cardMeta` and `cardTrailing` are not drawn."
+      },
+      {
+        "name": "cardMeta",
+        "reason": "function-or-snippet",
+        "description": "The built-in card's quiet row under the title, such as an assignee's avatar and full name. It\ndraws in muted text at the inline start of the row."
+      },
+      {
+        "name": "cardTrailing",
+        "reason": "function-or-snippet",
+        "description": "The built-in card's inline-end item on the meta row, such as a priority badge."
       },
       {
         "name": "columnActions",

@@ -130,7 +130,6 @@ const remainingSlugs = [
   'link',
   'load-more',
   'matrix-chart',
-  'media-controls',
   'message',
   'page-header',
   'app-bar',

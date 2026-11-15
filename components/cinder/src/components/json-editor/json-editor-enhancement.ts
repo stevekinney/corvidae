@@ -95,6 +95,9 @@ const singleLineClass = 'cinder-json-editor__cm--single-line';
 const problemLineClass = 'cinder-json-editor__line--problem';
 const problemGutterClass = 'cinder-json-editor__gutter--problem';
 const problemMessageClass = 'cinder-json-editor__problem';
+const problemBarWidth = '3px';
+const metricsProbeClass = 'cinder-json-editor__metrics';
+const editorLineHeight = '1.5';
 
 const highlightStyle = HighlightStyle.define([
   { tag: tags.propertyName, color: 'var(--cinder-accent-text)' },
@@ -112,7 +115,7 @@ const contentHeight = (rows: string): string => `calc(${rows} * 1.5em + 2 * var(
 
 // CodeMirror injects its own rules without a cascade layer, and an unlayered rule beats anything
 // inside `@layer cinder.components`, so the editor is themed here and not in `json-editor.css`.
-// The frame (border, radius, focus ring, toolbar) is the component's own element around the
+// The frame (border, radius, focus ring, status and Format) is the component's own element around the
 // editor, so this theme draws no border of its own: the frame clips the gutter to its radius.
 const theme = EditorView.theme({
   '&': {
@@ -127,8 +130,17 @@ const theme = EditorView.theme({
   '&.cm-focused': { outline: 'none' },
   '.cm-scroller': {
     fontFamily: 'inherit',
-    lineHeight: '1.5',
+    lineHeight: editorLineHeight,
     overflow: 'auto',
+  },
+  // One line of text in the editor's font, never seen: its height is the line height.
+  [`.${metricsProbeClass}`]: {
+    position: 'absolute',
+    insetBlockStart: '0',
+    insetInlineStart: '0',
+    lineHeight: editorLineHeight,
+    visibility: 'hidden',
+    pointerEvents: 'none',
   },
   // An always-painted scrollbar, so a body that scrolls says so. Chrome and Safari draw a
   // persistent bar only from the `::-webkit-scrollbar` rules (setting `scrollbar-width` or
@@ -179,10 +191,16 @@ const theme = EditorView.theme({
     backgroundColor: 'transparent',
     outline: '1px solid var(--cinder-text-muted)',
   },
-  // A marked line: the row is tinted, its number turns red, and the message sits under it.
-  [`.${problemLineClass}`]: { backgroundColor: 'var(--cinder-status-danger-background)' },
-  [`.cm-gutterElement.${problemGutterClass}`]: {
+  // A marked line and the message under it are one tinted rectangle the width of the text area,
+  // with a red bar down its inline start; the gutter takes no fill, so the mark is never a stepped
+  // shape, and only the line's number turns red. The bar takes its width out of the line's own
+  // inline-start padding, so it moves no text.
+  [`.${problemLineClass}, .${problemMessageClass}`]: {
     backgroundColor: 'var(--cinder-status-danger-background)',
+    borderInlineStart: `${problemBarWidth} solid var(--cinder-status-danger-solid)`,
+    paddingInlineStart: `calc(var(--cinder-space-2) - ${problemBarWidth})`,
+  },
+  [`.cm-gutterElement.${problemGutterClass}`]: {
     color: 'var(--cinder-status-danger-text)',
     fontWeight: '600',
   },
@@ -195,8 +213,9 @@ const theme = EditorView.theme({
     display: 'flex',
     alignItems: 'flex-start',
     gap: 'var(--cinder-space-1-5)',
-    padding: '0 var(--cinder-space-2)',
-    backgroundColor: 'var(--cinder-status-danger-background)',
+    // The inline-start padding is the marked line's, set with its bar above.
+    paddingInlineEnd: 'var(--cinder-space-2)',
+    paddingBlockEnd: 'var(--cinder-space-1)',
     color: 'var(--cinder-status-danger-text)',
     fontFamily: 'var(--cinder-font-sans)',
     fontSize: 'var(--cinder-text-xs)',
@@ -347,11 +366,32 @@ function dynamicExtensions(options: JsonEditorDynamicOptions): Extension[] {
   ];
 }
 
+// CodeMirror skips measuring an editor that is wholly outside the window, so one that mounts below
+// the fold draws its gutter from a 14px line estimate with no top padding, and the line numbers
+// drift further from their lines the further down they are, until the editor scrolls into view. A
+// capture beyond the viewport never scrolls it there. A pending scroll target is the one thing
+// that makes a measure run anyway, so the editor asks for one, tagged by an unusual margin, and
+// this handler swallows exactly that scroll: measuring never moves the page, and every other
+// scroll (focusLine, typing) happens as before.
+const measureRequestMargin = 0.125;
+
+function measureRequest(position: number): StateEffect<unknown> {
+  return EditorView.scrollIntoView(position, { y: 'nearest', yMargin: measureRequestMargin });
+}
+
+const swallowMeasureRequests = EditorView.scrollHandler.of(
+  (_view, _range, scroll) => scroll.yMargin === measureRequestMargin,
+);
+
 /** Create a CodeMirror editor for JSON in `options.parent`. */
 export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
   const dynamic = new Compartment();
+  // CodeMirror reads its lines' heights again only when it thinks the content changed; a new
+  // theme is the public way to say so, so a metrics change swaps in an empty one.
+  const remeasure = new Compartment();
   const view = new EditorView({
     parent: options.parent,
+    scrollTo: measureRequest(0),
     state: EditorState.create({
       doc: options.document,
       extensions: [
@@ -380,6 +420,7 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
           ...foldKeymap,
         ]),
         theme,
+        swallowMeasureRequests,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           if (
@@ -390,9 +431,33 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
           options.onChange(update.state.doc.toString());
         }),
         dynamic.of(dynamicExtensions(options)),
+        remeasure.of([]),
       ],
     }),
   });
+
+  // Line metrics can change after mount without the editor's box changing size: the stylesheet
+  // that sets the font size arrives after the editor chunk, or a density or theme switch. The
+  // content keeps the height CodeMirror last measured as its minimum, so it cannot show the
+  // change; a hidden one-line probe in the editor's font can. When its height changes, measure
+  // again, wherever the editor is.
+  const metricsProbe = document.createElement('span');
+  metricsProbe.className = metricsProbeClass;
+  metricsProbe.setAttribute('aria-hidden', 'true');
+  metricsProbe.textContent = '0';
+  view.dom.append(metricsProbe);
+  const metricsResize =
+    typeof ResizeObserver === 'function'
+      ? new ResizeObserver(() => {
+          view.dispatch({
+            effects: [
+              measureRequest(view.state.selection.main.head),
+              remeasure.reconfigure(EditorView.theme({})),
+            ],
+          });
+        })
+      : undefined;
+  metricsResize?.observe(metricsProbe);
 
   return {
     view,
@@ -419,6 +484,9 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
       view.focus();
     },
     focus: () => view.focus(),
-    destroy: () => view.destroy(),
+    destroy: () => {
+      metricsResize?.disconnect();
+      view.destroy();
+    },
   };
 }

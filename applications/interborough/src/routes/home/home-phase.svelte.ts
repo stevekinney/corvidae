@@ -26,6 +26,7 @@ import type { HomeFirstRun } from './home-first-run.svelte.ts';
 import {
   useAgentList,
   useAttentionItems,
+  useChatHistory,
   useHostProviders,
   useRecentChats,
 } from './home-queries.svelte.ts';
@@ -49,6 +50,7 @@ const WAITED_ON_KEYS = [
   queryKeys.hostProviders(),
   queryKeys.agents.list(),
   queryKeys.contexts.recent(RECENT_CHAT_LIMIT),
+  queryKeys.contexts.firstRun(),
   queryKeys.bureauAttention.items(),
   queryKeys.reviews.inbox('pending'),
 ] as const;
@@ -60,6 +62,8 @@ export function useHomePhase(firstRun: HomeFirstRun): HomePhaseState {
   const providers = useHostProviders();
   const agents = useAgentList();
   const chats = useRecentChats();
+  // The first-run checklist's own read of whether a chat happened, asked again with the rest.
+  const history = useChatHistory();
   const attention = useAttentionItems();
   const reviews = waitingReviewsQuery();
 
@@ -114,7 +118,9 @@ export function useHomePhase(firstRun: HomeFirstRun): HomePhaseState {
     retry: () => {
       canceled = false;
       if (connection.unreachable) void connection.retryNow();
-      for (const query of [providers, agents, chats, attention, reviews]) void query.refetch();
+      for (const query of [providers, agents, chats, history, attention, reviews]) {
+        void query.refetch();
+      }
     },
   };
 }

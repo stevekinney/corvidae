@@ -9,7 +9,7 @@
    * @tag drag
    * @tag reorder
    * @useWhen Presenting a workflow board where users move cards between ordered columns.
-   * @useWhen Consumers own card rendering and need cinder to manage reorder affordances and change metadata.
+   * @useWhen Cards need a title over one quiet row (an assignee, a priority badge), or consumers own card rendering.
    * @avoidWhen Showing a single ordered list — use sortable-list instead.
    * @avoidWhen Sorting by computed fields rather than direct manual placement.
    * @related sortable-list, grid-list, data-list
@@ -58,6 +58,8 @@
     getCardLabel,
     onColumnsChange,
     card,
+    cardMeta,
+    cardTrailing,
     columnHeader,
     columnActions,
     emptyColumn,
@@ -508,11 +510,36 @@
                 class="cinder-kanban-board__card"
               >
                 {#snippet children()}
-                  <div class="cinder-kanban-board__card-content">
-                    {@render card(
-                      currentCard,
-                      makeCardContext(column, columnIndex, cardIndex, isLifted, isDropTarget),
-                    )}
+                  {@const cardContext = makeCardContext(
+                    column,
+                    columnIndex,
+                    cardIndex,
+                    isLifted,
+                    isDropTarget,
+                  )}
+                  <div
+                    class="cinder-kanban-board__card-content"
+                    data-cinder-layout={card ? undefined : 'built-in'}
+                  >
+                    {#if card}
+                      {@render card(currentCard, cardContext)}
+                    {:else}
+                      <span class="cinder-kanban-board__card-title">{itemLabel}</span>
+                      {#if cardMeta || cardTrailing}
+                        <div class="cinder-kanban-board__card-meta">
+                          {#if cardMeta}
+                            <div class="cinder-kanban-board__card-meta-start">
+                              {@render cardMeta(currentCard, cardContext)}
+                            </div>
+                          {/if}
+                          {#if cardTrailing}
+                            <div class="cinder-kanban-board__card-trailing">
+                              {@render cardTrailing(currentCard, cardContext)}
+                            </div>
+                          {/if}
+                        </div>
+                      {/if}
+                    {/if}
                   </div>
                 {/snippet}
               </SortableItem>

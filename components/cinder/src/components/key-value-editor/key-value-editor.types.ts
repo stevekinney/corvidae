@@ -4,7 +4,7 @@ import type { HTMLAttributes } from 'svelte/elements';
  * editable `key`/`value` text — it must be unique within one editor's
  * `entries`, but two rows may otherwise share equal `key`/`value` text.
  * Consumers own minting `id` for rows they supply; the editor mints one
- * itself for a row added through "Add pair".
+ * itself for a row added by typing into the empty last row.
  */
 export type KeyValueEntry = { id: string; key: string; value: string };
 export type KeyValueEditorProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
@@ -19,8 +19,9 @@ export type KeyValueEditorProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> 
   /** Predicate receiving a row's key; routes that row's value through a password input when it returns `true`. */
   secret?: (key: string) => boolean;
   /**
-   * Label for the add-row action. Give it concrete wording when more than
-   * one editor is on the page. Defaults to `'Add pair'`.
+   * Accessible description of the empty last row, whose key and value boxes add a pair when typed
+   * into. Give it concrete wording when more than one editor is on the page. Defaults to
+   * `'Add pair'`.
    * @default 'Add pair'
    */
   addLabel?: string;
@@ -37,18 +38,20 @@ export type KeyValueEditorProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> 
    */
   label?: string;
   /**
-   * Help under the Add button, linked to the group with `aria-describedby`. State what the values
+   * Help under the rows, linked to the group with `aria-describedby`. State what the values
    * are, such as that they are masked and never shown again.
    */
   description?: string;
   /**
-   * Accessible name of every row's key input (it has no visible label of its own). Give it the
-   * noun the rows use, such as `'Name'` for environment variables.
+   * Accessible name of every row's key input, also drawn once as the column heading above the
+   * rows (the inputs have no visible label of their own). Give it the noun the rows use, such as
+   * `'Name'` for environment variables.
    * @default 'Key'
    */
   keyLabel?: string;
   /**
-   * Accessible name of every row's value input.
+   * Accessible name of every row's value input, also drawn once as the column heading above the
+   * rows.
    * @default 'Value'
    */
   valueLabel?: string;

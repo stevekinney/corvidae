@@ -11,7 +11,7 @@ const schema = {
     readonly: {
       type: 'boolean',
       description:
-        'Makes the editor read-only. The toolbar reads "Read only" and has no Format button. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted.',
+        'Makes the editor read-only. The status reads "Read only" and there is no Format button. A read-only field stays focusable and selectable and is posted with its form, but cannot be edited or formatted.',
     },
     required: {
       type: 'boolean',
@@ -53,7 +53,7 @@ const schema = {
     statusLabel: {
       type: 'string',
       description:
-        'Replaces the toolbar\'s "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status.',
+        'Replaces the "Valid JSON" status while the source parses, for a caller whose own validation says more, such as "Valid JSON, not a valid workflow". Never replaces an invalid or empty status.',
     },
     example: {
       type: 'string',

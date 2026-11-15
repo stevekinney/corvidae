@@ -1178,8 +1178,8 @@ describe('Table data display', () => {
     expect(frame).toMatch(/border:\s*1px solid var\(--cinder-border-muted\)/);
     expect(frame).toMatch(/border-radius:\s*var\(--cinder-radius-lg\)/);
     expect(frame).toMatch(/border-collapse:\s*separate/);
-    // The header sits on the table surface instead of a filled bar.
-    expect(ruleBody('.cinder-table__header')).toMatch(/background:\s*var\(--cinder-surface\)/);
+    // The header sits on the table's own fill instead of a filled bar (table-fill.test.ts).
+    expect(ruleBody('.cinder-table__header')).toMatch(/background:\s*var\(--_cinder-table-fill\)/);
     expect(ruleBody('.cinder-table__header')).not.toContain('surface-inset');
 
     // The caption is clipped to a zero-height box, not removed from the tree.
