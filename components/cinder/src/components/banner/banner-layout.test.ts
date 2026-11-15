@@ -109,8 +109,11 @@ describe('Banner layout', () => {
     const ink = declarationsFor(css, ".cinder-banner:not([data-cinder-variant='feature'])");
     expect(ink.get('--_cinder-banner-first-air')).toBe('calc((1lh - 1cap) / 2)');
     expect(ink.get('--_cinder-banner-last-air')).toBe('calc((1lh - 1cap) / 2)');
-    expect(ink.get('padding-block-start')).toBe(
-      'calc(var(--_cinder-banner-inset) - var(--_cinder-banner-first-air))',
+    // The inset is rounded to a whole pixel, so the first line and the glyph beside it sit on the
+    // pixel grid; the unrounded declaration before it is the fallback.
+    // Prettier wraps the long value across lines, so compare it without whitespace.
+    expect(ink.get('padding-block-start')?.replaceAll(/\s+/g, '')).toBe(
+      'round(calc(var(--_cinder-banner-inset)-var(--_cinder-banner-first-air)),1px)',
     );
 
     // With no action row the last ink is the text, so its air comes off the bottom too; an action

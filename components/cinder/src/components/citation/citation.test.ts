@@ -347,7 +347,21 @@ describe('Citation', () => {
     expect(panel).toContain('overflow-y: auto;');
     expect(panel).toContain('overflow-wrap: anywhere;');
     expect(panel).toContain('text-align: start;');
-    expect(panel).toContain('padding: 0;');
+  });
+
+  test('keeps the list inside the panel: the rows overhang through the panel, not the list', () => {
+    const css = stylesheet();
+    const panel = /\.cinder-citation__panel \{[^}]*\}/.exec(css)?.[0] ?? '';
+    const list = /\.cinder-citation__list \{[^}]*\}/.exec(css)?.[0] ?? '';
+    const item = /\.cinder-citation__item \{[^}]*\}/.exec(css)?.[0] ?? '';
+
+    expect(panel).toContain('--_cinder-citation-row-inset: calc(var(--cinder-space-2) + 2px);');
+    expect(panel).toContain('margin-inline: calc(-1 * var(--_cinder-citation-row-inset));');
+    expect(panel).toContain('padding-inline: var(--_cinder-citation-row-inset);');
+    // A negative margin on the list would make it wider than the panel and scroll it sideways.
+    expect(list).toContain('margin: 0;');
+    // The foundation's list-item bottom margin would leave a gap under every row.
+    expect(item).toContain('margin: 0;');
   });
 
   test('marks the current row with an edge and a face, not colour alone', () => {
@@ -394,7 +408,7 @@ describe('Citation', () => {
     const css = stylesheet();
     const panel = /\.cinder-citation__panel \{[^}]*\}/.exec(css)?.[0] ?? '';
 
-    expect(panel).toContain('padding: 0;');
+    expect(panel).toContain('padding-block: 0;');
     expect(css).toContain(
       '.cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__header',
     );
