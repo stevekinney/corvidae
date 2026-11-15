@@ -6,6 +6,10 @@ import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.t
 import {
   diffSize,
   FILE_LIMIT,
+  FIXTURE_SPEC_LIMIT,
+  FIXTURE_SPECS_COMMAND,
+  FIXTURE_SUITE_COMMAND,
+  fixtureSpecAdvice,
   launchesBrowser,
   LINE_LIMIT,
   planSteps,
@@ -120,6 +124,86 @@ describe('planSteps', () => {
   });
 });
 
+describe('fixture spec advice', () => {
+  const specs = new Map([
+    ['citation.playwright.ts', 'test("Citation rows")'],
+    ['chat-harness.playwright.ts', 'await page.locator(".cinder-citation"); // the Citation list'],
+    ['chat-claim-sources.playwright.ts', 'test("claims")'],
+    ['banner-glyph-alignment.playwright.ts', 'test("glyph")'],
+    ['button-group-joins.playwright.ts', 'test("joins")'],
+    ['components.playwright.ts', 'runFixtureSweep()'],
+    ['markdown-editor-toolbar.playwright.ts', 'test("toolbar")'],
+  ]);
+  const cinder = (name: string, file = `${name}.svelte`) =>
+    `components/cinder/src/components/${name}/${file}`;
+
+  test('is silent for a change outside Cinder, Chat and Editor source', () => {
+    expect(fixtureSpecAdvice(['packages/weft/src/a.ts', 'scripts/a.ts'], specs)).toBeUndefined();
+  });
+
+  test('is silent for a change to tests and documents alone', () => {
+    const changed = [cinder('citation', 'citation.test.ts'), cinder('citation', 'README.md')];
+    expect(fixtureSpecAdvice(changed, specs)).toBeUndefined();
+  });
+
+  test('names the specs whose file or source names a changed Cinder component, without the sweep', () => {
+    const advice = fixtureSpecAdvice([cinder('citation')], specs);
+    expect(advice).toContain(
+      `${FIXTURE_SPECS_COMMAND} chat-harness.playwright.ts citation.playwright.ts\``,
+    );
+    expect(advice).toContain('workers never run a browser on the host');
+  });
+
+  test('matches a file name on whole words, so butt is not button', () => {
+    expect(fixtureSpecAdvice([cinder('butt')], specs)).toContain('which no fixture spec names');
+    expect(fixtureSpecAdvice([cinder('button-group')], specs)).toContain(
+      'button-group-joins.playwright.ts',
+    );
+  });
+
+  test('names a Chat change by the specs with chat in their file name', () => {
+    const advice = fixtureSpecAdvice(['components/chat/src/lib/components/chat/chat.css'], specs);
+    expect(advice).toContain(
+      `${FIXTURE_SPECS_COMMAND} chat-claim-sources.playwright.ts chat-harness.playwright.ts\``,
+    );
+  });
+
+  test('names an Editor change by its component directory', () => {
+    const changed = ['components/editor/src/lib/components/markdown-editor/toolbar.svelte'];
+    expect(fixtureSpecAdvice(changed, specs)).toContain(
+      `${FIXTURE_SPECS_COMMAND} markdown-editor-toolbar.playwright.ts\``,
+    );
+  });
+
+  test('asks for the whole suite when Cinder styles, tokens or shared code change', () => {
+    for (const path of ['styles/foundation.css', 'tokens/space.ts', '_internal/frame.svelte']) {
+      const advice = fixtureSpecAdvice(
+        [`components/cinder/src/${path}`, cinder('citation')],
+        specs,
+      );
+      expect(advice).toContain(`\`${FIXTURE_SUITE_COMMAND}\``);
+      expect(advice).not.toContain(FIXTURE_SPECS_COMMAND);
+    }
+  });
+
+  test('asks for the whole suite above the limit, and when no spec names the change', () => {
+    const many = new Map(
+      Array.from({ length: FIXTURE_SPEC_LIMIT + 1 }, (_, index) => [
+        `card-${index}.playwright.ts`,
+        '',
+      ]),
+    );
+    expect(fixtureSpecAdvice([cinder('card')], many)).toContain(
+      `which ${FIXTURE_SPEC_LIMIT + 1} fixture specs name`,
+    );
+    const atLimit = new Map([...many].slice(0, FIXTURE_SPEC_LIMIT));
+    expect(fixtureSpecAdvice([cinder('card')], atLimit)).toContain(FIXTURE_SPECS_COMMAND);
+    const none = fixtureSpecAdvice(['components/chat/src/lib/a.svelte'], new Map());
+    expect(none).toContain('which no fixture spec names');
+    expect(none).toContain(FIXTURE_SUITE_COMMAND);
+  });
+});
+
 describe('size warnings', () => {
   test('counts lines outside test files and files together', () => {
     const numstat = ['500\t100\tsrc/a.ts', '900\t0\tsrc/a.test.ts', '-\t-\timage.png'].join('\n');
@@ -174,6 +258,7 @@ function dependencies(
     exists: () => true,
     readText: () => 'a\nb\n',
     workspaces: () => workspaces,
+    fixtureSpecs: () => new Map(),
     log: () => {},
   };
 }
@@ -348,6 +433,21 @@ describe('runChecks', () => {
     });
     const result = await runChecks('/repo', options, dependencies(runner));
     expect(result.output.split('\n')[0]).toContain('warning');
+    expect(result.code).toBe(0);
+  });
+
+  test('a component change warns with its fixture specs and runs no browser step', async () => {
+    const { runner } = fakeRunner({
+      changed: ['components/cinder/src/components/citation/citation.svelte'],
+    });
+    const deps = {
+      ...dependencies(runner),
+      fixtureSpecs: () => new Map([['citation.playwright.ts', '']]),
+    };
+    const result = await runChecks('/repo', { ...options, json: true }, deps);
+    const parsed = JSON.parse(result.output);
+    expect(parsed.warnings).toEqual([expect.stringContaining('citation.playwright.ts')]);
+    expect(deps.executed.some((command) => command.includes('playwright test'))).toBe(false);
     expect(result.code).toBe(0);
   });
 
