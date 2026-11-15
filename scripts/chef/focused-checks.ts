@@ -36,6 +36,12 @@
 // group (SIGTERM, then SIGKILL after a grace), so no turbo or `bun test` worker outlives its step
 // holding a pool slot; a signal to this command also names the step it interrupted.
 //
+// A change to a Cinder, Chat or Editor component also prints a warning naming the Chromium fixture
+// specs (`scripts/browser-fixtures/tests`) that cover it and the command that runs them, for
+// whoever runs the design-review capture to run before dispatching the reviewer. A change to
+// Cinder's styles, tokens or shared code, or one more than `FIXTURE_SPEC_LIMIT` specs name, gets
+// the whole suite's command instead. No step runs them.
+//
 // Exit codes: 0 every step passed, 1 a step failed or the changed set could not be read,
 // 2 invalid usage, 3 a step was killed by a signal, 4 a step hung. 3 and 4 outrank 1: a step that
 // gave no verdict is not a test failure, and the run is incomplete.
@@ -216,6 +222,90 @@ export function sizeWarnings(size: DiffSize): string[] {
   return warnings;
 }
 
+/** Above this many fixture specs for one change, the advice is the whole Chromium suite. */
+export const FIXTURE_SPEC_LIMIT = 8;
+/** Runs the whole Chromium fixture suite. */
+export const FIXTURE_SUITE_COMMAND = 'bun run test:browser:chromium';
+/** Runs the named Chromium fixture specs, which follow it. */
+export const FIXTURE_SPECS_COMMAND =
+  'bun scripts/browser-fixtures/scripts/prepare-manifest.ts && bun scripts/host-slots.ts --slots=1 -- bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts --project=chromium';
+/**
+ * The sweep that mounts every Cinder component from the manifest. It takes about 20 minutes on one
+ * slot, so the named specs leave it out; the whole suite runs it.
+ */
+export const FIXTURE_SWEEP_SPEC = 'components.playwright.ts';
+
+const cinderSource = 'components/cinder/src/';
+const cinderComponent = /^components\/cinder\/src\/components\/([^/]+)\//;
+const editorComponent = /^components\/editor\/src\/lib\/components\/([^/]+)\//;
+
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Whether a spec's file name carries `name` as whole hyphen-separated words. */
+function fileNames(spec: string, name: string): boolean {
+  return new RegExp(`(?:^|-)${escaped(name)}(?:-|\\.)`).test(spec);
+}
+
+/** Whether a spec's source names a Cinder component, as `citation` or `Citation`. */
+function sourceNames(source: string, name: string): boolean {
+  const pascal = name
+    .split('-')
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join('');
+  return new RegExp(`(?<![\\w-])(?:${escaped(name)}|${pascal})(?![\\w-])`).test(source);
+}
+
+/**
+ * The warning that names the Chromium fixture specs covering a change to a Cinder, Chat or Editor
+ * component, or the whole suite for a change no component name bounds. Undefined when the change
+ * touches none of them. `specs` maps each spec's file name to its source. Pure.
+ */
+export function fixtureSpecAdvice(
+  changed: readonly string[],
+  specs: ReadonlyMap<string, string>,
+): string | undefined {
+  const cinder = new Set<string>();
+  const others = new Set<string>();
+  let shared = false;
+  for (const path of changed) {
+    if (testFile.test(path) || path.endsWith('.md')) continue;
+    const cinderName = cinderComponent.exec(path)?.[1];
+    const editorName = editorComponent.exec(path)?.[1];
+    if (cinderName !== undefined) cinder.add(cinderName);
+    else if (path.startsWith(cinderSource)) shared = true;
+    else if (editorName !== undefined) others.add(editorName);
+    else if (path.startsWith('components/editor/src/')) others.add('editor');
+    else if (path.startsWith('components/chat/src/')) others.add('chat');
+  }
+  if (!shared && cinder.size + others.size === 0) return undefined;
+  const reason = 'workers never run a browser on the host';
+  const whole = (why: string) =>
+    `${why}; ${reason}, so whoever runs the design-review capture runs the whole Chromium fixture suite first: \`${FIXTURE_SUITE_COMMAND}\`.`;
+  if (shared) return whole("the change touches Cinder's styles, tokens or shared code");
+  const names = [...cinder, ...others].toSorted();
+  const selected = new Set<string>();
+  for (const [spec, source] of specs) {
+    if (spec === FIXTURE_SWEEP_SPEC) continue;
+    if (names.some((name) => fileNames(spec, name))) selected.add(spec);
+    else if ([...cinder].some((name) => sourceNames(source, name))) selected.add(spec);
+  }
+  const subject = `the change touches ${names.join(', ')}`;
+  if (selected.size === 0) return whole(`${subject}, which no fixture spec names`);
+  if (selected.size > FIXTURE_SPEC_LIMIT)
+    return whole(`${subject}, which ${selected.size} fixture specs name`);
+  return `${subject}; ${reason}, so whoever runs the design-review capture runs these fixture specs first: \`${FIXTURE_SPECS_COMMAND} ${[...selected].toSorted().join(' ')}\`.`;
+}
+
+/** Each Chromium fixture spec's file name and source; empty where the directory is missing. */
+export function readFixtureSpecs(root: string): Map<string, string> {
+  const directory = join(root, 'scripts/browser-fixtures/tests');
+  const specs = new Map<string, string>();
+  if (!existsSync(directory)) return specs;
+  for (const name of new Bun.Glob('*.playwright.ts').scanSync({ cwd: directory }))
+    specs.set(name, readFileSync(join(directory, name), 'utf8'));
+  return specs;
+}
+
 export interface StepResult {
   name: string;
   command: string;
@@ -251,6 +341,8 @@ export interface FocusedDependencies {
   exists?: (path: string) => boolean;
   readText?: (path: string) => string | undefined;
   workspaces?: (root: string) => WorkspaceReference[];
+  /** Each Chromium fixture spec's file name and source. */
+  fixtureSpecs?: (root: string) => ReadonlyMap<string, string>;
   /** Progress lines; standard error by default. */
   log?: (line: string) => void;
 }
@@ -402,6 +494,11 @@ export async function runChecks(
     return failure(`focused-checks: could not read the changed files (${describeError(error)}).`);
   }
   warnings.push(...sizeWarnings(size));
+  const fixtureAdvice = fixtureSpecAdvice(
+    changed,
+    (dependencies.fixtureSpecs ?? readFixtureSpecs)(root),
+  );
+  if (fixtureAdvice !== undefined) warnings.push(fixtureAdvice);
 
   let selectsIsolatedTest = false;
   const browserTests: string[] = [];
