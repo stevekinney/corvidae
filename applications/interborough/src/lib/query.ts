@@ -202,6 +202,8 @@ export const queryKeys = {
     /** Which of the agents a workflow builder's steps name need a model while no provider is connected. */
     builderBlockedAgents: (agentIds: readonly string[]) =>
       ['workflows', 'builder', 'provider-blocked', agentIds] as const,
+    /** The activities a step can call and the code workflows a `workflow` step can start (`bureau.workflows.catalog`). */
+    builderCatalog: () => ['workflows', 'builder', 'catalog'] as const,
   },
   schedules: {
     list: (filter: ScheduleFilter) => ['schedules', 'list', filter] as const,

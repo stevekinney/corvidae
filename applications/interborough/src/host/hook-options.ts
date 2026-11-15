@@ -11,6 +11,7 @@
  * - Its private-network addresses are the deployment's and not the person's, so
  *   `allowPrivateNetworks` is off and no hook reaches them.
  */
+import type { Bungalow } from '@lostgradient/bungalow';
 import type { BureauHooksOptions, HookSecretStore } from '@lostgradient/bureau';
 
 /** The secret port of a remote home: it holds nothing, and a write is refused with `deployment`. */
@@ -22,9 +23,12 @@ export const DEPLOYMENT_HOOK_SECRETS: HookSecretStore = {
   delete: () => Promise.resolve(),
 };
 
-/** The `hooks` option of a Bureau on a home of `mode`. */
-export function hookOptionsFor(mode: 'local' | 'remote'): BureauHooksOptions {
-  return mode === 'remote'
-    ? { secrets: DEPLOYMENT_HOOK_SECRETS, urlPolicy: { allowPrivateNetworks: false } }
-    : {};
+/**
+ * The `hooks` option of a Bureau on a home with `capabilities`: a home that is not on the person's
+ * own machine keeps its secrets in the environment and has no private network of the person's.
+ */
+export function hookOptionsFor(capabilities: Bungalow['capabilities']): BureauHooksOptions {
+  return capabilities.personalMachine
+    ? {}
+    : { secrets: DEPLOYMENT_HOOK_SECRETS, urlPolicy: { allowPrivateNetworks: false } };
 }

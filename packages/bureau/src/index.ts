@@ -667,6 +667,7 @@ export type {
   AgentDescriptor,
   CreateSupervisorOptions,
   PipelineStage,
+  RoutingContext,
   RoutingStrategy,
   Supervisor,
   SupervisorEventMap,

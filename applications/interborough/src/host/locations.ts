@@ -17,7 +17,7 @@ import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { PostgresStorage } from '@lostgradient/storage-postgres';
 import type { Tool } from 'armorer';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -91,17 +91,186 @@ export type HostDatabase =
   | { readonly kind: 'sqlite'; readonly path: string }
   | { readonly kind: 'postgres'; readonly location: string };
 
-/** The database as the host reports it: a SQLite path, or a Postgres location with no credential. */
-export function redactDatabase(database: DatabaseLocation): HostDatabase {
-  if (database.kind === 'sqlite') return { kind: 'sqlite', path: database.path };
+/**
+ * What the host does with one kind of database location: open its storage, report it without a
+ * credential, and say where the state lives for the line a development or production start prints.
+ * A new kind of database is one entry of {@link DatabaseKinds}.
+ */
+export type DatabaseKind = {
+  /** The storage for the location. `now` is the clock each key's write time is read from. */
+  readonly createStorage: (database: DatabaseLocation, now?: () => number) => Storage;
+  /** The location as the host reports it, with nothing that authenticates to it. */
+  readonly redact: (database: DatabaseLocation) => HostDatabase;
+  /** Where the state lives, as a person reads it: no credential. */
+  readonly describeState: (database: DatabaseLocation) => string;
+};
+
+/** The database kinds a host knows, keyed by the `kind` of a {@link DatabaseLocation}. */
+export type DatabaseKinds = Readonly<Record<string, DatabaseKind>>;
+
+/** What the host does with one kind of content location (the agent files, the workflow files, the plugins). */
+export type ContentKind = {
+  /** The source of agent definitions at `content`. */
+  readonly createAgentSource: (
+    bungalow: Bungalow,
+    content: ContentLocation,
+    tools: Readonly<Record<string, Tool>>,
+    directory: LocalDirectoryOptions,
+  ) => AgentSource;
+  /** The source of workflow definitions at `content`. */
+  readonly createWorkflowSource: (
+    bungalow: Bungalow,
+    content: ContentLocation,
+    directory: LocalDirectoryOptions,
+  ) => WorkflowSource;
+  /** The location as a person reads it. */
+  readonly describe: (content: ContentLocation) => string;
+  /** The directory on this machine that holds the content, or `undefined` when it is not in one. */
+  readonly localDirectory: (content: ContentLocation) => string | undefined;
+};
+
+/** The content kinds a host knows, keyed by the `kind` of a {@link ContentLocation}. */
+export type ContentKinds = Readonly<Record<string, ContentKind>>;
+
+/** The `Bun.S3Client` remote mode holds, or an error: a bucket location with no client is a bug. */
+function requireClient(bungalow: Bungalow): Bun.S3Client {
+  const client = bungalow.s3Client();
+  if (client === undefined) throw new Error('The home names a bucket but has no S3 client.');
+  return client;
+}
+
+/** The wrong kind of location reached a default entry: a table mistake, and the text holds no field of it. */
+function wrongKind(entry: string): Error {
+  return new Error(`The ${entry} entry was given a location of another kind.`);
+}
+
+/** The path of a directory location, for the `directory` entry. */
+function directoryPath(content: ContentLocation): string {
+  if (content.kind !== 'directory') throw wrongKind('directory');
+  return content.path;
+}
+
+/** The bucket and prefix of an S3 location, for the `s3` entry. */
+function bucketOf(content: ContentLocation): { bucket: string; prefix: string } {
+  if (content.kind !== 's3') throw wrongKind('s3');
+  return { bucket: content.bucket, prefix: content.prefix };
+}
+
+/** The path of a SQLite location, for the `sqlite` entry. */
+function sqlitePath(database: DatabaseLocation): string {
+  if (database.kind !== 'sqlite') throw wrongKind('sqlite');
+  return database.path;
+}
+
+/** The URL of a Postgres location, for the `postgres` entry. It carries the password. */
+function postgresUrl(database: DatabaseLocation): string {
+  if (database.kind !== 'postgres') throw wrongKind('postgres');
+  return database.url;
+}
+
+/** The Postgres server and database name of `database`, or an error that quotes no part of the URL. */
+function postgresLocation(database: DatabaseLocation): string {
+  const text = postgresUrl(database);
   let url: URL;
   try {
-    url = new URL(database.url);
+    url = new URL(text);
   } catch {
     // The parser's own message quotes the text it could not read, and that text holds the password.
     throw new Error('The Postgres database URL is not a valid URL.');
   }
-  return { kind: 'postgres', location: `${url.host}${url.pathname}` };
+  return `${url.host}${url.pathname}`;
+}
+
+/** The database kinds a host starts with: a SQLite file on this machine, and a Postgres server. */
+export const DEFAULT_DATABASE_KINDS: DatabaseKinds = {
+  sqlite: {
+    createStorage: (database, now) =>
+      new BunSQLiteStorage(sqlitePath(database), now === undefined ? {} : { now }),
+    redact: (database) => ({ kind: 'sqlite', path: sqlitePath(database) }),
+    describeState: (database) => dirname(sqlitePath(database)),
+  },
+  postgres: {
+    // The Postgres pool connects when first used, and this is the only place the URL is read.
+    createStorage: (database, now) =>
+      new PostgresStorage({
+        url: postgresUrl(database),
+        ...(now === undefined ? {} : { now }),
+      }),
+    redact: (database) => ({ kind: 'postgres', location: postgresLocation(database) }),
+    describeState: () => 'the configured Postgres database',
+  },
+};
+
+/** The content kinds a host starts with: a directory on this machine, and an S3 bucket prefix. */
+export const DEFAULT_CONTENT_KINDS: ContentKinds = {
+  directory: {
+    createAgentSource: (_bungalow, content, tools, directory) =>
+      agentFileDirectory(directoryPath(content), { tools, ...directoryOptionsOf(directory) }),
+    createWorkflowSource: (_bungalow, content, directory) =>
+      workflowFileDirectory(directoryPath(content), directoryOptionsOf(directory)),
+    describe: directoryPath,
+    localDirectory: directoryPath,
+  },
+  s3: {
+    createAgentSource: (bungalow, content, tools) =>
+      agentObjectSource(bucketOf(content), {
+        client: requireClient(bungalow),
+        tools,
+        pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
+      }),
+    createWorkflowSource: (bungalow, content) =>
+      workflowObjectSource(bucketOf(content), {
+        client: requireClient(bungalow),
+        pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
+      }),
+    describe: (content) => {
+      const { bucket, prefix } = bucketOf(content);
+      return `s3://${bucket}/${prefix}`;
+    },
+    localDirectory: () => undefined,
+  },
+};
+
+/** The entry for a database `kind`, or an error that names the kind and nothing of the location. */
+function databaseKindOf(database: DatabaseLocation, kinds: DatabaseKinds): DatabaseKind {
+  const kind: string = database.kind;
+  if (!Object.hasOwn(kinds, kind)) {
+    throw new Error(`The host has no handling for the database kind "${kind}".`);
+  }
+  return kinds[kind]!;
+}
+
+/** The entry for a content `kind`, or an error that names the kind and nothing of the location. */
+function contentKindOf(content: ContentLocation, kinds: ContentKinds): ContentKind {
+  const kind: string = content.kind;
+  if (!Object.hasOwn(kinds, kind)) {
+    throw new Error(`The host has no handling for the content kind "${kind}".`);
+  }
+  return kinds[kind]!;
+}
+
+/** The database as the host reports it: a SQLite path, or a Postgres location with no credential. */
+export function redactDatabase(
+  database: DatabaseLocation,
+  kinds: DatabaseKinds = DEFAULT_DATABASE_KINDS,
+): HostDatabase {
+  return databaseKindOf(database, kinds).redact(database);
+}
+
+/** Where the database's state lives, as `kinds` says: a directory, or the configured Postgres database. */
+export function describeDatabaseState(
+  database: DatabaseLocation,
+  kinds: DatabaseKinds = DEFAULT_DATABASE_KINDS,
+): string {
+  return databaseKindOf(database, kinds).describeState(database);
+}
+
+/** The local directory that holds `content`, or `undefined` when it is not on this machine. */
+export function localContentDirectory(
+  content: ContentLocation,
+  kinds: ContentKinds = DEFAULT_CONTENT_KINDS,
+): string | undefined {
+  return contentKindOf(content, kinds).localDirectory(content);
 }
 
 /**
@@ -171,12 +340,13 @@ export function hostPathsReport(
   content: { readonly agents: ContentLocation; readonly workflows: ContentLocation },
   providers: readonly { readonly name: string; readonly secretKey: string }[],
   a2aDirectoryUrl: string,
+  kinds: { readonly database?: DatabaseKinds; readonly content?: ContentKinds } = {},
 ): HostPathsReport {
   return {
     mode: bungalow.mode,
-    database: redactDatabase(bungalow.database),
-    agentDirectory: describeContent(content.agents),
-    workflowDirectory: describeContent(content.workflows),
+    database: redactDatabase(bungalow.database, kinds.database),
+    agentDirectory: describeContent(content.agents, kinds.content),
+    workflowDirectory: describeContent(content.workflows, kinds.content),
     configurationFile: bungalow.configurationLocation,
     locked: hostWriteLocks(bungalow),
     providers: providers.map(({ name, secretKey }) => ({
@@ -193,11 +363,12 @@ export function hostPathsReport(
  * clock each key's write time is read from, the host's own, so a host running on an injected
  * runtime records the times its records carry; it defaults to the system clock.
  */
-export function createHostStorage(database: DatabaseLocation, now?: () => number): Storage {
-  const clock = now === undefined ? {} : { now };
-  return database.kind === 'sqlite'
-    ? new BunSQLiteStorage(database.path, clock)
-    : new PostgresStorage({ url: database.url, ...clock });
+export function createHostStorage(
+  database: DatabaseLocation,
+  now?: () => number,
+  kinds: DatabaseKinds = DEFAULT_DATABASE_KINDS,
+): Storage {
+  return databaseKindOf(database, kinds).createStorage(database, now);
 }
 
 /** Release a storage the host opened, awaiting a pool's shutdown when the storage has one. */
@@ -210,15 +381,11 @@ export async function disposeHostStorage(
 }
 
 /** The location as a person reads it: a directory's path, or `s3://<bucket>/<prefix>`. */
-export function describeContent(content: ContentLocation): string {
-  return content.kind === 'directory' ? content.path : `s3://${content.bucket}/${content.prefix}`;
-}
-
-/** The `Bun.S3Client` remote mode holds, or an error: a bucket location with no client is a bug. */
-function requireClient(bungalow: Bungalow): Bun.S3Client {
-  const client = bungalow.s3Client();
-  if (client === undefined) throw new Error('The home names a bucket but has no S3 client.');
-  return client;
+export function describeContent(
+  content: ContentLocation,
+  kinds: ContentKinds = DEFAULT_CONTENT_KINDS,
+): string {
+  return contentKindOf(content, kinds).describe(content);
 }
 
 /** The source of agent definitions at `content`: a directory, or a bucket prefix polled for changes. */
@@ -227,18 +394,9 @@ export function createAgentSource(
   content: ContentLocation,
   tools: Readonly<Record<string, Tool>>,
   directory: LocalDirectoryOptions = {},
+  kinds: ContentKinds = DEFAULT_CONTENT_KINDS,
 ): AgentSource {
-  if (content.kind === 'directory') {
-    return agentFileDirectory(content.path, { tools, ...directoryOptionsOf(directory) });
-  }
-  return agentObjectSource(
-    { bucket: content.bucket, prefix: content.prefix },
-    {
-      client: requireClient(bungalow),
-      tools,
-      pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
-    },
-  );
+  return contentKindOf(content, kinds).createAgentSource(bungalow, content, tools, directory);
 }
 
 /**
@@ -295,15 +453,7 @@ export function createWorkflowSource(
   bungalow: Bungalow,
   content: ContentLocation,
   directory: LocalDirectoryOptions = {},
+  kinds: ContentKinds = DEFAULT_CONTENT_KINDS,
 ): WorkflowSource {
-  if (content.kind === 'directory') {
-    return workflowFileDirectory(content.path, directoryOptionsOf(directory));
-  }
-  return workflowObjectSource(
-    { bucket: content.bucket, prefix: content.prefix },
-    {
-      client: requireClient(bungalow),
-      pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
-    },
-  );
+  return contentKindOf(content, kinds).createWorkflowSource(bungalow, content, directory);
 }

@@ -1,7 +1,13 @@
 import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { directoryExists, ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
+import {
+  directoryExists,
+  ensureDirectory,
+  readEntry,
+  readEntryConcurrently,
+  writePrivateFile,
+} from './entry-guard.ts';
 import { sanitizeCause } from './error-code.ts';
 import { BungalowError, BungalowInputError } from './errors.ts';
 import { assertSecretKey } from './validation.ts';
@@ -254,7 +260,7 @@ export function createLocalProvider(
     for (const [directory, directoryLabel] of directories) {
       if (!directoryExists(directory, directoryLabel)) return undefined;
     }
-    return readEntry(path, label);
+    return readEntryConcurrently(path, label);
   };
   const managedDirectory = [managed, 'managed secret directory'] as const;
   const versionsDirectory = [versions, 'secret versions directory'] as const;

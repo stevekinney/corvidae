@@ -30,6 +30,9 @@ import { BungalowStateError } from './errors.ts';
  * be a real directory, and a file must be a regular file with exactly one link. Only after that is
  * anything done through the descriptor. A failure is a `BungalowStateError` that names the kind of
  * entry (`lock file`, `secrets directory`) and never a secret's key.
+ *
+ * The one exception is `readEntryConcurrently`, for a reader that holds no lock: a writer can
+ * replace the file it opened, which leaves a link count of 0, so it reads what it opened.
  */
 
 export type EntryKind = 'directory' | 'file';
@@ -47,16 +50,32 @@ function describeProblem(path: string, expected: EntryKind): string | undefined 
   }
 }
 
-function verify(status: Stats, expected: EntryKind): string | undefined {
+function verify(status: Stats, expected: EntryKind, tolerateReplaced: boolean): string | undefined {
   if (expected === 'directory') return status.isDirectory() ? undefined : 'not a directory';
   if (!status.isFile()) return 'not a regular file';
+  // A link count of 0 is a file a writer replaced by rename, or `reclaim` deleted, after this
+  // descriptor opened it. It has no path left, so it cannot share a link with another one.
+  if (tolerateReplaced && status.nlink === 0) return undefined;
   return status.nlink === 1 ? undefined : 'a hard link shared with another path';
+}
+
+/**
+ * A hook that runs once an entry is open and before it is checked, so a test can change the entry
+ * in exactly the window a concurrent writer can. Tests only: nothing in the package sets it.
+ */
+let afterOpenHook: ((path: string) => void) | undefined;
+
+/** Set (or, with `undefined`, clear) the hook that runs between an open and its check. */
+export function setAfterOpenHook(hook: ((path: string) => void) | undefined): void {
+  afterOpenHook = hook;
 }
 
 /**
  * Open an entry, refusing a symbolic link, a FIFO, a device, and (for a file) a second hard link.
  * Returns a descriptor that is already known to be the right kind of entry; the caller closes it.
- * A missing entry throws the underlying `ENOENT`, and so does any other failure to open.
+ * A missing entry throws the underlying `ENOENT`, and so does any other failure to open. A file
+ * whose link count is not exactly 1 is always refused here, a replaced one (0) included; only
+ * `readEntryConcurrently` reads one.
  */
 export function openEntry(
   path: string,
@@ -64,6 +83,17 @@ export function openEntry(
   expected: EntryKind,
   flags: number,
   mode?: number,
+): number {
+  return openChecked(path, label, expected, flags, mode, false);
+}
+
+function openChecked(
+  path: string,
+  label: string,
+  expected: EntryKind,
+  flags: number,
+  mode: number | undefined,
+  tolerateReplaced: boolean,
 ): number {
   let descriptor: number;
   try {
@@ -77,7 +107,8 @@ export function openEntry(
     throw error;
   }
   try {
-    const problem = verify(fstatSync(descriptor), expected);
+    afterOpenHook?.(path);
+    const problem = verify(fstatSync(descriptor), expected, tolerateReplaced);
     if (problem !== undefined) throw new BungalowStateError(`The ${label} is ${problem}.`);
   } catch (error) {
     closeSync(descriptor);
@@ -159,6 +190,28 @@ export function readEntry(path: string, label: string, tighten?: number): string
     if (tighten !== undefined && (fstatSync(descriptor).mode & 0o077) !== 0) {
       fchmodSync(descriptor, tighten);
     }
+    return readFileSync(descriptor, 'utf8');
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+/**
+ * The text of a regular file, or `undefined` when it does not exist, for a reader that holds no
+ * lock and so can race a writer. A writer replaces a file by rename, and `reclaim` deletes one; a
+ * descriptor opened just before that reports a link count of 0 and still reads the content it
+ * opened, which is the old content and never an error. A file with a second link is still refused,
+ * and this never changes a mode, so a reader that must tighten one uses `readEntry`.
+ */
+export function readEntryConcurrently(path: string, label: string): string | undefined {
+  let descriptor: number;
+  try {
+    descriptor = openChecked(path, label, 'file', constants.O_RDONLY, undefined, true);
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return undefined;
+    throw error;
+  }
+  try {
     return readFileSync(descriptor, 'utf8');
   } finally {
     closeSync(descriptor);

@@ -35,14 +35,15 @@ export function retiredAnswerEncryptionKey(keyId: string): string {
 }
 
 /**
- * The installation's answer keys: the current one, created on first use locally and read from the
- * deployment remotely, and each retired one read by its id when an answer names it. Throws before
- * anything is written when a remote host has no key.
+ * The installation's answer keys: the current one, created on first use when the home's deployment
+ * secrets are writable and read from the deployment otherwise, and each retired one read by its id
+ * when an answer names it. Throws before anything is written when the secrets are not writable and
+ * hold no key.
  */
 export async function answerEncryptionKeys(bungalow: Bungalow): Promise<AnswerEncryptionKeys> {
   let encoded = await bungalow.deploymentSecrets.read(ANSWER_ENCRYPTION_KEY);
   if (encoded === undefined) {
-    if (bungalow.mode === 'remote') {
+    if (!bungalow.deploymentSecrets.writable) {
       throw new Error(
         `${bungalow.deploymentSecrets.location(ANSWER_ENCRYPTION_KEY)} is not set. Remote mode needs it: it seals the secret answers every host reads.`,
       );
