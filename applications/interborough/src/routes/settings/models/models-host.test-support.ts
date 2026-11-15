@@ -15,6 +15,11 @@ export type HostRequest = { method: string; path: string; body: unknown };
 export type FakeHost = {
   /** The providers, by name, with whether each has a key. */
   keys: Record<string, boolean>;
+  /**
+   * The providers that declare no secret (a local Ollama): connected with no key saved, their
+   * models offered at once (`hasKey: false, connected: true`).
+   */
+  keyless: string[];
   /** The catalog edits stored. */
   catalog: CatalogEdit[];
   /** The models each provider offers once it has a key, before the edits. */
@@ -70,9 +75,12 @@ function urlOf(input: RequestInfo | URL): string {
 
 /** The models offered now: each connected provider's, with the stored edits laid over them. */
 function modelsOf(host: FakeHost): ProviderModel[] {
-  const rows = Object.entries(host.keys)
-    .filter(([, connected]) => connected)
-    .flatMap(([name]) => host.offered[name] ?? []);
+  const rows = [
+    ...Object.entries(host.keys)
+      .filter(([, connected]) => connected)
+      .map(([name]) => name),
+    ...host.keyless,
+  ].flatMap((name) => host.offered[name] ?? []);
   const shown = rows.map((row) => {
     const edit = host.catalog.find(
       (entry) =>
@@ -100,6 +108,8 @@ function modelsOf(host: FakeHost): ProviderModel[] {
 /** Installs the stand-in over the current `fetch`. Call `restore` before the layer underneath is restored. */
 export function installFakeHost(initial: {
   keys: Record<string, boolean>;
+  /** The providers that declare no secret; see {@link FakeHost.keyless}. */
+  keyless?: string[];
   offered: Record<string, ProviderModel[]>;
   catalog?: CatalogEdit[];
   lockReason?: 'deployment';
@@ -107,6 +117,7 @@ export function installFakeHost(initial: {
   const underneath = globalThis.fetch;
   const host: FakeHost = {
     keys: initial.keys,
+    keyless: initial.keyless ?? [],
     offered: initial.offered,
     catalog: initial.catalog ?? [],
     ...(initial.lockReason === undefined ? {} : { lockReason: initial.lockReason }),
@@ -133,11 +144,20 @@ export function installFakeHost(initial: {
       }
       return Response.json({
         configurationRevision: JSON.stringify([host.keys, host.catalog]),
-        providers: Object.entries(host.keys).map(([name, hasKey]) => ({
-          name,
-          configured: hasKey,
-          hasKey,
-        })),
+        providers: [
+          ...Object.entries(host.keys).map(([name, hasKey]) => ({
+            name,
+            configured: hasKey,
+            hasKey,
+            connected: hasKey,
+          })),
+          ...host.keyless.map((name) => ({
+            name,
+            configured: false,
+            hasKey: false,
+            connected: true,
+          })),
+        ],
         catalog: host.catalog,
         models: modelsOf(host),
         ...(host.lockReason === undefined ? {} : { lockReason: host.lockReason }),

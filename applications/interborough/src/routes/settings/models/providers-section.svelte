@@ -2,11 +2,13 @@
   /**
    * The Providers part of Settings › Models (board SettingsShell, "Models, /settings/models" and
    * "Models, provider connected"): each provider that has a plugin, in the order Anthropic, OpenAI,
-   * Gemini, with what its models are called under its name. A provider with no key shows only
-   * Connect; one with a key shows a Connected dot and Manage, which opens the dialog that replaces or
-   * removes its key. There is no banner and no "Not
-   * connected" badge: while none is connected, the description says why agents cannot answer. A
-   * host that keeps its configuration in its deployment cannot save a key, and says so.
+   * Gemini, with what its models are called under its name. A provider that needs a key it lacks
+   * shows only Connect; a connected one shows a Connected dot and Manage, which opens the dialog
+   * that replaces or removes its key and edits its plugin's settings. A provider that declares no
+   * secret (a local Ollama) is connected with no key: its Manage holds only its settings, and with
+   * none it shows the Connected dot alone. There is no banner and no "Not connected" badge: while
+   * none is connected, the description says why agents cannot answer. A host that keeps its
+   * configuration in its deployment cannot save a key, and says so.
    */
   import { Alert, Button, FormSection, StatusDot } from '@lostgradient/cinder';
 
@@ -16,15 +18,22 @@
   import ManageDialog from './manage-dialog.svelte';
   import RemoveKeyDialog from './remove-key-dialog.svelte';
   import ReplaceKeyDialog from './replace-key-dialog.svelte';
-  import { providerDisplayName, providerTagline, providersInOrder } from './format-model.ts';
+  import { providerTagline, providersInOrder } from './format-model.ts';
+  import {
+    hasSettingsToShow,
+    providerTitle,
+    type ProviderConfigurationSource,
+  } from './provider-configuration.ts';
 
   interface Props {
     snapshot: ProvidersSnapshot;
     /** The provider whose dialog is open, or `null`. The page binds it so the empty Models list can open one too. */
     connecting: string | null;
+    /** The configuration of each provider's plugin, by provider name, which Connect and Manage draw and save. */
+    configurations?: ReadonlyMap<string, ProviderConfigurationSource>;
   }
 
-  let { snapshot, connecting = $bindable() }: Props = $props();
+  let { snapshot, connecting = $bindable(), configurations = new Map() }: Props = $props();
 
   const copy = MODELS_COPY.providers;
 
@@ -37,7 +46,11 @@
 
   const locked = $derived(snapshot.lockReason !== undefined);
   const entries = $derived(providersInOrder(snapshot.providers));
-  const anyConnected = $derived(entries.some((entry) => entry.hasKey));
+  const anyConnected = $derived(entries.some((entry) => entry.connected));
+  /** Whether the provider being managed holds a key the dialog can replace or remove: a keyless one has none. */
+  const managedHasKey = $derived(
+    snapshot.providers.some((entry) => entry.name === managing && entry.hasKey),
+  );
   const managedModelCount = $derived(
     snapshot.models.filter((entry) => entry.provider === managing && !entry.off).length,
   );
@@ -55,7 +68,7 @@
       </Alert>
     {/if}
     {#each entries as provider (provider.name)}
-      {@const name = providerDisplayName(provider.name)}
+      {@const name = providerTitle(provider.name, configurations)}
       {@const tagline = providerTagline(provider.name)}
       <div class="ib-providers__row" data-provider={provider.name}>
         <div class="ib-providers__identity">
@@ -64,15 +77,18 @@
             <span class="ib-providers__tagline">{tagline}</span>
           {/if}
         </div>
-        {#if provider.hasKey}
+        {#if provider.connected}
           <StatusDot status="success" label={copy.connected} labelVisible />
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={locked}
-            aria-label={copy.manageLabel(name)}
-            onclick={() => (managing = provider.name)}>{copy.manage}</Button
-          >
+          <!-- A keyless provider has no key to manage: Manage is there only for its settings. -->
+          {#if provider.hasKey || hasSettingsToShow(configurations.get(provider.name))}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={locked}
+              aria-label={copy.manageLabel(name)}
+              onclick={() => (managing = provider.name)}>{copy.manage}</Button
+            >
+          {/if}
         {:else}
           <Button
             variant="secondary"
@@ -87,9 +103,11 @@
   </FormSection>
 </div>
 
-<ConnectDialog bind:provider={connecting} />
+<ConnectDialog bind:provider={connecting} {configurations} />
 <ManageDialog
   bind:provider={managing}
+  {configurations}
+  hasKey={managedHasKey}
   modelCount={managedModelCount}
   onReplace={(provider: string) => (replacing = provider)}
   onRemove={(provider: string) => (removing = provider)}

@@ -48,6 +48,27 @@ describe('the form of a contributed kind', () => {
     expect(received.every((value) => typeof value['limit'] !== 'string')).toBe(true);
   });
 
+  test('keeps what was typed when the schema is read again and comes back equal in a new object', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const { getByLabelText, rerender } = render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'inbox:message',
+        schema: SCHEMA,
+        value: { mailbox: 'stored' },
+        onChange: (next) => received.push(next),
+      },
+    });
+    await fireEvent.input(getByLabelText(/mailbox/i), { target: { value: 'support' } });
+    await waitFor(() => expect(received.at(-1)).toMatchObject({ mailbox: 'support' }));
+    const reported = received.length;
+
+    await rerender({ schema: structuredClone(SCHEMA), value: { mailbox: 'stored' } });
+    await quietFor(100);
+
+    expect((getByLabelText(/mailbox/i) as HTMLInputElement).value).toBe('support');
+    expect(received).toHaveLength(reported);
+  });
+
   test('says so when the kind takes no settings', () => {
     const { getByText } = render(ContributedConfigurationForm, {
       props: {

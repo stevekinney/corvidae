@@ -404,7 +404,7 @@
   const noProvider = $derived(
     usesModel &&
       providers.data !== undefined &&
-      !providers.data.providers.some((provider) => provider.hasKey),
+      !providers.data.providers.some((provider) => provider.connected),
   );
 
   // An agent that a disabled plugin ships (`plugin:name`) cannot run, and the composer says so with
@@ -2413,7 +2413,7 @@
           <AgentSelect
             agents={agents.data ?? []}
             value={undefined}
-            providerConnected={providers.data?.providers.some((provider) => provider.hasKey)}
+            providerConnected={providers.data?.providers.some((provider) => provider.connected)}
             onChange={chooseAgent}
           />
         {/if}
@@ -2425,7 +2425,7 @@
       <AgentSelect
         agents={agents.data ?? []}
         value={agent}
-        providerConnected={providers.data?.providers.some((provider) => provider.hasKey)}
+        providerConnected={providers.data?.providers.some((provider) => provider.connected)}
         disabled={startingFirstMessage}
         onChange={chooseAgent}
       />

@@ -241,7 +241,7 @@
   let chatsEmpty = $state(false);
   const newChatVariant = $derived(activeTab === 'chats' && chatsEmpty ? 'secondary' : 'primary');
 
-  // Whether any provider holds a key, the rule the first-run checklist states. An agent that runs
+  // Whether any provider is connected, the rule the first-run checklist states. An agent that runs
   // on a model cannot answer without one; one that names no model, such as a script, can.
   const providers = createQuery(
     () => ({
@@ -256,7 +256,7 @@
       listed !== undefined &&
       listed.media !== null &&
       providers.data !== undefined &&
-      !providers.data.providers.some((provider) => provider.hasKey),
+      !providers.data.providers.some((provider) => provider.connected),
   );
 
   // The plugin's title, as Settings › Plugins shows it, for the one line on each tab that names the

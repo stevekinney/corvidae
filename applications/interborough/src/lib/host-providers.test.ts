@@ -23,8 +23,8 @@ const mutation = { operationId: 'test-operation', expectedRevision: 'test-revisi
 const SNAPSHOT: ProvidersSnapshot = {
   configurationRevision: 'test-revision',
   providers: [
-    { name: 'anthropic', configured: true, hasKey: true, models: ['sonnet'] },
-    { name: 'openai', configured: false, hasKey: false },
+    { name: 'anthropic', configured: true, hasKey: true, connected: true, models: ['sonnet'] },
+    { name: 'openai', configured: false, hasKey: false, connected: false },
   ],
   catalog: [
     {
