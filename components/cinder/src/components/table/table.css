@@ -31,15 +31,15 @@
     overflow: clip;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-default);
-    /* A table takes a card's fill, so it reads as a white sheet beside a card in light and never
-     * darker than one in dark. The header row and the hover read this fill too: the header is
-     * set apart by muted text and a hairline, never by a darker band, and a hovered row takes a
-     * faint accent tint of the same fill. */
-    --_cinder-table-fill: var(--cinder-surface-raised);
+    /* A table takes the fill of a card body, so it matches the cards beside it in light and in
+     * dark. The header row and the hover read this fill too: the header is set apart by muted
+     * text and a hairline, never by a darker band, and a hovered row takes a faint accent tint
+     * of the same fill (a translucent tint when the fill is transparent). */
+    --_cinder-table-fill: var(--cinder-surface);
     --_cinder-table-row-hover: color-mix(
       in oklch,
       var(--_cinder-table-fill),
-      var(--cinder-accent-solid) 4%
+      var(--cinder-accent-solid) 3%
     );
     background: var(--_cinder-table-fill);
     /* Longest a truncating cell's text may grow before it ellipsizes. */
@@ -68,19 +68,20 @@
     -webkit-overflow-scrolling: touch;
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised);
-    /* The fade is opaque in the table's fill; see _scroll-fade.css rule 1. */
-    --_cinder-scroll-fade-color: var(--cinder-surface-raised);
+    background: var(--cinder-surface);
+    /* The fade is opaque in the surface color; see _scroll-fade.css rule 1. */
+    --_cinder-scroll-fade-color: var(--cinder-surface);
   }
 
   /* Frameless (COR-2311): a queue or list view sits on the page with no outline, radius or fill.
-   * Its opaque parts (a sticky header, the hover tint) take the page's canvas instead. */
+   * Its header and group rows paint nothing over whatever it sits on, and its hover is a
+   * translucent tint. */
   .cinder-table[data-cinder-frameless],
   .cinder-table-scroll[data-cinder-frameless] {
     border: 0;
     border-radius: 0;
     background: transparent;
-    --_cinder-table-fill: var(--cinder-surface-canvas);
+    --_cinder-table-fill: transparent;
     --_cinder-scroll-fade-color: var(--cinder-surface-canvas);
   }
 
@@ -163,6 +164,11 @@
     position: sticky;
     top: 0;
     z-index: 1;
+  }
+
+  /* A pinned header must be opaque; a frameless one takes the page canvas, as its fade does. */
+  .cinder-table[data-cinder-frameless][data-cinder-sticky-header] .cinder-table__header {
+    background: var(--cinder-surface-canvas);
   }
 
   /* A native <caption> (caption-side: top) renders above the table's border box

@@ -17,16 +17,16 @@
     scrollbar-gutter: stable;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
-    /* A grid takes a card's fill, like Table: a white sheet beside a card in light, never darker
-     * than one in dark. The header row, the rows and the pinned cells all read this one fill; the
-     * header is set apart by muted text and a hairline, and a hovered row takes a faint accent
-     * tint of the same fill. Every fill stays opaque, because sticky and pinned cells paint over
-     * the rows that scroll under them. */
-    --_cinder-data-grid-fill: var(--cinder-surface-raised);
+    /* A grid takes the fill of a card body, like Table, so it matches the cards beside it in light
+     * and in dark. The header row, the rows and the pinned cells all read this one fill; the
+     * header is set apart by muted text and a hairline, never by a darker band, and a hovered row
+     * takes a faint accent tint of the same fill. Every fill stays opaque, because sticky and
+     * pinned cells paint over the rows that scroll under them. */
+    --_cinder-data-grid-fill: var(--cinder-surface);
     --_cinder-data-grid-row-hover: color-mix(
       in oklch,
       var(--_cinder-data-grid-fill),
-      var(--cinder-accent-solid) 4%
+      var(--cinder-accent-solid) 3%
     );
     background: var(--_cinder-data-grid-fill);
     color: var(--cinder-text-default);
