@@ -103,12 +103,15 @@ describe('AreaChart', () => {
     // the baseline keeps every default series at chroma 0.045 or more in both themes.
     const { container } = render(AreaChart, { label: 'Usage trend', series });
     const stops = [...container.querySelectorAll('linearGradient')[0]!.querySelectorAll('stop')];
-    const line = container.querySelector('.cinder-area-chart__line[data-cinder-series="usage"]');
+    const stroke = container
+      .querySelector('.cinder-area-chart__line[data-cinder-series="usage"]')
+      ?.getAttribute('stroke');
 
+    expect(stroke).toBe('var(--cinder-chart-series-1)');
     expect(stops.map((stop) => stop.getAttribute('stop-opacity'))).toEqual(['0.55', '0.35']);
     expect(stops.map((stop) => stop.getAttribute('stop-color'))).toEqual([
-      line?.getAttribute('stroke'),
-      line?.getAttribute('stroke'),
+      'var(--cinder-chart-series-1)',
+      'var(--cinder-chart-series-1)',
     ]);
   });
 
