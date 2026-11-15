@@ -143,6 +143,59 @@
     .cinder-page-header__status > .cinder-divider[data-cinder-orientation='vertical'] {
       display: none;
     }
+
+    /* `narrowActions="beside-status"`: the actions sit at the inline end of the status's row
+       instead of a row of their own, which gives that row's height back to the page (a chat on a
+       phone). The heading's parts become the row's grid items: the title across the top, the
+       status and the actions on the line under it, and a description under both. */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'] .cinder-page-header__row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--cinder-space-1) var(--cinder-space-3);
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      :is(.cinder-page-header__heading-group, .cinder-page-header__title-line) {
+      display: contents;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'] .cinder-page-header__title {
+      grid-column: 1 / -1;
+      grid-row: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status'] .cinder-page-header__status {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {
+      grid-column: 2;
+      grid-row: 2;
+      justify-self: end;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__description {
+      grid-column: 1 / -1;
+      grid-row: 3;
+    }
+
+    /* The create "+" stays beside the title, as it does in the default narrow layout. */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:has(> .cinder-page-header__create-slot)
+      .cinder-page-header__title {
+      grid-column: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__create-slot {
+      grid-column: 2;
+      grid-row: 1;
+      justify-self: end;
+    }
   }
 
   .cinder-page-header__status[data-cinder-placement='below'] {

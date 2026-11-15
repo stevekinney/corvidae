@@ -252,6 +252,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       );
       return {
         transcript: rectOf(document.querySelector('.chat-timeline')),
+        card: rectOf(decision),
         drawer: rectOf(document.querySelector('[data-chat-approval-drawer]')),
         blocked: rectOf(document.querySelector('[data-chat-composer-status="blocked"]')),
         buttons: buttons.map((button) => {
@@ -269,9 +270,15 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       expect(box.y + box.height).toBeLessThanOrEqual(transcript.y + transcript.height + 1);
       expect(button.hitsItself).toBe(true);
     }
+    // The whole card, its question through Deny and Approve, fits the transcript with room to
+    // spare: the header and the blocked row give the transcript that height (COR-2327 B1).
+    const card = read.card!;
+    expect(card.y).toBeGreaterThanOrEqual(transcript.y - 1);
+    expect(card.y + card.height).toBeLessThanOrEqual(transcript.y + transcript.height + 1);
+    expect(transcript.height - card.height).toBeGreaterThanOrEqual(12);
     // The reminder is for an approval out of view, so with Deny and Approve in view it is not drawn.
     expect(read.drawer).toBeNull();
-    // The blocked row is one row with its action beside the reason.
+    // The blocked row is one row with its action beside the reason, the reason on two lines at most.
     expect(read.blocked).not.toBeNull();
     expect(read.blocked!.height).toBeLessThanOrEqual(64);
 
@@ -372,7 +379,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       const buttons = [...element.querySelectorAll('button, a')];
       return {
         reason: box(element.querySelector('.chat-input-blocked-reason')),
-        actionBox: box(buttons.find((node) => node.textContent?.trim() === connect) ?? null),
+        // Found by its name: on a phone it reads Connect, its name stays Connect provider.
+        actionBox: box(buttons.find((node) => node.getAttribute('aria-label') === connect) ?? null),
         rowBox: box(element),
       };
     }, CONNECT);
