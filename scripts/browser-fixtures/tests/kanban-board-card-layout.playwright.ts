@@ -20,7 +20,9 @@ test.describe('KanbanBoard built-in card layout', () => {
     const title = card.locator('.cinder-kanban-board__card-title');
     const meta = card.locator('.cinder-kanban-board__card-meta');
     const avatar = meta.locator('.cinder-avatar');
-    const name = meta.getByText('Mina Okafor', { exact: true });
+    // The visible name, not the avatar's own hidden copy of it.
+    const name = meta.locator('.cinder-kanban-board__card-meta-start > span:not(.cinder-avatar)');
+    await expect(name).toHaveText('Mina Okafor');
     const badge = meta.locator('.cinder-kanban-board__card-trailing').getByText('High');
     await expect(title).toHaveText('Inventory alerts');
     const [titleBox, metaBox, avatarBox, nameBox, badgeBox] = await Promise.all([

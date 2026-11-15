@@ -88,7 +88,7 @@ Controlled multi-column board for reordering cards within and across workflow co
         ? 'danger'
         : item.priority === 'Medium'
           ? 'warning'
-          : 'info'}
+          : 'success'}
     >
       {item.priority}
     </Badge>

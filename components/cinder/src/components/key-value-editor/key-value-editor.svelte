@@ -153,6 +153,7 @@
           <Button
             variant="ghost"
             iconOnly
+            quiet
             class="cinder-key-value-editor__remove"
             aria-label={removeLabel(row.key)}
             onclick={() => removeRow(index)}

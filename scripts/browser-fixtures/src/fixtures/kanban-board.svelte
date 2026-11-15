@@ -81,7 +81,7 @@
         ? 'danger'
         : item.priority === 'Medium'
           ? 'warning'
-          : 'info'}
+          : 'success'}
     >
       {item.priority}
     </Badge>
