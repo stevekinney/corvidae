@@ -41,7 +41,17 @@ async function openFixture(
   return page;
 }
 
-type GutterGeometry = { lines: number; numbers: number; worstOffset: number };
+type GutterGeometry = {
+  lines: number;
+  numbers: number;
+  worstOffset: number;
+  /** The first few number and line heights and tops, so a failure says what it saw. */
+  sample: string;
+};
+
+function aligned(geometry: GutterGeometry): boolean {
+  return geometry.numbers === geometry.lines && geometry.worstOffset <= TOLERANCE;
+}
 
 /** Pair each drawn line number with its text line and report the worst vertical offset. */
 async function gutterGeometry(page: Page): Promise<GutterGeometry> {
@@ -59,7 +69,15 @@ async function gutterGeometry(page: Page): Promise<GutterGeometry> {
       );
       worstOffset = Math.max(worstOffset, offset);
     }
-    return { lines: lines.length, numbers: numbers.length, worstOffset };
+    const sample = numbers
+      .slice(0, 3)
+      .map((number, index) => {
+        const numberBox = number.getBoundingClientRect();
+        const lineBox = lines[index]?.getBoundingClientRect();
+        return `${number.textContent}: number ${numberBox.top}+${numberBox.height}, line ${lineBox?.top}+${lineBox?.height}`;
+      })
+      .join('; ');
+    return { lines: lines.length, numbers: numbers.length, worstOffset, sample };
   });
 }
 
@@ -77,9 +95,9 @@ for (const width of [1280, 390]) {
       await expect
         .poll(async () => {
           const geometry = await gutterGeometry(page);
-          return geometry.numbers === geometry.lines && geometry.worstOffset <= TOLERANCE;
+          return aligned(geometry) ? 'aligned' : JSON.stringify(geometry);
         })
-        .toBe(true);
+        .toBe('aligned');
       // Off-window, CodeMirror draws only the lines near the top it measured: all 32 when they do
       // not wrap, fewer at phone width, where they do. Before the fix the drawn numbers ran short
       // of the lines and drifted.
