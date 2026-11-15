@@ -426,6 +426,7 @@ export async function openValidatedRemoteBungalow(
   const deploymentSecrets: DeploymentSecrets =
     deploymentSecretsFactory === undefined
       ? {
+          writable: false,
           location(key) {
             assertOpen();
             return secretVariable(name, key);
@@ -444,6 +445,7 @@ export async function openValidatedRemoteBungalow(
   return {
     name,
     mode: 'remote',
+    capabilities: { sharedBetweenInstances: true, personalMachine: false },
     database: { kind: 'postgres', url: configuration.databaseUrl },
     configurationLocation: `s3://${bucket}/${configurationKey}`,
     logs: undefined,

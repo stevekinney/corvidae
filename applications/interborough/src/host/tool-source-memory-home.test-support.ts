@@ -148,6 +148,7 @@ export function memoryHome(mode: 'local' | 'remote' = 'local') {
       return { outcome: 'committed' };
     },
     deploymentSecrets: {
+      writable: mode === 'local',
       read: async (key: string) => state.secrets.get(key),
       write: async (key: string, value: string) => {
         state.secretWrites += 1;
