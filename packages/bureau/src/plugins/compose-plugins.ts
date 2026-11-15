@@ -458,6 +458,18 @@ function planOf(
         `setup returned an event named ${JSON.stringify(declaration.name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
       );
     }
+    // The catalog lists these two as text, so a value that is not would fail the operation for everyone.
+    const { description, version } = declaration as { description?: unknown; version?: unknown };
+    if (typeof description !== 'string' || description.trim() === '') {
+      throw new TypeError(
+        `setup returned the event "${declaration.name}" without a description: every event says what it means.`,
+      );
+    }
+    if (version !== undefined && (typeof version !== 'string' || version === '')) {
+      throw new TypeError(
+        `setup returned the event "${declaration.name}" with a version that is not a non-empty string.`,
+      );
+    }
     if (!isEventPayload(declaration.payload)) {
       throw new TypeError(
         `setup returned the event "${declaration.name}" with a payload that is not a Zod object: an event's payload is z.object({ ... }).`,

@@ -852,10 +852,18 @@ describe('composePlugins', () => {
           pluginEntry('badpayload', () => ({
             events: [{ ...greeted(), payload: z.string() as never }],
           })),
+          pluginEntry('nodescription', () => ({
+            events: [{ ...greeted(), description: undefined as never }],
+          })),
+          pluginEntry('badversion', () => ({
+            events: [{ ...greeted(), version: 3 as never }],
+          })),
         ],
       });
 
       expect(records.map(({ status, problems }) => [status, problems[0]?.code])).toEqual([
+        ['skipped', 'setup-failed'],
+        ['skipped', 'setup-failed'],
         ['skipped', 'setup-failed'],
         ['skipped', 'setup-failed'],
       ]);
