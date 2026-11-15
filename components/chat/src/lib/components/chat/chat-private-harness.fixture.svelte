@@ -79,7 +79,6 @@
   let sourcesByMessageId = $state<ReadonlyMap<string, readonly CitationSource[]> | undefined>(
     undefined,
   );
-  let sourcePresentation = $state<'compact' | 'list' | 'inline'>('compact');
   let directTypingParticipants = $state<TypingParticipant[] | undefined>(undefined);
   let adapterEnabled = $state(false);
   let customMessageSnippets = $state(true);
@@ -1185,16 +1184,6 @@
           </Button>
         {/if}
       </div>
-      <SegmentedControl
-        id="harness-source-presentation"
-        selectionMode="single"
-        bind:value={sourcePresentation}
-        label="Source presentation"
-      >
-        <Segment value="compact">Compact</Segment>
-        <Segment value="list">List</Segment>
-        <Segment value="inline">Inline</Segment>
-      </SegmentedControl>
     </section>
 
     <section
@@ -1286,7 +1275,6 @@
         {...historyProps}
         {...readReceiptProps}
         {...sourcesProps}
-        {sourcePresentation}
         typingParticipants={directTypingParticipants}
         {...adapterProps}
         onSubmit={handleSubmit}
@@ -1352,7 +1340,6 @@
         {...historyProps}
         {...readReceiptProps}
         {...sourcesProps}
-        {sourcePresentation}
         typingParticipants={directTypingParticipants}
         {...adapterProps}
         onSubmit={handleSubmit}

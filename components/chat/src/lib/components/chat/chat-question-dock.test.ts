@@ -1,7 +1,7 @@
 /**
  * A question that has choices, docked in place of the composer (COR-2278, row P3): the Needs you
  * warning, the fieldset named Question, radio cards with the keys 1, 2 and 3, Something
- * else with its field, a secondary Reply in chat instead and a primary Answer, progress through
+ * else with its field, a quiet Reply in chat and a primary Answer, progress through
  * several questions, and the answer receipt that stays in the transcript.
  */
 
@@ -17,6 +17,7 @@ import {
   createConversationHistory,
 } from './builders.ts';
 import type { ConversationHistory } from './conversation-model.ts';
+import type { QuestionAnswerRecord } from './question/question-answer.ts';
 import { QuestionStore, type DockedQuestionTarget } from './question/question-store.svelte.ts';
 
 setupHappyDom();
@@ -125,9 +126,21 @@ function composerShell(container: HTMLElement): HTMLElement {
   return container.querySelector<HTMLElement>('.chat-input-area > .chat-input-shell')!;
 }
 
+const ANSWER_TO_FIRST: QuestionAnswerRecord = {
+  toolCallId: 'first',
+  toolName: 'requestHumanInput',
+  message: 'first',
+  schema: { enum: ['one', 'two'] },
+  summary: 'one',
+  value: 'one',
+  secret: false,
+};
+
 function dockTarget(toolCallId: string): DockedQuestionTarget {
   return {
     toolCallId,
+    answer: undefined,
+    locked: false,
     schema: { enum: ['one', 'two'] },
     message: toolCallId,
     submit: async () => true,
@@ -223,12 +236,9 @@ describe('a docked question', () => {
     ).text();
 
     expect(source).not.toContain('--_cinder-choice-card-min-block-size');
-    expect(source).toContain('max-block-size: min(100%, 50dvh);');
+    expect(source).toContain('max-block-size: min(100%, 80dvh);');
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
-    expect(source).toContain('moreChoices(hiddenAbove)');
-    expect(source).toContain('moreChoices(hiddenBelow)');
-    expect(source).toContain('wholeRows');
     expect(source).toContain('--cinder-border-muted');
     expect(source).not.toContain('chat-question-dock-body cinder-_scroll-fade');
     expect(source).toContain('overflow-y: auto;');
@@ -236,25 +246,52 @@ describe('a docked question', () => {
     expect(source).toContain('display: none;');
   });
 
-  test('re-snaps the list when the own-answer field changes the room, and keeps its ring inside the body', async () => {
+  test('draws the pager as a row of its own at the leading edge, not a slot at the trailing end', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),
     ).text();
-    expect(source).toContain('padding-inline: var(--_dock-ring-room);');
-    expect(source).toContain('margin-inline: calc(var(--_dock-ring-room) * -1);');
-    expect(source).toContain('keepSelectedInView();');
+    const block = /\.chat-question-dock-steps \{([^}]*)\}/u.exec(source)?.[1] ?? '';
+    expect(block).toContain('flex: 1 0 100%;');
+    expect(block).toContain('justify-content: flex-start;');
+    expect(block).not.toContain('margin-inline-start: auto');
   });
 
-  test('the whole-rows sizing watches the fieldset and the scrolling body, not only the list', async () => {
-    observedElements.length = 0;
-    const { container } = mountDocked('dock-observed', ENVIRONMENT);
+  test('shows every choice: no "N more" count, no whole-row sizing, no scroll snap', async () => {
+    const source = await Bun.file(
+      new URL('./question/chat-question-dock.svelte', import.meta.url),
+    ).text();
+    expect(source).not.toContain('moreChoices');
+    expect(source).not.toContain('wholeRows');
+    expect(source).not.toContain('scroll-snap');
+    expect(source).not.toContain('50dvh');
+
+    const choices = Array.from({ length: 12 }, (_, index) => `Option ${index + 1}`);
+    const { container } = mountDocked('dock-many', { enum: choices });
     await settle();
-    const fieldset = container.querySelector('fieldset');
-    const body = container.querySelector('.chat-question-dock-body');
-    expect(fieldset).not.toBeNull();
-    expect(body).not.toBeNull();
-    expect(observedElements.includes(fieldset!)).toBe(true);
-    expect(observedElements.includes(body!)).toBe(true);
+    expect(radiosOf(container).map((radio) => radio.textContent?.match(/Option \d+/)?.[0])).toEqual(
+      choices,
+    );
+    expect(dockOf(container)!.textContent).not.toMatch(/\d+ more/);
+  });
+
+  test('only the list of choices scrolls, and the question and its choices read at 14px', async () => {
+    const source = await Bun.file(
+      new URL('./question/chat-question-dock.svelte', import.meta.url),
+    ).text();
+    const body = /\.chat-question-dock-body \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(body).not.toContain('overflow');
+    const scroller = /\.chat-question-dock-options-scroll \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(scroller).toContain('overflow-y: auto;');
+    // The ring stays inside the scroller, which clips on both axes.
+    expect(scroller).toContain('padding: var(--_dock-ring-room);');
+    expect(scroller).toContain('margin: calc(var(--_dock-ring-room) * -1);');
+    const question = /\n {2}\.chat-question-dock-question \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(question).toContain(
+      'font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));',
+    );
+    expect(question).toContain('font-weight: var(--cinder-font-semibold);');
+    const choice = /\.chat-question-dock-choice \{[^}]*\}/.exec(source)?.[0] ?? '';
+    expect(choice).toContain('font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));');
   });
 
   test('keeps Answer off, with no helper line, until something is chosen', async () => {
@@ -271,20 +308,36 @@ describe('a docked question', () => {
     expect(answer.hasAttribute('aria-describedby')).toBe(false);
   });
 
-  test('puts the secondary Reply in chat instead before the primary Answer', async () => {
+  test('puts a quiet Reply in chat, glyph and words, before the primary Answer', async () => {
     const { container } = mountDocked('dock-actions', ENVIRONMENT);
     await settle();
 
     const buttons = [
       ...container.querySelectorAll<HTMLButtonElement>('.chat-question-dock-actions button'),
     ];
-    expect(
-      buttons.map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim()),
-    ).toEqual(['Reply in chat instead', 'Answer']);
-    expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(buttons[0]!.getAttribute('data-cinder-icon-only')).toBe('');
-    expect(buttons[0]!.closest('.cinder-tooltip-wrapper')).not.toBeNull();
-    expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('primary');
+    const words = container.querySelector<HTMLButtonElement>('.chat-question-dock-reply-words')!;
+    const icon = container.querySelector<HTMLButtonElement>('.chat-question-dock-reply-icon')!;
+    const answer = buttons[buttons.length - 1]!;
+    expect(buttons.indexOf(words)).toBeLessThan(buttons.indexOf(answer));
+    // The visible words are the accessible name, with the glyph beside them.
+    expect(words.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(words.textContent?.trim()).toBe('Reply in chat');
+    expect(words.getAttribute('aria-label')).toBeNull();
+    expect(words.querySelector('svg')).not.toBeNull();
+    expect(words.closest('.cinder-tooltip-wrapper')).not.toBeNull();
+    // The icon-only fallback is the secondary outline with the same name; it shows only when the
+    // row cannot hold the words.
+    expect(icon.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(icon.getAttribute('data-cinder-icon-only')).toBe('');
+    expect(icon.getAttribute('aria-label') ?? icon.textContent?.trim()).toBe('Reply in chat');
+    // Both sit in the wrapper the row's fit marks compact (there is no layout here to measure; the
+    // stress guard `readLabelFitProblems` proves the fit in a browser).
+    const tip = words.closest('.chat-question-dock-reply-tip');
+    expect(tip).not.toBeNull();
+    expect(tip?.contains(icon)).toBe(true);
+    expect(tip?.hasAttribute('data-chat-reply-compact')).toBe(false);
+    expect(answer.textContent?.trim()).toBe('Answer');
+    expect(answer.getAttribute('data-cinder-variant')).toBe('primary');
   });
 
   test('a choice only selects; Answer sends it, and the row keeps the receipt', async () => {
@@ -430,14 +483,14 @@ describe('a docked question', () => {
     ).toEqual(['Approve it', 'Reject it']);
   });
 
-  test('Reply in chat instead gives the composer back and returns the question to its row', async () => {
+  test('Reply in chat gives the composer back and returns the question to its row', async () => {
     const answers: unknown[] = [];
     const { container } = mountDocked('dock-reply', ENVIRONMENT, (_toolCallId, value) => {
       answers.push(value);
     });
     await settle();
 
-    await fireEvent.click(buttonNamed(container, 'Reply in chat instead')!);
+    await fireEvent.click(buttonNamed(container, 'Reply in chat')!);
     await settle();
 
     expect(dockOf(container)).toBeNull();
@@ -488,27 +541,70 @@ describe('a docked question', () => {
 });
 
 describe('several docked questions', () => {
-  test('resets progress for a genuinely later round after the dock stays empty', async () => {
+  test('keeps an answered question in the round, so the dock can step back to it', () => {
     const store = new QuestionStore(() => false);
-    const removeFirst = store.registerDockedQuestion(dockTarget('first-round'));
-    store.noteDockedAnswer();
-    removeFirst();
-    await tick();
+    let answer: QuestionAnswerRecord | undefined;
+    store.registerDockedQuestion({
+      ...dockTarget('first'),
+      get answer() {
+        return answer;
+      },
+    });
+    store.registerDockedQuestion(dockTarget('second'));
+    expect(store.dockRound.map((target) => target.toolCallId)).toEqual(['first', 'second']);
 
-    store.registerDockedQuestion(dockTarget('second-round'));
-    expect(store.dockedAnswered).toBe(0);
+    answer = ANSWER_TO_FIRST;
+    expect(store.dockRound.map((target) => target.toolCallId)).toEqual(['first', 'second']);
+    expect(store.dockedQuestions.map((target) => target.toolCallId)).toEqual(['second']);
   });
 
-  test('reset invalidates a pending round reset', async () => {
+  test('ends the round only once nothing in it is open, so a later question starts a new one', () => {
     const store = new QuestionStore(() => false);
-    const remove = store.registerDockedQuestion(dockTarget('stale-round'));
-    store.noteDockedAnswer();
-    remove();
-    store.reset();
-    store.noteDockedAnswer();
-    await tick();
+    let answered: QuestionAnswerRecord | undefined;
+    store.registerDockedQuestion({
+      ...dockTarget('first-round'),
+      get answer() {
+        return answered;
+      },
+    });
+    store.registerDockedQuestion(dockTarget('still-open'));
+    answered = ANSWER_TO_FIRST;
 
-    expect(store.dockedAnswered).toBe(1);
+    // A question is still open: the round goes on.
+    store.closeDockRound();
+    expect(store.dockRound).toHaveLength(2);
+  });
+
+  test('closing a round with every question answered empties it, and a new question starts another', () => {
+    const store = new QuestionStore(() => false);
+    store.registerDockedQuestion({ ...dockTarget('first-round'), answer: ANSWER_TO_FIRST });
+    store.viewDock('first-round');
+    store.closeDockRound();
+    expect(store.dockRound).toEqual([]);
+    expect(store.viewedDock).toBeUndefined();
+
+    store.registerDockedQuestion(dockTarget('second-round'));
+    expect(store.dockRound.map((target) => target.toolCallId)).toEqual(['second-round']);
+  });
+
+  test('reset forgets the round, the question being viewed and the retired questions', () => {
+    const store = new QuestionStore(() => false);
+    store.registerDockedQuestion({ ...dockTarget('stale-round'), answer: ANSWER_TO_FIRST });
+    store.closeDockRound();
+    store.viewDock('stale-round');
+    store.reset();
+
+    expect(store.viewedDock).toBeUndefined();
+    expect(store.dockRound).toEqual([]);
+  });
+
+  test('a question that leaves the round is no longer counted', () => {
+    const store = new QuestionStore(() => false);
+    const removeFirst = store.registerDockedQuestion(dockTarget('first'));
+    store.registerDockedQuestion(dockTarget('second'));
+    removeFirst();
+
+    expect(store.dockRound.map((target) => target.toolCallId)).toEqual(['second']);
   });
 
   test('ask one at a time with Question 1 of 2, then Question 2 of 2, and show no progress for one', async () => {
@@ -575,6 +671,258 @@ describe('several docked questions', () => {
     await settle();
 
     expect(container.querySelector('[data-chat-question-progress]')).toBeNull();
+    expect(container.querySelector('[data-chat-question-previous]')).toBeNull();
+    expect(container.querySelector('[data-chat-question-next]')).toBeNull();
+  });
+
+  describe('moving between them', () => {
+    const REGION = { enum: ['east', 'west'] };
+
+    async function mountThree(answers: [string, unknown][]) {
+      const mounted = render(Chat, {
+        id: 'dock-steps',
+        conversation: conversationWith('dock-steps', [
+          { id: 'first', message: 'Which environment?', schema: ENVIRONMENT },
+          { id: 'second', message: 'Which region?', schema: REGION },
+          { id: 'third', message: 'Which tier?', schema: { enum: ['free', 'paid'] } },
+        ]),
+        questionPlacement: 'docked',
+        onInputSubmit: (toolCallId: string, value: unknown) => {
+          answers.push([toolCallId, value]);
+        },
+      });
+      await settle();
+      return mounted;
+    }
+
+    const previousOf = (container: HTMLElement) =>
+      container.querySelector<HTMLButtonElement>('[data-chat-question-previous]')!;
+    const nextOf = (container: HTMLElement) =>
+      container.querySelector<HTMLButtonElement>('[data-chat-question-next]')!;
+    const shownOf = (container: HTMLElement) => dockOf(container)!.dataset['chatQuestionId'];
+
+    test('puts the tag, the progress and the two buttons in the header before the choices, with the question under them', async () => {
+      const { container } = await mountThree([]);
+
+      const heading = dockOf(container)!.querySelector('[data-chat-question-heading]')!;
+      expect(
+        [...heading.children].map((child) => child.getAttribute('class')?.split(' ')[0]),
+      ).toEqual([
+        'chat-question-dock-needs',
+        'chat-question-dock-steps',
+        'chat-question-dock-question',
+      ]);
+      expect(heading.querySelector('[data-chat-question-progress]')?.textContent?.trim()).toBe(
+        'Question 1 of 3',
+      );
+      // The buttons come after the tag and before the choices in the tab order.
+      const order = [
+        ...dockOf(container)!.querySelectorAll(
+          '[data-chat-question-needs], [data-chat-question-previous], [data-chat-question-next], [role="radio"]',
+        ),
+      ];
+      expect(order[0]!.hasAttribute('data-chat-question-needs')).toBe(true);
+      expect(order[1]).toBe(previousOf(container));
+      expect(order[2]).toBe(nextOf(container));
+      expect(order[3]!.getAttribute('role')).toBe('radio');
+      expect(
+        previousOf(container).getAttribute('aria-label') ?? previousOf(container).textContent,
+      ).toContain('Previous question');
+      expect(
+        nextOf(container).getAttribute('aria-label') ?? nextOf(container).textContent,
+      ).toContain('Next question');
+    });
+
+    test('turns previous off on the first question and next off on the last', async () => {
+      const { container } = await mountThree([]);
+
+      expect(previousOf(container).disabled).toBe(true);
+      expect(nextOf(container).disabled).toBe(false);
+
+      await fireEvent.click(nextOf(container));
+      await settle();
+      expect(shownOf(container)).toBe('second');
+      expect(previousOf(container).disabled).toBe(false);
+      expect(nextOf(container).disabled).toBe(false);
+
+      await fireEvent.click(nextOf(container));
+      await settle();
+      expect(shownOf(container)).toBe('third');
+      expect(nextOf(container).disabled).toBe(true);
+      expect(previousOf(container).disabled).toBe(false);
+    });
+
+    test('moves between the questions without sending anything, and keeps the question as the name of the choices', async () => {
+      const answers: [string, unknown][] = [];
+      const { container } = await mountThree(answers);
+
+      await fireEvent.click(nextOf(container));
+      await settle();
+      expect(container.querySelector('[data-chat-question-progress]')?.textContent?.trim()).toBe(
+        'Question 2 of 3',
+      );
+      expect(dockOf(container)!.querySelector('.chat-question-dock-question')?.textContent).toBe(
+        'Which region?',
+      );
+      const group = dockOf(container)!.querySelector('[role="radiogroup"]')!;
+      expect(group.getAttribute('aria-labelledby')).toBe(
+        dockOf(container)!.querySelector('.chat-question-dock-question')!.id,
+      );
+      // The choices of the question now shown, and no selection carried over.
+      expect(radiosOf(container)).toHaveLength(2);
+      expect(
+        radiosOf(container).every((radio) => radio.getAttribute('aria-checked') === 'false'),
+      ).toBe(true);
+
+      await fireEvent.click(previousOf(container));
+      await settle();
+      expect(shownOf(container)).toBe('first');
+      expect(answers).toEqual([]);
+    });
+
+    test('keeps focus on a navigation button that is still on when the one pressed turns off', async () => {
+      const { container } = await mountThree([]);
+
+      await fireEvent.click(nextOf(container));
+      await settle();
+      nextOf(container).focus();
+      await fireEvent.click(nextOf(container));
+      await settle();
+
+      expect(nextOf(container).disabled).toBe(true);
+      expect(document.activeElement).toBe(previousOf(container));
+    });
+
+    test('shows an answered question with its answer selected, and sends a changed one the way Change does', async () => {
+      const answers: [string, unknown][] = [];
+      const { container } = await mountThree(answers);
+
+      await fireEvent.click(radiosOf(container)[1]!);
+      sendDock(container);
+      await settle();
+      // The dock moved on to the first open question and counts the answered one.
+      expect(shownOf(container)).toBe('second');
+      expect(container.querySelector('[data-chat-question-progress]')?.textContent?.trim()).toBe(
+        'Question 2 of 3',
+      );
+
+      await fireEvent.click(previousOf(container));
+      await settle();
+      expect(shownOf(container)).toBe('first');
+      expect(radiosOf(container).map((radio) => radio.getAttribute('aria-checked'))).toEqual([
+        'false',
+        'true',
+        'false',
+      ]);
+      // Nothing to send until the answer is changed.
+      expect(buttonNamed(container, 'Answer')?.disabled).toBe(true);
+
+      await fireEvent.click(radiosOf(container)[2]!);
+      expect(buttonNamed(container, 'Answer')?.disabled).toBe(false);
+      sendDock(container);
+      await settle();
+
+      expect(answers).toEqual([
+        ['first', 'production'],
+        ['first', 'canary'],
+      ]);
+      // The changed answer is what the receipt now says, and the dock is on the open question again.
+      expect(shownOf(container)).toBe('second');
+      expect(container.querySelector('[data-question-answer]')?.textContent).toContain('Canary');
+    });
+
+    test('keeps an answered question in the round, read only with one line saying it was sent, once its call resolves', async () => {
+      const answers: [string, unknown][] = [];
+      const view = await mountThree(answers);
+      const container = view.container;
+
+      await fireEvent.click(radiosOf(container)[0]!);
+      sendDock(container);
+      await settle();
+
+      // The run took the first answer: its call now has the tool's own result, while the other two
+      // questions are still open.
+      let resumed = appendUserMessage(createConversationHistory({ id: 'dock-steps' }), 'deploy it');
+      resumed = appendToolResult(
+        appendToolCall(resumed, { id: 'first', name: 'requestHumanInput', arguments: {} }),
+        { callId: 'first', outcome: 'success', content: 'staging' },
+      );
+      for (const [id, message, schema] of [
+        ['second', 'Which region?', REGION],
+        ['third', 'Which tier?', { enum: ['free', 'paid'] }],
+      ] as const) {
+        resumed = appendToolResult(
+          appendToolCall(resumed, { id, name: 'requestHumanInput', arguments: {} }),
+          {
+            callId: id,
+            outcome: 'action_required',
+            content: null,
+            action: { type: 'input', message, schema: { ...schema } },
+          },
+        );
+      }
+      await view.rerender({ conversation: resumed });
+      await settle();
+
+      // The count does not shrink and the way back to the answered question stays.
+      expect(shownOf(container)).toBe('second');
+      expect(container.querySelector('[data-chat-question-progress]')?.textContent?.trim()).toBe(
+        'Question 2 of 3',
+      );
+      await fireEvent.click(previousOf(container));
+      await settle();
+      expect(shownOf(container)).toBe('first');
+      expect(radiosOf(container).map((radio) => radio.getAttribute('aria-checked'))).toEqual([
+        'true',
+        'false',
+        'false',
+      ]);
+      expect(dockOf(container)!.querySelector('[data-chat-question-sent]')?.textContent).toBe(
+        'This answer was sent.',
+      );
+      // Read only: the choices and Answer are off, and the keys choose nothing.
+      expect(
+        radiosOf(container).every(
+          (radio) =>
+            radio.getAttribute('aria-disabled') === 'true' || radio.hasAttribute('disabled'),
+        ),
+      ).toBe(true);
+      expect(buttonNamed(container, 'Answer')?.disabled).toBe(true);
+      await fireEvent.keyDown(radiosOf(container)[0]!, { key: '2' });
+      expect(radiosOf(container)[1]!.getAttribute('aria-checked')).toBe('false');
+      sendDock(container);
+      await settle();
+      expect(answers).toEqual([['first', 'staging']]);
+    });
+
+    test('the keys still choose a card of the question shown, and add no shortcut of their own', async () => {
+      const { container } = await mountThree([]);
+
+      await fireEvent.click(nextOf(container));
+      await settle();
+      await fireEvent.keyDown(radiosOf(container)[0]!, { key: '2' });
+      expect(radiosOf(container)[1]!.getAttribute('aria-checked')).toBe('true');
+      // Arrow keys on a navigation button do not move between questions.
+      await fireEvent.keyDown(nextOf(container), { key: 'ArrowRight' });
+      await settle();
+      expect(shownOf(container)).toBe('second');
+    });
+
+    test('ends the round when the last question is answered, so a later question reads one of one', async () => {
+      const { container } = render(Chat, {
+        id: 'dock-round',
+        conversation: single('dock-round', ENVIRONMENT),
+        questionPlacement: 'docked',
+        onInputSubmit: () => undefined,
+      });
+      await settle();
+
+      await fireEvent.click(radiosOf(container)[0]!);
+      sendDock(container);
+      await settle();
+
+      expect(dockOf(container)).toBeNull();
+    });
   });
 });
 

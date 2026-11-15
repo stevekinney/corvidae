@@ -62,7 +62,6 @@
   :global(.chat-follow-up-discard-text) {
     display: block;
     min-inline-size: 0;
-    line-height: var(--cinder-leading-snug);
     text-align: start;
   }
 </style>

@@ -218,11 +218,37 @@ describe('Callout neutral variant and action', () => {
     expect(action.get('grid-column')).toBe('2');
     expect(action.get('flex-wrap')).toBe('wrap');
     expect(action.get('margin-inline-start')).toBeUndefined();
+    // A stacked action row ends at the trailing edge, with the primary (last) trailing-most.
+    expect(action.get('justify-self')).toBe('end');
+    expect(action.get('justify-content')).toBe('flex-end');
     for (const control of ['button', 'a']) {
       expect(declarationsFor(css, `.cinder-callout__action ${control}`).get('white-space')).toBe(
         'nowrap',
       );
     }
+  });
+
+  test('an inline action keeps the glyph in the message, so it follows the message wherever the row centres it', () => {
+    const { container } = render(Callout, {
+      props: {
+        icon: createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' })),
+        action: createRawSnippet(() => ({ render: () => '<button type="button">Act</button>' })),
+        children: textSnippet('Note.'),
+      },
+    });
+    const body = container.querySelector('.cinder-callout__body');
+    expect([...(body?.children ?? [])].map((child) => child.className)).toEqual([
+      'cinder-callout__message',
+      'cinder-callout__action',
+    ]);
+    const message = body?.querySelector('.cinder-callout__message');
+    expect([...(message?.children ?? [])].map((child) => child.className)).toEqual([
+      'cinder-callout__icon',
+      'cinder-callout__content',
+    ]);
+    // The glyph is rendered once, and not also as a child of the callout itself.
+    expect(container.querySelectorAll('.cinder-callout__icon')).toHaveLength(1);
+    expect(container.querySelector('.cinder-callout > .cinder-callout__icon')).toBeNull();
   });
 
   test('the action is inline by default and stacked only on request', () => {
@@ -236,6 +262,58 @@ describe('Callout neutral variant and action', () => {
       props: { actionLayout: 'stacked', action, children: textSnippet('Connection paused.') },
     });
     expect(stacked.container.querySelector('.cinder-callout--inline-action')).toBeNull();
+  });
+
+  test('a beside action is an inline action that stays beside the message on a phone', async () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const icon = createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' }));
+    const { container } = render(Callout, {
+      props: {
+        actionLayout: 'beside',
+        action,
+        icon,
+        children: textSnippet('Upload failed.'),
+      },
+    });
+    const root = container.querySelector('.cinder-callout')!;
+    expect(root.classList.contains('cinder-callout--inline-action')).toBe(true);
+    expect(root.classList.contains('cinder-callout--beside-action')).toBe(true);
+    // The glyph and the text stand together in the body, and the action is the body's other child.
+    expect(root.querySelector('.cinder-callout__body > .cinder-callout__message')).not.toBeNull();
+    expect(root.querySelector('.cinder-callout__body > .cinder-callout__action')).not.toBeNull();
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{[\s\S]*?\.cinder-callout--beside-action > \.cinder-callout__body \{\s*flex-wrap: nowrap;/,
+    );
+  });
+
+  test('a fit action is an inline action whose message takes only its words on a phone, so the action stays beside it while both fit', async () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry all</button>' }));
+    const { container } = render(Callout, {
+      props: { actionLayout: 'fit', action, children: textSnippet('2 files didn’t upload.') },
+    });
+    const root = container.querySelector('.cinder-callout')!;
+    expect(root.classList.contains('cinder-callout--inline-action')).toBe(true);
+    expect(root.classList.contains('cinder-callout--fit-action')).toBe(true);
+    expect(root.classList.contains('cinder-callout--beside-action')).toBe(false);
+    expect(root.querySelector('.cinder-callout__body > .cinder-callout__action')).not.toBeNull();
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /@container \(inline-size < 30rem\) \{[\s\S]*?\.cinder-callout--fit-action > \.cinder-callout__body > \.cinder-callout__message \{\s*flex: 0 1 auto;/,
+    );
+    cleanup();
+    const plain = render(Callout, {
+      props: { action, children: textSnippet('Connection paused.') },
+    });
+    expect(plain.container.querySelector('.cinder-callout--fit-action')).toBeNull();
+  });
+
+  test('the default inline action has no beside class, so it still wraps under the message on a phone', () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const { container } = render(Callout, {
+      props: { action, children: textSnippet('Connection paused.') },
+    });
+    expect(container.querySelector('.cinder-callout--beside-action')).toBeNull();
   });
 
   test('an inline action shares one wrapping row with the message and wraps only when it cannot fit', async () => {
@@ -258,15 +336,15 @@ describe('Callout neutral variant and action', () => {
     const bodyRule = declarationsFor(css, '.cinder-callout__body');
     expect(bodyRule.get('display')).toBe('flex');
     expect(bodyRule.get('flex-wrap')).toBe('wrap');
-    // The text's free space is a trailing auto margin, so a wrapped action starts at the leading
-    // edge instead of being pushed to the trailing one.
+    // The action carries a leading auto margin, so inline or wrapped onto its own row it ends at
+    // the trailing content edge (and mirrors in right-to-left); the text holds no auto margin.
     const contentRule = declarationsFor(css, '.cinder-callout__body > .cinder-callout__content');
-    expect(contentRule.get('margin-inline-end')).toBe('auto');
+    expect(contentRule.get('margin-inline-end')).toBeUndefined();
     expect(
       declarationsFor(css, '.cinder-callout__body > .cinder-callout__action').get(
         'margin-inline-start',
       ),
-    ).toBeUndefined();
+    ).toBe('auto');
   });
 });
 

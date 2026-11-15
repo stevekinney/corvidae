@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Explicit decision';
   export const description =
-    'The decision surface: the action as the title with an Irreversible badge, the pause, Tool, Target, Amount and the open Command, the countdown, Add a note, then Deny and a named primary that arms on its first press.';
+    'The decision surface: the action as the title with an Irreversible badge, the pause, Tool, Target, Amount and the open Command, the countdown, Add note, then Deny and a named primary that arms on its first press.';
 </script>
 
 <script lang="ts">

@@ -129,8 +129,12 @@ describe('Chat — run outcomes on the turn', () => {
     });
     await view.rerender({ messageTurnState: () => state });
     await tick();
-    expect(kindOf()).toBe('reconnecting');
-    const reconnecting = view.container.querySelector('.chat-turn-callout')!;
+    // The partial turn carries no notice; the connection notice stands by the composer.
+    expect(kindOf()).toBeNull();
+    const notice = view.container.querySelector('.chat-connection-notice')!;
+    expect(notice.closest('.chat-input-shell')).not.toBeNull();
+    expect(turnOf(view.container, assistantId).querySelector('.chat-connection-notice')).toBeNull();
+    const reconnecting = notice.querySelector('.cinder-callout')!;
     expect(reconnecting.querySelector('.cinder-callout__icon')).not.toBeNull();
     expect(
       reconnecting.querySelector('.cinder-callout__icon svg')?.getAttribute('aria-hidden'),
@@ -236,6 +240,67 @@ describe('Chat — run outcomes on the turn', () => {
     await fireEvent.click(getByRole(timeline!, 'button', { name: 'Retry' }));
     expect(retryStep).toHaveBeenCalledWith('source-2');
   });
+
+  const narrationOnlyEndings: [string, ChatTurnState, string][] = [
+    ['stopped', { kind: 'stopped' }, 'Stopped before an answer.'],
+    [
+      'failed',
+      { kind: 'failed', cause: 'The provider dropped the connection.' },
+      'Failed before an answer.',
+    ],
+  ];
+
+  test.each(narrationOnlyEndings)(
+    'a %s turn that only narrated reads text, step row, then its notice and time',
+    async (_name, state, words) => {
+      let conversation = appendUserMessage(createConversationHistory({ id: 'narrated' }), 'Check');
+      conversation = appendAssistantMessage(conversation, 'Reading the refund policy first.');
+      const narrationId = lastId(conversation);
+      conversation = appendToolCall(conversation, {
+        id: 'read-policy',
+        name: 'read_policy',
+        arguments: { document: 'refunds' },
+      });
+      conversation = appendToolResult(conversation, {
+        callId: 'read-policy',
+        outcome: 'success',
+        content: 'ok',
+      });
+      const { container } = render(Chat, {
+        id: 'narrated',
+        conversation,
+        variant: 'transcript',
+        messageTurnState: (message: Message): ChatTurnState | undefined =>
+          message.id === narrationId ? state : undefined,
+        onContinueTurn: () => undefined,
+        onDiscardTurn: () => undefined,
+        onRetryTurn: () => undefined,
+      });
+      await tick();
+
+      const article = container.querySelector<HTMLElement>(
+        `article[data-message-id="${narrationId}"]`,
+      )!;
+      const timeline = container.querySelector<HTMLElement>('.chat-tool-call-timeline')!;
+      const outcome = container.querySelector<HTMLElement>('.chat-turn-outcome')!;
+      const line = outcome.closest('.chat-message-wrapper')!.querySelector('.chat-message-line');
+      const follows = (earlier: Node, later: Node) =>
+        Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(follows(article, timeline)).toBe(true);
+      expect(follows(timeline, outcome)).toBe(true);
+      expect(outcome.textContent).toContain(words);
+      // The time and the message's actions stay under the notice, and nothing is drawn twice.
+      expect(line).not.toBeNull();
+      expect(follows(outcome, line!)).toBe(true);
+      expect(container.querySelectorAll('.chat-turn-outcome')).toHaveLength(1);
+      expect(container.querySelectorAll(`article[data-message-id="${narrationId}"]`)).toHaveLength(
+        1,
+      );
+      expect(
+        article.closest('.chat-message-wrapper')?.querySelector('.chat-message-line'),
+      ).toBeNull();
+    },
+  );
 });
 
 describe('tool-call grouping under host customization (COR-2289)', () => {

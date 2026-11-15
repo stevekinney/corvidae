@@ -506,6 +506,7 @@ export function collectGeometryFacts(): GeometryFacts {
         accessibleLabel: element.getAttribute('aria-label') ?? element.getAttribute('title') ?? '',
         hasIcon: element.querySelector('svg, img') !== null,
         inline: style.display === 'inline',
+        lineAction: element.matches('.chat-message-line .chat-message-action-button'),
         variant: element.getAttribute('data-cinder-variant') ?? '',
         layout: boxOf(union(null, layout)),
         rect: {
@@ -959,11 +960,41 @@ export function collectGeometryFacts(): GeometryFacts {
       return false;
     });
     if (lifted.length > 0) {
-      const lines: { parent: Element; rect: DOMRect }[] = [];
+      // A line is what shows of it: the part a scroller or a clipping box cuts away is not text a
+      // control can lie on (a step row scrolled under the edge of a transcript).
+      const lines: { parent: Element; rect: DOMRect; visible: Bounds }[] = [];
       for (const node of textNodes(document.body, true)) {
         const parent = node.parentElement;
         if (parent === null) continue;
-        for (const rect of rectsOf(node)) lines.push({ parent, rect });
+        for (const rect of rectsOf(node)) {
+          let visible = union(null, rect);
+          for (
+            let ancestor = parent.parentElement;
+            ancestor !== null;
+            ancestor = ancestor.parentElement
+          ) {
+            const ancestorStyle = getComputedStyle(ancestor);
+            const clips = ['hidden', 'clip', 'auto', 'scroll'];
+            if (
+              !clips.includes(ancestorStyle.overflowX) &&
+              !clips.includes(ancestorStyle.overflowY)
+            )
+              continue;
+            const box = ancestor.getBoundingClientRect();
+            visible = {
+              left: Math.max(visible.left, box.left + ancestor.clientLeft),
+              top: Math.max(visible.top, box.top + ancestor.clientTop),
+              right: Math.min(visible.right, box.left + ancestor.clientLeft + ancestor.clientWidth),
+              bottom: Math.min(
+                visible.bottom,
+                box.top + ancestor.clientTop + ancestor.clientHeight,
+              ),
+            };
+          }
+          if (visible.right > visible.left && visible.bottom > visible.top) {
+            lines.push({ parent, rect, visible });
+          }
+        }
       }
       for (const element of lifted) {
         const style = getComputedStyle(element);
@@ -981,10 +1012,10 @@ export function collectGeometryFacts(): GeometryFacts {
         );
         for (const line of lines) {
           if (related(element, line.parent)) continue;
-          const shared = intersection(union(null, rect), union(null, line.rect));
+          const shared = intersection(union(null, rect), line.visible);
           if (shared.width < 2 || shared.height < 2) continue;
-          const x = Math.max(rect.left, line.rect.left) + shared.width / 2;
-          const y = Math.max(rect.top, line.rect.top) + shared.height / 2;
+          const x = Math.max(rect.left, line.visible.left) + shared.width / 2;
+          const y = Math.max(rect.top, line.visible.top) + shared.height / 2;
           const top = document.elementFromPoint(x, y);
           if (top === null || !element.contains(top)) continue;
           found.push({

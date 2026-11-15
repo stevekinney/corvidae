@@ -241,7 +241,7 @@
             "size": {
               "type": "string",
               "description": "Size token. Default `md`.",
-              "enum": ["sm", "md", "lg"]
+              "enum": ["xs", "sm", "md", "lg"]
             },
             "value": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",

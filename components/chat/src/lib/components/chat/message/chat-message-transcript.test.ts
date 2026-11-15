@@ -45,14 +45,13 @@ describe('transcript presentation', () => {
     const { getByRole } = mount({
       message: message({ role: 'assistant', content: 'See the policy.' }),
       sources: [{ label: 'Policy', url: 'https://example.com/policy' }],
-      sourcePresentation: 'list',
       labels: {
         sources: 'Quellen',
-        sourcesCount: (count: number) => `Quellen (${count})`,
+        sourcesCount: (count: number) => `${count} Quellen`,
       },
     });
 
-    expect(getByRole('button', { name: 'Quellen (1)' })).toBeTruthy();
+    expect(getByRole('button', { name: '1 Quellen' })).toBeTruthy();
   });
 
   test('a sent message puts its time next to named icon-only Copy and Quote actions', () => {

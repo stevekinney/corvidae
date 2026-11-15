@@ -264,6 +264,30 @@ describe('uploadAsset', () => {
   });
 });
 
+describe('how an upload fault is sorted for the composer', () => {
+  test('a request that never completes is a network fault, which Chat retries and words as a connection', async () => {
+    const send: Fetcher = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    const error = await failure(uploadAsset(png(), { fetch: send }));
+    expect(error.kind).toBe('upload-failed');
+    expect(error.failureKind).toBe('network');
+  });
+
+  test('a refusal by the Bureau, an expired session and a server fault are sorted by what a person can do', async () => {
+    expect(new AttachmentUploadError('too-large', { limit: 3 }).failureKind).toBe('too-large');
+    expect(new AttachmentUploadError('too-large', { limit: 3 }).maxFileSize).toBe(3);
+    expect(new AttachmentUploadError('rejected').failureKind).toBe('unsupported-type');
+    expect(new AttachmentUploadError('expired').failureKind).toBe('unknown');
+    const { send } = bureau({
+      ...happy,
+      'bureau.assets.uploads.append': () => new Response('Too large', { status: 413 }),
+    });
+    const error = await failure(uploadAsset(png(), { fetch: send }));
+    expect(error.failureKind).toBe('unknown');
+  });
+});
+
 describe('the faults of an upload', () => {
   test('a 413 on an append is a failed upload', async () => {
     const { send } = bureau({

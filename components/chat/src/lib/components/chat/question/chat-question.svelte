@@ -760,9 +760,11 @@
     row-gap: 0;
   }
 
+  /* The transcript question reads at the docked question's 14px. */
   .chat-question-choice-label {
     min-inline-size: 0;
     overflow-wrap: anywhere;
+    font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
     font-weight: var(--cinder-font-semibold);
   }
 
@@ -791,6 +793,20 @@
     display: grid;
     gap: var(--cinder-space-2);
     justify-items: start;
+  }
+
+  /* A submit button on its own line ends at the trailing content edge, compact; in a wrapping row
+   * it takes the trailing end whether it fits beside the field or drops under it. */
+  .chat-question-stack > :global(button[type='submit']) {
+    justify-self: end;
+  }
+
+  .chat-question-row > :global(button[type='submit']) {
+    margin-inline-start: auto;
+  }
+
+  .chat-question-receipt > :global(.cinder-button) {
+    margin-inline-start: auto;
   }
 
   .chat-question-receipt {

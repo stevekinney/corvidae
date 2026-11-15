@@ -54,7 +54,11 @@ type Body = {
 };
 
 /** A Bureau whose first run parks on `wait` and whose second finishes; `calls` has what it was asked. */
-function serve(wait: unknown, more: Record<string, () => unknown> = {}) {
+function serve(
+  wait: unknown,
+  more: Record<string, () => unknown> = {},
+  beforeWait: readonly unknown[] = [],
+) {
   const bodies: Body[] = [];
   const served = bureau({ 'bureau.contexts.get': () => CONTEXT, ...more }, (url, init) => {
     if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
@@ -66,6 +70,7 @@ function serve(wait: unknown, more: Record<string, () => unknown> = {}) {
     const first = bodies.length === 1;
     return sse([
       { type: 'RUN_STARTED', threadId: 'session-1', runId: `run-${bodies.length}` },
+      ...(first ? beforeWait : []),
       {
         type: 'RUN_FINISHED',
         threadId: 'session-1',
@@ -125,6 +130,59 @@ describe('the composer while a question waits', () => {
     const box = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
     await waitFor(() => expect(box.placeholder).toBe('Answer'));
     expect(container.querySelector('button[aria-label="Answer"]')).not.toBeNull();
+  });
+});
+
+describe('the text before a question that waits', () => {
+  // The question is drawn by this page after the messages, from the run's interrupt: the parked
+  // `RequestHumanInput` call carries no pending action in the transcript, so the page says so.
+  const BEFORE = [
+    { type: 'TEXT_MESSAGE_START', messageId: 'preface', role: 'assistant' },
+    {
+      type: 'TEXT_MESSAGE_CONTENT',
+      messageId: 'preface',
+      delta: 'Before I ship it I need one answer.',
+    },
+    { type: 'TEXT_MESSAGE_END', messageId: 'preface' },
+    { type: 'TOOL_CALL_START', toolCallId: 'call-ask', toolCallName: 'requestHumanInput' },
+    { type: 'TOOL_CALL_ARGS', toolCallId: 'call-ask', delta: '{"signalName":"environment"}' },
+    { type: 'TOOL_CALL_END', toolCallId: 'call-ask' },
+    {
+      type: 'TOOL_CALL_RESULT',
+      messageId: 'result-ask',
+      toolCallId: 'call-ask',
+      content: '{"parked":true}',
+      role: 'tool',
+    },
+  ];
+
+  test('is the agent talking to the person: it keeps its time and is drawn as a message', async () => {
+    serve(ask(CHOICES), {}, BEFORE);
+    const { findByRole, container } = await open();
+    await findByRole('radio', { name: 'production' });
+
+    const wrapper = await waitFor(() => {
+      const found = [...container.querySelectorAll('.chat-message-wrapper[data-narration]')].find(
+        (candidate) => candidate.textContent?.includes('Before I ship it I need one answer.'),
+      );
+      if (found === undefined) throw new Error('the preface is not drawn yet');
+      return found;
+    });
+    expect(wrapper.hasAttribute('data-asking')).toBe(true);
+    expect(wrapper.querySelector('.chat-message-line time')).not.toBeNull();
+  });
+
+  test('is bare narration once the question is answered', async () => {
+    serve(ask(CHOICES), {}, BEFORE);
+    const { findByRole, container } = await open();
+    await fireEvent.click(await findByRole('radio', { name: 'production' }));
+
+    await waitFor(() => {
+      const found = [...container.querySelectorAll('.chat-message-wrapper[data-narration]')].find(
+        (candidate) => candidate.textContent?.includes('Before I ship it I need one answer.'),
+      );
+      expect(found?.hasAttribute('data-asking')).toBe(false);
+    });
   });
 });
 

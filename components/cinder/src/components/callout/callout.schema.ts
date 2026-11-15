@@ -20,9 +20,9 @@ const schema = {
         "Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark.",
     },
     actionLayout: {
-      enum: ['stacked', 'inline'],
+      enum: ['stacked', 'inline', 'beside', 'fit'],
       description:
-        "Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message.",
+        "Layout for the action slot. Default `'inline'`: one compact action at the trailing end of the message while it fits, wrapping under the message at its start edge when it cannot. `stacked` always puts the action under the message. `beside` keeps one icon-only action at the trailing end of the message at every width, so a phone's callout is not made a row taller by a glyph. `fit` is `inline` that keeps its action beside the message at every width, a phone's too, while both fit in one row, and drops it under the message, at the trailing edge, only when they cannot.",
     },
     dismissLabel: {
       type: 'string',

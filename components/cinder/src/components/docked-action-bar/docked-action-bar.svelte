@@ -31,7 +31,6 @@
     variant = 'strip',
     off = false,
     reason,
-    equalActions = false,
     class: customClassName,
     children,
     actions,
@@ -60,7 +59,6 @@
   aria-label={label}
   data-cinder-variant={variant === 'card' ? 'card' : 'strip'}
   data-cinder-off={off ? '' : undefined}
-  data-cinder-equal-actions={equalActions ? '' : undefined}
 >
   <StaleRegion stale={off} describedBy={reasonText ? reasonId : undefined}>
     <div class="cinder-docked-action-bar__row">

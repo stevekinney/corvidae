@@ -51,7 +51,7 @@
 </p>
 {#if decisionNote !== undefined && decisionNote !== ''}
   <p class="cinder-approval-card__decision-note">
-    <span class="cinder-approval-card__decision-note-label">Your note</span>
+    <span class="cinder-approval-card__decision-note-label">Your note:</span>
     <span class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</span>
     {#if decisionNoteCaption !== undefined}
       <span class="cinder-approval-card__decision-note-caption">{decisionNoteCaption}</span>

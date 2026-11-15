@@ -216,15 +216,21 @@ for (const width of [1280, 375] as const) {
     const byHand = await boxOf(state.getByText(words.byHand, { exact: true }));
     const steps = await boxOf(state.locator('ol.weft-no-provider__steps'));
 
-    // Each piece sits under the one before it, at the start edge, with nothing beside the button.
+    // Each piece sits under the one before it, with nothing beside the button.
     const order = [description, connect, blocked, byHand, steps];
     for (const [index, box] of order.entries()) {
       const next = order[index + 1];
       if (next !== undefined) expect(next.y).toBeGreaterThanOrEqual(box.y + box.height - 1);
     }
-    for (const box of [connect, blocked, byHand, steps]) {
-      expect(Math.abs(box.x - connect.x)).toBeLessThanOrEqual(24);
+    // The text reads from the start edge. The action row spans the state and ends at its trailing
+    // edge, as every action row does, so the Connect button is the one piece that stands there.
+    for (const box of [blocked, byHand, steps]) {
+      expect(Math.abs(box.x - description.x)).toBeLessThanOrEqual(24);
     }
+    const actionRow = await boxOf(state.locator('.cinder-empty-state-action'));
+    expect(
+      Math.abs(actionRow.x + actionRow.width - (connect.x + connect.width)),
+    ).toBeLessThanOrEqual(2);
     // The page never scrolls sideways.
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       width,

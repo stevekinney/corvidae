@@ -1,8 +1,8 @@
 /** Host-overridable words used by the composer and approval drawer. */
 export type ChatLabels = {
   sources: string;
+  /** The Sources control's text and accessible name: the count and the word, "3 sources" or "1 source". */
   sourcesCount: (count: number) => string;
-  openSource: (host?: string) => string;
   internalDocument: string;
   unsafeLink: string;
   composerUnavailable: string;
@@ -70,7 +70,42 @@ export type ChatLabels = {
   /** Visible label inside the unread divider. */
   newMessagesLabel: string;
   attachedFiles: string;
-  moreAttachments: (count: number) => string;
+  /**
+   * The line under the attachment strip while failed files block Send. A file that did not upload
+   * for want of a connection, a file over the limit (`limit` is the limit in words, such as
+   * "25 MB", or `undefined` when the host did not say), a file the composer cannot take, and a file
+   * that failed for another reason. `accepted` is what the composer takes, in words such as "an
+   * image, a PDF or a text file", so the line can say what to attach instead.
+   */
+  attachmentFailureNetwork: (name: string) => string;
+  attachmentFailureTooLarge: (name: string, limit: string | undefined) => string;
+  /** `accepted` is the kinds the composer takes in words, or an empty string when none is known. */
+  attachmentFailureUnsupported: (name: string, accepted: string) => string;
+  attachmentFailureUnknown: (name: string) => string;
+  /**
+   * The same four reasons for `count` files that failed for it, each one short sentence. Several
+   * files with one shared reason read as that one sentence; files that failed for different
+   * reasons read as one sentence for each reason, in the same notice. Only a single refused file
+   * is told what to attach instead (`attachmentFailureUnsupported`).
+   */
+  attachmentFailureNetworkMany: (count: number) => string;
+  attachmentFailureTooLargeMany: (count: number, limit: string | undefined) => string;
+  attachmentFailureUnsupportedMany: (count: number) => string;
+  attachmentFailureUnknownMany: (count: number) => string;
+  /** The action when every failed file can be tried again. Default `Retry all`. */
+  retryAllAttachments: string;
+  /** The action that tries again the `count` failed files that can be, while others cannot. Default `Retry 2`. */
+  retryAttachments: (count: number) => string;
+  /** The accessible name of that action. Default `Retry 2 failed files`. */
+  retryAttachmentsAccessible: (count: number) => string;
+  /** The action beside it that removes the failed files that cannot be tried again. Default `Remove failed`. */
+  removeFailedAttachments: string;
+  /** The accessible name of that action, for the `count` files it removes. */
+  removeFailedAttachmentsAccessible: (count: number) => string;
+  /** The action when no failed file can be tried again. Default `Remove all failed`. */
+  removeAllFailedAttachments: string;
+  /** Accessible name of a failed chip that shows why its file failed, when several failed. */
+  showAttachmentFailureAccessible: (name: string) => string;
   retryAttachment: string;
   retryAttachmentAccessible: (name: string) => string;
   removeAttachment: string;
@@ -78,7 +113,6 @@ export type ChatLabels = {
   uploadingFile: string;
   readingFile: string;
   uploadFailed: string;
-  attachmentBlockingReason: (count: number) => string;
   approvalWaiting: string;
   approvalWaitingText: string;
   /**
@@ -110,8 +144,7 @@ export type ChatLabels = {
 
 export const DEFAULT_CHAT_LABELS: ChatLabels = {
   sources: 'Sources',
-  sourcesCount: (count) => `Sources (${count})`,
-  openSource: (host) => (host === undefined ? 'Open source' : `Open ${host}`),
+  sourcesCount: (count) => (count === 1 ? '1 source' : `${count} sources`),
   internalDocument: 'Internal document, no public link',
   unsafeLink: "Link hidden: the address isn't a safe web link",
   composerUnavailable: 'Composer unavailable',
@@ -172,7 +205,30 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   newMessagesBelow: 'New messages below',
   newMessagesLabel: 'New',
   attachedFiles: 'Attached files',
-  moreAttachments: (count) => `${count} more below`,
+  attachmentFailureNetwork: (name) => `${name} didn't upload. Check your connection.`,
+  attachmentFailureTooLarge: (name, limit) =>
+    limit === undefined ? `${name} is over the limit.` : `${name} is over the ${limit} limit.`,
+  attachmentFailureUnsupported: (name, accepted) =>
+    accepted === ''
+      ? `${name} can't be attached.`
+      : `${name} can't be attached. Attach ${accepted}.`,
+  attachmentFailureUnknown: (name) => `${name} didn't upload.`,
+  attachmentFailureNetworkMany: (count) =>
+    `${count} ${count === 1 ? 'file' : 'files'} didn't upload. Check your connection.`,
+  attachmentFailureTooLargeMany: (count, limit) =>
+    `${count} ${count === 1 ? 'file is' : 'files are'} over the ${limit === undefined ? '' : `${limit} `}limit.`,
+  attachmentFailureUnsupportedMany: (count) =>
+    `${count} ${count === 1 ? 'file' : 'files'} can't be attached.`,
+  attachmentFailureUnknownMany: (count) =>
+    `${count} ${count === 1 ? 'file' : 'files'} didn't upload.`,
+  retryAllAttachments: 'Retry all',
+  retryAttachments: (count) => `Retry ${count}`,
+  retryAttachmentsAccessible: (count) => `Retry ${count} failed ${count === 1 ? 'file' : 'files'}`,
+  removeFailedAttachments: 'Remove failed',
+  removeFailedAttachmentsAccessible: (count) =>
+    `Remove failed: ${count} ${count === 1 ? 'file' : 'files'} that can’t be retried`,
+  removeAllFailedAttachments: 'Remove all failed',
+  showAttachmentFailureAccessible: (name) => `Why ${name} failed`,
   retryAttachment: 'Retry',
   retryAttachmentAccessible: (name) => `Retry ${name}`,
   removeAttachment: 'Remove',
@@ -180,8 +236,6 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   uploadingFile: 'Uploading file',
   readingFile: 'Reading file',
   uploadFailed: 'Upload failed. Try again, or remove it.',
-  attachmentBlockingReason: (count) =>
-    count === 1 ? 'Retry or remove 1 file to send' : `Retry or remove ${count} files to send`,
   approvalWaiting: 'Approval waiting',
   approvalWaitingText: 'Waiting for your approval.',
   approvalQueueNote: 'Messages you send now wait until you decide.',

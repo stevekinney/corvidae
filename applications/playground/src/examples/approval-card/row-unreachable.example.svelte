@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Approval row, agent unreachable';
   export const description =
-    'When the approval cannot be answered right now, the reason sits above Add a note, Deny and Approve, and both buttons are named by it. The question, the line, the consequence and Input stay visible.';
+    'When the approval cannot be answered right now, the reason sits above Add note, Deny and Approve, and both buttons are named by it. The question, the line, the consequence and Input stay visible.';
 </script>
 
 <script lang="ts">
