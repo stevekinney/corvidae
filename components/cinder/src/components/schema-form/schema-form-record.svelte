@@ -11,7 +11,7 @@
     entries,
     onValueChange,
   }: {
-    /** Names the add and remove actions, so two records on one page stay distinguishable. */
+    /** Names the empty adding row and the remove actions, so two records on one page stay distinguishable. */
     label: string;
     entries: KeyValueEntry[];
     onValueChange: (next: KeyValueEntry[]) => void;

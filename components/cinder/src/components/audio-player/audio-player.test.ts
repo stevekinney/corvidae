@@ -96,6 +96,23 @@ describe('AudioPlayer', () => {
     expect(media.currentTime).toBeCloseTo(100);
   });
 
+  test('shows the elapsed and total time once the duration is known, and no mute toggle', async () => {
+    const { container, getByRole, queryByRole } = render(AudioPlayer, {
+      src: SOURCE,
+      label: LABEL,
+    });
+    expect(container.querySelector('.cinder-media-controls__time')).toBeNull();
+    const media = mediaElement(container);
+    Object.defineProperty(media, 'duration', { configurable: true, value: 200 });
+    Object.defineProperty(media, 'currentTime', { configurable: true, writable: true, value: 50 });
+    await fireEvent(media, new Event('loadedmetadata'));
+    expect(container.querySelector('.cinder-media-controls__time')?.textContent).toBe(
+      '0:50 / 3:20',
+    );
+    expect(getByRole('slider').getAttribute('aria-valuetext')).toBe('0:50 of 3:20');
+    expect(queryByRole('button', { name: 'Mute' })).toBeNull();
+  });
+
   test('replay restarts a finished track', async () => {
     const { container, getByRole } = render(AudioPlayer, { src: SOURCE, label: LABEL });
     const media = mediaElement(container);

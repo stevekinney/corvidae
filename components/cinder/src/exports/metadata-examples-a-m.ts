@@ -104,7 +104,6 @@ import mapMarkerExamplesJson from '../components/map-marker/map-marker.examples.
 import marqueeExamplesJson from '../components/marquee/marquee.examples.json' with { type: 'json' };
 import masonryExamplesJson from '../components/masonry/masonry.examples.json' with { type: 'json' };
 import matrixChartExamplesJson from '../components/matrix-chart/matrix-chart.examples.json' with { type: 'json' };
-import mediaControlsExamplesJson from '../components/media-controls/media-controls.examples.json' with { type: 'json' };
 import megaMenuExamplesJson from '../components/mega-menu/mega-menu.examples.json' with { type: 'json' };
 import menuBarExamplesJson from '../components/menu-bar/menu-bar.examples.json' with { type: 'json' };
 import messageExamplesJson from '../components/message/message.examples.json' with { type: 'json' };
@@ -320,8 +319,6 @@ export const marqueeExamples = marqueeExamplesJson;
 export const masonryExamples = masonryExamplesJson;
 /** Code examples for this component. */
 export const matrixChartExamples = matrixChartExamplesJson;
-/** Code examples for this component. */
-export const mediaControlsExamples = mediaControlsExamplesJson;
 /** Code examples for this component. */
 export const megaMenuExamples = megaMenuExamplesJson;
 /** Code examples for this component. */

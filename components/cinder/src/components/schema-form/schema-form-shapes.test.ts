@@ -174,7 +174,8 @@ describe('SchemaForm shapes: records as row lists', () => {
     const { container } = await mount(schema, { headers: { Accept: 'json', Host: 'example' } });
 
     expect(rawJsonTextareas(container)).toHaveLength(0);
-    expect(screen.getAllByRole('textbox', { name: 'Key' })).toHaveLength(2);
+    // Two entries plus the empty row that adds the next one.
+    expect(screen.getAllByRole('textbox', { name: 'Key' })).toHaveLength(3);
     expect(screen.getByDisplayValue('Accept')).toBeTruthy();
     expect(screen.getByDisplayValue('example')).toBeTruthy();
   });
@@ -182,7 +183,7 @@ describe('SchemaForm shapes: records as row lists', () => {
   test('adds, edits and removes rows and submits the resulting object', async () => {
     const { container, submitted } = await mount(schema, { headers: { Accept: 'json' } });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Add Headers entry' }));
+    // The second row is the empty one; typing into it adds the entry.
     const keys = screen.getAllByRole('textbox', { name: 'Key' });
     const values = screen.getAllByRole('textbox', { name: 'Value' });
     await fireEvent.input(keys[1]!, { target: { value: 'X-Trace' } });
@@ -199,7 +200,6 @@ describe('SchemaForm shapes: records as row lists', () => {
   test('refuses to submit duplicate or missing keys and says why', async () => {
     const { container, submitted } = await mount(schema, { headers: { Accept: 'json' } });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Add Headers entry' }));
     const keys = screen.getAllByRole('textbox', { name: 'Key' });
     const values = screen.getAllByRole('textbox', { name: 'Value' });
     await fireEvent.input(values[1]!, { target: { value: 'orphan' } });

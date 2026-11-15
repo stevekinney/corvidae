@@ -119,7 +119,6 @@ export { default as mapMarkerSchema } from '../components/map-marker/map-marker.
 export { default as marqueeSchema } from '../components/marquee/marquee.schema.ts';
 export { default as masonrySchema } from '../components/masonry/masonry.schema.ts';
 export { default as matrixChartSchema } from '../components/matrix-chart/matrix-chart.schema.ts';
-export { default as mediaControlsSchema } from '../components/media-controls/media-controls.schema.ts';
 export { default as megaMenuSchema } from '../components/mega-menu/mega-menu.schema.ts';
 export { default as menuBarSchema } from '../components/menu-bar/menu-bar.schema.ts';
 export { default as messageSchema } from '../components/message/message.schema.ts';

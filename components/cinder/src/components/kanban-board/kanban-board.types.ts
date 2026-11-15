@@ -58,7 +58,19 @@ export type KanbanBoardProps<Card> = {
   getCardKey: (card: Card) => string | number;
   getCardLabel: (card: Card, column: KanbanBoardColumn<Card>, index: number) => string;
   onColumnsChange: (nextColumns: KanbanBoardColumn<Card>[], change: KanbanBoardChange) => void;
-  card: Snippet<[Card, KanbanBoardCardContext<Card>]>;
+  /**
+   * Replaces the card's whole body. Leave it out to use the built-in layout: the card's title (its
+   * `getCardLabel` text) on top, then one quiet row of `cardMeta` with `cardTrailing` at its inline
+   * end. When `card` is set, `cardMeta` and `cardTrailing` are not drawn.
+   */
+  card?: Snippet<[Card, KanbanBoardCardContext<Card>]>;
+  /**
+   * The built-in card's quiet row under the title, such as an assignee's avatar and full name. It
+   * draws in muted text at the inline start of the row.
+   */
+  cardMeta?: Snippet<[Card, KanbanBoardCardContext<Card>]>;
+  /** The built-in card's inline-end item on the meta row, such as a priority badge. */
+  cardTrailing?: Snippet<[Card, KanbanBoardCardContext<Card>]>;
   columnHeader?: Snippet<[KanbanBoardColumn<Card>, KanbanBoardColumnContext<Card>]>;
   columnActions?: Snippet<[KanbanBoardColumn<Card>, KanbanBoardColumnContext<Card>]>;
   emptyColumn?: Snippet<[KanbanBoardColumn<Card>]>;

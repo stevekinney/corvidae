@@ -4,7 +4,7 @@
   "properties": {
     "addLabel": {
       "type": "string",
-      "description": "Label for the add-row action. Give it concrete wording when more than\none editor is on the page. Defaults to `'Add pair'`.",
+      "description": "Accessible description of the empty last row, whose key and value boxes add a pair when typed\ninto. Give it concrete wording when more than one editor is on the page. Defaults to\n`'Add pair'`.",
       "default": "Add pair"
     },
     "label": {
@@ -13,16 +13,16 @@
     },
     "description": {
       "type": "string",
-      "description": "Help under the Add button, linked to the group with `aria-describedby`. State what the values\nare, such as that they are masked and never shown again."
+      "description": "Help under the rows, linked to the group with `aria-describedby`. State what the values\nare, such as that they are masked and never shown again."
     },
     "keyLabel": {
       "type": "string",
-      "description": "Accessible name of every row's key input (it has no visible label of its own). Give it the\nnoun the rows use, such as `'Name'` for environment variables.",
+      "description": "Accessible name of every row's key input, also drawn once as the column heading above the\nrows (the inputs have no visible label of their own). Give it the noun the rows use, such as\n`'Name'` for environment variables.",
       "default": "Key"
     },
     "valueLabel": {
       "type": "string",
-      "description": "Accessible name of every row's value input.",
+      "description": "Accessible name of every row's value input, also drawn once as the column heading above the\nrows.",
       "default": "Value"
     },
     "monospace": {

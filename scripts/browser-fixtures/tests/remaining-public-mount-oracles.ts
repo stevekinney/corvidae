@@ -126,7 +126,6 @@ export const productOracles: Record<string, ProductOracle> = {
     selector: `[class*="cinder-matrix-chart"]`,
     text: 'Confusion matrix — Animal classifier',
   },
-  'media-controls': { selector: `[class*="cinder-media-controls"]`, descendant: 'button' },
   message: { selector: `[class*="cinder-message"]`, text: 'Ada Lovelace' },
   'page-header': { selector: `[class*="cinder-page-header"]`, text: 'Approvals' },
   'app-bar': { selector: `[class*="cinder-app-bar"]`, text: 'Death & Co' },
