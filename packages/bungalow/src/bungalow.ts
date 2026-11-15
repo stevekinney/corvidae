@@ -8,8 +8,17 @@ import type {
   ConfigurationWriteCondition,
   ConfigurationWriteResult,
 } from './configuration.ts';
-import { localConfigurationSnapshot, writeLocalConfiguration } from './configuration.ts';
-import { ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
+import {
+  assertConfigurationWrite,
+  localConfigurationSnapshot,
+  writeLocalConfiguration,
+} from './configuration.ts';
+import {
+  injectedDeploymentSecrets,
+  type DeploymentSecrets,
+  type DeploymentSecretsFactory,
+} from './deployment-secrets.ts';
+import { directoryExists, ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import { sanitizeCause } from './error-code.ts';
 import {
@@ -18,15 +27,20 @@ import {
   BungalowInputError,
   BungalowStateError,
 } from './errors.ts';
-import { acquireRootLock, type RootLock } from './lock.ts';
-import { remoteConfiguration } from './remote-configuration.ts';
-import { openRemoteBungalow } from './remote.ts';
+import { defaultAcquireLock, type RootLock } from './lock.ts';
+import { resolveRemoteDescriptor, type RemoteBungalowDescriptor } from './remote-configuration.ts';
+import { openRemoteBungalow, requireDatabaseWorkspaceClaim } from './remote.ts';
 import {
+  absoluteRoot,
   bungalowHomeVariable,
   resolveBungalowRoot,
   type BungalowEnvironment,
 } from './resolve-root.ts';
-import { createLocalSecretProvider, type SecretProvider } from './secret-provider.ts';
+import {
+  createLocalProvider,
+  createLocalSecretProvider,
+  type SecretProvider,
+} from './secret-provider.ts';
 import { generateUlid, isUlid } from './ulid.ts';
 import { assertBungalowName, assertDirectoryName, assertSecretKey } from './validation.ts';
 
@@ -52,13 +66,24 @@ export type ContentLocation =
   | { readonly kind: 's3'; readonly bucket: string; readonly prefix: string };
 
 /**
- * An open application home. Holding a local one holds the root's single-instance lock; a remote
- * one holds no lock.
+ * An open application home. Holding a local read-write one holds the root's single-instance lock;
+ * a remote one, and a local one opened with `access: 'read'`, hold no lock.
  */
 export type Bungalow = {
   readonly name: string;
   /** `'local'` when the home is a directory on this machine, `'remote'` when it is served elsewhere. */
   readonly mode: 'local' | 'remote';
+  /**
+   * What the home is, so a caller never infers it from `mode`. A local home reports
+   * `{ sharedBetweenInstances: false, personalMachine: true }`: one process holds it, on one
+   * person's machine. A remote home reports `{ sharedBetweenInstances: true, personalMachine: false }`.
+   */
+  readonly capabilities: {
+    /** Several application instances can use this home at once. */
+    readonly sharedBetweenInstances: boolean;
+    /** The home belongs to one person's own machine. */
+    readonly personalMachine: boolean;
+  };
   /**
    * Local mode: `{ kind: 'sqlite', path: '<root>/database.sqlite' }`, a file Bungalow never
    * creates. Remote mode: `{ kind: 'postgres', url }` from `<NAME>_DATABASE_URL`.
@@ -79,6 +104,8 @@ export type Bungalow = {
   /**
    * Where the content named `name` lives: a mode-0700 `<root>/<name>` directory locally, created if
    * absent, or `{ kind: 's3', bucket, prefix: '<prefix><name>/' }` remotely, which creates nothing.
+   * A read-only local home creates nothing either: it returns an existing directory and throws
+   * `BungalowStateError` for a missing one.
    */
   content(name: string): ContentLocation;
   /** The `Bun.S3Client` remote mode configured from the environment, or `undefined` locally. */
@@ -102,16 +129,6 @@ export type Bungalow = {
    */
   close(): void;
   [Symbol.dispose](): void;
-};
-
-/** Bootstrap inputs never resolve through an injected managed-secret provider. */
-export type DeploymentSecrets = {
-  /** Read a validated deployment key; backend failure is distinct from absence. */
-  read(key: string): Promise<string | undefined>;
-  /** Store a local deployment input; environment-backed inputs are read-only. */
-  write(key: string, value: string): Promise<void>;
-  /** Operator-facing location without a credential value. */
-  location(key: string): string;
 };
 
 /** Trusted composition binds a provider once, after the backing workspace identity is verified. */
@@ -139,6 +156,64 @@ export type OpenBungalowOptions = {
   readonly writableConfiguration?: boolean;
   /** Inject a provider bound to this home; location does not determine its capabilities. */
   readonly secretProvider?: SecretProviderFactory;
+};
+
+/** What `openLocalBungalow` takes: an explicit root, and nothing read from the environment. */
+export type OpenLocalBungalowOptions = {
+  /** The application name, such as `interborough`: lower-case letters, digits, and hyphens. */
+  readonly name: string;
+  /** The home's root directory. It must be absolute, and is normalized before use. */
+  readonly root: string;
+  /** An operator-supplied workspace identity; omitted means the persisted deployment identity. */
+  readonly workspaceId?: string;
+  /** Inject a provider bound to this home; location does not determine its capabilities. */
+  readonly secretProvider?: SecretProviderFactory;
+  /**
+   * Inject the deployment secrets. Omitted means files under `<root>/secrets/`, one per key, mode
+   * `0600`. The `secrets/` directory is created either way.
+   */
+  readonly deploymentSecrets?: DeploymentSecretsFactory;
+  /**
+   * Take the root's single-instance lock, after the root directory exists and before anything in
+   * it is read; the open releases it if it fails, and `close()` releases it. Omitted means an
+   * exclusive `flock(2)` on `<root>/lock`. A host with its own single-instance mechanism, such as
+   * a desktop application's, injects it here.
+   */
+  readonly acquireLock?: (root: string) => RootLock;
+  /**
+   * `'write'` (the default) opens and prepares the home as described above. `'read'` returns a
+   * handle that takes no lock and creates, changes, and deletes nothing, so a second process can
+   * read a home the host holds: the root and its `deployment-id` must already exist, a
+   * missing `secrets/`, `.managed-secrets/`, or content directory reads as empty or missing, a
+   * loose file is not tightened, and every writing member refuses or reports read-only. A
+   * read-only open refuses `acquireLock`, `deploymentSecrets`, and `secretProvider` with
+   * `BungalowInputError`.
+   */
+  readonly access?: 'read' | 'write';
+};
+
+/** What `openRemoteBungalow` takes: an explicit descriptor, and nothing read from the environment. */
+export type OpenRemoteBungalowOptions = {
+  /** The application name, such as `interborough`: lower-case letters, digits, and hyphens. */
+  readonly name: string;
+  /**
+   * Where the remote home is. `resolveBungalowDescriptor` returns one, or a caller builds it by
+   * hand; either way it is validated before any request.
+   */
+  readonly descriptor: RemoteBungalowDescriptor;
+  /** The application binds the database it owns before recovery; see `DatabaseWorkspaceClaim`. */
+  readonly databaseWorkspaceClaim: DatabaseWorkspaceClaim;
+  /** An operator-supplied workspace identity; omitted means the persisted deployment identity. */
+  readonly workspaceId?: string;
+  /** Opt in to conditional configuration writes. Defaults to read-only; authorization is separate. */
+  readonly writableConfiguration?: boolean;
+  /** Inject a provider bound to this home; location does not determine its capabilities. */
+  readonly secretProvider?: SecretProviderFactory;
+  /**
+   * Inject the deployment secrets. Omitted means the descriptor's `<NAME>_SECRET_<KEY>` values,
+   * read-only.
+   */
+  readonly deploymentSecrets?: DeploymentSecretsFactory;
 };
 
 export type OpenTemporaryBungalowOptions = {
@@ -169,6 +244,15 @@ function removeTemporaryFiles(directory: string, ours: RegExp): void {
   }
 }
 
+function assertStoredDeploymentId(stored: string): string {
+  if (!isUlid(stored)) {
+    throw new BungalowStateError(
+      'The deployment-id file does not hold a ULID. Restore the original identity from a backup.',
+    );
+  }
+  return stored;
+}
+
 /** The persisted deployment identifier, generated on the first open. */
 function loadDeploymentId(path: string): string {
   const stored = readEntry(path, 'deployment-id file')?.trim();
@@ -177,12 +261,7 @@ function loadDeploymentId(path: string): string {
     writePrivateFile(path, `${created}\n`);
     return created;
   }
-  if (!isUlid(stored)) {
-    throw new BungalowStateError(
-      'The deployment-id file does not hold a ULID. Restore the original identity from a backup.',
-    );
-  }
-  return stored;
+  return assertStoredDeploymentId(stored);
 }
 
 const WORKSPACE_MARKER = 'workspace-id';
@@ -195,7 +274,13 @@ function assertWorkspaceId(value: string): string {
   return normalized;
 }
 
-function bindWorkspaceId(path: string, deploymentId: string, configured?: string): string {
+/** With `persist` false, an identity not yet stored is returned and nothing is written. */
+function bindWorkspaceId(
+  path: string,
+  deploymentId: string,
+  configured?: string,
+  persist = true,
+): string {
   const expected = assertWorkspaceId(configured ?? deploymentId);
   const marker = readEntry(path, 'workspace identity file')?.trim();
   if (marker !== undefined && marker === '') {
@@ -207,40 +292,74 @@ function bindWorkspaceId(path: string, deploymentId: string, configured?: string
   if (configured !== undefined && configured.trim() !== deploymentId) {
     throw new BungalowStateError('The configured workspace identity does not match deployment-id.');
   }
-  if (marker === undefined) {
+  if (marker === undefined && persist) {
     writePrivateFile(path, `${expected}\n`);
   }
   return expected;
 }
 
-/** What `openAtRoot` takes from outside, so a test can describe a lock that fails to release. */
-export type OpenAtRootDependencies = {
-  readonly acquireLock?: (root: string) => RootLock;
+/**
+ * The fault seams of a local open, which are not part of the package's public surface: a close
+ * step, or a configuration rename that fails.
+ */
+export type LocalOpenSeams = {
   readonly onClose?: () => void;
   /** Replaces the rename that publishes a written configuration, so a test can fail it. */
   readonly renameConfiguration?: (from: string, to: string) => void;
-  readonly secretProvider?: SecretProviderFactory;
-  readonly workspaceId?: string;
 };
 
 /**
- * Open the Bungalow rooted at `root`, with no environment or test-mode policy applied. Not part
- * of the package's public surface.
+ * Open a local home from an explicit absolute root. Reads no environment and applies no
+ * `NODE_ENV=test` policy: the caller chose the root. Unless `access` is `'read'`, which takes no
+ * lock and writes nothing, it takes the root's single-instance lock, so two
+ * homes with different roots can be open in one process at once, each with its own lock,
+ * identity, and secrets, and closing one leaves the other open. A relative root throws
+ * `BungalowInputError`.
  */
-export function openAtRoot(
-  name: string,
-  root: string,
-  dependencies: OpenAtRootDependencies = {},
-): Bungalow {
+export async function openLocalBungalow(options: OpenLocalBungalowOptions): Promise<Bungalow> {
+  assertBungalowName(options.name);
+  return openLocalAtRoot({ ...options, root: absoluteRoot(options.root) });
+}
+
+/**
+ * Open the local home at `options.root`, which the caller has already made absolute, with the
+ * fault seams a test needs. Not part of the package's public surface.
+ */
+export async function openLocalAtRoot(
+  options: OpenLocalBungalowOptions,
+  seams: LocalOpenSeams = {},
+): Promise<Bungalow> {
+  // Every option is read here, before anything else, so a later change to the caller's object
+  // cannot change what the open does.
   const {
-    acquireLock = acquireRootLock,
-    onClose,
-    renameConfiguration,
+    name,
+    root,
     workspaceId: configuredWorkspaceId,
-  } = dependencies;
+    secretProvider: secretProviderFactory,
+    deploymentSecrets: deploymentSecretsFactory,
+    acquireLock: injectedLock,
+    access = 'write',
+  } = options;
+  const { onClose, renameConfiguration } = seams;
+  if (access !== 'read' && access !== 'write') {
+    throw new BungalowInputError('The access must be "read" or "write".');
+  }
+  if (access === 'read') {
+    if (
+      injectedLock !== undefined ||
+      deploymentSecretsFactory !== undefined ||
+      secretProviderFactory !== undefined
+    ) {
+      throw new BungalowInputError(
+        'A read-only open uses the built-in stores and takes no lock: it refuses acquireLock, deploymentSecrets, and secretProvider.',
+      );
+    }
+    return openLocalReadOnly(name, root, configuredWorkspaceId, onClose);
+  }
   filesystem('prepare the root directory', () =>
     ensureDirectory(root, 'root directory', { privateMode: true }),
   );
+  const acquireLock = injectedLock ?? (await defaultAcquireLock());
   const lock = acquireLock(root);
   const secrets = join(root, 'secrets');
   const logs = join(root, 'logs');
@@ -300,13 +419,18 @@ export function openAtRoot(
   };
 
   let secretProvider: SecretProvider;
+  let deploymentSecrets: DeploymentSecrets;
   try {
     secretProvider =
-      dependencies.secretProvider?.(workspaceId) ??
+      secretProviderFactory?.(workspaceId) ??
       createLocalSecretProvider({ root, workspaceId, assertOpen });
     if (secretProvider.workspaceId !== workspaceId) {
       throw new BungalowInputError('The secret provider belongs to a different workspace.');
     }
+    deploymentSecrets =
+      deploymentSecretsFactory === undefined
+        ? localDeploymentSecrets(secrets, assertOpen)
+        : injectedDeploymentSecrets(deploymentSecretsFactory, { workspaceId, assertOpen });
   } catch (error) {
     close();
     throw error;
@@ -315,6 +439,7 @@ export function openAtRoot(
   return {
     name,
     mode: 'local',
+    capabilities: LOCAL_CAPABILITIES,
     database: { kind: 'sqlite', path: join(root, 'database.sqlite') },
     configurationLocation,
     logs,
@@ -356,27 +481,141 @@ export function openAtRoot(
       );
     },
     secretProvider,
-    deploymentSecrets: {
-      location(key) {
-        assertOpen();
-        assertSecretKey(key);
-        return join(secrets, key);
-      },
-      async write(key, value) {
-        assertOpen();
-        assertSecretKey(key);
-        filesystem('write a deployment secret', () => writePrivateFile(join(secrets, key), value));
-      },
-      async read(key) {
-        assertOpen();
-        assertSecretKey(key);
-        return filesystem('read a deployment secret', () =>
-          readEntry(join(secrets, key), 'secret file', SECRET_MODE),
-        );
-      },
-    },
+    deploymentSecrets,
     close,
     [Symbol.dispose]: close,
+  };
+}
+
+const LOCAL_CAPABILITIES = {
+  sharedBetweenInstances: false,
+  personalMachine: true,
+} as const satisfies Bungalow['capabilities'];
+
+/**
+ * Open the local home at `root` without taking its lock or writing anything: no directory is
+ * created, no mode is tightened, no temporary file is swept, and no identity is saved. It reads
+ * only files a writer replaces by rename, never the lock file, and refuses a symbolic link, a FIFO,
+ * or a multiply linked file at every entry it reads.
+ */
+function openLocalReadOnly(
+  name: string,
+  root: string,
+  configuredWorkspaceId: string | undefined,
+  onClose: (() => void) | undefined,
+): Bungalow {
+  const secrets = join(root, 'secrets');
+  const configurationLocation = join(root, 'configuration.json');
+  let released = false;
+  let finished = false;
+  const assertOpen = (): void => {
+    if (released) throw new BungalowStateError('This Bungalow is closed.');
+  };
+  const close = (): void => {
+    if (finished) return;
+    released = true;
+    onClose?.();
+    finished = true;
+  };
+
+  const { deploymentId, workspaceId } = filesystem('read the root', () => {
+    if (!directoryExists(root, 'root directory')) {
+      throw new BungalowStateError('The root directory does not exist.');
+    }
+    const stored = readEntry(join(root, 'deployment-id'), 'deployment-id file')?.trim();
+    if (stored === undefined) {
+      throw new BungalowStateError('The backing store has no persisted deployment identity.');
+    }
+    const id = assertStoredDeploymentId(stored);
+    // A refused `secrets/` fails the open, as it does for a writer; a missing one is empty.
+    directoryExists(secrets, 'secrets directory');
+    return {
+      deploymentId: id,
+      // A home with no workspace identity yet uses its deployment identity, and saves nothing.
+      workspaceId: bindWorkspaceId(join(root, WORKSPACE_MARKER), id, configuredWorkspaceId, false),
+    };
+  });
+  const secretProvider = createLocalProvider({ root, workspaceId, assertOpen }, true);
+  const readConfiguration = () =>
+    filesystem('read the configuration', () =>
+      readEntry(configurationLocation, 'configuration file'),
+    );
+
+  return {
+    name,
+    mode: 'local',
+    capabilities: LOCAL_CAPABILITIES,
+    database: { kind: 'sqlite', path: join(root, 'database.sqlite') },
+    configurationLocation,
+    logs: join(root, 'logs'),
+    deploymentId,
+    workspaceId,
+    s3Client() {
+      assertOpen();
+      return undefined;
+    },
+    content(contentName) {
+      assertOpen();
+      assertDirectoryName(contentName);
+      const path = join(root, contentName);
+      const exists = filesystem('inspect a content directory', () =>
+        directoryExists(path, 'content directory'),
+      );
+      if (!exists) {
+        throw new BungalowStateError('The content directory does not exist on a read-only home.');
+      }
+      return { kind: 'directory', path };
+    },
+    configurationWriteCapability: 'read-only',
+    async readConfiguration() {
+      assertOpen();
+      return localConfigurationSnapshot(readConfiguration());
+    },
+    async writeConfiguration(text, condition) {
+      assertOpen();
+      assertConfigurationWrite(text, condition);
+      return { outcome: 'read-only' };
+    },
+    secretProvider,
+    deploymentSecrets: localDeploymentSecrets(secrets, assertOpen, true),
+    close,
+    [Symbol.dispose]: close,
+  };
+}
+
+/**
+ * The default local deployment secrets: one `0600` file per key under `secrets`. Read-only, it
+ * reads a loose file as it is, reads a missing `secrets/` as empty, and rejects `write`.
+ */
+function localDeploymentSecrets(
+  secrets: string,
+  assertOpen: () => void,
+  readOnly = false,
+): DeploymentSecrets {
+  return {
+    writable: !readOnly,
+    location(key) {
+      assertOpen();
+      assertSecretKey(key);
+      return join(secrets, key);
+    },
+    async write(key, value) {
+      assertOpen();
+      assertSecretKey(key);
+      if (readOnly)
+        throw new BungalowStateError('Deployment secrets of a read-only home are read-only.');
+      filesystem('write a deployment secret', () => writePrivateFile(join(secrets, key), value));
+    },
+    async read(key) {
+      assertOpen();
+      assertSecretKey(key);
+      return filesystem('read a deployment secret', () => {
+        if (!readOnly) return readEntry(join(secrets, key), 'secret file', SECRET_MODE);
+        return directoryExists(secrets, 'secrets directory')
+          ? readEntry(join(secrets, key), 'secret file')
+          : undefined;
+      });
+    },
   };
 }
 
@@ -423,26 +662,27 @@ export async function openBungalow(options: OpenBungalowOptions): Promise<Bungal
  * `openBungalow` with the local lock injectable, so a test can show that remote mode never asks
  * for it: an `acquireLock` that throws fails a local open and leaves a remote one untouched. Not
  * part of the package's public surface.
+ *
+ * The descriptor is resolved as `resolveBungalowDescriptor` resolves it, in two halves so that the
+ * `NODE_ENV=test` refusal still comes before the local root is resolved: the remote half first,
+ * then the refusal, then the root.
  */
 export async function openBungalowWithDependencies(
   options: OpenBungalowOptions,
-  dependencies: OpenAtRootDependencies = {},
+  dependencies: Pick<OpenLocalBungalowOptions, 'acquireLock'> = {},
 ): Promise<Bungalow> {
   assertBungalowName(options.name);
   const environment = options.environment ?? processEnvironment();
-  const remote = remoteConfiguration(options.name, environment);
+  const remote = resolveRemoteDescriptor(options.name, environment);
   if (remote !== undefined) {
-    if (options.databaseWorkspaceClaim === undefined) {
-      throw new BungalowInputError('Remote mode requires a database workspace binding callback.');
-    }
-    return openRemoteBungalow(
-      options.name,
-      remote,
-      options.workspaceId,
-      options.databaseWorkspaceClaim,
-      options.writableConfiguration === true,
-      options.secretProvider,
-    );
+    return openRemoteBungalow({
+      name: options.name,
+      descriptor: remote,
+      databaseWorkspaceClaim: requireDatabaseWorkspaceClaim(options.databaseWorkspaceClaim),
+      writableConfiguration: options.writableConfiguration === true,
+      ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
+      ...(options.secretProvider === undefined ? {} : { secretProvider: options.secretProvider }),
+    });
   }
   const variable = bungalowHomeVariable(options.name);
   const underTest =
@@ -454,10 +694,12 @@ export async function openBungalowWithDependencies(
     );
   }
   const root = resolveOpenRoot({ ...options, environment });
-  return openAtRoot(options.name, root, {
-    ...dependencies,
+  return openLocalAtRoot({
+    name: options.name,
+    root,
     ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
     ...(options.secretProvider === undefined ? {} : { secretProvider: options.secretProvider }),
+    ...(dependencies.acquireLock === undefined ? {} : { acquireLock: dependencies.acquireLock }),
   });
 }
 
@@ -483,7 +725,8 @@ export async function openTemporaryBungalow(
     });
   };
   try {
-    return openAtRoot(options.name, root, { onClose: remove });
+    // Awaited here, so a failed open still removes the directory it was given.
+    return await openLocalAtRoot({ name: options.name, root }, { onClose: remove });
   } catch (error) {
     try {
       remove();

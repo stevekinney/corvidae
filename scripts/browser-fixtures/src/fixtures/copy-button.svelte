@@ -8,4 +8,5 @@
     >npx cinder install</code
   >
   <CopyButton value="npx cinder install" label="Copy install command" />
+  <CopyButton value="npx cinder install" label="Copy install command" textVisible />
 </div>

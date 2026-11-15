@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    Avatar,
     Button,
     EmptyState,
     ErrorState,
@@ -37,6 +38,30 @@
     <GroupedListItem actions={[{ label: 'View run', href: '/runs/7' }]}>
       {#snippet title()}Nightly backup{/snippet}
       {#snippet subtitle()}<StatusDot word="Running" />, Schedule, started 10:42 AM{/snippet}
+    </GroupedListItem>
+  </GroupedList>
+
+  <!-- Trailing values (COR-2329): one line, on the title's line, the subtitle under both on a phone. -->
+  <GroupedList aria-label="Recent chats" data-testid="grouped-list-trailing">
+    <GroupedListItem href="/chats/1">
+      {#snippet title()}Please refund order 4471, it arrived damaged.{/snippet}
+      {#snippet subtitle()}<StatusDot word="Waiting on you" />, I found order 4471 ($42.00). I need
+        your approval to refund it.{/snippet}
+      {#snippet trailing()}10:42 AM{/snippet}
+    </GroupedListItem>
+    <GroupedListItem href="/chats/2">
+      {#snippet title()}Say hello{/snippet}
+      {#snippet subtitle()}<StatusDot word="Done" />, Hello! How can I help?{/snippet}
+      {#snippet trailing()}Yesterday, 4:12 PM{/snippet}
+    </GroupedListItem>
+    <!-- A title alone in a row the 44px minimum makes taller, and a row beside an avatar. -->
+    <GroupedListItem href="/reviews" data-testid="row-title-only">
+      {#snippet title()}2 more in Reviews{/snippet}
+    </GroupedListItem>
+    <GroupedListItem href="/people/ada" data-testid="row-avatar">
+      {#snippet leading()}<Avatar name="Ada Lovelace" />{/snippet}
+      {#snippet title()}Ada Lovelace{/snippet}
+      {#snippet trailing()}Online{/snippet}
     </GroupedListItem>
   </GroupedList>
 

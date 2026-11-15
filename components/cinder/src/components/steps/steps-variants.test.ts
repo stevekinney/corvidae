@@ -49,11 +49,17 @@ function itemsOf(container: HTMLElement): HTMLElement[] {
 }
 
 describe('Steps checklist variant on a narrow container', () => {
-  test('stacks each action full width under the text, one per line', () => {
+  // COR-2329: full-width buttons, one per line, read as page-wide pills on a phone.
+  test('drops the actions under the text as a wrapping row, each button at its own width', () => {
     const narrow = stepsCss.slice(stepsCss.indexOf('@container cinder-steps (max-width: 28rem)'));
-    expect(narrow).toMatch(
-      /\[data-cinder-variant='checklist'\] \.cinder-steps__action \{[^}]*flex-basis: 100%;[^}]*flex-direction: column;[^}]*align-items: stretch;/,
-    );
+    const rule =
+      /\[data-cinder-variant='checklist'\] \.cinder-steps__action \{([^}]*)\}/.exec(narrow)?.[1] ??
+      '';
+    expect(rule).toContain('flex-basis: 100%;');
+    expect(rule).toContain('flex-flow: row wrap;');
+    expect(rule).toContain('justify-content: flex-start;');
+    expect(rule).not.toContain('flex-direction: column');
+    expect(rule).not.toContain('align-items: stretch');
   });
 });
 

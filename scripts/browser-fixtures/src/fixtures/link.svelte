@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Link } from '@lostgradient/cinder';
+  import { GroupedList, GroupedListItem, Link } from '@lostgradient/cinder';
 </script>
 
 <!-- Links inside a text block must stay distinguishable without relying on color
@@ -29,4 +29,17 @@
 >
   <h2 style="margin: 0; font-size: 1.125rem;">Needs you</h2>
   <Link href="/reviews" variant="more">Open Reviews</Link>
+</div>
+
+<!-- A more link with a list row directly beneath it: the row, itself positioned and drawn after
+     the link, must not cover the bottom of the link's hit area. -->
+<div data-testid="link-more-over-row" style="max-inline-size: 24rem; margin-block-start: 2rem;">
+  <div style="display: flex; justify-content: flex-end;">
+    <Link href="/health" variant="more">Open Health</Link>
+  </div>
+  <GroupedList aria-label="System problems">
+    <GroupedListItem href="/health/storage">
+      {#snippet title()}Storage is over its warning level{/snippet}
+    </GroupedListItem>
+  </GroupedList>
 </div>

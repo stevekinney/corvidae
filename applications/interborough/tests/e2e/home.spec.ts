@@ -125,7 +125,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     page,
   }) => {
     await openHome(page);
-    const spotlight = page.getByTestId('home-spotlight');
+    const spotlight = page.getByTestId('home-spotlight').locator('.cinder-spotlight__value');
     await expect(spotlight).toHaveText('2 need you');
     const counts = page.getByTestId('home-counts');
     await expect(counts.locator('.cinder-statistic')).toHaveText([/Failed in 24 hours\s*0/]);
@@ -302,9 +302,10 @@ test.describe('Home with nothing waiting and a provider connected', () => {
         response,
         json: {
           ...answer,
-          providers: [...(answer.providers ?? []), { name: 'anthropic', hasKey: true }].map(
-            (provider) => ({ ...provider, hasKey: true }),
-          ),
+          providers: [
+            ...(answer.providers ?? []),
+            { name: 'anthropic', hasKey: true, connected: true },
+          ].map((provider) => ({ ...provider, hasKey: true, connected: true })),
         },
       });
     });
@@ -315,7 +316,9 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     checkA11y,
   }) => {
     await openHome(page);
-    await expect(page.getByTestId('home-spotlight')).toHaveText('Nothing needs you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      'Nothing needs you',
+    );
     const counts = page.getByTestId('home-counts');
     await expect(counts.locator('.cinder-statistic')).toHaveText([/Failed in 24 hours\s*0/]);
     await expect(counts.locator('[data-cinder-attention]')).toHaveCount(0);
@@ -470,7 +473,10 @@ test.describe('Home on a new installation that lists Assistant', () => {
       const answer = (await response.json()) as { providers?: Record<string, unknown>[] };
       await route.fulfill({
         response,
-        json: { ...answer, providers: [{ name: 'anthropic', configured: true, hasKey: true }] },
+        json: {
+          ...answer,
+          providers: [{ name: 'anthropic', configured: true, hasKey: true, connected: true }],
+        },
       });
     });
     await openFirstRun(page);
@@ -645,7 +651,10 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(counts.locator('.cinder-statistic__label')).toHaveText(['Failed in 24 hours']);
     // The Spotlight, the value, the rows and the composer are placeholders.
     await expect(
-      page.getByTestId('home-loading-focus').locator('> .cinder-skeleton').first(),
+      page
+        .getByTestId('home-loading-focus')
+        .locator('> .cinder-skeleton-status-place > .cinder-skeleton')
+        .first(),
     ).toBeVisible();
     await expect(counts.locator('.cinder-statistic__value .cinder-skeleton')).toHaveCount(1);
     await expect(counts.locator('.cinder-statistic__value')).toHaveText(['']);
@@ -717,6 +726,16 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeAttached();
     await page.clock.runFor(300);
     await expect(homeBody(page)).toHaveAttribute('data-mode', 'loading');
+    // Where the real content is before the line: the date line, the count's label and a heading.
+    const contentTops = async () =>
+      Promise.all(
+        [
+          page.getByTestId('home-date'),
+          page.getByTestId('home-loading-counts').locator('.cinder-statistic__label'),
+          page.getByRole('heading', { level: 2, name: 'Needs attention' }),
+        ].map(async (locator) => (await locator.boundingBox())!.y),
+      );
+    const beforeLine = await contentTops();
     await page.clock.runFor(9_699);
     await expect(page.getByText('Still loading Home.')).toHaveCount(0);
     await page.clock.runFor(1);
@@ -726,13 +745,23 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
       'data-cinder-variant',
       'ghost',
     );
-    // It is the skeleton's own line above the placeholders, in view, not a banner (COR-2329: under
-    // them it was cut off at the bottom of the viewport).
+    // It is the skeleton's own line, in view, not a banner. It takes the Spotlight placeholder's
+    // place, so nothing on the page moves when it appears (COR-2329 round two: inserted above the
+    // page it moved the date line 40px, and again when the data arrived).
     await expect(page.getByRole('region', { name: 'Connection problem' })).toHaveCount(0);
-    const firstPlaceholder = await page.getByTestId('home-date').boundingBox();
-    const line = await status.boundingBox();
-    expect(line!.y + line!.height).toBeLessThanOrEqual(firstPlaceholder!.y);
     await expect(status).toBeInViewport();
+    const withLine = await contentTops();
+    for (const [index, name] of ['the date line', 'the count', 'Needs attention'].entries()) {
+      expect(Math.abs(withLine[index]! - beforeLine[index]!), `${name} stays`).toBeLessThanOrEqual(
+        1,
+      );
+    }
+    const date = await page.getByTestId('home-date').boundingBox();
+    const line = await status.boundingBox();
+    expect(line!.y).toBeGreaterThanOrEqual(date!.y + date!.height - 1);
+    await expect(
+      page.getByTestId('home-loading-focus').locator('.cinder-skeleton-status-place'),
+    ).toContainText('Still loading Home.');
     await captureForDesignReview(page, { route: '/', state: 'still loading', source: SOURCE });
 
     await status.getByRole('button', { name: 'Cancel' }).click();
@@ -804,7 +833,9 @@ test.describe('Home when one card cannot be read (01n, 01o)', () => {
     await expect(card.getByRole('link')).toHaveCount(0);
     await expect(card.getByRole('listitem')).toHaveCount(0);
     // The Spotlight and the count have reads of their own and are unchanged.
-    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      '2 need you',
+    );
     await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
       /Failed in 24 hours\s*0/,
     ]);
@@ -875,7 +906,9 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
     expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(date!.y);
 
     // Old data keeps full contrast (never dimmed with opacity), and nothing is zeroed.
-    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      '2 need you',
+    );
     await expect(page.getByTestId('home-counts').locator('.cinder-statistic')).toHaveText([
       /Failed in 24 hours\s*0/,
     ]);
@@ -913,17 +946,19 @@ test.describe('Home when the server does not answer (02g, 02h, 02i, 02j)', () =>
       'aria-disabled',
       'true',
     );
-    // The composer keeps what was typed; Assistant is still the agent, and Send is disabled, its
-    // description and tooltip saying why. No note squeezes the footer (COR-2329: at 375 it cut the
-    // agent's name short).
+    // The composer keeps what was typed; Assistant is still the agent, and the shell holds Send as
+    // it holds every submit button: aria-disabled and still focusable, with the shell's reason as
+    // its title, so a keyboard user reaches it. No note squeezes the footer (COR-2329).
     const composer = page.getByTestId('home-start-chat');
     await expect(message).toHaveValue('What did I approve yesterday?');
     await expect(composer.getByRole('combobox', { name: 'Agent' })).toContainText('Assistant');
     const send = composer.getByRole('button', { name: 'Send' });
-    await expect(send).toBeDisabled();
+    await expect(send).toHaveAttribute('aria-disabled', 'true');
+    await expect(send).not.toHaveAttribute('disabled', /.*/);
     await expect(send).toHaveAttribute('title', 'Off until it’s back');
-    await expect(send).toHaveAccessibleDescription('Off until it’s back');
-    await expect(composer.getByText('Off until it’s back')).toHaveClass(/cinder-sr-only/);
+    await send.focus();
+    await expect(send).toBeFocused();
+    await expect(composer.getByText('Off until it’s back')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/',
       state: 'couldn’t reach Interborough',
@@ -986,7 +1021,9 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
       'Monday, Nov 2. Times show in Central time (CST).',
     );
     // The Spotlight, then one count under it with no dot while nothing failed.
-    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      '2 need you',
+    );
     const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
     await expect(stats).toHaveText([/Failed in 24 hours\s*0/]);
     await expect(stats.locator('xpath=self::*[@data-cinder-attention]')).toHaveCount(0);
@@ -1042,7 +1079,8 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
     await checkA11y('Home on a phone');
   });
 
-  test('stacks each step’s actions full width under its text on a first run (05c)', async ({
+  // COR-2329 round two: full-width buttons read as page-wide pills; each keeps its own width now.
+  test('drops each step’s actions under its text at their own width on a first run (05c)', async ({
     page,
   }) => {
     await asNewInstallation(page);
@@ -1063,9 +1101,15 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
           box!.y,
           `step ${String(index + 1)}'s button is under its text`,
         ).toBeGreaterThanOrEqual(text!.y + text!.height - 1);
-        expect(box!.width, `step ${String(index + 1)}'s button is full width`).toBeGreaterThan(
-          step!.width - 80,
+        expect(box!.width, `step ${String(index + 1)}'s button keeps its own width`).toBeLessThan(
+          step!.width / 2,
         );
+        if (item === 0) {
+          expect(
+            Math.abs(box!.x - text!.x),
+            `step ${String(index + 1)}'s first button starts at its text`,
+          ).toBeLessThanOrEqual(1);
+        }
       }
     }
     await captureForDesignReview(page, {
@@ -1090,7 +1134,9 @@ test.describe('Home on a tablet (05s)', () => {
     await expect(
       page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ }),
     ).toContainText('2');
-    await expect(page.getByTestId('home-spotlight')).toHaveText('2 need you');
+    await expect(page.getByTestId('home-spotlight').locator('.cinder-spotlight__value')).toHaveText(
+      '2 need you',
+    );
     const rows = needsYou(page).getByRole('listitem');
     for (const [index, name] of [
       [0, 'Answer'],

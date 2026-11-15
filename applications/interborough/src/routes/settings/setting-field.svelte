@@ -17,24 +17,19 @@
     Select,
     SettingRow,
     Toggle,
+    type SelectOption,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
 
   import { SETTINGS_COPY } from '../../app/copy/settings.ts';
-  import {
-    decisionRowNamed,
-    getAgentCatalog,
-    isAvailableModel,
-  } from '../../lib/agent-definitions.ts';
+  import { getAgentCatalog, isAvailableModel } from '../../lib/agent-definitions.ts';
   import type { SchemaNode, SettingKeyState } from '../../lib/bureau-settings.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { inlineSegments } from './inline-markdown.ts';
-  import { policyOf, type ModelPolicy } from './model-policy-edit.ts';
   import { modelDisplayName } from './models/format-model.ts';
   import {
     DURATION_SETTINGS,
-    HOST_DECISION_MODELS,
     SETTING_UNITS,
     holdsForm,
     optionLabel,
@@ -65,8 +60,19 @@
      * as the placeholder of an empty text or number field, so an empty field says what is in force.
      */
     inForce?: unknown;
-    /** The model policy, which keeps the empty option of a select of rows from naming a model it denies. */
-    policy?: ModelPolicy | undefined;
+    /**
+     * The options of a select of decision rows (`source: 'decision-rows'`), which the page that
+     * owns the list builds from `bureau.decisions.models`: a label, the provider as its group, and
+     * the words "Needs setup" as a row's note. The field draws them and decides nothing about them.
+     */
+    rowChoices?: readonly SelectOption[] | undefined;
+    /** What the empty option of a select of decision rows says, such as the row that answers while it is empty. */
+    emptyLabel?: string | undefined;
+    /**
+     * An advisory condition the row shows without refusing anything, in place of the Bureau's own
+     * `problem` for the key (which names the value in the Bureau's own syntax).
+     */
+    warning?: string | undefined;
     /** Called when the person changes the value, which ends what Revert said about it. */
     onEdit?: (() => void) | undefined;
     /**
@@ -87,6 +93,11 @@
     statusNote?: string | undefined;
     /** A quiet link after the description, such as "Connect TypeSafe"; it joins the row's `aria-describedby`. */
     descriptionAction?: Snippet | undefined;
+    /**
+     * Says that what the row's select offers did not load, in the row's own warning tone with its
+     * quiet retry (the row's `loadError`), such as the decision rows the page reads.
+     */
+    loadFailure?: { message: string; retry: () => void; retryLabel: string } | undefined;
   }
 
   let {
@@ -101,13 +112,16 @@
     descriptionOverride,
     labelOverride,
     inForce,
-    policy,
+    rowChoices,
+    emptyLabel,
+    warning,
     onEdit,
     custom,
     controlWidth,
     disabled = false,
     statusNote,
     descriptionAction,
+    loadFailure,
   }: Props = $props();
 
   const id = $derived(`weft-setting-${name.replaceAll('.', '-')}`);
@@ -188,16 +202,13 @@
     undefined,
   );
 
-  /** The options of a select of rows: what the source offers, and the value the key holds now so it is never lost. */
+  /** The options of a select of catalog rows: the rows an agent could run on, and the value the key holds now so it is never lost. */
   const choices = $derived.by(() => {
-    if (spec.kind !== 'choice') return [];
-    const options =
-      spec.source === 'catalog-rows'
-        ? (catalog.data?.models ?? []).filter(isAvailableModel).map((row) => {
-            const value = `${row.provider}/${row.model}`;
-            return { value, label: value };
-          })
-        : HOST_DECISION_MODELS.map((option) => ({ ...option }));
+    if (spec.kind !== 'choice' || spec.source !== 'catalog-rows') return [];
+    const options = (catalog.data?.models ?? []).filter(isAvailableModel).map((row) => {
+      const value = `${row.provider}/${row.model}`;
+      return { value, label: value };
+    });
     const current = typeof draft === 'string' && draft !== '' ? draft : undefined;
     return current === undefined || options.some((option) => option.value === current)
       ? options
@@ -205,19 +216,18 @@
   });
 
   /**
-   * What the empty option of a select of rows says: the row the setting applies by while it holds
-   * none, named as a person says it ("Claude Haiku 5.5 (default)"), else "Not set". A row the
-   * policy denies is not named, because the Bureau skips it.
+   * What the empty option of a select says: the words the page gives it (the row that answers while
+   * the setting is empty), else the row the setting applies by while it holds none, named as a
+   * person says it ("Claude Haiku 5.5 (default)"), else "Not set".
    */
   const emptyOption = $derived.by(() => {
-    const row =
-      typeof inForce === 'string' && inForce !== ''
-        ? decisionRowNamed(catalog.data?.models ?? [], inForce, policy ?? policyOf(undefined))
-        : undefined;
-    return row === undefined
-      ? SETTINGS_COPY.notSet
-      : SETTINGS_COPY.defaultOption(modelDisplayName(row.model));
+    if (emptyLabel !== undefined) return emptyLabel;
+    const slash = typeof inForce === 'string' ? inForce.indexOf('/') : -1;
+    return typeof inForce === 'string' && slash > 0 && slash < inForce.length - 1
+      ? SETTINGS_COPY.defaultOption(modelDisplayName(inForce.slice(slash + 1)))
+      : SETTINGS_COPY.notSet;
   });
+  const advisory = $derived(warning ?? keyState.problem);
 
   /** Changes the draft, which clears what the last save said about the old one. */
   function change(next: unknown): void {
@@ -257,7 +267,15 @@
     {...status === undefined ? {} : { status }}
     {...statusLabel === undefined ? {} : { statusLabel }}
     {...error === undefined ? {} : { error }}
-    {...retriable ? { onRetry: () => void autosave.retry(name) } : {}}
+    {...advisory === undefined ? {} : { warning: advisory }}
+    {...loadFailure === undefined
+      ? {}
+      : { loadError: loadFailure.message, retryLabel: loadFailure.retryLabel }}
+    {...retriable
+      ? { onRetry: () => void autosave.retry(name) }
+      : loadFailure === undefined
+        ? {}
+        : { onRetry: loadFailure.retry }}
     {...locked ? { managed: { message: SETTINGS_COPY.lockedMessage } } : {}}
     {...controlWidth === undefined ? {} : { controlWidth }}
     disabled={inert}
@@ -299,6 +317,22 @@
           disabled={inert}
           onchange={(event) => {
             change(event.currentTarget.value);
+            leave();
+          }}
+        />
+      {:else if spec.kind === 'choice' && spec.source === 'decision-rows'}
+        <Select
+          {id}
+          {label}
+          // hidden-label-allowed: the SettingRow beside the select draws its label, name and description
+          labelVisible={false}
+          presentation="listbox"
+          placeholder={emptyOption}
+          options={[{ value: '', label: emptyOption }, ...(rowChoices ?? [])]}
+          value={typeof draft === 'string' ? draft : ''}
+          disabled={inert}
+          onValueChange={(next: string) => {
+            change(next || undefined);
             leave();
           }}
         />

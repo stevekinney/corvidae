@@ -25,7 +25,7 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import { ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { ErrorState, Section, Skeleton } from '@lostgradient/cinder';
   import { renderMarkdown } from '@lostgradient/markdown';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -610,14 +610,8 @@
     <div class="ib-run__layout">
       <div class="ib-run__main">
         {#if summary === undefined && loading}
-          <section
-            class="ib-run__section"
-            aria-labelledby="ib-run-happened"
-            data-section="what-happened"
-          >
-            <h2 id="ib-run-happened" class="ib-run__heading-2">
-              {RUN_DETAIL_COPY.happened.heading}
-            </h2>
+          <!-- The same Section the loaded What happened is, so nothing moves when it arrives. -->
+          <Section title={RUN_DETAIL_COPY.happened.heading} data-section="what-happened">
             <Skeleton
               variant="list"
               rows={3}
@@ -627,7 +621,7 @@
               label={RUN_DETAIL_COPY.states.loadingHappened}
               onCancel={cancelLoading}
             />
-          </section>
+          </Section>
         {/if}
         {#if task.data}
           <RunWaiting task={task.data} onAnswerHold={(held) => (answerHeld = held)} />
@@ -658,16 +652,13 @@
           {/if}
           <RunHowItRan bind:open={() => howOpen, (open) => (howOverride = open)}>
             {#if task.data !== undefined && (workflow !== undefined || record !== undefined)}
-              <section
-                class="ib-run__section"
-                aria-labelledby="ib-run-raw"
+              <Section
+                level={3}
+                title={RUN_DETAIL_COPY.howItRan.rawPayloads}
                 data-section="raw-payloads"
               >
-                <h3 id="ib-run-raw" class="ib-run__heading-3">
-                  {RUN_DETAIL_COPY.howItRan.rawPayloads}
-                </h3>
                 <RunPayloadCards {workflow} {record} />
-              </section>
+              </Section>
             {/if}
             <RunActivity
               task={task.data}

@@ -446,6 +446,32 @@ describe('configuration audit metadata', () => {
   });
 });
 
+describe('the provider snapshot of a keyless provider (COR-2414)', () => {
+  test('reports a provider that declares no secret as connected, apart from whether a key is saved', async () => {
+    const home = fakeHome('local');
+    const manager = createProviderManager({
+      bungalow: home,
+      warn: () => undefined,
+      resolveProviderGenerate,
+      audit: async () => undefined,
+    });
+    await manager.adopt([
+      ...contributedFixtures(['anthropic', 'openai']),
+      ...contributedFixtures(['gemini']).map((provider) => ({ ...provider, secretKey: undefined })),
+    ]);
+    manager.attach((rows) => Promise.resolve(rows.length));
+
+    const { providers } = await manager.snapshot();
+    const byName = Object.fromEntries(providers.map((provider) => [provider.name, provider]));
+
+    // The keyless provider has no saved key and is connected; the keyed one is connected by its key.
+    expect(byName['gemini']).toMatchObject({ hasKey: false, connected: true });
+    expect(byName['anthropic']).toMatchObject({ hasKey: true, connected: true });
+    // A provider that needs a key it lacks is not connected.
+    expect(byName['openai']).toMatchObject({ hasKey: false, connected: false });
+  });
+});
+
 describe('disconnecting a provider', () => {
   test('a remote home refuses it for the reason `deployment`, writing nothing', async () => {
     const home = fakeHome('remote');
@@ -1052,6 +1078,35 @@ describe('testing a key', () => {
       { apiKey: `${KEY}-refused`, kind: 'boolean' },
     ]);
     expect(home.writes).toEqual([]);
+  });
+
+  test('probes with the plugin configuration the host holds after a configuration write, which is what Connect stores before it tests the key (COR-2148)', async () => {
+    let held: unknown = { baseURL: 'http://old.example/v1' };
+    const configurations: unknown[] = [];
+    const inner = fakeProvider('ok').resolver;
+    const manager = createProviderManager({
+      bungalow: fakeHome('local'),
+      warn: () => undefined,
+      pluginConfigurations: () => Promise.resolve(new Map([['anthropic', held]])),
+      resolveProviderGenerate: (definitions, request, signal, context, configuration) => {
+        configurations.push(configuration);
+        return inner(definitions, request, signal, context, configuration);
+      },
+    });
+    await manager.adopt(contributedFixtures());
+    manager.attach((rows) => Promise.resolve(rows.length));
+    await manager.reload();
+
+    await manager.testKey({ provider: 'anthropic', apiKey: KEY });
+    // `PUT /host/plugins/anthropic` stores the draft and applies it live through `reload`.
+    held = { baseURL: 'http://new.example/v1' };
+    await manager.reload();
+    await manager.testKey({ provider: 'anthropic', apiKey: KEY });
+
+    expect(configurations).toEqual([
+      { baseURL: 'http://old.example/v1' },
+      { baseURL: 'http://new.example/v1' },
+    ]);
   });
 
   test('tests a key even when the host cannot save one, since testing writes nothing', async () => {

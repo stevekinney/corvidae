@@ -1,11 +1,13 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { SignalDeliveredEvent } from '../events.ts';
 import { createDeferredConsumeEnvelope } from './deferred-consume-envelope.ts';
+import type { SideEffectHold } from './held-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   captureSignalWaitRun,
   clearSignalWait,
   recordSignalWaitBegan,
+  trackSignalWaitClear,
 } from './signal-wait-tracking.ts';
 import {
   consumeSignalWithAtomicWorkflowCommit,
@@ -178,13 +180,14 @@ export function executeWaitSignalSubOperation(
     // The deferred consume the coordinator runs on the winning path. Wrapped in
     // an envelope so a losing branch (which never reaches finalize) cannot delete
     // the durable record.
-    const finalize = async (): Promise<unknown> => {
+    const finalize = async (hold?: SideEffectHold): Promise<unknown> => {
       const consumed = await consumeSignalWithAtomicWorkflowCommit(
         internals,
         workflowId,
         signalName,
         () => isCurrentWorkflowExecutionToken(internals, workflowId, workflowExecutionToken),
         workflowExecutionToken,
+        hold,
       );
       return consumed.found ? consumed.payload : undefined;
     };
@@ -203,7 +206,11 @@ export function executeWaitSignalSubOperation(
       // the durable `waitingForSignals` list. Nothing awaits this branch any
       // more, so the write runs on its own; it changes nothing when the engine
       // is shutting down, because then the wait is still outstanding durably.
-      void clearSignalWait(internals, workflowId, run, signalName);
+      trackSignalWaitClear(
+        internals,
+        workflowId,
+        clearSignalWait(internals, workflowId, run, signalName),
+      );
       // Prefer the race-loser `signal`'s reason; fall back to the engine-abort
       // reason on teardown (mirrors `executeSleepSubOperation`) so a disposed
       // engine surfaces its own abort reason rather than a generic Error.

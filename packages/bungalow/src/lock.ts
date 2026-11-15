@@ -1,4 +1,3 @@
-import { dlopen, FFIType, read } from 'bun:ffi';
 import { closeSync, constants, fchmodSync, fstatSync, ftruncateSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -46,10 +45,13 @@ let native: NativeLock | undefined;
  * process dies. The lock file is opened with `O_CLOEXEC` so that no child this process execs can
  * hold the lock past it; Node and Bun do not set it on a plain `open`.
  *
+ * `bun:ffi` is imported here, on the first call, and never statically, so importing the package
+ * loads no FFI and an open with an injected lock or a remote open never does.
+ *
  * `fcntl` is variadic, and a plain FFI call to it does nothing on Apple arm64, so the flag is set
  * at `open` rather than with `F_SETFD`. `F_GETFD` takes no third argument and reads correctly.
  */
-export function systemLockOperations(): NativeLock {
+export async function loadSystemLockOperations(): Promise<NativeLock> {
   if (native !== undefined) return native;
   const platform = process.platform;
   if (platform !== 'darwin' && platform !== 'linux') {
@@ -57,6 +59,15 @@ export function systemLockOperations(): NativeLock {
       `Bungalow needs flock(2) and supports macOS and Linux, not ${platform}.`,
     );
   }
+  let ffi: typeof import('bun:ffi');
+  try {
+    ffi = await import('bun:ffi');
+  } catch (error) {
+    throw new BungalowUnsupportedError('Bungalow could not load the C library for flock(2).', {
+      cause: sanitizeCause(error),
+    });
+  }
+  const { dlopen, FFIType, read } = ffi;
   const flockDefinition = { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } as const;
   const fcntlDefinition = {
     args: [FFIType.i32, FFIType.i32, FFIType.i32],
@@ -134,7 +145,26 @@ function readHolder(lockPath: string): number | undefined {
   return Number.isSafeInteger(holder) && holder > 0 ? holder : undefined;
 }
 
-export type RootLock = { release(): void };
+/**
+ * The default `acquireLock`: `acquireRootLock` with the system's `flock(2)`. Loading it loads
+ * `bun:ffi`, so the local open awaits it only when no lock was injected, after the root exists.
+ */
+export async function defaultAcquireLock(): Promise<(root: string) => RootLock> {
+  const operations = await loadSystemLockOperations();
+  return (root) => acquireRootLock(root, operations);
+}
+
+/**
+ * A held single-instance lock on a local root, as `OpenLocalBungalowOptions.acquireLock` returns
+ * it. Acquiring throws when the root is held elsewhere: `BungalowLockedError` by convention.
+ */
+export type RootLock = {
+  /**
+   * Give the lock up. Called once when an open fails after taking it, and by `close()`, which
+   * calls it again only if it threw, so a release that throws must leave the lock retryable.
+   */
+  release(): void;
+};
 
 /**
  * Take the root's single-instance lock: an exclusive, non-blocking `flock` on `<root>/lock`.
@@ -147,10 +177,7 @@ export type RootLock = { release(): void };
  *
  * Whole-file `flock` needs a filesystem that supports it: a local one on macOS or Linux.
  */
-export function acquireRootLock(
-  root: string,
-  operations: LockOperations = systemLockOperations(),
-): RootLock {
+export function acquireRootLock(root: string, operations: LockOperations): RootLock {
   const lockPath = join(root, LOCK_FILE);
   // Opened through the entry guard, so a `lock` that is a symbolic link, a FIFO, or shared with
   // another path by a hard link is refused before anything is truncated or overwritten.

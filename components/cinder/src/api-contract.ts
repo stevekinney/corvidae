@@ -260,6 +260,40 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: {},
   },
 
+  // The Copy icon by default, named by `label` and shown in a tooltip; `textVisible` (or `children`)
+  // adds words after the icon. `iconOnly` was removed when the icon became the default face.
+  'copy-button': {
+    kind: 'intersection',
+    html_attrs: 'HTMLButtonAttributes',
+    props: {
+      value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      html: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      image: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
+      confirmDuration: { optional: true, type_kind: 'TSNumberKeyword', default: L(1500) },
+      label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      copiedLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      textVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      onError: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+    },
+    snippets: { children: s0(true), confirmation: s0(true) },
+  },
+
+  // A split button: inside a ButtonGroup the trigger draws as a Button and takes its variant and
+  // size from the Button beside it, unless `variant` or `size` set them.
+  'dropdown-trigger': {
+    kind: 'intersection',
+    html_attrs: 'HTMLButtonAttributes',
+    props: {
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      caretVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      size: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+    },
+    snippets: { children: s0(true) },
+  },
+
   'empty-state': {
     kind: 'literal',
     props: {
@@ -643,9 +677,27 @@ export const CONTRACT: Record<string, ComponentContract> = {
         default: L('Still loading. This is taking longer than usual.'),
       },
       cancelLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Cancel') },
+      // COR-2329: a block in a page's own placeholder that takes its group's "Still loading" line.
+      holdsStatusLine: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       statusMarker: { optional: true, type_kind: 'TSTypeReference', default: L('bar') },
     },
     snippets: { children: s0(true) },
+  },
+
+  spotlight: {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      status: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      statusLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+    },
+    snippets: {
+      caveat: s0(true),
+      // COR-2329: the value's action, at the end of its first line ("Open Reviews ›").
+      action: s0(true),
+    },
   },
 
   spinner: {

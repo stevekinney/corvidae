@@ -273,7 +273,7 @@
             <span class="weft-lineage-panel__id" title={forkedFrom.workflowId}>
               {truncateId(forkedFrom.workflowId)}
             </span>
-            <CopyButton value={forkedFrom.workflowId} iconOnly label="Copy workflow ID" />
+            <CopyButton value={forkedFrom.workflowId} label="Copy workflow ID" />
             {#if sourceRevisionAttributable && forkSourceQuery.data?.revision !== undefined}
               {@const sourceRevision = forkSourceQuery.data.revision}
               <Tooltip

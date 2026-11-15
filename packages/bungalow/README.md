@@ -16,6 +16,140 @@ Declare `"@lostgradient/bungalow": "workspace:*"` in the consuming workspace's d
 
 An override is normalized, so a trailing slash or a dot segment does not change the root. An application name matches `^[a-z][a-z0-9-]*$`. A secret key or content directory name matches `^[a-z0-9][a-z0-9-]*$`. Anything else throws `BungalowInputError`.
 
+## Resolving and opening separately
+
+`openBungalow` does two things: it decides from the environment where the home is, and it opens it. Each half is also available on its own, so a host can keep several homes open in one process, or keep its settings somewhere other than the environment, without the environment rules deciding for it.
+
+`resolveBungalowDescriptor({ name, environment, homeDirectory })` is the first half. It is pure: it performs no I/O, takes no lock, and reads no process state, so the environment and the home directory are both required. It applies exactly the rules of [Remote mode](#remote-mode) and [Choosing the root](#choosing-the-root), and returns a `BungalowDescriptor`: `{ kind: 'local', root }`, or `{ kind: 'remote', databaseUrl, bucket, prefix, endpoint, region, accessKeyId, secretAccessKey, sessionToken?, secrets }` with the prefix normalized and the `<NAME>_SECRET_*` variables copied. It applies no `NODE_ENV=test` policy; that refusal belongs to `openBungalow`.
+
+`openLocalBungalow({ name, root })` and `openRemoteBungalow({ name, descriptor, databaseWorkspaceClaim })` are the second half. Neither reads an environment. A local root must be absolute. A remote descriptor goes through the same validation whether `resolveBungalowDescriptor` returned it or the caller built it by hand: required fields, a path-safe bucket, and the prefix's normalization and segment rules, so a hand-built descriptor cannot alias two prefixes or skip a check. Its failures name the field (`descriptor.prefix`), never the value. `openBungalow` is these pieces composed: the descriptor, then the `NODE_ENV=test` refusal for a local home, then the matching open.
+
+```typescript
+import { homedir } from 'node:os';
+
+import {
+  openLocalBungalow,
+  openRemoteBungalow,
+  resolveBungalowDescriptor,
+  type DatabaseWorkspaceClaim,
+} from '@lostgradient/bungalow';
+
+async function openHome(databaseWorkspaceClaim: DatabaseWorkspaceClaim) {
+  const descriptor = resolveBungalowDescriptor({
+    name: 'interborough',
+    environment: process.env,
+    homeDirectory: homedir(),
+  });
+  if (descriptor.kind === 'remote') {
+    return openRemoteBungalow({ name: 'interborough', descriptor, databaseWorkspaceClaim });
+  }
+  return openLocalBungalow({ name: 'interborough', root: descriptor.root });
+}
+```
+
+Both opens also take the options `openBungalow` takes for the same mode (`workspaceId` and `secretProvider`, and `writableConfiguration` remotely), and two more that `openBungalow` does not:
+
+- `deploymentSecrets`, a `DeploymentSecretsFactory`. It receives `{ workspaceId, assertOpen }` once the workspace identity is bound, before the caller gets the handle, and returns the `DeploymentSecrets` the handle hands out; `assertOpen` throws `BungalowStateError` once the handle is closed. Omitted, the defaults are unchanged: files under `secrets/` locally, read-only `<NAME>_SECRET_<KEY>` values remotely. It replaces only `deploymentSecrets`: the managed `secretProvider` is chosen separately, and neither ever routes through the other. A local home still creates `secrets/`. The store it returns must carry a boolean `writable`, which says whether `write` can succeed; an injected store without one makes the open reject with `BungalowInputError`. Bungalow does not wrap an injected store to enforce `writable: false`.
+- `acquireLock`, local only: `(root) => RootLock`, called after the root directory exists and before anything in it is read. The open releases the lock if it then fails, and `close()` releases it. Omitted, it is the `flock(2)` lock described in [The single-instance lock](#the-single-instance-lock).
+
+`openLocalBungalow` also takes `access: 'read' | 'write'`, which defaults to `'write'`; see [Capabilities and read-only access](#capabilities-and-read-only-access).
+
+Two local homes with different roots can be open in one process at once, each with its own lock, identity, and secrets, and closing one leaves the other open.
+
+```typescript
+import {
+  BungalowLockedError,
+  openLocalBungalow,
+  openRemoteBungalow,
+  type DatabaseWorkspaceClaim,
+  type DeploymentSecretsFactory,
+  type RootLock,
+} from '@lostgradient/bungalow';
+
+/** A host's own store for deployment secrets, such as an operating-system keychain. */
+const keychain: DeploymentSecretsFactory = ({ workspaceId, assertOpen }) => {
+  const values = new Map<string, string>();
+  return {
+    writable: true,
+    async read(key) {
+      assertOpen();
+      return values.get(key);
+    },
+    async write(key, value) {
+      assertOpen();
+      values.set(key, value);
+    },
+    location: (key) => `keychain:${workspaceId}/${key}`,
+  };
+};
+
+/** A host's own single-instance mechanism, here one held root per process. */
+const held = new Set<string>();
+function acquireLock(root: string): RootLock {
+  if (held.has(root)) throw new BungalowLockedError(root, process.pid);
+  held.add(root);
+  return { release: () => held.delete(root) };
+}
+
+async function openTenants(databaseWorkspaceClaim: DatabaseWorkspaceClaim) {
+  const first = await openLocalBungalow({
+    name: 'interborough',
+    root: '/srv/interborough/first',
+    deploymentSecrets: keychain,
+    acquireLock,
+  });
+  const second = await openLocalBungalow({
+    name: 'interborough',
+    root: '/srv/interborough/second',
+  });
+  const remote = await openRemoteBungalow({
+    name: 'interborough',
+    databaseWorkspaceClaim,
+    descriptor: {
+      kind: 'remote',
+      databaseUrl: 'postgres://interborough@db.internal/tenant',
+      bucket: 'interborough-state',
+      prefix: 'tenant',
+      endpoint: 'https://storage.example.com',
+      region: 'auto',
+      accessKeyId: 'example-access-key-id',
+      secretAccessKey: 'example-secret-access-key',
+      secrets: new Map([['INTERBOROUGH_SECRET_API_KEY', 'sk-example']]),
+    },
+  });
+
+  first.close(); // second and remote stay open
+  second.close();
+  remote.close();
+}
+```
+
+## Capabilities and read-only access
+
+A caller asks a handle what its home can do, and never infers it from `mode`. `capabilities` is `{ sharedBetweenInstances, personalMachine }`: a local home reports `false` and `true`, a remote home `true` and `false`. `deploymentSecrets.writable` says whether `write` can succeed: `true` for the local file store, `false` for the environment store. `mode` stays as a label.
+
+`openLocalBungalow({ access: 'read' })` returns a handle that takes no lock and creates, changes, and deletes nothing, so a second process, such as a command-line tool, can read a home the host holds. It reads only files a writer replaces by rename, never the lock file, and refuses a symbolic link, a FIFO, or a multiply linked file at every entry it reads, as a writer does. The root must already exist and hold a `deployment-id`, or the open rejects with `BungalowStateError`; a home with no `workspace-id` opens with its deployment identity as its workspace identity, and a configured `workspaceId` that differs from the stored one is still refused.
+
+On a read-only handle:
+
+- No directory is created and no mode tightened. A loose secret file is read as it is. A missing `secrets/` or `.managed-secrets/` reads as empty: `deploymentSecrets.read` and `secretProvider.readLegacy` resolve `undefined`, `listOperations` resolves `[]`, and `readVersion` rejects with code `missing`. `secretProvider.getOperation` returns an operation record it recovers from its version without saving it.
+- `configurationWriteCapability` is `'read-only'` and `writeConfiguration` resolves `{ outcome: 'read-only' }`. `deploymentSecrets.writable` is `false` and `write` rejects with `BungalowStateError`. `secretProvider.capabilities` has `prepare: false` and `transitions: false`, and `prepare`, `transitionOperation`, and `reclaim` reject with a `SecretProviderError` of code `read-only`.
+- `content(name)` returns the location of an existing directory and throws `BungalowStateError` for a missing one, and `logs` is the path whether or not the directory exists.
+- The open refuses `acquireLock`, `deploymentSecrets`, and `secretProvider` with `BungalowInputError`: a read-only open uses the built-in stores. A read-only open of a remote home does not exist, and `access` is an option of `openLocalBungalow` only: a caller that starts from the environment calls `resolveBungalowDescriptor` first.
+
+```typescript
+import { openLocalBungalow, type Bungalow } from '@lostgradient/bungalow';
+
+/** Read the configuration of a home another process holds, without stopping that process. */
+async function readConfigurationOf(root: string): Promise<string | undefined> {
+  using home: Bungalow = await openLocalBungalow({ name: 'interborough', root, access: 'read' });
+  home.capabilities.personalMachine; // true
+  home.deploymentSecrets.writable; // false
+  home.configurationWriteCapability; // 'read-only'
+  return (await home.readConfiguration()).text;
+}
+```
+
 ## Errors
 
 Every error extends `BungalowError`. None of them carries a secret value or a secret key: messages name the operation and never an entry, and a `BungalowFilesystemError` keeps only the code, system call, and errno of the underlying failure as its `cause`, never its path, because a path inside `secrets/` ends in the key. In remote mode its `cause` is only `{ status }` or `{ code }`; see [Remote mode](#remote-mode).
@@ -43,7 +177,7 @@ bungalow.close();
 
 `openBungalow` and `openTemporaryBungalow` return a promise, so a mode that reads from a network can open without blocking. A Bungalow hands out locations, not bare paths, so a caller never assumes the home is a directory: `mode` is `'local'` or `'remote'`; `database` is `{ kind: 'sqlite', path }` or `{ kind: 'postgres', url }`; `content(name)` is `{ kind: 'directory', path }` or `{ kind: 's3', bucket, prefix }`; `configurationLocation` and `deploymentSecrets.location(key)` are strings for messages and for a person editing by hand (the file's path in local mode), and `readConfiguration()` returns `{ text, revision }` from one read. Local mode returns the `sqlite` and `directory` variants, remote mode the `postgres` and `s3` ones. `content(name)` rejects the names Bungalow keeps in the root (`secrets`, `logs`, `lock`, `deployment-id`).
 
-Opening creates the root (mode `0700`), `secrets/` (mode `0700`), logs, the lock file, and the deployment identity. It does not create the database or configuration file, and a missing configuration file is valid. `writeConfiguration(text, { expectedRevision })` creates it only when the revision is explicitly `null`, or replaces it only when the observed revision still matches. The awaited result distinguishes `committed`, `conflict`, `read-only`, `unsupported`, `unavailable`, and `unknown`. Local deployment-secret reads tighten a loose secret file back to `0600` before reading it.
+Opening for writing, which is the default, creates the root (mode `0700`), `secrets/` (mode `0700`), logs, the lock file, and the deployment identity. It does not create the database or configuration file, and a missing configuration file is valid. `writeConfiguration(text, { expectedRevision })` creates it only when the revision is explicitly `null`, or replaces it only when the observed revision still matches. The awaited result distinguishes `committed`, `conflict`, `read-only`, `unsupported`, `unavailable`, and `unknown`. Local deployment-secret reads tighten a loose secret file back to `0600` before reading it.
 
 A secret is written to a temporary file that is `0600` from its first byte, synced, renamed into place, and the directory entry is synced, so a crash leaves the old value or the new one.
 
@@ -134,7 +268,7 @@ A root that is itself a symbolic link is refused, so point `<NAME>_HOME` at the 
 
 ## The single-instance lock
 
-Holding a handle holds an exclusive, non-blocking `flock(2)` on `<root>/lock`, taken through `bun:ffi` (`libSystem.B.dylib` on macOS, `libc.so.6` on Linux). The kernel is the arbiter: a second open of a held root, in this process or another, throws `BungalowLockedError`, and when a holder dies without closing, the kernel drops its lock at once. There is no stale lock to detect or reclaim, no process identifier to check for liveness, and no race between two openers.
+Holding a read-write handle holds an exclusive, non-blocking `flock(2)` on `<root>/lock`, taken through `bun:ffi` (`libSystem.B.dylib` on macOS, `libc.so.6` on Linux). No module of the package imports `bun:ffi` statically: the lock imports it the first time a local open takes the default lock, so importing the package, a remote open, or a local open with an injected `acquireLock` loads no FFI. The kernel is the arbiter: a second open of a held root, in this process or another, throws `BungalowLockedError`, and when a holder dies without closing, the kernel drops its lock at once. There is no stale lock to detect or reclaim, no process identifier to check for liveness, and no race between two openers.
 
 After taking the lock the holder truncates the file and writes its process identifier as the first line. A contender that is refused reads only that first line to name the holder in `BungalowLockedError.holderProcessIdentifier`, so a later version can add lines. The identifier is advisory: `BungalowLockedError.holderProcessIdentifier` is `undefined` or can still name the previous holder during the short window between a holder taking the lock and writing its own identifier, and a crashed holder's identifier stays in the file until the next holder overwrites it. `close()` clears the file, releases the lock by closing the descriptor, and never removes the file. It is idempotent once it has succeeded, and it can be retried after a failure. A closed handle throws `BungalowStateError` on any further use.
 
@@ -144,13 +278,13 @@ The root must be on a local filesystem that supports `flock`. Network filesystem
 
 ## Tests
 
-`process.env.NODE_ENV === 'test'` is the guard against a test touching a developer's real home directory. Under it, a local `openBungalow` rejects unless `<NAME>_HOME` is set; a remote one is not refused, because it never touches the home directory. A test calls `openTemporaryBungalow({ name })`, which creates an isolated root under the operating system's temporary directory and removes it on `close()`, or points `<NAME>_HOME` at a directory it owns. A test of remote mode runs against `createS3TestServer` from `@lostgradient/testing/s3-server`.
+`process.env.NODE_ENV === 'test'` is the guard against a test touching a developer's real home directory. Under it, a local `openBungalow` rejects unless `<NAME>_HOME` is set; a remote one is not refused, because it never touches the home directory. A test calls `openTemporaryBungalow({ name })`, which creates an isolated root under the operating system's temporary directory and removes it on `close()`, points `<NAME>_HOME` at a directory it owns, or calls `openLocalBungalow` with a root it owns, which reads no environment and so applies no `NODE_ENV=test` policy. A test of remote mode runs against `createS3TestServer` from `@lostgradient/testing/s3-server`.
 
 The one place the package reads `process.env` is `src/environment-configuration.ts`. Every function that depends on the environment also accepts it as a value.
 
 ## Workspace secret providers
 
-`Bungalow.secretProvider` is bound to `workspaceId` during trusted composition. `OpenBungalowOptions.secretProvider` can supply a provider factory after the backing identity is verified. The default local provider stores immutable versions in guarded 0600 files under `.managed-secrets/`, outside the existing flat `secrets/` key namespace; the default remote provider captures read-only environment values. Capability fields describe the actual backend, independently of the home's local or remote mode. `deploymentSecrets` remains the separate asynchronous source for bootstrap credentials and root encryption keys.
+`Bungalow.secretProvider` is bound to `workspaceId` during trusted composition. `OpenBungalowOptions.secretProvider` can supply a provider factory after the backing identity is verified. The default local provider stores immutable versions in guarded 0600 files under `.managed-secrets/`, outside the existing flat `secrets/` key namespace; the default remote provider captures read-only environment values. Capability fields describe the actual backend, independently of the home's local or remote mode. `deploymentSecrets` remains the separate asynchronous source for bootstrap credentials and root encryption keys; `openLocalBungalow` and `openRemoteBungalow` accept a `deploymentSecrets` factory that replaces it without touching the provider (see [Resolving and opening separately](#resolving-and-opening-separately)).
 
 A writable provider prepares a value with an operation ID, logical key, and expected configuration revision. Its private version payload atomically binds these inputs; the separate operation journal contains no value. Reusing an operation ID with different durable input conflicts, including recovery after a crash. References encode validated workspace/key/version identity; foreign workspace references are rejected before value access. `readVersion` resolves exactly that version and never falls back to a logical key or latest value.
 

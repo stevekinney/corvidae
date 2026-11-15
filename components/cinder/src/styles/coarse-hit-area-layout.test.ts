@@ -34,11 +34,19 @@ describe('hit areas that take no layout space', () => {
 
   test('the carousel dot is its painted size, with the hit area a pseudo-element', async () => {
     const css = await read('carousel/carousel.css');
-    expect(css).toContain('width: var(--cinder-carousel-dot-size, 1.5rem);');
-    const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
-    const rule = ruleBody(coarse, '.cinder-carousel__dot::after');
+    // An 8px painted dot; its target (24px, or 44px on a coarse pointer) is a pseudo-element
+    // centred on it, and the dots sit a target apart so the targets never overlap.
+    expect(css).toContain('--_cinder-carousel-dot-size: var(--cinder-carousel-dot-size, 0.5rem);');
+    expect(css).toContain('inline-size: var(--_cinder-carousel-dot-size);');
+    const rule = ruleBody(css, '.cinder-carousel__control::after');
     expect(rule).toContain('position: absolute;');
-    expect(rule).toMatch(HIT_AREA_INSETS);
+    expect(rule).toContain(
+      'inset-block: min(0px, calc((100% - var(--_cinder-carousel-dot-target, 1.5rem)) / 2));',
+    );
+    const coarseDots = css.slice(css.indexOf('@media (any-pointer: coarse)'));
+    expect(coarseDots).toContain('--_cinder-carousel-dot-target: var(--cinder-touch-target-min);');
+    const coarseControls = css.slice(css.lastIndexOf('@media (any-pointer: coarse)'));
+    expect(ruleBody(coarseControls, '.cinder-carousel__control::after')).toMatch(HIT_AREA_INSETS);
     expect(css).not.toContain('2.75rem');
   });
 

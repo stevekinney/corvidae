@@ -23,7 +23,9 @@ import {
 import { Window } from 'happy-dom';
 import { flushSync } from 'svelte';
 
+import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { CONNECTION_COPY } from '../../app/copy/views.ts';
+import { holdChangingActions } from '../../app/shell/changing-actions.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import HomeHarness from './home-test-harness.test-harness.svelte';
@@ -110,8 +112,10 @@ describe('Home while it loads (02c, 02d)', () => {
       'Monday, Nov 2. Times show in Central time (CST).',
     );
     // The Spotlight is a placeholder block, and the count under it a label over a placeholder.
+    // It holds the slow-load line, so the line takes its place after 10 s and nothing moves.
     const focus = getByTestId('home-loading-focus');
-    expect(focus.firstElementChild?.classList.contains('cinder-skeleton')).toBe(true);
+    expect(focus.firstElementChild?.classList.contains('cinder-skeleton-status-place')).toBe(true);
+    expect(focus.firstElementChild?.querySelector('.cinder-skeleton')).not.toBeNull();
     const stats = [...getByTestId('home-loading-counts').querySelectorAll('.cinder-statistic')];
     expect(
       stats.map((stat) => words(stat.querySelector('.cinder-statistic__label') as Element)),
@@ -197,8 +201,9 @@ describe('Home while it loads slowly (02e, 02f)', () => {
     jest.advanceTimersByTime(1);
     flushSync();
 
-    // The status line is Cinder skeleton's own, above the placeholders (COR-2329: below them it was
-    // drawn under the fold), and not a banner.
+    // The status line is Cinder skeleton's own, not a banner, in the Spotlight placeholder's place
+    // (COR-2329: under the placeholders it was drawn under the fold; inserted above the page it
+    // moved everything when it appeared).
     const status = [...container.querySelectorAll('[role="status"]')].find((element) =>
       element.textContent?.includes('Still loading Home.'),
     );
@@ -206,11 +211,10 @@ describe('Home while it loads slowly (02e, 02f)', () => {
       'Still loading Home. This is taking longer than usual.',
     );
     expect(container.querySelector('.cinder-banner')).toBeNull();
-    const page = container.querySelector('[data-mode="loading"]');
-    expect(
-      (status as Element).compareDocumentPosition(page as Element) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(getByTestId('home-loading-focus').firstElementChild?.contains(status as Element)).toBe(
+      true,
+    );
+    expect(container.querySelectorAll('.cinder-skeleton-status')).toHaveLength(1);
     const cancel = within(status as HTMLElement).getByRole('button', { name: 'Cancel' });
     expect(cancel.getAttribute('data-cinder-variant')).toBe('ghost');
 
@@ -267,7 +271,11 @@ describe('One card that cannot be read (01n, 01o)', () => {
     expect(within(card).queryByRole('link')).toBeNull();
     expect(container.querySelector('[data-testid="attention-clear"]')).toBeNull();
     // The Spotlight and the count have reads of their own: they are unchanged.
-    await waitFor(() => expect(words(getByTestId('home-spotlight'))).toBe('2 need you'));
+    await waitFor(() =>
+      expect(
+        words(getByTestId('home-spotlight').querySelector('.cinder-spotlight__value') as Element),
+      ).toBe('2 need you'),
+    );
     await waitFor(() =>
       expect(
         [...getByTestId('home-counts').querySelectorAll('.cinder-statistic')].map(words),
@@ -405,5 +413,42 @@ describe('Home when the server does not answer (02g to 02j)', () => {
     // The composer's Send changes something (it is a submit button), and the agent can still be chosen.
     const card = getByTestId('home-start-chat');
     expect(within(card).getByRole('button', { name: 'Send' }).getAttribute('type')).toBe('submit');
+  });
+
+  // COR-2329 round two: the page disabled Send natively and gave it a reason of its own, so a
+  // keyboard user could never reach the reason. The shell's hold is the one hold.
+  test('offline, Send is held by the shell alone: aria-disabled, focusable, with the shell’s reason', async () => {
+    installed = installHome(sampleHomeWorld());
+    const monitor = new ConnectionMonitor({
+      probe: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      probeDelayMs: () => 60_000,
+      browserOffline: false,
+    });
+    const { container, getByTestId } = render(HomeHarness, {
+      props: { client: installed.client, connection: monitor },
+    } as never);
+    await waitFor(() => expect(container.querySelector('[data-mode="overview"]')).not.toBeNull());
+    const card = getByTestId('home-start-chat');
+    await within(card).findByRole('button', { name: 'Send' });
+    monitor.reportUnreachable();
+    // What the shell does while the server does not answer (`app/shell/shell.svelte`).
+    const release = holdChangingActions(container, CONNECTION_COPY.changesOff);
+    try {
+      flushSync();
+      const send = within(card).getByRole('button', { name: 'Send' });
+      expect(send.hasAttribute('disabled')).toBe(false);
+      expect(send.getAttribute('aria-disabled')).toBe('true');
+      expect(send.getAttribute('title')).toBe(CONNECTION_COPY.changesOff);
+      expect(send.hasAttribute('aria-describedby')).toBe(false);
+      send.focus();
+      expect(document.activeElement).toBe(send);
+      // The page draws no reason of its own beside it.
+      expect(card.textContent).not.toContain(CONNECTION_COPY.changesOff);
+    } finally {
+      release();
+      monitor.dispose();
+    }
   });
 });

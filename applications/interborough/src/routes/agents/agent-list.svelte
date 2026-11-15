@@ -103,10 +103,11 @@
   );
   const directory = $derived(hostPaths.data?.agentDirectory ?? AGENT_EDITOR_COPY.fallbackDirectory);
 
-  // A model agent cannot answer while no provider holds a key, so its New chat says so.
+  // A model agent cannot answer while no provider is connected, so its New chat says so.
   const providers = useHostProviders();
   const noProvider = $derived(
-    providers.data !== undefined && !providers.data.providers.some((provider) => provider.hasKey),
+    providers.data !== undefined &&
+      !providers.data.providers.some((provider) => provider.connected),
   );
 
   // The clock the times are counted from, read again whenever the lists are.

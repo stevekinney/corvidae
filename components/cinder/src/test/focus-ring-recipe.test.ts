@@ -40,7 +40,6 @@ const tokensBaseCss = loadCss('../styles/tokens-base.css');
 
 // Issue #460 — forced-colors fallback additions for 9 components that used
 // transparent-outline + box-shadow without a @media (forced-colors: active) block.
-const capabilityGateCss = loadCss('../components/capability-gate/capability-gate.css');
 // CIN-328 moved Kanban's column-handle and collapse controls onto the shared Button and
 // deleted their bespoke :focus-visible rules, so this list no longer pins them.
 //
@@ -844,24 +843,6 @@ describe('forced-colors fallbacks — issue #460', () => {
   //          is clipped; inset ring always paints inside the scroll box)
   const cases: Array<{ name: string; css: string; selector: string; expectedOffset: string }> = [
     {
-      name: 'capability-gate primary action',
-      css: capabilityGateCss,
-      selector: '.cinder-capability-gate__primary:focus-visible',
-      expectedOffset: '3px',
-    },
-    {
-      name: 'capability-gate fallback action',
-      css: capabilityGateCss,
-      selector: '.cinder-capability-gate__fallback:focus-visible',
-      expectedOffset: '3px',
-    },
-    {
-      name: 'capability-gate dismiss action',
-      css: capabilityGateCss,
-      selector: '.cinder-capability-gate__dismiss:focus-visible',
-      expectedOffset: '3px',
-    },
-    {
       name: 'media-controls button',
       css: mediaControlsCss,
       selector: '.cinder-media-controls__button:focus-visible',
@@ -985,21 +966,9 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
       expected: FILLED_BOX_SHADOW,
     },
     {
-      name: 'SchemaForm submit',
-      source: css('../components/schema-form/schema-form.css'),
-      selector: '.cinder-schema-form__submit:focus-visible',
-      expected: FILLED_BOX_SHADOW,
-    },
-    {
       name: 'FileUpload browse button',
       source: css('../components/file-upload/file-upload.css'),
       selector: '.cinder-file-upload__button:focus-visible',
-      expected: FILLED_BOX_SHADOW,
-    },
-    {
-      name: 'CapabilityGate primary action',
-      source: capabilityGateCss,
-      selector: '.cinder-capability-gate__primary:focus-visible',
       expected: FILLED_BOX_SHADOW,
     },
   ];

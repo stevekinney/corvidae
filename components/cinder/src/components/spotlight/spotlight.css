@@ -29,6 +29,36 @@
     color: var(--cinder-status-warning-text);
   }
 
+  /* With an action ("Open Reviews ›") the value is the title of what follows it: the action sits at
+   * the end of the value's first line, centred on that line as a section's action is on its
+   * heading, and drops to the next line only when the two do not fit side by side. The status
+   * word and the caveat keep lines of their own. */
+  .cinder-spotlight.cinder-spotlight--action {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--cinder-space-1) var(--cinder-space-4);
+  }
+
+  .cinder-spotlight--action > :is(.cinder-spotlight__status, .cinder-spotlight__caveat) {
+    flex-basis: 100%;
+  }
+
+  .cinder-spotlight--action > .cinder-spotlight__value {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-spotlight__action {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    margin-inline-start: auto;
+    /* One line of the value: 32px type at its 1.1 leading. */
+    min-block-size: calc(2rem * 1.1);
+  }
+
   /* The liveness word sits at label size (16px). */
   .cinder-status-dot.cinder-spotlight__status {
     font-size: var(--cinder-text-lg);

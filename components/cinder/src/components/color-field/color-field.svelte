@@ -38,10 +38,8 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { formatColor, parseCssColor } from '../../utilities/color-format.ts';
   import Input from '../input/input.svelte';
-  import { default as Button } from '../button/index.ts';
   import { default as ColorPicker } from '../color-picker/index.ts';
   import { default as Popover } from '../popover/index.ts';
-  import Pipette from '@lucide/svelte/icons/pipette';
   import type {
     ColorFieldFormat,
     ColorFieldOutputFormat,
@@ -591,11 +589,11 @@
 {#snippet swatch()}
   <Popover bind:open={pickerOpen} label="Choose a color" focusManagement="panel">
     {#snippet trigger()}
-      <!-- The swatch is a field's colour well, so it keeps the neutral outlined face: an accent
-           tint behind it would change how the chosen colour reads. -->
-      <Button
+      <!-- The swatch is the trigger itself: a flat, borderless square inset by the same space on
+           every side of the field's trailing slot. A bordered Button here was taller than the
+           slot, so it sat flush with the field's edge above and below. -->
+      <button
         type="button"
-        variant="secondary"
         class="cinder-color-field__swatch-button"
         aria-label={swatchButtonLabel}
         disabled={disabled || readonly}
@@ -608,8 +606,7 @@
           aria-hidden="true"
           style="--cinder-color-field-swatch: {swatchColor};"
         ></span>
-        <Pipette class="cinder-icon-xs" aria-hidden="true" />
-      </Button>
+      </button>
     {/snippet}
     <!--
       Pass the field's own `format` through — `ColorFieldOutputFormat` and

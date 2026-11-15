@@ -1,7 +1,7 @@
-import { rmSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
+import { directoryExists, ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
 import { sanitizeCause } from './error-code.ts';
 import { BungalowError, BungalowInputError } from './errors.ts';
 import { assertSecretKey } from './validation.ts';
@@ -223,33 +223,86 @@ export type LocalSecretProviderOptions = Readonly<{
 }>;
 /** Create a provider backed by guarded local version and operation files. */
 export function createLocalSecretProvider(options: LocalSecretProviderOptions): SecretProvider {
+  return createLocalProvider(options, false);
+}
+/**
+ * The local provider, with `readOnly` for a read-only home. Such a provider creates, changes, and
+ * deletes nothing: a missing directory reads as empty, a loose file is not tightened, a recovered
+ * operation record is returned without being saved, and `prepare`, `transitionOperation`, and
+ * `reclaim` reject with code `read-only`. Not part of the package's public surface.
+ */
+export function createLocalProvider(
+  options: LocalSecretProviderOptions,
+  readOnly: boolean,
+): SecretProvider {
   const workspaceId = options.workspaceId;
   assertWorkspace(workspaceId);
   const assertOpen = options.assertOpen ?? (() => undefined);
-  const versions = join(options.root, '.managed-secrets', 'versions');
-  const operations = join(options.root, '.managed-secrets', 'operations');
-  const workspacePath = join(options.root, '.managed-secrets', 'workspace-id');
+  const managed = join(options.root, '.managed-secrets');
+  const versions = join(managed, 'versions');
+  const operations = join(managed, 'operations');
+  const workspacePath = join(managed, 'workspace-id');
+  const secretsDirectory = join(options.root, 'secrets');
+  /** A read-only provider reads a file only where every directory above it is a real directory. */
+  const readFile = (
+    directories: readonly (readonly [path: string, label: string])[],
+    path: string,
+    label: string,
+    tighten?: number,
+  ): string | undefined => {
+    if (!readOnly) return readEntry(path, label, tighten);
+    for (const [directory, directoryLabel] of directories) {
+      if (!directoryExists(directory, directoryLabel)) return undefined;
+    }
+    return readEntry(path, label);
+  };
+  const managedDirectory = [managed, 'managed secret directory'] as const;
+  const versionsDirectory = [versions, 'secret versions directory'] as const;
+  const operationsDirectory = [operations, 'secret operations directory'] as const;
   try {
-    ensureDirectory(join(options.root, '.managed-secrets'), 'managed secret directory', {
-      privateMode: true,
-    });
-    ensureDirectory(versions, 'secret versions directory', { privateMode: true });
-    ensureDirectory(operations, 'secret operations directory', { privateMode: true });
-    const existingWorkspace = readEntry(workspacePath, 'secret workspace identity');
+    if (!readOnly) {
+      ensureDirectory(managed, 'managed secret directory', { privateMode: true });
+      ensureDirectory(versions, 'secret versions directory', { privateMode: true });
+      ensureDirectory(operations, 'secret operations directory', { privateMode: true });
+    }
+    const existingWorkspace = readFile(
+      [managedDirectory],
+      workspacePath,
+      'secret workspace identity',
+    );
     if (existingWorkspace !== undefined && existingWorkspace.trim() !== workspaceId)
       throw new SecretProviderError(
         'rejected',
         'The local secret store belongs to another workspace.',
       );
-    if (existingWorkspace === undefined) writePrivateFile(workspacePath, `${workspaceId}\n`);
+    if (existingWorkspace === undefined && !readOnly)
+      writePrivateFile(workspacePath, `${workspaceId}\n`);
   } catch (error) {
     fsError('prepare secret storage', error);
   }
+  const readOnlyError = () =>
+    new SecretProviderError('read-only', 'This secret provider belongs to a read-only home.');
+  /** Whether a directory can be listed: always for a writer, which made it, and when it exists for a reader. */
+  const present = (directory: string, label: string): boolean => {
+    if (!readOnly) return true;
+    try {
+      return (
+        directoryExists(managed, 'managed secret directory') && directoryExists(directory, label)
+      );
+    } catch (error) {
+      return fsError('list secret operations', error);
+    }
+  };
   const operationPath = (id: string) => join(operations, `${id}.json`);
   const versionPath = (version: string) => join(versions, version);
   const readVersionPayload = (version: string) => {
     try {
-      const text = readEntry(versionPath(version), 'secret version', 0o600);
+      const text = readFile(
+        [managedDirectory, versionsDirectory],
+        versionPath(version),
+        'secret version',
+        0o600,
+      );
       if (text === undefined) return undefined;
       const parsed: unknown = JSON.parse(text);
       if (typeof parsed !== 'object' || parsed === null) throw new Error('Invalid version');
@@ -282,7 +335,11 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
   };
   const readOperation = (id: string) => {
     try {
-      const text = readEntry(operationPath(id), 'secret operation');
+      const text = readFile(
+        [managedDirectory, operationsDirectory],
+        operationPath(id),
+        'secret operation',
+      );
       if (text !== undefined) {
         const operation = metadata(JSON.parse(text));
         if (
@@ -304,7 +361,8 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
         expectedRevision: payload.expectedRevision,
         state: 'prepared',
       };
-      writeOperation(recovered);
+      // A read-only provider returns the recovered record and leaves it unsaved.
+      if (!readOnly) writeOperation(recovered);
       return recovered;
     } catch (error) {
       return fsError('read secret operation', error);
@@ -319,12 +377,17 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
   };
   return {
     workspaceId: workspaceId,
-    capabilities: { read: true, prepare: true, transitions: true },
+    capabilities: { read: true, prepare: !readOnly, transitions: !readOnly },
     async readLegacy(key) {
       assertOpen();
       assertSecretKey(key);
       try {
-        return readEntry(join(options.root, 'secrets', key), 'secret file', 0o600);
+        return readFile(
+          [[secretsDirectory, 'secrets directory']],
+          join(secretsDirectory, key),
+          'secret file',
+          0o600,
+        );
       } catch (error) {
         return fsError('read secret', error);
       }
@@ -345,6 +408,7 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
     },
     async prepare(input) {
       assertOpen();
+      if (readOnly) throw readOnlyError();
       const snapshot = { ...input };
       assertInput(snapshot);
       const existing = readOperation(snapshot.operationId);
@@ -412,15 +476,22 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
     },
     async listOperations() {
       assertOpen();
-      const versionIds = [...new Bun.Glob('op-*').scanSync({ cwd: versions, onlyFiles: true })]
+      const versionIds = (
+        present(versions, 'secret versions directory') ? regularFileNames(versions) : []
+      )
+        .filter((name) => name.startsWith('op-'))
         .map((name) => name.slice(3))
         .filter((id) => ID_PATTERN.test(id));
-      return [...new Set([...readdirSafe(operations), ...versionIds])]
+      const operationIds = present(operations, 'secret operations directory')
+        ? readdirSafe(operations)
+        : [];
+      return [...new Set([...operationIds, ...versionIds])]
         .map((id) => readOperation(id))
         .filter((value): value is SecretOperationMetadata => value !== undefined);
     },
     async transitionOperation(id, transition) {
       assertOpen();
+      if (readOnly) throw readOnlyError();
       assertOperationId(id);
       if (!isValidTransition(transition))
         throw new SecretProviderError('rejected', 'The secret operation transition is invalid.');
@@ -435,6 +506,7 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
     },
     async reclaim(input) {
       assertOpen();
+      if (readOnly) throw readOnlyError();
       const reference = parseSecretReference(input, workspaceId);
       const storedOperations = await this.listOperations();
       const operation = storedOperations.find(
@@ -451,11 +523,21 @@ export function createLocalSecretProvider(options: LocalSecretProviderOptions): 
   };
 }
 
+/**
+ * The names of the regular files directly in `directory`, as a `*` glob matches them: no
+ * subdirectory, no symbolic link (which is not followed), and no name starting with `.`.
+ */
+function regularFileNames(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
+    .map((entry) => entry.name);
+}
+
 function readdirSafe(directory: string): string[] {
   try {
-    return [...new Bun.Glob('*.json').scanSync({ cwd: directory, onlyFiles: true })].map((name) =>
-      name.slice(0, -5),
-    );
+    return regularFileNames(directory)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -5));
   } catch (error) {
     return fsError('list secret operations', error);
   }

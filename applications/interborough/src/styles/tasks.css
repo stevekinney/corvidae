@@ -25,11 +25,16 @@
   }
 }
 
+/* The column's blocks, Cinder Sections among them, are spaced by a margin on each block after the
+ * first, not a gap: a gap would add to the margin Cinder puts between two Sections in a row. */
 .ib-run__main {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-6);
   min-width: 0;
+}
+
+.ib-run__main > * + * {
+  margin-block-start: var(--cinder-space-6);
 }
 
 .ib-run__rail {

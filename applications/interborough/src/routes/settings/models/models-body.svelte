@@ -26,7 +26,6 @@
     type SettingsSchema,
     type SettingsSnapshot,
   } from '../../../lib/bureau-settings.ts';
-  import { getPlugins } from '../../../lib/host-plugins.ts';
   import { getProviders, HostProviderError } from '../../../lib/host-providers.ts';
   import { returnPathOf } from '../../../lib/provider-return.ts';
   import { queryKeys } from '../../../lib/query.ts';
@@ -39,9 +38,9 @@
   import SettingsRestartNotice from '../settings-restart-notice.svelte';
   import { SettingsRevert } from '../settings-revert.svelte.ts';
   import DecisionsSection from './decisions-section.svelte';
-  import { providerDisplayName } from './format-model.ts';
   import ModelsSection, { type CatalogFailure } from './models-section.svelte';
   import ProvidersSection from './providers-section.svelte';
+  import { createProviderTitles } from './provider-titles.svelte.ts';
 
   interface Props {
     schema: SettingsSchema;
@@ -61,15 +60,11 @@
     undefined,
   );
 
-  // TypeSafe is a plugin; its decision model has no key while the plugin is `needs-setup`.
-  const plugins = createQuery(
-    () => ({
-      queryKey: queryKeys.hostPlugins(),
-      queryFn: ({ signal }) => getPlugins({ signal }),
-      retry: false,
-    }),
-    undefined,
-  );
+  // The plugins name each provider and hold its configuration; the same lookup names the groups of
+  // Allowed models. TypeSafe is a plugin; its decision model has no key while it is `needs-setup`.
+  const names = createProviderTitles();
+  const plugins = names.plugins;
+  const configurations = $derived(names.configurations);
   const typesafeNeedsKey = $derived(
     (plugins.data?.plugins ?? []).some(
       (plugin) => plugin.descriptor.name === 'typesafe' && plugin.status === 'needs-setup',
@@ -81,7 +76,7 @@
   const returnPath = router.current.search.has('return')
     ? returnPathOf(router.current.search)
     : null;
-  const connected = $derived(providers.data?.providers.some((entry) => entry.hasKey) === true);
+  const connected = $derived(providers.data?.providers.some((entry) => entry.connected) === true);
 
   function goBack(event: MouseEvent): void {
     if (returnPath === null) return;
@@ -101,8 +96,8 @@
     const error = providers.error;
     return {
       providers: providers.data.providers
-        .filter((entry) => entry.hasKey)
-        .map((entry) => providerDisplayName(entry.name)),
+        .filter((entry) => entry.connected)
+        .map((entry) => names.title(entry.name)),
       status: error instanceof HostProviderError ? error.status : undefined,
     };
   });
@@ -161,6 +156,21 @@
   });
   onDestroy(() => revert.dispose());
 
+  // Which row answers decisions, and which is the fallback, follow the decision settings the Bureau
+  // holds. Every save (autosave, an undo, another tab's change arriving through the settings events)
+  // reads the settings again and moves the revision, so the rows are read again with it; the rows'
+  // own query has a fixed key and would otherwise keep the previous answerer until a remount.
+  let decisionRowsRevision: number | undefined;
+  $effect(() => {
+    const revision = snapshot.revision;
+    untrack(() => {
+      if (decisionRowsRevision !== undefined && decisionRowsRevision !== revision) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.decisionModels() });
+      }
+      decisionRowsRevision = revision;
+    });
+  });
+
   // The settings were read again: every setting not being edited takes them.
   $effect(() => {
     const latest = snapshot;
@@ -216,7 +226,7 @@
   {/if}
   {#if providers.data !== undefined}
     <div id="ib-models-providers" tabindex="-1" class="ib-models-page__anchor">
-      <ProvidersSection snapshot={providers.data} bind:connecting />
+      <ProvidersSection snapshot={providers.data} bind:connecting {configurations} />
     </div>
     <ModelsSection
       models={failure === undefined ? providers.data.models : []}
@@ -248,7 +258,7 @@
     {stateOf}
     effective={snapshot.effective}
     {typesafeNeedsKey}
-    {policy}
+    providerTitle={names.title}
   />
 </div>
 

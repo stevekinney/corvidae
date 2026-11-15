@@ -324,6 +324,13 @@
     flex-shrink: 0;
   }
 
+  /* The centered dialog's footer wraps, so three buttons that do not fit one line start another
+     line at the end edge instead of overflowing and clipping the first. The bottom sheet is left
+     alone: its footer is a stacked column with its own rules below. */
+  .cinder-modal:not([data-cinder-sheet='docked']) .cinder-modal__footer {
+    flex-wrap: wrap;
+  }
+
   /* Chromeless mode fills the dialog's entire content box with the panel/
    * body/footer as one full-bleed surface — the base rule's card-style
    * background, top border, and padding would paint a visible seam between

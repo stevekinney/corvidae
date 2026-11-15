@@ -53,7 +53,6 @@ describe('ColorField — color picker trigger', () => {
   test('composes picker dependencies through public component entries', async () => {
     const source = await Bun.file(new URL('./color-field.svelte', import.meta.url)).text();
 
-    expect(source).toContain("from '../button/index.ts';");
     expect(source).toContain("from '../color-picker/index.ts';");
     expect(source).toContain("from '../popover/index.ts';");
     expect(source).not.toContain("from '../button/button.svelte'");
@@ -76,6 +75,18 @@ describe('ColorField — color picker trigger', () => {
     await tick();
 
     expect(document.body.querySelector('.cinder-color-picker')).not.toBeNull();
+  });
+
+  // Owner review: the trigger is the swatch alone, a native button with no Button face (no
+  // border, no pill) and no eyedropper icon beside it.
+  test('the trigger is a bare native button whose only content is the swatch', () => {
+    const { container } = render(ColorField, { id: 'color', value: '#3b82f6' });
+    const trigger = q<HTMLButtonElement>(container, '.cinder-color-field__swatch-button');
+
+    expect(trigger.classList.contains('cinder-button')).toBe(false);
+    expect(trigger.querySelector('svg')).toBeNull();
+    expect(trigger.children).toHaveLength(1);
+    expect(trigger.firstElementChild?.classList.contains('cinder-color-field__swatch')).toBe(true);
   });
 
   test('keeps the composed picker open during keyboard slider commits', async () => {

@@ -317,7 +317,6 @@
                 value={hostPaths.data.a2aDirectoryUrl}
                 label={copy.cardUrl.copy}
                 copiedLabel={copy.cardUrl.copied}
-                iconOnly
               />
             {/if}
           </div>

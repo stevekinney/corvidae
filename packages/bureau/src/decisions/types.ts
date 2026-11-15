@@ -56,8 +56,57 @@ export interface BureauDecideOptions {
   readonly principal?: string;
   /** The task this decision is made for, when there is one: the audit record is filed under it. */
   readonly taskId?: string;
+  /**
+   * The id of the supervisor routing step this decision is made for (COR-2420), which
+   * `createDecisionRouting` passes from `RoutingContext.routingId`. It is recorded as `routingId` on
+   * the `decision.made` record, and the runs the step starts take their ids from it, so the decision
+   * is found from them. A routing decision has no run yet, so it names the step, not a `taskId`.
+   */
+  readonly routingId?: string;
   /** Cancels the in-flight request. */
   readonly signal?: AbortSignal;
+}
+
+/**
+ * One catalog row that can answer decisions, as {@link BureauDecisions.models} reports it: the
+ * rows a `decisions.model` or `decisions.fallbackModel` may name, with whether each can answer now.
+ */
+export interface BureauDecisionModel {
+  /** The row's provider. */
+  readonly provider: string;
+  /** The provider-native model name; the row is written `<provider>/<model>`. */
+  readonly model: string;
+  /**
+   * `available` when the row can be called now, `needs-setup` when it cannot yet: its provider has
+   * no key saved, or the model is turned off. A `needs-setup` row is still listed, so a choice of it
+   * is visible rather than missing.
+   */
+  readonly availability: 'available' | 'needs-setup';
+  /** Whether the row only decides and is no chat model (TypeSafe's rows). */
+  readonly decisionOnly: boolean;
+  /**
+   * Whether this is the row a decision goes to now, as `decide` chooses it: the row
+   * `decisions.model` names (or defaults to) when it is in the catalog, can decide and is not
+   * `needs-setup`; else the {@link BureauDecisionModel.fallback} row. A named row the model policy
+   * forbids refuses every decision, so no row is marked. At most one row is marked, and none when
+   * nothing can answer. A page names the answering row by comparing this with its setting.
+   */
+  readonly answering: boolean;
+  /**
+   * Whether this is the row the language-model fallback uses: `decisions.fallbackModel` (its alias
+   * included) when that row is available and returns structured output, otherwise the cheapest
+   * priced such row (input price, then output price, then catalog order), never one the model
+   * policy forbids. At most one row is marked. With no `decisions.model` it is the answering row.
+   */
+  readonly fallback: boolean;
+  /**
+   * Whether this row can be the language-model fallback at all: it returns structured output, the
+   * rule `chooseFallbackRow` applies before it looks at availability. A row that cannot (a
+   * decision-only row such as TypeSafe's) is skipped by the fallback however `decisions.fallbackModel`
+   * is saved, so a page offers only rows marked here for that setting. A `needs-setup` row that
+   * returns structured output is marked: it becomes the fallback once its provider has a key.
+   */
+  readonly canBeFallback: boolean;
 }
 
 /**
@@ -65,6 +114,13 @@ export interface BureauDecideOptions {
  * typed answer back.
  */
 export interface BureauDecisions {
+  /**
+   * The catalog rows that can answer decisions, natively (the row declares decision kinds) or
+   * through structured output, in catalog order, with their availability and which one answers as
+   * the fallback. A row the model policy forbids is left out: it cannot answer. Read again on every
+   * call, so it reflects the catalog and settings as they are now.
+   */
+  models(): readonly BureauDecisionModel[];
   /**
    * Answers `request`. A request whose kind the model named by the `decisions.model` setting
    * ({@link DecisionsOptions.model} by default) serves goes to it, and is looked up again on every
@@ -77,7 +133,8 @@ export interface BureauDecisions {
    * the kind, the `outcome` (`answered`, `refused` or `error`), the `row` that answered or was
    * chosen (`<provider>/<model>`) and the `path` it answered by (`native`, `adapter` or
    * `fallback`), the provider and model that answered, and the principal (and, for `structured`,
-   * the SHA-256 of the schema); a refusal or an error names its `reason` instead. It never holds
+   * the SHA-256 of the schema) and, for a routing decision, the `routingId` of its supervisor step;
+   * a refusal or an error names its `reason` instead. It never holds
    * the context or the value. No decision value is stored. A malformed request writes no record.
    */
   decide<Request extends DecisionRequest>(

@@ -79,13 +79,34 @@
     block-size: 100%;
   }
 
+  /* A bar is rounded only at its end away from the baseline: the top of a vertical bar above the
+   * baseline, the right of a horizontal one, and the opposite ends below it. In a stack only the
+   * outermost visible segment carries that end, so every join between segments is square and the
+   * stack reads as one bar. The baseline end is square. The rounding is a clip of the bar's own
+   * box, so it follows the bar as it grows. */
   .cinder-bar-chart__bar {
-    rx: 3;
+    --_cinder-bar-radius: 3px;
     transition:
       x 0.3s ease,
       y 0.3s ease,
       width 0.3s ease,
       height 0.3s ease;
+  }
+
+  .cinder-bar-chart__bar[data-cinder-rounded-end='top'] {
+    clip-path: inset(0 round var(--_cinder-bar-radius) var(--_cinder-bar-radius) 0 0);
+  }
+
+  .cinder-bar-chart__bar[data-cinder-rounded-end='right'] {
+    clip-path: inset(0 round 0 var(--_cinder-bar-radius) var(--_cinder-bar-radius) 0);
+  }
+
+  .cinder-bar-chart__bar[data-cinder-rounded-end='bottom'] {
+    clip-path: inset(0 round 0 0 var(--_cinder-bar-radius) var(--_cinder-bar-radius));
+  }
+
+  .cinder-bar-chart__bar[data-cinder-rounded-end='left'] {
+    clip-path: inset(0 round var(--_cinder-bar-radius) 0 0 var(--_cinder-bar-radius));
   }
 
   .cinder-bar-chart__bar[data-cinder-active] {
