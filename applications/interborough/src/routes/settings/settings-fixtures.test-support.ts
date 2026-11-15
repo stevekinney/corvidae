@@ -76,6 +76,8 @@ export type SettingsServed = {
   running?: Record<string, unknown>;
   /** What is in force for a key nothing stored a value for, such as a default window. */
   effective?: Record<string, unknown>;
+  /** Why the Bureau did not apply a key's stored value (`keys[key].problem`), by key. */
+  problems?: Record<string, string>;
 };
 
 export function servedSettings(overrides: Partial<SettingsServed> = {}): SettingsServed {
@@ -101,6 +103,7 @@ function keyStates(served: SettingsServed): Record<string, SettingKeyState> {
           ? { lockReason: served.lockReasons[key] ?? ('deployment' as const) }
           : {}),
         pendingRestart: served.pendingRestart.has(key),
+        ...(served.problems?.[key] === undefined ? {} : { problem: served.problems[key] }),
       },
     ]),
   );

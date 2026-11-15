@@ -44,10 +44,19 @@ describe('the steps', () => {
   });
 
   test('a provider is connected once one holds a key, not once one is listed', () => {
-    expect(firstRunProgress({ ...NOTHING, providers: [{ hasKey: false }] }).provider).toBe(false);
+    expect(firstRunProgress({ ...NOTHING, providers: [{ connected: false }] }).provider).toBe(
+      false,
+    );
     expect(
-      firstRunProgress({ ...NOTHING, providers: [{ hasKey: false }, { hasKey: true }] }).provider,
+      firstRunProgress({
+        ...NOTHING,
+        providers: [{ connected: false }, { connected: true }],
+      }).provider,
     ).toBe(true);
+  });
+
+  test('a keyless provider completes the step with no key saved (COR-2414)', () => {
+    expect(firstRunProgress({ ...NOTHING, providers: [{ connected: true }] }).provider).toBe(true);
   });
 
   test('an agent exists once one is defined in a file, not once the host ships one in code', () => {

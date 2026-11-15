@@ -42,15 +42,24 @@ export type SettingRowProps = {
   statusLabel?: string;
   /**
    * Called by the quiet Retry beside the error, for a save that did not go through ("Couldn't
-   * save. Your value is still in the field. Retry"). Leave it unset for an invalid value, where
-   * retrying changes nothing and the person fixes the field instead.
+   * save. Your value is still in the field. Retry"), and beside `loadError`, for a read that did
+   * not. Leave it unset for an invalid value, where retrying changes nothing and the person fixes
+   * the field instead.
    */
   onRetry?: () => void;
   /**
-   * Label of the retry action drawn beside the error when `onRetry` is set.
+   * Label of the retry action drawn beside the error or the load error when `onRetry` is set.
    * @default "Retry"
    */
   retryLabel?: string;
+  /**
+   * Says that what the row's control offers did not load ("Couldn't load the models. Retry"), such
+   * as the options of a select. It is an advisory, in the warning tone and not the error's, so the
+   * control is not marked invalid, and it takes the place of `warning` while it is set. With
+   * `onRetry` it ends in the same quiet Retry the error has. While `error` is also set, the Retry
+   * stays beside the error, which `onRetry` is for.
+   */
+  loadError?: string;
   /** Guidance text describing the setting. */
   description?: string;
   /** Rendered after the description inside the same paragraph, so it joins `aria-describedby`: a quiet link such as "Open Health". Shown only with `description`. */

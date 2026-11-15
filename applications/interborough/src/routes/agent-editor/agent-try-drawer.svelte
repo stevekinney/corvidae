@@ -57,10 +57,10 @@
     /** Where Try it is drawn: beside the form, or a right or bottom sheet over it. */
     placement: TryPlacement;
     /**
-     * The model providers the host reports, each with whether it has a key, or `undefined` while the
-     * host has not said. None with a key blocks the composer; one with a key is "Provider connected".
+     * The model providers the host reports, each with whether it is connected, or `undefined` while
+     * the host has not said. None connected blocks the composer; one connected is "Provider connected".
      */
-    providers: readonly { readonly hasKey: boolean }[] | undefined;
+    providers: readonly { readonly connected: boolean }[] | undefined;
   }
 
   let { editor, open = $bindable(), placement, providers }: Props = $props();
@@ -78,10 +78,10 @@
   // With no model provider connected nothing can be answered, so the shared blocked row stands in
   // the composer's place and says so.
   const noProvider = $derived(
-    providers !== undefined && !providers.some((provider) => provider.hasKey),
+    providers !== undefined && !providers.some((provider) => provider.connected),
   );
   const providerConnected = $derived(
-    providers !== undefined && providers.some((provider) => provider.hasKey),
+    providers !== undefined && providers.some((provider) => provider.connected),
   );
   const composerStatus = $derived(
     composerStatusOf({

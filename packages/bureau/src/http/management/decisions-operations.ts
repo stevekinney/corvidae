@@ -2,7 +2,10 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /**
  * `bureau.decisions.decide`: put a typed question to a model through `Bureau.decisions.decide`
- * (COR-1709).
+ * (COR-1709). `bureau.decisions.models` lists the catalog rows that can answer one, with their
+ * availability and the row that answers as the fallback (COR-2160); it spends nothing and is a
+ * read of the settings, so it requires `bureau.settings:read` where `decide` requires
+ * `bureau.decisions:write`.
  *
  * The operation spends a paid model's tokens, so it requires `bureau.decisions:write`; there is no
  * resource an owner reaches without it. The principal the caller authenticated as is recorded on
@@ -41,7 +44,7 @@ import { unaryTransports as transports, unknownKeyPolicy } from './management-sc
 
 /** What `bureau.decisions.decide` reads from the handler's `host`. */
 export type BureauDecisionsOperationHost = {
-  readonly decisions: Pick<BureauDecisions, 'decide'>;
+  readonly decisions: Pick<BureauDecisions, 'decide' | 'models'>;
 };
 
 const write = {
@@ -125,6 +128,72 @@ function requestOf(input: z.infer<typeof decideInput>): DecisionRequest {
   }
 }
 
+const modelsInput = z.object({});
+
+const modelsOutput = z.object({
+  rows: z
+    .array(
+      z.object({
+        provider: z.string().describe('The row’s provider.'),
+        model: z
+          .string()
+          .describe('The provider-native model name; the row is `<provider>/<model>`.'),
+        availability: z
+          .enum(['available', 'needs-setup'])
+          .describe(
+            '`available` when the row can be called now; `needs-setup` when its provider has no key saved or the model is off.',
+          ),
+        decisionOnly: z
+          .boolean()
+          .describe('Whether the row only decides and is no chat model (TypeSafe’s rows).'),
+        answering: z
+          .boolean()
+          .describe(
+            'Whether a decision goes to this row now, as `bureau.decisions.decide` chooses it: the row `decisions.model` names when it is in the catalog, can decide and is available, else the `fallback` row. A named row the model policy forbids refuses every decision, so no row is marked. At most one row is marked.',
+          ),
+        fallback: z
+          .boolean()
+          .describe(
+            'Whether this is the row the language-model fallback uses, by the rule `chooseFallbackRow` applies: `decisions.fallbackModel` when that row is available and returns structured output, otherwise the cheapest priced such row. At most one row is marked.',
+          ),
+        canBeFallback: z
+          .boolean()
+          .describe(
+            'Whether this row can be the language-model fallback at all: it returns structured output, the rule `chooseFallbackRow` applies before availability. A decision-only row cannot, however `decisions.fallbackModel` is saved. A `needs-setup` row that returns structured output can: it is the fallback once its provider has a key.',
+          ),
+      }),
+    )
+    .describe('Every catalog row that can decide, in catalog order.'),
+});
+
+const read = {
+  kind: 'scoped',
+  scopes: { kind: 'allOf', scopes: ['bureau.settings:read'] },
+} as const;
+
+export const decisionsModelsOperation = defineOperation<
+  typeof modelsInput,
+  typeof modelsOutput,
+  BureauDecisionsOperationHost
+>({
+  name: 'bureau.decisions.models',
+  authorize: authorizeWorkspaceOperation('bureau.decisions.models'),
+  mcpExposable: false,
+  summary: 'List the models that can answer decisions',
+  description:
+    'Returns `rows`: every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model), `answering` (the row a decision goes to now: the row `decisions.model` names when it is in the catalog, can decide and is available, else the fallback’s; none when the named row is forbidden by the model policy, which refuses every decision) and `fallback` (the row the language-model fallback uses: `decisions.fallbackModel` when that row is available and returns structured output, otherwise the cheapest priced such row) and `canBeFallback` (whether the row can be the fallback at all: it returns structured output, so a decision-only row cannot be, and a `needs-setup` row that returns structured output can). A row the model policy forbids is left out. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.',
+  destructive: false,
+  tags: ['Decisions'],
+  inputSchema: modelsInput,
+  outputSchema: modelsOutput,
+  producibleFaults: ['Forbidden'],
+  access: read,
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ host }) => ({ rows: host.decisions.models().map((row) => ({ ...row })) }),
+});
+
 export const decisionsDecideOperation = defineOperation<
   typeof decideInput,
   typeof decideOutput,
@@ -192,4 +261,7 @@ export const decisionsDecideOperation = defineOperation<
 });
 
 /** The operations of the `bureau.decisions` namespace. */
-export const bureauDecisionsOperations = [decisionsDecideOperation] as const;
+export const bureauDecisionsOperations = [
+  decisionsDecideOperation,
+  decisionsModelsOperation,
+] as const;
