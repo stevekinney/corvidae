@@ -322,7 +322,7 @@
     gap: var(--cinder-space-3);
   }
 
-  /* "Add a note" (ApprovalCard's toggle) sits at the start of the row, Deny and Approve at its end. */
+  /* "Add note" (ApprovalCard's toggle) sits at the start of the row, Deny and Approve at its end. */
   .cinder-tool-call-panel__decision-actions {
     display: flex;
     flex-wrap: wrap;
@@ -370,7 +370,7 @@
     display: none;
   }
 
-  /* In the sheet Deny and Approve take a line of their own under "Add a note". */
+  /* In the sheet Deny and Approve take a line of their own under "Add note". */
   .cinder-tool-call-panel-drawer[data-cinder-placement='sheet']
     .cinder-tool-call-panel__decision-buttons {
     flex-basis: 100%;

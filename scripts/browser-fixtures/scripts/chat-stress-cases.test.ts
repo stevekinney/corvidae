@@ -164,66 +164,74 @@ describe('the committed Chat stress cases', () => {
     }
   });
 
-  it('keeps attachment shelf witnesses aligned with responsive caps and reveal', () => {
-    const readyShelf = findStressCase(cases, 50);
-    const boundedShelf = findStressCase(cases, 61);
-    const primaryUpload = readyShelf?.steps.find((step) => step.action === 'upload');
-    const reveal = readyShelf?.variants.find((variant) => variant.name === 'revealed');
-    const boundedUpload = boundedShelf?.steps.find((step) => step.action === 'upload');
-    const boundedCount = boundedShelf?.steps.find((step) => step.action === 'expect-text');
-    const primaryCount = readyShelf?.steps.find((step) => step.action === 'expect-text');
-    const revealCount = reveal?.steps.find((step) => step.action === 'expect-text');
-    const primaryShelf = readyShelf?.steps.find(
-      (step) => step.action === 'expect-attachment-shelf',
-    );
-    const revealedShelf = reveal?.steps.find((step) => step.action === 'expect-attachment-shelf');
-    expect(primaryUpload?.files).toBeDefined();
-    expect(reveal?.steps.find((step) => step.action === 'upload')?.files).toEqual(
-      primaryUpload?.files,
-    );
-    const uploadedFiles = primaryUpload?.files ?? [];
-    expect(primaryCount?.text).toBe(`${uploadedFiles.length} files`);
-    expect(revealCount?.text).toBe(`${uploadedFiles.length} files`);
-    expect(primaryShelf).toEqual({ action: 'expect-attachment-shelf', total: 4 });
-    expect(revealedShelf).toMatchObject({
-      action: 'expect-attachment-shelf',
-      total: 4,
-      reveal: true,
-    });
+  it('keeps the attachment strip witnesses to the files each case uploads', () => {
+    const uploadsOf = (steps: readonly { action: string; files?: readonly unknown[] }[] = []) =>
+      steps.find((step) => step.action === 'upload')?.files ?? [];
+    const stripOf = (
+      steps: readonly { action: string }[] = [],
+    ): Record<string, unknown> | undefined =>
+      steps.find((step) => step.action === 'expect-attachment-strip');
 
-    const boundedFiles = boundedUpload?.files ?? [];
-    expect(boundedCount?.text).toBe(`${boundedFiles.length} files`);
-    expect(boundedShelf?.steps).toContainEqual({
-      action: 'expect-attachment-shelf',
-      total: 14,
+    const ready = findStressCase(cases, 50);
+    expect(stripOf(ready?.steps)).toEqual({
+      action: 'expect-attachment-strip',
+      total: uploadsOf(ready?.steps).length,
+      failed: 0,
+      uploading: 0,
     });
+    const uploading = ready?.variants.find((variant) => variant.name === 'uploading');
+    expect(stripOf(uploading?.steps)).toMatchObject({
+      total: uploadsOf(uploading?.steps).length,
+      uploading: 1,
+    });
+    const fileKinds = ready?.variants.find((variant) => variant.name === 'file-kinds');
+    expect(stripOf(fileKinds?.steps)).toMatchObject({ total: uploadsOf(fileKinds?.steps).length });
 
-    const unsupported = findStressCase(cases, 62);
-    const unsupportedPrimaryShelf = unsupported?.steps.find(
-      (step) => step.action === 'expect-attachment-shelf',
-    );
-    const unsupportedReveal = unsupported?.variants.find((variant) => variant.name === 'revealed');
-    const unsupportedRevealedShelf = unsupportedReveal?.steps.find(
-      (step) => step.action === 'expect-attachment-shelf',
-    );
-    expect(unsupportedPrimaryShelf).toEqual({ action: 'expect-attachment-shelf', total: 2 });
-    expect(unsupportedPrimaryShelf).not.toHaveProperty('reveal');
-    expect(unsupportedRevealedShelf).toEqual({
-      action: 'expect-attachment-shelf',
-      total: 2,
-      reveal: true,
+    // Many files overflow the row: a chip cut by the edge is the only sign that there are more.
+    const many = findStressCase(cases, 61);
+    expect(stripOf(many?.steps)).toEqual({
+      action: 'expect-attachment-strip',
+      total: uploadsOf(many?.steps).length,
+      failed: 0,
+      cut: true,
     });
-    expect(unsupportedReveal?.steps).toContainEqual({
-      action: 'expect',
-      role: 'button',
-      name: 'Retry upload-fail-2.pdf',
+    expect(uploadsOf(many?.steps).length).toBeGreaterThan(10);
+
+    // One failure of each kind has its own line and action; several say one short sentence for each
+    // reason, and offer only what can work.
+    const failures = findStressCase(cases, 62);
+    expect(stripOf(failures?.steps)).toMatchObject({
+      failed: 2,
+      line: "1 file can't be attached. 1 file didn't upload.",
+      lineAction: 'Remove failed + Retry 1',
     });
+    const lines = Object.fromEntries(
+      (failures?.variants ?? []).map((variant) => {
+        const strip = stripOf(variant.steps) as { line?: string; lineAction?: string } | undefined;
+        return [variant.name, [strip?.line, strip?.lineAction]];
+      }),
+    );
+    expect(lines).toEqual({
+      network: ["network-fail-1.pdf didn't upload. Check your connection.", 'Retry'],
+      'too-large': ['too-large-fail-1.pdf is over the 25 MB limit.', 'Remove'],
+      'unsupported-type': [
+        "unsupported-1.exe can't be attached. Attach an image, an audio file, a video or one of 5 other kinds.",
+        'Remove',
+      ],
+      unknown: ["upload-fail-1.pdf didn't upload.", 'Retry'],
+      'none-can-retry': [
+        "1 file is over the 25 MB limit. 1 file can't be attached.",
+        'Remove all failed',
+      ],
+    });
+    const mixed = findStressCase(cases, 51);
+    expect(stripOf(mixed?.steps)).toMatchObject({ total: 5, uploading: 1, failed: 2 });
   });
 
   it('exercises the denied approval note through the visible controls', () => {
     const denied = findStressCase(cases, 49);
     expect(denied?.steps).toEqual([
-      { action: 'click', role: 'button', name: 'Add a note' },
+      { action: 'click', role: 'button', name: 'Add note' },
       {
         action: 'fill',
         role: 'textbox',
@@ -232,6 +240,8 @@ describe('the committed Chat stress cases', () => {
       },
       { action: 'click', role: 'button', name: 'Deny' },
       { action: 'expect-text', text: 'Denied' },
+      // The note is in the receipt's one Details disclosure, opened by its real button.
+      { action: 'click', role: 'button', name: 'Details' },
       { action: 'expect-text', text: 'The duplicate charge was already refunded.' },
     ]);
   });
@@ -249,7 +259,36 @@ describe('the committed Chat stress cases', () => {
     expect(assistant.content).toBe('Yes, the order was charged twice.');
   });
 
-  it('holds exactly the 80 cases the board requires, numbered 1 to 80', () => {
+  it('seeds the four narration situations: working with dots, settled twice over, and stopped', () => {
+    const messagesOf = (id: number) =>
+      Object.values(buildStressSetup(findStressCase(cases, id)!).conversation.messages);
+    const textsOf = (id: number) =>
+      messagesOf(id)
+        .filter((message) => message.role === 'assistant')
+        .map((message) => message.content);
+
+    const working = buildStressSetup(findStressCase(cases, 82)!);
+    expect(working.streaming).toBe(true);
+    expect(textsOf(82)).toEqual(['Reading the refund policy first.']);
+
+    for (const id of [83, 84]) {
+      expect(buildStressSetup(findStressCase(cases, id)!).streaming).toBe(false);
+      expect(textsOf(id)).toEqual([
+        'Reading the refund policy first.',
+        'Now the recent orders.',
+        'The policy and the orders agree on the 4471 refund.',
+      ]);
+    }
+    // The open case presses the step row's own toggle, so the lines are proved visible by a click.
+    expect(findStressCase(cases, 84)?.steps[0]).toMatchObject({ action: 'click', role: 'button' });
+
+    const stopped = buildStressSetup(findStressCase(cases, 85)!);
+    expect(stopped.streaming).toBe(false);
+    expect(stopped.turnStates[0]).toEqual({ kind: 'stopped' });
+    expect(textsOf(85)).toEqual(['Reading the refund policy first.']);
+  });
+
+  it('holds exactly the 85 cases the board requires, numbered 1 to 85', () => {
     expect(cases).toHaveLength(STRESS_CASE_COUNT);
     expect(cases.map((stressCase) => stressCase.id)).toEqual(
       Array.from({ length: STRESS_CASE_COUNT }, (_, index) => index + 1),
@@ -294,15 +333,26 @@ describe('the committed Chat stress cases', () => {
         '39-sources-review-reachable',
         '37-source-list-contract',
         '48-expanded',
-        '51-long-middle-filename',
+        '51-long-name',
+        '51-picked-failure',
         '54-expanded',
         '56-grantor-tooltip',
         '10-waiting-to-streaming',
         '18-stopped-to-failed',
-        '50-revealed',
-        '51-revealed',
-        '61-revealed',
-        '62-revealed',
+        '50-remove-controls',
+        '50-file-kinds',
+        '50-uploading',
+        '61-remove-controls',
+        '61-fade-start',
+        '61-fade-middle',
+        '61-fade-end',
+        '52-choices-top',
+        '52-choices-end',
+        '62-network',
+        '62-too-large',
+        '62-unsupported-type',
+        '62-unknown',
+        '62-none-can-retry',
         '57-reviewed',
         '59-collapsed',
         '68-option2',
@@ -315,6 +365,8 @@ describe('the committed Chat stress cases', () => {
         '63-empty-and-ready',
         '79-discard-drawer',
         '79-restored-after-discard',
+        '81-first-answered',
+        '81-last',
       ].toSorted(),
     );
   });
@@ -349,16 +401,11 @@ describe('the committed Chat stress cases', () => {
     ]);
 
     const upload = findStressCase(cases, 51)?.variants.find(
-      (variant) => variant.name === 'long-middle-filename',
+      (variant) => variant.name === 'long-name',
     );
     expect(upload?.steps).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          action: 'expect-attachment-shelf',
-          total: 2,
-          reveal: true,
-        }),
-        expect.objectContaining({ action: 'expect-text', text: '42%' }),
+        expect.objectContaining({ action: 'expect-attachment-strip', total: 2, uploading: 1 }),
         expect.objectContaining({ action: 'expect-text', text: 'quarterly' }),
       ]),
     );

@@ -1135,7 +1135,7 @@
       "exportName": "Citation",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Inline citation marker opening a paginated preview of source references.",
+      "purpose": "Inline citation marker opening one list of source references.",
       "tags": ["citation"],
       "useWhen": ["Attaching sources to an inline claim or generated answer."],
       "avoidWhen": [

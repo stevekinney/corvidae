@@ -113,18 +113,13 @@ describe('ChatMessage text direction', () => {
       props: {
         message: message('assistant', 'Revenue rose.'),
         sources: [{ label: 'التقرير السنوي', detail: 'ارتفعت الإيرادات.' }],
-        sourcePresentation: 'list',
       },
     });
-    await fireEvent.click(container.querySelector('.chat-message-sources-toggle')!);
+    await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
     await tick();
 
-    expect(container.querySelector('.chat-message-sources-title')?.getAttribute('dir')).toBe(
-      'auto',
-    );
-    expect(container.querySelector('.chat-message-sources-detail')?.getAttribute('dir')).toBe(
-      'auto',
-    );
+    expect(container.querySelector('.cinder-citation__title')?.getAttribute('dir')).toBe('auto');
+    expect(container.querySelector('.cinder-citation__detail')?.getAttribute('dir')).toBe('auto');
   });
 
   test('RTL body geometry anchors source and transcript chrome without mirroring it', async () => {

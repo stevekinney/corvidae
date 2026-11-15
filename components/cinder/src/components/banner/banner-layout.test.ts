@@ -98,6 +98,91 @@ describe('Banner layout', () => {
     expect(css).not.toContain("[data-cinder-variant='feature'] > .cinder-banner__actions");
   });
 
+  // The ink is the letters: the line's own air (half of what its height leaves beside the
+  // capitals) came off neither side, so the capitals stood about 17px under the top border and the
+  // button 13px over the bottom one. Callout's round-one inset, applied to Banner.
+  test('the capitals stand as far under the top border as the last ink stands over the bottom one', () => {
+    const base = declarationsFor(css, '.cinder-banner');
+    expect(base.get('--_cinder-banner-inset')).toBe('var(--cinder-space-3)');
+    expect(base.get('padding-block')).toBe('var(--_cinder-banner-inset)');
+
+    const ink = declarationsFor(css, ".cinder-banner:not([data-cinder-variant='feature'])");
+    expect(ink.get('--_cinder-banner-first-air')).toBe('calc((1lh - 1cap) / 2)');
+    expect(ink.get('--_cinder-banner-last-air')).toBe('calc((1lh - 1cap) / 2)');
+    // The inset is rounded to a whole pixel, so the first line and the glyph beside it sit on the
+    // pixel grid; the unrounded declaration before it is the fallback.
+    // Prettier wraps the long value across lines, so compare it without whitespace.
+    expect(ink.get('padding-block-start')?.replaceAll(/\s+/g, '')).toBe(
+      'round(calc(var(--_cinder-banner-inset)-var(--_cinder-banner-first-air)),1px)',
+    );
+
+    // With no action row the last ink is the text, so its air comes off the bottom too; an action
+    // row ends in a button face, which has none to take out.
+    const bare = declarationsFor(
+      css,
+      ".cinder-banner:not([data-cinder-variant='feature']):not(:has(> .cinder-banner__actions))",
+    );
+    expect(bare.get('padding-block-end')).toBe(
+      'calc(var(--_cinder-banner-inset) - var(--_cinder-banner-last-air))',
+    );
+
+    expect(
+      declarationsFor(
+        css,
+        ".cinder-banner:not([data-cinder-variant='feature']) > .cinder-banner__dismiss",
+      ).get('margin-block-start'),
+    ).toBe('var(--_cinder-banner-first-air)');
+  });
+
+  // A Banner that ends in a text link ("Change retention") has leading under the link's letters,
+  // like any line of text, and kept 15px under the descender against 11px over the capitals.
+  describe('a row of links', () => {
+    const trimsBottomFor = (needle: string): boolean => {
+      let found = false;
+      parse(css).walkRules((rule) => {
+        const selector = rule.selector.replace(/\s+/g, '');
+        if (!selector.includes(needle)) return;
+        rule.walkDecls('padding-block-end', (declaration) => {
+          found =
+            declaration.value ===
+            'calc(var(--_cinder-banner-inset) - var(--_cinder-banner-last-air))';
+        });
+      });
+      return found;
+    };
+
+    test('takes the air under the last baseline off the bottom inset, as a bare banner does', () => {
+      expect(trimsBottomFor('>.cinder-banner__actions.cinder-link')).toBe(true);
+    });
+
+    test('keeps the inset whole when the row holds a button face, a field or a select', () => {
+      let excluded = '';
+      parse(css).walkRules((rule) => {
+        const selector = rule.selector.replace(/\s+/g, '');
+        if (selector.includes('>.cinder-banner__actions.cinder-link')) excluded = selector;
+      });
+      for (const box of ['button', 'input', 'select', 'textarea', '.cinder-button']) {
+        expect(excluded).toContain(box);
+      }
+      expect(excluded).toContain(':not(:has(>.cinder-banner__actions:is(');
+    });
+
+    test('no rule trims the bottom for an action row on its own', () => {
+      // The bare rule says there is no action row, and the link rule needs a link in it.
+      const trimmed: string[] = [];
+      parse(css).walkRules((rule) => {
+        rule.walkDecls('padding-block-end', () => {
+          trimmed.push(rule.selector.replace(/\s+/g, ''));
+        });
+      });
+      expect(
+        trimmed.filter((selector) => selector.includes('actions') && !selector.includes('link')),
+      ).toEqual([
+        ".cinder-banner:not([data-cinder-variant='feature']):not(:has(>.cinder-banner__actions))",
+      ]);
+    });
+  });
+
   test('a button label never wraps', () => {
     for (const control of ['button', 'a']) {
       expect(declarationsFor(css, `.cinder-banner__actions ${control}`).get('white-space')).toBe(

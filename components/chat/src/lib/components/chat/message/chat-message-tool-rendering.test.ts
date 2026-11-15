@@ -1121,10 +1121,20 @@ describe('ChatMessage — tool-call rendering', () => {
       ).toBe(false);
     });
 
-    test('on a touch screen the summary line and each step row are full touch targets (C#3)', () => {
+    test('on a touch screen the summary line and each step row are painted at their text height and reach 44px by a pseudo-element', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
+      // No painted minimum or padding on any pointer type: the row is its text line height.
+      expect(source).not.toMatch(/\.chat-tool-call-(?:toggle|row)[^}]*min-block-size/s);
+      expect(source).not.toMatch(
+        /@media \(any-pointer: coarse\) \{[^}]*\.chat-tool-call-row\s*\{[^}]*(?:min-block-size|padding-block)/s,
+      );
+      // The 44px hit area is a pseudo-element that takes no layout: the header overhangs both
+      // ways, a step row ends at its edges, and only the last row overhangs, below.
       expect(source).toMatch(
-        /@media \(any-pointer: coarse\) \{\s*\.chat-tool-call-toggle,\s*\.chat-tool-call-row\s*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
+        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-toggle::before\s*\{[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
+      );
+      expect(source).toMatch(
+        /\.chat-tool-call-item:last-child > \.chat-tool-call-row::before\s*\{[^}]*inset-block-end: min\(0px,/s,
       );
       // A failed step's Retry and Copy error are Cinder Buttons: compact paint, hit-area extension.
       expect(source).not.toMatch(
@@ -1132,11 +1142,17 @@ describe('ChatMessage — tool-call rendering', () => {
       );
     });
 
-    test('the group is bordered and its header carries the count, the tools and the time', () => {
+    test('the group has no frame, its rows have no inline padding, and its header carries the count, the tools and the time', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
-      expect(source).toMatch(
-        /\.chat-tool-call-timeline\s*\{[^}]*border:\s*1px solid var\(--cinder-border-muted\)/s,
-      );
+      const group = /\.chat-tool-call-timeline\s*\{([^}]*)\}/s.exec(source)?.[1] ?? '';
+      expect(group).not.toMatch(/\bborder(?:-[a-z-]+)?:|radius/);
+      const rows = /\.chat-tool-call-toggle,\s*\.chat-tool-call-row\s*\{([^}]*)\}/s.exec(
+        source,
+      )?.[1];
+      expect(rows).toMatch(/padding:\s*0;/);
+      // No hairline above the list or between its steps.
+      expect(source).not.toMatch(/\.chat-tool-call-list\s*\{[^}]*border/s);
+      expect(source).not.toMatch(/\.chat-tool-call-item \+ \.chat-tool-call-item/);
       expect(source).not.toContain(String.fromCodePoint(0xb7));
     });
 

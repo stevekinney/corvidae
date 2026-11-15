@@ -1,11 +1,10 @@
 /// <reference lib="dom" />
 /**
- * The attachment name is shortened in the middle by script to fit its box. The fit is measured in
- * the font and at the width of the moment, so it must be redone when either changes: a web font
- * that finishes loading widens the same text without resizing the box, and a box that resizes
- * needs a new fit. A name never wraps, so a late change cannot add a second line.
+ * An attached file is a chip: the glyph of its kind of file, its name with the extension kept
+ * whole, and a ring in the glyph's place while it uploads. A failed chip says nothing itself: its
+ * glyph and outline are all, and the line under the strip is the one place the words go.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import { mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -16,73 +15,16 @@ const { default: ChatAttachmentPreview } = await import('./chat-attachment-previ
 
 const fileName = 'quarterly-financial-statement-final-revision.pdf';
 
-type ObserverCallback = (entries: ResizeObserverEntry[]) => void;
-const observers: ObserverCallback[] = [];
-class FakeResizeObserver {
-  readonly #callback: ObserverCallback;
-  constructor(callback: ObserverCallback) {
-    this.#callback = callback;
-  }
-  observe(): void {
-    observers.push(this.#callback);
-  }
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
-const fontListeners = new Set<() => void>();
-let resolveFontsReady: () => void = () => {};
-let fontsReady: Promise<void>;
-let characterWidth = 6;
-let boxWidth = 240;
-
-const originalResizeObserver = globalThis.ResizeObserver;
-const originalRectangle = HTMLElement.prototype.getBoundingClientRect;
-const originalCreateElement = document.createElement.bind(document);
-const originalFonts = Object.getOwnPropertyDescriptor(document, 'fonts');
-
-beforeEach(() => {
-  observers.length = 0;
-  fontListeners.clear();
-  characterWidth = 6;
-  boxWidth = 240;
-  fontsReady = new Promise<void>((resolve) => {
-    resolveFontsReady = resolve;
-  });
-  globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
-  HTMLElement.prototype.getBoundingClientRect = function (): DOMRect {
-    return { width: boxWidth + 0.7, height: 0 } as DOMRect;
-  };
-  Object.defineProperty(document, 'fonts', {
-    configurable: true,
-    value: {
-      ready: fontsReady,
-      addEventListener: (_type: string, listener: () => void) => fontListeners.add(listener),
-      removeEventListener: (_type: string, listener: () => void) => fontListeners.delete(listener),
-    },
-  });
-  document.createElement = ((tag: string, ...rest: unknown[]) => {
-    if (tag !== 'canvas')
-      return (originalCreateElement as (...a: unknown[]) => unknown)(tag, ...rest);
-    return {
-      getContext: () => ({
-        font: '',
-        measureText: (value: string) => ({ width: value.length * characterWidth }),
-      }),
-    };
-  }) as typeof document.createElement;
-});
-
 afterEach(() => {
   document.body.replaceChildren();
-  globalThis.ResizeObserver = originalResizeObserver;
-  HTMLElement.prototype.getBoundingClientRect = originalRectangle;
-  document.createElement = originalCreateElement;
-  if (originalFonts) Object.defineProperty(document, 'fonts', originalFonts);
-  else Reflect.deleteProperty(document, 'fonts');
 });
 
-function mountPreview() {
+function mountPreview(
+  attachment: Record<string, unknown> = {},
+  extra: Record<string, unknown> = {},
+  name = fileName,
+  type = 'application/pdf',
+) {
   const target = document.createElement('div');
   document.body.append(target);
   const instance = mount(ChatAttachmentPreview, {
@@ -90,68 +32,128 @@ function mountPreview() {
     props: {
       attachment: {
         id: 'a',
-        file: new File([new Uint8Array(10)], fileName, { type: 'application/pdf' }),
+        file: new File([new Uint8Array(10)], name, { type }),
+        previewUrl: '',
         kind: 'document',
         status: 'ready',
-        progress: 0,
+        ...attachment,
       } as never,
+      ...extra,
     },
   });
-  const name = () => target.querySelector('.chat-attachment-preview-name')!.textContent ?? '';
-  return { instance, name };
+  return { target, instance };
 }
 
-const widthOf = (value: string) => value.length * characterWidth;
+const glyphClass = (target: HTMLElement) =>
+  target.querySelector('.chat-attachment-preview-glyph svg')?.getAttribute('class') ?? '';
 
-describe('attachment name fit', () => {
-  test('is redone when a web font finishes loading and widens the text', async () => {
-    const { instance, name } = mountPreview();
+describe('chat attachment chip', () => {
+  test('is a glyph, the whole name in two spans and nothing else', async () => {
+    const { target, instance } = mountPreview();
     await tick();
-    const fallbackFit = name();
-    expect(widthOf(fallbackFit)).toBeLessThanOrEqual(boxWidth);
-
-    characterWidth = 9;
-    expect(widthOf(fallbackFit)).toBeGreaterThan(boxWidth);
-    for (const listener of fontListeners) listener();
-    await tick();
-    expect(widthOf(name())).toBeLessThanOrEqual(boxWidth);
-    expect(name().length).toBeLessThan(fallbackFit.length);
-    expect(name()).toEndWith('.pdf');
-
-    characterWidth = 12;
-    resolveFontsReady();
-    await fontsReady;
-    await tick();
-    expect(widthOf(name())).toBeLessThanOrEqual(boxWidth);
+    const chip = target.querySelector('.chat-attachment-preview')!;
+    expect(chip.querySelector('.chat-attachment-preview-stem')?.textContent).toBe(
+      'quarterly-financial-statement-final-revision',
+    );
+    expect(chip.querySelector('.chat-attachment-preview-extension')?.textContent).toBe('.pdf');
+    expect(chip.querySelector('.chat-attachment-preview-name')?.textContent).toBe(fileName);
+    // No type badge, no size and no sentence: the chip is the glyph and the name.
+    expect(chip.querySelector('.chat-attachment-preview-badge')).toBeNull();
+    expect(chip.querySelector('.chat-attachment-preview-size')).toBeNull();
+    expect(chip.textContent).not.toContain('PDF');
+    expect(chip.textContent).not.toContain('…');
+    expect(chip.getAttribute('title')).toBe(fileName);
     unmount(instance);
   });
 
-  test('is redone when the box changes width', async () => {
-    const { instance, name } = mountPreview();
+  test('wears the glyph of its kind of file', async () => {
+    const cases: [string, string, string, string][] = [
+      ['brief.pdf', 'application/pdf', 'document', 'lucide-file-text'],
+      ['photo.png', 'image/png', 'image', 'lucide-file-image'],
+      ['numbers.xlsx', '', 'document', 'lucide-file-spreadsheet'],
+      ['bundle.zip', 'application/zip', 'document', 'lucide-file-archive'],
+      ['song.mp3', 'audio/mpeg', 'document', 'lucide-file-headphone'],
+      ['clip.mov', 'video/quicktime', 'document', 'lucide-file-video-camera'],
+      ['index.ts', 'text/typescript', 'code', 'lucide-file-code'],
+      ['thing.bin', 'application/octet-stream', 'document', 'lucide-file'],
+    ];
+    for (const [name, type, kind, glyph] of cases) {
+      const { target, instance } = mountPreview({ kind }, {}, name, type);
+      await tick();
+      expect(glyphClass(target), name).toContain(glyph);
+      unmount(instance);
+    }
+  });
+
+  test('shows a determinate ring in the glyph’s place while it uploads', async () => {
+    const { target, instance } = mountPreview({ status: 'uploading', progress: 0.42 });
     await tick();
-    const wide = name();
-    boxWidth = 120;
-    for (const callback of observers) callback([]);
-    await tick();
-    expect(widthOf(name())).toBeLessThanOrEqual(120);
-    expect(name().length).toBeLessThan(wide.length);
+    const ring = target.querySelector('.chat-attachment-preview-glyph [role="progressbar"]')!;
+    expect(ring.getAttribute('aria-valuenow')).toBe('42');
+    expect(ring.getAttribute('data-cinder-size')).toBe('xs');
+    expect(ring.getAttribute('aria-label')).toBe('Uploading file');
+    expect(target.querySelector('.chat-attachment-preview-glyph svg.lucide')).toBeNull();
     unmount(instance);
   });
 
-  test('stops listening for fonts once unmounted', async () => {
-    const { instance } = mountPreview();
+  test('shows an indeterminate ring when its progress is unknown', async () => {
+    const { target, instance } = mountPreview({ status: 'uploading' });
     await tick();
-    expect(fontListeners.size).toBe(1);
+    const ring = target.querySelector('.chat-attachment-preview-glyph [role="progressbar"]')!;
+    expect(ring.hasAttribute('aria-valuenow')).toBe(false);
+    expect(ring.hasAttribute('data-cinder-indeterminate')).toBe(true);
     unmount(instance);
-    expect(fontListeners.size).toBe(0);
   });
 
-  test('a name is one line: the name box never wraps', async () => {
+  test('a failed upload that can be retried wears the retry glyph, and the main area retries', async () => {
+    let activated = 0;
+    const { target, instance } = mountPreview(
+      { status: 'error', retryable: true, failureKind: 'network', error: 'Upload failed.' },
+      { onactivate: () => (activated += 1), activateLabel: 'Retry the report' },
+    );
+    await tick();
+    const chip = target.querySelector('.chat-attachment-preview')!;
+    expect(chip.hasAttribute('data-error')).toBe(true);
+    expect(chip.getAttribute('data-failure-kind')).toBe('network');
+    expect(glyphClass(target)).toContain('lucide-rotate-ccw');
+    const main = chip.querySelector<HTMLButtonElement>('button.chat-attachment-preview-main')!;
+    expect(main.getAttribute('aria-label')).toBe('Retry the report');
+    main.click();
+    expect(activated).toBe(1);
+    // The reason is a tooltip, never a sentence in the chip.
+    expect(chip.getAttribute('title')).toBe(`${fileName}. Upload failed.`);
+    expect(chip.textContent?.trim()).toBe(fileName);
+    unmount(instance);
+  });
+
+  test('a file that cannot be retried wears a warning glyph and has no activating main area', async () => {
+    const { target, instance } = mountPreview({ status: 'error', failureKind: 'too-large' });
+    await tick();
+    expect(glyphClass(target)).toContain('lucide-triangle-alert');
+    expect(target.querySelector('button.chat-attachment-preview-main')).toBeNull();
+    unmount(instance);
+  });
+
+  test('is one height and one line, with the stem shortening at its end and the extension whole', async () => {
     const preview = await Bun.file(
       new URL('./chat-attachment-preview.svelte', import.meta.url),
     ).text();
-    const rule = preview.match(/\.chat-attachment-preview-name\s*\{[^}]*\}/)?.[0];
-    expect(rule).toMatch(/white-space: nowrap;/);
-    expect(rule).toMatch(/overflow: hidden;/);
+    expect(preview).toMatch(
+      /\.chat-attachment-preview\s*\{[^}]*block-size: var\(--_cinder-painted-height-sm, 1\.75rem\);/s,
+    );
+    const name = preview.match(/\.chat-attachment-preview-name\s*\{[^}]*\}/)?.[0];
+    expect(name).toMatch(/white-space: nowrap;/);
+    const stem = preview.match(/\.chat-attachment-preview-stem\s*\{[^}]*\}/)?.[0];
+    expect(stem).toMatch(/overflow: hidden;/);
+    expect(stem).toMatch(/text-overflow: ellipsis;/);
+    const extension = preview.match(/\.chat-attachment-preview-extension\s*\{[^}]*\}/)?.[0];
+    expect(extension).toMatch(/flex: none;/);
+    // The glyph is 1rem, never taller than the name's line.
+    expect(preview).toMatch(
+      /\.chat-attachment-preview-glyph\s*\{[^}]*inline-size: 1rem;[^}]*block-size: 1rem;/s,
+    );
+    // The name is not measured or rewritten by script.
+    expect(preview).not.toContain('ResizeObserver');
+    expect(preview).not.toContain('measureText');
   });
 });

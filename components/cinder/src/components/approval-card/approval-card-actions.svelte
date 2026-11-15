@@ -50,7 +50,7 @@
   const editRegionId = $derived(`${idBase}-edit-region`);
 
   let resolutionReason = $state('');
-  // The note waits behind "Add a note"; once opened it stays open, so a typed note never hides.
+  // The note waits behind "Add note"; once opened it stays open, so a typed note never hides.
   let noteOpen = $state(false);
   let rememberResolution = $state(false);
   let editingArguments = $state(false);

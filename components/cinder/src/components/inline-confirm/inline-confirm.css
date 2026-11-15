@@ -49,7 +49,10 @@
   .cinder-inline-confirm__actions {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
+    /* On its own line the pair still ends at the trailing edge, the confirming action last. */
+    margin-inline-start: auto;
   }
 
   /* Confirmation words must remain readable inside a narrow in-flow strip. Button's default

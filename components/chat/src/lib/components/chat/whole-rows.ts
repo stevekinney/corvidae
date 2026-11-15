@@ -1,8 +1,8 @@
 /**
- * Whole-row arithmetic for the lists that are capped and scroll: the opened attachment shelf and
- * the question dock's choices. Both size their window to end on a whole row, snap their scroll to a
- * row boundary, and count the rows out of sight for their "N more" lines, so the two lists cannot
- * disagree about what a row is, what is hidden, or where the window ends.
+ * Whole-row arithmetic for the opened attachment shelf, a capped list that scrolls: its window
+ * ends on a whole row and the rows out of sight are counted for its "N more" line. (The question
+ * dock shows every choice and lets its last visible row be cut by the edge, so it does not use
+ * this.)
  */
 
 /** One row's edges, measured from the list's top edge with the scroll offset included. */
@@ -23,29 +23,6 @@ export function wholeRowsBlockSize(
   if (last === undefined || last.bottom + endInset <= room + 1) return undefined;
   const whole = edges.filter((edge) => edge.bottom + endInset <= room + 1).at(-1) ?? edges[0]!;
   return whole.bottom + endInset;
-}
-
-/**
- * The scroll offset that puts a row's top at the window's start edge: the row nearest the current
- * offset, so the window never rests on a half row. The offset is left alone at the end of the
- * scroll range, where the last row sits against the end edge.
- */
-export function snapScrollTop(
-  edges: readonly RowEdges[],
-  scrollTop: number,
-  maxScrollTop: number,
-): number {
-  if (scrollTop >= maxScrollTop - 1) return scrollTop;
-  let snapped = scrollTop;
-  let distance = Number.POSITIVE_INFINITY;
-  for (const edge of edges) {
-    const gap = Math.abs(edge.top - scrollTop);
-    if (gap < distance) {
-      distance = gap;
-      snapped = edge.top;
-    }
-  }
-  return Math.min(snapped, maxScrollTop);
 }
 
 /**

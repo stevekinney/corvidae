@@ -99,7 +99,7 @@ describe('an approval in the chat', () => {
     await askForApproval(container);
 
     expect(container.querySelectorAll('[data-approval-decision]')).toHaveLength(1);
-    for (const name of ['Input', 'Add a note', 'Deny', 'Approve']) {
+    for (const name of ['Input', 'Add note', 'Deny', 'Approve']) {
       expect(await findByRole('button', { name: new RegExp(`^${name}`) })).not.toBeNull();
     }
     expect(
@@ -244,7 +244,7 @@ describe('an approval in the chat', () => {
     const { container, findByRole, findByLabelText } = mount();
     await askForApproval(container);
 
-    await fireEvent.click(await findByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(await findByRole('button', { name: 'Add note' }));
     await fireEvent.input(await findByLabelText(/^Note/), {
       target: { value: 'Check the carrier’s claim first.' },
     });
@@ -393,7 +393,7 @@ describe('an approval while Interborough cannot be reached (design rows 16y, 16z
       );
       // What does not change anything stays available, and nothing is dimmed.
       const input = await findByRole('button', { name: /^Input/ });
-      const note = await findByRole('button', { name: 'Add a note' });
+      const note = await findByRole('button', { name: 'Add note' });
       expect(input.hasAttribute('disabled')).toBe(false);
       expect(note.hasAttribute('aria-disabled')).toBe(false);
       expect(container.querySelector('[style*="opacity"]')).toBeNull();

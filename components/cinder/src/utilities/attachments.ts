@@ -337,7 +337,8 @@ export function overflowFadeEdges(axis: OverflowFadeEdgesAxis): Attachment<HTMLE
     }
 
     const update = () => {
-      const scrollPosition = axis === 'block' ? node.scrollTop : node.scrollLeft;
+      // A right-to-left scroller counts `scrollLeft` from zero down to a negative number.
+      const scrollPosition = axis === 'block' ? node.scrollTop : Math.abs(node.scrollLeft);
       const contentExtent = axis === 'block' ? node.scrollHeight : node.scrollWidth;
       const viewportExtent = axis === 'block' ? node.clientHeight : node.clientWidth;
       const overflows = contentExtent - viewportExtent > 1;
@@ -387,6 +388,28 @@ export function overflowFadeEdges(axis: OverflowFadeEdgesAxis): Attachment<HTMLE
       resizeObserver.disconnect();
       mutationObserver?.disconnect();
       node.removeEventListener('scroll', scheduleUpdate);
+    };
+  };
+}
+
+/**
+ * Fades the edges of a scroller where content is hidden past them: a mask over the scroller's own
+ * content, driven by its scroll position, so it works over any background in both themes (see
+ * `_scroll-edge-fade.css`). An edge fades only while there is more content past it, so the start of
+ * the scroll is crisp at the leading edge, the middle fades both, and a scroller that fits fades
+ * neither. The fade takes no pointer events and no layout, and the fading axis's `scroll-padding`
+ * is the fade's size, so a focused item scrolls clear of it.
+ *
+ * Put it on a scroller that paints no background of its own; a mask would fade the surface too.
+ */
+export function scrollEdgeFade(axis: OverflowFadeEdgesAxis): Attachment<HTMLElement> {
+  const measure = overflowFadeEdges(axis);
+  return (node) => {
+    node.setAttribute('data-cinder-edge-fade', axis);
+    const stop = measure(node);
+    return () => {
+      stop?.();
+      node.removeAttribute('data-cinder-edge-fade');
     };
   };
 }

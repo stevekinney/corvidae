@@ -60,9 +60,9 @@ export type ToolCallPanelLabels = {
   copyResult?: string | undefined;
   /** The button that copies the error. Defaults to "Copy error". */
   copyError?: string | undefined;
-  /** The quiet button at the start of a waiting call's decision row that opens the Note field. Defaults to "Add a note". */
+  /** The quiet button at the start of a waiting call's decision row that opens the Note field. Defaults to "Add note". */
   addNote?: string | undefined;
-  /** The Note field's label, shown once "Add a note" opens it. Defaults to "Note". */
+  /** The Note field's label, shown once "Add note" opens it. Defaults to "Note". */
   note?: string | undefined;
   /** The Note field's description. Defaults to "Saved with your decision. If you deny, the agent reads it as the reason." */
   noteDescription?: string | undefined;

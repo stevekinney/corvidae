@@ -39,13 +39,6 @@ export type DockedActionBarProps = Omit<
    * It is announced politely when it appears. Ignored while the bar is not `off`.
    */
   reason?: string;
-  /**
-   * Gives the actions equal widths, so a pair such as Deny and Approve share the row evenly. On a
-   * narrow bar the actions take their own row under the content and share it; with no content they
-   * fill the bar.
-   * @default false
-   */
-  equalActions?: boolean;
   /** Custom class merged with `.cinder-docked-action-bar`. */
   class?: string;
   /** The leading part of the bar: a field, a consequence line. It takes the room the actions leave. */

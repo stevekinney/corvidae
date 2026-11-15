@@ -1,7 +1,7 @@
 /**
  * COR-2288, row P1 (PhoneRun): what a phone keeps of an approval and its composer. At 390 px the
- * approval's command wraps, its risk glyph sits beside the question, Deny and Approve are equal
- * 44 px targets, and the composer's Attach and Send are 44 px targets on both sides.
+ * approval's command wraps, its risk glyph sits beside the question, Deny and Approve are compact
+ * 44 px targets at the trailing edge, the primary last, and the composer's Attach and Send are 44 px targets on both sides.
  */
 import { loadManifest, type Viewport } from '@lostgradient/testing';
 import { expect, test } from './component-page-fixture.ts';
@@ -45,19 +45,52 @@ test.describe('Phone run approval', () => {
     expect(Math.abs(title!.y - glyph!.y)).toBeLessThanOrEqual(1);
   });
 
-  test('draws Deny and Approve as equal 44px targets', async ({ componentPage }) => {
-    const page = await componentPage.open({ entry: approvalEntry, theme: 'dark', viewport: phone });
+  test('draws Deny and Approve compact at the trailing edge, primary last, as 44px targets', async ({
+    componentPage,
+  }) => {
+    const page = await componentPage.open({
+      entry: approvalEntry,
+      theme: 'dark',
+      viewport: phone,
+      hasTouch: true,
+    });
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
     const card = page.locator('.cinder-approval-card').first();
 
-    const deny = await card.getByRole('button', { name: 'Deny', exact: true }).boundingBox();
-    const approve = await card.getByRole('button', { name: 'Approve', exact: true }).boundingBox();
+    const denyButton = card.getByRole('button', { name: 'Deny', exact: true });
+    const approveButton = card.getByRole('button', { name: 'Approve', exact: true });
+    await approveButton.scrollIntoViewIfNeeded();
+    const deny = await denyButton.boundingBox();
+    const approve = await approveButton.boundingBox();
+    const row = await card.getByRole('group', { name: 'Approval actions' }).boundingBox();
     expect(deny).not.toBeNull();
     expect(approve).not.toBeNull();
-    expect(deny!.height).toBeGreaterThanOrEqual(43.5);
-    expect(approve!.height).toBeGreaterThanOrEqual(43.5);
-    expect(Math.abs(deny!.width - approve!.width)).toBeLessThanOrEqual(1);
-    // Secondary on the left, primary on the right.
-    expect(deny!.x).toBeLessThan(approve!.x);
+    expect(row).not.toBeNull();
+
+    // Each paints compact and keeps its own intrinsic width: the two are not stretched to the row
+    // or to one another (an equal-width pair is the old contract). The 44px target is the hit
+    // area checked below.
+    expect(deny!.height).toBeLessThan(40);
+    expect(approve!.height).toBeLessThan(40);
+    expect(deny!.width).toBeLessThan(row!.width / 2);
+    expect(approve!.width).toBeLessThan(row!.width / 2);
+    // The primary is last and ends at the trailing edge; Deny stands immediately before it.
+    expect(deny!.x + deny!.width).toBeLessThanOrEqual(approve!.x + 0.5);
+    expect(Math.abs(approve!.x + approve!.width - (row!.x + row!.width))).toBeLessThanOrEqual(1);
+    // A point 21px out from each centre vertically still resolves to its own button.
+    for (const [name, box] of [
+      ['Deny', deny!],
+      ['Approve', approve!],
+    ] as const) {
+      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      for (const dy of [-21, 21]) {
+        const owner = await page.evaluate(
+          ([x, y]) => document.elementFromPoint(x, y)?.closest('button')?.textContent?.trim(),
+          [centre.x, centre.y + dy] as const,
+        );
+        expect(owner, `${name}: ${dy}px from its centre`).toBe(name);
+      }
+    }
   });
 });
 

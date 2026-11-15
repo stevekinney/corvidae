@@ -286,11 +286,61 @@ describe('callout — one edge, no stripe', () => {
     });
   });
 
+  describe('progress spacing', () => {
+    test('one gap token spaces the text, the bar and the action row, in the grid and in the body', () => {
+      const css = calloutCss.replace(/\s+/g, ' ');
+      expect(css).toContain('--_cinder-callout-gap: var(--cinder-space-3);');
+      expect(css).toContain('row-gap: var(--_cinder-callout-gap);');
+      expect(css).not.toMatch(/__body \{[^}]*row-gap: var\(--cinder-space-2\)/);
+      // The bar sits that gap under the letters (the margin less the line's leading), and its
+      // wrapper is a flex box so no line strut adds a band around a 4px line.
+      expect(css).toMatch(
+        /\.cinder-callout__progress \{ display: flex; flex-direction: column; margin-block-start: calc\(var\(--_cinder-callout-gap\) - \(1lh - 1\.2em\) \/ 2\); \}/,
+      );
+    });
+  });
+
+  describe('a stacked row of links', () => {
+    // A link has leading under its letters like any line, so a callout that ends in one takes the
+    // last line's air off the bottom inset; a button face, a field or a select is a box.
+    const linkRule = (): { selector: string; trimmed: string | undefined } => {
+      let found: { selector: string; trimmed: string | undefined } = {
+        selector: '',
+        trimmed: undefined,
+      };
+      root.walkRules((rule) => {
+        const flat = rule.selector.replace(/\s+/g, '');
+        if (!flat.includes('>.cinder-callout__action.cinder-link')) return;
+        let trimmed: string | undefined;
+        rule.walkDecls('padding-block-end', (declaration) => {
+          trimmed = declaration.value;
+        });
+        found = { selector: flat, trimmed };
+      });
+      return found;
+    };
+
+    test('takes the last line’s air off the bottom inset', () => {
+      expect(linkRule().trimmed).toBe(
+        'calc(var(--_cinder-callout-inset) - var(--_cinder-callout-last-air))',
+      );
+    });
+
+    test('keeps the inset whole beside a button face, a field or a select, or a progress line', () => {
+      const { selector } = linkRule();
+      for (const box of ['button', 'input', 'select', 'textarea', '.cinder-button']) {
+        expect(selector).toContain(box);
+      }
+      expect(selector).toContain('.cinder-callout__progress');
+      expect(selector).toContain('>.cinder-callout__body');
+    });
+  });
+
   describe('phone layout', () => {
     test('under 30rem the message takes the full row so the action stacks under it', () => {
       const css = calloutCss.replace(/\s+/g, ' ');
       expect(css).toMatch(
-        /@container \(inline-size < 30rem\) \{[^@]*\.cinder-callout__body > \.cinder-callout__content \{ flex: 1 1 100%; \}/,
+        /@container \(inline-size < 30rem\) \{[^@]*\.cinder-callout__body > \.cinder-callout__message \{ display: block; flex: 1 1 100%; \}/,
       );
     });
   });

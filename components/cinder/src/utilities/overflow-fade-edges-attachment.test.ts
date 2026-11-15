@@ -11,7 +11,7 @@ import {
   setScrollMeasurements,
   setupAttachmentTests,
 } from './attachments-test-support.ts';
-import { overflowFadeEdges } from './attachments.ts';
+import { overflowFadeEdges, scrollEdgeFade } from './attachments.ts';
 setupHappyDom();
 setupAttachmentTests();
 
@@ -72,6 +72,48 @@ describe('overflowFadeEdges', () => {
     flushAnimationFrames();
     expect(node.hasAttribute('data-cinder-overflows-inline-start')).toBe(true);
     expect(node.hasAttribute('data-cinder-overflows-inline-end')).toBe(false);
+  });
+
+  test('inline axis counts a right-to-left scroller by the size of its negative scrollLeft', () => {
+    const node = document.createElement('div');
+
+    overflowFadeEdges('inline')(node);
+
+    const measure = { clientHeight: 0, scrollHeight: 0, clientWidth: 100, scrollWidth: 300 };
+    setScrollMeasurements(node, { ...measure, scrollLeft: 0 });
+    FakeResizeObserver.instances[0]?.trigger();
+    flushAnimationFrames();
+    expect(node.hasAttribute('data-cinder-overflows-inline-start')).toBe(false);
+    expect(node.hasAttribute('data-cinder-overflows-inline-end')).toBe(true);
+
+    setScrollMeasurements(node, { ...measure, scrollLeft: -200 });
+    node.dispatchEvent(new Event('scroll'));
+    flushAnimationFrames();
+    expect(node.hasAttribute('data-cinder-overflows-inline-start')).toBe(true);
+    expect(node.hasAttribute('data-cinder-overflows-inline-end')).toBe(false);
+  });
+
+  test('scrollEdgeFade names its axis for the mask and removes it with the measuring', () => {
+    const node = document.createElement('div');
+
+    const cleanup = scrollEdgeFade('inline')(node);
+    expect(node.getAttribute('data-cinder-edge-fade')).toBe('inline');
+
+    setScrollMeasurements(node, {
+      clientHeight: 0,
+      scrollHeight: 0,
+      clientWidth: 100,
+      scrollWidth: 300,
+      scrollLeft: 0,
+    });
+    FakeResizeObserver.instances[0]?.trigger();
+    flushAnimationFrames();
+    expect(node.hasAttribute('data-cinder-overflows-inline-end')).toBe(true);
+
+    if (typeof cleanup !== 'function') throw new Error('Expected attachment cleanup');
+    cleanup();
+    expect(node.hasAttribute('data-cinder-edge-fade')).toBe(false);
+    expect(FakeResizeObserver.instances[0]?.disconnected).toBe(true);
   });
 
   test('a non-overflowing container never sets either attribute', () => {

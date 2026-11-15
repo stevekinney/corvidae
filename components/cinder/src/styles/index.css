@@ -19,4 +19,5 @@
 @import './components/_field-chevron.css';
 @import './components/_status-surface.css';
 @import './components/_scroll-fade.css';
+@import './components/_scroll-edge-fade.css';
 @import './utilities.css' layer(cinder.utilities);
