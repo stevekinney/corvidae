@@ -420,6 +420,19 @@ export interface PluginFormatting {
   readonly title: string;
   /** More detail, when the event has any. */
   readonly body?: string;
+  /**
+   * How much the event matters to whoever reads the activity view. Without one, or with any other
+   * value, the event is `info`.
+   */
+  readonly tier?: 'critical' | 'warning' | 'info';
+  /** The name of a Lucide icon the view draws beside the title. */
+  readonly icon?: string;
+  /**
+   * Where the view sends the reader for more, as a path in the host's router: it starts with one
+   * `/`. The host drops any other value (a URL, a `//host` path, a relative path), so a plugin
+   * cannot point the view at another origin.
+   */
+  readonly link?: string;
 }
 
 /** Formats the events of the kinds it names. */

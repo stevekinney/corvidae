@@ -51,6 +51,16 @@ const inbox = definePlugin({
         eventKinds: ['review.requested'],
         format: (event) => ({ title: `A review was asked for (${event.source ?? 'core'})` }),
       },
+      {
+        name: 'escalations',
+        eventKinds: ['review.expired'],
+        format: (event) => ({
+          title: 'A review needs attention',
+          tier: 'warning' as const,
+          icon: 'bell-ring',
+          link: (event.payload as { path: string }).path,
+        }),
+      },
     ],
   }),
 });
@@ -194,12 +204,63 @@ describe('bureau.events.format', () => {
       {
         kind: 'review.requested',
         title: 'A review was asked for (inbox)',
+        tier: 'info',
         runId: 'run-1',
         source: 'inbox',
         formattedBy: 'inbox/reviews',
       },
-      { kind: 'run.settled', title: 'run.settled', runId: 'run-2' },
+      { kind: 'run.settled', title: 'run.settled', tier: 'info', runId: 'run-2' },
     ]);
+  });
+
+  it('serves the tier, icon and link a formatter gives, and drops a link that is not a router path (COR-2222)', async () => {
+    const opened = await open();
+    const body = await rpc(
+      opened.handler,
+      'bureau.events.format',
+      {
+        events: [
+          { ...COMPLETE, kind: 'review.expired', payload: { path: '/reviews/9' } },
+          { ...COMPLETE, kind: 'review.expired', payload: { path: 'https://example.com' } },
+        ],
+      },
+      'alice-key',
+    );
+    expect(body.error).toBeUndefined();
+    expect(body.result!['events']).toEqual([
+      {
+        kind: 'review.expired',
+        title: 'A review needs attention',
+        tier: 'warning',
+        icon: 'bell-ring',
+        link: '/reviews/9',
+        formattedBy: 'inbox/escalations',
+      },
+      {
+        kind: 'review.expired',
+        title: 'A review needs attention',
+        tier: 'warning',
+        icon: 'bell-ring',
+        formattedBy: 'inbox/escalations',
+      },
+    ]);
+  });
+
+  it('declares the tier, icon and link in the output schema (COR-2222)', () => {
+    const output = z.toJSONSchema(eventsFormatOperation.outputSchema) as unknown as {
+      properties: {
+        events: {
+          items: { properties: Record<string, unknown>; required?: string[] };
+        };
+      };
+    };
+    const { properties, required } = output.properties.events.items;
+    expect(properties['tier']).toMatchObject({ enum: ['critical', 'warning', 'info'] });
+    expect(properties['icon']).toMatchObject({ type: 'string' });
+    expect(properties['link']).toMatchObject({ type: 'string' });
+    expect(required).toContain('tier');
+    expect(required).not.toContain('icon');
+    expect(required).not.toContain('link');
   });
 
   it('refuses more events than one call formats', async () => {

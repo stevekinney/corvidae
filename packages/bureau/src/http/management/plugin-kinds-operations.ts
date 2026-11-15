@@ -20,7 +20,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { BureauEventFormatter } from '../../bureau-event-formatting.ts';
+import { type BureauEventFormatter, FORMATTED_EVENT_TIERS } from '../../bureau-event-formatting.ts';
 import type { BureauPlugins } from '../../plugins/plugin-types.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
 
@@ -138,6 +138,23 @@ const formatOutput = z.object({
           .string()
           .describe('One line naming what happened: a formatter’s sentence, or the raw kind.'),
         body: z.string().optional().describe('More detail, when the formatter gave some.'),
+        tier: z
+          .enum(FORMATTED_EVENT_TIERS)
+          .describe(
+            'How much the event matters: `critical`, `warning` or `info`. `info` when the formatter gave none, and for an event shown raw.',
+          ),
+        icon: z
+          .string()
+          .optional()
+          .describe(
+            'The name of a Lucide icon to draw beside the title, when the formatter gave one.',
+          ),
+        link: z
+          .string()
+          .optional()
+          .describe(
+            'A router-relative path, starting with `/`, the view links the event to, when the formatter gave one.',
+          ),
         runId: z
           .string()
           .optional()
@@ -163,7 +180,7 @@ export const eventsFormatOperation = defineOperation<
   mcpExposable: false,
   summary: 'Format events as a person reads them',
   description:
-    'Formats each event of `events`, in order. Each event is complete, as `bureau.events` delivered it (`kind`, `bureauId`, `emittedAtMs`, `payload`), and an incomplete one is refused, because a formatter would write its sentence from fields that were never there. The result is the sentence a plugin’s event formatter writes for its kind (`title`, `body`, and `formattedBy`, `<plugin>/<formatter>`), or the raw kind as the `title` for an event no formatter claims. `runId` is the run the payload names, so a view can link to it, and `source` is the plugin that caused the event. A formatter that fails is reported to the Bureau’s diagnostics and its event is shown raw. At most 200 events per call. Read-only; any authenticated caller may read it.',
+    'Formats each event of `events`, in order. Each event is complete, as `bureau.events` delivered it (`kind`, `bureauId`, `emittedAtMs`, `payload`), and an incomplete one is refused, because a formatter would write its sentence from fields that were never there. The result is the sentence a plugin’s event formatter writes for its kind (`title`, `body`, `tier`, `icon`, `link`, and `formattedBy`, `<plugin>/<formatter>`), or the raw kind as the `title` for an event no formatter claims. `tier` is `critical`, `warning` or `info`, and is `info` when the formatter gives none; `icon` is a Lucide icon name; `link` is a router-relative path starting with `/`, and a formatter’s link that does not is dropped. A `title` is at most 200 characters on one line and a `body` at most 2,000. `runId` is the run the payload names, so a view can link to it, and `source` is the plugin that caused the event. A formatter that fails is reported to the Bureau’s diagnostics and its event is shown raw. At most 200 events per call. Read-only; any authenticated caller may read it.',
   destructive: false,
   tags: ['Events'],
   inputSchema: formatInput,

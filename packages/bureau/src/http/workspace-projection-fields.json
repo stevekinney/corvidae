@@ -1001,9 +1001,12 @@
     "$.events",
     "$.events[].body",
     "$.events[].formattedBy",
+    "$.events[].icon",
     "$.events[].kind",
+    "$.events[].link",
     "$.events[].runId",
     "$.events[].source",
+    "$.events[].tier",
     "$.events[].title"
   ],
   "output:bureau.goals.cancel": ["$.goalRunId", "$.outcome", "$.revision", "$.status"],

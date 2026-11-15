@@ -26,6 +26,12 @@ export interface EventFormatterRegistration {
   readonly formatter: PluginFormatter;
 }
 
+/** The tiers a formatted event has, most urgent first. */
+export const FORMATTED_EVENT_TIERS = ['critical', 'warning', 'info'] as const;
+
+/** How much a formatted event matters. */
+export type FormattedEventTier = (typeof FORMATTED_EVENT_TIERS)[number];
+
 /** An event as a person reads it. */
 export interface FormattedBureauEvent {
   /** The event's kind, always the raw one. */
@@ -34,6 +40,12 @@ export interface FormattedBureauEvent {
   readonly title: string;
   /** More detail, when the formatter gave some. */
   readonly body?: string;
+  /** How much the event matters: the formatter's `tier`, and `info` when it gave none or the event is shown raw. */
+  readonly tier: FormattedEventTier;
+  /** The name of a Lucide icon to draw beside the title, when the formatter gave one. */
+  readonly icon?: string;
+  /** A router-relative path (it starts with `/`) the view links the event to, when the formatter gave one. */
+  readonly link?: string;
   /** The run the event is about, so the view can link to it; absent when the payload names none. */
   readonly runId?: string;
   /** The plugin whose contribution emitted the event; absent for an event from Bureau core. */
@@ -57,6 +69,25 @@ function truncated(text: string, limit: number): string {
   const last = text.charCodeAt(limit - 1);
   const isHighSurrogate = last >= 0xd800 && last <= 0xdbff;
   return text.slice(0, isHighSurrogate ? limit - 1 : limit);
+}
+
+/** The tier a formatter named, or `info` when it named none or one the host does not know. */
+function tierOf(value: unknown): FormattedEventTier {
+  return FORMATTED_EVENT_TIERS.find((tier) => tier === value) ?? 'info';
+}
+
+/**
+ * The link a formatter gave, when it is a path in the host's router: it starts with one `/`. A
+ * URL, a relative path and a protocol-relative `//host` (which a browser resolves to another
+ * origin) are dropped.
+ */
+function routerLinkOf(value: unknown): string | undefined {
+  return typeof value === 'string' &&
+    value.startsWith('/') &&
+    !value.startsWith('//') &&
+    !value.startsWith('/\\')
+    ? value
+    : undefined;
 }
 
 /** Formats events with the formatters it was built from. */
@@ -109,12 +140,18 @@ export function createBureauEventFormatter(
               `Event formatter "${name}" returned a body that is not a string for "${event.kind}"`,
             );
           }
+          const link = routerLinkOf(formatting.link);
           return {
             ...common,
             title: truncated(formatting.title.replaceAll(LINE_BREAKS, ' '), FORMATTED_TITLE_LIMIT),
             ...(typeof formatting.body === 'string'
               ? { body: truncated(formatting.body, FORMATTED_BODY_LIMIT) }
               : {}),
+            tier: tierOf(formatting.tier),
+            ...(typeof formatting.icon === 'string' && formatting.icon.length > 0
+              ? { icon: formatting.icon }
+              : {}),
+            ...(link === undefined ? {} : { link }),
             formattedBy: name,
           };
         }
@@ -123,6 +160,6 @@ export function createBureauEventFormatter(
         diagnose?.(`Event formatter "${name}" failed on "${event.kind}"`, cause);
       }
     }
-    return { ...common, title: event.kind };
+    return { ...common, title: event.kind, tier: 'info' };
   };
 }

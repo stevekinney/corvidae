@@ -27,6 +27,7 @@ describe('formatting an event', () => {
       kind: 'run.settled',
       title: 'Run finished (run.settled)',
       body: 'It went well.',
+      tier: 'info',
       runId: 'run-7',
       formattedBy: 'reports/settled',
     });
@@ -37,11 +38,13 @@ describe('formatting an event', () => {
     expect(format({ ...EVENT, kind: 'run.registered' })).toEqual({
       kind: 'run.registered',
       title: 'run.registered',
+      tier: 'info',
       runId: 'run-7',
     });
     expect(createBureauEventFormatter(undefined)(EVENT)).toEqual({
       kind: 'run.settled',
       title: 'run.settled',
+      tier: 'info',
       runId: 'run-7',
     });
   });
@@ -51,6 +54,7 @@ describe('formatting an event', () => {
     expect(format({ ...EVENT, kind: 'diagnostic', payload: {}, source: 'calendar' })).toEqual({
       kind: 'diagnostic',
       title: 'diagnostic',
+      tier: 'info',
       source: 'calendar',
     });
   });
@@ -80,6 +84,77 @@ describe('formatting an event', () => {
     expect(format({ ...EVENT, kind: 'run.removed' }).title).toBe('run.removed');
     expect(messages).toHaveLength(2);
     expect(messages[0]).toContain('reports/throwing');
+  });
+
+  describe('the tier, icon and link of a formatting (COR-2222)', () => {
+    const formatting = (output: unknown) =>
+      createBureauEventFormatter([
+        { plugin: 'reports', formatter: { ...settled, format: () => output as never } },
+      ])(EVENT);
+
+    it('carries all three when a formatter gives them', () => {
+      expect(
+        formatting({
+          title: 'Run failed',
+          tier: 'critical',
+          icon: 'circle-alert',
+          link: '/runs/7',
+        }),
+      ).toEqual({
+        kind: 'run.settled',
+        title: 'Run failed',
+        tier: 'critical',
+        icon: 'circle-alert',
+        link: '/runs/7',
+        runId: 'run-7',
+        formattedBy: 'reports/settled',
+      });
+    });
+
+    it.each(['critical', 'warning', 'info'] as const)('keeps the %s tier', (tier) => {
+      expect(formatting({ title: 'x', tier }).tier).toBe(tier);
+    });
+
+    it('yields tier info, and no icon or link, for the members a formatter leaves out', () => {
+      const result = formatting({ title: 'x' });
+      expect(result.tier).toBe('info');
+      expect(Object.hasOwn(result, 'icon')).toBe(false);
+      expect(Object.hasOwn(result, 'link')).toBe(false);
+    });
+
+    it.each([
+      ['an unknown tier', { tier: 'urgent' }],
+      ['a tier that is not a string', { tier: 3 }],
+    ])('treats %s as info', (_name, extra) => {
+      expect(formatting({ title: 'x', ...extra }).tier).toBe('info');
+    });
+
+    it.each([
+      ['a relative path', 'runs/7'],
+      ['a URL', 'https://example.com/runs/7'],
+      ['a protocol-relative URL', '//example.com/runs/7'],
+      ['a backslash path', '/\\example.com'],
+      ['a mailto link', 'mailto:someone@example.com'],
+      ['an empty string', ''],
+      ['a value that is not a string', 7],
+    ])('drops %s as a link', (_name, link) => {
+      const result = formatting({ title: 'x', link });
+      expect(Object.hasOwn(result, 'link')).toBe(false);
+      expect(result.title).toBe('x');
+    });
+
+    it('keeps a router path with a query and a fragment', () => {
+      expect(formatting({ title: 'x', link: '/runs/7?tab=steps#top' }).link).toBe(
+        '/runs/7?tab=steps#top',
+      );
+    });
+
+    it.each([
+      ['an empty icon', ''],
+      ['an icon that is not a string', 4],
+    ])('drops %s', (_name, icon) => {
+      expect(Object.hasOwn(formatting({ title: 'x', icon }), 'icon')).toBe(false);
+    });
   });
 
   describe('bounding what a formatter returns (COR-2221)', () => {
