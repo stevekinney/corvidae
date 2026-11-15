@@ -332,7 +332,11 @@ test.describe('one left edge for the open chat (COR-2327 B4)', () => {
         response,
         json: {
           ...body,
-          providers: body.providers.map((provider) => ({ ...provider, hasKey: true })),
+          providers: body.providers.map((provider) => ({
+            ...provider,
+            hasKey: true,
+            connected: true,
+          })),
         },
       });
     });
