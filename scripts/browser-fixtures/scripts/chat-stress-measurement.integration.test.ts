@@ -1453,6 +1453,26 @@ describe('chat stress visual measurement', () => {
       }
     });
 
+    // Arial's metrics (Liberation Sans is its metric-compatible twin on Linux) put the capitals
+    // nearer the top of their line than SF's and WenQuanYi's do, so a derived "air" is 1 to 2px off
+    // in one of them: a notice measured in one host's system-ui passed while the same notice
+    // failed in another's (COR-2406). The ink insets hold in a font of each shape.
+    it('keeps the ink insets in fonts whose capitals do not sit centred in their line', async () => {
+      for (const family of ["Arial, 'Liberation Sans'", 'system-ui, sans-serif']) {
+        for (const markup of [
+          notice({}),
+          notice({ action: true }),
+          notice({ icon: false }),
+          notice({ title: true }),
+          notice({ title: true, action: true }),
+          notice({ title: true, icon: false, action: true, wide: true }),
+        ]) {
+          const insets = await insetsFor(markup, `body { font-family: ${family}; }`);
+          expect(calloutInsetProblems(insets)).toEqual([]);
+        }
+      }
+    });
+
     it('measures the letters and the button face, not their boxes, and the glyph apart from them', async () => {
       const [stacked] = await insetsFor(notice({ action: true }));
       // The button face is the last ink, at the inset; the capitals are the first.
@@ -1465,7 +1485,8 @@ describe('chat stress visual measurement', () => {
 
     it('fails a notice that pads every side alike, whose first line stands lower than its last ink', async () => {
       const heavy = `.cinder-callout { padding-block: 12px !important; }
-        .cinder-callout__message { margin-block: 0 !important; }`;
+        .cinder-callout__message { margin-block: 0 !important; }
+        .cinder-callout__content { text-box: none !important; }`;
       for (const markup of [
         notice({ action: true }),
         notice({ title: true, action: true }),

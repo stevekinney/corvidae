@@ -58,9 +58,9 @@
  * the letters: the glyph beside them is 3px or so taller than the capitals, so it stands that far
  * past the letters at each end of a one-line notice, evenly above and below, as a symbol stands in
  * a line of text. The last ink is a button face or the progress line when there is one; those are
- * boxes with no air to take out. `text-box-trim` would trim a line to its capitals exactly, but
- * Firefox does not ship it and only Chromium is installed to test with, so the air is derived
- * from `cap` and `lh`, which every engine Cinder runs in has.
+ * boxes with no air to take out. Firefox does not ship `text-box-trim`, so the air is derived
+ * from `cap` and `lh`, which every engine Cinder runs in has; the `@supports` block below trims
+ * the text to its capitals exactly where the property exists (it replaces the derivation there).
  * ---------------------------------------- */
 
   .cinder-callout {
@@ -109,6 +109,63 @@
     margin-block-end: calc(var(--_cinder-callout-last-air) * -1);
   }
 
+  /* Where `text-box-trim` ships (Chromium, Safari), the text is trimmed to its capitals and its
+   * baseline instead, which is exact for any font. The derivation above assumes a line's air
+   * above its capitals equals the air under its baseline, and a font that centres its capitals
+   * differently (Arial and its metric clones, WenQuanYi, Segoe UI) leaves the first ink 1 to 2px
+   * off, as does Chromium flooring the half-leading of a line whose height is not a whole number
+   * of pixels (COR-2406). A trimmed edge has no air to take out; an edge that is not trimmed (the
+   * words above an action row, a link row, a progress line) keeps the derivation, and an engine
+   * without the property keeps it everywhere. The glyph is one capital tall and centred on it,
+   * so it overhangs the capitals evenly, as it does the line today. */
+  @supports (text-box-trim: trim-start) {
+    .cinder-callout:not(:has(> .cinder-callout__body)) {
+      padding-block-start: var(--_cinder-callout-inset);
+    }
+
+    .cinder-callout:not(
+      :has(
+        > .cinder-callout__body,
+        > .cinder-callout__action:not(:empty),
+        .cinder-callout__progress
+      )
+    ) {
+      padding-block-end: var(--_cinder-callout-inset);
+    }
+
+    .cinder-callout__body > .cinder-callout__message {
+      margin-block-start: 0;
+    }
+
+    .cinder-callout__body > .cinder-callout__message:not(:has(.cinder-callout__progress)) {
+      margin-block-end: 0;
+    }
+
+    .cinder-callout .cinder-callout__content {
+      text-box: trim-start cap alphabetic;
+    }
+
+    /* The words are the last ink: nothing follows them but the border. */
+    .cinder-callout:not(
+        :has(
+          > .cinder-callout__body,
+          > .cinder-callout__action:not(:empty),
+          .cinder-callout__progress
+        )
+      )
+      > .cinder-callout__content,
+    .cinder-callout__body
+      > .cinder-callout__message:not(:has(.cinder-callout__progress))
+      > .cinder-callout__content {
+      text-box: trim-both cap alphabetic;
+    }
+
+    /* The icon channel's box below is one capital tall. */
+    .cinder-callout {
+      --_cinder-callout-icon-box: 1cap;
+    }
+  }
+
   /* ----------------------------------------
  * Icon channel
  * Decorative; the icon is the second WCAG 1.4.1 channel alongside color.
@@ -125,7 +182,7 @@
     width: var(--_cinder-callout-icon-size);
     /* The box is exactly one line of the text beside it and the glyph is centred in it, so the
      * icon is centred on the first line at any text size, with no offset to tune. */
-    height: 1lh;
+    height: var(--_cinder-callout-icon-box, 1lh);
     /* The glyph has 2px of its own inset, so 8px here reads as about 10px of air to the text. */
     margin-inline-end: var(--cinder-space-2);
     color: inherit;
@@ -394,6 +451,17 @@
       .cinder-callout__body
       > .cinder-callout__message {
       margin-block-end: 0;
+    }
+
+    @supports (text-box-trim: trim-start) {
+      .cinder-callout:not(.cinder-callout--beside-action, .cinder-callout--fit-action):has(
+          > .cinder-callout__body > .cinder-callout__action:not(:empty)
+        )
+        .cinder-callout__body
+        > .cinder-callout__message
+        > .cinder-callout__content {
+        text-box: trim-start cap alphabetic;
+      }
     }
 
     /* In the message the glyph floats at the start of the first line, and the lines after it start
