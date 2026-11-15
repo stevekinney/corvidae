@@ -53,7 +53,15 @@
   .cinder-banner:not([data-cinder-variant='feature']) {
     --_cinder-banner-first-air: calc((1lh - 1cap) / 2);
     --_cinder-banner-last-air: calc((1lh - 1cap) / 2);
+    /* The first line starts on a whole pixel from the top edge, so the glyph (whose offset from
+     * the baseline is rounded too) and the text sit on the pixel grid and the 2px stroke is not
+     * blurred across two rows; the ink moves by under half a pixel. The first value is the
+     * unrounded inset, for a browser without `round()`. */
     padding-block-start: calc(var(--_cinder-banner-inset) - var(--_cinder-banner-first-air));
+    padding-block-start: round(
+      calc(var(--_cinder-banner-inset) - var(--_cinder-banner-first-air)),
+      1px
+    );
   }
 
   .cinder-banner:not([data-cinder-variant='feature']):not(:has(> .cinder-banner__actions)) {

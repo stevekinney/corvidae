@@ -61,9 +61,15 @@
     text-align: start;
     overflow-wrap: anywhere;
     line-height: var(--cinder-leading-normal);
-    /* The owning Popover/Drawer supplies the surface inset. Keeping this panel content-only
-       prevents an empty band when a source has no excerpt. */
-    padding: 0;
+    /* The owning Popover/Drawer supplies the surface inset, so the panel adds no band of its own
+       above or below the rows. A row's own inset (its padding and its 2px current-row edge) is
+       pulled out of the surface's inset by the margin and put back by the padding: the words line
+       up with the heading above the list, the hover face overhangs into the surface's padding,
+       and the list stays inside the panel, so nothing scrolls sideways. */
+    --_cinder-citation-row-inset: calc(var(--cinder-space-2) + 2px);
+    margin-inline: calc(-1 * var(--_cinder-citation-row-inset));
+    padding-block: 0;
+    padding-inline: var(--_cinder-citation-row-inset);
   }
 
   .cinder-citation--in-place .cinder-citation__panel {
@@ -92,16 +98,16 @@
   .cinder-citation__list {
     display: flex;
     flex-direction: column;
-    /* A row's text starts on the edge of the heading above the list: the list is pulled out by the
-       row's own inset (its padding and its 2px current-row edge), so the hover face and the edge
-       overhang into the panel's padding while the words line up. */
-    margin-block: 0;
-    margin-inline: calc(-1 * (var(--cinder-space-2) + 2px));
+    margin: 0;
     padding: 0;
     list-style: none;
   }
   .cinder-citation__item {
     min-width: 0;
+    /* The foundation gives every list item a bottom margin; a row's own padding is its air, so
+       the last row would otherwise end the panel on a gap and every row would stand further from
+       the next than its padding says. */
+    margin: 0;
   }
   /* A row is the source: its title, the domain (or the note that says why it has none) and the
      excerpt. With a safe address the whole row is the link and the open glyph ends it; the 2px
