@@ -29,14 +29,15 @@ export function seekFractionForKey(
 ): number | undefined {
   if (!Number.isFinite(duration) || duration <= 0) return undefined;
   const arrowStep = SEEK_STEP_SECONDS / duration;
-  const offsets: Record<string, number> = {
-    ArrowRight: arrowStep,
-    ArrowUp: arrowStep,
-    ArrowLeft: -arrowStep,
-    ArrowDown: -arrowStep,
-    PageUp: SEEK_PAGE_FRACTION,
-    PageDown: -SEEK_PAGE_FRACTION,
-  };
-  if (!Object.hasOwn(offsets, key)) return undefined;
-  return Math.max(0, Math.min(1, fraction + (offsets[key] as number)));
+  const offsets = new Map<string, number>([
+    ['ArrowRight', arrowStep],
+    ['ArrowUp', arrowStep],
+    ['ArrowLeft', -arrowStep],
+    ['ArrowDown', -arrowStep],
+    ['PageUp', SEEK_PAGE_FRACTION],
+    ['PageDown', -SEEK_PAGE_FRACTION],
+  ]);
+  const offset = offsets.get(key);
+  if (offset === undefined) return undefined;
+  return Math.max(0, Math.min(1, fraction + offset));
 }
