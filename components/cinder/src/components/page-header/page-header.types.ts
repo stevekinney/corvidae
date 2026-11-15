@@ -193,8 +193,8 @@ export type PageHeaderProps = Omit<
    * Where the actions go in a narrow header (a phone). `own-row` puts them on a row of their own
    * under the title and the status. `beside-status` puts them at the inline end of the status's
    * row instead, which saves that row's height, for a page whose actions are a few compact
-   * controls and whose content below needs the room, such as a chat. A wide header is the same
-   * either way.
+   * controls and whose content below needs the room, such as a chat; with no status they sit
+   * beside the title. A wide header is the same either way.
    * @default "own-row"
    */
   narrowActions?: PageHeaderNarrowActions;

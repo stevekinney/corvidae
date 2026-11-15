@@ -196,6 +196,41 @@
       grid-row: 1;
       justify-self: end;
     }
+
+    /* With no status there is no line under the title to share, so the actions sit beside the
+       title on its first line instead of alone on a second one, the create "+" after them, and a
+       description takes the line under the title. */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status))
+      .cinder-page-header__title {
+      grid-column: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status))
+      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {
+      grid-row: 1;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status))
+      .cinder-page-header__create-slot {
+      grid-column: auto;
+    }
+
+    /* Both on the title's line need a column each, so a description still spans the row. */
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status)):has(
+        > .cinder-page-header__actions:not(.cinder-page-header__create-slot)
+      ):has(> .cinder-page-header__create-slot) {
+      grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .cinder-page-header[data-cinder-narrow-actions='beside-status']
+      .cinder-page-header__row:not(:has(.cinder-page-header__status))
+      .cinder-page-header__description {
+      grid-row: 2;
+    }
   }
 
   .cinder-page-header__status[data-cinder-placement='below'] {

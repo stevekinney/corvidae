@@ -557,4 +557,27 @@ describe('PageHeader narrowActions (COR-2327 B2)', () => {
       /\.cinder-page-header__actions:not\(\.cinder-page-header__create-slot\) \{[^}]*grid-column: 2;[^}]*grid-row: 2;/u,
     );
   });
+
+  test('beside-status with no status puts the actions on the title line, not alone on a second row', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Hello', narrowActions: 'beside-status', overflow: [{ label: 'Archive' }] },
+    });
+    expect(container.querySelector('.cinder-page-header__status')).toBeNull();
+    expect(container.querySelector('.cinder-page-header__actions')).not.toBeNull();
+
+    const narrow = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-page-header (max-width: 32rem)'),
+    );
+    const noStatus =
+      "[data-cinder-narrow-actions='beside-status']\n      .cinder-page-header__row:not(:has(.cinder-page-header__status))";
+    expect(narrow).toContain(
+      `${noStatus}\n      .cinder-page-header__title {\n      grid-column: 1;`,
+    );
+    expect(narrow).toContain(
+      `${noStatus}\n      .cinder-page-header__actions:not(.cinder-page-header__create-slot) {\n      grid-row: 1;`,
+    );
+    expect(narrow).toContain(
+      `${noStatus}\n      .cinder-page-header__description {\n      grid-row: 2;`,
+    );
+  });
 });

@@ -48,3 +48,38 @@ test('a narrow header puts its actions beside the status only when asked, and is
   const besideHeight = besideStatus.header!.bottom - besideStatus.header!.top;
   expect(ownHeight - besideHeight).toBeGreaterThan(20);
 });
+
+test('a narrow header with no status puts its actions beside the title, not alone on a second row', async ({
+  page,
+}) => {
+  await page.goto(`${fixtureRoute('page-header')}&narrow-actions=1`, { waitUntil: 'load' });
+  const root = page.locator('[data-testid="narrow-beside-status-no-status"]');
+  await root.waitFor({ state: 'visible' });
+  const read = await root.evaluate((element) => {
+    const box = (selector: string) => {
+      const found = element.querySelector(selector);
+      if (!found) return null;
+      const { top, bottom, left, right } = found.getBoundingClientRect();
+      return { top, bottom, left, right };
+    };
+    return {
+      header: box('.cinder-page-header'),
+      title: box('.cinder-page-header__title'),
+      status: box('.cinder-page-header__status'),
+      actions: box('.cinder-page-header__actions'),
+    };
+  });
+  expect(read.status).toBeNull();
+  const { header, title, actions } = read;
+  // On the title's line: the two boxes overlap vertically, the actions after the title, at the
+  // inline end.
+  expect(actions!.top).toBeLessThan(title!.bottom);
+  expect(actions!.bottom).toBeGreaterThan(title!.top);
+  expect(actions!.left).toBeGreaterThanOrEqual(title!.right - 1);
+  expect(Math.abs(actions!.right - header!.right)).toBeLessThanOrEqual(1);
+  // And the header is no taller than its tallest part, so there is no second row.
+  const headerHeight = header!.bottom - header!.top;
+  expect(headerHeight).toBeLessThanOrEqual(
+    Math.max(title!.bottom - title!.top, actions!.bottom - actions!.top) + 1,
+  );
+});

@@ -611,6 +611,11 @@ describe('an existing session', () => {
     // Chat's own first-use state (COR-2285 V1), with no prompt while the agents are not listed.
     expect(container.querySelector('.chat-empty .cinder-empty-state')).not.toBeNull();
     expect(container.querySelector('[aria-label="Suggested prompts"]')).toBeNull();
+    // With no status the header draws no status line, so on a phone its ring and More menu sit
+    // beside the title rather than alone on a second row (COR-2327).
+    const header = container.querySelector('[data-testid="chat-header"]');
+    expect(header?.querySelector('.cinder-page-header__actions')).not.toBeNull();
+    expect(header?.querySelector('.cinder-page-header__status')).toBeNull();
   });
 
   test('shows its title once, with no agent line under it and no agent chooser', async () => {

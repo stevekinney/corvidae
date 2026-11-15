@@ -41,4 +41,12 @@
       </PageHeader>
     </div>
   {/each}
+  <!-- With no status (a chat that has not started), the actions sit beside the title. -->
+  <div data-testid="narrow-beside-status-no-status" style="inline-size: 20rem;">
+    <PageHeader title="Hello" narrowActions="beside-status" flush>
+      {#snippet actions()}
+        <Button variant="secondary" size="sm" label="More" />
+      {/snippet}
+    </PageHeader>
+  </div>
 {/if}

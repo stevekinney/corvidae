@@ -1997,7 +1997,8 @@
           flush
           narrowActions="beside-status"
           {...context.data?.parentContextId ? { description: details } : {}}
-          {...gone ? {} : { actions: headerActions, status: headerStatus }}
+          {...gone ? {} : { actions: headerActions }}
+          {...gone || chatStatus === undefined ? {} : { status: headerStatus }}
           statusPlacement="inline"
         />
       {/if}
