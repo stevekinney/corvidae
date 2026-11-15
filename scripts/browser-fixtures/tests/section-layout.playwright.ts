@@ -34,6 +34,23 @@ test.describe('Section layout', () => {
     expect(Math.abs(centre(link!) - centre(title!))).toBeLessThanOrEqual(1);
   });
 
+  test('a title steps down by level: level 3 smaller than 2, level 4 smaller still and muted (COR-2329)', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('section'), { waitUntil: 'load' });
+    const levels = page.getByTestId('section-levels');
+    const style = (level: number) =>
+      levels.getByRole('heading', { level }).evaluate((element) => {
+        const computed = getComputedStyle(element);
+        return { size: Number.parseFloat(computed.fontSize), color: computed.color };
+      });
+    const [two, three, four] = await Promise.all([style(2), style(3), style(4)]);
+    expect(three.size).toBeLessThan(two.size);
+    expect(four.size).toBeLessThan(three.size);
+    expect(three.color).toBe(two.color);
+    expect(four.color).not.toBe(two.color);
+  });
+
   test('the Section draws no box', async ({ page }) => {
     await page.goto(fixtureRoute('section'), { waitUntil: 'load' });
     const section = page.locator('.cinder-section').first();

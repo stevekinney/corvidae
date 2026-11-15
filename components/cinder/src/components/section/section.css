@@ -44,6 +44,17 @@
     color: var(--cinder-text-default);
   }
 
+  /* A title steps down with its level, so a section inside a section reads as part of it: level 3
+     at the base size, level 4 and deeper smaller still and muted (COR-2329). Level 2 is above. */
+  .cinder-section__title[data-level='3'] {
+    font-size: var(--cinder-text-base);
+  }
+
+  .cinder-section__title:is([data-level='4'], [data-level='5'], [data-level='6']) {
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
   .cinder-section__description {
     margin: 0;
     max-inline-size: 60ch;

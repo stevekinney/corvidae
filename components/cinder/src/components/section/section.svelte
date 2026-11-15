@@ -38,8 +38,12 @@
 <section {...rest} class={classNames('cinder-section', className)} aria-labelledby={headingId}>
   <div class="cinder-section__header">
     <div class="cinder-section__heading">
-      <svelte:element this={`h${level}`} id={headingId} class="cinder-section__title"
-        >{title}</svelte:element
+      <!-- A title steps down with its level below 2; a level-2 title carries no attribute. -->
+      <svelte:element
+        this={`h${level}`}
+        id={headingId}
+        class="cinder-section__title"
+        data-level={level >= 3 ? level : undefined}>{title}</svelte:element
       >
       {#if description}
         <p class="cinder-section__description">{description}</p>
