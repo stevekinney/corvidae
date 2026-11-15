@@ -114,6 +114,78 @@ describe('eventPayloadContent', () => {
   });
 });
 
+describe('a payload that recurses', () => {
+  const tree = () => {
+    const Node = z.object({
+      id: identifier(),
+      get children() {
+        return z.array(Node).optional();
+      },
+    });
+    return Node;
+  };
+  const noisyTree = () => {
+    const Node = z.object({
+      id: identifier(),
+      note: z.string(),
+      get children() {
+        return z.array(Node).optional();
+      },
+    });
+    return Node;
+  };
+
+  it('is walked once and accepted when every leaf passes', () => {
+    expect(eventPayloadContent(z.object({ root: tree() }))).toEqual([]);
+  });
+
+  it('is refused for the leaf that carries content, named once', () => {
+    expect(eventPayloadContent(z.object({ root: noisyTree() }))).toEqual(['root.note']);
+  });
+
+  it('lists the fields of the payload without walking into the recursion', () => {
+    expect(eventPayloadFields(z.object({ root: tree() }))).toEqual([
+      { name: 'root', type: 'object', optional: false },
+    ]);
+  });
+
+  it('is refused, and never overflows the stack, when every read builds a new schema', () => {
+    const endless = (): z.ZodObject =>
+      z.object({
+        get next() {
+          return endless();
+        },
+      });
+    expect(eventPayloadContent(z.object({ root: endless() })).length).toBeGreaterThan(0);
+  });
+});
+
+describe('the value type of a field', () => {
+  it('reports the real type of an enum or a literal, not always string', () => {
+    enum Level {
+      Low = 1,
+      High = 2,
+    }
+    expect(
+      eventPayloadFields(
+        z.object({
+          words: z.enum(['a', 'b']),
+          levels: z.enum(Level),
+          one: z.literal(1),
+          yes: z.literal(true),
+          mixed: z.literal(['a', 1]),
+        }),
+      ).map(({ name, type }) => [name, type]),
+    ).toEqual([
+      ['words', 'string'],
+      ['levels', 'number'],
+      ['one', 'number'],
+      ['yes', 'boolean'],
+      ['mixed', 'unknown'],
+    ]);
+  });
+});
+
 describe('eventPayloadFields', () => {
   it('lists each field in order, with its JSON type and whether it is optional', () => {
     expect(

@@ -836,6 +836,39 @@ describe('composePlugins', () => {
       ]);
     });
 
+    it('never rejects the host for a payload that recurses or cannot be read', async () => {
+      const Node = z.object({
+        id: z.string().meta({ identifier: true }),
+        get children() {
+          return z.array(Node).optional();
+        },
+      });
+      const unreadable = z.object({
+        get id(): z.ZodString {
+          throw new Error('cannot read');
+        },
+      });
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('tree', () => ({
+            events: [{ name: 'tree', description: 'A tree.', payload: z.object({ root: Node }) }],
+          })),
+          pluginEntry('broken', () => ({
+            events: [{ name: 'broken', description: 'Unreadable.', payload: unreadable }],
+          })),
+          pluginEntry('fine', () => ({ events: [greeted()] })),
+        ],
+      });
+
+      expect(records.map(({ status }) => status)).toEqual(['running', 'skipped', 'running']);
+      expect(records[1]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringContaining('cannot read'),
+        }),
+      ]);
+    });
+
     it('accepts a z.enum status and a marked identifier, which a plugin’s payload may hold', async () => {
       const { records } = await composePlugins<ComposableOptions>({
         plugins: [pluginEntry('kit', () => ({ events: [greeted()] }))],

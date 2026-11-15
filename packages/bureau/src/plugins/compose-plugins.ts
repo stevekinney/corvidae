@@ -1042,14 +1042,27 @@ function formatterUnknownKinds(contributions: PluginContributions): PluginProble
  * The `event-payload-content` problems of a plugin whose declared event has a payload field that
  * could carry content (COR-2223): an event's payload holds identifiers, statuses and counts only.
  */
-function eventPayloadProblems(contributions: PluginContributions): PluginProblem[] {
-  return (contributions.events ?? []).flatMap((declaration) =>
-    eventPayloadContent(declaration.payload).map((field): PluginProblem => ({
-      code: 'event-payload-content',
-      event: declaration.name,
-      field,
-    })),
-  );
+function eventPayloadProblems(
+  contributions: PluginContributions,
+  redact: (message: string) => string,
+): PluginProblem[] {
+  try {
+    return (contributions.events ?? []).flatMap((declaration) =>
+      eventPayloadContent(declaration.payload).map((field): PluginProblem => ({
+        code: 'event-payload-content',
+        event: declaration.name,
+        field,
+      })),
+    );
+  } catch (error) {
+    // A schema that throws when read (a getter that fails) skips its plugin; it never rejects the host.
+    return [
+      {
+        code: 'setup-failed',
+        message: `setup returned an event whose payload could not be read: ${messageOf(error, redact)}`,
+      },
+    ];
+  }
 }
 
 /**
@@ -1173,7 +1186,7 @@ export async function composePlugins<O extends ComposableOptions>(
       ...activityFieldProblems(outcome.result),
       ...workflowFieldProblems(outcome.result),
       ...formatterUnknownKinds(outcome.result),
-      ...eventPayloadProblems(outcome.result),
+      ...eventPayloadProblems(outcome.result, outcome.redact),
       ...providerSecretProblems(entry, outcome.result),
     ];
     if (refusals.length > 0) {

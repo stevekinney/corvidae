@@ -12,7 +12,9 @@
  * status), or a string marked `.meta({ identifier: true })`; an object, an array, a union, an
  * optional, a nullable or a default of accepted values is accepted. A free string, `z.unknown()`,
  * `z.any()`, a record, a tuple, a date, a lazy schema and an object with a catchall are refused:
- * each lets arbitrary text through.
+ * each lets arbitrary text through. A schema that recurses through a getter is accepted when every
+ * leaf passes (revisiting an object adds no leaf), and one that never ends is refused at a depth
+ * of 32.
  *
  * The schema is read through `_zod.def`, as `schemaDigest` reads it, never through `instanceof`: a
  * plugin may carry its own copy of Zod.
@@ -34,6 +36,7 @@ interface Definition {
   readonly shape?: Readonly<Record<string, unknown>>;
   readonly catchall?: unknown;
   readonly values?: readonly unknown[];
+  readonly entries?: Readonly<Record<string, unknown>>;
 }
 
 function definitionOf(schema: unknown): Definition | undefined {
@@ -100,24 +103,38 @@ function unwrap(schema: unknown): Unwrapped {
 
 const NUMBER_LIKE: ReadonlySet<string> = new Set(['number', 'boolean', 'null', 'undefined']);
 
-/** The paths under `schema` that could hold content, each starting from `path`. */
-function contentPaths(schema: unknown, path: string): string[] {
+/**
+ * How deep the walk goes before it refuses the field. A schema that recurses through a getter
+ * (`get children() { return z.array(Node) }`) revisits the same object, which the walk recognises;
+ * one that builds a fresh object on every read never ends, so this bound refuses it.
+ */
+const MAXIMUM_DEPTH = 32;
+
+/**
+ * The paths under `schema` that could hold content, each starting from `path`. `active` holds the
+ * object schemas the walk is inside: reaching one again is a cycle, which adds no leaf that the
+ * first visit has not already judged, so it holds nothing new and is accepted.
+ */
+function contentPaths(schema: unknown, path: string, active: ReadonlySet<unknown>): string[] {
+  if (active.size > MAXIMUM_DEPTH) return [path];
   const { base, identifier } = unwrap(schema);
   const definition = definitionOf(base);
   if (definition === undefined) return [path];
   const { type } = definition;
   if (NUMBER_LIKE.has(type) || type === 'enum' || type === 'literal') return [];
   if (type === 'string') return identifier ? [] : [path];
-  if (type === 'array') return contentPaths(definition.element, `${path}[]`);
+  if (type === 'array') return contentPaths(definition.element, `${path}[]`, active);
   if (type === 'union') {
-    return (definition.options ?? []).flatMap((option) => contentPaths(option, path));
+    return (definition.options ?? []).flatMap((option) => contentPaths(option, path, active));
   }
   if (type === 'object') {
+    if (active.has(base)) return [];
+    const inside = new Set(active).add(base);
     const catchall = definitionOf(definition.catchall);
     const open = definition.catchall !== undefined && catchall?.type !== 'never';
     return [
       ...Object.entries(definition.shape ?? {}).flatMap(([key, member]) =>
-        contentPaths(member, path === '' ? key : `${path}.${key}`),
+        contentPaths(member, path === '' ? key : `${path}.${key}`, inside),
       ),
       ...(open ? [path === '' ? '*' : `${path}.*`] : []),
     ];
@@ -131,17 +148,27 @@ function contentPaths(schema: unknown, path: string): string[] {
  * when the payload holds identifiers, statuses and counts only.
  */
 export function eventPayloadContent(payload: z.ZodObject): string[] {
-  return contentPaths(payload, '');
+  return contentPaths(payload, '', new Set());
 }
 
-function literalType(values: readonly unknown[] | undefined): BureauEventFieldType {
+/** The JSON type every one of `values` has, or `unknown` when they differ or are not scalars. */
+function valuesType(values: readonly unknown[] | undefined): BureauEventFieldType {
   const types = new Set((values ?? []).map((value) => typeof value));
   if (types.size !== 1) return 'unknown';
   const [only] = types;
   return only === 'string' || only === 'number' || only === 'boolean' ? only : 'unknown';
 }
 
-function fieldTypeOf(schema: unknown): BureauEventFieldType {
+/** The values of an enum's entries, without the reverse mapping a numeric TypeScript enum adds. */
+function enumValues(entries: Readonly<Record<string, unknown>>): unknown[] {
+  const numeric = Object.values(entries).filter((value) => typeof value === 'number');
+  return Object.entries(entries)
+    .filter(([key]) => !numeric.includes(Number(key)))
+    .map(([, value]) => value);
+}
+
+function fieldTypeOf(schema: unknown, depth = 0): BureauEventFieldType {
+  if (depth > MAXIMUM_DEPTH) return 'unknown';
   const { base } = unwrap(schema);
   const definition = definitionOf(base);
   switch (definition?.type) {
@@ -150,16 +177,19 @@ function fieldTypeOf(schema: unknown): BureauEventFieldType {
     case 'boolean':
       return 'boolean';
     case 'string':
-    case 'enum':
       return 'string';
+    case 'enum':
+      return valuesType(enumValues(definition.entries ?? {}));
     case 'literal':
-      return literalType(definition.values);
+      return valuesType(definition.values);
     case 'object':
       return 'object';
     case 'array':
-      return fieldTypeOf(definition.element) === 'string' ? 'string[]' : 'unknown';
+      return fieldTypeOf(definition.element, depth + 1) === 'string' ? 'string[]' : 'unknown';
     case 'union': {
-      const types = new Set((definition.options ?? []).map(fieldTypeOf));
+      const types = new Set(
+        (definition.options ?? []).map((option) => fieldTypeOf(option, depth + 1)),
+      );
       const [only] = types;
       return types.size === 1 && only !== undefined ? only : 'unknown';
     }

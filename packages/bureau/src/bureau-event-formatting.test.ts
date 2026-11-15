@@ -2,10 +2,12 @@
  * COR-1876 — a contributed formatter's sentence appears for its kind, and an event no formatter
  * claims is shown by its raw kind and the run it names.
  */
-import type { PluginFormatter } from '@lostgradient/interborough-plugin';
+import { definePlugin, type PluginFormatter } from '@lostgradient/interborough-plugin';
 import { describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitions } from './agent-catalog.ts';
 import { createBureauEventFormatter } from './bureau-event-formatting.ts';
+import { createBureau } from './create-bureau.ts';
 
 const EVENT = {
   kind: 'run.settled',
@@ -135,6 +137,11 @@ describe('formatting an event', () => {
       ['a protocol-relative URL', '//example.com/runs/7'],
       ['a backslash path', '/\\example.com'],
       ['a mailto link', 'mailto:someone@example.com'],
+      ['a tab that makes it protocol-relative', '/\t/evil.example/x'],
+      ['a line feed that makes it protocol-relative', '/\n/evil.example'],
+      ['a carriage return and a backslash', '/\r\\evil.example'],
+      ['a space', '/runs/7 8'],
+      ['a null character', '/runs/\u0000'],
       ['an empty string', ''],
       ['a value that is not a string', 7],
     ])('drops %s as a link', (_name, link) => {
@@ -204,6 +211,45 @@ describe('formatting an event', () => {
         expect(Object.hasOwn(result, 'body')).toBe(false);
         expect(messages).toHaveLength(1);
         expect(messages[0]).toContain('reports/settled');
+      }
+    });
+
+    it('reports the dropped body to the Bureau’s diagnostics at warn level', async () => {
+      const diagnostics: Array<{ level: string; scope: string; message: string }> = [];
+      const bureau = await createBureau<AgentDefinitions>({
+        plugins: [
+          {
+            descriptor: definePlugin({
+              name: 'reports',
+              version: '1.0.0',
+              description: 'Formats events.',
+              setup: () => ({
+                formatters: [
+                  {
+                    name: 'settled',
+                    eventKinds: ['run.settled'],
+                    format: () => ({ title: 'Run finished', body: 42 as never }),
+                  },
+                ],
+              }),
+            }),
+            source: 'package',
+            location: '@example/reports',
+          },
+        ],
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      });
+      try {
+        await bureau.plugins.ready();
+        const formatted = bureau.formatEvent(EVENT);
+        expect(formatted.title).toBe('Run finished');
+        expect(Object.hasOwn(formatted, 'body')).toBe(false);
+        const reported = diagnostics.filter(({ scope }) => scope === 'events');
+        expect(reported).toHaveLength(1);
+        expect(reported[0]).toMatchObject({ level: 'warn' });
+        expect(reported[0]?.message).toContain('reports/settled');
+      } finally {
+        await bureau.dispose();
       }
     });
 

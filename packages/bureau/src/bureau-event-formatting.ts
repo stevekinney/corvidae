@@ -76,18 +76,33 @@ function tierOf(value: unknown): FormattedEventTier {
   return FORMATTED_EVENT_TIERS.find((tier) => tier === value) ?? 'info';
 }
 
+/** The origin a link is resolved against to prove it stays in the router. */
+const ROUTER_BASE = 'https://router.invalid';
+
 /**
- * The link a formatter gave, when it is a path in the host's router: it starts with one `/`. A
- * URL, a relative path and a protocol-relative `//host` (which a browser resolves to another
- * origin) are dropped.
+ * The link a formatter gave, when it is a path in the host's router: it starts with one `/`,
+ * holds no whitespace or control character, and resolves to the router's own origin. A URL, a
+ * relative path and a protocol-relative `//host` (which a browser resolves to another origin) are
+ * dropped.
  */
 function routerLinkOf(value: unknown): string | undefined {
-  return typeof value === 'string' &&
-    value.startsWith('/') &&
-    !value.startsWith('//') &&
-    !value.startsWith('/\\')
-    ? value
-    : undefined;
+  if (
+    typeof value !== 'string' ||
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.startsWith('/\\')
+  ) {
+    return undefined;
+  }
+  // The URL parser strips a tab, a line feed and a carriage return wherever they fall, so
+  // `/<tab>/host` resolves as `//host`: no whitespace or control character may remain.
+  if (/[\s\p{Cc}]/u.test(value)) return undefined;
+  try {
+    // Whatever the check above missed, a link that leaves the router's origin is dropped.
+    return new URL(value, ROUTER_BASE).origin === ROUTER_BASE ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Formats events with the formatters it was built from. */

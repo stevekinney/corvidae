@@ -429,8 +429,9 @@ export interface PluginFormatting {
   readonly icon?: string;
   /**
    * Where the view sends the reader for more, as a path in the host's router: it starts with one
-   * `/`. The host drops any other value (a URL, a `//host` path, a relative path), so a plugin
-   * cannot point the view at another origin.
+   * `/` and holds no whitespace or control character. The host drops any other value (a URL, a
+   * `//host` path, a relative path, a path with a tab or line break), so a plugin cannot point the
+   * view at another origin.
    */
   readonly link?: string;
 }
