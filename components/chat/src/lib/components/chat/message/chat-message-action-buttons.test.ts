@@ -84,11 +84,11 @@ describe('chat message action buttons', () => {
       ':global(.chat-message-action-button:not(.cinder-button))::after',
     );
     expect(coarse).toContain('inset-inline: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
-    // The region reaches 3px above the line and the rest of its 44px below it, never 10px up into
+    // The region reaches 2px above the line and the rest of its 44px below it, never 10px up into
     // the answer's last line (COR-2406): a symmetric region covered the middle of a one-line answer.
-    expect(coarse).toContain('inset-block-start: -3px;');
+    expect(coarse).toContain('inset-block-start: -2px;');
     expect(coarse).toContain(
-      'inset-block-end: calc(1.5rem - var(--cinder-touch-target-min) + 3px);',
+      'inset-block-end: calc(1.5rem - var(--cinder-touch-target-min) + 2px);',
     );
     expect(coarse.replace(/\s+/g, ' ')).toContain(
       ".chat-message-line :global(.cinder-button.chat-message-action-button[data-cinder-hit-target='44'])::before",

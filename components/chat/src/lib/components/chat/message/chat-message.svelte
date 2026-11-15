@@ -2154,8 +2154,8 @@
     );
   }
 
-  /* The line's actions reach 44px by a hit area that overhangs the line, 3px above and 17px below on a touch screen. The next
-   * message's bubble (`content-visibility: auto` makes it a stacking context painted in tree order)
+  /* The line's actions reach 44px by a hit area that overhangs the line, 2px above and 18px below on a touch screen. The
+   * next message's bubble (`content-visibility: auto` makes it a stacking context painted in tree order)
    * would otherwise paint over that overhang, so a tap just under Copy would land on the next
    * message's text. A stacking position of its own puts the line's overhang above it. */
   .chat-message-line {
@@ -2264,9 +2264,9 @@
    * an assistant's text, so the air between the last line's letters and the line's top edge is
    * about 2px; a region centred on the 24px box reached 10px up and covered the centre of a
    * one-line answer, which on Linux's narrower fonts is every answer that fits. The region takes
-   * 3px above the box (the fringe of the last line's descenders) and the rest of its 44px, 17px,
+   * 2px above the box (the fringe of the last line's descenders) and the rest of its 44px, 18px,
    * below it, where the message gap and the next message's own air lie (about 14px on a phone, so
-   * the region ends short of the middle of the next first line). */
+   * the region ends a few px into the next first line, short of its middle). */
   @media (any-pointer: coarse) {
     .chat-message-line :global(.chat-message-action-button:not(.cinder-button))::after {
       content: '';
@@ -2278,8 +2278,8 @@
     .chat-message-line
       :global(.cinder-button.chat-message-action-button[data-cinder-hit-target='44'])::before,
     .chat-message-line :global(.cinder-copy-button.chat-message-action-button)::before {
-      inset-block-start: -3px;
-      inset-block-end: calc(1.5rem - var(--cinder-touch-target-min) + 3px);
+      inset-block-start: -2px;
+      inset-block-end: calc(1.5rem - var(--cinder-touch-target-min) + 2px);
     }
   }
 
