@@ -31,7 +31,17 @@
     overflow: clip;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-default);
-    background: var(--cinder-surface);
+    /* A table takes a card's fill, so it reads as a white sheet beside a card in light and never
+     * darker than one in dark. The header row and the hover read this fill too: the header is
+     * set apart by muted text and a hairline, never by a darker band, and a hovered row takes a
+     * faint accent tint of the same fill. */
+    --_cinder-table-fill: var(--cinder-surface-raised);
+    --_cinder-table-row-hover: color-mix(
+      in oklch,
+      var(--_cinder-table-fill),
+      var(--cinder-accent-solid) 4%
+    );
+    background: var(--_cinder-table-fill);
     /* Longest a truncating cell's text may grow before it ellipsizes. */
     --_cinder-table-truncate-size: 28rem;
     /* Narrowest a cell that holds form controls may get. */
@@ -58,17 +68,19 @@
     -webkit-overflow-scrolling: touch;
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface);
-    /* The fade is opaque in the surface color; see _scroll-fade.css rule 1. */
-    --_cinder-scroll-fade-color: var(--cinder-surface);
+    background: var(--cinder-surface-raised);
+    /* The fade is opaque in the table's fill; see _scroll-fade.css rule 1. */
+    --_cinder-scroll-fade-color: var(--cinder-surface-raised);
   }
 
-  /* Frameless (COR-2311): a queue or list view sits on the page with no outline, radius or fill. */
+  /* Frameless (COR-2311): a queue or list view sits on the page with no outline, radius or fill.
+   * Its opaque parts (a sticky header, the hover tint) take the page's canvas instead. */
   .cinder-table[data-cinder-frameless],
   .cinder-table-scroll[data-cinder-frameless] {
     border: 0;
     border-radius: 0;
     background: transparent;
+    --_cinder-table-fill: var(--cinder-surface-canvas);
     --_cinder-scroll-fade-color: var(--cinder-surface-canvas);
   }
 
@@ -140,11 +152,11 @@
  * Header
  * ---------------------------------------- */
 
-  /* A quiet header: the same surface as the body, set apart by muted small
+  /* A quiet header: the same fill as the body, set apart by muted small
    * text and a hairline, not a filled bar. Sticky headers need an opaque
-   * background, which the surface supplies. */
+   * background, which the table's fill supplies. */
   .cinder-table__header {
-    background: var(--cinder-surface);
+    background: var(--_cinder-table-fill);
   }
 
   .cinder-table[data-cinder-sticky-header] .cinder-table__header {
@@ -280,7 +292,7 @@
 
   @media (hover: hover) {
     .cinder-table__sort-button:hover {
-      background: var(--cinder-surface-hover);
+      background: var(--_cinder-table-row-hover);
     }
   }
 
@@ -309,7 +321,7 @@
 
   @media (hover: hover) {
     .cinder-table__body .cinder-table__row:hover {
-      background: var(--cinder-surface-hover);
+      background: var(--_cinder-table-row-hover);
     }
   }
 

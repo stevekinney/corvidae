@@ -17,7 +17,18 @@
     scrollbar-gutter: stable;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface);
+    /* A grid takes a card's fill, like Table: a white sheet beside a card in light, never darker
+     * than one in dark. The header row, the rows and the pinned cells all read this one fill; the
+     * header is set apart by muted text and a hairline, and a hovered row takes a faint accent
+     * tint of the same fill. Every fill stays opaque, because sticky and pinned cells paint over
+     * the rows that scroll under them. */
+    --_cinder-data-grid-fill: var(--cinder-surface-raised);
+    --_cinder-data-grid-row-hover: color-mix(
+      in oklch,
+      var(--_cinder-data-grid-fill),
+      var(--cinder-accent-solid) 4%
+    );
+    background: var(--_cinder-data-grid-fill);
     color: var(--cinder-text-default);
     font-size: calc(var(--cinder-text-sm) * var(--_cinder-data-grid-zoom-scale));
     overscroll-behavior-inline: contain;
@@ -61,7 +72,7 @@
        floor, not a fixed height, so a larger zoom's bigger header text can
        still grow the row past it. */
     min-block-size: calc(2.3125rem * var(--_cinder-data-grid-zoom-scale));
-    background: var(--cinder-surface-inset);
+    background: var(--_cinder-data-grid-fill);
     box-shadow: var(--_cinder-data-grid-overflow-shadow, none);
   }
 
@@ -73,7 +84,7 @@
   }
 
   .cinder-data-grid__row {
-    background: var(--cinder-surface);
+    background: var(--_cinder-data-grid-fill);
     box-shadow: var(--_cinder-data-grid-overflow-shadow, none);
     transition: background var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
@@ -94,7 +105,7 @@
 
   @media (hover: hover) {
     .cinder-data-grid__row:hover {
-      background: var(--cinder-surface-hover);
+      background: var(--_cinder-data-grid-row-hover);
     }
   }
 
@@ -251,7 +262,7 @@
   }
 
   .cinder-data-grid__cell[data-cinder-selected] {
-    background: color-mix(in srgb, var(--cinder-accent-solid) 14%, var(--cinder-surface));
+    background: color-mix(in srgb, var(--cinder-accent-solid) 14%, var(--_cinder-data-grid-fill));
   }
 
   .cinder-data-grid__cell[data-cinder-selected][data-cinder-active] {
