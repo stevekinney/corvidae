@@ -545,6 +545,7 @@ export async function executeActivityOperationResult(
         reference,
         started,
         completedRecord,
+        operation,
       );
     }
     // Step succeeded durably: drop its tracked heartbeat. Guarded on the

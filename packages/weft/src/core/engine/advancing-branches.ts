@@ -305,14 +305,14 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
     }
     // What the operation stages for the checkpoint is caught here and committed with its result.
     const staged = new HeldSideEffects();
-    const stagedByOperation = captureSideEffects(run.internals, run.workflowId, staged.keep);
+    const endCapture = captureSideEffects(request, staged.keep);
     try {
-      const value = await stagedByOperation.run(() => run.execute(request, controller.signal));
+      const value = await run.execute(request, controller.signal);
       return { settled: { status: 'fulfilled', value }, staged };
     } catch (error) {
       return { settled: { status: 'rejected', error }, staged };
     } finally {
-      stagedByOperation.close();
+      endCapture();
     }
   };
 
@@ -432,8 +432,9 @@ export async function runAdvancingBranches(run: AdvancingRun): Promise<Advancing
   /** Hand the settled step on: to its parent branch, or, at the top, to the settling commit. */
   const handOn = (entry: ParallelOperationCacheEntry) => {
     if (run.nested === undefined) {
-      // The commit that settles the operation writes the entry; it writes what is still held too.
-      tree.held.stageRemaining(run.internals, run.workflowId);
+      // The commit that settles the operation writes the entry and what is still held: the
+      // workflow's, or that of the branch of another coordinator this step runs in.
+      tree.held.stageRemaining(run.internals, run.workflowId, operation);
     } else {
       run.nested.record(entry);
     }

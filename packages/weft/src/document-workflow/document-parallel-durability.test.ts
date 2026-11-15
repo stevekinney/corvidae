@@ -404,3 +404,82 @@ describe('what a branch`s settled step commits besides a signal', () => {
     expect(calls.filter((call) => call.endsWith(':x')).toSorted()).toEqual(['each:x', 'gated:x']);
   });
 });
+
+describe('two parallel steps in a row, the second restarted while it waits (round-two review 1)', () => {
+  // The first step's result is replayed from the checkpoint event of the commit that recorded it.
+  // A `file-workflow:*` event of a later document step in that commit carries a `step` of its own,
+  // which recovery once read as a checkpoint step and stopped at: the first step ran again and
+  // waited on a signal it had already consumed.
+  const twoSteps = [
+    parallel({ p: [wait('a')], q: [{ kind: 'activity', handler: 'count', input: 'one' }] }),
+    parallel({ r: [wait('b')], s: [{ kind: 'activity', handler: 'count', input: 'two' }] }),
+  ];
+  const rows = [
+    { name: 'at the top level', steps: twoSteps, expected: { r: 'B', s: 'two' } },
+    {
+      name: 'as the item of a map',
+      steps: [
+        { kind: 'activity', handler: 'list' },
+        { kind: 'map', over: 'items', steps: twoSteps },
+      ],
+      expected: [
+        { r: 'B', s: 'two' },
+        { r: 'B2', s: 'two' },
+      ],
+    },
+    {
+      name: 'as the item of a map in a branch',
+      steps: [
+        parallel({
+          m: [
+            { kind: 'activity', handler: 'list' },
+            { kind: 'map', over: 'items', steps: twoSteps },
+          ],
+          g: [wait('go')],
+        }),
+      ],
+      expected: {
+        g: 'G',
+        m: [
+          { r: 'B', s: 'two' },
+          { r: 'B2', s: 'two' },
+        ],
+      },
+    },
+  ] as const;
+  for (const [index, row] of rows.entries()) {
+    it(`replays the first step and waits only on the second ${row.name}`, async () => {
+      calls.length = 0;
+      const storage = new MemoryStorage();
+      const id = `two-parallel-steps-${String(index)}-run`;
+      const document = doc(`two-parallel-steps-${String(index)}`, row.steps);
+      {
+        await using original = await startEngine(storage, document);
+        const run = await original.start(document.name, null, { id });
+        await waitUntil(async () => isWaitingOn(original, id, 'a'), { message: 'a wait on a' });
+        await run.signal('a', 'A');
+        await waitUntil(async () => isWaitingOn(original, id, 'b'), { message: 'a wait on b' });
+      }
+      await using restarted = await startEngine(storage, document);
+      const [handle] = await restarted.recoverAll();
+      await restarted.signal(id, 'b', 'B');
+      if (Array.isArray(row.expected) || 'm' in row.expected) {
+        // The map's second item waits on `a`, then `b`, again.
+        await waitUntil(async () => isWaitingOn(restarted, id, 'a'), {
+          message: 'the second item to wait on a',
+        });
+        await restarted.signal(id, 'a', 'A2');
+        await waitUntil(async () => isWaitingOn(restarted, id, 'b'), {
+          message: 'the second item to wait on b',
+        });
+        await restarted.signal(id, 'b', 'B2');
+      }
+      if ('g' in row.expected) await restarted.signal(id, 'go', 'G');
+      expect(await handle!.result()).toEqual(row.expected);
+      // The first item's first step ran once: its result came back from the checkpoint.
+      expect(calls.filter((call) => call === 'one').length).toBe(
+        Array.isArray(row.expected) || 'm' in row.expected ? 2 : 1,
+      );
+    });
+  }
+});

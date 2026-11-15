@@ -15,8 +15,10 @@
  * @module engine/held-side-effects
  */
 
+import type { ContextOperationRequest } from '../context.ts';
 import {
   stageAtomicWorkflowCommitSideEffects,
+  stageOperationSideEffects,
   type AtomicWorkflowCommitSideEffects,
 } from './checkpoint-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
@@ -77,20 +79,36 @@ export class HeldSideEffects {
   }
 
   /**
-   * Hand what is still held to the workflow's staged buffer, as it would have been staged, or to
-   * the capture of an enclosing branch operation, which commits it with that operation's result.
+   * Hand what is still held to the workflow's staged buffer, as it would have been staged, or,
+   * given the `operation` that holds it, to the capture a coordinator attached to that operation,
+   * which commits it with the operation's result.
    */
-  stageRemaining(internals: EngineInternals, workflowId: string): void {
+  stageRemaining(
+    internals: EngineInternals,
+    workflowId: string,
+    operation?: ContextOperationRequest,
+  ): void {
     const remaining = this.#held;
     this.#held = [];
     for (const entry of remaining) {
-      stageAtomicWorkflowCommitSideEffects(
-        internals,
-        workflowId,
-        entry.sideEffects,
-        entry.token,
-        entry.bound,
-      );
+      if (operation === undefined) {
+        stageAtomicWorkflowCommitSideEffects(
+          internals,
+          workflowId,
+          entry.sideEffects,
+          entry.token,
+          entry.bound,
+        );
+      } else {
+        stageOperationSideEffects(
+          internals,
+          workflowId,
+          operation,
+          entry.sideEffects,
+          entry.token,
+          entry.bound,
+        );
+      }
     }
   }
 }

@@ -34,6 +34,7 @@ import {
 import type { OperationWithCallerStack } from './operations-router.ts';
 import type { StateOperationCallbacks } from './operations-state.ts';
 import { normalizeRejectionReason, valuesFromSlots } from './parallel-dispatch.ts';
+import { inheritSideEffectCapture } from './side-effect-capture.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callMemoFunction } from './state-utilities.ts';
 import { workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
@@ -88,6 +89,11 @@ export async function executeSubOperation(
   const executor = subOperationExecutors[operation.type];
   if (!executor) {
     throw new Error(`Unsupported sub-operation type: ${operation.type}`);
+  }
+  // What a coordinator's operations stage belongs to the branch operation that runs them: a
+  // `parallel` or `race` passes the capture a coordinator attached to it on to its own operations.
+  if (operation.type === 'parallel' || operation.type === 'race') {
+    inheritSideEffectCapture(operation, operation.operations);
   }
 
   return executor(

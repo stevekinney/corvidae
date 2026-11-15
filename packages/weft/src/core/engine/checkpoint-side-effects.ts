@@ -1,7 +1,8 @@
 import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 
+import type { ContextOperationRequest } from '../context.ts';
 import type { EngineInternals } from './internals.ts';
-import { capturedSideEffectSink } from './side-effect-capture.ts';
+import { capturedSideEffectSinkOf } from './side-effect-capture.ts';
 
 export type AtomicWorkflowCommitSideEffects = {
   conditions: ConditionalBatchCondition[];
@@ -16,13 +17,6 @@ export function stageAtomicWorkflowCommitSideEffects(
   bindToExecutionGeneration = false,
 ): void {
   if (sideEffects.conditions.length === 0 && sideEffects.operations.length === 0) {
-    return;
-  }
-  // Staged by a branch operation of a coordinator that commits while its branches run: the
-  // coordinator writes it with that operation's result (see `side-effect-capture.ts`).
-  const capturedSink = capturedSideEffectSink(internals, workflowId);
-  if (capturedSink !== undefined) {
-    capturedSink(sideEffects, workflowExecutionToken, bindToExecutionGeneration);
     return;
   }
   if (bindToExecutionGeneration) {
@@ -40,6 +34,33 @@ export function stageAtomicWorkflowCommitSideEffects(
 
   pending.conditions.push(...sideEffects.conditions);
   pending.operations.push(...sideEffects.operations);
+}
+
+/**
+ * Stage side effects `operation` asked for, for the next checkpoint: into the capture a
+ * coordinator attached to the operation, which commits them with the operation's result (see
+ * `side-effect-capture.ts`), or else into the workflow's staged buffer.
+ */
+export function stageOperationSideEffects(
+  internals: EngineInternals,
+  workflowId: string,
+  operation: ContextOperationRequest,
+  sideEffects: AtomicWorkflowCommitSideEffects,
+  workflowExecutionToken?: string,
+  bindToExecutionGeneration = false,
+): void {
+  const sink = capturedSideEffectSinkOf(operation);
+  if (sink === undefined) {
+    stageAtomicWorkflowCommitSideEffects(
+      internals,
+      workflowId,
+      sideEffects,
+      workflowExecutionToken,
+      bindToExecutionGeneration,
+    );
+  } else if (sideEffects.conditions.length > 0 || sideEffects.operations.length > 0) {
+    sink(sideEffects, workflowExecutionToken, bindToExecutionGeneration);
+  }
 }
 
 /** Stage side effects bound to the run generation `workflowExecutionToken` names. */

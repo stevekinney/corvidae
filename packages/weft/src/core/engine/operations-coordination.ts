@@ -171,11 +171,11 @@ function createSlotCommitter(
   };
   return {
     execute: async (index, execute) => {
-      const capture = captureSideEffects(internals, workflowId, staged[index]!.keep);
+      const endCapture = captureSideEffects(operation.operations[index]!, staged[index]!.keep);
       try {
-        return await capture.run(execute);
+        return await execute();
       } finally {
-        capture.close();
+        endCapture();
       }
     },
     onSlotSettled: (slots, index) => {
