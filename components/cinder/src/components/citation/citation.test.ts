@@ -410,7 +410,7 @@ describe('Citation', () => {
     const css = stylesheet();
     const panel = /\.cinder-citation__panel \{[^}]*\}/.exec(css)?.[0] ?? '';
 
-    expect(panel).toContain('padding-block: 0;');
+    expect(panel).toContain('padding: 0;');
     expect(css).toContain(
       '.cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__header',
     );
