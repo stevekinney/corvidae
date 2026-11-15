@@ -98,6 +98,7 @@
     submitLabel = 'Submit',
     variant = 'default',
     submitVisible = true,
+    hosted = false,
     class: customClassName,
     onSubmit,
     onDraftChange,
@@ -125,7 +126,7 @@
 
   const { initialModel, initialFormValue } = createInitialState();
   const model = $derived(createSchemaFormModel(schema, modelOptions()));
-  let formElement = $state<HTMLFormElement>();
+  let formElement = $state<HTMLElement>();
   let serializedInputElement = $state<HTMLInputElement>();
   let submitting = $state(false);
   let allowNativeSubmit = false;
@@ -172,7 +173,7 @@
   let jsonError = $state<string | undefined>();
 
   // The panel prints the whole value as text, which a form with a secret field cannot do safely.
-  const jsonPanelAllowed = $derived(jsonEditable && !schemaHoldsConcealedField(schema));
+  const jsonPanelAllowed = $derived(jsonEditable && !hosted && !schemaHoldsConcealedField(schema));
   const largeForm = $derived(countLeafFields(model.field) > LARGE_FORM_FIELD_THRESHOLD);
   const filterQuery = $derived(filterText.trim().toLowerCase());
 
@@ -433,7 +434,7 @@
       if (shouldResumeNativeSubmit()) {
         allowNativeSubmit = true;
         await tick();
-        formElement?.requestSubmit(nativeSubmitter(event));
+        (formElement as HTMLFormElement | undefined)?.requestSubmit(nativeSubmitter(event));
       }
     } finally {
       if (activeSubmitId === submitId) submitting = false;
@@ -486,7 +487,7 @@
     ...(error !== undefined ? { error } : {}),
   }}
 
-  {#if field.kind === 'object' && largeForm}
+  {#if field.kind === 'object' && largeForm && !hosted}
     <Collapsible
       idBase={id}
       class="cinder-schema-form__group"
@@ -734,13 +735,16 @@
   {/if}
 {/snippet}
 
-<form
+<svelte:element
+  this={hosted ? 'div' : 'form'}
   {...rest}
   id={formId}
   bind:this={formElement}
   class={classNames('cinder-schema-form', customClassName)}
-  novalidate={novalidate ?? true}
-  onsubmit={handleSubmit}
+  data-cinder-hosted={hosted ? '' : undefined}
+  role={hosted ? 'group' : undefined}
+  novalidate={hosted ? undefined : (novalidate ?? true)}
+  onsubmit={hosted ? undefined : handleSubmit}
 >
   {#if rootError}
     <p
@@ -795,14 +799,16 @@
 
   {@render renderFields(rootFields)}
 
-  <input
-    bind:this={serializedInputElement}
-    type="hidden"
-    {name}
-    value={formState.serializedValue}
-  />
+  {#if !hosted}
+    <input
+      bind:this={serializedInputElement}
+      type="hidden"
+      {name}
+      value={formState.serializedValue}
+    />
+  {/if}
 
-  {#if submitVisible}
+  {#if submitVisible && !hosted}
     <Button
       type="submit"
       variant="primary"
@@ -811,4 +817,4 @@
       label={submitting ? 'Validating...' : submitLabel}
     />
   {/if}
-</form>
+</svelte:element>

@@ -1,7 +1,13 @@
 import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { directoryExists, ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
+import {
+  directoryExists,
+  ensureDirectory,
+  readEntry,
+  readEntryConcurrently,
+  writePrivateFile,
+} from './entry-guard.ts';
 import { sanitizeCause } from './error-code.ts';
 import { BungalowError, BungalowInputError } from './errors.ts';
 import { assertSecretKey } from './validation.ts';
@@ -113,7 +119,8 @@ function assertInput(input: PrepareSecretInput): void {
     throw new BungalowInputError('A secret value and expected revision are required.');
   }
 }
-function encode(reference: Omit<SecretReference, 'serialized'>): SecretReference {
+/** Not part of the package's public surface: the conformance checks build a reference with it. */
+export function encode(reference: Omit<SecretReference, 'serialized'>): SecretReference {
   const payload = JSON.stringify([reference.workspaceId, reference.key, reference.version]);
   return { ...reference, serialized: PREFIX + Buffer.from(payload).toString('base64url') };
 }
@@ -254,7 +261,7 @@ export function createLocalProvider(
     for (const [directory, directoryLabel] of directories) {
       if (!directoryExists(directory, directoryLabel)) return undefined;
     }
-    return readEntry(path, label);
+    return readEntryConcurrently(path, label);
   };
   const managedDirectory = [managed, 'managed secret directory'] as const;
   const versionsDirectory = [versions, 'secret versions directory'] as const;

@@ -240,17 +240,23 @@ test.describe('the list', () => {
         checkA11y,
       }) => {
         await page.setViewportSize({ width, height: 900 });
-        // A fresh host: the Bureau has no file. The engine holds only the types the Bureau registers.
+        // A fresh host: the Bureau has no file. The engine holds the types the Bureau registers for
+        // itself and the code workflows plugins contributed, which the Bureau's list still names
+        // (`kind: 'code'`) and the page leaves out of its rows, so only the files are taken away.
         await page.route(/\/bureau\/jsonrpc/, async (route) => {
           const body = route.request().postData() ?? '';
           if (!body.includes('"bureau.workflows.list"')) {
             await route.fallback();
             return;
           }
-          const id = (JSON.parse(body) as { id?: unknown }).id ?? null;
-          await route.fulfill({
-            json: { jsonrpc: '2.0', id, result: { workflows: [], nextOffset: null } },
-          });
+          const response = await route.fetch();
+          const json = (await response.json()) as {
+            result?: { workflows?: Array<{ kind?: string }> };
+          };
+          if (json.result?.workflows !== undefined) {
+            json.result.workflows = json.result.workflows.filter((entry) => entry.kind === 'code');
+          }
+          await route.fulfill({ response, json });
         });
         await page.goto('/workflows');
         await expect(area(page)).toHaveAttribute('data-state', 'ready');

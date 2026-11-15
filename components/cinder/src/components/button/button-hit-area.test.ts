@@ -65,3 +65,20 @@ describe('coarse pointer hit area', () => {
     expect(coarse).not.toContain('border-width');
   });
 });
+
+describe('an icon passed as the button’s own child', () => {
+  test('is sized by the button size step, so a bare 24px icon does not stretch the button', () => {
+    // A split button's caret (the trigger drawn as a Button) keeps its own size.
+    const direct = '> svg:not\\(\\.cinder-dropdown-trigger__caret\\)';
+    expect(buttonCss).toMatch(new RegExp(`\\.cinder-button ${direct} \\{`));
+    expect(buttonCss).toMatch(
+      new RegExp(`\\[data-cinder-size='sm'\\] ${direct} \\{[^}]*0\\.875rem`),
+    );
+    expect(buttonCss).toMatch(
+      new RegExp(`\\[data-cinder-size='xs'\\] ${direct} \\{[^}]*0\\.75rem`),
+    );
+    expect(buttonCss).toMatch(
+      new RegExp(`\\[data-cinder-size='lg'\\] ${direct} \\{[^}]*1\\.25rem`),
+    );
+  });
+});

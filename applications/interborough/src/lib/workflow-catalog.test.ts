@@ -57,13 +57,27 @@ describe('the list', () => {
     expect(rows).toHaveLength(2);
   });
 
-  test('leaves out the type of a code workflow a plugin contributed, which the engine holds as plugin__name', () => {
+  test('leaves out the type of each code workflow the Bureau lists, which the engine holds as plugin__name', () => {
+    const demo = {
+      kind: 'code',
+      id: 'demo:echo-input',
+      name: 'echo-input',
+      title: 'Echo input',
+      plugin: 'demo',
+      version: '1.0.0',
+    } as const;
     const rows = joinCatalog(
       [codeDefinition('demo__echo-input'), codeDefinition('order-processing')],
       [],
+      [demo],
     );
     expect(rows.map((row) => row.name)).toEqual(['order-processing']);
-    expect(joinCatalog([codeDefinition('demo__echo-input')], [])).toEqual([]);
+    expect(joinCatalog([codeDefinition('demo__echo-input')], [], [demo])).toEqual([]);
+  });
+
+  test('keeps no copy of the Bureau’s name grammar: a double-underscore name the Bureau did not list is a type like any other', () => {
+    const rows = joinCatalog([codeDefinition('nightly__rollup'), codeDefinition('Bad__Name')], []);
+    expect(rows.map((row) => row.name)).toEqual(['Bad__Name', 'nightly__rollup']);
   });
 
   test('leaves out a source with no Bureau file, so it reads the same before and after a restart', () => {

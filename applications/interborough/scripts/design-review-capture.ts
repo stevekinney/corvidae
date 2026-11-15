@@ -74,7 +74,9 @@ const SPECIFICATIONS = {
  * changed source and an unchanged one (`agent-duplicate.spec.ts`), a plugin's code agent edited in
  * place on its Settings and Access tabs with its versions and Restore, and the read-only tabs of an
  * agent whose plugin is disabled (`agent-plugin-editing.spec.ts`), and an open chat with no
- * message yet, one deleted while open, and both with no model provider (`chat-availability.spec.ts`).
+ * message yet, one deleted while open, and both with no model provider (`chat-availability.spec.ts`),
+ * and the workflow builder's step cards: a step of every kind, empty lists, the catalog loading and
+ * failing, the add menu, and the read-only phone (`workflow-builder-cards.spec.ts`).
  */
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/00-showcase.spec.ts',
@@ -113,6 +115,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/agent-duplicate.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
   'tests/e2e/chat-availability.spec.ts',
+  'tests/e2e/workflow-builder-cards.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

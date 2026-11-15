@@ -94,13 +94,7 @@ const host: Host = showcase
     )
   : await startHost(hostOptions);
 console.info(`Interborough is listening on ${host.url}`);
-console.info(
-  `Its state lives in ${
-    host.database.kind === 'sqlite'
-      ? dirname(host.database.path)
-      : 'the configured Postgres database'
-  }`,
-);
+console.info(`Its state lives in ${host.stateDescription}`);
 
 if (showcase) console.info('The showcase host holds the sample world at Monday, Nov 2, 10:45 AM.');
 

@@ -288,4 +288,111 @@ The one place the package reads `process.env` is `src/environment-configuration.
 
 A writable provider prepares a value with an operation ID, logical key, and expected configuration revision. Its private version payload atomically binds these inputs; the separate operation journal contains no value. Reusing an operation ID with different durable input conflicts, including recovery after a crash. References encode validated workspace/key/version identity; foreign workspace references are rejected before value access. `readVersion` resolves exactly that version and never falls back to a logical key or latest value.
 
-The application owns configuration bindings and the publication state machine: claim `prepared` to `publishing`, attempt one conditional configuration write, then record `published`, `abandoned`, or `unknown`. A committed reference activates even if the provider acknowledgement fails. An uncertain attempt is reconciled, never resent; a superseded uncertain version remains retained. Reclamation accepts only abandoned versions, and the application must first prove that no active binding references the version. Published versions and unknown operations have no automatic expiry. The local adapter relies on Bungalow's held root lock; a hosted adapter must implement its conditional transitions atomically across clients and pass conformance tests before use.
+The application owns configuration bindings and the publication state machine: claim `prepared` to `publishing`, attempt one conditional configuration write, then record `published`, `abandoned`, or `unknown`. A committed reference activates even if the provider acknowledgement fails. An uncertain attempt is reconciled, never resent; a superseded uncertain version remains retained. Reclamation accepts only abandoned versions, and the application must first prove that no active binding references the version. Published versions and unknown operations have no automatic expiry. The local adapter relies on Bungalow's held root lock; a hosted adapter must implement its conditional transitions atomically across clients and pass the conformance checks before use (see [Adding an environment](#adding-an-environment)).
+
+## Adding an environment
+
+An environment is a place a home can live: a different lock, a different store for deployment secrets, a different secret provider, or a whole new kind of home. Adding one is five steps.
+
+1. **Write an open function that returns a `Bungalow`.** A variation on a local home wraps `openLocalBungalow` (or `openRemoteBungalow`) and passes its own parts. A new kind of home builds the handle itself, with every member of the `Bungalow` type, and its methods and its `deploymentSecrets` throw `BungalowStateError` once it is closed. A secret provider takes only a workspace identity from its factory, so Bungalow cannot close one for you, and the checks do not ask a provider to throw after `close`.
+2. **Pass a lock and stores, or reuse the defaults.** `openLocalBungalow` takes `acquireLock` (a function from a root to a `RootLock`, which throws `BungalowLockedError` when the root is held), `deploymentSecrets` (a factory that receives the workspace identity and an `assertOpen` to call before every use), and `secretProvider` (a factory from a workspace identity to a `SecretProvider`). Leave one out and the default for that part applies: `flock(2)`, one file per key under `secrets/`, and the local managed provider.
+3. **State capabilities.** Say what the home is and what it can do, and never leave a caller to infer it from `mode`: `capabilities.sharedBetweenInstances` and `capabilities.personalMachine` describe the home, `configurationWriteCapability` says whether configuration can be written, `deploymentSecrets.writable` whether a deployment secret can, and `secretProvider.capabilities` whether the provider can prepare versions.
+4. **Add entries to Interborough's kind tables when the storage kind is new.** Interborough resolves the database and each content location through tables keyed by the `kind` string of the location: `DEFAULT_DATABASE_KINDS` and `DEFAULT_CONTENT_KINDS` in `applications/interborough/src/host/locations.ts`. `startHost` takes replacements as `databaseKinds` and `contentKinds`, and takes `openHome` to open the home through your function. An environment whose database and content are of a kind the tables already hold needs no entry.
+5. **Run the conformance checks.** `@lostgradient/bungalow/conformance` exports one check for each part. Each `check…` function rejects with a message naming the first rule the subject broke and nothing else (never a compared value, key, path, or cause, because the subject may hold a secret), and each `describe…` function registers the same rules as `bun:test` cases:
+
+| Check | Takes | Rules it holds the subject to |
+| --- | --- | --- |
+| `checkRootLock` and `describeRootLock` | `acquireLock`, which the check calls on a temporary root of its own | A second acquisition of a held root throws `BungalowLockedError`; release allows the next acquisition; release is safe to call twice. |
+| `checkDeploymentSecrets` and `describeDeploymentSecrets` | A function that returns a fresh store, and for a store that is not writable, the key and value it was seeded with | An unwritten key reads `undefined`; on a writable store a written key reads back; a store that is not writable rejects `write`; `read` and `write` reject an invalid key with `BungalowInputError`; `location` returns a string that does not contain the value. |
+| `checkSecretProvider` and `describeSecretProvider` | A function that returns a fresh provider for a workspace identity, and for a provider that cannot prepare, optionally the key and value it was seeded with | Chosen from the provider's own `capabilities`. One that can prepare keeps preparation idempotent, enforces the publication state machine, refuses a foreign reference, reclaims only an abandoned version, and refuses a malformed digest without echoing it. One that cannot prepare reads an unwritten or seeded key through `readLegacy`, rejects `prepare`, `transitionOperation`, and `reclaim` with code `read-only`, and rejects `readVersion` of a reference that names no stored version. |
+| `checkBungalow` and `describeBungalow` | `open`, which opens the same backing home on every call | Identity and capabilities are the same on reopen; a different configured `workspaceId` is refused; `content`, `s3Client`, `readConfiguration`, `writeConfiguration`, and the three members of `deploymentSecrets` throw `BungalowStateError` after `close`, and `close` is idempotent; `content` refuses reserved and malformed names; configuration writes and deployment-secret writes follow what the handle states with `configurationWriteCapability` and `deploymentSecrets.writable`. |
+
+The checks run on every part Bungalow ships, so a subject is held to the same rules as the defaults. A secret-provider case that writes a provider's files directly or reopens its root is not a rule a provider factory can express, and stays in this package's own tests. The example below brings its own lock and its own deployment-secret store, reuses the local secret provider, and runs all four checks:
+
+```typescript
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import {
+  BungalowInputError,
+  BungalowLockedError,
+  createLocalSecretProvider,
+  openLocalBungalow,
+  type Bungalow,
+  type DeploymentSecrets,
+  type DeploymentSecretsContext,
+  type RootLock,
+} from '@lostgradient/bungalow';
+import {
+  checkBungalow,
+  checkDeploymentSecrets,
+  checkRootLock,
+  checkSecretProvider,
+} from '@lostgradient/bungalow/conformance';
+
+/** A lock for a host that runs one process: a root is held from `acquire` until `release`. */
+const heldRoots = new Set<string>();
+function acquireLock(root: string): RootLock {
+  if (heldRoots.has(root)) throw new BungalowLockedError(root, undefined);
+  heldRoots.add(root);
+  let released = false;
+  return {
+    release() {
+      if (released) return;
+      released = true;
+      heldRoots.delete(root);
+    },
+  };
+}
+
+/** Deployment secrets kept in memory, which refuse use once the handle is closed. */
+function memorySecrets({ assertOpen }: DeploymentSecretsContext): DeploymentSecrets {
+  const values = new Map<string, string>();
+  const assertKey = (key: string): void => {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(key)) throw new BungalowInputError('A secret key is invalid.');
+  };
+  return {
+    writable: true,
+    async read(key) {
+      assertOpen();
+      assertKey(key);
+      return values.get(key);
+    },
+    async write(key, value) {
+      assertOpen();
+      assertKey(key);
+      values.set(key, value);
+    },
+    location(key) {
+      assertOpen();
+      assertKey(key);
+      return `memory:${key}`;
+    },
+  };
+}
+
+/** The open function: a local home with this lock, these secrets, and the local managed provider. */
+function openExample(root: string, options: { workspaceId?: string }): Promise<Bungalow> {
+  return openLocalBungalow({
+    name: 'example',
+    root,
+    ...options,
+    acquireLock,
+    deploymentSecrets: memorySecrets,
+    secretProvider: (workspaceId) => createLocalSecretProvider({ root, workspaceId }),
+  });
+}
+
+const root = mkdtempSync(join(tmpdir(), 'example-'));
+await checkRootLock(acquireLock);
+await checkDeploymentSecrets(() => memorySecrets({ workspaceId: 'example', assertOpen() {} }));
+await checkSecretProvider((workspaceId) =>
+  createLocalSecretProvider({ root: mkdtempSync(join(tmpdir(), 'example-secrets-')), workspaceId }),
+);
+await checkBungalow((options) => openExample(root, options));
+```
+
+Inside a test file, call `describeRootLock(acquireLock)` and the other `describe…` functions in place of `check…` to get each rule as its own case. The conformance module imports `bun:test`, so `@lostgradient/bungalow` itself never reaches it.
+
+Bungalow keeps its Bun-only APIs in a few modules (`lock.ts`, `remote.ts`, and `conformance.ts`), and `src/bun-only-apis.test.ts` fails when another module imports a `bun:` module, uses the `Bun` global as a value, or imports `bun:ffi` statically, or when a listed module no longer needs to be listed. That keeps a later Node or Electron host possible; it does not make the package run on Node.
