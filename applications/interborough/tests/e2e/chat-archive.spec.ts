@@ -98,7 +98,8 @@ for (const viewport of VIEWPORTS) {
       await expect(page.getByRole('dialog')).toHaveCount(0);
       const bar = archivedBar(page);
       await expect(bar).toBeVisible();
-      await expect(bar).toContainText(/Archived \w{3} \d{1,2}/);
+      // Chat keeps the date whole with a no-break space, which `\s` matches and a typed space does not.
+      await expect(bar).toContainText(/Archived\s\w{3}\s\d{1,2}/);
       await expect(composer(page)).toHaveCount(0);
       const newChat = bar.getByRole('link', { name: CHAT_COPY.composer.newChat, exact: true });
       await expect(newChat).toHaveAttribute('href', '/chats/new');
