@@ -461,7 +461,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       decideOptions: BureauDecideOptions = {},
     ): Promise<Decision<DecisionValue<Request>>> {
       // The caller owns `request` and `decideOptions`: read them once, before the first await.
-      const { principal, taskId, signal } = decideOptions;
+      const { principal, taskId, routingId, signal } = decideOptions;
       try {
         assertValidDecisionRequest(request);
       } catch (error) {
@@ -475,7 +475,11 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
           type: DECISION_MADE_AUDIT_TYPE,
           ...(principal === undefined ? {} : { principal }),
         },
-        detail: { kind, ...(digest === undefined ? {} : { schemaSha256: digest }) },
+        detail: {
+          kind,
+          ...(digest === undefined ? {} : { schemaSha256: digest }),
+          ...(routingId === undefined ? {} : { routingId }),
+        },
       };
       let answerer: Answerer;
       try {
@@ -503,6 +507,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
           outcome: 'answered',
           ...answererDetail(answerer, decision),
           ...(digest === undefined ? {} : { schemaSha256: digest }),
+          ...(routingId === undefined ? {} : { routingId }),
         },
       });
       return decision as Decision<DecisionValue<Request>>;
