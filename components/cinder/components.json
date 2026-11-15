@@ -495,7 +495,7 @@
       "exportName": "AudioPlayer",
       "category": "action",
       "status": "alpha",
-      "purpose": "Native audio element with Cinder media controls for play, pause, replay, and seeking.",
+      "purpose": "Native audio element with its own controls for play, pause, replay, seeking, and elapsed and total time.",
       "tags": ["media", "audio"],
       "useWhen": [
         "Playing a single audio track from an https, http, or blob URL with accessible controls."
@@ -6789,7 +6789,7 @@
       "exportName": "VideoPlayer",
       "category": "action",
       "status": "alpha",
-      "purpose": "Native video element with Cinder media controls for play, pause, replay, and seeking.",
+      "purpose": "Native video element with its own controls for play, pause, replay, seeking, elapsed and total time, mute, and full screen.",
       "tags": ["media", "video"],
       "useWhen": [
         "Playing a single video from an https, http, or blob URL with accessible controls.",

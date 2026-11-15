@@ -6,6 +6,7 @@
   import { classNames } from '../../utilities/class-names.ts';
   import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
   import type { MediaControlsProps } from './media-controls.types.ts';
+  import { formatMediaTime, seekFractionForKey } from './media-time.ts';
 
   let {
     playing = false,
@@ -20,9 +21,23 @@
     onPause,
     onReplay,
     onSeek,
+    elapsed,
+    duration,
+    muted = false,
+    onToggleMute,
+    fullscreen = false,
+    onToggleFullscreen,
     class: customClassName,
     ...rest
   }: MediaControlsProps = $props();
+
+  // The time reads only once the length is known: a live stream's Infinity and an unloaded
+  // element's NaN show no time rather than a misleading 0:00.
+  const hasTime = $derived(
+    Number.isFinite(duration) && (duration as number) > 0 && Number.isFinite(elapsed),
+  );
+  const elapsedText = $derived(formatMediaTime(elapsed ?? 0));
+  const durationText = $derived(formatMediaTime(duration ?? 0));
 
   const isDisabled = $derived(disabled || loading || unavailable);
   const iconOnly = $derived(layout === 'compact');
@@ -34,6 +49,9 @@
     Number.isFinite(progress) ? Math.max(0, Math.min(1, progress as number)) : 0,
   );
   const progressPercent = $derived(Math.round(clampedProgress * 100));
+  const progressText = $derived(
+    hasTime ? `${elapsedText} of ${durationText}` : `${progressPercent}%`,
+  );
 
   let announcement = $state('');
 
@@ -59,6 +77,27 @@
     if (isDisabled) return;
     const next = event.currentTarget.valueAsNumber;
     if (Number.isFinite(next)) onSeek?.(Math.max(0, Math.min(1, next)));
+  }
+
+  // With a known length, the arrow keys move five seconds and Page Up and Page Down a tenth,
+  // whatever the length; the slider's own step would move a hundredth, which is a fraction of a
+  // second on a short clip and half a minute on an hour. Home and End stay native.
+  function handleSeekKey(event: KeyboardEvent & { currentTarget: HTMLInputElement }) {
+    if (isDisabled || !hasTime) return;
+    const next = seekFractionForKey(event.key, clampedProgress, duration as number);
+    if (next === undefined) return;
+    event.preventDefault();
+    onSeek?.(next);
+  }
+
+  function handleToggleMute() {
+    if (disabled) return;
+    onToggleMute?.();
+  }
+
+  function handleToggleFullscreen() {
+    if (disabled) return;
+    onToggleFullscreen?.();
   }
 
   function handlePrimaryAction() {
@@ -215,13 +254,14 @@
       type="range"
       class="cinder-media-controls__seek"
       aria-label={progressLabel}
-      aria-valuetext="{progressPercent}%"
+      aria-valuetext={progressText}
       aria-disabled={isDisabled ? 'true' : undefined}
       min="0"
       max="1"
-      step="0.01"
+      step={hasTime ? 'any' : '0.01'}
       value={clampedProgress}
       oninput={handleSeek}
+      onkeydown={handleSeekKey}
     />
   {:else if hasProgress}
     <div
@@ -231,12 +271,89 @@
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={progressPercent}
-      aria-valuetext="{progressPercent}%"
+      aria-valuetext={progressText}
     >
       <div class="cinder-media-controls__progress-track">
         <div class="cinder-media-controls__progress-fill" style:width="{progressPercent}%"></div>
       </div>
     </div>
+  {/if}
+
+  {#if hasTime}
+    <!-- The slider's value text already speaks the time, so the visible copy stays out of the
+         accessibility tree rather than reading twice. -->
+    <span class="cinder-media-controls__time" aria-hidden="true">
+      <span class="cinder-media-controls__elapsed">{elapsedText}</span>
+      <span class="cinder-media-controls__time-separator">/</span>
+      <span class="cinder-media-controls__duration">{durationText}</span>
+    </span>
+  {/if}
+
+  {#if onToggleMute && !unavailable}
+    <button
+      type="button"
+      class="cinder-media-controls__action"
+      aria-label="Mute"
+      aria-pressed={muted ? 'true' : 'false'}
+      aria-disabled={disabled ? 'true' : undefined}
+      data-cinder-action="mute"
+      onclick={handleToggleMute}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="cinder-media-controls__svg"
+        aria-hidden="true"
+      >
+        <path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor" />
+        {#if muted}
+          <line x1="22" y1="9" x2="16" y2="15" />
+          <line x1="16" y1="9" x2="22" y2="15" />
+        {:else}
+          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+          <path d="M19 5a10 10 0 0 1 0 14" />
+        {/if}
+      </svg>
+    </button>
+  {/if}
+
+  {#if onToggleFullscreen && !unavailable}
+    <button
+      type="button"
+      class="cinder-media-controls__action"
+      aria-label="Full screen"
+      aria-pressed={fullscreen ? 'true' : 'false'}
+      aria-disabled={disabled ? 'true' : undefined}
+      data-cinder-action="fullscreen"
+      onclick={handleToggleFullscreen}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="cinder-media-controls__svg"
+        aria-hidden="true"
+      >
+        {#if fullscreen}
+          <path
+            d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"
+          />
+        {:else}
+          <path
+            d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"
+          />
+        {/if}
+      </svg>
+    </button>
   {/if}
 </div>
 

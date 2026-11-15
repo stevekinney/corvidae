@@ -849,6 +849,13 @@ describe('forced-colors fallbacks — issue #460', () => {
       expectedOffset: '3px',
     },
     {
+      name: 'media-controls action',
+      css: mediaControlsCss,
+      selector: '.cinder-media-controls__action:focus-visible',
+      // border:0 — borderless, no ButtonBorder merge risk
+      expectedOffset: '2px',
+    },
+    {
       name: 'permission-matrix cell-control button',
       css: permissionMatrixCss,
       selector: 'button.cinder-permission-matrix__cell-control:focus-visible',

@@ -3,7 +3,7 @@
    * @cinder
    * @category action
    * @status alpha
-   * @purpose Native audio element with Cinder media controls for play, pause, replay, and seeking.
+   * @purpose Native audio element with its own controls for play, pause, replay, seeking, and elapsed and total time.
    * @tag media
    * @tag audio
    * @useWhen Playing a single audio track from an https, http, or blob URL with accessible controls.
@@ -57,5 +57,7 @@
     onPause={player.pause}
     onReplay={player.replay}
     onSeek={player.seek}
+    elapsed={player.currentTime}
+    duration={player.duration}
   />
 </div>

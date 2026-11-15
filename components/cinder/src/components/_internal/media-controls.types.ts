@@ -3,7 +3,7 @@ import type { HTMLAttributes } from 'svelte/elements';
 /** Layout mode: compact icon-only or expanded icon+label. */
 export type MediaControlsLayout = 'compact' | 'expanded';
 
-/** Props for the MediaControls component. */
+/** Props for the private MediaControls that AudioPlayer and VideoPlayer render. */
 export type MediaControlsProps = Omit<
   HTMLAttributes<HTMLDivElement>,
   'class' | 'children' | 'onplay' | 'onpause'
@@ -35,56 +35,18 @@ export type MediaControlsProps = Omit<
    * Providing it turns the progress bar into a seek slider; it needs `progress` to render.
    */
   onSeek?: (progress: number) => void;
+  /** Playback position in seconds. With a finite `duration`, shows the elapsed and total time. */
+  elapsed?: number | undefined;
+  /** Total length in seconds. With `elapsed`, shows the time and moves the seek slider by seconds. */
+  duration?: number | undefined;
+  /** Whether the sound is muted. @default false */
+  muted?: boolean;
+  /** Called when the user toggles mute. Providing it renders the mute toggle. */
+  onToggleMute?: () => void;
+  /** Whether the player fills the screen. @default false */
+  fullscreen?: boolean;
+  /** Called when the user toggles full screen. Providing it renders the full-screen toggle. */
+  onToggleFullscreen?: () => void;
   /** Additional class names merged with `.cinder-media-controls`. */
   class?: string;
 };
-
-/**
- * Cinder-specific props for MediaControls, used by the schema generator.
- */
-export interface MediaControlsSchemaProps {
-  /**
-   * Whether playback is active.
-   * @default false
-   */
-  playing?: boolean;
-  /**
-   * Show a replay action when the track has ended.
-   * @default false
-   */
-  replay?: boolean;
-  /**
-   * Disable all controls.
-   * @default false
-   */
-  disabled?: boolean;
-  /**
-   * Show loading state while media is buffering.
-   * @default false
-   */
-  loading?: boolean;
-  /**
-   * Controls are unavailable.
-   * @default false
-   */
-  unavailable?: boolean;
-  /** Progress value between 0 and 1. Omit to hide the progress bar. */
-  progress?: number;
-  /** Accessible label for the progress bar. */
-  progressLabel?: string;
-  /**
-   * Layout mode.
-   * @default "compact"
-   */
-  layout?: MediaControlsLayout;
-  /** Additional class names merged with `.cinder-media-controls`. */
-  class?: string;
-  /** Called when the play action is triggered. */
-  onPlay?: () => void;
-  /** Called when the pause action is triggered. */
-  onPause?: () => void;
-  /** Called when the replay action is triggered. */
-  onReplay?: () => void;
-  /** Called with the requested position (0 to 1) when the seek slider changes. */
-  onSeek?: (progress: number) => void;
-}

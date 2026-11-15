@@ -18,4 +18,17 @@
   .cinder-video-player__controls {
     inline-size: 100%;
   }
+
+  /* Full screen holds the whole player: the video takes the free height and the controls stay
+     under it on the page surface rather than the browser's black backdrop. */
+  .cinder-video-player:fullscreen {
+    grid-template-rows: minmax(0, 1fr) auto;
+    padding: var(--cinder-space-4);
+    background-color: var(--cinder-surface);
+  }
+
+  .cinder-video-player:fullscreen .cinder-video-player__media {
+    block-size: 100%;
+    object-fit: contain;
+  }
 }

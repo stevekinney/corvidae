@@ -28,6 +28,7 @@ export class MediaPlayerState {
   waiting = $state(false);
   currentTime = $state(0);
   duration = $state(Number.NaN);
+  muted = $state(false);
   readonly playable: boolean;
   readonly unavailable: boolean;
   readonly progress: number | undefined;
@@ -69,6 +70,11 @@ export class MediaPlayerState {
     ontimeupdate: () => this.#sync(),
     ondurationchange: () => this.#sync(),
     onloadedmetadata: () => this.#sync(),
+    // Mute can change outside the controls (a browser menu, a script), so the element is the
+    // source of truth and the toggle only asks it.
+    onvolumechange: () => {
+      if (this.element !== null) this.muted = this.element.muted;
+    },
     onerror: () => {
       this.#erroredSource = this.#getSource();
       this.playing = false;
@@ -106,6 +112,11 @@ export class MediaPlayerState {
     if (this.element === null || this.unavailable) return;
     this.element.currentTime = 0;
     this.play();
+  };
+
+  toggleMute = (): void => {
+    if (this.element === null || this.unavailable) return;
+    this.element.muted = !this.element.muted;
   };
 
   seek = (fraction: number): void => {

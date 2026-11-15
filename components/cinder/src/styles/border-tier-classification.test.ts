@@ -122,12 +122,6 @@ describe('COR-1552: bordered button resting edges keep the control tier', () => 
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, '_internal', 'media-controls.css'),
-      selector: '.cinder-media-controls__button',
-      property: 'border',
-      expected: 'control',
-    },
-    {
       file: join(COMPONENTS_ROOT, 'carousel', 'carousel.css'),
       selector: '.cinder-carousel__control',
       property: 'border',

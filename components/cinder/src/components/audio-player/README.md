@@ -1,6 +1,8 @@
 # AudioPlayer
 
-Native audio element with Cinder media controls for play, pause, replay, and seeking.
+Native audio element with its own controls for play, pause, replay, seeking, and elapsed and total time.
+
+The controls are one flat row: the filled play button, the seek slider, then the elapsed and total time (`1:05 / 3:20`, or `1:02:05` from an hour up) once the length is known. The arrow keys move the slider five seconds and Page Up and Page Down a tenth of the track; Home and End go to the start and the end.
 
 ## Usage
 
