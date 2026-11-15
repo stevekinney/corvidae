@@ -319,14 +319,16 @@
           ...visible,
         ],
   );
-  const listState = $derived.by<'loading' | 'failed' | 'first-use' | 'no-match' | 'none' | 'rows'>(
-    () => {
-      if (shownList.data === undefined) return shownList.isError ? 'failed' : 'loading';
-      if (visible.length > 0) return 'rows';
-      if (!showingArchived && allRows.length === 0) return 'first-use';
-      return searching ? 'no-match' : 'none';
-    },
-  );
+  // A list with no open chat is first use only when nothing is archived either: with archived
+  // chats it says that none is open, over the row that opens the archived ones.
+  const listState = $derived.by<
+    'loading' | 'failed' | 'first-use' | 'all-archived' | 'no-match' | 'none' | 'rows'
+  >(() => {
+    if (shownList.data === undefined) return shownList.isError ? 'failed' : 'loading';
+    if (visible.length > 0) return 'rows';
+    if (!showingArchived && allRows.length === 0) return hasArchived ? 'all-archived' : 'first-use';
+    return searching ? 'no-match' : 'none';
+  });
   const noChats = $derived(sessions.data !== undefined && allRows.length === 0);
 
   function clearFilters(): void {
@@ -509,6 +511,28 @@
           data-changes
           href={router.href('/chats/new')}
           variant="primary"
+          size="sm"
+          onclick={openNewChat}
+        >
+          {CHAT_COPY.newChat}
+        </Button>
+      {/snippet}
+    </EmptyState>
+  {:else if listState === 'all-archived'}
+    {@const empty = CHAT_COPY.list.allArchived}
+    <EmptyState
+      kind="filtered"
+      size="compact"
+      headingLevel={3}
+      title={empty.title}
+      description={empty.description}
+    >
+      {#snippet icon()}<MessageSquare aria-hidden="true" />{/snippet}
+      {#snippet action()}
+        <Button
+          data-changes
+          href={router.href('/chats/new')}
+          variant="secondary"
           size="sm"
           onclick={openNewChat}
         >

@@ -102,6 +102,11 @@ export const CHAT_COPY = {
     /** First use: no chat has been started, and the one primary New chat is here. */
     emptyTitle: 'No chats yet',
     emptyDescription: 'Start one with an agent.',
+    /** No chat is open, but some are archived, in the row under this state. */
+    allArchived: {
+      title: 'No open chats',
+      description: 'Every chat is archived. Open them below, or start a new one.',
+    },
     /** A search that matched nothing says what was searched. */
     noMatchTitle: (search: string): string => `No chats match “${search}”`,
     noMatchDescription: 'Check the spelling or try another word.',
