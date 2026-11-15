@@ -2,6 +2,8 @@
 
 KanbanBoard is a controlled component. The `columns` prop is the committed source of truth, and every card move, column move, or collapse toggle is reported through `onColumnsChange(nextColumns, change)`.
 
+Without a `card` snippet, a card draws its `getCardLabel` text as its title, the same text its handle names ("Move Inventory alerts"), then the `cardMeta` and `cardTrailing` row under it. An avatar beside a visible name in `cardMeta` should carry `aria-hidden="true"`, so the name is read once.
+
 Card handles use the same keyboard model as SortableList: Space or Enter lifts and drops, ArrowUp and ArrowDown move within a column, ArrowLeft and ArrowRight move across visible non-collapsed columns, Home and End move within the current column, Escape cancels, and Tab cancels while allowing native focus movement.
 
 Column handles are keyboard reorder controls. Space or Enter lifts and drops a column, ArrowLeft and ArrowRight move the lifted column, Home and End jump to the first or last column, and Escape cancels.
