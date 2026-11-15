@@ -1,7 +1,8 @@
 /**
- * The CSS custom property that carries the height of the docked action bar on the page, in pixels,
- * safe area included. The toast region reads it to sit above the bar, and a page can read it to
- * pad its own content. It is set on the document element while a bar is mounted and removed after.
+ * The CSS custom property that carries the height of the bar docked at the bottom of the page, in
+ * pixels, safe area included: a DockedActionBar, docked FormActions, or a bottom NavigationBar (a
+ * phone's tab bar). The toast region reads it to sit above the bar, and a page can read it to pad
+ * its own content. It is set on the document element while a bar is mounted and removed after.
  */
 export const DOCKED_BAR_HEIGHT_PROPERTY = '--_cinder-docked-action-bar-height';
 

@@ -35,7 +35,7 @@ An explicit `duration` or `dismissible` overrides each default.
 
 ## Where the region sits
 
-A bottom-anchored region sits above whatever is docked to the bottom of the page and inside the bottom safe area, so a toast never covers Send or Connect a provider. Its offset is the on-screen keyboard (`--_cinder-keyboard-inset`) plus the height of a mounted [`DockedActionBar`](../docked-action-bar/README.md) (`--_cinder-docked-action-bar-height`, which already includes that bar's safe-area padding) or, with no bar, `env(safe-area-inset-bottom)`. On a phone the region spans the screen between two 12px gutters, and an action is a 44px target on touch and on a phone.
+A bottom-anchored region sits above whatever is docked to the bottom of the page and inside the bottom safe area, so a toast never covers Send or Connect a provider. Its offset is the on-screen keyboard (`--_cinder-keyboard-inset`) plus the height of a mounted [`DockedActionBar`](../docked-action-bar/README.md) or bottom [`NavigationBar`](../navigation-bar/README.md), the taller when there are both (`--_cinder-docked-action-bar-height`, which already includes that bar's safe-area padding) or, with no bar, `env(safe-area-inset-bottom)`. On a phone the region spans the screen between two 12px gutters, and an action is a 44px target on touch and on a phone.
 
 ## Props
 

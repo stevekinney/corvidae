@@ -18,7 +18,7 @@ Top-level navigation bar for primary site or app destinations. Use `placement="t
 </NavigationBar>
 ```
 
-Bottom placement keeps the same link semantics and leaves viewport pinning to the app shell:
+Bottom placement keeps the same link semantics and leaves viewport pinning to the app shell. A bottom bar publishes its height, as a [`DockedActionBar`](../docked-action-bar/README.md) does, so a bottom [`ToastRegion`](../toast-region/README.md) sits above its tabs instead of over them:
 
 ```svelte
 <div style="position: sticky; bottom: 0;">

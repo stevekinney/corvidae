@@ -1378,19 +1378,30 @@
       },
     }),
   );
+  // Whether an approval holds the chat on its person, for the status and for what holds Archive.
+  const approvalWaits = $derived(
+    approvalHoldsChat(
+      [...activity.groups.values()].flatMap((group) => group.entries),
+      context.data?.activity,
+    ),
+  );
   // The chat's state beside its title, in the shared status words: a person's turn first, then a
   // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
     if (endedByRestart) return CHAT_COPY.status.ended;
-    const hasPendingApproval = approvalHoldsChat(
-      [...activity.groups.values()].flatMap((group) => group.entries),
-      context.data?.activity,
-    );
-    if (hasPendingApproval || shownRequests.length > 0) return CHAT_COPY.status.waiting;
+    if (approvalWaits || shownRequests.length > 0) return CHAT_COPY.status.waiting;
     if (runGoing) return CHAT_COPY.status.running;
     if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
+  });
+  // What holds Archive back in the More menu, in the order and the words of the status: the
+  // person's turn first (an approval, or else a question), then a run going. The Bureau refuses to
+  // archive a chat in either state, so the menu says why before it is pressed.
+  const archiveBlock = $derived.by<'approval' | 'question' | 'running' | undefined>(() => {
+    if (chatStatus === CHAT_COPY.status.waiting) return approvalWaits ? 'approval' : 'question';
+    if (runGoing) return 'running';
+    return undefined;
   });
   // The call whose panel is open, with where it falls in its turn. A call that is gone (the page
   // moved to another chat, or the turn was read again without it) has no panel.
@@ -1957,6 +1968,7 @@
     {branching}
     canExport={hasExportableText(shown)}
     archived={archivedAt !== null}
+    {archiveBlock}
     onBranch={(messageId) => void branchThrough(messageId)}
     onExport={exportChat}
     onArchive={(archive) => void setArchived(archive, false)}

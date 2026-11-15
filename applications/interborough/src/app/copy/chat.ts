@@ -623,6 +623,15 @@ export const CHAT_COPY = {
     exportFault: 'The chat could not be exported.',
     /** Archive puts the chat away, out of the list, until it is unarchived; an archived chat's menu offers Unarchive. */
     archive: 'Archive',
+    /**
+     * Said as the hint on Archive while the chat cannot be archived yet, in the words of what holds
+     * it: an approval or a question waiting on the person, or a run that is going.
+     */
+    archiveBlocked: {
+      approval: 'Answer the waiting approval first, then archive the chat.',
+      question: 'Answer the waiting question first, then archive the chat.',
+      running: 'Wait for the run to finish or stop it, then archive the chat.',
+    },
     unarchive: 'Unarchive',
     /** What archiving or unarchiving says when it did not happen. */
     archiving: {

@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * The chat header's More menu: rename the chat, branch it from its last reply, export it as a
-   * Markdown file, archive it (or unarchive an archived one), and delete it. It draws the menu and owns the two actions that need a question
+   * Markdown file, archive it (or unarchive an archived one; Archive waits, with its reason, while
+   * the chat waits on its person or a run is going), and delete it. It draws the menu and owns the two actions that need a question
    * first, a title for Rename (`chat-rename-dialog.svelte`) and a confirmation for Delete, which
    * names the chat and says what happens to a run that is going. The page owns what Branch and
    * Export need from the conversation, and passes them in.
@@ -40,6 +41,12 @@
     canExport: boolean;
     /** Whether the chat is archived, so the menu offers Unarchive in place of Archive. */
     archived: boolean;
+    /**
+     * What holds the chat so it cannot be archived yet: an approval or a question waiting on the
+     * person, or a run that is going. Archive is offered disabled, with the reason, while one does,
+     * as Branch is while a run is going; `undefined` when nothing holds it.
+     */
+    archiveBlock: 'approval' | 'question' | 'running' | undefined;
     onBranch: (messageId: string) => void;
     onExport: () => void;
     /**
@@ -57,6 +64,7 @@
     branching,
     canExport,
     archived,
+    archiveBlock,
     onBranch,
     onExport,
     onArchive,
@@ -75,6 +83,11 @@
       : branchTarget === undefined
         ? copy.noBranchPoint
         : undefined,
+  );
+
+  // Unarchive is never held: an archived chat has no run and waits on nothing.
+  const archiveHint = $derived(
+    archived || archiveBlock === undefined ? undefined : copy.archiveBlocked[archiveBlock],
   );
 
   /** A run that was going when the chat was deleted may still be stopping. */
@@ -153,7 +166,12 @@
       <Download aria-hidden="true" size={14} />
       {copy.export}
     </Dropdown.Item>
-    <Dropdown.Item data-changes onclick={() => onArchive(!archived)}>
+    <Dropdown.Item
+      data-changes
+      title={archiveHint}
+      disabled={archiveHint !== undefined}
+      onclick={() => onArchive(!archived)}
+    >
       {#if archived}
         <ArchiveRestore aria-hidden="true" size={14} />
         {copy.unarchive}
