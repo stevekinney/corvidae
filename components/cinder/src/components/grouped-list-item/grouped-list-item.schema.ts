@@ -19,7 +19,7 @@ const schema = {
         },
       ],
       description:
-        "The number or word of a time-led row's lead, such as `45` or `9:30`, drawn large. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here.",
+        "The number or word of a time-led row's lead, such as `45` or `9:30`, drawn in semibold on the title's first line. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here.",
     },
     leadUnit: {
       enum: [

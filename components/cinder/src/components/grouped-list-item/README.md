@@ -39,7 +39,7 @@ Pass `actions` for a row whose button is its point, such as Review on an approva
 
 ## Time-led rows
 
-Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by time, such as a happy hour or a run that is about to start. The lead is a fixed 72px column, right-aligned, with a 24px tabular number and a 12px unit. The unit comes from a closed vocabulary: `min left`, `left`, `min to go`, `starts`, or a weekday (`Mon` to `Sun`). A range of times never goes in the lead; put it in the subtitle. `urgency="urgent"` draws the lead in the warning text colour and `urgency="soon"` mutes it. The name is 17px and wraps; the subtitle is 15px and muted, one line per item. A trailing value carries a distance or other meta. `staleAge` draws a gray clock and a short age, and only when the row is stale. A trailing `photo` is a 56px column at the end of the row and reserves no space when absent.
+Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by time, such as a happy hour or a run that is about to start. The lead is a fixed 72px column, right-aligned, with a 15px semibold tabular number on the title's first line and a 12px muted unit under it. The unit comes from a closed vocabulary: `min left`, `left`, `min to go`, `starts`, or a weekday (`Mon` to `Sun`). A range of times never goes in the lead; put it in the subtitle. `urgency="urgent"` draws the lead in the warning text colour and `urgency="soon"` mutes it. The title and subtitle are the basic row's: the title wraps, and the subtitle is muted, one line per item. A trailing value carries a distance or other meta. `staleAge` draws a gray clock and a short age, and only when the row is stale. A trailing `photo` is a 56px column at the end of the row and reserves no space when absent.
 
 ```svelte
 <script lang="ts">
@@ -83,7 +83,7 @@ Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by tim
 | `href` | `string` | no | — | Makes the whole row a link to this address. |
 | `leadingKind` | `"icon"` \| `"avatar"` \| `"media"` \| `"control"` | no | `"icon"` | What the leading slot holds. |
 | `leadUnit` | `"min left"` \| `"left"` \| `"min to go"` \| `"starts"` \| `"Mon"` \| `"Tue"` \| `"Wed"` \| `"Thu"` \| `"Fri"` \| `"Sat"` \| `"Sun"` | no | — | The small unit under the lead number, from a closed vocabulary. Used with `leadValue`. |
-| `leadValue` | `string` \| `number` | no | — | The number or word of a time-led row's lead, such as `45` or `9:30`, drawn large. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here. |
+| `leadValue` | `string` \| `number` | no | — | The number or word of a time-led row's lead, such as `45` or `9:30`, drawn in semibold on the title's first line. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here. |
 | `rel` | `string` | no | — | The link's relationship; `noopener noreferrer` is added for `_blank`. |
 | `selected` | `boolean` | no | `false` | Marks the row as the current one with a tint. |
 | `staleAge` | `string` | no | — | A short age, such as `3d`, drawn with a gray clock before the trailing value. Give it only when the row's information is stale; a fresh row draws no marker. |

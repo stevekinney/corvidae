@@ -161,7 +161,8 @@
  * ---------------------------------------- */
 
   /* The lead is a fixed 72px column, right-aligned, so the numbers of every row line up on their
-     last digit. It aligns to the first line of a wrapping name. */
+     last digit. It aligns to the first line of a wrapping name. The row's title and subtitle are
+     the basic row's own: the lead is the only thing a time-led row adds. */
   .cinder-grouped-list-item__lead.cinder-grouped-list-item__lead--timed {
     display: flex;
     flex-direction: column;
@@ -173,10 +174,18 @@
     text-align: end;
   }
 
+  /* The lead and the text both start at the top, so the number shares the title's first line even
+     when the lead, a number and a unit, is taller than a title with no subtitle. */
+  .cinder-grouped-list-item--timed > .cinder-grouped-list-item__content {
+    align-items: flex-start;
+  }
+
+  /* One step above the title, in semibold, in a line one title line tall, so it sits on the title's
+     first line as a trailing value does. */
   .cinder-grouped-list-item__lead-value {
-    font-size: var(--cinder-text-3xl);
-    font-weight: 750;
-    line-height: 1.1;
+    font-size: var(--cinder-text-md);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--_cinder-grouped-list-item-title-line);
     font-variant-numeric: tabular-nums;
   }
 
@@ -198,15 +207,6 @@
 
   .cinder-grouped-list-item__lead[data-cinder-urgency='soon'] {
     color: var(--cinder-text-muted);
-  }
-
-  .cinder-grouped-list-item--timed .cinder-grouped-list-item__title {
-    font-size: 1.0625rem;
-    font-weight: var(--cinder-font-heading);
-  }
-
-  .cinder-grouped-list-item--timed .cinder-grouped-list-item__subtitle {
-    font-size: var(--cinder-text-md);
   }
 
   /* A stale marker is a gray clock and a short age. A fresh row renders none. */
