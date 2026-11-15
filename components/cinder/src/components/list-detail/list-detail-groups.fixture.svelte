@@ -1,6 +1,7 @@
 <script lang="ts">
   import { SelectableRow } from '../selectable-row/index.ts';
-  import ListDetail from './list-detail.svelte';
+  // Through the index, which loads the component's stylesheet; the bare `.svelte` file does not.
+  import { ListDetail } from './index.ts';
   import type { ListDetailProps } from './list-detail.types.ts';
 
   /* The documented tools example: a grouped list in a framed box, its first row selected, so the
