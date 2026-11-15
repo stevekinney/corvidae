@@ -186,6 +186,7 @@ export const appFixtureDeclarations = {
   spectrogram: ['assertion'],
   'spectrum-chart': ['assertion'],
   spinner: ['assertion'],
+  spotlight: ['assertion'],
   'stacked-list-item': ['assertion'],
   'statistic-group': ['assertion'],
   'statistic-group-nested': ['assertion'],

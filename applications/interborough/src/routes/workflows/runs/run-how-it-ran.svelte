@@ -21,7 +21,8 @@
   let { open = $bindable(false), children }: RunHowItRanProps = $props();
 </script>
 
-<div class="ib-run__section" data-section="how-it-ran">
+<!-- A disclosure, not a section: it has no heading of its own, only the trigger's words. -->
+<div data-section="how-it-ran">
   <Collapsible bind:open animated={false} variant="flat" trigger={RUN_DETAIL_COPY.howItRan.heading}>
     <p class="ib-run__note">{RUN_DETAIL_COPY.howItRan.caption}</p>
     {@render children()}

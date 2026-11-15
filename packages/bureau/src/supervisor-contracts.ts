@@ -23,15 +23,33 @@ export interface AgentDescriptor<D extends AgentDefinitions = AgentDefinitions> 
 }
 
 /**
+ * What the supervisor tells a {@link RoutingStrategy} about the routing step it is part of
+ * (COR-2420).
+ */
+export interface RoutingContext {
+  /**
+   * The id of this routing step, minted by the supervisor before the strategy runs. Every run the
+   * step starts takes its `runId` from it (`<routingId>-<index>`, in the order the strategy named
+   * the agents), and `task.routed` carries it. A strategy that records what it decided (such as
+   * `createDecisionRouting`'s `decision.made` audit record) names it there, which is how a
+   * decision is found from the runs it started, and a decision that started no run still names a
+   * step.
+   */
+  readonly routingId: string;
+}
+
+/**
  * Chooses one or more agents for a task from the catalog's descriptors.
  * `Promise<...>` is a real branch, not the whole return type, because
  * `createRoundRobinRouting`/`createFanOutRouting` resolve synchronously; a
  * caller-supplied strategy may await external state (a policy lookup, an
- * LLM-based router) before deciding.
+ * LLM-based router) before deciding. The optional `context` names the routing step
+ * ({@link RoutingContext}); a strategy that ignores it is unchanged.
  */
 export type RoutingStrategy<D extends AgentDefinitions> = (
   task: string,
   descriptors: readonly AgentDescriptor<D>[],
+  context?: RoutingContext,
 ) => AgentNames<D> | readonly AgentNames<D>[] | Promise<AgentNames<D> | readonly AgentNames<D>[]>;
 
 export type SynthesisStrategy = (results: SupervisorTaskResult[]) => string | Promise<string>;
@@ -62,10 +80,13 @@ export class TaskRoutedEvent extends Event {
   static readonly type = 'task.routed' as const;
   readonly task: string;
   readonly agentNames: string[];
-  constructor(task: string, agentNames: string[]) {
+  /** The routing step's id ({@link RoutingContext.routingId}); absent for a pipeline stage, which is not routed. */
+  readonly routingId?: string;
+  constructor(task: string, agentNames: string[], routingId?: string) {
     super(TaskRoutedEvent.type);
     this.task = task;
     this.agentNames = agentNames;
+    if (routingId !== undefined) this.routingId = routingId;
   }
 }
 

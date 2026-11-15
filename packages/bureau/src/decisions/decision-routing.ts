@@ -17,13 +17,17 @@ export interface DecisionRoutingOptions {
  * throws `BureauError` `NOT_FOUND`; one agent is returned without asking anything. A decision
  * that cannot be made, `NOT_CONFIGURED` or `DecisionSchemaError`, propagates as the supervisor's
  * error.
+ *
+ * The decision is asked before any run exists, so it names the supervisor's routing step: the
+ * `routingId` of the strategy's `RoutingContext` goes to `decide`, which records it on the
+ * `decision.made` record, and the runs the step starts take their ids from it (COR-2420).
  */
 export function createDecisionRouting<D extends AgentDefinitions>(
   decisions: DecisionSource,
   options: DecisionRoutingOptions = {},
 ): RoutingStrategy<D> {
   const { principal } = options;
-  return async (task, descriptors) => {
+  return async (task, descriptors, context) => {
     const [only, ...rest] = descriptors;
     if (only === undefined) {
       throw new BureauError('No agent is available to route the task to', 'NOT_FOUND');
@@ -38,7 +42,10 @@ export function createDecisionRouting<D extends AgentDefinitions>(
           label: descriptor.description ?? descriptor.name,
         })),
       },
-      principal === undefined ? {} : { principal },
+      {
+        ...(principal === undefined ? {} : { principal }),
+        ...(context === undefined ? {} : { routingId: context.routingId }),
+      },
     );
     return decision.value as AgentNames<D>;
   };

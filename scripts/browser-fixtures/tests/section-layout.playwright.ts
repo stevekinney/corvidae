@@ -34,6 +34,23 @@ test.describe('Section layout', () => {
     expect(Math.abs(centre(link!) - centre(title!))).toBeLessThanOrEqual(1);
   });
 
+  test('a title steps down by level: level 3 smaller than 2, level 4 smaller still and muted (COR-2329)', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('section'), { waitUntil: 'load' });
+    const levels = page.getByTestId('section-levels');
+    const style = (level: number) =>
+      levels.getByRole('heading', { level }).evaluate((element) => {
+        const computed = getComputedStyle(element);
+        return { size: Number.parseFloat(computed.fontSize), color: computed.color };
+      });
+    const [two, three, four] = await Promise.all([style(2), style(3), style(4)]);
+    expect(three.size).toBeLessThan(two.size);
+    expect(four.size).toBeLessThan(three.size);
+    expect(three.color).toBe(two.color);
+    expect(four.color).not.toBe(two.color);
+  });
+
   test('the Section draws no box', async ({ page }) => {
     await page.goto(fixtureRoute('section'), { waitUntil: 'load' });
     const section = page.locator('.cinder-section').first();
@@ -128,14 +145,59 @@ test.describe('GroupedList layout', () => {
     page,
   }) => {
     await page.goto(fixtureRoute('skeleton'), { waitUntil: 'load' });
-    const group = page.getByTestId('skeleton-still-loading');
-    const status = group.locator('.cinder-skeleton-status');
+    // COR-2329 round two: the line takes the first row's place; a line inserted above moved the
+    // rows when it appeared and again when the data arrived.
+    const slow = page.getByTestId('skeleton-still-loading');
+    const status = slow.locator('.cinder-skeleton-status');
     await expect(status).toContainText('Still loading reviews.');
+    const rowTops = async (testId: string) => {
+      const group = await page.getByTestId(testId).boundingBox();
+      const rows = page.getByTestId(testId).locator('.cinder-skeleton-grouped-row');
+      return Promise.all(
+        [0, 1].map(async (index) => (await rows.nth(index).boundingBox())!.y - group!.y),
+      );
+    };
+    // The rows sit where the same rows sit with no line.
+    const [withLine, withoutLine] = await Promise.all([
+      rowTops('skeleton-still-loading'),
+      rowTops('skeleton-grouped'),
+    ]);
+    for (const index of [0, 1]) {
+      expect(Math.abs(withLine[index]! - withoutLine[index]!)).toBeLessThanOrEqual(1);
+    }
+    // The line lies inside the first row, which shows no bars under it.
     const line = await status.boundingBox();
-    const first = await group.locator('.cinder-skeleton-grouped-row').first().boundingBox();
-    expect(line!.y + line!.height).toBeLessThanOrEqual(first!.y);
-    // It starts at the inline start, with the placeholders.
-    expect(Math.abs(line!.x - first!.x)).toBeLessThanOrEqual(1);
+    const first = await slow.locator('.cinder-skeleton-grouped-row').first().boundingBox();
+    expect(line!.y).toBeGreaterThanOrEqual(first!.y - 1);
+    expect(line!.y + line!.height).toBeLessThanOrEqual(first!.y + first!.height + 1);
+    await expect(
+      slow.locator('.cinder-skeleton-grouped-row').first().locator('.cinder-skeleton').first(),
+    ).toHaveCSS('visibility', 'hidden');
+    // The list variant's line, wrapped on a phone, still fits inside the first row.
+    for (const width of [1024, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      const list = page.getByTestId('skeleton-list-slow');
+      const listLine = await list.locator('.cinder-skeleton-status').boundingBox();
+      const second = await list.locator('.cinder-skeleton-row').nth(1).boundingBox();
+      expect(listLine!.y + listLine!.height, `list at ${width}`).toBeLessThanOrEqual(second!.y + 1);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    // A page's own placeholder: the block that holds the line keeps the page where it was.
+    const pageTops = async (testId: string) => {
+      const group = await page.getByTestId(testId).boundingBox();
+      return (
+        (await page.getByTestId(testId).getByTestId('after-place').boundingBox())!.y - group!.y
+      );
+    };
+    await expect(
+      page.getByTestId('skeleton-page-slow').locator('.cinder-skeleton-status'),
+    ).toContainText('Still loading Home.');
+    await expect(
+      page.getByTestId('skeleton-page-waiting').locator('.cinder-skeleton-status'),
+    ).toHaveText('');
+    expect(
+      Math.abs((await pageTops('skeleton-page-slow')) - (await pageTops('skeleton-page-waiting'))),
+    ).toBeLessThanOrEqual(1);
   });
 
   test('an empty row’s and a failed row’s actions end on the list buttons’ edge (COR-2329)', async ({
@@ -157,6 +219,101 @@ test.describe('GroupedList layout', () => {
       .boundingBox();
     expect(Math.abs(emptyAction!.x + emptyAction!.width - listEdge)).toBeLessThanOrEqual(1);
     expect(Math.abs(retry!.x + retry!.width - listEdge)).toBeLessThanOrEqual(1);
+  });
+
+  test('a trailing value is one line on the title’s line, and on a phone the subtitle runs under both (COR-2329)', async ({
+    page,
+  }) => {
+    const rows = page.getByTestId('grouped-list-trailing').locator('.cinder-grouped-list-item');
+    const measure = async (index: number) => {
+      const row = rows.nth(index);
+      const [title, subtitle, trailing, chevron, content] = await Promise.all(
+        [
+          '.cinder-grouped-list-item__title',
+          '.cinder-grouped-list-item__subtitle',
+          '.cinder-grouped-list-item__trailing',
+          '.cinder-grouped-list-item__chevron',
+          '.cinder-grouped-list-item__content',
+        ].map(async (selector) => (await row.locator(selector).boundingBox())!),
+      );
+      const titleLine = await row
+        .locator('.cinder-grouped-list-item__title')
+        .evaluate((element) => Number.parseFloat(getComputedStyle(element).lineHeight));
+      return {
+        title: title!,
+        subtitle: subtitle!,
+        trailing: trailing!,
+        chevron: chevron!,
+        content: content!,
+        titleLine,
+      };
+    };
+    for (const width of [1024, 375, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const index of [0, 1]) {
+        const { title, subtitle, trailing, chevron, content, titleLine } = await measure(index);
+        const at = `row ${index} at ${width}`;
+        // One line, never broken.
+        expect(trailing.height, `${at}: the value is one line`).toBeLessThanOrEqual(titleLine + 1);
+        // Centred on the title's first line, not on the row; the chevron too.
+        const firstLine = title.y + titleLine / 2;
+        expect(Math.abs(trailing.y + trailing.height / 2 - firstLine), at).toBeLessThanOrEqual(1);
+        expect(Math.abs(chevron.y + chevron.height / 2 - firstLine), at).toBeLessThanOrEqual(1);
+        if (width < 1024) {
+          // The subtitle takes the full width under the title and the value.
+          expect(subtitle.y, at).toBeGreaterThanOrEqual(trailing.y + trailing.height - 1);
+          expect(subtitle.y, at).toBeGreaterThanOrEqual(title.y + title.height - 1);
+          expect(Math.abs(subtitle.x - content.x), at).toBeLessThanOrEqual(1);
+          expect(subtitle.width, at).toBeGreaterThan(content.width - 12);
+        }
+      }
+    }
+    // A title alone in a row the 44px minimum makes taller, and a row beside an avatar: the title
+    // stays centred in the row, and the chevron and the value sit on its line.
+    await page.setViewportSize({ width: 1024, height: 900 });
+    for (const testId of ['row-title-only', 'row-avatar']) {
+      const row = page.getByTestId(testId);
+      const [rowBox, titleBox, chevronBox] = await Promise.all(
+        [
+          row,
+          row.locator('.cinder-grouped-list-item__title'),
+          row.locator('.cinder-grouped-list-item__chevron'),
+        ].map(async (locator) => (await locator.boundingBox())!),
+      );
+      const titleCentre = titleBox!.y + titleBox!.height / 2;
+      expect(Math.abs(titleCentre - (rowBox!.y + rowBox!.height / 2)), testId).toBeLessThanOrEqual(
+        1,
+      );
+      expect(
+        Math.abs(chevronBox!.y + chevronBox!.height / 2 - titleCentre),
+        testId,
+      ).toBeLessThanOrEqual(1);
+      if (testId === 'row-avatar') {
+        const valueBox = await row.locator('.cinder-grouped-list-item__trailing').boundingBox();
+        expect(Math.abs(valueBox!.y + valueBox!.height / 2 - titleCentre)).toBeLessThanOrEqual(1);
+      }
+    }
+    // The fixture's longer value beside a lead column: the title never breaks letter by letter.
+    await page.setViewportSize({ width: 320, height: 900 });
+    const indexRebuild = page
+      .locator('.cinder-grouped-list-item')
+      .filter({ hasText: 'Index rebuild' });
+    const title = await indexRebuild.locator('.cinder-grouped-list-item__title').boundingBox();
+    expect(title!.width).toBeGreaterThanOrEqual(80);
+    const value = await indexRebuild.locator('.cinder-grouped-list-item__trailing').boundingBox();
+    const valueLine = await indexRebuild
+      .locator('.cinder-grouped-list-item__title')
+      .evaluate((element) => Number.parseFloat(getComputedStyle(element).lineHeight));
+    expect(value!.height).toBeLessThanOrEqual(valueLine + 1);
+    const titleLines = await indexRebuild
+      .locator('.cinder-grouped-list-item__title')
+      .evaluate((element) =>
+        Math.round(
+          element.getBoundingClientRect().height /
+            Number.parseFloat(getComputedStyle(element).lineHeight),
+        ),
+      );
+    expect(titleLines).toBe(1);
   });
 
   test('text actions trail their row on a wide screen (COR-2329)', async ({ page }) => {

@@ -2,9 +2,15 @@ import { BungalowInputError } from './errors.ts';
 
 /** Bootstrap inputs never resolve through an injected managed-secret provider. */
 export type DeploymentSecrets = {
+  /**
+   * Whether `write` can succeed: `true` for the local file store, `false` for the environment
+   * store and for the store of a read-only home. Bungalow does not wrap an injected store to
+   * enforce it.
+   */
+  readonly writable: boolean;
   /** Read a validated deployment key; backend failure is distinct from absence. */
   read(key: string): Promise<string | undefined>;
-  /** Store a local deployment input; environment-backed inputs are read-only. */
+  /** Store a local deployment input; rejects with `BungalowStateError` when `writable` is `false`. */
   write(key: string, value: string): Promise<void>;
   /** Operator-facing location without a credential value. */
   location(key: string): string;
@@ -26,7 +32,10 @@ export type DeploymentSecretsContext = {
  */
 export type DeploymentSecretsFactory = (context: DeploymentSecretsContext) => DeploymentSecrets;
 
-/** The secrets an injected factory returns, refused unless they can be read, written, and located. */
+/**
+ * The secrets an injected factory returns, refused unless they can be read, written, and located
+ * and say with a boolean `writable` whether a write will work.
+ */
 export function injectedDeploymentSecrets(
   factory: DeploymentSecretsFactory,
   context: DeploymentSecretsContext,
@@ -40,10 +49,12 @@ export function injectedDeploymentSecrets(
     !('write' in secrets) ||
     typeof secrets.write !== 'function' ||
     !('location' in secrets) ||
-    typeof secrets.location !== 'function'
+    typeof secrets.location !== 'function' ||
+    !('writable' in secrets) ||
+    typeof secrets.writable !== 'boolean'
   ) {
     throw new BungalowInputError(
-      'The injected deployment secrets must have read, write, and location functions.',
+      'The injected deployment secrets must have read, write, and location functions and a boolean writable.',
     );
   }
   return secrets as DeploymentSecrets;

@@ -23,6 +23,17 @@
   </Section>
 </div>
 
+<!-- Titles step down by level (COR-2329): a section inside a section reads as part of it. -->
+<div data-testid="section-levels">
+  <Section title="Activity">
+    <Section level={3} title="Tool calls">
+      <Section level={4} title="Lookup order">
+        <p style="margin: 0;">Ran in 0.4 s.</p>
+      </Section>
+    </Section>
+  </Section>
+</div>
+
 <!-- A small "more" link as the action (COR-2329): centred on the title's line like a button. -->
 <div data-testid="section-more-link">
   <Section title="Needs attention">

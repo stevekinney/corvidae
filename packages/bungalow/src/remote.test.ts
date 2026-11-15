@@ -401,6 +401,7 @@ describe('remote mode: an explicit descriptor', () => {
       deploymentSecrets: (context) => {
         contexts.push(context);
         return {
+          writable: true,
           async read(key) {
             context.assertOpen();
             return `injected-${key}`;
@@ -434,6 +435,28 @@ describe('remote mode: an explicit descriptor', () => {
     });
     expect(await bungalow.deploymentSecrets.read('api-key')).toBe(SECRET_VALUE);
     expect(await bungalow.secretProvider.readLegacy('api-key')).toBe('managed');
+  });
+
+  test.each([
+    ['has no writable', {}],
+    ['has a writable that is not a boolean', { writable: 'yes' }],
+  ])('an injected store that %s refuses the open with BungalowInputError', async (_name, extra) => {
+    const server = startServer();
+    const error = await rejectionOf(
+      openRemoteBungalow({
+        name: TEST_NAME,
+        descriptor: handBuilt(server.endpoint),
+        databaseWorkspaceClaim: async () => {},
+        deploymentSecrets: () =>
+          ({
+            read: async () => undefined,
+            write: async () => {},
+            location: (key: string) => key,
+            ...extra,
+          }) as never,
+      }),
+    );
+    expect(error).toBeInstanceOf(BungalowInputError);
   });
 
   test('requires the database binding callback before any request', async () => {
@@ -746,6 +769,21 @@ describe('remote mode: the handle', () => {
     expect((error as Error).message).toBe('Could not read configuration.');
     expect((error as Error).cause).toEqual({ status: 500 });
     expectNothingLeaked(error, proxy.endpoint);
+  });
+
+  test('reports a home shared between instances and not on a personal machine', async () => {
+    const server = startServer();
+    using bungalow = await openRemote(server.endpoint);
+    expect(bungalow.capabilities).toEqual({ sharedBetweenInstances: true, personalMachine: false });
+  });
+
+  test('has environment deployment secrets that are not writable and reject write', async () => {
+    const server = startServer();
+    using bungalow = await openRemote(server.endpoint);
+    expect(bungalow.deploymentSecrets.writable).toBe(false);
+    expect(
+      await rejectionOf(bungalow.deploymentSecrets.write('api-key', 'new-sentinel-value')),
+    ).toBeInstanceOf(BungalowStateError);
   });
 
   test('reads secrets from <NAME>_SECRET_<KEY> and refuses to write them', async () => {

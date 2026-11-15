@@ -56,6 +56,13 @@ export interface BureauDecideOptions {
   readonly principal?: string;
   /** The task this decision is made for, when there is one: the audit record is filed under it. */
   readonly taskId?: string;
+  /**
+   * The id of the supervisor routing step this decision is made for (COR-2420), which
+   * `createDecisionRouting` passes from `RoutingContext.routingId`. It is recorded as `routingId` on
+   * the `decision.made` record, and the runs the step starts take their ids from it, so the decision
+   * is found from them. A routing decision has no run yet, so it names the step, not a `taskId`.
+   */
+  readonly routingId?: string;
   /** Cancels the in-flight request. */
   readonly signal?: AbortSignal;
 }
@@ -126,7 +133,8 @@ export interface BureauDecisions {
    * the kind, the `outcome` (`answered`, `refused` or `error`), the `row` that answered or was
    * chosen (`<provider>/<model>`) and the `path` it answered by (`native`, `adapter` or
    * `fallback`), the provider and model that answered, and the principal (and, for `structured`,
-   * the SHA-256 of the schema); a refusal or an error names its `reason` instead. It never holds
+   * the SHA-256 of the schema) and, for a routing decision, the `routingId` of its supervisor step;
+   * a refusal or an error names its `reason` instead. It never holds
    * the context or the value. No decision value is stored. A malformed request writes no record.
    */
   decide<Request extends DecisionRequest>(
