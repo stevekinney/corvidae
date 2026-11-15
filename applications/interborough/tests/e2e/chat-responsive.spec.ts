@@ -313,6 +313,54 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     ).toBeLessThan(20);
   });
 
+  test('at 320 by 640 with a provider connected, the waiting approval’s decision row is in view and not covered by the live composer (COR-2327 B1)', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    // The live composer, not the blocked row, stands under the transcript.
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
+    await expect(blockedRow(page)).toHaveCount(0);
+    const row = page.locator('[data-approval-decision]');
+    await expect(row).toBeFocused();
+    await expect(page.locator('[data-chat-approval-drawer]')).toHaveCount(0);
+    // One layout, read once: the transcript's box, the composer's, and each decision button's box
+    // with what a tap at its centre lands on.
+    const read = await page.evaluate(() => {
+      const rectOf = (node: Element | null) => {
+        if (node === null) return null;
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      const decision = document.querySelector('[data-approval-decision]');
+      const buttons = [...(decision?.querySelectorAll('button') ?? [])].filter((button) =>
+        ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
+      );
+      return {
+        transcript: rectOf(document.querySelector('.chat-timeline')),
+        composer: rectOf(document.querySelector('.chat-input')),
+        buttons: buttons.map((button) => {
+          const box = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return { box: rectOf(button), hitsItself: hit !== null && button.contains(hit) };
+        }),
+      };
+    });
+    expect(read.buttons).toHaveLength(2);
+    const transcript = read.transcript!;
+    const composer = read.composer!;
+    for (const button of read.buttons) {
+      const box = button.box!;
+      // In the transcript's view, above the composer, and a tap at its centre reaches it.
+      expect(box.y).toBeGreaterThanOrEqual(transcript.y - 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(transcript.y + transcript.height + 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(composer.y + 1);
+      expect(button.hitsItself).toBe(true);
+    }
+  });
+
   test('draws Deny and the primary as compact buttons on one row, the primary last, each with a 44px hit area and neither clipped by the card (06m)', async ({
     page,
   }) => {
