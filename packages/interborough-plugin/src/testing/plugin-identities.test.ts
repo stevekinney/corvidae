@@ -390,3 +390,51 @@ describe('a contributed code workflow', () => {
     expect(await digestOf(z.object({ team: z.number() }))).not.toBe(before);
   });
 });
+
+describe('a declared event (COR-2223)', () => {
+  const eventPlugin = (payload: z.ZodObject, version?: string) =>
+    definePlugin({
+      ...base,
+      setup: () => ({
+        events: [
+          { name: 'greeted', description: 'Someone was greeted.', payload },
+          ...(version === undefined
+            ? []
+            : [{ name: 'pinned', description: 'Pinned.', payload, version }]),
+        ],
+      }),
+    });
+  const identified = z.object({ greetingId: z.string().meta({ identifier: true }) });
+
+  test('is an event entry named plugin:name, at its own version or else the plugin version', async () => {
+    const identities = await pluginIdentities(eventPlugin(identified, '4.0.0'));
+    expect(identities.entries.filter(({ kind }) => kind === 'event')).toEqual([
+      {
+        kind: 'event',
+        id: 'example:greeted',
+        version: '1.2.0',
+        schema: expect.stringMatching(/^sha256:/),
+      },
+      {
+        kind: 'event',
+        id: 'example:pinned',
+        version: '4.0.0',
+        schema: expect.stringMatching(/^sha256:/),
+      },
+    ]);
+  });
+
+  test('digests the payload, so a changed field, or a field no longer marked as an identifier, changes it', async () => {
+    const digestOf = async (payload: z.ZodObject) => {
+      const identities = await pluginIdentities(eventPlugin(payload));
+      return identities.entries.find(({ kind }) => kind === 'event')?.schema;
+    };
+    const before = await digestOf(identified);
+    expect(await digestOf(z.object({ greetingId: z.string().meta({ identifier: true }) }))).toBe(
+      before,
+    );
+    expect(await digestOf(z.object({ greetingId: z.number() }))).not.toBe(before);
+    expect(await digestOf(z.object({ greetingId: z.string() }))).not.toBe(before);
+    expect(await digestOf(z.object({ greetingId: z.enum(['a']) }))).not.toBe(before);
+  });
+});

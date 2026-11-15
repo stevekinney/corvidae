@@ -9,7 +9,7 @@
  * contributions is registered. A plugin that passes registers every contribution through the
  * option it belongs to (`contributionCatalog`, `agentContributions`, `validators`, `hooks`,
  * `formatters`, `decisions`, `scorers`, the agent catalog, the agent tool catalog and the
- * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
+ * `memory` factory; a declared event is read from the plugin's record by `plugins.events()`), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
  * A disabled plugin registers nothing. Its `setup` still runs once, isolated, only to read the code
  * agents the agent catalog lists as `unavailable` (COR-2009); see `agentsOfDisabledPlugin`.
@@ -63,6 +63,7 @@ import {
   type VersionedCatalog,
 } from '../versioned-catalog';
 import { createClaims, type Claim, type Claims } from './plugin-claims';
+import { eventPayloadContent, isEventPayload } from './plugin-event-payload';
 import { lateHostApi, type PluginRecord } from './plugin-registry';
 import {
   createPluginSecretGate,
@@ -448,6 +449,24 @@ function planOf(
   for (const formatter of contributions.formatters ?? []) {
     contribute('formatter', formatter.name);
     for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
+  }
+  for (const declaration of contributions.events ?? []) {
+    // The kind is `plugin:name`, so a plugin holds only kinds of its own: a clash is a name this
+    // plugin declares twice, or one a host formatter already claims (COR-2223).
+    if (!isPluginName(declaration.name)) {
+      throw new TypeError(
+        `setup returned an event named ${JSON.stringify(declaration.name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
+      );
+    }
+    if (!isEventPayload(declaration.payload)) {
+      throw new TypeError(
+        `setup returned the event "${declaration.name}" with a payload that is not a Zod object: an event's payload is z.object({ ... }).`,
+      );
+    }
+    claims.push({
+      space: 'event-kind',
+      name: formatToolId({ namespace: plugin, name: declaration.name }),
+    });
   }
   for (const agent of contributions.agents ?? []) contribute('agent', agent.name);
   for (const item of contributions.workflows ?? []) {
@@ -1005,6 +1024,20 @@ function formatterUnknownKinds(contributions: PluginContributions): PluginProble
 }
 
 /**
+ * The `event-payload-content` problems of a plugin whose declared event has a payload field that
+ * could carry content (COR-2223): an event's payload holds identifiers, statuses and counts only.
+ */
+function eventPayloadProblems(contributions: PluginContributions): PluginProblem[] {
+  return (contributions.events ?? []).flatMap((declaration) =>
+    eventPayloadContent(declaration.payload).map((field): PluginProblem => ({
+      code: 'event-payload-content',
+      event: declaration.name,
+      field,
+    })),
+  );
+}
+
+/**
  * The `activity-field-missing` problems of a plugin whose activity has no title or no input schema
  * (D7), the two fields the workflow editor lists an activity by.
  */
@@ -1125,6 +1158,7 @@ export async function composePlugins<O extends ComposableOptions>(
       ...activityFieldProblems(outcome.result),
       ...workflowFieldProblems(outcome.result),
       ...formatterUnknownKinds(outcome.result),
+      ...eventPayloadProblems(outcome.result),
       ...providerSecretProblems(entry, outcome.result),
     ];
     if (refusals.length > 0) {

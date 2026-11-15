@@ -21,6 +21,15 @@ const EXEMPT_TYPES: ReadonlySet<string> = new Set([
   'PluginReactionListing',
 ]);
 
+/**
+ * Contribution keys whose element type is not `Plugin` plus the singular noun, because that name is
+ * taken: `PluginEvent` is the event a formatter or a reaction receives, so the events a plugin
+ * declares are `PluginEventDeclaration` (COR-2223).
+ */
+const DECLARATION_TYPES: ReadonlyMap<string, string> = new Map([
+  ['events', 'PluginEventDeclaration'],
+]);
+
 /** The last word that marks an exported type as supporting a contribution rather than being one. */
 const ROLE_SUFFIX =
   /(Context|Outcome|Listing|Declaration|Request|Definition|Error|Formatting|Score|Result)$/;
@@ -149,7 +158,9 @@ function typeFailures(program: ts.Program, entry: string): string[] {
     const found = element && typeName(element);
     // A contribution built from another package's type (a tool, a validator) keeps that name.
     if (found === undefined || !found.startsWith('Plugin')) continue;
-    const expected = `Plugin${singular(property.name).replace(/^./, (letter) => letter.toUpperCase())}`;
+    const expected =
+      DECLARATION_TYPES.get(property.name) ??
+      `Plugin${singular(property.name).replace(/^./, (letter) => letter.toUpperCase())}`;
     if (found !== expected) failures.push(`${property.name} is ${found}, not ${expected}`);
   }
   return failures;
