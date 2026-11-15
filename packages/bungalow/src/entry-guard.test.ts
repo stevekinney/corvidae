@@ -1,18 +1,21 @@
 import {
   chmodSync,
+  constants,
   existsSync,
   linkSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import { openBungalow } from './bungalow.ts';
+import { openEntry, readEntry, readEntryConcurrently, setAfterOpenHook } from './entry-guard.ts';
 import { BungalowStateError } from './errors.ts';
 import { makeFifo } from './fifo.test-support.ts';
 import { homeEnvironment, TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
@@ -238,5 +241,76 @@ describe('an entry inside the root that is not what Bungalow expects', () => {
     expect(await rejectedBy(openIn(root))).toBeInstanceOf(BungalowStateError);
     // Nothing else holds the root, so the next open reaches the same refusal rather than a lock.
     expect(await rejectedBy(openIn(root))).toBeInstanceOf(BungalowStateError);
+  });
+});
+
+describe('an entry replaced between its open and its check', () => {
+  afterEach(() => setAfterOpenHook(undefined));
+
+  function replaceWhenOpened(target: string): () => number {
+    let opened = 0;
+    setAfterOpenHook((path) => {
+      if (path !== target) return;
+      setAfterOpenHook(undefined);
+      opened += 1;
+      const replacement = `${path}.replacement`;
+      writeFileSync(replacement, 'new', { mode: 0o600 });
+      renameSync(replacement, path);
+    });
+    return () => opened;
+  }
+
+  test('is read as the content it opened by a reader that holds no lock', () => {
+    const path = join(temporaryDirectory(), 'entry');
+    writeFileSync(path, 'old', { mode: 0o600 });
+    const opened = replaceWhenOpened(path);
+    expect(readEntryConcurrently(path, 'entry')).toBe('old');
+    expect(opened()).toBe(1);
+    expect(readFileSync(path, 'utf8')).toBe('new');
+  });
+
+  test('is still refused by readEntry, which the lock file and every writer use', () => {
+    const path = join(temporaryDirectory(), 'entry');
+    writeFileSync(path, 'old', { mode: 0o600 });
+    const opened = replaceWhenOpened(path);
+    const error = thrownBy(() => readEntry(path, 'lock file'));
+    expect(error).toBeInstanceOf(BungalowStateError);
+    expect((error as Error).message).toBe('The lock file is a hard link shared with another path.');
+    expect(opened()).toBe(1);
+  });
+
+  test('is still refused by openEntry', () => {
+    const path = join(temporaryDirectory(), 'entry');
+    writeFileSync(path, 'old', { mode: 0o600 });
+    const opened = replaceWhenOpened(path);
+    expect(thrownBy(() => openEntry(path, 'lock file', 'file', constants.O_RDONLY))).toBeInstanceOf(
+      BungalowStateError,
+    );
+    expect(opened()).toBe(1);
+  });
+});
+
+describe('a reader that holds no lock', () => {
+  test('still refuses a file with a second hard link, naming no path', () => {
+    const directory = temporaryDirectory();
+    const path = join(directory, 'entry');
+    writeFileSync(path, 'shared', { mode: 0o600 });
+    linkSync(path, join(directory, 'other'));
+    const error = thrownBy(() => readEntryConcurrently(path, 'secret file'));
+    expect(error).toBeInstanceOf(BungalowStateError);
+    expect((error as Error).message).toBe(
+      'The secret file is a hard link shared with another path.',
+    );
+  });
+
+  test('still refuses a symbolic link and reads a missing file as absent', () => {
+    const directory = temporaryDirectory();
+    const target = join(directory, 'theirs');
+    writeFileSync(target, 'not bungalow');
+    symlinkSync(target, join(directory, 'entry'));
+    expect(
+      thrownBy(() => readEntryConcurrently(join(directory, 'entry'), 'secret file')),
+    ).toBeInstanceOf(BungalowStateError);
+    expect(readEntryConcurrently(join(directory, 'missing'), 'secret file')).toBeUndefined();
   });
 });

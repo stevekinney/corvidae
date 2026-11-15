@@ -5,6 +5,7 @@ import {
   lstatSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -13,10 +14,11 @@ import {
 } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { Bungalow } from './bungalow.ts';
 import { openLocalBungalow } from './bungalow.ts';
+import { setAfterOpenHook } from './entry-guard.ts';
 import { BungalowInputError, BungalowStateError } from './errors.ts';
 import { makeFifo } from './fifo.test-support.ts';
 import { TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
@@ -656,5 +658,114 @@ describe('a read-only open and an entry that is not what Bungalow expects', () =
     expect(handle.deploymentId).toBe(seed.deploymentId);
     handle.close();
     expect(readFileSync(target, 'utf8')).toBe('not bungalow');
+  });
+});
+
+describe('a read-only read of a file a writer replaces after the reader opened it', () => {
+  afterEach(() => setAfterOpenHook(undefined));
+
+  /**
+   * Run `change` once, when the reader has opened `target` and has not checked it yet: the window
+   * in which a writer's rename leaves the reader's descriptor with a link count of 0. The returned
+   * count says how often the window opened, so a read that never reached it cannot pass.
+   */
+  function changeWhenOpened(target: string, change: (path: string) => void): () => number {
+    let opened = 0;
+    setAfterOpenHook((path) => {
+      if (path !== target) return;
+      setAfterOpenHook(undefined);
+      opened += 1;
+      change(path);
+    });
+    return () => opened;
+  }
+
+  const renameOver = (contents: string) => (path: string) => {
+    const replacement = `${path}.replacement`;
+    writeFileSync(replacement, contents, { mode: 0o600 });
+    renameSync(replacement, path);
+  };
+
+  type ReadCase = {
+    readonly name: string;
+    readonly path: (seed: Seed) => string;
+    readonly before: string;
+    readonly read: (handle: Bungalow, seed: Seed) => Promise<unknown>;
+  };
+
+  const entries: readonly ReadCase[] = [
+    {
+      name: 'the configuration',
+      path: ({ root }) => join(root, 'configuration.json'),
+      before: '{"seeded":true}',
+      read: async (handle) => {
+        const { text } = await handle.readConfiguration();
+        return text;
+      },
+    },
+    {
+      name: 'a deployment secret',
+      path: ({ root }) => join(root, 'secrets', 'token'),
+      before: 'deployment-value',
+      read: (handle) => handle.deploymentSecrets.read('token'),
+    },
+    {
+      name: 'a legacy secret',
+      path: ({ root }) => join(root, 'secrets', 'legacy'),
+      before: 'legacy-value',
+      read: (handle) => handle.secretProvider.readLegacy('legacy'),
+    },
+    {
+      name: 'a managed-secret version',
+      path: ({ root }) => join(root, '.managed-secrets', 'versions', 'op-kept'),
+      before: 'kept-value',
+      read: (handle, seed) => handle.secretProvider.readVersion(seed.kept),
+    },
+    {
+      name: 'an operation record',
+      path: ({ root }) => join(root, '.managed-secrets', 'operations', 'kept.json'),
+      before: 'kept',
+      read: async (handle) => {
+        const operation = await handle.secretProvider.getOperation('kept');
+        return operation?.id;
+      },
+    },
+  ];
+
+  test.each(entries)('returns the content it opened for $name', async (entry) => {
+    const seed = await seededHome();
+    const path = entry.path(seed);
+    const handle = await openForReading(seed.root);
+    const opened = changeWhenOpened(path, renameOver('replaced by a writer'));
+    expect(await entry.read(handle, seed)).toBe(entry.before);
+    expect(opened()).toBe(1);
+    expect(readFileSync(path, 'utf8')).toBe('replaced by a writer');
+    handle.close();
+  });
+
+  test('returns the content it opened when the file is deleted, as reclaim does', async () => {
+    const seed = await seededHome();
+    const path = join(seed.root, '.managed-secrets', 'versions', 'op-kept');
+    const handle = await openForReading(seed.root);
+    const opened = changeWhenOpened(path, unlinkSync);
+    expect(await handle.secretProvider.readVersion(seed.kept)).toBe('kept-value');
+    expect(opened()).toBe(1);
+    expect(existsSync(path)).toBe(false);
+    handle.close();
+  });
+
+  test('still reads the new content on the next read', async () => {
+    const seed = await seededHome();
+    const handle = await openForReading(seed.root);
+    const opened = changeWhenOpened(
+      join(seed.root, 'configuration.json'),
+      renameOver('{"seeded":"again"}'),
+    );
+    const during = await handle.readConfiguration();
+    expect(during.text).toBe('{"seeded":true}');
+    expect(opened()).toBe(1);
+    const after = await handle.readConfiguration();
+    expect(after.text).toBe('{"seeded":"again"}');
+    handle.close();
   });
 });

@@ -18,7 +18,13 @@ import {
   type DeploymentSecrets,
   type DeploymentSecretsFactory,
 } from './deployment-secrets.ts';
-import { directoryExists, ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
+import {
+  directoryExists,
+  ensureDirectory,
+  readEntry,
+  readEntryConcurrently,
+  writePrivateFile,
+} from './entry-guard.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import { sanitizeCause } from './error-code.ts';
 import {
@@ -538,7 +544,7 @@ function openLocalReadOnly(
   const secretProvider = createLocalProvider({ root, workspaceId, assertOpen }, true);
   const readConfiguration = () =>
     filesystem('read the configuration', () =>
-      readEntry(configurationLocation, 'configuration file'),
+      readEntryConcurrently(configurationLocation, 'configuration file'),
     );
 
   return {
@@ -612,7 +618,7 @@ function localDeploymentSecrets(
       return filesystem('read a deployment secret', () => {
         if (!readOnly) return readEntry(join(secrets, key), 'secret file', SECRET_MODE);
         return directoryExists(secrets, 'secrets directory')
-          ? readEntry(join(secrets, key), 'secret file')
+          ? readEntryConcurrently(join(secrets, key), 'secret file')
           : undefined;
       });
     },
