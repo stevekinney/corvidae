@@ -108,8 +108,28 @@
     overflow-y: auto;
   }
 
+  /* Rows sit inset in the pane, as side navigation and menu rows sit in theirs: a fill or a ring
+   * rounds all four corners clear of both pane edges and of a group heading's rule, wherever the
+   * row is. The row's own inline padding drops to match, so its text stays on the header's edge.
+   * The padding, not the global `li` margin, sets the pitch, so the first row under a heading
+   * and the last above the next get the same space. */
   .cinder-list-detail__row {
+    --cinder-selectable-row-padding-inline: var(--cinder-space-2);
+    margin: 0;
+    padding: var(--cinder-space-0-5) var(--cinder-space-2);
     list-style: none;
+  }
+
+  .cinder-list-detail__row:not(.cinder-list-detail__row + .cinder-list-detail__row) {
+    padding-block-start: var(--cinder-space-2);
+  }
+
+  .cinder-list-detail__row:not(:has(+ .cinder-list-detail__row)) {
+    padding-block-end: var(--cinder-space-2);
+  }
+
+  .cinder-list-detail__rows .cinder-data-list-group {
+    margin: 0;
   }
 
   .cinder-list-detail__back {
