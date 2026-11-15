@@ -790,15 +790,15 @@ describe('the reminder follows the decision row, not its own presence', () => {
 
     // The row ends inside the strip the reminder takes, but within the box the transcript has
     // without the reminder: it is visible in both states, so the reminder goes and stays gone.
-    // The card's bottom, 16 below the row, plus the 12 of clearance must also be inside that box.
     await scrollTo(scroller, 328);
     expect(drawerOf(container)).toBeNull();
     await scrollTo(scroller, 328);
     expect(drawerOf(container)).toBeNull();
 
-    // A row whose card clears the box by less than the clearance keeps the reminder.
+    // The row is judged alone (COR-2327 B1): with the row in view and the card's bottom past the
+    // box, the reminder stays gone, since Deny and Approve are where the person can reach them.
     await scrollTo(scroller, 340);
-    expect(drawerOf(container)).not.toBeNull();
+    expect(drawerOf(container)).toBeNull();
 
     // A row ending below the tall box brings the reminder back.
     await scrollTo(scroller, 380);
@@ -809,6 +809,39 @@ describe('the reminder follows the decision row, not its own presence', () => {
     // Back in view, it goes.
     await scrollTo(scroller, 200);
     expect(drawerOf(container)).toBeNull();
+  });
+
+  test('on a 320 by 640 phone, a card nearly as tall as the transcript with its decision row in view draws no reminder (COR-2327 B1)', async () => {
+    // CI run 43655239414, from its trace: the transcript shows 205 to 448 without the reminder,
+    // Deny and Approve sit at 383 to 411, and the focused card ends at 425. Its bottom and the
+    // 12px clearance under it reach 437, inside the box; a slightly taller card (Linux fonts) ends
+    // 4px lower and its clearance passes the box, which kept the reminder over Deny and Approve.
+    // Here the row sits 200 to 244 in a 400 tall transcript and the card ends at 392, 4 short of
+    // the bottom: the clearance passes the box, the row does not.
+    rowTop = 200;
+    const { container } = render(Chat, {
+      id: 'chat-reminder-phone',
+      conversation: approvalConversation('reminder-phone'),
+      adapter: resolvingAdapter,
+    });
+    const originalCard = HTMLElement.prototype.getBoundingClientRect;
+    const scroller = layOut(container);
+    const laidOut = HTMLElement.prototype.getBoundingClientRect;
+    // The card starts 170 above the row and ends at 392.
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.matches('.cinder-approval-card')) {
+        return new DOMRect(0, rowTop - 170, 300, 392 - (rowTop - 170));
+      }
+      return laidOut.call(this);
+    };
+    try {
+      await scrollTo(scroller, 200);
+      expect(drawerOf(container)).toBeNull();
+      await scrollTo(scroller, 200);
+      expect(drawerOf(container)).toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalCard;
+    }
   });
 
   test('at maximum scroll the arrival scroll hides the reminder and a clamp does not bring it back', async () => {

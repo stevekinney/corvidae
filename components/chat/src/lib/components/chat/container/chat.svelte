@@ -1596,18 +1596,15 @@
           return;
         }
         // The reminder is for a card whose decision buttons are out of reach: while its action
-        // row is wholly in view there is nothing to point to. A card that draws no row falls back
-        // to the whole card.
+        // row is wholly in view there is nothing to point to. It is judged on the row alone, not
+        // on the card's bottom and the clearance the arrival lift keeps under it: on a 320 by 640
+        // phone the card is nearly as tall as the transcript, and requiring its bottom too kept
+        // the reminder over Deny and Approve while both were in view (COR-2327 B1). A card that
+        // draws no row falls back to the whole card.
         const actionRow = approvalActionRow(card);
         const reminder = readApprovalReminder();
         approvalFullyVisible = approvalRowVisible(
-          actionRow === null
-            ? cardBox
-            : approvalReviewBox(
-                actionRow.getBoundingClientRect(),
-                cardBox,
-                viewportBox.bottom - viewportBox.top + (reminder.shown ? reminder.blockSize : 0),
-              ),
+          actionRow === null ? cardBox : actionRow.getBoundingClientRect(),
           viewportBox,
           reminder.shown,
           reminder.blockSize,
