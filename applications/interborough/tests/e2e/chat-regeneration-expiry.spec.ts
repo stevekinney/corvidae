@@ -541,11 +541,13 @@ for (const viewport of VIEWPORTS) {
       // header keeps saying the chat waits on them (owner decision, 2026-11-13); the card and the
       // row carry the expiry.
       await expect.poll(() => chatHeaderStatus(page)).toBe('Waiting on you');
+      // The navigation's count follows the review's expiry on its next refresh, not in the same
+      // turn as the card, so wait for it as the header status above is waited for.
+      if (initialReviewsCount !== undefined) {
+        await expect.poll(() => reviewsNavigationCount(page)).toBeLessThan(initialReviewsCount);
+      }
       const expiredReviewsCount =
         viewport.width >= 500 ? await reviewsNavigationCount(page) : undefined;
-      if (initialReviewsCount !== undefined && expiredReviewsCount !== undefined) {
-        expect(expiredReviewsCount).toBeLessThan(initialReviewsCount);
-      }
       await expiredToolRow.click();
       const expiredToolPanel =
         viewport.width < 500
