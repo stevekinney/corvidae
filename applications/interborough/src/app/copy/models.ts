@@ -11,7 +11,7 @@ export const MODELS_COPY = {
   /** The notice shown when a page sent the person here to connect a provider, with the way back. */
   returnNotice: {
     title: 'Connect a provider to continue',
-    description: 'Save a key for one provider, then go back to the agent form.',
+    description: 'Connect one provider, then go back to the agent form.',
     connectedDescription: 'A provider is connected. Go back to the agent form.',
     action: 'Back to the agent form',
   },
@@ -38,7 +38,7 @@ export const MODELS_COPY = {
     /** The reason there is no provider banner: while none is connected this says why agents can't answer. */
     description:
       'Agents can’t answer until one is connected. Connect one to make its models available.',
-    connectedDescription: 'Connected providers show Manage.',
+    connectedDescription: 'Connected providers offer their models to your agents.',
     listLabel: 'Providers',
     connected: 'Connected',
     connect: 'Connect',
@@ -102,12 +102,21 @@ export const MODELS_COPY = {
   manageDialog: {
     /** The title while no provider is chosen, which a closed dialog still carries. */
     fallbackTitle: 'Provider',
-    subtitle: 'Connected',
     connected: 'Connected',
     models: (count: number): string => `${String(count)} ${count === 1 ? 'model' : 'models'}`,
     removeKey: 'Remove key',
     replaceKey: 'Replace key',
     done: 'Done',
+    /** The primary button while the provider's settings differ from what is stored, in place of Done. */
+    save: 'Save',
+    saving: 'Saving…',
+  },
+  /** A provider's plugin settings, drawn from the plugin's own schema in the Connect and Manage dialogs. */
+  configuration: {
+    /** Names the settings under the key field of the Connect dialog. */
+    heading: 'Settings',
+    /** Said when the plugin's settings could not be written as a schema the page can draw. */
+    unavailable: (plugin: string): string => `The settings of ${plugin} can’t be shown here.`,
   },
   /** Remove key (board SettingsShell, "Remove key, confirm"). */
   removeDialog: {
@@ -176,20 +185,48 @@ export const MODELS_COPY = {
       'The model that makes quick judgments for the app, apart from the models agents chat with.',
     model: {
       label: 'Decision model',
-      description:
-        'TypeSafe answers yes-or-no and classification questions for Interborough. It isn’t a chat provider.',
-      /** Said instead while TypeSafe has no key, and the fallback model, named, is the one answering. */
-      waiting: (model: string) => `${model} answers until TypeSafe is connected.`,
-      /** Said while the fallback model's row is not the one answering, or the catalog has not loaded. */
-      waitingUnnamed: 'A fallback model answers until TypeSafe is connected.',
-      /** Said while the catalog has no row that can answer. */
-      waitingNothing: 'Nothing can answer decisions until you connect a provider or TypeSafe.',
+      description: 'Answers yes-or-no and classification questions for Interborough.',
+      /** Said instead while the chosen row is empty, missing or needs setup: the row that answers, named by the Bureau. */
+      fallbackAnswers: (model: string) => `${model} answers until a decision model is ready.`,
+      /**
+       * Said while the Bureau reports no row that can answer. It does not name TypeSafe: while its
+       * plugin waits for a key, a quiet "Connect TypeSafe" link follows.
+       */
+      nothingAnswers:
+        'None of your connected models can answer decisions. Connect a provider whose models can.',
       connect: 'Connect TypeSafe',
+      /**
+       * Said as the row's load error while the rows that can answer decisions did not load, with
+       * the row's quiet Try again: the selects cannot offer a row until they do.
+       */
+      loadFailed: 'Couldn’t load the models that can answer decisions.',
+      tryAgain: 'Try again',
+      /**
+       * The Bureau dropped the stored value and records why; the row warns in these words, not the
+       * Bureau's. It names no row that answers, so it cannot be read as a claim about the value the
+       * trigger shows (which is the default while the stored one is set aside).
+       */
+      dropped:
+        'Your earlier decision model was retired, so this shows the default. Choose another.',
+      /** The stored value names a row the Bureau does not list as able to answer. */
+      missing: (name: string) => `“${name}” can’t answer decisions. Choose another.`,
+      /**
+       * The same two warnings while TypeSafe waits for its key: the row's two next steps are said
+       * once, at the end of the warning, and the separate Connect TypeSafe link is left out.
+       */
+      droppedWaiting:
+        'Your earlier decision model was retired, so this shows the default. Connect TypeSafe or choose another.',
+      missingWaiting: (name: string) =>
+        `“${name}” can’t answer decisions. Connect TypeSafe or choose another.`,
     },
     fallbackModel: {
       label: 'Fallback model',
       description: 'Used when the decision model can’t answer.',
+      /** The stored fallback is a row the Bureau's fallback never uses (it returns no structured output). */
+      unusable: (name: string) => `“${name}” can’t be the fallback. Choose another.`,
     },
+    /** The mark beside a row whose provider has no key saved yet or whose model is off. */
+    needsSetup: 'Needs setup',
     maximumPerTask: {
       label: 'Maximum per task',
       description: 'The most decision calls one task may make.',

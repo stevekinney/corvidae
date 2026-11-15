@@ -65,7 +65,11 @@ type Setup = {
   readonly agent?: AgentDetail;
   readonly catalog?: AgentCatalog;
   /** The providers `/host/providers` reports; left out, the host does not answer. */
-  readonly hostProviders?: readonly { readonly name: string; readonly hasKey: boolean }[];
+  readonly hostProviders?: readonly {
+    readonly name: string;
+    readonly hasKey: boolean;
+    readonly connected?: boolean;
+  }[];
   /** The `modelPolicy` setting; left out, the settings cannot be read. */
   readonly modelPolicy?: unknown;
 };
@@ -112,7 +116,7 @@ function groupsOf(): { name: string; options: string[] }[] {
 
 describe('the models of a new agent', () => {
   test('are grouped by provider, each provider under its name', async () => {
-    bureau({ hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    bureau({ hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const { findByRole } = mountEditor();
     await openModelOptions(await findByRole('combobox', { name: 'Model' }));
 
@@ -123,7 +127,7 @@ describe('the models of a new agent', () => {
   });
 
   test('are all listed when the field is opened as it stands, with the chosen model in it', async () => {
-    bureau({ hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    bureau({ hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const { findByRole } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
     expect(field).toHaveValue('anthropic/claude-sonnet-5');
@@ -143,9 +147,9 @@ describe('the models of a new agent', () => {
   test('list a provider with no key as one disabled option, and point to Settings › Models', async () => {
     bureau({
       hostProviders: [
-        { name: 'anthropic', hasKey: true },
-        { name: 'openai', hasKey: true },
-        { name: 'gemini', hasKey: false },
+        { name: 'anthropic', hasKey: true, connected: true },
+        { name: 'openai', hasKey: true, connected: true },
+        { name: 'gemini', hasKey: false, connected: false },
       ],
     });
     const { findByRole, getByTestId } = mountEditor();
@@ -174,7 +178,7 @@ describe('the models of a new agent', () => {
   });
 
   test('say nothing about providers when every provider has a key, or the host does not say', async () => {
-    bureau({ hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    bureau({ hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const first = mountEditor();
     await first.findByRole('combobox', { name: 'Model' });
     expect(first.queryByTestId('agent-model-unconnected')).toBeNull();
@@ -421,8 +425,8 @@ describe('a saved agent whose model is no longer offered', () => {
         ],
       }),
       hostProviders: [
-        { name: 'anthropic', hasKey: true },
-        { name: 'openai', hasKey: false },
+        { name: 'anthropic', hasKey: true, connected: true },
+        { name: 'openai', hasKey: false, connected: false },
       ],
     });
     const { findByTestId } = mountEditor('researcher');
@@ -438,8 +442,8 @@ describe('a saved agent whose model is no longer offered', () => {
     bureau({
       agent: written('gemini/gemini-2.5-pro'),
       hostProviders: [
-        { name: 'anthropic', hasKey: true },
-        { name: 'gemini', hasKey: false },
+        { name: 'anthropic', hasKey: true, connected: true },
+        { name: 'gemini', hasKey: false, connected: false },
       ],
     });
     const { findByTestId } = mountEditor('researcher');
@@ -467,7 +471,7 @@ describe('a saved agent whose model is no longer offered', () => {
 
 describe('a reload from disk', () => {
   test('reads the providers and the model policy again, along with the file', async () => {
-    const calls = bureau({ hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    const calls = bureau({ hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const { findByTestId, getByRole, findByText, queryByTestId } = mountEditor('researcher');
     const awaited444 = await findByTestId('agent-saved-model-value');
     expect(awaited444.textContent).toContain('Anthropic');

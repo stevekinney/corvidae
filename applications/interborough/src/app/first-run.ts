@@ -3,10 +3,11 @@
  * two facts kept in the browser (`localStorage`, as the shell's other personal preferences are).
  *
  * A step is done by a signal the host already gives, not by a flag the checklist keeps: a provider
- * is connected once it holds a key (`GET /host/providers`, the rule Settings › Models states), an
+ * is connected once the host says it can be called, which is when it holds a key or declares no
+ * secret to hold one (`connected` of `GET /host/providers`, the rule Settings › Models states), an
  * agent exists once the Bureau lists one defined in a file (`bureau.agents.list`), and a chat
  * exists once the Bureau lists a session a person started (`bureau.contexts.list`). Nothing here
- * reads or keeps a key: only whether one is saved.
+ * reads or keeps a key.
  *
  * Home's checklist (`routes/home/home-first-run.svelte`) reads the same signals under one more
  * rule: it is over when the chat step is done, whatever the other two say, and it never returns
@@ -31,8 +32,8 @@ export type FirstRunProgress = Readonly<Record<FirstRunStepId, boolean>>;
 
 /** The signals the steps read. */
 export interface FirstRunSignals {
-  /** The providers `GET /host/providers` lists, each with whether it holds a key. */
-  readonly providers: readonly { readonly hasKey: boolean }[];
+  /** The providers `GET /host/providers` lists, each with whether it can be called (a saved key, or none needed). */
+  readonly providers: readonly { readonly connected: boolean }[];
   /** The agents `bureau.agents.list` lists, each with where it is defined. */
   readonly agents: readonly { readonly kind: 'code' | 'file' }[];
   /** How many chats a person started that the Bureau lists (at least one is enough). */
@@ -48,7 +49,7 @@ export interface FirstRunSignals {
 /** Which steps the signals say are done. */
 export function firstRunProgress(signals: FirstRunSignals): FirstRunProgress {
   return {
-    provider: signals.providers.some((provider) => provider.hasKey),
+    provider: signals.providers.some((provider) => provider.connected),
     agent:
       signals.assistantChosen === true || signals.agents.some((agent) => agent.kind === 'file'),
     chat: signals.chatCount > 0,

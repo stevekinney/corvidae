@@ -273,6 +273,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [
       ['bureau.settings.get', 'administrator'],
       ['bureau.settings.schema', 'administrator'],
+      ['bureau.decisions.models', 'administrator'],
       ['bureau.settings.update', 'administrator'],
       ['bureau.settings.events', 'administrator'],
     ],

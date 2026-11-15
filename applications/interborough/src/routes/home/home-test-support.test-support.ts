@@ -135,6 +135,8 @@ export interface HomeWorld {
   chats: readonly ChatContext[];
   /** Whether any provider holds a key. */
   providerConnected: boolean;
+  /** Whether the only provider is keyless (a local Ollama): connected, with no key saved. */
+  providerKeyless: boolean;
   /** Whether the person made an agent of their own, one defined in a file. */
   fileAgent: boolean;
   /** The runs the engine counts as failed in the last 24 hours. */
@@ -151,6 +153,7 @@ export function sampleHomeWorld(overrides: Partial<HomeWorld> = {}): HomeWorld {
     schedules: [DAILY_SUMMARY],
     chats: SAMPLE_CHATS,
     providerConnected: false,
+    providerKeyless: false,
     fileAgent: false,
     failedRuns: 0,
     attentionRefused: false,
@@ -207,8 +210,10 @@ export function installHome(home: HomeWorld): InstalledHome {
       return Response.json({
         configurationRevision: 'fixture',
         providers: home.providerConnected
-          ? [{ name: 'anthropic', configured: true, hasKey: true }]
-          : [],
+          ? [{ name: 'anthropic', configured: true, hasKey: true, connected: true }]
+          : home.providerKeyless
+            ? [{ name: 'ollama', configured: false, hasKey: false, connected: true }]
+            : [],
         catalog: [],
         models: [],
       });

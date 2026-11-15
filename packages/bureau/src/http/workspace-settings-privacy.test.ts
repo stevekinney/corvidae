@@ -13,6 +13,7 @@ const sentinel = 'PRIVATE-SETTINGS-NEIGHBOR-a81c';
 const cases = [
   { operation: 'bureau.settings.get', input: {} },
   { operation: 'bureau.settings.schema', input: {} },
+  { operation: 'bureau.decisions.models', input: {} },
   {
     operation: 'bureau.settings.update',
     input: { patch: { 'tools.wakeup': false }, expectedRevision: 0 },
