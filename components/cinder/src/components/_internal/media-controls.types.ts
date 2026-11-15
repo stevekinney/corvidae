@@ -46,7 +46,7 @@ export type MediaControlsProps = Omit<
   /** Whether the player fills the screen. @default false */
   fullscreen?: boolean;
   /** Called when the user toggles full screen. Providing it renders the full-screen toggle. */
-  onToggleFullscreen?: () => void;
+  onToggleFullscreen?: (() => void) | undefined;
   /** Additional class names merged with `.cinder-media-controls`. */
   class?: string;
 };
