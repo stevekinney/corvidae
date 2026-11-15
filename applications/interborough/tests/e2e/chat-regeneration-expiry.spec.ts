@@ -256,9 +256,7 @@ async function textCoveredByAnotherElement(target: Locator): Promise<string[]> {
         for (let x = line.left + 2; x < line.right; x += 8) {
           const hit = document.elementFromPoint(x, y);
           if (hit !== null && !holder.contains(hit)) {
-            covered.add(
-              `${hit.tagName.toLowerCase()}.${String(hit.className)} at y=${Math.round(y)}`,
-            );
+            covered.add(`${hit.tagName.toLowerCase()}.${hit.className} at y=${Math.round(y)}`);
           }
         }
       }
