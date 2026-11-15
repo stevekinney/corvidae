@@ -51,6 +51,9 @@
       {#snippet title()}The Pier{/snippet}
       {#snippet subtitle()}Oysters and rosé{/snippet}
     </GroupedListItem>
+    <GroupedListItem href="/places/corner" leadValue={20} leadUnit="min to go">
+      {#snippet title()}Corner Bar{/snippet}
+    </GroupedListItem>
   </GroupedList>
 
   <!-- Text actions (COR-2329): trailing buttons, full width under the text on a phone. -->
