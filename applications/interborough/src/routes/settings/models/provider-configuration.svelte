@@ -5,7 +5,8 @@
    * straight into the dialog body with no box of their own, and the words for a save that failed
    * and named no field. A value the host refuses is shown at its field. A provider whose plugin takes
    * no settings shows nothing, and one whose schema cannot be drawn says so by name. The draft and
-   * the save live in `provider-configuration.svelte.ts`; the dialog's own button saves it.
+   * the save live in `provider-configuration.svelte.ts`; Connect's draft narrows the schema to its
+   * `required` fields (COR-2493), so a provider with none shows nothing there; the dialog's own button saves it.
    */
   import { Callout, SectionHeading } from '@lostgradient/cinder';
 
@@ -36,7 +37,7 @@
     {/if}
     <ContributedConfigurationForm
       kindId={configuration.kindId}
-      schema={source.schema}
+      schema={configuration.drawnSchema}
       value={configuration.stored}
       issues={configuration.issues}
       onChange={(next) => configuration.change(next)}

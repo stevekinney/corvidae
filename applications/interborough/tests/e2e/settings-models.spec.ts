@@ -526,9 +526,10 @@ async function withAnthropicConnected(page: Page) {
 
 /**
  * Answers the Bureau's list of provider contributions as if `provider`'s plugin took a `baseURL`, as
- * a plugin that fronts a gateway would, so its Connect and Manage dialogs draw a field.
+ * a plugin that fronts a gateway would, so its Manage dialog draws a field. Its Connect dialog draws
+ * the field only when the schema lists it as `required` (COR-2493), so `required` says so.
  */
-async function withBaseUrlSetting(page: Page, provider: string) {
+async function withBaseUrlSetting(page: Page, provider: string, required = false) {
   await page.route('**/bureau/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as { method?: string } | null;
     if (body?.method !== 'bureau.plugins.contributions') return route.fallback();
@@ -548,6 +549,7 @@ async function withBaseUrlSetting(page: Page, provider: string) {
                   ...entry,
                   configuration: {
                     ...OLLAMA_SCHEMA,
+                    ...(required ? { required: ['baseURL'] } : {}),
                     properties: {
                       baseURL: { type: 'string', description: 'Where the gateway listens.' },
                     },
@@ -589,6 +591,11 @@ test.describe('Settings › Models, connect dialogs', () => {
       'https://console.anthropic.com/settings/keys',
     );
     await expect(dialog.locator('.cinder-_required-marker')).toHaveCount(1);
+    // Anthropic's settings are all optional, so Connect draws none of them and no Settings heading.
+    await expect(
+      dialog.getByRole('heading', { name: MODELS_COPY.configuration.heading }),
+    ).toHaveCount(0);
+    await expect(dialog.getByTestId('provider-configuration')).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: copy.connect })).toBeEnabled();
     await checkA11y('settings models, connect empty, at 1280px');
     await captureAtEveryWidth(page, 'connect-empty');
@@ -598,7 +605,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     page,
     checkA11y,
   }) => {
-    await withBaseUrlSetting(page, 'openai');
+    await withBaseUrlSetting(page, 'openai', true);
     await open(page, E2E_SHOWCASE_URL);
     await providerRow(page, 'openai')
       .getByRole('button', { name: /Connect/ })
@@ -624,7 +631,7 @@ test.describe('Settings › Models, connect dialogs', () => {
       pattern: loggedFailedResponse(400, /\/host\/plugins\/openai/),
       reason: 'the test makes the host refuse the provider’s configuration with a 400',
     });
-    await withBaseUrlSetting(page, 'openai');
+    await withBaseUrlSetting(page, 'openai', true);
     await mockKeyRoutes(page, { ok: true, models: 1 });
     await page.route('**/host/plugins/openai', (route) =>
       route.request().method() === 'PUT'
