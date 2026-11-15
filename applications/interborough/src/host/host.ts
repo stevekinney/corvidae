@@ -117,6 +117,7 @@ import {
   openBungalow,
   type Bungalow,
   type BungalowEnvironment,
+  type OpenBungalowOptions,
   type SecretProviderFactory,
 } from '@lostgradient/bungalow';
 import {
@@ -206,9 +207,15 @@ import {
   createPluginSkillSource,
   createPluginWorkflowSource,
   createWorkflowSource,
+  DEFAULT_CONTENT_KINDS,
+  DEFAULT_DATABASE_KINDS,
+  describeDatabaseState,
   disposeHostStorage,
   hostPathsReport,
+  localContentDirectory,
   redactDatabase,
+  type ContentKinds,
+  type DatabaseKinds,
   type HostDatabase,
   type LocalDirectoryOptions,
 } from './locations.ts';
@@ -354,6 +361,22 @@ export type RunAgentLookup = (runId: string) => Promise<string | undefined>;
 export type HostOptions = {
   /** The environment to read `INTERBOROUGH_HOME` and `INTERBOROUGH_PORT` from. Defaults to the process's. */
   readonly environment?: BungalowEnvironment;
+  /**
+   * Opens the home. It receives the options the host would pass to `openBungalow` and resolves the
+   * `Bungalow` the host runs on, so a caller with its own lock or secret store opens the home its
+   * own way and the host follows what that home says it can do. Defaults to `openBungalow`.
+   */
+  readonly openHome?: (options: OpenBungalowOptions) => Promise<Bungalow>;
+  /**
+   * How each kind of database location is opened, reported, and described, keyed by the location's
+   * `kind`. Replaces the default entries for `sqlite` and `postgres`.
+   */
+  readonly databaseKinds?: DatabaseKinds;
+  /**
+   * How each kind of content location is read and described, keyed by the location's `kind`.
+   * Replaces the default entries for `directory` and `s3`.
+   */
+  readonly contentKinds?: ContentKinds;
   /** The workspace identity to bind to the trusted backing store. */
   readonly workspaceId?: string;
   /** Inject verified credentials and a directory for this exact workspace; no listener expansion. */
@@ -560,6 +583,11 @@ export type Host = {
    */
   readonly database: HostDatabase;
   /**
+   * Where the host's state lives, as a person reads it: the SQLite file's directory, or the
+   * configured Postgres database. It holds no credential; `dev.ts` and `serve.ts` print it.
+   */
+  readonly stateDescription: string;
+  /**
    * The generate for an agent assigned a model in the Bureau's catalog, resolved through Bureau's
    * provider path with the API key from Bungalow's secrets. Throws for a model the catalog does
    * not hold.
@@ -642,7 +670,7 @@ export type Host = {
 async function approvalSecret(bungalow: Bungalow): Promise<string> {
   const existing = await bungalow.deploymentSecrets.read(APPROVAL_SECRET_KEY);
   if (existing !== undefined) return existing;
-  if (bungalow.mode === 'remote') {
+  if (!bungalow.deploymentSecrets.writable) {
     throw new Error(
       `${bungalow.deploymentSecrets.location(APPROVAL_SECRET_KEY)} is not set. Remote mode needs it: it signs the approvals every host verifies.`,
     );
@@ -655,7 +683,7 @@ async function approvalSecret(bungalow: Bungalow): Promise<string> {
 async function delegationSecret(bungalow: Bungalow): Promise<string> {
   const existing = await bungalow.deploymentSecrets.read(DELEGATION_SECRET_KEY);
   if (existing !== undefined) return existing;
-  if (bungalow.mode === 'remote') {
+  if (!bungalow.deploymentSecrets.writable) {
     throw new Error(
       `${bungalow.deploymentSecrets.location(DELEGATION_SECRET_KEY)} is not set. Remote mode needs it: it signs durable child-run authority grants every host verifies.`,
     );
@@ -797,10 +825,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
   // and a malformed one stops the host before anything opens.
   const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
+  // The tables are copied before the first await, like the other caller-owned options, so a later
+  // change to the caller's objects cannot reach a lookup. The claimed Postgres storage below still
+  // comes from the built-in Postgres factory, as the callback always did.
+  const databaseKinds: DatabaseKinds = { ...(options.databaseKinds ?? DEFAULT_DATABASE_KINDS) };
+  const contentKinds: ContentKinds = { ...(options.contentKinds ?? DEFAULT_CONTENT_KINDS) };
+  const openHome = options.openHome ?? openBungalow;
   let claimedRemoteStorage: Storage | undefined;
   let bungalow: Bungalow;
   try {
-    bungalow = await openBungalow({
+    bungalow = await openHome({
       name: APPLICATION_NAME,
       environment,
       ...(options.secretProvider === undefined ? {} : { secretProvider: options.secretProvider }),
@@ -845,7 +879,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       throw new Error(
         'Workspace authentication requires credentials and this workspace directory.',
       );
-    const database = redactDatabase(bungalow.database);
+    const database = redactDatabase(bungalow.database, databaseKinds);
+    const stateDescription = describeDatabaseState(bungalow.database, databaseKinds);
     const workspaceSecrets = createWorkspaceSecrets(bungalow);
     await workspaceSecrets.reconcile();
     const approval = await approvalSecret(bungalow);
@@ -859,7 +894,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
-    const storage = claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now);
+    const storage =
+      claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now, databaseKinds);
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
@@ -872,7 +908,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // When the host loaded its plugins: a plugin that did not load needs attention from here (COR-2009).
     const pluginsLoadedAt = clock.now();
     const folderPlugins = await loadFolderPlugins({
-      directory: content.kind === 'directory' ? content.path : undefined,
+      directory: localContentDirectory(content, contentKinds),
       dependencies: environment[PLUGIN_RUNTIME_DIRECTORY_VARIABLE]?.trim() || HOST_DEPENDENCIES,
       developmentPaths: developmentPlugins,
     });
@@ -1044,13 +1080,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // (COR-1797): `maintenance: 'manual'` starts no scheduler, so a run parked by the old release
     // would never finish on the new one, and `durable: false` or a claim TTL at or below the renew
     // interval would stop or lose the leases. The code defaults apply. A caller's own locks stay.
-    const settings: SettingsOptions | undefined =
-      bungalow.mode === 'remote'
-        ? {
-            ...options.settings,
-            locked: { ...callerLocks, ...REMOTE_LOCKED_SETTINGS },
-          }
-        : options.settings;
+    const settings: SettingsOptions | undefined = bungalow.capabilities.sharedBetweenInstances
+      ? {
+          ...options.settings,
+          locked: { ...callerLocks, ...REMOTE_LOCKED_SETTINGS },
+        }
+      : options.settings;
     // Bureau recovers durable runs before it returns, and the skill manager waits for the Bureau, so
     // a run recovered at boot reads this catalog, or it would lose the skills it held.
     const firstSkills = await discoverFirstSkills({
@@ -1174,6 +1209,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           ...peerTools,
         },
         directoryOptions,
+        contentKinds,
       ),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
@@ -1190,14 +1226,19 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       },
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
-      workflowSource: createWorkflowSource(bungalow, workflowContent, directoryOptions),
+      workflowSource: createWorkflowSource(
+        bungalow,
+        workflowContent,
+        directoryOptions,
+        contentKinds,
+      ),
       // The workflow files a running plugin ships (COR-1977): its `content/workflows`, read-only, beneath the owner's.
       pluginWorkflowSource: (plugin, shipped) =>
         createPluginWorkflowSource(plugin, shipped, directoryOptions),
       ...(settings === undefined ? {} : { settings }),
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
-      hooks: hookOptionsFor(bungalow.mode),
+      hooks: hookOptionsFor(bungalow.capabilities),
       ...(options.hookFetch === undefined
         ? {}
         : { webhooks: { targets: [], fetch: options.hookFetch } }),
@@ -1489,6 +1530,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
               // The directory of the agents shared over A2A, at the address a caller reaches: the
               // public origin when one is set (COR-1904), else this host's own.
               `${a2aExposure.publicOrigin?.origin ?? hostOrigin ?? `http://${LOOPBACK}:${startPort}`}${BUREAU_PATH_PREFIX}/a2a/.well-known/agent-card.json`,
+              { database: databaseKinds, content: contentKinds },
             ),
           ),
       },
@@ -1646,6 +1688,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       workspaceId: bungalow.workspaceId,
       runtimeInstanceId: randomUUID(),
       database,
+      stateDescription,
       generateFor,
       configurationQueue,
       toolSources: {

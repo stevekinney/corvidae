@@ -9,7 +9,6 @@
  */
 
 import type { BungalowEnvironment } from '@lostgradient/bungalow';
-import { dirname } from 'node:path';
 
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import { startHost } from './host.ts';
@@ -45,13 +44,7 @@ export async function serveHost(
   console.info(
     `Interborough is listening on ${host.url.protocol}//${host.url.hostname}:${host.url.port || 80}`,
   );
-  console.info(
-    `Its state lives in ${
-      host.database.kind === 'sqlite'
-        ? dirname(host.database.path)
-        : 'the configured Postgres database'
-    }`,
-  );
+  console.info(`Its state lives in ${host.stateDescription}`);
 
   installShutdownSignals(process, () => stop(0));
 }

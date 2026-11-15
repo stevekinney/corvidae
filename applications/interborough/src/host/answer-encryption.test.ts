@@ -20,6 +20,7 @@ function fakeBungalow(mode: 'local' | 'remote', secrets = new Map<string, string
   const bungalow = {
     mode,
     deploymentSecrets: {
+      writable: mode === 'local',
       read: async (key: string) => secrets.get(key),
       write: async (key: string, value: string) => {
         if (mode === 'remote') throw new Error('A remote Bungalow cannot write a secret.');
@@ -62,6 +63,26 @@ describe('answerEncryptionKeys', () => {
 
     const failure = await rejectionOf(answerEncryptionKeys(bungalow));
     expect(String(failure)).toContain('INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY');
+  });
+
+  test('whether the secrets are writable decides, not the mode', async () => {
+    const generating = fakeBungalow('local');
+    const writableRemote = {
+      ...generating.bungalow,
+      mode: 'remote' as const,
+      deploymentSecrets: { ...generating.bungalow.deploymentSecrets, writable: true },
+    } as Bungalow;
+    await answerEncryptionKeys(writableRemote);
+    expect(generating.writes).toEqual([ANSWER_ENCRYPTION_KEY]);
+
+    const refusing = fakeBungalow('local');
+    const readOnlyLocal = {
+      ...refusing.bungalow,
+      deploymentSecrets: { ...refusing.bungalow.deploymentSecrets, writable: false },
+    } as Bungalow;
+    const failure = await rejectionOf(answerEncryptionKeys(readOnlyLocal));
+    expect(String(failure)).toContain('Remote mode needs it');
+    expect(refusing.writes).toEqual([]);
   });
 
   test('reads a retired key by its id, and nothing for an id it does not hold', async () => {
