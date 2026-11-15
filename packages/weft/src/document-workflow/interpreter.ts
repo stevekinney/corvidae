@@ -6,6 +6,12 @@
  * @module document-workflow/interpreter
  */
 
+import {
+  advanceBranchesOf,
+  canAdvanceBranches,
+  inLockstep,
+  markAdvancingRun,
+} from '../core/context/advancing-operations.ts';
 import type { ContextOperationRequest } from '../core/context/operation-request.ts';
 import {
   activity,
@@ -207,6 +213,9 @@ export async function buildDocumentWorkflowDefinition(
     const firedBy = trigger === undefined ? null : trigger;
     // Pure, and the same on a replay: it reads the recorded input and yields nothing.
     checkSchema('input', firedBy);
+    // A run that begins now says so in its checkpoint, so its parallel steps advance on their own
+    // whatever a recovered checkpoint holds (see `canAdvanceBranches`).
+    markAdvancingRun(context);
     type RunState = { previous: unknown; pendingSignal: unknown; lastStepWasSignal: boolean };
     type RunSteps = (
       steps: readonly WorkflowDocument['steps'][number][],
@@ -256,7 +265,14 @@ export async function buildDocumentWorkflowDefinition(
       state.previous = results;
       state.pendingSignal = undefined;
     }
-    /** Lockstep `ctx.allSettled` rounds, cached whole: see `parallel` in document.ts for the limit. */
+    /**
+     * One `parallel` step. Each branch advances on its own, as soon as its current step settles,
+     * and commits each step it settles, so a restart resumes every branch where it stopped.
+     *
+     * A run persisted before branches advanced on their own kept its parallel step as lockstep
+     * rounds, numbered through the shared step counter, and holds that step's results where this
+     * step would count its own: such a step finishes the way it began.
+     */
     function* runParallel(
       step: Extract<WorkflowDocument['steps'][number], { kind: 'parallel' }>,
       iteration: readonly (string | number)[],
@@ -274,7 +290,9 @@ export async function buildDocumentWorkflowDefinition(
           return yield* runNested(nested, [...iteration, name], branchState);
         })();
       });
-      const results = yield* runMapBatch(context, generators);
+      const results = canAdvanceBranches(context, generators.length)
+        ? yield* advanceBranchesOf(context, generators)
+        : yield* inLockstep(context, runMapBatch(context, generators));
       state.previous = Object.fromEntries(
         branches.map(([name], offset) => [name, results[offset]]),
       );

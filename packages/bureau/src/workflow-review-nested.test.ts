@@ -127,6 +127,34 @@ describe('a review with a timeout (probe a)', () => {
     await waitUntil(async () => (await statusOf(second, runId)) === 'completed');
   });
 
+  it('does not run a finished agent step in a branch again after a restart while a sibling review waits (matrix row W4)', async () => {
+    // COR-2416: the agent step settled before its sibling's review, so its step is committed and a
+    // restart resumes the branch after it. It was run again after every restart before.
+    const storage = new MemoryStorage();
+    const calls: Awaited<ReturnType<typeof start>>['calls'] = [];
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-review-nested-'));
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    const replies = { editor: () => 'ok' };
+    const first = await start({ directory, replies, calls, overrides: { storage } });
+    const runId = await begin(first, 'branch-agent-restart', [
+      { kind: 'parallel', branches: { writer: [EDITOR], approver: [REVIEW('approve')] } },
+    ]);
+    await waitUntil(() => reviewsOf(first).length === 1);
+    const stepCompleted = async () => {
+      const events = await first.bureau.durableEngine()!.getEvents(runId);
+      return events.some((event) => event.type === 'file-workflow:step-completed');
+    };
+    await waitUntil(stepCompleted, { message: 'the agent step to be committed' });
+    const id = reviewsOf(first)[0]!.id;
+    await first.bureau.dispose();
+
+    const second = await start({ directory, replies, calls, overrides: { storage } });
+    await waitUntil(() => reviewsOf(second).length === 1);
+    await approve(second, id);
+    await waitUntil(async () => (await statusOf(second, runId)) === 'completed');
+    expect(calls.filter((call) => call.agent === 'editor')).toHaveLength(1);
+  });
+
   it('leaves Reviews when its timeout wins, before anything else ends the run', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -226,6 +254,49 @@ describe('a review inside a parallel branch (probe c)', () => {
     await waitUntil(async () => (await statusOf(harness, runId)) === 'completed');
   });
 
+  it('lists a decided branch`s next review beside its sibling`s, across a restart (matrix row W2)', async () => {
+    // COR-2416: the decided branch moves on to its next review while its sibling still waits, and
+    // its step is committed, so a restart lists both again at the same ids.
+    const storage = new MemoryStorage();
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-review-nested-'));
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    const first = await start({ directory, overrides: { storage } });
+    const runId = await begin(first, 'parallel-next-review', [
+      {
+        kind: 'parallel',
+        branches: {
+          left: [REVIEW('left-ok'), REVIEW('left-next')],
+          right: [REVIEW('right-ok')],
+        },
+      },
+    ]);
+    await waitUntil(() => reviewsOf(first).length === 2);
+    const left = reviewsOf(first).find((review) => review.signalName === 'left-ok')!;
+    await approve(first, left.id);
+    const signals = () =>
+      reviewsOf(first)
+        .map((review) => review.signalName)
+        .toSorted()
+        .join(',');
+    await waitUntil(() => signals() === 'left-next,right-ok', {
+      message: 'the decided branch`s next review to list beside its sibling`s',
+    });
+    const ids = reviewsOf(first)
+      .map((review) => review.id)
+      .toSorted();
+    await first.bureau.dispose();
+
+    const second = await start({ directory, overrides: { storage } });
+    await waitUntil(() => reviewsOf(second).length === 2);
+    expect(
+      reviewsOf(second)
+        .map((review) => review.id)
+        .toSorted(),
+    ).toEqual(ids);
+    for (const id of ids) await approve(second, id);
+    await waitUntil(async () => (await statusOf(second, runId)) === 'completed');
+  });
+
   it('lists a map nested in a branch, one item after another (G19)', async () => {
     const harness = await start({
       output: z.array(z.string()),
@@ -267,7 +338,10 @@ describe('what the clock does to a timed review', () => {
     expect(reviewsOf(harness)).toEqual([]);
   });
 
-  it('refuses a decision on a review whose timeout already won, and delivers nothing', async () => {
+  it('stops listing a review whose timeout won, and delivers nothing to it', async () => {
+    // COR-2418: the step after the timed review is a sleep, which starts no activity and records
+    // no signal event, so nothing told Reviews the timeout had won and the row stayed listed until
+    // the run next moved. The commit that follows the lost wait is what tells it now.
     const harness = await start();
     useFakeTimers(Date.now());
     const runId = await begin(harness, 'stale-after-timeout', [
@@ -278,17 +352,45 @@ describe('what the clock does to a timed review', () => {
     await waitUntil(() => reviewsOf(harness).length === 1);
     const stale = reviewsOf(harness)[0]!;
     await advanceTimersByTime(60 * 60 * 1000);
-    // The run now sleeps: no event tells Reviews the timeout won, so the row may still be listed.
-    await waitUntil(async () => {
-      const state = await harness.bureau.durableEngine()!.get(runId);
-      return (state?.waitingForSignals ?? []).length === 0;
+    await waitUntil(() => reviewsOf(harness).length === 0, {
+      message: 'the review whose timeout won to leave Reviews',
     });
-
-    const refused = await approve(harness, stale.id).catch((error: unknown) => error);
-
-    expect((refused as BureauError).code).toBe('CONFLICT');
+    // What the list shows is what the engine says: the run waits at no review.
     const state = await harness.bureau.durableEngine()!.get(runId);
-    expect(state?.status).toBe('running');
+    expect(state?.waitingForSignals ?? []).toEqual([]);
+
+    // A resolve of the id the list showed is refused as unknown, never as a CONFLICT about a row
+    // the list still showed, and nothing is delivered.
+    const refused = await approve(harness, stale.id).catch((error: unknown) => error);
+    expect((refused as BureauError).code).toBe('NOT_FOUND');
+    expect(await statusOf(harness, runId)).toBe('running');
     expect(await harness.bureau.reviews.pendingOf(runId)).toEqual([]);
+  });
+
+  it('stops listing a timed review in a parallel branch when its timeout wins, and keeps its sibling', async () => {
+    const harness = await start();
+    useFakeTimers(Date.now());
+    const runId = await begin(harness, 'branch-timeout', [
+      {
+        kind: 'parallel',
+        branches: {
+          timed: [REVIEW('timed-ok', { timeout: '1h' })],
+          plain: [REVIEW('plain-ok')],
+        },
+      },
+    ]);
+    await waitUntil(() => reviewsOf(harness).length === 2);
+    const timed = reviewsOf(harness).find((review) => review.signalName === 'timed-ok')!;
+    const plain = reviewsOf(harness).find((review) => review.signalName === 'plain-ok')!;
+    await advanceTimersByTime(60 * 60 * 1000);
+    await waitUntil(() => reviewsOf(harness).length === 1, {
+      message: 'the timed review to leave Reviews',
+    });
+    expect(reviewsOf(harness).map((review) => review.id)).toEqual([plain.id]);
+
+    const refused = await approve(harness, timed.id).catch((error: unknown) => error);
+    expect((refused as BureauError).code).toBe('NOT_FOUND');
+    await approve(harness, plain.id);
+    await waitUntil(async () => (await statusOf(harness, runId)) === 'completed');
   });
 });
