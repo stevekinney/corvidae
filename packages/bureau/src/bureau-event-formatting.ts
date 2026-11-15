@@ -3,6 +3,11 @@
  * for the event kinds it knows (`PluginFormatter`); an event no formatter claims is shown by
  * its raw kind, with the run it names so the view can still link to it.
  *
+ * A formatter formats from the event alone, synchronously, and what it returns is bounded
+ * (COR-2221): a `title` is one line of at most {@link FORMATTED_TITLE_LIMIT} characters (its
+ * newlines become spaces) and a `body` at most {@link FORMATTED_BODY_LIMIT}; a longer one is cut,
+ * never refused, and a `body` that is not a string is dropped with a `warn` diagnostic.
+ *
  * Each kind has at most one formatter. Two that claim the same kind are refused when the
  * formatters are registered, so the sentence a kind gets never depends on registration order.
  *
@@ -35,6 +40,23 @@ export interface FormattedBureauEvent {
   readonly source?: string;
   /** `<plugin>/<formatter>` when a contributed formatter wrote the title; absent for the raw fallback. */
   readonly formattedBy?: string;
+}
+
+/** The longest `title` a formatter's output keeps, in characters; a longer one is cut (COR-2221). */
+export const FORMATTED_TITLE_LIMIT = 200;
+
+/** The longest `body` a formatter's output keeps, in characters; a longer one is cut (COR-2221). */
+export const FORMATTED_BODY_LIMIT = 2000;
+
+/** A line break: CRLF, CR, LF, and the Unicode line and paragraph separators. */
+const LINE_BREAKS = /\r\n|[\r\n\p{Zl}\p{Zp}]/gu;
+
+/** Cuts `text` to `limit` characters without leaving half of a surrogate pair behind. */
+function truncated(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const last = text.charCodeAt(limit - 1);
+  const isHighSurrogate = last >= 0xd800 && last <= 0xdbff;
+  return text.slice(0, isHighSurrogate ? limit - 1 : limit);
 }
 
 /** Formats events with the formatters it was built from. */
@@ -81,10 +103,18 @@ export function createBureauEventFormatter(
       try {
         const formatting = registration.formatter.format(event);
         if (typeof formatting.title === 'string' && formatting.title.length > 0) {
+          // A body that is not a string is dropped, and says so: the title still stands.
+          if (formatting.body !== undefined && typeof formatting.body !== 'string') {
+            diagnose?.(
+              `Event formatter "${name}" returned a body that is not a string for "${event.kind}"`,
+            );
+          }
           return {
             ...common,
-            title: formatting.title,
-            ...(typeof formatting.body === 'string' ? { body: formatting.body } : {}),
+            title: truncated(formatting.title.replaceAll(LINE_BREAKS, ' '), FORMATTED_TITLE_LIMIT),
+            ...(typeof formatting.body === 'string'
+              ? { body: truncated(formatting.body, FORMATTED_BODY_LIMIT) }
+              : {}),
             formattedBy: name,
           };
         }

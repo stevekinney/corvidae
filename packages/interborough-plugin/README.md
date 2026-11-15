@@ -101,7 +101,7 @@ The descriptor's members:
 | `embedders` | Embedders the `memory.embedder` setting can name. |
 | `scorers` | Scorers that score a sample of completed runs. |
 | `panels` | Interface panels. |
-| `formatters` | Titles and bodies for the activity views. |
+| `formatters` | Titles and bodies for the activity views. A formatter formats from the event alone, synchronously: `format(event)` is handed nothing else and returns no promise. The host keeps a `title` to one line of 200 characters (newlines become spaces) and a `body` to 2,000, cutting a longer one rather than refusing it, and drops a `body` that is not a string with a `warn` diagnostic. A formatter that lists one kind twice, or a kind another plugin's formatter holds, skips the plugin with `name-clash`. |
 | `agents` | Agents defined in code. Each may carry a `title` (its listing's label), a `visibility` (`'chat'` by default; `'hidden'` keeps it in `bureau.agents.list`, which marks it `visibility: "hidden"`, and Chat does not offer it, while workflows, children and a direct start still run it by `plugin:name`) and a `version` (a run pins it in place of the plugin's version; a run recovered under a different one settles failed with `definition-drifted`). |
 
 ### Code workflows

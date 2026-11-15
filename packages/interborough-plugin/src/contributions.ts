@@ -428,7 +428,12 @@ export interface PluginFormatter {
   readonly name: string;
   /** The event kinds the formatter handles. */
   readonly eventKinds: readonly string[];
-  /** Formats one event of a kind in `eventKinds`. */
+  /**
+   * Formats one event of a kind in `eventKinds`, from the event alone and synchronously: it is
+   * handed no storage, no secrets and no other event, and returns no promise. The host keeps a
+   * `title` to one line of 200 characters (newlines become spaces) and a `body` to 2,000
+   * characters, cutting a longer one, and drops a `body` that is not a string.
+   */
   format(event: PluginEvent): PluginFormatting;
 }
 

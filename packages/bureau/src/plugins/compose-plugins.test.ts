@@ -663,6 +663,28 @@ describe('composePlugins', () => {
     });
   });
 
+  it('skips a plugin whose formatter lists one event kind twice, with name-clash (COR-2221)', async () => {
+    const { records, options } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('kit', () => ({
+          formatters: [
+            {
+              name: 'settled',
+              eventKinds: ['run.settled', 'run.settled'],
+              format: () => ({ title: 'settled' }),
+            },
+          ],
+        })),
+      ],
+    });
+
+    expect(records[0]?.status).toBe('skipped');
+    expect(records[0]?.problems).toEqual([
+      expect.objectContaining({ code: 'name-clash', name: 'run.settled' }),
+    ]);
+    expect(options.formatters ?? []).toEqual([]);
+  });
+
   it('skips a malformed plugin instead of failing composition', async () => {
     const malformed: BureauPluginEntry = {
       // Not through `definePlugin`, which would refuse the name where the plugin is written.

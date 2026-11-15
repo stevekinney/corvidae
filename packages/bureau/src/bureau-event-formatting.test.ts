@@ -82,6 +82,63 @@ describe('formatting an event', () => {
     expect(messages[0]).toContain('reports/throwing');
   });
 
+  describe('bounding what a formatter returns (COR-2221)', () => {
+    const formatting = (output: unknown, diagnose?: (message: string) => void) =>
+      createBureauEventFormatter(
+        [{ plugin: 'reports', formatter: { ...settled, format: () => output as never } }],
+        diagnose,
+      )(EVENT);
+
+    it('cuts a title to 200 characters', () => {
+      expect(formatting({ title: 'a'.repeat(500) }).title).toBe('a'.repeat(200));
+      expect(formatting({ title: 'a'.repeat(200) }).title).toBe('a'.repeat(200));
+    });
+
+    it('does not leave half of a surrogate pair at the cut', () => {
+      const emoji = String.fromCodePoint(0x1f600);
+      const title = formatting({ title: `${'a'.repeat(199)}${emoji}tail` }).title;
+      expect(title).toBe('a'.repeat(199));
+    });
+
+    it('turns every newline in a title into a space', () => {
+      const lineSeparator = String.fromCharCode(0x2028);
+      const paragraphSeparator = String.fromCharCode(0x2029);
+      const { title } = formatting({
+        title: `one\ntwo\r\nthree\rfour${lineSeparator}five${paragraphSeparator}six`,
+      });
+      expect(title).toBe('one two three four five six');
+    });
+
+    it('cuts a body to 2,000 characters and keeps one within the limit', () => {
+      expect(formatting({ title: 't', body: 'b'.repeat(5000) }).body).toBe('b'.repeat(2000));
+      expect(formatting({ title: 't', body: 'b'.repeat(2000) }).body).toBe('b'.repeat(2000));
+    });
+
+    it('keeps the line breaks of a body', () => {
+      expect(formatting({ title: 't', body: 'one\ntwo' }).body).toBe('one\ntwo');
+    });
+
+    it('drops a body that is not a string, says so once, and keeps the title', () => {
+      for (const body of [42, null, { text: 'x' }, ['x']]) {
+        const messages: string[] = [];
+        const result = formatting({ title: 'Run finished', body }, (message) =>
+          messages.push(message),
+        );
+        expect(result.title).toBe('Run finished');
+        expect(result.formattedBy).toBe('reports/settled');
+        expect(Object.hasOwn(result, 'body')).toBe(false);
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toContain('reports/settled');
+      }
+    });
+
+    it('says nothing about a body a formatter leaves out', () => {
+      const messages: string[] = [];
+      formatting({ title: 'Run finished' }, (message) => messages.push(message));
+      expect(messages).toEqual([]);
+    });
+  });
+
   it('refuses two formatters that claim one kind', () => {
     expect(() =>
       createBureauEventFormatter([
