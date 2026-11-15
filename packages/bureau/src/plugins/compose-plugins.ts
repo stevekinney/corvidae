@@ -459,13 +459,16 @@ function planOf(
       );
     }
     // The catalog lists these two as text, so a value that is not would fail the operation for everyone.
-    const { description, version } = declaration as { description?: unknown; version?: unknown };
+    const { description, version: ownVersion } = declaration as {
+      description?: unknown;
+      version?: unknown;
+    };
     if (typeof description !== 'string' || description.trim() === '') {
       throw new TypeError(
         `setup returned the event "${declaration.name}" without a description: every event says what it means.`,
       );
     }
-    if (version !== undefined && (typeof version !== 'string' || version === '')) {
+    if (ownVersion !== undefined && (typeof ownVersion !== 'string' || ownVersion === '')) {
       throw new TypeError(
         `setup returned the event "${declaration.name}" with a version that is not a non-empty string.`,
       );
