@@ -328,6 +328,22 @@
       order: 1;
     }
 
+    /* A time-led row keeps its text column, so the subtitle sits under the title, beside the lead,
+       rather than taking a line of its own under the number. */
+    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
+      .cinder-grouped-list-item__text {
+      display: flex;
+    }
+
+    .cinder-grouped-list-item--timed.cinder-grouped-list-item--trailing
+      :is(
+        .cinder-grouped-list-item__suggested,
+        .cinder-grouped-list-item__title,
+        .cinder-grouped-list-item__subtitle
+      ) {
+      flex: none;
+    }
+
     .cinder-grouped-list-item--trailing .cinder-grouped-list-item__actions {
       order: 2;
     }

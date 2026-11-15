@@ -104,6 +104,10 @@ describe('GroupedListItem time-led row', () => {
     const css = readFileSync(new URL('./grouped-list-item.css', import.meta.url), 'utf8');
     expect(css).not.toMatch(/--timed \.cinder-grouped-list-item__(title|subtitle)/);
     expect(css).toMatch(/--timed > \.cinder-grouped-list-item__content \{[^}]*flex-start/);
+    // On a phone the subtitle stays in the text column, under the title rather than the number.
+    expect(css).toMatch(
+      /--timed\.cinder-grouped-list-item--trailing\s+\.cinder-grouped-list-item__text \{[^}]*display: flex/,
+    );
     const declarations = [...css.matchAll(/(font-size|font-weight|line-height):\s*([^;]+);/g)];
     expect(declarations.length).toBeGreaterThan(0);
     for (const [declaration, , value] of declarations) {

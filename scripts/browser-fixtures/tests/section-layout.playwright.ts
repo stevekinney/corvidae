@@ -138,6 +138,15 @@ test.describe('GroupedList layout', () => {
       expect(Math.abs(value!.y - titleTop), `number of row ${index}`).toBeLessThanOrEqual(1);
       expect(Math.abs(value!.height - titleLine), `number of row ${index}`).toBeLessThanOrEqual(1);
     }
+    // On a phone, where a row with a trailing value gives its subtitle a line of its own, a
+    // time-led row's subtitle still starts under its title, never under the number.
+    await page.setViewportSize({ width: 375, height: 800 });
+    for (const index of [1, 2, 3]) {
+      const row = rows.nth(index);
+      const title = await row.locator('.cinder-grouped-list-item__title').boundingBox();
+      const subtitle = await row.locator('.cinder-grouped-list-item__subtitle').boundingBox();
+      expect(Math.abs(subtitle!.x - title!.x), `subtitle of row ${index}`).toBeLessThanOrEqual(1);
+    }
   });
 
   test('the grouped skeleton draws the grouped list surface, and its button block drops under the text on a phone (COR-2329)', async ({
