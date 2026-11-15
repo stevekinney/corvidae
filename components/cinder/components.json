@@ -3255,7 +3255,7 @@
       "tags": ["board", "kanban", "drag", "reorder"],
       "useWhen": [
         "Presenting a workflow board where users move cards between ordered columns.",
-        "Consumers own card rendering and need cinder to manage reorder affordances and change metadata."
+        "Cards need a title over one quiet row (an assignee, a priority badge), or consumers own card rendering."
       ],
       "avoidWhen": [
         {
