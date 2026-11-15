@@ -119,7 +119,8 @@ function assertInput(input: PrepareSecretInput): void {
     throw new BungalowInputError('A secret value and expected revision are required.');
   }
 }
-function encode(reference: Omit<SecretReference, 'serialized'>): SecretReference {
+/** Not part of the package's public surface: the conformance checks build a reference with it. */
+export function encode(reference: Omit<SecretReference, 'serialized'>): SecretReference {
   const payload = JSON.stringify([reference.workspaceId, reference.key, reference.version]);
   return { ...reference, serialized: PREFIX + Buffer.from(payload).toString('base64url') };
 }
