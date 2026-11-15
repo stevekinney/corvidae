@@ -1502,7 +1502,12 @@
       return {
         kind: 'blocked',
         reason: words.unconfiguredTitle,
-        action: { label: words.connectProvider, onclick: availability.onConnect, primary: true },
+        action: {
+          label: words.connectProvider,
+          shortLabel: words.connectProviderShort,
+          onclick: availability.onConnect,
+          primary: true,
+        },
       };
     }
     return undefined;

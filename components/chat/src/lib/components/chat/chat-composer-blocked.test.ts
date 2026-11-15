@@ -76,6 +76,40 @@ describe('a blocked composer', () => {
     ).toBe('sm');
   });
 
+  test('an action with a short form reads it in a narrow composer and keeps its whole name (COR-2327 B1)', async () => {
+    const { container, getByRole } = render(ChatInput, {
+      id: 'blocked-short',
+      status: {
+        kind: 'blocked',
+        reason: 'Connect a model provider',
+        action: { label: 'Connect provider', shortLabel: 'Connect', onclick: () => undefined },
+      },
+    });
+    const button = getByRole('button', { name: 'Connect provider' });
+    expect(button.querySelector('.chat-input-blocked-action-full')?.textContent).toBe(
+      'Connect provider',
+    );
+    const short = button.querySelector('.chat-input-blocked-action-short');
+    expect(short?.textContent).toBe('Connect');
+    expect(short?.getAttribute('aria-hidden')).toBe('true');
+    const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
+    expect(source).toMatch(
+      /@container \(inline-size < 30rem\) \{\s*\.chat-input-blocked-action-full \{\s*display: none;/u,
+    );
+
+    // Without a short form, the action reads its label as it always has.
+    const plain = render(ChatInput, {
+      id: 'blocked-plain',
+      status: {
+        kind: 'blocked',
+        reason: BLOCKED_REASON,
+        action: { label: 'Connect a provider', onclick: () => undefined },
+      },
+    });
+    expect(plain.container.querySelector('.chat-input-blocked-action-short')).toBeNull();
+    expect(container.querySelectorAll('.chat-input-blocked-action-short')).toHaveLength(1);
+  });
+
   test('draws one row with the reason, and no text box, controls or Send', () => {
     const { container } = render(ChatInput, {
       id: 'blocked',

@@ -154,7 +154,13 @@ describe('a blocked composer', () => {
     await waitFor(() => expect(row(container)).not.toBeNull());
     expect(row(container)?.textContent).toContain('Connect a model provider');
     const buttons = [...row(container)!.querySelectorAll('a, button')];
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Connect provider']);
+    // Named Connect provider; on a phone it reads Connect (COR-2327 B1).
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Connect provider',
+    ]);
+    expect(buttons[0]?.querySelector('.chat-input-blocked-action-short')?.textContent).toBe(
+      CHAT_COPY.composer.connectProviderShort,
+    );
     expect(buttons[0]?.getAttribute('data-cinder-variant')).toBe('primary');
     expect(composer(container)).toBeNull();
     // The transcript is still there, and nothing stands in its place.

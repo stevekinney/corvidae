@@ -5,6 +5,12 @@
 export interface ChatComposerBlockedAction {
   /** What the action says, such as `Connect a provider`. */
   readonly label: string;
+  /**
+   * What the action reads in a narrow composer, such as `Connect`, so the reason beside it keeps
+   * the room to wrap to at most two lines. Its accessible name stays `label`, which must contain
+   * these words. Without it the action reads `label` at every width.
+   */
+  readonly shortLabel?: string | undefined;
   /** Where a link goes. When omitted the action is a button. */
   readonly href?: string | undefined;
   /** Called when the action is activated. A link may also pass one, for client-side navigation. */

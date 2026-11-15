@@ -41,6 +41,12 @@ export interface ChatAvailabilityLabels {
   readonly unconfiguredDescription: string;
   /** The button that opens provider settings. Default `Connect provider`. */
   readonly connectProvider: string;
+  /**
+   * What that button reads in the blocked row of a narrow composer, beside a conversation with
+   * messages, so the reason keeps room for two lines. Its accessible name stays `connectProvider`,
+   * which must contain these words. Default `Connect`.
+   */
+  readonly connectProviderShort: string;
   /** What Send reads while the conversation loads and Send waits for it. Default `Loading…`. */
   readonly sendWaits: string;
   /**
@@ -65,6 +71,7 @@ export const DEFAULT_CHAT_AVAILABILITY_LABELS: ChatAvailabilityLabels = {
   unconfiguredTitle: 'Connect a model provider',
   unconfiguredDescription: 'The agent needs a model to answer. An admin adds one in Settings.',
   connectProvider: 'Connect provider',
+  connectProviderShort: 'Connect',
   sendWaits: 'Loading…',
   sendBlocked: 'Retry to send messages.',
 };

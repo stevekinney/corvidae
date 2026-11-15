@@ -562,7 +562,10 @@
       return {
         kind: 'unconfigured',
         onConnect: () => router.navigate('/settings/models'),
-        labels: { unconfiguredDescription: CHAT_COPY.composer.unconfiguredDescription },
+        labels: {
+          unconfiguredDescription: CHAT_COPY.composer.unconfiguredDescription,
+          connectProviderShort: CHAT_COPY.composer.connectProviderShort,
+        },
       };
     }
     return undefined;

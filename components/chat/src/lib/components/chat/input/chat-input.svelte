@@ -1563,7 +1563,35 @@
       </div>
       {#if blocked.action !== undefined || blocked.link !== undefined}
         <div class="chat-input-blocked-actions">
-          {#if blocked.action !== undefined}
+          {#if blocked.action !== undefined && blocked.action.shortLabel !== undefined}
+            <!-- A short form for a narrow composer: the words switch by the row's own width, and
+                 the accessible name is the whole label at every width. -->
+            {#snippet blockedActionWords(action: ChatComposerBlockedAction)}
+              <span class="chat-input-blocked-action-full">{action.label}</span>
+              <span class="chat-input-blocked-action-short" aria-hidden="true"
+                >{action.shortLabel}</span
+              >
+            {/snippet}
+            {#if blocked.action.href !== undefined}
+              <Button
+                variant={blocked.action.primary === true ? 'primary' : 'secondary'}
+                size="sm"
+                href={blocked.action.href}
+                aria-label={blocked.action.label}
+                onclick={blocked.action.onclick}
+                >{@render blockedActionWords(blocked.action)}</Button
+              >
+            {:else}
+              <Button
+                type="button"
+                variant={blocked.action.primary === true ? 'primary' : 'secondary'}
+                size="sm"
+                aria-label={blocked.action.label}
+                onclick={blocked.action.onclick}
+                >{@render blockedActionWords(blocked.action)}</Button
+              >
+            {/if}
+          {:else if blocked.action !== undefined}
             {#if blocked.action.href !== undefined}
               <Button
                 variant={blocked.action.primary === true ? 'primary' : 'secondary'}
@@ -2706,6 +2734,22 @@
     align-items: center;
     gap: var(--cinder-space-2);
     margin-inline-start: auto;
+  }
+
+  /* An action with a short form reads it in a narrow composer (the blocked row is its own inline
+   * size container), so the reason beside it wraps to at most two lines (COR-2327 B1). */
+  .chat-input-blocked-action-short {
+    display: none;
+  }
+
+  @container (inline-size < 30rem) {
+    .chat-input-blocked-action-full {
+      display: none;
+    }
+
+    .chat-input-blocked-action-short {
+      display: inline;
+    }
   }
 
   .chat-input-editor:focus {

@@ -117,6 +117,8 @@ test('an unconfigured chat with messages keeps them readable and replaces only t
   const connect = buttonNamed(container, 'Connect provider')!;
   expect(blocked.contains(connect)).toBe(true);
   expect(connect.getAttribute('data-cinder-variant')).toBe('primary');
+  // In a narrow composer it reads Connect, keeping its whole name (COR-2327 B1).
+  expect(connect.querySelector('.chat-input-blocked-action-short')?.textContent).toBe('Connect');
   await fireEvent.click(connect);
   expect(connected).toBe(1);
 });
