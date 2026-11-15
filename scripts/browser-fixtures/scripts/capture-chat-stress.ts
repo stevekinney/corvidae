@@ -377,7 +377,18 @@ export function measureInPage(options: {
         const hit = document.elementFromPoint(x, y);
         if (hit === null) return false;
         if (hit === element || element.contains(hit)) return true;
-        return orNeighbour && hit.closest(neighbours) !== null;
+        if (!orNeighbour) return false;
+        // A point scrolled out of a scroller's visible box cannot be tapped at all.
+        if (reachableBox(element, new DOMRect(x, y, 1, 1), true) === undefined) return true;
+        if (hit.closest(neighbours) !== null) return true;
+        // A fixed or sticky surface (the composer, a docked bar) legitimately covers the area while
+        // content scrolls under it, as the 44px probe above allows.
+        for (let overlay: Element | null = hit; overlay !== null; overlay = overlay.parentElement) {
+          const position = getComputedStyle(overlay).position;
+          if ((position === 'fixed' || position === 'sticky') && !overlay.contains(element))
+            return true;
+        }
+        return false;
       };
       // How far past an edge a tap still reaches the control, in whole pixels.
       const reach = (dx: number, dy: number, orNeighbour = false): number => {
