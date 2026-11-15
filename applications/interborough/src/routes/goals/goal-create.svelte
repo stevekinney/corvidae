@@ -69,7 +69,7 @@
   const providerConnected = $derived(
     providers.data === undefined
       ? undefined
-      : providers.data.providers.some((provider) => provider.hasKey),
+      : providers.data.providers.some((provider) => provider.connected),
   );
 
   const scripted = $derived.by(() => {

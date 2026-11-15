@@ -1,0 +1,825 @@
+/**
+ * The Decisions part of `/settings/models` (COR-2160): both model rows choose among the rows the
+ * Bureau reports (`bureau.decisions.models`), each marked available or needs setup, and the decision
+ * model row names the row that answers from the Bureau's own field. The page copies no Bureau rule,
+ * so each case here serves the Bureau's answer and reads what the page makes of it.
+ */
+import { HttpClient } from '@lostgradient/weft';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
+import { afterEach, describe, expect, test } from 'bun:test';
+
+import { MODELS_COPY } from '../../../app/copy/models.ts';
+import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
+import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
+import type { DecisionModelRow } from '../../../lib/bureau-decisions.ts';
+import { StubFault, type BureauStub } from '../../../lib/bureau-stub.test-support.ts';
+import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
+import { landAt } from '../../chat/pages.test-support.ts';
+import {
+  installFakePluginHost,
+  type FakePluginHost,
+  type PluginFixture,
+} from '../plugins/plugins-host.test-support.ts';
+import {
+  installSettingsBureau,
+  servedSettings,
+  settingsStream,
+  type SettingsServed,
+  type SettingsStream,
+} from '../settings-fixtures.test-support.ts';
+import { installFakeHost, model, type FakeHost } from './models-host.test-support.ts';
+
+const copy = MODELS_COPY.decisions;
+
+let stub: BureauStub | undefined;
+let host: FakeHost | undefined;
+let pluginHost: FakePluginHost | undefined;
+
+afterEach(() => {
+  cleanup();
+  pluginHost?.restore();
+  pluginHost = undefined;
+  host?.restore();
+  host = undefined;
+  stub?.restore();
+  stub = undefined;
+});
+
+/** A row as the Bureau reports it. */
+function decisionRow(
+  provider: string,
+  name: string,
+  extra: Partial<DecisionModelRow> = {},
+): DecisionModelRow {
+  return {
+    provider,
+    model: name,
+    availability: 'available',
+    decisionOnly: false,
+    answering: false,
+    fallback: false,
+    canBeFallback: true,
+    ...extra,
+  };
+}
+
+const HAIKU = decisionRow('anthropic', 'claude-haiku-5-5', { answering: true, fallback: true });
+const SONNET = decisionRow('anthropic', 'claude-sonnet-5-5');
+const GPT = decisionRow('openai', 'gpt-5', { availability: 'needs-setup' });
+/** Decision-only: the Bureau's fallback rule never uses it, so it reports `canBeFallback: false`. */
+const JEV = decisionRow('typesafe', 'jev', { decisionOnly: true, canBeFallback: false });
+
+function open(
+  options: {
+    rows?: readonly DecisionModelRow[];
+    /** The rows as the Bureau reports them now, read from the settings it holds at each request. */
+    rowsFor?: (served: SettingsServed) => readonly DecisionModelRow[];
+    served?: SettingsServed;
+    plugins?: PluginFixture[];
+    stream?: SettingsStream;
+    /** Holds the answer of the rows until it settles, so the read stays pending. */
+    hold?: Promise<void>;
+  } = {},
+) {
+  const served = options.served ?? servedSettings();
+  stub = installSettingsBureau(
+    served,
+    {
+      'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+      'bureau.decisions.models': async () => {
+        await options.hold;
+        return { rows: options.rowsFor?.(served) ?? options.rows ?? [HAIKU, GPT, JEV] };
+      },
+      // The plugins' titles name the groups of rows: TypeSafe is no chat provider and is not in the
+      // host's providers list, but its plugin is.
+      'bureau.plugins.contributions': () => ({
+        providers: ['anthropic', 'openai', 'typesafe'].map((name) => ({
+          plugin: name,
+          name,
+          configuration: null,
+        })),
+        triggers: [],
+        reactions: [],
+      }),
+    },
+    options.stream,
+  );
+  host = installFakeHost({
+    keys: { anthropic: true, openai: false, gemini: false },
+    offered: { anthropic: [model('anthropic', 'claude-haiku-5-5')], openai: [], gemini: [] },
+  });
+  pluginHost = installFakePluginHost(
+    options.plugins ?? [
+      { name: 'typesafe', title: 'TypeSafe', status: 'running' },
+      { name: 'anthropic', title: 'Anthropic' },
+      { name: 'openai', title: 'OpenAI' },
+    ],
+  );
+  landAt('/settings/models');
+  return render(RouteOutletHarness, {
+    props: {
+      client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+      scopes: AUTHORIZATION_SCOPES,
+    },
+  } as never);
+}
+
+const row = (container: HTMLElement, key: string) =>
+  container.querySelector<HTMLElement>(`[data-setting="${key}"]`)!;
+const section = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-section="decisions"]')!;
+const trigger = (container: HTMLElement, key: string) =>
+  within(row(container, key)).getByRole('combobox');
+
+/** Opens a row's select and returns the options it lists. */
+async function optionsOf(container: HTMLElement, key: string): Promise<HTMLElement[]> {
+  await fireEvent.click(trigger(container, key));
+  const body = container.ownerDocument.body;
+  await waitFor(() => expect(body.querySelectorAll('[role="option"]').length).toBeGreaterThan(0));
+  return [...body.querySelectorAll<HTMLElement>('[role="option"]')];
+}
+
+/** Both selects are here and can choose: the rows the Bureau reports have loaded. */
+const ready = (container: HTMLElement) =>
+  waitFor(() => {
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      expect(trigger(container, key).hasAttribute('disabled')).toBe(false);
+    }
+  });
+
+describe('the decisions section', () => {
+  test('is the decision model, its fallback and its limit per task, and nothing else of Settings', async () => {
+    const { container, findByRole } = open();
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    expect(
+      [...container.querySelectorAll<HTMLElement>('[data-setting]')].map(
+        (entry) => entry.dataset['setting'],
+      ),
+    ).toEqual(['decisions.model', 'decisions.fallbackModel', 'decisions.maximumPerTask']);
+    expect(container.textContent).toContain(copy.description);
+    // The limit is an ordinary setting: a field that is not held while the Bureau lists rows.
+    expect(row(container, 'decisions.maximumPerTask').querySelector('input')?.disabled).toBe(false);
+    expect(container.textContent).not.toContain(SETTINGS_COPY.saveAction);
+  });
+});
+
+describe('the rows of the decision model and the fallback model', () => {
+  test('are every row the Bureau reports, grouped by provider, a row that needs setup marked and still selectable', async () => {
+    const { container, findByRole } = open();
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(row(container, 'decisions.model')).not.toBeNull());
+    await ready(container);
+
+    const options = await optionsOf(container, 'decisions.model');
+
+    // The empty option, then the three rows the Bureau listed, TypeSafe's among them.
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining(SETTINGS_COPY.notSet),
+      expect.stringContaining('Claude Haiku 5.5'),
+      expect.stringContaining('GPT 5'),
+      expect.stringContaining('Jev'),
+    ]);
+    const body = container.ownerDocument.body.textContent ?? '';
+    for (const provider of ['Anthropic', 'OpenAI', 'TypeSafe']) expect(body).toContain(provider);
+    // Only the row that needs setup carries the mark, and it is not disabled.
+    const marked = options.filter((option) => option.textContent?.includes(copy.needsSetup));
+    expect(marked).toHaveLength(1);
+    expect(marked[0]?.textContent).toContain('GPT 5');
+    expect(marked[0]?.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  test('give the fallback model only the rows the Bureau says can be the fallback, with the same marks', async () => {
+    const { container, findByRole } = open();
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    const options = await optionsOf(container, 'decisions.fallbackModel');
+
+    // The decision-only row is no fallback (the Bureau skips it), so it is not offered; a row that
+    // needs setup and returns structured output still is.
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining(SETTINGS_COPY.defaultOption('Claude Haiku 5.5')),
+      expect.stringContaining('Claude Haiku 5.5'),
+      expect.stringContaining('GPT 5'),
+    ]);
+    expect(options.filter((option) => option.textContent?.includes(copy.needsSetup))).toHaveLength(
+      1,
+    );
+  });
+
+  test('keep the empty option once a value is set, for both selects, and saving it clears the setting', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-haiku-5-5';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    // A row is chosen in each select (the fixture stores a fallback), and the empty option stays
+    // first, so a person can clear either setting.
+    expect(served.values['decisions.fallbackModel']).toBe('anthropic/claude-haiku-5-5');
+    const modelOptions = await optionsOf(container, 'decisions.model');
+    expect(modelOptions).toHaveLength(4);
+    expect(modelOptions[0]?.textContent).not.toContain('Jev');
+    expect(modelOptions[0]?.textContent).not.toContain(copy.needsSetup);
+    await fireEvent.click(modelOptions[0]!);
+
+    await waitFor(() => expect(stub?.callsTo('bureau.settings.update')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.settings.update')[0]?.params['patch']).toEqual({
+      'decisions.model': null,
+    });
+  });
+
+  test('save the row that is chosen, with a needs-setup row allowed', async () => {
+    const served = servedSettings();
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    const options = await optionsOf(container, 'decisions.model');
+    await fireEvent.click(options.find((option) => option.textContent?.includes('GPT 5'))!);
+
+    await waitFor(() => expect(stub?.callsTo('bureau.settings.update')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.settings.update')[0]?.params['patch']).toEqual({
+      'decisions.model': 'openai/gpt-5',
+    });
+    expect(served.values['decisions.model']).toBe('openai/gpt-5');
+  });
+});
+
+describe('the decision model row', () => {
+  test('names the row the Bureau marks as answering while no decision model is chosen', async () => {
+    const { container, findByRole } = open();
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain(copy.model.description);
+    expect(section(container).dataset['waiting']).toBe('true');
+  });
+
+  test('takes the name from the Bureau’s field, not from a rule of its own', async () => {
+    // Another row is marked: the page names that one, whatever its price or structure.
+    const { container, findByRole } = open({
+      rows: [
+        decisionRow('anthropic', 'claude-haiku-5-5'),
+        decisionRow('openai', 'gpt-5', { answering: true, fallback: true }),
+      ],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('GPT 5'),
+      ),
+    );
+  });
+
+  test('says nothing about an answering row while the chosen row is available', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'typesafe/jev';
+    // The Bureau marks the chosen row as the one a decision goes to; the fallback is another.
+    const { container, findByRole } = open({
+      served,
+      rows: [{ ...HAIKU, answering: false }, GPT, { ...JEV, answering: true }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.description),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain('answers until');
+    expect(section(container).dataset['waiting']).toBeUndefined();
+  });
+
+  test('reads the host’s default decision model as the one in force while none is stored, and says nothing while it answers', async () => {
+    const served = servedSettings({ effective: { 'decisions.model': 'typesafe/jev' } });
+    const { container, findByRole } = open({
+      served,
+      rows: [{ ...HAIKU, answering: false }, GPT, { ...JEV, answering: true }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.description),
+    );
+    expect(trigger(container, 'decisions.model').textContent).toContain(
+      SETTINGS_COPY.defaultOption('Jev'),
+    );
+  });
+
+  test('names the fallback while the host’s default decision model needs setup', async () => {
+    const served = servedSettings({ effective: { 'decisions.model': 'typesafe/jev' } });
+    const { container, findByRole } = open({
+      served,
+      rows: [HAIKU, GPT, { ...JEV, availability: 'needs-setup' }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+  });
+
+  test('names the answering row while the chosen row needs setup, and keeps that row chosen', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'openai/gpt-5';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+    expect(trigger(container, 'decisions.model').textContent).toContain('GPT 5');
+  });
+
+  test('says nothing can answer when the Bureau marks no row, and offers Connect TypeSafe while its plugin waits', async () => {
+    const { container, findByRole } = open({
+      rows: [decisionRow('openai', 'gpt-5', { availability: 'needs-setup' })],
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.nothingAnswers),
+    );
+    const link = within(row(container, 'decisions.model')).getByRole('link', {
+      name: copy.model.connect,
+    });
+    expect(link.getAttribute('href')).toBe('/settings/plugins?plugin=typesafe');
+    // The row says Connect TypeSafe once, as the link, not again in the sentence before it.
+    expect(row(container, 'decisions.model').textContent?.split(copy.model.connect)).toHaveLength(
+      2,
+    );
+  });
+
+  test('leaves out Connect TypeSafe once its plugin is running', async () => {
+    const { container, findByRole } = open({ rows: [] });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.nothingAnswers),
+    );
+    expect(
+      within(row(container, 'decisions.model')).queryByRole('link', { name: copy.model.connect }),
+    ).toBeNull();
+  });
+});
+
+/**
+ * The Bureau's marks follow the settings it holds: the stored decision model answers while it is
+ * available, else the stored fallback does, else Haiku; the fallback mark is the stored fallback,
+ * else Haiku. Only rows that `canBeFallback` are the fallback, as the Bureau's rule has it.
+ */
+function marksFollowSettings(served: SettingsServed): DecisionModelRow[] {
+  const stored = (key: string): string | undefined => {
+    const value = served.values[key];
+    return typeof value === 'string' && value !== '' ? value : undefined;
+  };
+  const rows = [HAIKU, SONNET, GPT, JEV];
+  const nameOf = (entry: DecisionModelRow) => `${entry.provider}/${entry.model}`;
+  const isAvailable = (name: string | undefined) =>
+    rows.some((entry) => nameOf(entry) === name && entry.availability === 'available');
+  const isFallback = (name: string | undefined) =>
+    isAvailable(name) && rows.some((entry) => nameOf(entry) === name && entry.canBeFallback);
+  const decisionModel = stored('decisions.model');
+  const fallbackModel = stored('decisions.fallbackModel');
+  const fallback = isFallback(fallbackModel) ? fallbackModel : 'anthropic/claude-haiku-5-5';
+  const answering = isAvailable(decisionModel) ? decisionModel : fallback;
+  return rows.map((entry) => ({
+    ...entry,
+    answering: nameOf(entry) === answering,
+    fallback: nameOf(entry) === fallback,
+  }));
+}
+
+describe('a save moves the rows the Bureau marks (the rows are read again)', () => {
+  test('the decision model row names the new answering row after another available row is chosen', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.model'];
+    const { container, findByRole } = open({ served, rowsFor: marksFollowSettings });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+
+    const options = await optionsOf(container, 'decisions.model');
+    await fireEvent.click(options.find((option) => option.textContent?.includes('Jev'))!);
+
+    await waitFor(() => expect(served.values['decisions.model']).toBe('typesafe/jev'));
+    // The chosen row now answers, so the row stops saying another one does.
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.description),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain('answers until');
+    expect(section(container).dataset['waiting']).toBeUndefined();
+  });
+
+  test('the decision model row names the row the new fallback is while no decision model is chosen', async () => {
+    // With no decision model, the fallback answers: choosing another fallback moves the answerer.
+    const served = servedSettings();
+    delete served.values['decisions.model'];
+    const { container, findByRole } = open({ served, rowsFor: marksFollowSettings });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+
+    const options = await optionsOf(container, 'decisions.fallbackModel');
+    await fireEvent.click(options.find((option) => option.textContent?.includes('Sonnet'))!);
+
+    await waitFor(() =>
+      expect(served.values['decisions.fallbackModel']).toBe('anthropic/claude-sonnet-5-5'),
+    );
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Sonnet 5.5'),
+      ),
+    );
+  });
+
+  test('the decision model row follows a change made elsewhere that the settings events announce', async () => {
+    // A save from another client reaches the page as a newer revision of the settings, not as an edit.
+    const served = servedSettings();
+    delete served.values['decisions.model'];
+    const stream = settingsStream();
+    const { container, findByRole } = open({ served, rowsFor: marksFollowSettings, stream });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(stream.opened).toEqual([undefined]));
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.fallbackAnswers('Claude Haiku 5.5'),
+      ),
+    );
+
+    served.values['decisions.model'] = 'typesafe/jev';
+    served.revision += 1;
+    stream.push(served.revision, ['decisions.model']);
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.description),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain('answers until');
+  });
+});
+
+describe('the fallback model row', () => {
+  test('names the row the Bureau marks as the default in its empty option', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.fallbackModel'];
+    served.values['decisions.model'] = 'typesafe/jev';
+    // The decision model answers, so it is not the fallback: the empty option names the fallback row.
+    const { container, findByRole } = open({
+      served,
+      rows: [{ ...HAIKU, answering: false }, GPT, { ...JEV, answering: true }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(trigger(container, 'decisions.fallbackModel').textContent).toContain(
+        SETTINGS_COPY.defaultOption('Claude Haiku 5.5'),
+      ),
+    );
+  });
+});
+
+describe('a decision model the Bureau cannot use', () => {
+  test('is a warning on the decision model row when the stored row is not one the Bureau lists, with its name kept', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'acme/vanished';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.missing('acme/vanished'),
+      ),
+    );
+    // Not a silent default: the select still shows the stored name, and the row that answers is named.
+    expect(trigger(container, 'decisions.model').textContent).toContain('acme/vanished');
+    expect(row(container, 'decisions.model').textContent).toContain(
+      copy.model.fallbackAnswers('Claude Haiku 5.5'),
+    );
+    // An advisory, not a refusal: nothing was refused and nothing is marked invalid.
+    expect(row(container, 'decisions.model').querySelector('[aria-invalid="true"]')).toBeNull();
+  });
+
+  test('is a warning on the row when the Bureau set a stored catalog value aside and fell back to the default', async () => {
+    const served = servedSettings({
+      problems: {
+        'decisions.model': 'The "catalog" decision model no longer exists; name a catalog row',
+      },
+    });
+    delete served.values['decisions.model'];
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.dropped),
+    );
+    // The page words it, never the Bureau's settings-file syntax.
+    expect(row(container, 'decisions.model').textContent).not.toContain('name a catalog row');
+  });
+
+  test('draws the key-state problem of the decision model row and no other row’s', async () => {
+    const served = servedSettings({
+      problems: { 'decisions.model': 'The "catalog" decision model no longer exists' },
+    });
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.dropped),
+    );
+    expect(row(container, 'decisions.fallbackModel').textContent).not.toContain(copy.model.dropped);
+    // Said once, on the row: not again in an alert above the page.
+    expect(
+      [...container.querySelectorAll('[role="alert"]')].some((alert) =>
+        alert.textContent?.includes(copy.model.dropped),
+      ),
+    ).toBe(false);
+    expect(container.textContent?.split(copy.model.dropped)).toHaveLength(2);
+  });
+
+  test('shows no warning for a row that is only waiting on setup', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'openai/gpt-5';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain('answers until'),
+    );
+    expect(row(container, 'decisions.model').textContent).not.toContain(copy.model.dropped);
+    expect(row(container, 'decisions.model').textContent).not.toContain(
+      copy.model.missing('openai/gpt-5'),
+    );
+  });
+
+  test('says its two next steps once while TypeSafe waits for its key, in the warning, with no separate link', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'acme/vanished';
+    const { container, findByRole } = open({
+      served,
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(
+        copy.model.missingWaiting('acme/vanished'),
+      ),
+    );
+    expect(copy.model.missingWaiting('acme/vanished')).toEndWith(
+      'Connect TypeSafe or choose another.',
+    );
+    expect(
+      within(row(container, 'decisions.model')).queryByRole('link', { name: copy.model.connect }),
+    ).toBeNull();
+    expect(row(container, 'decisions.model').textContent?.split(copy.model.connect)).toHaveLength(
+      2,
+    );
+  });
+
+  test('ends the set-aside warning with Connect TypeSafe or choose another while TypeSafe waits, and leaves the link out', async () => {
+    const served = servedSettings({
+      problems: { 'decisions.model': 'The "catalog" decision model no longer exists' },
+    });
+    delete served.values['decisions.model'];
+    const { container, findByRole } = open({
+      served,
+      rows: [],
+      plugins: [{ name: 'typesafe', status: 'needs-setup' }],
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.droppedWaiting),
+    );
+    expect(copy.model.droppedWaiting).toEndWith('Connect TypeSafe or choose another.');
+    expect(
+      within(row(container, 'decisions.model')).queryByRole('link', { name: copy.model.connect }),
+    ).toBeNull();
+  });
+});
+
+describe('a fallback model the Bureau’s fallback never uses', () => {
+  test('is a warning on the fallback row when the stored row is listed but cannot be the fallback', async () => {
+    const served = servedSettings();
+    served.values['decisions.fallbackModel'] = 'typesafe/jev';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    // The model is named one way on the screen: the select and the warning both say "Jev, TypeSafe".
+    await waitFor(() =>
+      expect(row(container, 'decisions.fallbackModel').textContent).toContain(
+        copy.fallbackModel.unusable('Jev, TypeSafe'),
+      ),
+    );
+    expect(
+      trigger(container, 'decisions.fallbackModel').textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe('Jev, TypeSafe');
+    expect(row(container, 'decisions.fallbackModel').textContent).not.toContain('typesafe/jev');
+    expect(row(container, 'decisions.model').textContent).not.toContain(
+      copy.fallbackModel.unusable('Jev, TypeSafe'),
+    );
+  });
+
+  test('keeps the raw id for a stored fallback the Bureau does not list', async () => {
+    const served = servedSettings();
+    served.values['decisions.fallbackModel'] = 'acme/vanished';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    expect(trigger(container, 'decisions.fallbackModel').textContent).toContain('acme/vanished');
+  });
+
+  test('reads the key’s own default in the empty option of the fallback while the rows are missing, as it does once they load', async () => {
+    const served = servedSettings({
+      effective: { 'decisions.fallbackModel': 'anthropic/claude-haiku-5-5' },
+    });
+    delete served.values['decisions.fallbackModel'];
+    const { container, findByRole } = open({
+      served,
+      rowsFor: () => {
+        throw new StubFault('Unavailable', 503, 'The rows did not come back.');
+      },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
+    );
+
+    expect(trigger(container, 'decisions.fallbackModel').textContent).toContain(
+      SETTINGS_COPY.defaultOption('Claude Haiku 5.5'),
+    );
+  });
+
+  test('is no warning for a stored fallback that can be the fallback', async () => {
+    const { container, findByRole } = open();
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    expect(row(container, 'decisions.fallbackModel').textContent).not.toContain(
+      'can’t be the fallback',
+    );
+  });
+});
+
+describe('the read of the rows that can answer decisions', () => {
+  test('failing says so as the row’s load error, with its quiet Try again, and leaves both selects unable to choose', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-haiku-5-5';
+    let failing = true;
+    const { container, findByRole } = open({
+      served,
+      rowsFor: () => {
+        if (failing) throw new StubFault('Unavailable', 503, 'The rows did not come back.');
+        return [HAIKU, GPT, JEV];
+      },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
+    );
+    // The description stays what it is; the failure is the row's own warning with the row's Retry.
+    expect(row(container, 'decisions.model').textContent).toContain(copy.model.description);
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      expect(trigger(container, key).hasAttribute('disabled'), key).toBe(true);
+    }
+    // The stored row is not offered as a bare provider/model id in place of the rows.
+    expect(trigger(container, 'decisions.model').textContent).not.toContain(
+      'anthropic/claude-haiku-5-5',
+    );
+    // The failure is an advisory in the warning tier, not in the row's error tier.
+    expect(row(container, 'decisions.model').querySelector('[aria-invalid="true"]')).toBeNull();
+    const warning = row(container, 'decisions.model').querySelector<HTMLElement>(
+      '.cinder-form-field__warning',
+    )!;
+    expect(warning.textContent).toContain(copy.model.loadFailed);
+    expect(warning.querySelector('.cinder-setting-row__retry')?.textContent?.trim()).toBe(
+      copy.model.tryAgain,
+    );
+    // No button sits in the description: the row's own quiet retry is the only one.
+    expect(
+      row(container, 'decisions.model').querySelector('.cinder-form-field__description button'),
+    ).toBeNull();
+
+    failing = false;
+    await fireEvent.click(
+      within(row(container, 'decisions.model')).getByRole('button', { name: copy.model.tryAgain }),
+    );
+
+    await ready(container);
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).not.toContain(copy.model.loadFailed),
+    );
+    expect(
+      within(row(container, 'decisions.model')).queryByRole('button', {
+        name: copy.model.tryAgain,
+      }),
+    ).toBeNull();
+  });
+
+  test('failing leaves a saved decision model and a saved fallback reading as themselves', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-sonnet-5-5';
+    served.values['decisions.fallbackModel'] = 'openai/gpt-5';
+    const { container, findByRole } = open({
+      served,
+      rowsFor: () => {
+        throw new StubFault('Unavailable', 503, 'The rows did not come back.');
+      },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
+    );
+
+    expect(trigger(container, 'decisions.model').textContent?.trim()).toBe('Claude Sonnet 5.5');
+    expect(trigger(container, 'decisions.fallbackModel').textContent?.trim()).toBe('GPT 5');
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      const text = trigger(container, key).textContent ?? '';
+      expect(text, key).not.toContain('(default)');
+      expect(text, key).not.toContain('/');
+    }
+  });
+
+  test('failing with nothing saved keeps the empty label of each select', async () => {
+    const served = servedSettings();
+    delete served.values['decisions.model'];
+    delete served.values['decisions.fallbackModel'];
+    const { container, findByRole } = open({
+      served,
+      rowsFor: () => {
+        throw new StubFault('Unavailable', 503, 'The rows did not come back.');
+      },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(row(container, 'decisions.model').textContent).toContain(copy.model.loadFailed),
+    );
+
+    expect(trigger(container, 'decisions.model').textContent).toContain(SETTINGS_COPY.notSet);
+    expect(trigger(container, 'decisions.fallbackModel').textContent).toContain(
+      SETTINGS_COPY.notSet,
+    );
+  });
+
+  test('pending leaves a saved decision model and a saved fallback reading as themselves', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-sonnet-5-5';
+    served.values['decisions.fallbackModel'] = 'openai/gpt-5';
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { container, findByRole } = open({ served, hold: held });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(row(container, 'decisions.model')).not.toBeNull());
+
+    expect(trigger(container, 'decisions.model').textContent?.trim()).toBe('Claude Sonnet 5.5');
+    expect(trigger(container, 'decisions.fallbackModel').textContent?.trim()).toBe('GPT 5');
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      const text = trigger(container, key).textContent ?? '';
+      expect(text, key).not.toContain('(default)');
+      expect(text, key).not.toContain('/');
+    }
+    release?.();
+    await ready(container);
+  });
+
+  test('pending leaves both selects unable to choose and does not show the stored id as an option', async () => {
+    const served = servedSettings();
+    served.values['decisions.model'] = 'anthropic/claude-haiku-5-5';
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { container, findByRole } = open({ served, hold: held });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(row(container, 'decisions.model')).not.toBeNull());
+
+    for (const key of ['decisions.model', 'decisions.fallbackModel']) {
+      expect(trigger(container, key).hasAttribute('disabled'), key).toBe(true);
+    }
+    expect(trigger(container, 'decisions.model').textContent).not.toContain(
+      'anthropic/claude-haiku-5-5',
+    );
+    release?.();
+    await ready(container);
+  });
+});

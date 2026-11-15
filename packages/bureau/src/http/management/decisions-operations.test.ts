@@ -3,12 +3,16 @@
  * a `structured` request given as JSON Schema, a retry that asks the model again, the faults, and
  * what the audit record leaves out.
  */
-import { createMockGenerate, type GenerateFunction } from '@lostgradient/operative';
+import {
+  type BackendDescriptor,
+  createMockGenerate,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { BureauModelPolicyOptions } from '../../model-policy.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
-import { decisionsDecideOperation } from './decisions-operations.ts';
+import { decisionsDecideOperation, decisionsModelsOperation } from './decisions-operations.ts';
 import {
   openBureau,
   type OpenedBureau,
@@ -202,5 +206,340 @@ describe('bureau.decisions.decide', () => {
     });
     expect(refused.error?.message).toContain('model policy');
     expect(generate.callCount).toBe(0);
+  });
+});
+
+/**
+ * The frozen base of every row below: each capability is written out, so no vendor catalog or
+ * Operative default is relied on (COR-2151).
+ */
+const seed = Object.freeze<BackendDescriptor>({
+  provider: 'acme',
+  endpoint: 'https://models.example.test',
+  model: 'seed',
+  aliases: [],
+  lifecycle: 'stable',
+  modalities: {
+    text: { input: true, output: true, sourceForms: ['inline'] },
+    image: { input: false, output: false, sourceForms: [] },
+    audio: { input: false, output: false, sourceForms: [] },
+    video: { input: false, output: false, sourceForms: [] },
+    document: { input: false, output: false, sourceForms: [] },
+    file: { input: false, output: false, sourceForms: [] },
+  },
+  mimeFamilies: [],
+  mediaLimits: [],
+  mediaCounts: [],
+  providerFetchesRemoteUrls: false,
+  contextWindowTokens: 100_000,
+  maxOutputTokens: 4_000,
+  streaming: true,
+  tools: true,
+  parallelTools: false,
+  structuredOutput: true,
+  parameterCompatibility: [],
+  caching: false,
+  batchInference: false,
+  explicitThinkingRequest: false,
+  serverSideTokenCounting: false,
+  effort: { portable: [], nativeMapping: 'unsupported', degradesTo: {} },
+  pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 5, currency: 'USD' },
+  availability: 'available',
+  health: 'healthy',
+  source: 'static',
+  freshness: '2026-11-01T00:00:00.000Z',
+});
+
+/** A catalog row with explicit capability and price. */
+function row(
+  provider: string,
+  model: string,
+  overrides: Partial<BackendDescriptor> = {},
+): BackendDescriptor {
+  return {
+    ...seed,
+    provider,
+    model,
+    aliases: [],
+    availability: 'available',
+    structuredOutput: true,
+    decisions: undefined,
+    pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 5, currency: 'USD' },
+    ...overrides,
+  };
+}
+
+async function openWithCatalog(
+  catalog: readonly BackendDescriptor[],
+  options: {
+    readonly fallbackModel?: string;
+    /** The `decisions.model` the Bureau starts with: a catalog row written `<provider>/<model>`. */
+    readonly model?: string;
+    readonly modelPolicy?: BureauModelPolicyOptions;
+  } = {},
+): Promise<OpenedBureau> {
+  const decisions = {
+    ...(options.fallbackModel === undefined ? {} : { fallbackModel: options.fallbackModel }),
+    ...(options.model === undefined ? {} : { model: options.model }),
+  };
+  const opened = await openBureau({
+    bureauOptions: {
+      models: { catalog, generate: (): GenerateFunction => createMockGenerate([]) },
+      decisions,
+      ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
+    },
+  });
+  cleanups.push(() => opened.dispose());
+  return opened;
+}
+
+const models = (opened: OpenedBureau, key = 'settings-reader-key') =>
+  rpc(opened.handler, 'bureau.decisions.models', {}, key);
+
+/** The rows `bureau.decisions.models` answers a caller that may read the settings. */
+async function answeredRows(
+  opened: OpenedBureau,
+): Promise<{ model: string; answering: boolean; fallback: boolean; canBeFallback: boolean }[]> {
+  const answered = await models(opened);
+  return (answered.result?.['rows'] ?? []) as {
+    model: string;
+    answering: boolean;
+    fallback: boolean;
+    canBeFallback: boolean;
+  }[];
+}
+
+/** The names of the rows marked by `field`. */
+const marked = (
+  rows: readonly { model: string; answering: boolean; fallback: boolean; canBeFallback: boolean }[],
+  field: 'answering' | 'fallback',
+): string[] => rows.filter((entry) => entry[field]).map((entry) => entry.model);
+
+describe('bureau.decisions.models', () => {
+  it('is served, beside bureau.decisions.decide', () => {
+    expect(BUREAU_HANDLER_OPERATIONS).toContain(decisionsModelsOperation);
+  });
+
+  it('lists an available row, a needs-setup row and a decision-only row, and marks the one that answers', async () => {
+    const opened = await openWithCatalog([
+      row('acme', 'priced-dear', {
+        pricing: { inputPerMillionTokens: 9, outputPerMillionTokens: 9, currency: 'USD' },
+      }),
+      row('acme', 'priced-cheap', {
+        pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+      }),
+      row('ollama', 'local', { availability: 'unavailable' }),
+      row('typesafe', 'jev', {
+        structuredOutput: false,
+        decisions: { kinds: ['boolean'], only: true },
+      }),
+      // Neither native nor structured: it cannot decide, so it is not listed.
+      row('acme', 'chat-only', { structuredOutput: false }),
+    ]);
+
+    const answered = await models(opened);
+
+    expect(answered.error).toBeUndefined();
+    expect(answered.result?.['rows']).toEqual([
+      {
+        provider: 'acme',
+        model: 'priced-dear',
+        availability: 'available',
+        decisionOnly: false,
+        answering: false,
+        fallback: false,
+        canBeFallback: true,
+      },
+      {
+        provider: 'acme',
+        model: 'priced-cheap',
+        availability: 'available',
+        decisionOnly: false,
+        answering: true,
+        fallback: true,
+        canBeFallback: true,
+      },
+      {
+        provider: 'ollama',
+        model: 'local',
+        availability: 'needs-setup',
+        decisionOnly: false,
+        answering: false,
+        fallback: false,
+        // It returns structured output: the fallback uses it once its provider has a key.
+        canBeFallback: true,
+      },
+      {
+        provider: 'typesafe',
+        model: 'jev',
+        availability: 'available',
+        decisionOnly: true,
+        answering: false,
+        fallback: false,
+        canBeFallback: false,
+      },
+    ]);
+  });
+
+  it('reports per row whether it can be the fallback, by the rule the fallback applies: a decision-only row cannot, however it is saved', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('acme', 'cheap', {
+          pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+        }),
+        row('typesafe', 'jev', {
+          structuredOutput: false,
+          decisions: { kinds: ['boolean'], only: true },
+        }),
+      ],
+      { fallbackModel: 'typesafe/jev' },
+    );
+
+    const rows = await answeredRows(opened);
+
+    // The saved fallback names a row the fallback skips, so the cheapest eligible row is used.
+    expect(rows.filter((entry) => entry.canBeFallback).map((entry) => entry.model)).toEqual([
+      'cheap',
+    ]);
+    expect(marked(rows, 'fallback')).toEqual(['cheap']);
+  });
+
+  it('marks the row decisions.model names as answering while it is available, and the fallback still as the fallback', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('acme', 'cheap', {
+          pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+        }),
+        row('typesafe', 'jev', {
+          structuredOutput: false,
+          decisions: { kinds: ['boolean'], only: true },
+        }),
+      ],
+      { model: 'typesafe/jev' },
+    );
+
+    const rows = await answeredRows(opened);
+
+    expect(marked(rows, 'answering')).toEqual(['jev']);
+    expect(marked(rows, 'fallback')).toEqual(['cheap']);
+  });
+
+  it('leaves the answering to the fallback while the row decisions.model names needs setup, or is not in the catalog', async () => {
+    for (const row_ of [
+      row('typesafe', 'jev', {
+        availability: 'unavailable',
+        structuredOutput: false,
+        decisions: { kinds: ['boolean'], only: true },
+      }),
+      row('typesafe', 'other'),
+    ]) {
+      const opened = await openWithCatalog(
+        [
+          row('acme', 'cheap', {
+            pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+          }),
+          row_,
+        ],
+        { model: 'typesafe/jev' },
+      );
+
+      const rows = await answeredRows(opened);
+
+      expect(marked(rows, 'answering')).toEqual(['cheap']);
+      expect(marked(rows, 'fallback')).toEqual(['cheap']);
+    }
+  });
+
+  it('marks no row as answering while the model policy forbids the row decisions.model names, which refuses every decision', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('acme', 'cheap', {
+          pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+        }),
+        row('typesafe', 'jev', {
+          structuredOutput: false,
+          decisions: { kinds: ['boolean'], only: true },
+        }),
+      ],
+      {
+        model: 'typesafe/jev',
+        modelPolicy: { deployment: { deniedModels: ['jev'] }, policyRevision: 1 },
+      },
+    );
+
+    const rows = await answeredRows(opened);
+
+    // The forbidden row is left out of the list; nothing answers, though the fallback is chosen.
+    expect(rows.map((entry) => entry.model)).toEqual(['cheap']);
+    expect(marked(rows, 'answering')).toEqual([]);
+    expect(marked(rows, 'fallback')).toEqual(['cheap']);
+  });
+
+  it('marks the configured fallback row when it is eligible, in place of a cheaper one', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('acme', 'cheap', {
+          pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+        }),
+        row('acme', 'preferred', {
+          pricing: { inputPerMillionTokens: 8, outputPerMillionTokens: 8, currency: 'USD' },
+        }),
+      ],
+      { fallbackModel: 'acme/preferred' },
+    );
+
+    const rows = await answeredRows(opened);
+
+    expect(marked(rows, 'fallback')).toEqual(['preferred']);
+    expect(marked(rows, 'answering')).toEqual(['preferred']);
+  });
+
+  it('matches the configured fallback by an alias of a row, as the fallback itself does', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('acme', 'cheap', {
+          pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+        }),
+        row('acme', 'preferred-long-name', {
+          aliases: [{ alias: 'preferred', resolvesTo: 'preferred-long-name' }] as never,
+          pricing: { inputPerMillionTokens: 8, outputPerMillionTokens: 8, currency: 'USD' },
+        }),
+      ],
+      { fallbackModel: 'acme/preferred' },
+    );
+
+    const rows = await answeredRows(opened);
+
+    expect(marked(rows, 'fallback')).toEqual(['preferred-long-name']);
+    expect(marked(rows, 'answering')).toEqual(['preferred-long-name']);
+  });
+
+  it('marks no row while nothing eligible and priced can answer, and leaves out a row the policy forbids', async () => {
+    const opened = await openWithCatalog(
+      [
+        row('ollama', 'local', { availability: 'unavailable' }),
+        row('acme', 'unpriced', { pricing: undefined }),
+        row('acme', 'denied'),
+      ],
+      { modelPolicy: { deployment: { deniedModels: ['denied'] }, policyRevision: 1 } },
+    );
+
+    const rows = await answeredRows(opened);
+
+    expect(rows.map((entry) => entry.model)).toEqual(['local', 'unpriced']);
+    expect(marked(rows, 'answering')).toEqual([]);
+    expect(marked(rows, 'fallback')).toEqual([]);
+  });
+
+  it('requires bureau.settings:read, and the decisions scope alone does not read it', async () => {
+    const opened = await openWithCatalog([row('acme', 'one')]);
+
+    for (const key of ['alice-key', 'decisions-writer-key', 'audit-reader-key']) {
+      const refused = await models(opened, key);
+      expect(refused.result).toBeUndefined();
+      expect(refused.error?.data).toMatchObject({ httpStatus: 403 });
+    }
+    const allowed = await models(opened, 'settings-reader-key');
+    expect(allowed.error).toBeUndefined();
   });
 });

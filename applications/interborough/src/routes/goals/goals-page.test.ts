@@ -94,7 +94,7 @@ function open(
     /** The agents the Bureau lists, which are {@link AGENTS} unless said. */
     agents?: readonly Record<string, unknown>[];
     /** The providers `/host/providers` reports; left out, the host does not say. */
-    hostProviders?: readonly { name: string; hasKey: boolean }[];
+    hostProviders?: readonly { name: string; hasKey: boolean; connected?: boolean }[];
   } = {},
 ) {
   const served: Served = { goals: [...initial], pageSize: options.pageSize ?? 50 };
@@ -572,7 +572,7 @@ describe('a goal’s page', () => {
       ],
       {
         path: '/goals/goal-1',
-        hostProviders: [{ name: 'anthropic', hasKey: false }],
+        hostProviders: [{ name: 'anthropic', hasKey: false, connected: false }],
         // Tool runner names a model, so it needs a provider; Assistant is scripted.
         agents: AGENTS.map((agent) =>
           agent.name === 'tool-runner'
@@ -590,6 +590,31 @@ describe('a goal’s page', () => {
       .find((element) => element !== null);
     expect(again?.getAttribute('aria-disabled')).toBe('true');
     expect(again?.getAttribute('aria-describedby')).toContain(reason.id);
+  });
+
+  test('leaves Start again on for a model agent while the only provider is keyless (COR-2414)', async () => {
+    const { view } = open(
+      [
+        goal('goal-1', {
+          agentName: 'tool-runner',
+          status: 'canceled',
+          closedAt: '2026-10-19T09:00:00.000Z',
+        }),
+      ],
+      {
+        path: '/goals/goal-1',
+        hostProviders: [{ name: 'ollama', hasKey: false, connected: true }],
+        agents: AGENTS.map((agent) =>
+          agent.name === 'tool-runner'
+            ? { ...agent, media: { modalities: {}, mimeFamilies: [], mediaLimits: [] } }
+            : agent,
+        ),
+      },
+    );
+
+    const again = await view.findByRole('link', { name: GOALS_COPY.detail.startAgainAction });
+    expect(again.getAttribute('aria-disabled')).toBeNull();
+    expect(view.queryByRole('link', { name: GOALS_COPY.detail.connectProvider })).toBeNull();
   });
 
   test('asks before it stops a goal, then stops it at the revision it read', async () => {

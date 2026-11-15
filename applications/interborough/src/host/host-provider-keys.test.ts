@@ -121,6 +121,7 @@ describe('a provider’s key', () => {
     };
     expect(providers.providers.find((provider) => provider.name === 'gemini')).toMatchObject({
       hasKey: true,
+      connected: true,
     });
     expect(await geminiPlugin(host)).toMatchObject({ status: 'running', restartRequired: false });
   });

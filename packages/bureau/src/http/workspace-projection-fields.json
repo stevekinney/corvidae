@@ -911,6 +911,16 @@
     "$.value",
     "$.value.*"
   ],
+  "output:bureau.decisions.models": [
+    "$.rows",
+    "$.rows[].answering",
+    "$.rows[].availability",
+    "$.rows[].canBeFallback",
+    "$.rows[].decisionOnly",
+    "$.rows[].fallback",
+    "$.rows[].model",
+    "$.rows[].provider"
+  ],
   "output:bureau.deployment.get": [
     "$.agents",
     "$.id",
