@@ -236,72 +236,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
-    // TEMPORARY DIAGNOSTICS (COR-2327 B1): the page and the reminder rule, read at once.
-    const diagnose = (label: string) =>
-      page.evaluate((when) => {
-        const rectOf = (node: Element | null) => {
-          if (node === null) return null;
-          const { top, bottom, left, right, height } = node.getBoundingClientRect();
-          return { top, bottom, left, right, height };
-        };
-        const timeline = document.querySelector<HTMLElement>('.chat-timeline');
-        const active = document.activeElement;
-        const container = document.querySelector<HTMLElement>('.chat-container');
-        return {
-          when,
-          at: performance.now(),
-          row: rectOf(
-            document.querySelector(
-              '[data-approval-decision] .cinder-approval-card__row-actions, [data-approval-decision] .cinder-approval-card__action-row',
-            ),
-          ),
-          card: rectOf(document.querySelector('[data-approval-decision]')),
-          timeline: rectOf(timeline),
-          timelineClient: timeline
-            ? {
-                clientHeight: timeline.clientHeight,
-                scrollTop: timeline.scrollTop,
-                scrollHeight: timeline.scrollHeight,
-              }
-            : null,
-          drawer: rectOf(document.querySelector('[data-chat-approval-drawer]')),
-          blocked: rectOf(document.querySelector('[data-chat-composer-status="blocked"]')),
-          blockedReason: rectOf(document.querySelector('.chat-input-blocked-reason')),
-          topBar: rectOf(document.querySelector('.weft-shell-topbar')),
-          head: rectOf(document.querySelector('.weft-chat-head')),
-          title: rectOf(document.querySelector('.cinder-page-header__title')),
-          status: rectOf(document.querySelector('.cinder-page-header__status')),
-          headerActions: rectOf(document.querySelector('.cinder-page-header__actions')),
-          runsLine: rectOf(document.querySelector('.weft-chat-strip')),
-          inputArea: rectOf(document.querySelector('.chat-input-area')),
-          tabBar: rectOf(document.querySelector('.weft-shell-tab-bar')),
-          active: active
-            ? `${active.tagName.toLowerCase()}.${active.className.slice(0, 80)}`
-            : null,
-          ruleCount: container?.dataset['debugApprovalCount'] ?? null,
-          rule: container?.dataset['debugApproval']
-            ? JSON.parse(container.dataset['debugApproval'])
-            : null,
-        };
-      }, label);
-    const before = await diagnose('after focus');
-    console.log(`B1-DIAG ${JSON.stringify(before)}`);
-    await test.info().attach('b1-diagnostics-after-focus', {
-      body: JSON.stringify(before, null, 2),
-      contentType: 'application/json',
-    });
     // The reminder is drawn until the first measurement finds Deny and Approve in view.
-    try {
-      await expect(page.locator('[data-chat-approval-drawer]')).toHaveCount(0);
-    } catch (error) {
-      const after = await diagnose('at failure');
-      console.log(`B1-DIAG ${JSON.stringify(after)}`);
-      await test.info().attach('b1-diagnostics-at-failure', {
-        body: JSON.stringify(after, null, 2),
-        contentType: 'application/json',
-      });
-      throw error;
-    }
+    await expect(page.locator('[data-chat-approval-drawer]')).toHaveCount(0);
     // One layout, read once: each decision button's box, what a tap at its centre lands on, the
     // transcript's box, and the reminder and blocked row, when drawn.
     const read = await page.evaluate(() => {
