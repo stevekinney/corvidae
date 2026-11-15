@@ -6,7 +6,7 @@
  */
 import { resetDurableActivityScopeStorageForTesting } from '../core/context/durable-activity.ts';
 
-type ProcessWithBuiltinModule = { getBuiltinModule?: (id: string) => unknown };
+type ProcessWithBuiltinModule = { getBuiltinModule?: ((id: string) => unknown) | undefined };
 
 export function hideAsyncHooks(): () => void {
   const host = process as unknown as ProcessWithBuiltinModule;

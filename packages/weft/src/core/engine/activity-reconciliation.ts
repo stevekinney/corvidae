@@ -9,10 +9,7 @@ import type { ContextOperationRequest } from '../context.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { ActivityVerificationContext, ActivityVerificationResult } from '../types.ts';
 import { WeftError } from '../weft-error.ts';
-import {
-  stageAtomicWorkflowCommitSideEffects,
-  stageOperationSideEffects,
-} from './checkpoint-side-effects.ts';
+import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import {
   commitFencedEngineWrite,
   commitFencedEngineWriteAllowingPreconditionFailure,
@@ -293,29 +290,18 @@ export async function writeActivityReconciliationTransition(
   }
 }
 
-/**
- * Stage the transition of the reconciliation record of `operation` for the checkpoint that records
- * the activity's result: the next one, or, for a branch of a coordinator that commits while its
- * branches run, the commit of this branch's result (`side-effect-capture.ts`).
- */
 export function stageActivityReconciliationTransitionWithAtomicWorkflowCommit(
   internals: EngineInternals,
   workflowId: string,
   reference: ActivityReconciliationReference,
   expectedRecord: ActivityReconciliationRecord,
   nextRecord: ActivityReconciliationRecord,
-  operation?: ContextOperationRequest,
 ): void {
-  const sideEffects = buildActivityReconciliationTransitionSideEffects(
-    reference,
-    expectedRecord,
-    nextRecord,
+  stageAtomicWorkflowCommitSideEffects(
+    internals,
+    workflowId,
+    buildActivityReconciliationTransitionSideEffects(reference, expectedRecord, nextRecord),
   );
-  if (operation === undefined) {
-    stageAtomicWorkflowCommitSideEffects(internals, workflowId, sideEffects);
-  } else {
-    stageOperationSideEffects(internals, workflowId, operation, sideEffects);
-  }
 }
 
 export async function commitActivityReconciliationTransitionWithFencedWrite(
@@ -342,7 +328,7 @@ export async function commitActivityReconciliationTransitionWithFencedWrite(
   );
 }
 
-function buildActivityReconciliationTransitionSideEffects(
+export function buildActivityReconciliationTransitionSideEffects(
   reference: ActivityReconciliationReference,
   expectedRecord: ActivityReconciliationRecord,
   nextRecord: ActivityReconciliationRecord,

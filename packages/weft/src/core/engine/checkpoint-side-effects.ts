@@ -44,12 +44,12 @@ export function stageAtomicWorkflowCommitSideEffects(
 export function stageOperationSideEffects(
   internals: EngineInternals,
   workflowId: string,
-  operation: ContextOperationRequest,
+  operation: ContextOperationRequest | undefined,
   sideEffects: AtomicWorkflowCommitSideEffects,
   workflowExecutionToken?: string,
   bindToExecutionGeneration = false,
 ): void {
-  const sink = capturedSideEffectSinkOf(operation);
+  const sink = operation === undefined ? undefined : capturedSideEffectSinkOf(operation);
   if (sink === undefined) {
     stageAtomicWorkflowCommitSideEffects(
       internals,
