@@ -6407,7 +6407,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Page canvas background, distinct from `surface.base` (a card body). Light mode is the app-shell ladder: a near-white canvas (0.994) above the grey surface (0.976) and the inset well (0.958), with raised at pure white (1.000). Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).',
+        'Page canvas background, distinct from `surface.base` (a card body). Light mode is a grey page under white panels (owner decision, 2026-11-15): the canvas (0.976) sits below the white surface and raised (1.000) and above the inset well (0.955), dark enough that the focus ring still reads 3.5:1 on it. Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).',
       themeAware: true,
       deprecated: false,
       profile: 'color',

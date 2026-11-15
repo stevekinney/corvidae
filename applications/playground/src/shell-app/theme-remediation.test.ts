@@ -108,8 +108,9 @@ describe('determinism and pinned Culori fixtures', () => {
     );
     const canvas = first.results.find((result) => result.pairingId === 'text:default:canvas');
     // COR-2308: the candidate is still 0.529 (the binding pairing is the neutral status
-    // background, which did not move), and the light canvas is now oklch(99.4% 0.002 265).
-    expect(canvas?.ratio).toBeCloseTo(5.202779056471655, 9);
+    // background, which did not move), and the light canvas is now oklch(97.6% 0.004 265), the
+    // grey page under white panels (2026-11-15), so the same candidate reads a little lower on it.
+    expect(canvas?.ratio).toBeCloseTo(4.9385974396849495, 9);
   });
 
   test('Culori conversions are pinned for sRGB and Display P3', () => {
