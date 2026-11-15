@@ -111,10 +111,14 @@
 
   /* Where `text-box-trim` ships (Chromium, Safari), the text is trimmed to its capitals and its
    * baseline instead, which is exact for any font. The derivation above assumes a line's air
-   * above its capitals equals the air under its baseline, and a font that centres its capitals
-   * differently (Arial and its metric clones, WenQuanYi, Segoe UI) leaves the first ink 1 to 2px
-   * off, as does Chromium flooring the half-leading of a line whose height is not a whole number
-   * of pixels (COR-2406). A trimmed edge has no air to take out; an edge that is not trimmed (the
+   * above its capitals equals the air under its baseline. Measured on a 13px text at a 20.8px
+   * line, the first ink stood 11.0px and the last 12.8px from the borders in WenQuanYi Zen Hei and
+   * Liberation Sans on Linux, and 10.9px and 13.1px in Arial on macOS (SF Pro stands within
+   * 0.1px). The numbers fit Chromium rounding a font's ascent and descent to whole pixels and
+   * flooring the half-leading of a line whose height is not a whole number of pixels, so the
+   * error depends on the font and no arithmetic on `cap` and `lh` removes it (COR-2406; an
+   * inference from that fit, not a read of Chromium's source). A trimmed edge has no air to take
+   * out; an edge that is not trimmed (the
    * words above an action row, a link row, a progress line) keeps the derivation, and an engine
    * without the property keeps it everywhere. The glyph is one capital tall and centred on it,
    * so it overhangs the capitals evenly, as it does the line today. */
@@ -131,6 +135,13 @@
       )
     ) {
       padding-block-end: var(--_cinder-callout-inset);
+    }
+
+    /* The dismiss button stays where it was, 12px under the border's outer edge: the padding above
+     * it is whole again, so the air that moved it down is no longer added, and the border's own
+     * 1px is taken back. */
+    .cinder-callout:not(:has(> .cinder-callout__body)) > .cinder-callout__dismiss {
+      margin-block-start: -1px;
     }
 
     .cinder-callout__body > .cinder-callout__message {

@@ -3304,6 +3304,24 @@ export async function readIconCentreProblems(page: Page): Promise<string[]> {
         const lineTop = line.top - Math.floor((lineHeight - line.height) / 2);
         return lineTop + lineHeight / 2;
       }
+      // A block trimmed to its capitals (`text-box-trim`) starts at its first line's capitals, not
+      // at its line box, so its top says nothing about where the line stands: the line's centre is
+      // the capitals' centre, from the baseline the font's ascent puts under the text's own
+      // rectangle, as `readCalloutInsets` measures a notice's ink.
+      for (
+        let ancestor: Element | null = block;
+        ancestor !== null && ancestor !== container;
+        ancestor = ancestor.parentElement
+      ) {
+        const trim = getComputedStyle(ancestor).getPropertyValue('text-box-trim');
+        if (trim === '' || trim === 'none') continue;
+        const holder = getComputedStyle(text?.parentElement ?? block);
+        const canvas = document.createElement('canvas').getContext('2d');
+        if (canvas === null) return line.top + line.height / 2;
+        canvas.font = `${holder.fontStyle} ${holder.fontWeight} ${holder.fontSize} ${holder.fontFamily}`;
+        const measured = canvas.measureText('H');
+        return line.top + measured.fontBoundingBoxAscent - measured.actualBoundingBoxAscent / 2;
+      }
       const style = getComputedStyle(block);
       const lineHeight = parseFloat(style.lineHeight);
       if (!Number.isFinite(lineHeight)) return line.top + line.height / 2;

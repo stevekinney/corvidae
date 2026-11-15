@@ -1,4 +1,4 @@
-import { chromium } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -1417,7 +1417,11 @@ describe('chat stress visual measurement', () => {
       return `<div class="${classes}" role="note" data-cinder-variant="neutral" style="width:${options.wide ? 640 : 296}px">${inner}</div>`;
     };
 
-    const insetsFor = async (markup: string, extra = '') => {
+    const measuredFor = async <Reading>(
+      markup: string,
+      extra: string,
+      read: (page: Page) => Promise<Reading>,
+    ): Promise<Reading> => {
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage({ viewport: { width: 700, height: 400 } });
@@ -1429,11 +1433,34 @@ describe('chat stress visual measurement', () => {
             ${await stylesheet}
             ${extra}
           </style>${markup}`);
-        return await readCalloutInsets(page);
+        return await read(page);
       } finally {
         await browser.close();
       }
     };
+    const insetsFor = (markup: string, extra = '') => measuredFor(markup, extra, readCalloutInsets);
+
+    // The dismiss button sits where it did before the text was trimmed: 12px under the border's
+    // outer edge, in the corner of a notice with no inline action (COR-2406).
+    it('keeps the dismiss button 12px under the top border', async () => {
+      // A notice with no inline action: the class that centres the dismiss button is not set.
+      const dismissible = notice({ title: true })
+        .replace(' cinder-callout--inline-action', '')
+        .replace(
+          /<\/div>$/,
+          '<button class="cinder-callout__dismiss" aria-label="Dismiss" style="width:24px;height:24px;padding:0">x</button></div>',
+        );
+      const top = await measuredFor(dismissible, '', (page) =>
+        page.evaluate(() => {
+          const callout = document.querySelector('.cinder-callout')!.getBoundingClientRect();
+          const dismiss = document
+            .querySelector('.cinder-callout__dismiss')!
+            .getBoundingClientRect();
+          return dismiss.top - callout.top;
+        }),
+      );
+      expect(Math.abs(top - 12)).toBeLessThan(0.5);
+    });
 
     it('passes a notice with a glyph and no action, with an action under it, and one beside it', async () => {
       for (const markup of [
@@ -2035,6 +2062,22 @@ describe('chat stress visual measurement', () => {
       expect(shown[0]).toContain('glyph centre is');
       // Positive control: clipped to a pixel, the words are not on the row at all.
       expect(await problemsFor(labelled(true))).toEqual([]);
+    });
+
+    it('reads a trimmed line by its capitals: a glyph centred on them passes, one hung from their top fails (COR-2406)', async () => {
+      const trimmed = (offset: string): string => `
+        <style>
+          body { margin: 0; font: 14px/20px Arial, 'Liberation Sans', sans-serif; }
+          .row { display: flex; align-items: flex-start; gap: 8px; }
+          button { font: inherit; padding: 0; border: 0; }
+          span { text-box: trim-both cap alphabetic; }
+          svg { flex: none; inline-size: 16px; block-size: 16px; margin-block-start: ${offset}; }
+        </style>
+        <button class="row"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg><span>Read the October ledger</span></button>`;
+      expect(await problemsFor(trimmed('calc((1cap - 16px) / 2)'))).toEqual([]);
+      const hung = await problemsFor(trimmed('0px'));
+      expect(hung).toHaveLength(1);
+      expect(hung[0]).toContain('glyph centre is');
     });
 
     it('allows half a pixel and no more', async () => {
