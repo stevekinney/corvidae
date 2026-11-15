@@ -13,8 +13,9 @@
  * optional, a nullable or a default of accepted values is accepted. A free string, `z.unknown()`,
  * `z.any()`, a record, a tuple, a date, a lazy schema and an object with a catchall are refused:
  * each lets arbitrary text through. A schema that recurses through a getter is accepted when every
- * leaf passes (revisiting an object adds no leaf), and one that never ends is refused at a depth
- * of 32.
+ * leaf passes (revisiting an object adds no leaf). The walk reads at most
+ * {@link EVENT_PAYLOAD_NODE_BUDGET} schemas, getter reads included; a payload that needs more, such
+ * as one that builds a new schema on every read, is refused at the path where the count ran out.
  *
  * The schema is read through `_zod.def`, as `schemaDigest` reads it, never through `instanceof`: a
  * plugin may carry its own copy of Zod.
@@ -79,12 +80,14 @@ interface Unwrapped {
   readonly optional: boolean;
 }
 
-function unwrap(schema: unknown): Unwrapped {
+/** `onLayer` runs once for each schema this reads, so the caller can count them. */
+function unwrap(schema: unknown, onLayer: () => void = () => undefined): Unwrapped {
   let current = schema;
   let identifier = false;
   let optional: boolean | undefined;
   // A wrapper chain is finite; the bound stops a hand-built cycle from looping.
   for (let depth = 0; depth < 64; depth += 1) {
+    onLayer();
     identifier ||= isMarkedIdentifier(current);
     const definition = definitionOf(current);
     if (definition === undefined) break;
@@ -104,51 +107,107 @@ function unwrap(schema: unknown): Unwrapped {
 const NUMBER_LIKE: ReadonlySet<string> = new Set(['number', 'boolean', 'null', 'undefined']);
 
 /**
- * How deep the walk goes before it refuses the field. A schema that recurses through a getter
- * (`get children() { return z.array(Node) }`) revisits the same object, which the walk recognises;
- * one that builds a fresh object on every read never ends, so this bound refuses it.
+ * The most schemas one payload's walk may read, wrappers and getter reads included. A payload that
+ * is finite and shares its subschemas needs a few per field; one that builds a new schema on every
+ * read (`get next() { return fresh() }`) never ends, and one that fans out through getters would
+ * take longer than a plugin may stall the host, so either is refused where the count runs out.
  */
-const MAXIMUM_DEPTH = 32;
+export const EVENT_PAYLOAD_NODE_BUDGET = 1000;
 
-/**
- * The paths under `schema` that could hold content, each starting from `path`. `active` holds the
- * object schemas the walk is inside: reaching one again is a cycle, which adds no leaf that the
- * first visit has not already judged, so it holds nothing new and is accepted.
- */
-function contentPaths(schema: unknown, path: string, active: ReadonlySet<unknown>): string[] {
-  if (active.size > MAXIMUM_DEPTH) return [path];
-  const { base, identifier } = unwrap(schema);
-  const definition = definitionOf(base);
-  if (definition === undefined) return [path];
-  const { type } = definition;
-  if (NUMBER_LIKE.has(type) || type === 'enum' || type === 'literal') return [];
-  if (type === 'string') return identifier ? [] : [path];
-  if (type === 'array') return contentPaths(definition.element, `${path}[]`, active);
-  if (type === 'union') {
-    return (definition.options ?? []).flatMap((option) => contentPaths(option, path, active));
+/** The most field paths a refusal names, so a payload with many offending fields stays readable. */
+const MAXIMUM_NAMED_FIELDS = 32;
+
+/** Thrown inside the walk when it has read its budget of schemas; carries the path it reached. */
+class NodeBudgetExhausted extends Error {
+  readonly path: string;
+
+  constructor(path: string) {
+    super(`the payload has more than ${EVENT_PAYLOAD_NODE_BUDGET} schemas`);
+    this.path = path;
   }
-  if (type === 'object') {
-    if (active.has(base)) return [];
-    const inside = new Set(active).add(base);
-    const catchall = definitionOf(definition.catchall);
-    const open = definition.catchall !== undefined && catchall?.type !== 'never';
-    return [
-      ...Object.entries(definition.shape ?? {}).flatMap(([key, member]) =>
-        contentPaths(member, path === '' ? key : `${path}.${key}`, inside),
-      ),
-      ...(open ? [path === '' ? '*' : `${path}.*`] : []),
-    ];
-  }
-  return [path];
+}
+
+/** `rest` under the object key `key`: `note` under `customer` is `customer.note`, `[]` is `lines[]`. */
+function underKey(key: string, rest: string): string {
+  if (rest === '') return key;
+  return rest.startsWith('[') ? `${key}${rest}` : `${key}.${rest}`;
+}
+
+/** `rest` under an array element: an element that is content is `[]`, and `note` in it `[].note`. */
+function underElement(rest: string): string {
+  if (rest === '') return '[]';
+  return rest.startsWith('[') ? `[]${rest}` : `[].${rest}`;
+}
+
+function distinct(paths: readonly string[]): string[] {
+  return [...new Set(paths)].slice(0, MAXIMUM_NAMED_FIELDS);
 }
 
 /**
  * The fields of `payload` that could carry content, as dotted paths (`customer.note`, `lines[]`,
  * `*` for an object that accepts any other key), in the order the payload declares them. Empty
- * when the payload holds identifiers, statuses and counts only.
+ * when the payload holds identifiers, statuses and counts only. At most 32 are named.
+ *
+ * The walk counts every schema it reads, a getter's included, against {@link
+ * EVENT_PAYLOAD_NODE_BUDGET}; a payload that runs it out is refused with the one path it reached.
+ * Each object schema is judged once: its offending paths are computed relative to it and prefixed
+ * at every place it is used, so a subschema shared by three fields names three paths without being
+ * read three times. An object reached again while it is being judged is a cycle: it adds nothing at
+ * that point, because its own judgement, still running, reports its content. A result memoized
+ * from inside a cycle may therefore leave out a path that runs back through it; whether the
+ * payload holds content is never affected, since every leaf is reported by the object that holds it.
  */
 export function eventPayloadContent(payload: z.ZodObject): string[] {
-  return contentPaths(payload, '', new Set());
+  const memo = new Map<unknown, string[]>();
+  const active = new Set<unknown>();
+  let remaining = EVENT_PAYLOAD_NODE_BUDGET;
+
+  /** The offending paths under `schema`, relative to it; `path` only names where the walk is. */
+  const walk = (schema: unknown, path: string): string[] => {
+    const { base, identifier } = unwrap(schema, () => {
+      remaining -= 1;
+      if (remaining < 0) throw new NodeBudgetExhausted(path);
+    });
+    const definition = definitionOf(base);
+    if (definition === undefined) return [''];
+    const { type } = definition;
+    if (NUMBER_LIKE.has(type) || type === 'enum' || type === 'literal') return [];
+    if (type === 'string') return identifier ? [] : [''];
+    if (type === 'array') {
+      return distinct(walk(definition.element, `${path}[]`).map(underElement));
+    }
+    if (type === 'union') {
+      return distinct((definition.options ?? []).flatMap((option) => walk(option, path)));
+    }
+    if (type === 'object') {
+      const judged = memo.get(base);
+      if (judged !== undefined) return judged;
+      if (active.has(base)) return [];
+      active.add(base);
+      try {
+        const catchall = definitionOf(definition.catchall);
+        const open = definition.catchall !== undefined && catchall?.type !== 'never';
+        const found = distinct([
+          ...Object.entries(definition.shape ?? {}).flatMap(([key, member]) =>
+            walk(member, path === '' ? key : `${path}.${key}`).map((rest) => underKey(key, rest)),
+          ),
+          ...(open ? ['*'] : []),
+        ]);
+        memo.set(base, found);
+        return found;
+      } finally {
+        active.delete(base);
+      }
+    }
+    return [''];
+  };
+
+  try {
+    return walk(payload, '');
+  } catch (error) {
+    if (error instanceof NodeBudgetExhausted) return [error.path === '' ? '*' : error.path];
+    throw error;
+  }
 }
 
 /** The JSON type every one of `values` has, or `unknown` when they differ or are not scalars. */
@@ -167,8 +226,11 @@ function enumValues(entries: Readonly<Record<string, unknown>>): unknown[] {
     .map(([, value]) => value);
 }
 
+/** How many arrays and unions deep a field's type is read; an object is `object` and stops there. */
+const MAXIMUM_FIELD_TYPE_DEPTH = 32;
+
 function fieldTypeOf(schema: unknown, depth = 0): BureauEventFieldType {
-  if (depth > MAXIMUM_DEPTH) return 'unknown';
+  if (depth > MAXIMUM_FIELD_TYPE_DEPTH) return 'unknown';
   const { base } = unwrap(schema);
   const definition = definitionOf(base);
   switch (definition?.type) {

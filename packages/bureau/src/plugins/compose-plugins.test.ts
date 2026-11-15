@@ -869,6 +869,31 @@ describe('composePlugins', () => {
       ]);
     });
 
+    it('skips a plugin whose payload fans out without end, with event-payload-content, and the host starts', async () => {
+      const fresh = (): z.ZodObject =>
+        z.object({
+          get l() {
+            return fresh().optional();
+          },
+          get r() {
+            return fresh().optional();
+          },
+        });
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('endless', () => ({
+            events: [{ name: 'endless', description: 'Never ends.', payload: fresh() }],
+          })),
+          pluginEntry('fine', () => ({ events: [greeted()] })),
+        ],
+      });
+
+      expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({ code: 'event-payload-content', event: 'endless' }),
+      ]);
+    });
+
     it('accepts a z.enum status and a marked identifier, which a plugin’s payload may hold', async () => {
       const { records } = await composePlugins<ComposableOptions>({
         plugins: [pluginEntry('kit', () => ({ events: [greeted()] }))],

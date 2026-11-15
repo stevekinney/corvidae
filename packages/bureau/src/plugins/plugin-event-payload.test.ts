@@ -148,15 +148,162 @@ describe('a payload that recurses', () => {
       { name: 'root', type: 'object', optional: false },
     ]);
   });
+});
 
-  it('is refused, and never overflows the stack, when every read builds a new schema', () => {
-    const endless = (): z.ZodObject =>
+/**
+ * COR-2223, round two — the walk's cost is bounded by the schemas it reads, not by the paths
+ * through them, so every payload settles. Each row asserts a result, never a duration: a payload
+ * the walk cannot finish is refused at the path where its budget ran out.
+ */
+describe('the outcome of every payload shape', () => {
+  /** A schema that builds a new object on every read, through `wrap`: it has no end. */
+  const freshOne = (wrap: (inner: z.ZodObject) => z.ZodType = (inner) => inner.optional()) => {
+    const fresh = (): z.ZodObject =>
       z.object({
         get next() {
-          return endless();
+          return wrap(fresh());
         },
       });
-    expect(eventPayloadContent(z.object({ root: endless() })).length).toBeGreaterThan(0);
+    return fresh();
+  };
+  const freshTwo = () => {
+    const fresh = (): z.ZodObject =>
+      z.object({
+        get l() {
+          return fresh().optional();
+        },
+        get r() {
+          return fresh().optional();
+        },
+      });
+    return fresh();
+  };
+  /** `count` objects that hold each other through fresh unions: stable identities, factorial paths. */
+  const mutual = (count: number, noteAt?: number) => {
+    const nodes: z.ZodObject[] = [];
+    for (let index = 0; index < count; index += 1) {
+      nodes.push(
+        z.object({
+          id: identifier(),
+          ...(index === noteAt ? { note: z.string() } : {}),
+          get next() {
+            return z.union(nodes).optional();
+          },
+        }),
+      );
+    }
+    return nodes[0]!;
+  };
+  const shared = z.object({ id: identifier(), note: z.string() });
+  const childless = () => {
+    const Node = z.object({
+      id: identifier(),
+      get children() {
+        return z.array(Node).optional();
+      },
+      after: z.string(),
+    });
+    return Node;
+  };
+
+  const refusedAtBudget = (prefix: string) => (found: string[]) => {
+    expect(found).toHaveLength(1);
+    expect(found[0]?.startsWith(prefix)).toBe(true);
+  };
+
+  const rows: ReadonlyArray<readonly [string, () => z.ZodObject, (found: string[]) => void]> = [
+    [
+      'a clean fresh factory with one getter: refused, budget exhausted',
+      () => z.object({ root: freshOne() }),
+      refusedAtBudget('root.next'),
+    ],
+    [
+      'a fresh factory with two getters: refused, budget exhausted',
+      () => z.object({ root: freshTwo() }),
+      refusedAtBudget('root.l'),
+    ],
+    [
+      'a fresh factory through an array: refused, budget exhausted',
+      () => z.object({ root: freshOne((inner) => z.array(inner)) }),
+      refusedAtBudget('root.next'),
+    ],
+    [
+      'a fresh factory through a union: refused, budget exhausted',
+      () => z.object({ root: freshOne((inner) => z.union([inner, z.number()])) }),
+      refusedAtBudget('root.next'),
+    ],
+    [
+      'a fresh factory through nullable and default: refused, budget exhausted',
+      () => z.object({ root: freshOne((inner) => inner.nullable().default(null)) }),
+      refusedAtBudget('root.next'),
+    ],
+    [
+      'a fresh factory through a pipe: refused, budget exhausted',
+      () => z.object({ root: freshOne((inner) => inner.transform((value) => value)) }),
+      refusedAtBudget('root.next'),
+    ],
+    [
+      'a record of a fresh factory: refused as a record, never entered',
+      () => z.object({ root: z.record(z.string(), freshOne()) }),
+      (found) => expect(found).toEqual(['root']),
+    ],
+    [
+      'a lazy fresh factory: refused as a lazy schema, never entered',
+      () => z.object({ root: z.lazy(() => freshOne()) }),
+      (found) => expect(found).toEqual(['root']),
+    ],
+    [
+      'twelve stable objects holding each other through unions, every leaf clean: accepted',
+      () => z.object({ root: mutual(12) }),
+      (found) => expect(found).toEqual([]),
+    ],
+    [
+      'twelve stable objects holding each other, one with a free string: refused, naming it',
+      () => z.object({ root: mutual(12, 7) }),
+      (found) => {
+        expect(found.length).toBeGreaterThan(0);
+        expect(found.length).toBeLessThanOrEqual(32);
+        for (const path of found) expect(path.endsWith('note')).toBe(true);
+      },
+    ],
+    [
+      'a getter that recurses through a stable object, leaves clean: accepted',
+      () => {
+        const Node = z.object({
+          id: identifier(),
+          get children() {
+            return z.array(Node).optional();
+          },
+        });
+        return z.object({ root: Node });
+      },
+      (found) => expect(found).toEqual([]),
+    ],
+    [
+      'content after the point where the cycle closes: found',
+      () => z.object({ root: childless() }),
+      (found) => expect(found).toEqual(['root.after']),
+    ],
+    [
+      'one subschema used by three fields: three paths',
+      () => z.object({ a: shared, b: shared, c: z.array(shared) }),
+      (found) => expect(found).toEqual(['a.note', 'b.note', 'c[].note']),
+    ],
+    [
+      'a payload with no recursion: the same paths as before',
+      () =>
+        z.object({
+          a: identifier(),
+          b: z.string(),
+          c: z.array(z.object({ d: z.string(), e: z.number() })),
+          f: z.looseObject({}),
+        }),
+      (found) => expect(found).toEqual(['b', 'c[].d', 'f.*']),
+    ],
+  ];
+
+  it.each(rows)('%s', (_name, build, expected) => {
+    expected(eventPayloadContent(build()));
   });
 });
 
