@@ -387,12 +387,12 @@ describe('How it ran', () => {
       scopes: BUREAU_ONLY,
     });
     const trigger = await done.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
-    expect(done.queryByRole('heading', { level: 2, name: 'Activity' })).toBeNull();
+    expect(done.queryByRole('heading', { level: 3, name: 'Activity' })).toBeNull();
 
     await fireEvent.click(trigger);
 
     await waitFor(() =>
-      expect(done.queryByRole('heading', { level: 2, name: 'Activity' })).not.toBeNull(),
+      expect(done.queryByRole('heading', { level: 3, name: 'Activity' })).not.toBeNull(),
     );
     cleanup();
     stub?.restore();
@@ -401,7 +401,7 @@ describe('How it ran', () => {
       tasks: [taskFixture({ id: 'run-1', status: 'working' })],
       scopes: BUREAU_ONLY,
     });
-    expect(await going.findByRole('heading', { level: 2, name: 'Activity' })).not.toBeNull();
+    expect(await going.findByRole('heading', { level: 3, name: 'Activity' })).not.toBeNull();
   });
 });
 
@@ -419,7 +419,7 @@ describe('the page', () => {
     expect(view.queryAllByRole('tab').length).toBe(0);
     // A finished run's how it ran is folded up; a person opens it for the activity.
     expect(view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading })).not.toBeNull();
-    expect(view.queryByRole('heading', { level: 2, name: 'Activity' })).toBeNull();
+    expect(view.queryByRole('heading', { level: 3, name: 'Activity' })).toBeNull();
     for (const name of ['Input and output', 'Details']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }

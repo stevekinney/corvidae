@@ -173,14 +173,20 @@ describe('a run of a workflow file the engine does not hold', () => {
     expect(view.queryAllByRole('tab').length).toBe(0);
     expect(view.getByRole('heading', { level: 2, name: 'Input and output' })).not.toBeNull();
     // COR-2329 round two: the page hand-built Cinder's Section; these are Cinder's own now.
-    for (const name of ['Input and output', 'Activity']) {
-      const section = view.getByRole('heading', { level: 2, name }).closest('section');
+    for (const [name, level] of [
+      ['Input and output', 2],
+      ['Activity', 3],
+    ] as const) {
+      const section = view.getByRole('heading', { level, name }).closest('section');
       expect(section?.classList.contains('cinder-section'), name).toBe(true);
       expect(
-        view.getByRole('heading', { level: 2, name }).classList.contains('cinder-section__title'),
+        view.getByRole('heading', { level, name }).classList.contains('cinder-section__title'),
         name,
       ).toBe(true);
     }
+    // COR-2329 round three: inside How it ran, Activity is level 3 beside Raw payloads, and Tool
+    // calls under it level 4, so neither reads louder than the disclosure that holds them.
+    expect(view.getByRole('heading', { level: 3, name: 'Activity' }).dataset['level']).toBe('3');
     const rail = view.getByRole('complementary');
     const link = [...rail.querySelectorAll('a')].find(
       (one) => one.textContent === workflowTypeName('e2e-approval'),
@@ -259,15 +265,10 @@ describe('a run the engine holds', () => {
     expect(view.getAllByRole('heading', { level: 1 }).length).toBe(1);
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
     expect(view.queryAllByRole('tab').length).toBe(0);
-    for (const name of [
-      'Input and output',
-      'Activity',
-      'Change or ask this run',
-      'Details',
-      'Related runs',
-    ]) {
+    for (const name of ['Input and output', 'Change or ask this run', 'Details', 'Related runs']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }
+    expect(view.getByRole('heading', { level: 3, name: 'Activity' })).not.toBeNull();
   });
 
   test('opens its events from the Events disclosure, with no address change', async () => {
