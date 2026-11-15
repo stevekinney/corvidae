@@ -386,6 +386,9 @@ const swallowMeasureRequests = EditorView.scrollHandler.of(
 /** Create a CodeMirror editor for JSON in `options.parent`. */
 export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
   const dynamic = new Compartment();
+  // CodeMirror reads its lines' heights again only when it thinks the content changed; a new
+  // theme is the public way to say so, so a metrics change swaps in an empty one.
+  const remeasure = new Compartment();
   const view = new EditorView({
     parent: options.parent,
     scrollTo: measureRequest(0),
@@ -428,6 +431,7 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
           options.onChange(update.state.doc.toString());
         }),
         dynamic.of(dynamicExtensions(options)),
+        remeasure.of([]),
       ],
     }),
   });
@@ -445,7 +449,12 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
   const metricsResize =
     typeof ResizeObserver === 'function'
       ? new ResizeObserver(() => {
-          view.dispatch({ effects: measureRequest(view.state.selection.main.head) });
+          view.dispatch({
+            effects: [
+              measureRequest(view.state.selection.main.head),
+              remeasure.reconfigure(EditorView.theme({})),
+            ],
+          });
         })
       : undefined;
   metricsResize?.observe(metricsProbe);

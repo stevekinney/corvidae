@@ -94,6 +94,9 @@ for (const width of [1280, 390]) {
 
       await expect
         .poll(async () => {
+          // A capture beyond the viewport is where the drift showed, and it also makes a headless
+          // browser render frames for a page whose only content is off-screen.
+          await page.screenshot({ fullPage: true });
           const geometry = await gutterGeometry(page);
           return aligned(geometry) ? 'aligned' : JSON.stringify(geometry);
         })
@@ -122,9 +125,9 @@ test('JsonEditor gutter sits on its lines for an editor in view', async ({ brows
     await expect
       .poll(async () => {
         const geometry = await gutterGeometry(page);
-        return geometry.numbers === geometry.lines && geometry.worstOffset <= TOLERANCE;
+        return aligned(geometry) ? 'aligned' : JSON.stringify(geometry);
       })
-      .toBe(true);
+      .toBe('aligned');
   } finally {
     await page.context().close();
   }
