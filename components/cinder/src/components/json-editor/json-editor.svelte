@@ -3,7 +3,7 @@
    * @cinder
    * @category form
    * @status stable
-   * @purpose Controlled free-form JSON editor in one frame: a toolbar with validity status and Format over a lazily loaded CodeMirror view with marked problem lines, backed by a native textarea.
+   * @purpose Controlled free-form JSON editor in one frame: validity status and Format float at the top inline-end corner of a lazily loaded CodeMirror view with marked problem lines, backed by a native textarea.
    * @tag form
    * @tag json
    * @tag editor
@@ -192,7 +192,7 @@
       ? [{ line: parseProblem.line, message: parseProblem.detail }]
       : (diagnostics ?? []),
   );
-  const toolbarStatus = $derived.by(
+  const status = $derived.by(
     (): { tone: 'muted' | 'success' | 'danger'; text: string; line?: number } | undefined => {
       if (readonly) return { tone: 'muted', text: 'Read only' };
       if (emptyIsValid) return { tone: 'muted', text: 'Empty' };
@@ -209,13 +209,13 @@
       return { tone: 'success', text: statusLabel ?? 'Valid JSON' };
     },
   );
-  const statusId = $derived(toolbarStatus ? `${id}-status` : undefined);
+  const statusId = $derived(status ? `${id}-status` : undefined);
   const feedbackId = $derived(externalError ? `${id}-feedback` : undefined);
   const describedBy = $derived(
     composeDescribedBy(descriptionId, statusId, feedbackId, consumerDescribedBy),
   );
   // A document that parses but has a line the caller marked is still a problem the person has to
-  // fix, so the field reports it (and a form's Save can move focus here) while the toolbar keeps
+  // fix, so the field reports it (and a form's Save can move focus here) while the status keeps
   // saying what the editor itself knows.
   const hasDiagnostics = $derived((diagnostics?.length ?? 0) > 0);
   const ariaInvalid = $derived(
@@ -322,47 +322,7 @@
     )}
     style:--_cinder-json-editor-rows={rows}
   >
-    <div class="cinder-json-editor__toolbar">
-      <span class="cinder-json-editor__tag" aria-hidden="true">JSON</span>
-      <div class="cinder-json-editor__toolbar-end">
-        <!-- The live region is always mounted, so a status that appears or changes is announced. -->
-        <div
-          id={statusId}
-          class={classNames(
-            'cinder-json-editor__status',
-            toolbarStatus && `cinder-json-editor__status--${toolbarStatus.tone}`,
-          )}
-          role="status"
-        >
-          {#if toolbarStatus}
-            {@render statusIcon(toolbarStatus.tone)}
-            {#if toolbarStatus.line !== undefined}
-              {@const problemLine = toolbarStatus.line}
-              <button
-                type="button"
-                class="cinder-json-editor__status-action"
-                {disabled}
-                onclick={() => focusLine(problemLine)}
-              >
-                {toolbarStatus.text}
-              </button>
-            {:else}
-              <span>{toolbarStatus.text}</span>
-            {/if}
-          {/if}
-        </div>
-        {#if !readonly}
-          <Button
-            type="button"
-            variant="secondary"
-            size="xs"
-            label="Format"
-            disabled={!canFormat}
-            onclick={formatDraft}
-          />
-        {/if}
-      </div>
-    </div>
+    {@render actions()}
     <div class="cinder-json-editor__body">
       <div bind:this={editorHostNode} class="cinder-json-editor__editor"></div>
       <!-- svelte-ignore a11y_autofocus (Autofocus is an explicit caller option; the native attribute preserves its behavior before hydration.) -->
@@ -403,6 +363,49 @@
   </div>
 {/snippet}
 
+{#snippet actions()}
+  <!-- The status and Format float over the editor's top inline-end corner, with no band of their
+       own. They come first in the DOM, so the tab order is the status action, Format, then the
+       text. The live region is always mounted, so a status that appears or changes is announced. -->
+  <div class="cinder-json-editor__actions">
+    <div
+      id={statusId}
+      class={classNames(
+        'cinder-json-editor__status',
+        status && `cinder-json-editor__status--${status.tone}`,
+      )}
+      role="status"
+    >
+      {#if status}
+        {@render statusIcon(status.tone)}
+        {#if status.line !== undefined}
+          {@const problemLine = status.line}
+          <button
+            type="button"
+            class="cinder-json-editor__status-action"
+            {disabled}
+            onclick={() => focusLine(problemLine)}
+          >
+            {status.text}
+          </button>
+        {:else}
+          <span class="cinder-json-editor__status-text">{status.text}</span>
+        {/if}
+      {/if}
+    </div>
+    {#if !readonly}
+      <Button
+        type="button"
+        variant="ghost-accent"
+        size="xs"
+        label="Format"
+        disabled={!canFormat}
+        onclick={formatDraft}
+      />
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet feedback()}
   {#if externalError}
     <p
@@ -416,7 +419,7 @@
   {/if}
 {/snippet}
 
-<!-- Validity lives in the frame's toolbar. Only the caller's `error` prop is rendered below the
+<!-- Validity lives in the frame's status, over the editor's top corner. Only the caller's `error` prop is rendered below the
      field, through `message` rather than `error` because it carries a glyph FormFieldFrame's
      plain error slot has no room for. `message` is passed unconditionally (the snippet guards
      its own content with `{#if externalError}`) rather than `externalError ? feedback :

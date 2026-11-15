@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Editor states';
   export const description =
-    'The editor in its frame: the JSON tag and status in a slim toolbar, empty with a muted example, valid, invalid with the line marked, read only, and disabled.';
+    'The editor in its frame, with the status and Format in its top corner: empty with a muted example, valid, invalid with the line marked, read only, and disabled.';
 </script>
 
 <script lang="ts">
@@ -33,7 +33,7 @@
   <JsonEditor
     id={invalidId}
     label="Invalid"
-    description="The line that ends without its comma is marked, and the toolbar message jumps to it."
+    description="The line that ends without its comma is marked, and the status message jumps to it."
     value={invalid}
     onValueChange={(next) => (invalid = next)}
   />
