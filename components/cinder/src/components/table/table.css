@@ -31,7 +31,17 @@
     overflow: clip;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-default);
-    background: var(--cinder-surface);
+    /* A table takes the fill of a card body, so it matches the cards beside it in light and in
+     * dark. The header row and the hover read this fill too: the header is set apart by muted
+     * text and a hairline, never by a darker band, and a hovered row takes a faint accent tint
+     * of the same fill (a translucent tint when the fill is transparent). */
+    --_cinder-table-fill: var(--cinder-surface);
+    --_cinder-table-row-hover: color-mix(
+      in oklch,
+      var(--_cinder-table-fill),
+      var(--cinder-accent-solid) 3%
+    );
+    background: var(--_cinder-table-fill);
     /* Longest a truncating cell's text may grow before it ellipsizes. */
     --_cinder-table-truncate-size: 28rem;
     /* Narrowest a cell that holds form controls may get. */
@@ -63,12 +73,15 @@
     --_cinder-scroll-fade-color: var(--cinder-surface);
   }
 
-  /* Frameless (COR-2311): a queue or list view sits on the page with no outline, radius or fill. */
+  /* Frameless (COR-2311): a queue or list view sits on the page with no outline, radius or fill.
+   * Its header and group rows paint nothing over whatever it sits on, and its hover is a
+   * translucent tint. */
   .cinder-table[data-cinder-frameless],
   .cinder-table-scroll[data-cinder-frameless] {
     border: 0;
     border-radius: 0;
     background: transparent;
+    --_cinder-table-fill: transparent;
     --_cinder-scroll-fade-color: var(--cinder-surface-canvas);
   }
 
@@ -140,17 +153,22 @@
  * Header
  * ---------------------------------------- */
 
-  /* A quiet header: the same surface as the body, set apart by muted small
+  /* A quiet header: the same fill as the body, set apart by muted small
    * text and a hairline, not a filled bar. Sticky headers need an opaque
-   * background, which the surface supplies. */
+   * background, which the table's fill supplies. */
   .cinder-table__header {
-    background: var(--cinder-surface);
+    background: var(--_cinder-table-fill);
   }
 
   .cinder-table[data-cinder-sticky-header] .cinder-table__header {
     position: sticky;
     top: 0;
     z-index: 1;
+  }
+
+  /* A pinned header must be opaque; a frameless one takes the page canvas, as its fade does. */
+  .cinder-table[data-cinder-frameless][data-cinder-sticky-header] .cinder-table__header {
+    background: var(--cinder-surface-canvas);
   }
 
   /* A native <caption> (caption-side: top) renders above the table's border box
@@ -280,7 +298,7 @@
 
   @media (hover: hover) {
     .cinder-table__sort-button:hover {
-      background: var(--cinder-surface-hover);
+      background: var(--_cinder-table-row-hover);
     }
   }
 
@@ -309,7 +327,7 @@
 
   @media (hover: hover) {
     .cinder-table__body .cinder-table__row:hover {
-      background: var(--cinder-surface-hover);
+      background: var(--_cinder-table-row-hover);
     }
   }
 

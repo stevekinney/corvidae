@@ -47,7 +47,7 @@ DataTable reports sort intent through the bindable `sort` prop. It does not reor
 
 ## Row scanning
 
-The first column acts as the row header by default, or a later column can opt in with `rowHeader: true`. Hover and focus-within row backgrounds use `--cinder-surface-hover` to make wide tables easier to scan without changing the native table semantics.
+The first column acts as the row header by default, or a later column can opt in with `rowHeader: true`. Hover and focus-within row backgrounds take a faint accent tint of the table's fill to make wide tables easier to scan without changing the native table semantics.
 
 ## Names, roles, and state
 
