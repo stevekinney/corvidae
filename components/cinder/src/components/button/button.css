@@ -228,6 +228,31 @@
     block-size: 1em;
   }
 
+  /* An icon passed as the button's own child (not through an icon slot) is sized by the button's
+     size step too: 12px at `xs`, 14px at `sm`, 16px at `md`, 20px at `lg`. A bare Lucide icon
+     would otherwise draw at its 24px viewBox and stretch the button. An icon with a sizing class
+     (`cinder-icon-sm`) keeps it: utilities win over this layer. */
+  .cinder-button > svg:not(.cinder-dropdown-trigger__caret) {
+    flex: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-button[data-cinder-size='xs'] > svg:not(.cinder-dropdown-trigger__caret) {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+  }
+
+  .cinder-button[data-cinder-size='sm'] > svg:not(.cinder-dropdown-trigger__caret) {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  .cinder-button[data-cinder-size='lg'] > svg:not(.cinder-dropdown-trigger__caret) {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+  }
+
   /* ----------------------------------------
    * Label — the `label` prop's words, bounded (COR-2339).
    * A button holding a label is never wider than its container and may shrink below its words

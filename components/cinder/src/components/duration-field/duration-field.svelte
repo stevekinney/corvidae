@@ -45,6 +45,8 @@
     units = DURATION_UNITS,
     unit = $bindable(),
     unitSelectable = true,
+    commitWhileTyping = false,
+    size,
     onblur,
     class: className,
   }: DurationFieldProps = $props();
@@ -107,7 +109,9 @@
     {...error !== undefined ? { error } : {}}
     {...name !== undefined ? { name } : {}}
     {...onblur !== undefined ? { onblur } : {}}
+    {...size !== undefined ? { size } : {}}
     {...unitSelectable ? {} : { adornment: activeUnit?.name ?? activeUnit?.label ?? '' }}
+    {commitWhileTyping}
     {required}
     {disabled}
     value={shown}
@@ -124,6 +128,7 @@
         id={`${id}-unit`}
         label={label ? `${label} unit` : 'Unit'}
         labelVisible={false}
+        {...size !== undefined ? { size } : {}}
         {disabled}
         options={units.map((candidate) => ({ value: candidate.value, label: candidate.label }))}
         value={shownUnit}
