@@ -1,5 +1,4 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
-@import '../button/button.css';
 @import '../color-picker/color-picker.css';
 @import '../popover/popover.css';
 
@@ -8,26 +7,57 @@
  * COLOR FIELD
  * ======================================== */
 
+  /* The field's own height, which Input sets on its private height: the md control step, or the lg
+     step under the comfortable density. The swatch's width is derived from it so it stays square;
+     its height comes from the slot itself, so the inset stays even whatever the height. */
   .cinder-color-field {
     display: contents;
+    --_cinder-color-field-height: var(--cinder-control-height-md);
+    --_cinder-color-field-inset: var(--cinder-space-1);
+  }
+
+  .cinder-color-field:where([data-density='comfortable'] *) {
+    --_cinder-color-field-height: var(--cinder-control-height-lg);
+  }
+
+  /* Input's interactive trailing slot pads its inline sides by `--cinder-space-1` and centres its
+     content; the swatch stretches to the slot's height less the same space above and below, so it
+     sits the same distance from the field's edge on all three sides. No border, no face: the
+     colour is the control. */
+  .cinder-color-field__swatch-button {
+    display: block;
+    flex: 0 0 auto;
+    align-self: stretch;
+    box-sizing: border-box;
+    inline-size: calc(
+      var(--_cinder-color-field-height) - 2px - 2 * var(--_cinder-color-field-inset)
+    );
+    margin-block: var(--_cinder-color-field-inset);
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    cursor: pointer;
+    appearance: none;
+  }
+
+  .cinder-color-field__swatch-button:disabled {
+    cursor: not-allowed;
+  }
+
+  .cinder-color-field__swatch-button:focus-visible {
+    outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
+    outline-offset: 1px;
   }
 
   .cinder-color-field__swatch {
-    display: inline-block;
-    width: 18px;
-    height: 18px;
-    border-radius: var(--cinder-radius-sm);
+    display: block;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 100%;
+    border-radius: inherit;
     background-color: var(--cinder-color-field-swatch, transparent);
-    border: 1px solid var(--cinder-border-control);
-    vertical-align: middle;
     pointer-events: none;
-    cursor: default;
-  }
-
-  .cinder-color-field__swatch-button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
   }
 
   .cinder-color-field__swatch[data-cinder-empty] {
@@ -82,8 +112,12 @@
   @media (forced-colors: active) {
     .cinder-color-field__swatch {
       forced-color-adjust: none;
-      border-color: CanvasText;
+      border: 1px solid CanvasText;
       background-color: ButtonFace;
+    }
+
+    .cinder-color-field__swatch-button:focus-visible {
+      outline-color: Highlight;
     }
 
     .cinder-color-field__swatch[data-cinder-empty] {
