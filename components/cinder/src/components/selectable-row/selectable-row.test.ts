@@ -26,6 +26,17 @@ describe('SelectableRow', () => {
     );
   });
 
+  test('rounds every state with the small radius and rings the whole row for its primary action', async () => {
+    const css = await Bun.file(new URL('./selectable-row.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-selectable-row\s*\{[^}]*border-radius:\s*var\(--cinder-radius-sm\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-selectable-row:has\(> \.cinder-selectable-row__primary:focus-visible\),[^{]*\{[^}]*box-shadow: var\(--_cinder-focus-ring-shadow\);/,
+    );
+    expect(css).toMatch(/\.cinder-selectable-row__primary:focus-visible \{\s*outline: none;\s*\}/);
+  });
+
   test('never reveals trailing actions only on hover or focus', async () => {
     const css = await Bun.file(new URL('./selectable-row.css', import.meta.url)).text();
     const rulesTargetingActions = [
