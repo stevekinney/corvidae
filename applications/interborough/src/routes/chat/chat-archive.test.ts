@@ -89,7 +89,8 @@ describe('the More menu', () => {
       { contextId: 'session-1' },
     ]);
     expect(view.queryByRole('dialog')).toBeNull();
-    expect(bar.textContent).toContain('Archived Nov 3');
+    // Chat keeps the date whole with a no-break space, so the words are compared with plain spaces.
+    expect(bar.textContent?.replace(/ /g, ' ')).toContain('Archived Nov 3');
     expect(composer(view)).toBeNull();
     // The conversation is still there to read.
     expect(view.getByText('Second answer')).not.toBeNull();
@@ -163,7 +164,8 @@ describe('the Archived bar', () => {
 
     const bar = await untilArchived(view);
 
-    expect(bar.textContent).toContain('Archived Nov 3');
+    // Chat keeps the date whole with a no-break space, so the words are compared with plain spaces.
+    expect(bar.textContent?.replace(/ /g, ' ')).toContain('Archived Nov 3');
     const newChat = within(bar).getByRole('link', { name: CHAT_COPY.composer.newChat });
     expect(newChat.getAttribute('href')).toBe('/chats/new');
     expect(newChat.getAttribute('data-cinder-variant')).toBe('secondary');
