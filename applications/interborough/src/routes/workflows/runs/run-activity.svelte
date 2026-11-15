@@ -57,15 +57,18 @@
   let checkpointsOpen = $state(false);
 </script>
 
-<!-- Without a task to read, the note under the heading says why. -->
+<!-- Without a task to read, the note under the heading says why. Activity sits inside How it ran
+     beside Raw payloads, so it is a level-3 section like it, and Tool calls under it level 4
+     (COR-2329: at level 2 it read louder than the disclosure that holds it). -->
 <Section
+  level={3}
   title={RUN_PAGE_COPY.activityHeading}
   {...task === undefined && note !== undefined ? { description: note } : {}}
   data-section="activity"
 >
   <Stack gap="var(--cinder-space-3)">
     {#if task !== undefined}
-      <Section level={3} title={TASK_COPY.toolCallsHeading}>
+      <Section level={4} title={TASK_COPY.toolCallsHeading}>
         <!-- A goal's attempt reads the thread of its own session, once the goals have named it; its waits show either way. -->
         <RunToolCalls {task} threadId={taskThreadId} events={taskEvents} decide={decideApprovals} />
       </Section>

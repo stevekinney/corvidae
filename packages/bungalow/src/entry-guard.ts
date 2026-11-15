@@ -128,6 +128,22 @@ export function ensureDirectory(
 }
 
 /**
+ * Whether a real directory is at `path`, which creates and changes nothing: a missing entry is
+ * `false`, and a symbolic link or anything that is not a directory is a `BungalowStateError`.
+ */
+export function directoryExists(path: string, label: string): boolean {
+  let descriptor: number;
+  try {
+    descriptor = openEntry(path, label, 'directory', constants.O_RDONLY);
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return false;
+    throw error;
+  }
+  closeSync(descriptor);
+  return true;
+}
+
+/**
  * The text of a regular file, or `undefined` when it does not exist. With `tighten`, a file that
  * group or others can reach is set back to `tighten` before it is read.
  */
