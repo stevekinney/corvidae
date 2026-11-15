@@ -105,7 +105,10 @@
      * clamps keep labels and metadata legible when Chat is embedded in a
      * narrow side panel; rem units preserve browser text zoom. These scoped
      * aliases also scale nested Cinder controls rendered inside Chat. */
-    --cinder-chat-font-size: 1rem;
+    /* 14px, Cinder's own body size (owner decision, 2026-11-13): message text reads at the size of
+     * the pages around it, and the ramp below steps notices and controls to 13px and metadata to
+     * 12px. */
+    --cinder-chat-font-size: 0.875rem;
     --_cinder-chat-text-4xs: clamp(
       0.625rem,
       calc(var(--cinder-chat-font-size) - 0.375rem),
@@ -124,6 +127,14 @@
     --cinder-text-sm: var(--_cinder-chat-text-sm);
     --cinder-text-base: var(--_cinder-chat-text-base);
     --cinder-text-lg: var(--_cinder-chat-text-lg);
+
+    /* How the line under a message (its time and actions) stands under the text: the gap the
+     * message's flex column leaves, the pull that trims it back for an assistant's text, and the
+     * line's own height. A step row's spacing to the answer below reads these same three, so the
+     * answer stands from the row as far as a message's text stands from its time. */
+    --_cinder-chat-line-gap: var(--cinder-space-1);
+    --_cinder-chat-line-pull: calc(var(--cinder-space-1) * -1.5);
+    --_cinder-chat-line-block-size: 1.5rem;
 
     container-type: inline-size;
     display: flex;
@@ -190,6 +201,21 @@
 
   .cinder-chat .chat-timeline:focus-visible .chat-timeline-focus-label {
     opacity: 1;
+  }
+
+  /* When an expired approval lapsed is a line under its card in the size and colour of a message's
+   * time line (chat-message.svelte's .chat-message-line), not text inside the card. */
+  .cinder-chat .chat-approval-time {
+    display: flex;
+    align-items: center;
+    min-block-size: 1.5rem;
+    /* As close under its card as a message's time is under its bubble (owner, 2026-11-13): the
+     * line's own slack above the letters plus the gap between a message's parts would otherwise
+     * leave it twice as far from the card as the step row above the card is. */
+    margin-block-start: calc(-1 * (var(--cinder-space-2) + var(--cinder-space-0-5)));
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    line-height: normal;
   }
 
   @media (forced-colors: active) {

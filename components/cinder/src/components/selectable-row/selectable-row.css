@@ -1,10 +1,14 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @layer cinder.components {
+  /* One shape for every state: hover, focus and selected all paint this whole box with the same
+   * four corners, the small radius Cinder's other selectable rows (side navigation, menu items)
+   * use. A list that holds rows insets them from its edges (ListDetail does), so a rounded corner
+   * never meets a pane edge or a heading's rule. */
   .cinder-selectable-row {
     display: grid;
     min-inline-size: 0;
     align-items: center;
-    border-radius: var(--cinder-radius-md);
+    border-radius: var(--cinder-radius-sm);
     background: transparent;
   }
 
@@ -53,11 +57,17 @@
     }
   }
 
-  .cinder-selectable-row__primary:focus-visible,
+  /* The primary action's ring is drawn on the whole row, so focus has the shape hover and the
+   * selected fill have, trailing actions included. A trailing action rings itself. */
+  .cinder-selectable-row:has(> .cinder-selectable-row__primary:focus-visible),
   .cinder-selectable-row__trailing-actions > :focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     outline-offset: 2px;
     box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-selectable-row__primary:focus-visible {
+    outline: none;
   }
 
   .cinder-selectable-row__primary:disabled {
@@ -111,7 +121,7 @@
   }
 
   @media (forced-colors: active) {
-    .cinder-selectable-row__primary:focus-visible,
+    .cinder-selectable-row:has(> .cinder-selectable-row__primary:focus-visible),
     .cinder-selectable-row__trailing-actions > :focus-visible {
       outline-color: ButtonText;
       box-shadow: none;

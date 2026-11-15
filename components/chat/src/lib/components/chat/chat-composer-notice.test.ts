@@ -31,7 +31,7 @@ describe('an archived composer', () => {
     const bar = container.querySelector('[data-chat-composer-status="archived"]')!;
     expect(bar.getAttribute('role')).toBe('group');
     expect(bar.querySelector('.chat-input-blocked-reason')?.textContent?.trim()).toBe(
-      'Archived Nov 3',
+      'Archived Nov 3',
     );
     expect(bar.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     // Neutral: not the blocked row's warning glyph.
@@ -163,7 +163,7 @@ describe('the blocked row', () => {
 
 describe('composer status words', () => {
   test('read the archive date and Read only', () => {
-    expect(composerStatusText({ kind: 'archived', when: 'Nov 3' })).toBe('Archived Nov 3');
+    expect(composerStatusText({ kind: 'archived', when: 'Nov 3' })).toBe('Archived Nov 3');
     expect(composerStatusText({ kind: 'read-only' })).toBe('Read only');
   });
 

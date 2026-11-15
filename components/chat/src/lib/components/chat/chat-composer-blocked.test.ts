@@ -50,16 +50,20 @@ describe('a blocked composer', () => {
     expect(message).toContain('flex: 1 1 6rem;');
   });
 
-  test('on a phone-width composer the actions fill a line of their own, as touch targets', async () => {
+  test('on a phone-width composer the actions take a line of their own that ends at the trailing edge, compact', async () => {
     const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
-    const narrow = /@media \(max-width: 639\.98px\) \{([\s\S]*?)\n  \}\n/u.exec(
-      source.slice(source.indexOf('.chat-input-blocked-actions {')),
-    )?.[1];
+    const rest = source.slice(source.indexOf('.chat-input-blocked-actions {'));
+    const base = /\n {2}\.chat-input-blocked-actions \{([^}]*)\}/u.exec(source)?.[1];
+    const narrow = /@media \(max-width: 639\.98px\) \{([\s\S]*?)\n  \}\n/u.exec(rest)?.[1];
 
+    // The row ends at the trailing edge on every line it occupies, the primary last.
+    expect(base).toContain('justify-content: flex-end;');
+    expect(base).toContain('margin-inline-start: auto;');
     expect(narrow).toContain('flex: 1 0 100%;');
-    expect(narrow).not.toContain('justify-content: flex-end');
-    // A Button keeps its painted height; its 44px hit area is its own pseudo-element.
-    expect(narrow).toMatch(/\.cinder-button\) \{[^}]*flex: 1 1 auto;/u);
+    // A Button keeps its compact painted width and height; its 44px hit area is its own
+    // pseudo-element. Never equal or full width.
+    expect(narrow).toMatch(/\.cinder-button\) \{[^}]*flex: 0 0 auto;/u);
+    expect(narrow).not.toContain('flex: 1 1 auto');
     expect(narrow).not.toContain('min-block-size');
   });
 
@@ -95,15 +99,16 @@ describe('a blocked composer', () => {
     const buttons = [
       ...container.querySelectorAll<HTMLButtonElement>('.chat-input-blocked button'),
     ];
+    // The quiet link leads and the action ends the row, at the trailing edge.
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      'Connect a provider',
       'Use Assistant',
+      'Connect a provider',
     ]);
-    expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('secondary');
-    expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(buttons[0]!.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(buttons[1]!.getAttribute('data-cinder-variant')).toBe('secondary');
 
-    await fireEvent.click(buttons[0]!);
     await fireEvent.click(buttons[1]!);
+    await fireEvent.click(buttons[0]!);
     expect(calls).toEqual(['connect', 'assistant']);
   });
 

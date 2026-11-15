@@ -251,6 +251,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   empty?: Snippet;
   /** Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. */
   trailing?: Snippet;
+  /** Set while the `trailing` content is a pending ask of the host's own, such as the question a run parked on. The assistant text directly before it is the agent talking to the person, so it keeps its full message line instead of drawing as bare narration. Chat sees an approval or question in its own messages without this. Default `false`. */
+  trailingAskPending?: boolean | undefined;
   /** The title of the default empty state, drawn with the first-use `EmptyState` of Cinder. Has no effect when a custom `empty` snippet is provided. Default `No messages yet`. */
   emptyTitle?: string | undefined;
   /** One sentence under the empty state title, such as what the agent does. Has no effect when a custom `empty` snippet is provided. Default none. */
@@ -306,8 +308,6 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   readReceipts?: Map<string, ReadReceipt> | undefined;
   /** The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link. */
   sourcesByMessageId?: ReadonlyMap<string, readonly CitationSource[]> | undefined;
-  /** How a message's Sources control shows its `sourcesByMessageId` entries. `'compact'` (default) opens Cinder's Citation panel; `'list'` is a collapsed disclosure that, opened, lists every source under the message with its excerpt and its link when the address is safe; `'inline'` draws one chip per source that flows like words and reads the source's host, or its label when it has no web address, and opens that source in Citation's panel. Opening a list above the viewport keeps the message the reader is looking at in place. */
-  sourcePresentation?: 'compact' | 'list' | 'inline' | undefined;
   /**
    * Optional command/transport boundary around `conversation`. Its methods take
    * precedence over the matching callback props (e.g. `sendMessage` over
@@ -376,8 +376,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * choice questions dock so phone users always get the explicit Reply and Answer controls.
    * `'docked'` draws the question in place of the composer: a Needs you warning, a fieldset named Question (its legend is visually hidden),
    * radio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
-   * secondary Reply in chat instead and a primary Answer, with `Question 2 of 3` when several were
-   * asked together. A choice only selects; Answer sends it. Reply in chat instead gives the
+   * quiet Reply in chat and a primary Answer, with `Question 2 of 3` and previous and next buttons
+   * when several were asked together. A choice only selects; Answer sends it. Reply in chat gives the
    * composer back and returns the question to its row. Every other kind of question stays in its
    * row either way. Needs {@link ChatProps.onInputSubmit}.
    */
@@ -424,8 +424,9 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Where each assistant turn stands, as the host knows it (COR-2283). Called per assistant
    * message; return a {@link ChatTurnState} to draw the turn's outcome on the turn itself, or
    * `undefined` to leave it streaming while text arrives and complete after. `reconnecting`
-   * mutes the partial text and drops its caret under the warning "Connection lost. Reconnecting,
-   * attempt 2 of 5. Next try in 8 s." with Retry and a bar that drains until the next try;
+   * mutes the partial text and drops its caret, and draws the warning "Connection lost.
+   * Reconnecting, attempt 2 of 5. Next try in 8 s." with Retry and a bar that drains until the
+   * next try by the composer, where the connection is felt, not under the partial text;
    * `stopped` draws a neutral card with Discard and Continue; `failed` a danger alert that says the
    * answer is incomplete, why, and what Retry keeps, with Retry; `empty` a neutral row with the
    * turn's time and Retry in place of its line. `advanceTurnState` moves a state on as the run

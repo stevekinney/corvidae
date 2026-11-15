@@ -642,39 +642,42 @@ describe('Chat — message rendering', () => {
       props: {
         id: 'chat-source-labels',
         conversation,
-        sourcePresentation: 'list',
         sourcesByMessageId: new Map([
           [messageId, [{ label: 'Policy', url: 'https://example.com/policy' }]],
         ]),
         labels: {
           sources: 'Quellen',
-          sourcesCount: (count: number) => `Quellen (${count})`,
+          sourcesCount: (count: number) => `${count} Quellen`,
         },
       },
     });
 
-    expect(container.querySelector('[aria-label="Quellen (1)"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="1 Quellen"]')).not.toBeNull();
   });
 
-  test('passes top-level label overrides into inline source controls', () => {
+  test('passes top-level label overrides into the words of an opened source list', async () => {
     const conversation = appendAssistantMessage(
-      createConversation({ id: 'conversation-inline-source-labels' }),
+      createConversation({ id: 'conversation-source-list-labels' }),
       'See the policy.',
     );
     const messageId = conversation.ids[0]!;
     const { container } = render(Chat, {
       props: {
-        id: 'chat-inline-source-labels',
+        id: 'chat-source-list-labels',
         conversation,
-        sourcePresentation: 'inline',
         sourcesByMessageId: new Map([
-          [messageId, [{ label: 'Policy', url: 'https://example.com/policy' }]],
+          [messageId, [{ label: 'Policy' }, { label: 'Unsafe', url: 'javascript:alert(1)' }]],
         ]),
-        labels: { sources: 'Quellen' },
+        labels: { internalDocument: 'Internes Dokument', unsafeLink: 'Link verborgen' },
       },
     });
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('.cinder-citation__marker')!);
 
-    expect(container.querySelector('[aria-label="Quellen"]')).not.toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('.cinder-citation__note')).map(
+        (note) => note.textContent,
+      ),
+    ).toEqual(['Internes Dokument', 'Link verborgen']);
   });
 
   test('passes top-level label overrides into date separators', () => {
@@ -928,7 +931,7 @@ describe('Chat — message rendering', () => {
 
       const dock = container.querySelector('[data-chat-question-dock]');
       expect(dock).not.toBeNull();
-      expect(dock?.textContent).toContain('Reply in chat instead');
+      expect(dock?.textContent).toContain('Reply in chat');
       expect(dock?.textContent).toContain('Antwort');
       expect(dock?.querySelector('button[disabled]')).not.toBeNull();
       expect(container.querySelector('.chat-question-choices')).toBeNull();

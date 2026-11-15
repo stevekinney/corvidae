@@ -1570,20 +1570,20 @@ test.describe('chat harness — message sources (COR-2257)', () => {
       await harness.locator('[data-testid="seed-sources"]').click();
 
       const messageA = sourcedMessage(harness, 'sources-assistant-a');
-      const control = messageA.getByRole('button', { name: 'Sources (3)' });
+      const control = messageA.getByRole('button', { name: '3 sources' });
       await expect(control).toBeVisible();
-      await expect(harness.locator('.chat-message-sources')).toHaveCount(1);
+      await expect(harness.locator('.cinder-citation__marker')).toHaveCount(1);
       await expect(
-        sourcedMessage(harness, 'sources-assistant-b').locator('.chat-message-sources'),
+        sourcedMessage(harness, 'sources-assistant-b').locator('.cinder-citation__marker'),
       ).toHaveCount(0);
       await expect(
-        sourcedMessage(harness, 'sources-user-1').locator('.chat-message-sources'),
+        sourcedMessage(harness, 'sources-user-1').locator('.cinder-citation__marker'),
       ).toHaveCount(0);
 
       await control.focus();
       await page.keyboard.press('Enter');
       const panel = page.locator('.cinder-citation__panel');
-      await expect(panel.locator('ol > li strong')).toHaveText(sourceTitles);
+      await expect(panel.locator('ol > li .cinder-citation__title')).toHaveText(sourceTitles);
       await expect(panel.locator('.cinder-citation__detail')).toHaveText([
         'Revenue rose 12% year over year, led by subscriptions.',
         'The board approved the new pricing.',
@@ -1599,13 +1599,14 @@ test.describe('chat harness — message sources (COR-2257)', () => {
         "Link hidden: the address isn't a safe web link",
       ]);
 
-      await page.keyboard.press('Escape');
+      // The list is a disclosure in place: the control closes it and keeps focus.
+      await page.keyboard.press('Enter');
       await expect(panel).toHaveCount(0);
       await expect(control).toBeFocused();
 
       // The host's controlled mapping changes: A's sources go, and so does its control.
       await harness.locator('[data-testid="remove-sources"]').click();
-      await expect(harness.locator('.chat-message-sources')).toHaveCount(0);
+      await expect(harness.locator('.cinder-citation__marker')).toHaveCount(0);
       expect(outbound).toEqual([]);
     } finally {
       await dispose();
@@ -1624,7 +1625,7 @@ test.describe('chat harness — message sources (COR-2257)', () => {
     try {
       await harness.locator('[data-testid="seed-sources"]').click();
       const messageA = sourcedMessage(harness, 'sources-assistant-a');
-      const control = messageA.getByRole('button', { name: 'Sources (3)' });
+      const control = messageA.getByRole('button', { name: '3 sources' });
       await control.scrollIntoViewIfNeeded();
       await control.click();
 
@@ -1647,72 +1648,8 @@ test.describe('chat harness — message sources (COR-2257)', () => {
   });
 });
 
-test.describe('chat harness — inline source chips (COR-2281 M4)', () => {
-  for (const width of [1440, 320] as const) {
-    test(`at ${width}px the chips sit in the line, read their host or label and open their source`, async ({
-      browser,
-    }) => {
-      const { page, harness, dispose } = await openHarness(browser, {
-        viewport: { width, height: 900 },
-      });
-      try {
-        await harness
-          .locator('#harness-source-presentation')
-          .getByText('Inline', { exact: true })
-          .click();
-        await harness.locator('[data-testid="seed-sources"]').click();
-
-        const messageA = harness.locator('article[data-message-id="sources-assistant-a"]');
-        const chips = messageA.locator('.chat-message-source-chips .cinder-citation__marker');
-        await expect(chips).toHaveText(['example.com', 'Board minutes, March', 'Pricing memo']);
-        await expect(harness.locator('.chat-message-sources-toggle')).toHaveCount(0);
-
-        // Each chip flows like a word: it is inline-level, and the row of them wraps with the line
-        // rather than scrolling the message sideways.
-        const layout = await messageA.locator('.chat-message-source-chips').evaluate((group) => {
-          const citation = group.querySelector('.cinder-citation')!;
-          return {
-            citationDisplay: getComputedStyle(citation).display,
-            overflow: group.scrollWidth - group.clientWidth,
-          };
-        });
-        expect(layout.citationDisplay).toBe('inline');
-        expect(layout.overflow).toBeLessThanOrEqual(0);
-        await expectNoPageOverflow(page);
-
-        // A chip opens its own source and Escape returns focus to it.
-        const first = chips.first();
-        await first.focus();
-        await page.keyboard.press('Enter');
-        await expect(page.locator('.cinder-citation__panel strong')).toHaveText(
-          'Annual report 2025',
-        );
-        await page.keyboard.press('Escape');
-        await expect(first).toBeFocused();
-      } finally {
-        await dispose();
-      }
-    });
-  }
-
-  async function expectNoPageOverflow(page: Page): Promise<void> {
-    await expect
-      .poll(() =>
-        page.evaluate(() => Math.ceil(document.documentElement.scrollWidth - window.innerWidth)),
-      )
-      .toBeLessThanOrEqual(1);
-  }
-});
-
-test.describe('chat harness — expandable source list (COR-2259)', () => {
+test.describe('chat harness — the sources list in place', () => {
   const sourceTitles = ['Annual report 2025', 'Board minutes, March', 'Pricing memo'];
-
-  async function chooseListPresentation(harness: Locator): Promise<void> {
-    await harness
-      .locator('#harness-source-presentation')
-      .getByText('List', { exact: true })
-      .click();
-  }
 
   async function horizontalOverflow(page: Page, list: Locator): Promise<number[]> {
     const listOverflow = await list.evaluate(
@@ -1727,10 +1664,8 @@ test.describe('chat harness — expandable source list (COR-2259)', () => {
   for (const profile of [
     { width: 1440, height: 900, colorScheme: 'light' as const, touch: false },
     { width: 1440, height: 900, colorScheme: 'dark' as const, touch: false },
-    { width: 375, height: 812, colorScheme: 'light' as const, touch: true },
-    { width: 375, height: 812, colorScheme: 'dark' as const, touch: true },
   ]) {
-    test(`at ${profile.width}px ${profile.colorScheme}, the list opens in order, links only safe addresses and wraps`, async ({
+    test(`at ${profile.width}px ${profile.colorScheme}, the list opens in place in order, links only safe addresses and wraps`, async ({
       browser,
     }) => {
       const { page, harness, dispose } = await openHarness(browser, {
@@ -1746,36 +1681,32 @@ test.describe('chat harness — expandable source list (COR-2259)', () => {
         page.on('request', (request) => {
           if (new URL(request.url()).origin !== origin) outbound.push(request.url());
         });
-        await chooseListPresentation(harness);
         await harness.locator('[data-testid="seed-sources"]').click();
 
         const messageA = harness.locator('article[data-message-id="sources-assistant-a"]');
-        const toggle = messageA.getByRole('button', { name: 'Sources (3)' });
+        const toggle = messageA.getByRole('button', { name: '3 sources' });
         await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-        await expect(harness.locator('.chat-message-sources-toggle')).toHaveCount(1);
-        await expect(messageA.locator('.chat-message-sources-list')).toHaveCount(0);
+        await expect(messageA.locator('.cinder-citation__panel')).toHaveCount(0);
 
-        // Keyboard on desktop, touch on a phone.
+        // Keyboard on desktop.
         await toggle.scrollIntoViewIfNeeded();
-        if (profile.touch) {
-          await toggle.tap();
-        } else {
-          await toggle.focus();
-          await page.keyboard.press('Enter');
-        }
-        const list = messageA.locator('.chat-message-sources-list');
+        await toggle.focus();
+        await page.keyboard.press('Enter');
+        const list = messageA.locator('.cinder-citation__panel');
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-        await expect(list.locator('li strong')).toHaveText(sourceTitles);
-        await expect(list.locator('.chat-message-sources-detail')).toHaveText([
+        await expect(list.locator('li .cinder-citation__title')).toHaveText(sourceTitles);
+        await expect(list.locator('.cinder-citation__detail')).toHaveText([
           'Revenue rose 12% year over year, led by subscriptions.',
           'The board approved the new pricing.',
         ]);
+        // The whole row is the link, and the pager is gone.
         await expect(list.getByRole('link')).toHaveCount(1);
         await expect(list.getByRole('link')).toHaveAttribute(
           'href',
           'https://example.com/reports/annual-2025',
         );
-        await expect(list.locator('.chat-message-sources-note')).toHaveText([
+        await expect(list.getByRole('button')).toHaveCount(0);
+        await expect(list.locator('.cinder-citation__note')).toHaveText([
           'Internal document, no public link',
           "Link hidden: the address isn't a safe web link",
         ]);
@@ -1803,11 +1734,10 @@ test.describe('chat harness — expandable source list (COR-2259)', () => {
       viewport: { width: 1440, height: 900 },
     });
     try {
-      await chooseListPresentation(harness);
       await harness.locator('[data-testid="seed-sources"]').click();
       const messageA = harness.locator('article[data-message-id="sources-assistant-a"]');
-      await messageA.getByRole('button', { name: 'Sources (3)' }).click();
-      const link = messageA.locator('.chat-message-sources-list').getByRole('link');
+      await messageA.getByRole('button', { name: '3 sources' }).click();
+      const link = messageA.locator('.cinder-citation__panel').getByRole('link');
       await link.focus();
       await expect(link).toBeFocused();
 
@@ -1819,7 +1749,7 @@ test.describe('chat harness — expandable source list (COR-2259)', () => {
         harnessWindow.corvidaeChatHarnessRemoveSources();
       });
 
-      await expect(messageA.locator('.chat-message-sources')).toHaveCount(0);
+      await expect(messageA.locator('.cinder-citation__marker')).toHaveCount(0);
       await expect(messageA).toBeFocused();
     } finally {
       await dispose();
@@ -1835,7 +1765,6 @@ test.describe('chat harness — expandable source list (COR-2259)', () => {
     });
     try {
       await harness.locator('#t-virtualized').click();
-      await chooseListPresentation(harness);
       await harness.locator('[data-testid="seed-long-sources"]').click();
       const timeline = harness.locator('.chat-timeline');
       await expect(timeline.locator('.chat-virtual-row').first()).toBeVisible();
@@ -1867,7 +1796,7 @@ test.describe('chat harness — expandable source list (COR-2259)', () => {
           .filter(
             (article) =>
               article.getBoundingClientRect().bottom <= top &&
-              article.querySelector('.chat-message-sources-toggle') !== null,
+              article.querySelector('.cinder-citation__marker') !== null,
           )
           .at(-1);
         if (visible === undefined || above === undefined) {
@@ -1884,12 +1813,12 @@ test.describe('chat harness — expandable source list (COR-2259)', () => {
       await timeline.evaluate((element, aboveId) => {
         element
           .querySelector<HTMLButtonElement>(
-            `article[data-message-id="${aboveId}"] .chat-message-sources-toggle`,
+            `article[data-message-id="${aboveId}"] .cinder-citation__marker`,
           )
           ?.click();
       }, before.aboveId);
       await expect(
-        timeline.locator(`article[data-message-id="${before.aboveId}"] .chat-message-sources-list`),
+        timeline.locator(`article[data-message-id="${before.aboveId}"] .cinder-citation__panel`),
       ).toHaveCount(1);
 
       await expect

@@ -47,7 +47,7 @@ const tokensBaseCss = loadCss('../styles/tokens-base.css');
 // transparent-outline + var(--_cinder-focus-ring-shadow) recipe from issue #460's
 // remediation set; Button diverges on purpose, composing its ring from
 // var(--_cinder-button-ring, ...) so variants can retint it.
-const mediaControlsCss = loadCss('../components/media-controls/media-controls.css');
+const mediaControlsCss = loadCss('../components/_internal/media-controls.css');
 const permissionMatrixCss = loadCss('../components/permission-matrix/permission-matrix.css');
 const shareCardCss = loadCss('../components/share-card/share-card.css');
 const transferListCss = loadCss('../components/transfer-list/transfer-list.css');
@@ -847,6 +847,13 @@ describe('forced-colors fallbacks — issue #460', () => {
       css: mediaControlsCss,
       selector: '.cinder-media-controls__button:focus-visible',
       expectedOffset: '3px',
+    },
+    {
+      name: 'media-controls action',
+      css: mediaControlsCss,
+      selector: '.cinder-media-controls__action:focus-visible',
+      // border:0 — borderless, no ButtonBorder merge risk
+      expectedOffset: '2px',
     },
     {
       name: 'permission-matrix cell-control button',

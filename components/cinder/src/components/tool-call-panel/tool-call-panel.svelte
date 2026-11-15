@@ -83,7 +83,7 @@
   const noteId = `${baseId}-note`;
 
   let note = $state('');
-  // The note waits behind "Add a note"; once opened it stays open, so a typed note never hides.
+  // The note waits behind "Add note"; once opened it stays open, so a typed note never hides.
   let showNote = $state(false);
   let wasOpen = untrack(() => open);
 
@@ -109,7 +109,7 @@
     copyInput: labels?.copyInput ?? 'Copy input',
     copyResult: labels?.copyResult ?? `Copy ${resultLabel.toLowerCase()}`,
     copyError: labels?.copyError ?? 'Copy error',
-    addNote: labels?.addNote ?? 'Add a note',
+    addNote: labels?.addNote ?? 'Add note',
     note: labels?.note ?? 'Note',
     noteDescription:
       labels?.noteDescription ??

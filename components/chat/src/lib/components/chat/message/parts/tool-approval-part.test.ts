@@ -77,7 +77,7 @@ describe('ToolApprovalPart', () => {
     );
     expect(buttons).toEqual([
       'Input Environment production, Replicas 3',
-      'Add a note',
+      'Add note',
       'Deny',
       'Approve',
     ]);
@@ -122,6 +122,42 @@ describe('ToolApprovalPart', () => {
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     await fireEvent.click(getByRole('button', { name: 'Ask again' }));
     expect(calls).toEqual(['call-1']);
+  });
+
+  test('an expired approval writes when it lapsed under the card, as a message time, not in it', () => {
+    const part = pendingPart({ state: 'expired' });
+    const { container } = render(ToolApprovalPart, {
+      props: {
+        part: { ...part, action: { ...part.action, expiresAt: '2026-11-02T10:15:00.000Z' } },
+      },
+    });
+
+    const time = container.querySelector('.chat-approval-time time');
+    expect(time?.getAttribute('datetime')).toBe('2026-11-02T10:15:00.000Z');
+    expect(time?.textContent).toMatch(/10:15/);
+    expect(container.querySelector('.chat-approval-time')?.previousElementSibling?.tagName).toBe(
+      'ARTICLE',
+    );
+    expect(container.querySelector('article')?.textContent).not.toMatch(/10:15/);
+  });
+
+  test('a pending approval whose deadline has passed writes its time as the card reads Expired', () => {
+    const part = pendingPart();
+    const { container } = render(ToolApprovalPart, {
+      props: {
+        part: { ...part, action: { ...part.action, expiresAt: '2026-11-02T10:15:00.000Z' } },
+      },
+    });
+
+    expect(container.querySelector('article')?.getAttribute('data-cinder-state')).toBe('expired');
+    expect(container.querySelector('.chat-approval-time time')?.getAttribute('datetime')).toBe(
+      '2026-11-02T10:15:00.000Z',
+    );
+  });
+
+  test('a pending approval writes no time line under its card', () => {
+    const { container } = render(ToolApprovalPart, { props: { part: pendingPart() } });
+    expect(container.querySelector('.chat-approval-time')).toBeNull();
   });
 
   test('falls back to the tool name when the action has no message', () => {

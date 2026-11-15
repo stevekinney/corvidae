@@ -817,6 +817,22 @@ describe('ListDetail', () => {
     );
   });
 
+  // The geometry is read in a browser by `list-detail-row-shape.playwright.ts`; this pins the rules.
+  test('insets every row from the pane edges and a heading, with padding instead of the li margin', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-list-detail__row \{[^}]*--cinder-selectable-row-padding-inline: var\(--cinder-space-2\);[^}]*margin: 0;[^}]*padding: var\(--cinder-space-0-5\) var\(--cinder-space-2\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-list-detail__row:not\(\.cinder-list-detail__row \+ \.cinder-list-detail__row\) \{\s*padding-block-start: var\(--cinder-space-2\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-list-detail__row:not\(:has\(\+ \.cinder-list-detail__row\)\) \{\s*padding-block-end: var\(--cinder-space-2\);/,
+    );
+  });
+
   test('a stacked layout flows with the page instead of scrolling inside itself', async () => {
     const css = stripCinderComponentsLayer(
       await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),

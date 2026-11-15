@@ -55,7 +55,7 @@
   }
 
   .cinder-data-table tbody .cinder-table__row:focus-within {
-    background: var(--cinder-surface-hover);
+    background: var(--_cinder-table-row-hover);
   }
 
   /* ----------------------------------------
@@ -97,7 +97,9 @@
     font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-semibold);
     color: var(--cinder-text-default);
-    background: var(--cinder-surface-inset);
+    /* A flat row in the table's fill: the semibold label and the hairlines above and below set a
+     * group apart, never a darker band (which in dark would sit below the cards beside it). */
+    background: var(--_cinder-table-fill);
     border-block: 1px solid var(--cinder-border-muted);
   }
 

@@ -28,16 +28,20 @@ async function openHierarchy(componentPage: ComponentPage, viewport: Viewport): 
   return page;
 }
 
-async function spaceTwoPixels(page: Page): Promise<number> {
-  return page.evaluate(() => {
+async function spacePixels(page: Page, length: string): Promise<number> {
+  return page.evaluate((value) => {
     const probe = document.createElement('div');
-    probe.style.width = 'var(--cinder-space-2)';
+    probe.style.width = value;
     probe.style.position = 'absolute';
     document.body.append(probe);
     const width = probe.getBoundingClientRect().width;
     probe.remove();
     return width;
-  });
+  }, length);
+}
+
+function spaceTwoPixels(page: Page): Promise<number> {
+  return spacePixels(page, 'var(--cinder-space-2)');
 }
 
 for (const viewport of viewports) {
@@ -104,7 +108,14 @@ for (const viewport of viewports) {
       await expect(items).toHaveCount(5);
       await expect(items.nth(0).locator('strong')).toHaveText('Annual report');
       await expect(items.nth(3).locator('strong')).toHaveText('Board minutes');
-      await expect(items.nth(0).getByRole('link')).toHaveAccessibleName('Open example.com');
+      // The whole row is the one link: its name is its title, host and excerpt, and no separate
+      // "Open …" link sits beside it.
+      await expect(items.nth(0).getByRole('link')).toHaveCount(1);
+      await expect(items.nth(0).getByRole('link')).toHaveAccessibleName(
+        'Annual report example.com Revenue rose 12% in 2025.',
+      );
+      await expect(items.nth(0).locator('a > .cinder-citation__row-text strong')).toHaveCount(1);
+      await expect(panel.getByRole('link', { name: /^Open / })).toHaveCount(0);
       await expect(items.nth(1).locator('.cinder-citation__note')).toHaveText(
         'Internal document, no public link',
       );
@@ -112,6 +123,32 @@ for (const viewport of viewports) {
       await expect(items.nth(2).locator('.cinder-citation__note')).toHaveText(
         "Link hidden: the address isn't a safe web link",
       );
+
+      // A row's words start on the surface's content edge, where a heading above the list starts:
+      // the row's own inset overhangs into the surface's padding.
+      const edges = await panel.evaluate((element) => {
+        const surface = element.parentElement!;
+        const style = getComputedStyle(surface);
+        const rtl = style.direction === 'rtl';
+        const box = surface.getBoundingClientRect();
+        const title = element.querySelector('.cinder-citation__title')!.getBoundingClientRect();
+        return rtl
+          ? {
+              surface:
+                box.right -
+                Number.parseFloat(style.borderRightWidth) -
+                Number.parseFloat(style.paddingRight),
+              title: title.right,
+            }
+          : {
+              surface:
+                box.left +
+                Number.parseFloat(style.borderLeftWidth) +
+                Number.parseFloat(style.paddingLeft),
+              title: title.left,
+            };
+      });
+      expect(Math.abs(edges.title - edges.surface)).toBeLessThanOrEqual(0.5);
 
       // A long unbroken title is clamped to two lines.
       const title = await items
@@ -148,13 +185,19 @@ for (const viewport of viewports) {
         'Internal document, no public link',
       );
       await expect(panel.locator('a')).toHaveCount(0);
-      const gap = await spaceTwoPixels(page);
+      // The panel is its row: the row's block padding (two of space-2) round the title, the
+      // row's text gap (space-1) and the note. An excerpt box or an excerpt-sized gap would add
+      // a whole line more than this.
+      const padding = await spaceTwoPixels(page);
+      const textGap = await spacePixels(page, 'var(--cinder-space-1)');
       const heights = await panel.evaluate((element) => ({
         panel: element.getBoundingClientRect().height,
         title: element.querySelector('.cinder-citation__title')!.getBoundingClientRect().height,
         note: element.querySelector('.cinder-citation__note')!.getBoundingClientRect().height,
       }));
-      expect(heights.panel).toBeLessThanOrEqual(heights.title + gap + heights.note + 0.5);
+      expect(heights.panel).toBeLessThanOrEqual(
+        heights.title + textGap + heights.note + 2 * padding + 0.5,
+      );
     });
   });
 }

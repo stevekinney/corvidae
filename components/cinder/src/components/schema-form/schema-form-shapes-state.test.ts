@@ -232,11 +232,11 @@ describe('SchemaForm shapes: editing state', () => {
     await fireEvent.keyDown(tagInput, { key: 'Enter' });
     expect(drafts.at(-1)).toMatchObject({ labels: ['x'] });
 
-    await fireEvent.click(screen.getByRole('button', { name: /Add .* entry/ }));
+    // Typing into the record's empty row adds the entry; a new empty row then follows it.
     await fireEvent.input(screen.getByRole('textbox', { name: 'Key' }), {
       target: { value: 'K' },
     });
-    await fireEvent.input(screen.getByRole('textbox', { name: 'Value' }), {
+    await fireEvent.input(screen.getAllByRole('textbox', { name: 'Value' })[0]!, {
       target: { value: 'V' },
     });
     expect(drafts.at(-1)).toMatchObject({ headers: { K: 'V' } });

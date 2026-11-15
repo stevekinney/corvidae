@@ -14,7 +14,7 @@ Repeatable approval unit rendered as an `<article>` with native button controls.
 | Input toggle (`row`) | button | `Input` and the summary pairs | `aria-expanded`, `aria-controls` the disclosed region |
 | Arguments toggle (`card`) | button | `Arguments` (or `inputLabel`) and the summary pairs | Collapsed by default; `aria-expanded`, `aria-controls` the disclosed region |
 | Touched file | list item | The path, read whole | The file glyph is decorative (`aria-hidden`); the copy button is named `Copy path <path>` |
-| Add a note | button | `Add a note` | Opens the `Note` textarea and moves focus into it; the button leaves, and the field stays open until the request changes |
+| Add note | button | `Add note` | Opens the `Note` textarea and moves focus into it; the button leaves, and the field stays open until the request changes |
 | Allow checkbox | checkbox | `Allow <tool> for <scope>` | Rendered only when `rememberScope` is set |
 | Disabled reason | text | The reason | Named by Deny and Approve through `aria-describedby` while they are off |
 | Action group | `group` | `Approval actions` | Rendered only while actionable and `onResolve` is wired |
@@ -40,7 +40,7 @@ While an answer is in flight (`resolving`), the button being answered carries `a
 
 ## Decision layout
 
-The `decision` layout names its article by the action title. An irreversible primary is armed by its first press: the button's name changes to "Press again to ...", it is described by a polite status that reads "Reverts in 3 seconds." and a visually hidden keyboard instruction that reads "Escape cancels.", and focus stays on the button. The arm reverts after three seconds, on Escape, when a new request replaces the approval, or when a `disabledReason` appears; the Escape handler runs only while armed and prevents the event's default so a host can tell it was handled. While `disabledReason` is set, every commit path (Deny, the primary, an armed press, Confirm edited approval) stays inert with `aria-disabled` and names the reason with `aria-describedby`. The receipt's outcome is written as a text badge beside a decorative check or prohibition glyph, so colour and the glyph never carry it alone. The "Details", "Input" and "Why the agent wants to do this" disclosures are native buttons with `aria-expanded` and `aria-controls`.
+The `decision` layout names its article by the action title. An irreversible primary is armed by its first press: the button's name changes to "Press again to ...", it is described by a polite status that reads "Reverts in 3 seconds." and a visually hidden keyboard instruction that reads "Escape cancels.", and focus stays on the button. The arm reverts after three seconds, on Escape, when a new request replaces the approval, or when a `disabledReason` appears; the Escape handler runs only while armed and prevents the event's default so a host can tell it was handled. While `disabledReason` is set, every commit path (Deny, the primary, an armed press, Confirm edited approval) stays inert with `aria-disabled` and names the reason with `aria-describedby`. The receipt's outcome is the first word of its status line, "Approved by you" or "Denied by you", beside a decorative dot, so colour and the dot never carry it alone. The "Details", "Input" and "Why the agent wants to do this" disclosures are native buttons with `aria-expanded` and `aria-controls`.
 
 ## Security boundary
 

@@ -1,5 +1,5 @@
 export type ProgressVariant = 'bar' | 'ring';
-export type ProgressSize = 'sm' | 'md' | 'lg';
+export type ProgressSize = 'xs' | 'sm' | 'md' | 'lg';
 /**
  * Props for the Progress component.
  *

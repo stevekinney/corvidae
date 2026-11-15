@@ -10,17 +10,19 @@ Purpose: Edit request headers, environment variables, and other configuration pa
 
 Nearest neighbours: `Input`, `SecretValueField`, and `DataTable`. DataTable is appropriate for read-only structured data; KeyValueEditor is admitted because it owns pair editing, add/remove behavior, and secret-cell routing that a Table composition does not provide.
 
-Visual outcome: two aligned fields per row with a clearly labelled remove action and an add action after the list. The component composes the existing Input and Button primitives rather than recreating their form and button behavior.
+Visual outcome: one line per row (key box, value box, and an icon-only Remove control at the inline end, all one height), "Key" and "Value" drawn once as column headings, and an empty last row that adds a pair when typed into. The component composes the existing Input and Button primitives rather than recreating their form and button behavior.
 
 ## Keyboard and focus
 
-Rows use `role="list"` and `role="listitem"`; the key and value inputs, remove Button, and add Button remain in native document tab order. Enter and Space retain native button behavior for add/remove. No arrow-key or roving-focus model is introduced, so users can move through fields with Tab and Shift+Tab predictably.
+Rows use `role="list"` and `role="listitem"`; the key and value inputs and the remove Button remain in native document tab order, and the empty last row's two inputs follow the last Remove control. Enter and Space retain native button behavior for Remove. No arrow-key or roving-focus model is introduced, so users can move through fields with Tab and Shift+Tab predictably.
+
+Typing into the empty row adds the pair in place: the input keeps its DOM node and focus, the row gains its Remove control, and a new empty row follows it.
 
 ## Names, roles, and state
 
-Each Input has a programmatic label (`Key` or `Value`) and a unique id derived from the editor instance and the row's immutable `id` (not its position), so a row keeps the same control ids — and its focused input keeps its DOM node and focus — when a parent reorders, inserts, or removes other rows. Remove Buttons use `removeLabel(key)` so the action identifies its row. When `secret(key)` returns true, the value Input uses `type="password"` while remaining editable. Consumers should provide meaningful keys for row action labels.
+Each Input has a programmatic label (`Key` or `Value`) and a unique id derived from the editor instance and the row's immutable `id` (not its position), so a row keeps the same control ids — and its focused input keeps its DOM node and focus — when a parent reorders, inserts, or removes other rows. The visible column headings are `aria-hidden`, so they never name an input twice. The empty row's inputs keep the same names and are described by `addLabel` ("Add pair"). Remove Buttons are icon-only and use `removeLabel(key)` as their accessible name, so the action identifies its row. When `secret(key)` returns true, the value Input uses `type="password"` while remaining editable. Consumers should provide meaningful keys for row action labels.
 
-When a parent-driven `entries` update removes the row that currently holds focus, focus moves to the previous row's Remove control, else the next row's Remove control, else "Add pair" — the same fallback the Remove button already used for user-triggered removal.
+When a parent-driven `entries` update removes the row that currently holds focus, focus moves to the previous row's Remove control, else the next row's Remove control, else the empty row's key input — the same fallback the Remove button already used for user-triggered removal.
 
 ## Verification
 

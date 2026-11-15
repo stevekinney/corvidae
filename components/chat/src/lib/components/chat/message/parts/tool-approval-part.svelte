@@ -75,6 +75,66 @@
     return props;
   });
 
+  const timeFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  /**
+   * When an expired approval lapsed, written as a message's time is: the time of day for today and
+   * the date with it for another day. The card says that it expired; this says when, under it.
+   */
+  // The card reads Expired the moment a pending approval's deadline passes, whether or not the
+  // host has said so; the clock turns once at the deadline so this line follows it.
+  let now = $state(Date.now());
+  $effect(() => {
+    const expiresAt = part.action.expiresAt;
+    if (part.state !== 'pending' || expiresAt === undefined) return;
+    const remaining = Date.parse(expiresAt) - Date.now();
+    if (Number.isNaN(remaining)) return;
+    if (remaining <= 0) {
+      now = Date.now();
+      return;
+    }
+    const timer = setTimeout(() => (now = Date.now()), remaining);
+    return () => clearTimeout(timer);
+  });
+  /** Writes a moment as a message's time is: the time of day for today, the date with it otherwise. */
+  function settledMoment(moment: Date, iso: string): { iso: string; text: string } | undefined {
+    if (Number.isNaN(moment.getTime())) return undefined;
+    const today = moment.toDateString() === new Date().toDateString();
+    return { iso, text: (today ? timeFormatter : dateTimeFormatter).format(moment) };
+  }
+  /**
+   * When the card settled, under it: an expired card's deadline, or the moment an approval or a
+   * denial was decided. The three settled states are one pattern, and none holds its time inside.
+   */
+  const expiredTime = $derived.by(() => {
+    if (
+      part.state === 'approved' ||
+      part.state === 'approved_with_edits' ||
+      part.state === 'denied'
+    ) {
+      // The row layout keeps the time in its own line; the decision surface leaves it to this one.
+      if (layout !== 'decision' || part.receipt === undefined) return undefined;
+      const decided = new Date(part.receipt.decidedAt);
+      return Number.isNaN(decided.getTime())
+        ? undefined
+        : settledMoment(decided, decided.toISOString());
+    }
+    const expiresAt = part.action.expiresAt;
+    if (expiresAt === undefined) return undefined;
+    const passed = Date.parse(expiresAt) <= now;
+    if (part.state !== 'expired' && !(part.state === 'pending' && passed)) return undefined;
+    return settledMoment(new Date(expiresAt), expiresAt);
+  });
+
   function resolveApproval(resolution: ApprovalResolution): void {
     if (!canResolve) return;
     onApprovalResolve?.(part.toolCallId, resolution);
@@ -96,3 +156,10 @@
   onkeydown={handleKeydown}
   {...canResolve ? { onResolve: resolveApproval } : {}}
 />
+
+{#if expiredTime !== undefined}
+  <!-- The same element, size and colour as a message's time line, under the card and not in it. -->
+  <div class="chat-approval-time">
+    <time datetime={expiredTime.iso}><bdi>{expiredTime.text}</bdi></time>
+  </div>
+{/if}

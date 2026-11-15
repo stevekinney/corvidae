@@ -549,7 +549,7 @@ describe('Chat approval receipt', () => {
     });
     const card = getByRole(container, 'article', { name: QUESTION });
 
-    await fireEvent.click(getByRole(card, 'button', { name: 'Add a note' }));
+    await fireEvent.click(getByRole(card, 'button', { name: 'Add note' }));
     await fireEvent.input(card.querySelector('textarea')!, {
       target: { value: 'Checked the order' },
     });
@@ -557,10 +557,10 @@ describe('Chat approval receipt', () => {
     await tick();
 
     const receipt = getByRole(container, 'article', { name: 'Approved: Refund' });
-    expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
-    expect(receipt.querySelector('.cinder-approval-card__receipt-by')?.textContent?.trim()).toMatch(
-      /^by you, \d{1,2}:\d{2} [AP]M$/,
+    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
+      'Approved by you',
     );
+    expect(receipt.nextElementSibling?.textContent?.trim()).toMatch(/\d{1,2}:\d{2} [AP]M$/);
     expect(queryByRole(receipt, 'button', { name: 'Refund' })).toBeNull();
   });
 
@@ -586,7 +586,9 @@ describe('Chat approval receipt', () => {
 
     const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
-    expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
+    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
+      'Approved by you',
+    );
     expect(drawerOf(view.container)).toBeNull();
   });
 
@@ -616,7 +618,9 @@ describe('Chat approval receipt', () => {
 
     const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
-    expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
+    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
+      'Approved by you',
+    );
   });
 
   test('a decided call keeps its own row beside a neighbouring completed call, so the receipt is not folded into a group', async () => {

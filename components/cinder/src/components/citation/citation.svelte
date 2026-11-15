@@ -3,23 +3,24 @@
    * @cinder
    * @category data-display
    * @status beta
-   * @purpose Inline citation marker opening a paginated preview of source references.
+   * @purpose Inline citation marker opening one list of source references.
    * @tag citation
    * @useWhen Attaching sources to an inline claim or generated answer.
    * @avoidWhen Building a full bibliography page.
    * @related popover
-   * @rationale Nearest alternative: Popover — Citation adds source pagination and an inline marker.
+   * @rationale Nearest alternative: Popover — Citation adds the source list, its URL policy and an inline marker.
    */
   export type { CitationLabels, CitationProps, CitationSource } from './citation.types.ts';
-
-  /** Up to this many sources are listed together; more are paged one at a time. */
-  const LIST_LIMIT = 5;
 </script>
 
 <script lang="ts">
-  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-  import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import ExternalLink from '@lucide/svelte/icons/external-link';
+  import { tick } from 'svelte';
 
+  import {
+    PHONE_VIEWPORT_BREAKPOINT,
+    useViewportBelow,
+  } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { default as Popover } from '../popover/index.ts';
 
@@ -30,32 +31,64 @@
     sources = [],
     label = 'Sources',
     labels,
+    markerLabel,
+    current,
+    inPlace = false,
+    expanded = $bindable(false),
+    onExpandedChange,
     closeOnSourceRemoval = false,
     onCloseComplete,
     children,
     class: customClassName,
     ...rest
   }: CitationProps = $props();
-  let page = $state(0);
+  const instanceId = $props.id();
+  const panelId = `cinder-citation-${instanceId}`;
   let open = $state(false);
   let markerElement = $state<HTMLButtonElement | null>(null);
+  let panelElement = $state<HTMLElement | null>(null);
   let preserveMarkerForClose = $state(false);
   let previousSourceKeys: string[] | undefined;
+  const phone = useViewportBelow(() => PHONE_VIEWPORT_BREAKPOINT);
+  // On a phone the sources open in the sheet whatever `inPlace` says; wider, `inPlace` keeps them
+  // under the marker instead of in a floating popover.
+  const placedHere = $derived(inPlace && !phone.current);
   const markerDisabled = $derived(sources.length === 0 && !preserveMarkerForClose);
-  const source = $derived(sources[page]);
-  // Five or fewer sources read as one list; more are paged so the panel stays short.
-  const listed = $derived(sources.length <= LIST_LIMIT);
   const noLinkText = $derived(labels?.noLink ?? 'Internal document, no public link');
   const unsafeLinkText = $derived(
     labels?.unsafeLink ?? "Link hidden: the address isn't a safe web link",
   );
-
-  function openText(host: string | undefined): string {
-    return labels?.open?.(host) ?? (host === undefined ? 'Open source' : `Open ${host}`);
-  }
+  const currentIndex = $derived(
+    current !== undefined && Number.isInteger(current) && current >= 0 && current < sources.length
+      ? current
+      : undefined,
+  );
+  const isOpen = $derived(placedHere ? expanded && sources.length > 0 : open);
 
   function sourceKey(entry: CitationSource): string {
     return `${entry.url ?? ''}\u0000${entry.label}\u0000${entry.detail ?? ''}`;
+  }
+
+  // A row keeps its place in the DOM when an earlier source is withdrawn, so a reader's focus stays
+  // on the row it was on: its key is the source's own fields and which copy of a duplicate it is.
+  const rowKeys = $derived.by(() => {
+    const seen = new Map<string, number>();
+    return sources.map((entry) => {
+      const identity = sourceKey(entry);
+      const copy = seen.get(identity) ?? 0;
+      seen.set(identity, copy + 1);
+      return `${identity}\u0000${copy}`;
+    });
+  });
+
+  function toggle(): void {
+    if (sources.length === 0) return;
+    if (placedHere) {
+      expanded = !expanded;
+      onExpandedChange?.(expanded);
+    } else {
+      open = !open;
+    }
   }
 
   $effect(() => {
@@ -69,83 +102,114 @@
     }
     previousSourceKeys = keys;
     if (sources.length === 0) {
-      page = 0;
       if (open) {
         preserveMarkerForClose = true;
         open = false;
       }
-    } else if (page >= sources.length) {
-      page = sources.length - 1;
-      preserveMarkerForClose = false;
     } else if (preserveMarkerForClose) {
       preserveMarkerForClose = false;
     }
   });
+
+  // The list opens at the cited source: its row is scrolled into view, so a long list never hides
+  // the one the reader followed a marker for.
+  $effect(() => {
+    const panel = panelElement;
+    const index = currentIndex;
+    if (panel === null || index === undefined) return;
+    void (async () => {
+      await tick();
+      const row = panel.querySelectorAll<HTMLElement>('.cinder-citation__item')[index];
+      if (typeof row?.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+    })();
+  });
+
+  function trackPanel(element: HTMLElement): () => void {
+    panelElement = element;
+    return () => {
+      if (panelElement === element) panelElement = null;
+    };
+  }
 </script>
 
-{#snippet sourceRows(entry: CitationSource)}
+{#snippet sourceRow(entry: CitationSource)}
   {@const link = resolveCitationLink(entry.url)}
-  <strong class="cinder-citation__title" dir="auto">{entry.label}</strong>{#if entry.detail}<p
-      class="cinder-citation__detail"
-      dir="auto"
-    >
-      {entry.detail}
-    </p>{/if}{#if link.kind === 'link'}<a class="cinder-citation__link" href={link.href}
-      >{openText(link.host)}{' '}<span class="cinder-citation__link-arrow" aria-hidden="true"
-        >↗</span
-      ></a
-    >{:else if link.kind === 'none'}<span class="cinder-citation__note">{noLinkText}</span
-    >{:else}<span class="cinder-citation__note" data-cinder-link="rejected">{unsafeLinkText}</span
-    >{/if}
+  <strong class="cinder-citation__title" dir="auto">{entry.label}</strong>
+  {#if link.kind === 'link'}
+    <span class="cinder-citation__domain" dir="auto">{link.host ?? link.href}</span>
+  {:else if link.kind === 'none'}
+    <span class="cinder-citation__note">{noLinkText}</span>
+  {:else}
+    <span class="cinder-citation__note" data-cinder-link="rejected">{unsafeLinkText}</span>
+  {/if}
+  {#if entry.detail}
+    <span class="cinder-citation__detail" dir="auto">{entry.detail}</span>
+  {/if}
 {/snippet}
 
-<span class={classNames('cinder-citation', customClassName)} {...rest}
-  ><Popover
-    bind:open
-    {label}
-    triggerRef={markerElement}
-    onExitComplete={() => {
-      preserveMarkerForClose = false;
-      onCloseComplete?.();
-    }}
-  >
-    {#snippet trigger()}<button
-        bind:this={markerElement}
-        type="button"
-        class="cinder-citation__marker"
-        disabled={markerDisabled}
-        onclick={() => {
-          if (sources.length > 0) open = !open;
-        }}
-        aria-label={sources.length > 0
-          ? `${label} (${sources.length})`
-          : `${label} (${labels?.noSources ?? 'no sources'})`}
-        >{#if children}{@render children()}{:else}[{sources.length}]{/if}</button
-      >{/snippet}
-    <section class="cinder-citation__panel" aria-label={label}>
-      {#if listed && sources.length > 1}<ol class="cinder-citation__list">
-          {#each sources as entry, index (index)}<li class="cinder-citation__item">
-              {@render sourceRows(entry)}
-            </li>{/each}
-        </ol>{:else if source}{@render sourceRows(source)}{/if}
-      {#if !listed}<div class="cinder-citation__pagination">
-          <button
-            type="button"
-            onclick={() => (page = Math.max(0, page - 1))}
-            disabled={page === 0}
-            aria-label={labels?.previousSource ?? 'Previous source'}
-            title={labels?.previous ?? 'Previous'}><ChevronLeft aria-hidden="true" /></button
-          ><span aria-live="polite"
-            >{labels?.position?.(page + 1, sources.length) ??
-              `${page + 1} of ${sources.length}`}</span
-          ><button
-            type="button"
-            onclick={() => (page = Math.min(sources.length - 1, page + 1))}
-            disabled={page === sources.length - 1}
-            aria-label={labels?.nextSource ?? 'Next source'}
-            title={labels?.next ?? 'Next'}><ChevronRight aria-hidden="true" /></button
+{#snippet sourceList()}
+  <ol class="cinder-citation__list">
+    {#each sources as entry, index (rowKeys[index] ?? index)}
+      {@const link = resolveCitationLink(entry.url)}
+      {@const cited = index === currentIndex}
+      <li class="cinder-citation__item" data-cinder-current={cited ? '' : undefined}>
+        {#if link.kind === 'link'}
+          <a
+            class="cinder-citation__row"
+            href={link.href}
+            aria-current={cited ? 'true' : undefined}
           >
-        </div>{/if}
-    </section>
-  </Popover></span
+            <span class="cinder-citation__row-text">{@render sourceRow(entry)}</span>
+            <ExternalLink class="cinder-citation__glyph" aria-hidden="true" />
+          </a>
+        {:else}
+          <div class="cinder-citation__row" aria-current={cited ? 'true' : undefined}>
+            <span class="cinder-citation__row-text">{@render sourceRow(entry)}</span>
+          </div>
+        {/if}
+      </li>
+    {/each}
+  </ol>
+{/snippet}
+
+{#snippet marker()}
+  <button
+    bind:this={markerElement}
+    type="button"
+    class="cinder-citation__marker"
+    disabled={markerDisabled}
+    onclick={toggle}
+    aria-expanded={placedHere ? isOpen : undefined}
+    aria-controls={placedHere ? panelId : undefined}
+    aria-label={sources.length > 0
+      ? (markerLabel ?? `${label} (${sources.length})`)
+      : `${label} (${labels?.noSources ?? 'no sources'})`}
+    >{#if children}{@render children()}{:else}[{sources.length}]{/if}</button
+  >
+{/snippet}
+
+<span
+  class={classNames('cinder-citation', placedHere && 'cinder-citation--in-place', customClassName)}
+  {...rest}
+  >{#if placedHere}{@render marker()}{#if isOpen}<section
+        id={panelId}
+        class="cinder-citation__panel"
+        aria-label={label}
+        {@attach trackPanel}
+      >
+        {@render sourceList()}
+      </section>{/if}{:else}<Popover
+      bind:open
+      {label}
+      triggerRef={markerElement}
+      onExitComplete={() => {
+        preserveMarkerForClose = false;
+        onCloseComplete?.();
+      }}
+    >
+      {#snippet trigger()}{@render marker()}{/snippet}
+      <section class="cinder-citation__panel" aria-label={label} {@attach trackPanel}>
+        {@render sourceList()}
+      </section>
+    </Popover>{/if}</span
 >

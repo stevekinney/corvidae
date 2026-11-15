@@ -1,5 +1,5 @@
 <script lang="ts">
-  import NotebookPen from '@lucide/svelte/icons/notebook-pen';
+  import Pencil from '@lucide/svelte/icons/pencil';
 
   import Button from '../button/button.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
@@ -12,11 +12,11 @@
     fieldId: string;
     /** Opens the note field. */
     onOpen: () => void;
-    /** The button's words, which ToolCallPanel takes from its own labels. Defaults to "Add a note". */
+    /** The button's words, which ToolCallPanel takes from its own labels. Defaults to "Add note". */
     label?: string | undefined;
   };
 
-  let { disabled, fieldId, onOpen, label = 'Add a note' }: ApprovalCardNoteToggleProps = $props();
+  let { disabled, fieldId, onOpen, label = 'Add note' }: ApprovalCardNoteToggleProps = $props();
 
   function open(): void {
     onOpen();
@@ -25,8 +25,10 @@
   }
 </script>
 
-<!-- A quiet ghost Button. Under 30rem of card width the stylesheet hides its words and the
-     tooltip carries them; the accessible name is the same either way. ToolCallPanel draws the
+<!-- A quiet ghost Button with a pencil and its words, at the leading end of the action row. Only
+     when the row cannot fit the words does `fitNoteLabel` hide them and the stylesheet paints it
+     with Deny's outline, so a lone glyph still reads as a button; the tooltip carries the words
+     and the accessible name is the visible label and the same either way. ToolCallPanel draws the
      same toggle at the start of its decision row. -->
 <Tooltip text={label} describe={false} class="cinder-approval-card__note-toggle-tip">
   <Button
@@ -36,9 +38,10 @@
     class="cinder-approval-card__note-toggle"
     aria-expanded={false}
     {label}
+    aria-label={label}
     {disabled}
     onclick={open}
   >
-    {#snippet leadingIcon()}<NotebookPen aria-hidden="true" />{/snippet}
+    {#snippet leadingIcon()}<Pencil aria-hidden="true" />{/snippet}
   </Button>
 </Tooltip>

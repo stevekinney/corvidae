@@ -151,6 +151,11 @@ export interface PageMeasurement {
     readonly height: number;
     /** The sides, measured 22 px from the centre, where a tap no longer reaches the control. */
     readonly shortSides?: readonly string[];
+    /**
+     * A message line's action on a touch pointer, which is held to the owner decision of
+     * 2026-11-15 on COR-2406 and not to the 44px rule: what its region covers or falls short of.
+     */
+    readonly lineActionProblems?: readonly string[];
   }[];
   /** Coarse-pointer controls report their painted content separately from the hit region. */
   readonly controlGeometry?: readonly {
@@ -285,6 +290,12 @@ export function measurementProblems(
   }
   if (profile.coarse) {
     for (const target of measurement.smallTargets) {
+      if (target.lineActionProblems !== undefined) {
+        problems.push(
+          `message action touch region: ${target.name} is ${target.width} by ${target.height} px and ${target.lineActionProblems.join('; ')}`,
+        );
+        continue;
+      }
       problems.push(
         `short touch target: ${target.name} is ${target.width} by ${target.height} px and a tap 22 px from its centre misses it ${(target.shortSides ?? ['on every side']).join(', ')}, under ${MINIMUM_TOUCH_TARGET}`,
       );

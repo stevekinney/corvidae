@@ -716,9 +716,6 @@ export type { LoadMoreProps, LoadMoreVariant } from './components/load-more/inde
 export { default as Marquee } from './components/marquee/index.ts';
 export type { MarqueeDirection, MarqueeProps } from './components/marquee/index.ts';
 
-export { default as MediaControls } from './components/media-controls/index.ts';
-export type { MediaControlsLayout, MediaControlsProps } from './components/media-controls/index.ts';
-
 export { default as MegaMenu } from './components/mega-menu/index.ts';
 export type {
   MegaMenuItem,
@@ -1522,4 +1519,4 @@ export type {
   TreeSelectAllProps,
   TreeVirtualizedItemRenderState,
 } from './components/tree/index.ts';
-export { createBodyScrollLock } from './utilities/attachments.ts';
+export { createBodyScrollLock, scrollEdgeFade } from './utilities/attachments.ts';

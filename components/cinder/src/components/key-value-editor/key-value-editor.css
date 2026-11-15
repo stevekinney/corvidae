@@ -1,8 +1,11 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @layer cinder.components {
+  /* The editor is its own query container, so a row stacks by the width it is given, not the
+     viewport's. */
   .cinder-key-value-editor {
+    container: cinder-key-value-editor / inline-size;
     display: grid;
-    gap: var(--cinder-space-3);
+    gap: var(--cinder-space-2);
   }
   .cinder-key-value-editor__label {
     color: var(--cinder-text-default);
@@ -11,9 +14,36 @@
     line-height: var(--cinder-leading-snug);
   }
 
-  /* The Add button sits at its own width under the rows, then the help. */
-  .cinder-key-value-editor__add {
-    justify-self: start;
+  /* Every row is one line: the key box, the value box and the Remove control, the same height on
+     one baseline. The headings share the row's columns, so "Key" and "Value" sit over their boxes
+     once instead of labelling every row. The last column is the control height, so it holds the
+     square Remove control and stays reserved on the empty row, keeping the boxes aligned. */
+  .cinder-key-value-editor__headings,
+  .cinder-key-value-editor__row {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) var(--cinder-control-height-md);
+    column-gap: var(--cinder-space-2);
+    align-items: center;
+  }
+
+  .cinder-key-value-editor__headings {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-key-value-editor__rows {
+    display: grid;
+    gap: var(--cinder-space-2);
+  }
+
+  /* Remove takes the field's own height (the control step, which a coarse pointer raises) rather
+     than the button's painted size, so it never sits shorter than the boxes beside it. */
+  .cinder-key-value-editor .cinder-button.cinder-key-value-editor__remove {
+    min-block-size: var(--cinder-control-height-md);
+    min-inline-size: var(--cinder-control-height-md);
+    color: var(--cinder-text-muted);
   }
 
   .cinder-key-value-editor__description {
@@ -23,7 +53,22 @@
     line-height: var(--cinder-leading-normal);
   }
 
-  .cinder-key-value-editor__rows {
-    align-items: center;
+  /* A very narrow container stacks the key over the value; Remove stays at the inline end of the
+     key box, never against a heading, and the column headings give way to the boxes' own order. */
+  @container cinder-key-value-editor (max-width: 20rem) {
+    .cinder-key-value-editor__headings {
+      display: none;
+    }
+    .cinder-key-value-editor__row {
+      grid-template-columns: minmax(0, 1fr) var(--cinder-control-height-md);
+      row-gap: var(--cinder-space-1);
+    }
+    .cinder-key-value-editor__row > :nth-child(2) {
+      grid-column: 1;
+    }
+    .cinder-key-value-editor__row > :nth-child(3) {
+      grid-column: 2;
+      grid-row: 1;
+    }
   }
 }

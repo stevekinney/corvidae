@@ -495,7 +495,7 @@
       "exportName": "AudioPlayer",
       "category": "action",
       "status": "alpha",
-      "purpose": "Native audio element with Cinder media controls for play, pause, replay, and seeking.",
+      "purpose": "Native audio element with its own controls for play, pause, replay, seeking, and elapsed and total time.",
       "tags": ["media", "audio"],
       "useWhen": [
         "Playing a single audio track from an https, http, or blob URL with accessible controls."
@@ -503,12 +503,9 @@
       "avoidWhen": [
         {
           "reason": "You need streaming protocols, caption authoring, or playlists — wire those separately."
-        },
-        {
-          "reason": "You only need playback buttons for media you control elsewhere — use media-controls."
         }
       ],
-      "related": ["media-controls", "video-player"],
+      "related": ["video-player"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
@@ -1135,7 +1132,7 @@
       "exportName": "Citation",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Inline citation marker opening a paginated preview of source references.",
+      "purpose": "Inline citation marker opening one list of source references.",
       "tags": ["citation"],
       "useWhen": ["Attaching sources to an inline claim or generated answer."],
       "avoidWhen": [
@@ -3138,7 +3135,7 @@
       "exportName": "JsonEditor",
       "category": "form",
       "status": "stable",
-      "purpose": "Controlled free-form JSON editor in one frame: a toolbar with validity status and Format over a lazily loaded CodeMirror view with marked problem lines, backed by a native textarea.",
+      "purpose": "Controlled free-form JSON editor in one frame: validity status and Format float at the top inline-end corner of a lazily loaded CodeMirror view with marked problem lines, backed by a native textarea.",
       "tags": ["form", "json", "editor"],
       "useWhen": [
         "Editing arbitrary JSON source while preserving the exact string in parent-owned state.",
@@ -3255,7 +3252,7 @@
       "tags": ["board", "kanban", "drag", "reorder"],
       "useWhen": [
         "Presenting a workflow board where users move cards between ordered columns.",
-        "Consumers own card rendering and need cinder to manage reorder affordances and change metadata."
+        "Cards need a title over one quiet row (an assignee, a priority badge), or consumers own card rendering."
       ],
       "avoidWhen": [
         {
@@ -3713,33 +3710,6 @@
         "schema": "src/components/matrix-chart/matrix-chart.schema.json",
         "variables": "src/components/matrix-chart/matrix-chart.variables.json",
         "examples": "src/components/matrix-chart/matrix-chart.examples.json"
-      }
-    },
-    {
-      "name": "MediaControls",
-      "id": "media-controls",
-      "import": "@lostgradient/cinder",
-      "exportName": "MediaControls",
-      "category": "action",
-      "status": "alpha",
-      "purpose": "Accessible playback controls for play, pause, and replay actions with optional progress display.",
-      "tags": ["action", "media"],
-      "useWhen": [
-        "Embedding play/pause/replay controls for audio or video content.",
-        "Rendering media controls inside a toolbar or standalone on a card."
-      ],
-      "avoidWhen": [
-        {
-          "reason": "You need waveform visualization or Web Audio integration — wire that separately."
-        }
-      ],
-      "related": ["button", "toolbar", "progress", "tooltip", "video-player", "audio-player"],
-      "hasConstraints": false,
-      "hasExamples": true,
-      "artifacts": {
-        "schema": "src/components/media-controls/media-controls.schema.json",
-        "variables": "src/components/media-controls/media-controls.variables.json",
-        "examples": "src/components/media-controls/media-controls.examples.json"
       }
     },
     {
@@ -6819,7 +6789,7 @@
       "exportName": "VideoPlayer",
       "category": "action",
       "status": "alpha",
-      "purpose": "Native video element with Cinder media controls for play, pause, replay, and seeking.",
+      "purpose": "Native video element with its own controls for play, pause, replay, seeking, elapsed and total time, mute, and full screen.",
       "tags": ["media", "video"],
       "useWhen": [
         "Playing a single video from an https, http, or blob URL with accessible controls.",
@@ -6828,12 +6798,9 @@
       "avoidWhen": [
         {
           "reason": "You need streaming protocols, caption authoring, or playlists — wire those separately."
-        },
-        {
-          "reason": "You only need playback buttons for media you control elsewhere — use media-controls."
         }
       ],
-      "related": ["media-controls", "audio-player", "image"],
+      "related": ["audio-player", "image"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {

@@ -56,6 +56,5 @@
 
   :global(.chat-approval-drawer-text) {
     min-inline-size: 0;
-    line-height: var(--cinder-leading-snug);
   }
 </style>

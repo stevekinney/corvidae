@@ -66,7 +66,7 @@ test.describe('an approval in the chat', () => {
     await expect(approval).toBeVisible();
     // Cinder's shared approval row: the Input disclosure, a note on request, the grant for the rest
     // of the chat as a checkbox on its own line, then Deny and Approve.
-    for (const name of ['Input', 'Add a note', 'Deny', 'Approve']) {
+    for (const name of ['Input', 'Add note', 'Deny', 'Approve']) {
       await expect(approval.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();
     }
     await expect(

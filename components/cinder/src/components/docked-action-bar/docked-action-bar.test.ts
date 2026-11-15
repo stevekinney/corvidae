@@ -110,16 +110,18 @@ describe('DockedActionBar', () => {
     ).toBe('strip');
   });
 
-  test('marks equal actions', () => {
-    const { container } = render(DockedActionBar, {
-      equalActions: true,
-      actions: textSnippet('buttons'),
-    });
+  test('has no equal-actions mode: the actions keep their compact width and end at the trailing edge', async () => {
+    const { container } = render(DockedActionBar, { actions: textSnippet('buttons') });
     expect(
       container
         .querySelector('.cinder-docked-action-bar')
         ?.hasAttribute('data-cinder-equal-actions'),
-    ).toBe(true);
+    ).toBe(false);
+    const css = await Bun.file(new URL('./docked-action-bar.css', import.meta.url)).text();
+    const source = await Bun.file(new URL('./docked-action-bar.svelte', import.meta.url)).text();
+    expect(css).not.toContain('equal-actions');
+    expect(source).not.toContain('equalActions');
+    expect(css).toMatch(/\.cinder-docked-action-bar__actions \{[^}]*justify-content: flex-end;/);
   });
 });
 
@@ -283,13 +285,10 @@ describe('docked-action-bar.css', () => {
     expect(block).toContain('color: var(--cinder-text-muted);');
   });
 
-  test('a narrow bar wraps its actions instead of overflowing, except an equal pair (row 56e)', () => {
+  test('a narrow bar wraps its actions instead of overflowing (row 56e)', () => {
     const narrow = cssText.slice(cssText.indexOf('@container (inline-size < 32rem)'));
     const actions = narrow.slice(narrow.indexOf('.cinder-docked-action-bar__actions {'));
     expect(actions.slice(0, actions.indexOf('}'))).toContain('flex-wrap: wrap;');
-    expect(narrow).toMatch(
-      /data-cinder-equal-actions\] \.cinder-docked-action-bar__actions \{\s*flex-wrap: nowrap;/,
-    );
   });
 
   test('is a container, and puts a narrow bar actions on their own shared row', () => {

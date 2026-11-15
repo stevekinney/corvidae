@@ -158,7 +158,6 @@ export const appFixtureDeclarations = {
   'load-more': ['assertion'],
   'locale-provider': ['assertion'],
   'matrix-chart': ['assertion'],
-  'media-controls': ['assertion'],
   message: ['assertion'],
   'page-header': ['assertion'],
   'app-bar': ['assertion'],

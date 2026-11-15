@@ -24,7 +24,7 @@
     {
       "id": "row",
       "title": "Approval row",
-      "description": "The shared approval row: risk glyph and question, the tool and where it came from, the consequence, Input, Add a note, Deny and Approve.",
+      "description": "The shared approval row: risk glyph and question, the tool and where it came from, the consequence, Input, Add note, Deny and Approve.",
       "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
     },
     {
@@ -84,13 +84,13 @@
     {
       "id": "decision",
       "title": "Explicit decision",
-      "description": "The decision surface: the action as the title with a Can't be undone badge, meaningful host facts and readable open Command, the countdown, Add a note, then Deny and a named primary that arms on its first press.",
+      "description": "The decision surface: the action as the title with one facts line (when it expires, and Can't be undone), meaningful host facts and readable open Command, Add note, then Deny and a named primary that arms on its first press.",
       "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"decision\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  pauseSentence=\"The agent is paused until you decide.\"\n  facts={[\n    { label: 'Target', value: 'order 4471' },\n    { label: 'Amount', value: '$42.00' },\n  ]}\n  approveLabel=\"Refund\"\n  why=\"The customer reported the parcel arrived damaged.\"\n  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}\n  expiresAt=\"2999-01-01T00:00:00.000Z\"\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-decision-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
     },
     {
       "id": "decision-receipt",
       "title": "Decision receipt",
-      "description": "A decided approval stays in the transcript with a check badge, who decided where and when, and the note, result and command behind Details.",
+      "description": "A decided approval stays in the transcript as the action with one status line saying what was decided and by whom, and the note, result and command behind Details.",
       "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"decision\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  operation={{ kind: 'command', command: 'refund --order 4471 --amount 42.00' }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-decision-02\"\n  state=\"approved\"\n  decidedBy=\"Priya Raman\"\n  decidedIn=\"Reviews\"\n  decidedInHref=\"/reviews\"\n  decidedAt=\"2026-11-02T10:46:00.000Z\"\n  decisionNote=\"Checked the order first.\"\n  result=\"Refunded $42.00 to the original card.\"\n/>\n"
     }
   ]
