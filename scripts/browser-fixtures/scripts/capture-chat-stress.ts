@@ -369,18 +369,25 @@ export function measureInPage(options: {
     const lineActionRegionProblems = (element: HTMLElement, box: DOMRect): string[] => {
       const centreX = box.left + box.width / 2;
       const centreY = box.top + box.height / 2;
-      const answers = (x: number, y: number): boolean => {
+      // A point another control takes (a step row's own hit area laid over the gap under the line)
+      // is that control's tap, not a shortfall of this one; it counts toward the room the region
+      // had, never toward what the region covers.
+      const neighbours = 'button, [role="button"], a[href], summary';
+      const answers = (x: number, y: number, orNeighbour: boolean): boolean => {
         const hit = document.elementFromPoint(x, y);
-        return hit !== null && (hit === element || element.contains(hit));
+        if (hit === null) return false;
+        if (hit === element || element.contains(hit)) return true;
+        return orNeighbour && hit.closest(neighbours) !== null;
       };
       // How far past an edge a tap still reaches the control, in whole pixels.
-      const reach = (dx: number, dy: number): number => {
+      const reach = (dx: number, dy: number, orNeighbour = false): number => {
         let count = 0;
         while (count < 80) {
           const distance = count + 0.5;
           const x = dx === 0 ? centreX : dx < 0 ? box.left - distance : box.right + distance;
           const y = dy === 0 ? centreY : dy < 0 ? box.top - distance : box.bottom + distance;
-          if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight || !answers(x, y)) break;
+          if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight || !answers(x, y, orNeighbour))
+            break;
           count += 1;
         }
         return count;
@@ -417,7 +424,8 @@ export function measureInPage(options: {
       const next = element.closest('.chat-message-wrapper')?.nextElementSibling ?? null;
       const room = next === null ? box.height : next.getBoundingClientRect().top - box.top;
       const required = Math.min(44, room) - 1;
-      const height = region.bottom - region.top;
+      // The region's own height, with the room a neighbouring control's area took below it.
+      const height = box.height + reach(0, -1) + reach(0, 1, true);
       if (room > 0 && height < required) {
         problems.push(
           `its region is ${Math.round(height * 10) / 10} px tall, shorter than the ${Math.round(required * 10) / 10} px the line and the gap below it allow`,

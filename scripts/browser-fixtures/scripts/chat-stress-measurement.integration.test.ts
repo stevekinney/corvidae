@@ -1068,7 +1068,7 @@ describe('chat stress visual measurement', () => {
     // Owner decision of 2026-11-15 on COR-2406: a line action's region on touch is smaller than
     // 44px and clear of text; the 44px rule does not apply to it. An answer, its line of time and
     // actions pulled up under it, an 8px gap, then the next message.
-    const regionFor = async (pseudo: string) => {
+    const regionFor = async (pseudo: string, next = '<p>The next message starts here.</p>') => {
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
@@ -1084,7 +1084,7 @@ describe('chat stress visual measurement', () => {
           </style>
           <main data-testid="chat-stress-shell">
             <div class="chat-message-wrapper"><p>The verified answer is retained.</p><div class="chat-message-line"><button class="chat-message-action-button" aria-label="Copy"></button></div></div>
-            <div class="chat-message-wrapper"><p>The next message starts here.</p></div>
+            <div class="chat-message-wrapper">${next}</div>
           </main>`);
         const measurement = await page.evaluate(measureInPage, {
           coarse: true,
@@ -1115,6 +1115,18 @@ describe('chat stress visual measurement', () => {
       expect(targets[0]?.lineActionProblems).toEqual([
         expect.stringContaining('covers the text "The next message'),
       ]);
+    });
+
+    it("passes a region whose gap the next row's own control takes", async () => {
+      // A step row's hit area reaches up over the gap, so the tap there is that control's.
+      const row =
+        '<button class="step" style="position:relative;display:block;width:100%;height:44px;border:0;padding:0">Step</button>';
+      expect(
+        await regionFor(
+          'inset: 0 -4px 0;',
+          `${row}<style>.step::before{content:'';position:absolute;inset:-8px 0 0}</style>`,
+        ),
+      ).toEqual([]);
     });
 
     it('fails a region that shrinks further than the room allows', async () => {
