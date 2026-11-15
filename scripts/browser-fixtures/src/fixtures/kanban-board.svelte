@@ -1,4 +1,3 @@
-
 <script lang="ts">
   import { Avatar, Badge, KanbanBoard, type KanbanBoardColumn } from '@lostgradient/cinder';
 
