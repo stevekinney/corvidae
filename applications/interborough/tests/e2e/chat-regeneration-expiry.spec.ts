@@ -241,6 +241,32 @@ function viewportIsDesktop(page: Page): boolean {
   return page.viewportSize()?.width !== undefined && (page.viewportSize()?.width ?? 0) >= 500;
 }
 
+/**
+ * The element that wins a tap at points across every line of `target`'s text, when it is not the
+ * text's own element: what a hit region laid over the words would be. Empty when the words answer
+ * their own taps.
+ */
+async function textCoveredByAnotherElement(target: Locator): Promise<string[]> {
+  return target.evaluate((holder) => {
+    const range = document.createRange();
+    range.selectNodeContents(holder);
+    const covered = new Set<string>();
+    for (const line of range.getClientRects()) {
+      for (let y = line.top + 1; y < line.bottom; y += 2) {
+        for (let x = line.left + 2; x < line.right; x += 8) {
+          const hit = document.elementFromPoint(x, y);
+          if (hit !== null && !holder.contains(hit)) {
+            covered.add(
+              `${hit.tagName.toLowerCase()}.${String(hit.className)} at y=${Math.round(y)}`,
+            );
+          }
+        }
+      }
+    }
+    return [...covered];
+  });
+}
+
 async function assertInteractionProfile(page: Page, isCoarsePhone: boolean): Promise<void> {
   const profile = await page.evaluate(() => ({
     coarsePointer: matchMedia('(pointer: coarse)').matches,
@@ -346,6 +372,10 @@ for (const viewport of VIEWPORTS) {
         'The verified answer is retained after the real tool step.',
         { exact: true },
       );
+      // A message action's 44px hit region never covers the answer's own text, whether the answer
+      // fits on one line (Linux fonts) or wraps to two (macOS): a tap on the words is a tap on the
+      // words (COR-2406).
+      expect(await textCoveredByAnotherElement(answer)).toEqual([]);
       await answer.hover();
       const regenerationResponsePromise = page.waitForResponse(
         (response) =>

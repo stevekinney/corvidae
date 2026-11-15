@@ -83,7 +83,21 @@ describe('chat message action buttons', () => {
       '@media (any-pointer: coarse) {',
       ':global(.chat-message-action-button:not(.cinder-button))::after',
     );
-    expect(coarse).toContain('inset: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
+    expect(coarse).toContain('inset-inline: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
+    // The region reaches 3px above the line and the rest of its 44px below it, never 10px up into
+    // the answer's last line (COR-2406): a symmetric region covered the middle of a one-line answer.
+    expect(coarse).toContain('inset-block-start: -3px;');
+    expect(coarse).toContain(
+      'inset-block-end: calc(1.5rem - var(--cinder-touch-target-min) + 3px);',
+    );
+    expect(coarse.replace(/\s+/g, ' ')).toContain(
+      ".chat-message-line :global(.cinder-button.chat-message-action-button[data-cinder-hit-target='44'])::before",
+    );
+    // Copy draws its own region from a pseudo-element of its own, which takes the same split.
+    expect(coarse.replace(/\s+/g, ' ')).toContain(
+      '.chat-message-line :global(.cinder-copy-button.chat-message-action-button)::before',
+    );
+    expect(coarse).not.toContain('inset: calc');
     expect(source).not.toContain(
       'min-block-size: var(--cinder-touch-target-min);\n      margin-block',
     );

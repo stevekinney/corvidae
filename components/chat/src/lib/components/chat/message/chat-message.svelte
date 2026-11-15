@@ -2154,7 +2154,7 @@
     );
   }
 
-  /* The line's actions reach 44px by a hit area that overhangs the line by about 10px. The next
+  /* The line's actions reach 44px by a hit area that overhangs the line, 3px above and 17px below on a touch screen. The next
    * message's bubble (`content-visibility: auto` makes it a stacking context painted in tree order)
    * would otherwise paint over that overhang, so a tap just under Copy would land on the next
    * message's text. A stacking position of its own puts the line's overhang above it. */
@@ -2258,12 +2258,28 @@
 
   /* On a touch screen an action keeps its painted 1.5rem box and takes the 44px hit region from a
    * pseudo-element that adds no layout, so the glyphs pitch at the painted size plus the gap and
-   * their hit regions overlap invisibly. Copy is a Cinder Button, which draws its own region. */
+   * their hit regions overlap invisibly. Copy is a Cinder Button, which draws its own region.
+   *
+   * The region never reaches the middle of the text above (COR-2406). The line is pulled up under
+   * an assistant's text, so the air between the last line's letters and the line's top edge is
+   * about 2px; a region centred on the 24px box reached 10px up and covered the centre of a
+   * one-line answer, which on Linux's narrower fonts is every answer that fits. The region takes
+   * 3px above the box (the fringe of the last line's descenders) and the rest of its 44px, 17px,
+   * below it, where the message gap and the next message's own air lie (about 14px on a phone, so
+   * the region ends short of the middle of the next first line). */
   @media (any-pointer: coarse) {
     .chat-message-line :global(.chat-message-action-button:not(.cinder-button))::after {
       content: '';
       position: absolute;
-      inset: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
+      inset-inline: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
+    }
+
+    .chat-message-line :global(.chat-message-action-button:not(.cinder-button))::after,
+    .chat-message-line
+      :global(.cinder-button.chat-message-action-button[data-cinder-hit-target='44'])::before,
+    .chat-message-line :global(.cinder-copy-button.chat-message-action-button)::before {
+      inset-block-start: -3px;
+      inset-block-end: calc(1.5rem - var(--cinder-touch-target-min) + 3px);
     }
   }
 
