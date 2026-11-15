@@ -199,10 +199,30 @@
     line-height: var(--cinder-leading-tight);
   }
 
-  /* Narrow container query — trailing drops below body. A phone's one menu button (the collapsed
-     actions) is compact and stays beside the body. */
+  /* Narrow container query — a trailing control (an action button, a switch, a link) drops below
+     the body, where it has room. A trailing glyph or text (a chevron, a duration) stays beside the
+     body: it is small, and says only where the row leads. A phone's one menu button (the collapsed
+     actions) is compact and stays beside the body too. The `:where()` keeps each rule's
+     specificity what it was without the control test, so the two-line rules still outrank it. */
   @container cinder-stacked-list-item (max-width: 448px) {
-    .cinder-stacked-list-item--has-trailing:not(.cinder-stacked-list-item--collapsed-actions)
+    .cinder-stacked-list-item--has-trailing:not(.cinder-stacked-list-item--collapsed-actions):where(
+        :has(
+          > .cinder-stacked-list-item__layout
+            > .cinder-stacked-list-item__trailing
+            :is(
+              a[href],
+              button,
+              input,
+              select,
+              textarea,
+              [role='button'],
+              [role='link'],
+              [role='switch'],
+              [role='checkbox'],
+              [tabindex]:not([tabindex='-1'])
+            )
+        )
+      )
       .cinder-stacked-list-item__layout {
       grid-template-columns: 1fr;
       grid-template-areas:
@@ -212,6 +232,23 @@
 
     .cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
         .cinder-stacked-list-item--collapsed-actions
+      ):where(
+        :has(
+          > .cinder-stacked-list-item__layout
+            > .cinder-stacked-list-item__trailing
+            :is(
+              a[href],
+              button,
+              input,
+              select,
+              textarea,
+              [role='button'],
+              [role='link'],
+              [role='switch'],
+              [role='checkbox'],
+              [tabindex]:not([tabindex='-1'])
+            )
+        )
       )
       .cinder-stacked-list-item__layout {
       grid-template-columns: auto 1fr;
