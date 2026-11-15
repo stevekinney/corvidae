@@ -225,3 +225,90 @@ describe('createBarModel', () => {
     expect(negative?.x).toBeLessThan(positive?.x ?? 0);
   });
 });
+
+describe('createBarModel rounded ends', () => {
+  const series = [
+    { id: 'a', label: 'A', valueKey: 'a' },
+    { id: 'b', label: 'B', valueKey: 'b' },
+    { id: 'c', label: 'C', valueKey: 'c' },
+    { id: 'd', label: 'D', valueKey: 'd' },
+  ];
+  const ends = (
+    data: Array<Record<string, number | string>>,
+    options: {
+      mode: 'stacked' | 'grouped';
+      orientation: 'vertical' | 'horizontal';
+      hiddenSeriesIds?: string[];
+    },
+  ) =>
+    Object.fromEntries(
+      createBarModel({
+        data,
+        categoryKey: 'month',
+        series,
+        hiddenSeriesIds: options.hiddenSeriesIds ?? [],
+        width: 640,
+        height: 280,
+        orientation: options.orientation,
+        mode: options.mode,
+      }).bars.map((bar) => [`${bar.seriesId}-${bar.categoryLabel}`, bar.roundedEnd ?? 'square']),
+    );
+
+  test('a vertical stack rounds only the top of its topmost segment; every join is square', () => {
+    expect(
+      ends([{ month: 'Jan', a: 3, b: 4, c: 5, d: 6 }], {
+        mode: 'stacked',
+        orientation: 'vertical',
+      }),
+    ).toEqual({ 'a-Jan': 'square', 'b-Jan': 'square', 'c-Jan': 'square', 'd-Jan': 'top' });
+  });
+
+  test('a zero or hidden top segment passes the rounded end to the next visible one down', () => {
+    expect(
+      ends([{ month: 'Jan', a: 3, b: 4, c: 5, d: 0 }], {
+        mode: 'stacked',
+        orientation: 'vertical',
+      }),
+    ).toEqual({ 'a-Jan': 'square', 'b-Jan': 'square', 'c-Jan': 'top', 'd-Jan': 'square' });
+    expect(
+      ends([{ month: 'Jan', a: 3, b: 4, c: 5, d: 6 }], {
+        mode: 'stacked',
+        orientation: 'vertical',
+        hiddenSeriesIds: ['d', 'c'],
+      }),
+    ).toEqual({ 'a-Jan': 'square', 'b-Jan': 'top' });
+  });
+
+  test('negative segments stack downward and round only the bottom of the lowest', () => {
+    expect(
+      ends([{ month: 'Jan', a: 3, b: -4, c: 5, d: -2 }], {
+        mode: 'stacked',
+        orientation: 'vertical',
+      }),
+    ).toEqual({ 'a-Jan': 'square', 'b-Jan': 'square', 'c-Jan': 'top', 'd-Jan': 'bottom' });
+  });
+
+  test('a horizontal stack rounds the far end: right above zero, left below it', () => {
+    expect(
+      ends([{ month: 'Jan', a: 3, b: -4, c: 5, d: -2 }], {
+        mode: 'stacked',
+        orientation: 'horizontal',
+      }),
+    ).toEqual({ 'a-Jan': 'square', 'b-Jan': 'square', 'c-Jan': 'right', 'd-Jan': 'left' });
+  });
+
+  test('grouped bars each round their own outer end, and a zero bar has none', () => {
+    expect(
+      ends([{ month: 'Jan', a: 3, b: -4, c: 0, d: 6 }], {
+        mode: 'grouped',
+        orientation: 'vertical',
+      }),
+    ).toEqual({ 'a-Jan': 'top', 'b-Jan': 'bottom', 'c-Jan': 'square', 'd-Jan': 'top' });
+    expect(
+      ends([{ month: 'Jan', a: 3, b: -4, c: 0, d: 6 }], {
+        mode: 'grouped',
+        orientation: 'horizontal',
+      }),
+    ).toEqual({ 'a-Jan': 'right', 'b-Jan': 'left', 'c-Jan': 'square', 'd-Jan': 'right' });
+  });
+});

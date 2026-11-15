@@ -1,3 +1,8 @@
+/**
+ * Secret providers. The cases the provider factory alone can express live in `conformance.ts`, and
+ * this file runs them against each provider the package ships; the cases that write a provider's
+ * files directly, reopen a root, or take no provider stay here.
+ */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -5,182 +10,77 @@ import { createEnvironmentSecretProvider } from './environment-secret-provider.t
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { SecretProviderError, createLocalSecretProvider } from './secret-provider.ts';
+import type { Bungalow } from './bungalow.ts';
+import { openLocalBungalow } from './bungalow.ts';
+import { describeSecretProvider } from './conformance.ts';
+import { TEST_NAME } from './fixtures.test-support.ts';
+import {
+  SecretProviderError,
+  createLocalSecretProvider,
+  type SecretProvider,
+} from './secret-provider.ts';
+import { generateUlid } from './ulid.ts';
 
 const roots: string[] = [];
+const homes: Bungalow[] = [];
 function temporaryRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'bungalow-secrets-'));
   roots.push(root);
   return root;
 }
 afterEach(() => {
+  for (const home of homes.splice(0)) home.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function local() {
-  return createLocalSecretProvider({
-    root: temporaryRoot(),
-    workspaceId: 'workspace-a',
-  });
+const SEED = { key: 'seeded-key', value: 'seeded-value' } as const;
+
+/** The provider of a read-only local home, whose identity is the `deployment-id` it is given. */
+async function readOnlyHomeProvider(workspaceId: string): Promise<SecretProvider> {
+  const root = temporaryRoot();
+  writeFileSync(join(root, 'deployment-id'), `${workspaceId}\n`);
+  mkdirSync(join(root, 'secrets'));
+  writeFileSync(join(root, 'secrets', SEED.key), SEED.value, { mode: 0o600 });
+  const home = await openLocalBungalow({ name: TEST_NAME, root, access: 'read', workspaceId });
+  homes.push(home);
+  return home.secretProvider;
 }
 
+// Each `describe` below also states which branch of the check its subject takes, since a rule that
+// does not apply to a provider passes without running.
+
+describe('the local secret provider conforms', () => {
+  const create = (workspaceId: string): SecretProvider =>
+    createLocalSecretProvider({ root: temporaryRoot(), workspaceId });
+  test('can prepare and transition, so the preparation rules apply', () => {
+    expect(create('workspace-a').capabilities).toEqual({
+      read: true,
+      prepare: true,
+      transitions: true,
+    });
+  });
+  describeSecretProvider(create);
+});
+
+describe('the environment secret provider conforms', () => {
+  const create = (workspaceId: string): SecretProvider =>
+    createEnvironmentSecretProvider({ workspaceId, values: { [SEED.key]: SEED.value } });
+  test('cannot prepare, so the read-only rules apply', () => {
+    expect(create('workspace-a').capabilities.prepare).toBe(false);
+  });
+  describeSecretProvider(create, SEED);
+});
+
+describe('the secret provider of a read-only local home conforms', () => {
+  test('cannot prepare, so the read-only rules apply', async () => {
+    const provider = await readOnlyHomeProvider(generateUlid());
+    expect(provider.capabilities.prepare).toBe(false);
+    expect(await provider.readLegacy(SEED.key)).toBe(SEED.value);
+  });
+  describeSecretProvider(readOnlyHomeProvider, SEED);
+});
+
 describe('secret providers', () => {
-  test('prepares idempotently and reads the exact version', async () => {
-    const provider = local();
-    const first = await provider.prepare({
-      operationId: 'operation-1',
-      key: 'api-key',
-      value: 'secret',
-      requestDigest: 'a'.repeat(64),
-      expectedRevision: '7',
-    });
-    expect(
-      await provider.prepare({
-        operationId: 'operation-1',
-        key: 'api-key',
-        value: 'secret',
-        requestDigest: 'a'.repeat(64),
-        expectedRevision: '7',
-      }),
-    ).toEqual(first);
-    expect(await provider.readVersion(first.reference)).toBe('secret');
-    expect(
-      await provider
-        .prepare({
-          operationId: 'operation-1',
-          key: 'api-key',
-          value: 'changed',
-          requestDigest: 'b'.repeat(64),
-          expectedRevision: '7',
-        })
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        ),
-    ).toMatchObject({ code: 'conflict' });
-    expect(
-      await provider
-        .prepare({
-          operationId: 'operation-1',
-          key: 'api-key',
-          value: 'secret',
-          requestDigest: 'a'.repeat(64),
-          expectedRevision: '8',
-        })
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        ),
-    ).toMatchObject({ code: 'conflict' });
-    expect(
-      await provider
-        .prepare({
-          operationId: 'operation-1',
-          key: 'api-key',
-          value: 'secret',
-          requestDigest: 'a'.repeat(64),
-          expectedRevision: null,
-        })
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        ),
-    ).toMatchObject({ code: 'conflict' });
-  });
-
-  test('enforces the publication state machine and redacts operation records', async () => {
-    const provider = local();
-    const prepared = await provider.prepare({
-      operationId: 'operation-2',
-      key: 'token',
-      value: 'do-not-persist-in-metadata',
-      requestDigest: 'a'.repeat(64),
-      expectedRevision: '1',
-    });
-    const operations = await provider.listOperations();
-    expect(operations[0]).toEqual(prepared);
-    expect(
-      await provider
-        .transitionOperation('operation-2', {
-          from: 'prepared',
-          to: 'published',
-        } as never)
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        ),
-    ).toMatchObject({ code: 'rejected' });
-    expect(
-      await provider
-        .transitionOperation('operation-2', { from: 'publishing', to: 'published' })
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        ),
-    ).toMatchObject({ code: 'conflict' });
-    const publishing = await provider.transitionOperation('operation-2', {
-      from: 'prepared',
-      to: 'publishing',
-    });
-    const published = await provider.transitionOperation('operation-2', {
-      from: 'publishing',
-      to: 'published',
-    });
-    expect(publishing.state).toBe('publishing');
-    expect(published.state).toBe('published');
-  });
-
-  test('rejects a foreign reference before reading the backend', async () => {
-    const first = local();
-    const second = createLocalSecretProvider({
-      root: temporaryRoot(),
-      workspaceId: 'workspace-b',
-    });
-    const prepared = await first.prepare({
-      operationId: 'operation-3',
-      key: 'token',
-      value: 'secret',
-      requestDigest: 'a'.repeat(64),
-      expectedRevision: '1',
-    });
-    expect(
-      await second.readVersion(prepared.reference).then(
-        () => undefined,
-        (error: unknown) => error,
-      ),
-    ).toMatchObject({
-      code: 'rejected',
-    });
-  });
-
-  test('reclaims only an abandoned version', async () => {
-    const provider = local();
-    const prepared = await provider.prepare({
-      operationId: 'operation-reclaim',
-      key: 'token',
-      value: 'temporary',
-      requestDigest: 'a'.repeat(64),
-      expectedRevision: null,
-    });
-    expect(
-      await provider.reclaim(prepared.reference).then(
-        () => undefined,
-        (error: unknown) => error,
-      ),
-    ).toMatchObject({ code: 'conflict' });
-    await provider.transitionOperation('operation-reclaim', { from: 'prepared', to: 'abandoned' });
-    await provider.reclaim(prepared.reference);
-    await provider.reclaim(prepared.reference);
-    expect(
-      await provider.readVersion(prepared.reference).then(
-        () => undefined,
-        (error: unknown) => error,
-      ),
-    ).toMatchObject({
-      code: 'missing',
-    });
-  });
-
   test('recovers a version written before an operation record', async () => {
     const root = temporaryRoot();
     const provider = createLocalSecretProvider({ root, workspaceId: 'workspace-a' });
@@ -281,19 +181,6 @@ test('typed errors never carry secret values', () => {
   expect(error.message).not.toContain('secret');
 });
 
-test('maximum-length operation identifiers produce readable references', async () => {
-  const provider = local();
-  const operation = await provider.prepare({
-    operationId: 'a'.repeat(160),
-    key: 'token',
-    value: 'value',
-    requestDigest: 'a'.repeat(64),
-    expectedRevision: null,
-  });
-  expect(await provider.readVersion(operation.reference)).toBe('value');
-  expect(await provider.getOperation('a'.repeat(160))).toEqual(operation);
-});
-
 test('managed storage preserves every valid legacy flat key name', async () => {
   const root = temporaryRoot();
   mkdirSync(join(root, 'secrets'));
@@ -304,28 +191,6 @@ test('managed storage preserves every valid legacy flat key name', async () => {
   for (const key of ['workspace-id', 'versions', 'operations']) {
     expect(await provider.readLegacy(key)).toBe(`original-${key}`);
   }
-});
-
-test('logical receipts accept randomized encodings but reject a different request', async () => {
-  const provider = local();
-  const input = {
-    operationId: 'logical-retry',
-    key: 'token',
-    value: 'ciphertext-one',
-    expectedRevision: '1',
-    requestDigest: 'a'.repeat(64),
-  };
-  const first = await provider.prepare(input);
-  const retry = await provider.prepare({ ...input, value: 'ciphertext-two' });
-  expect(retry).toEqual(first);
-  expect(await provider.readVersion(retry.reference)).toBe('ciphertext-one');
-  expect(
-    await provider.prepare({ ...input, requestDigest: 'b'.repeat(64) }).then(
-      () => undefined,
-      (error: unknown) => error,
-    ),
-  ).toMatchObject({ code: 'conflict' });
-  expect(JSON.stringify(await provider.listOperations())).not.toContain(input.requestDigest);
 });
 
 test('historical versions remain readable but cannot authorize a new preparation', async () => {
@@ -361,23 +226,3 @@ test('historical versions remain readable but cannot authorize a new preparation
       ),
   ).toMatchObject({ code: 'conflict' });
 });
-
-test.each(['', 'A'.repeat(64), 'a'.repeat(63), 'private-invalid-digest'])(
-  'rejects malformed request digests without disclosing input: %s',
-  async (requestDigest) => {
-    expect(
-      await local()
-        .prepare({
-          operationId: 'invalid',
-          key: 'token',
-          value: 'secret',
-          expectedRevision: null,
-          requestDigest,
-        })
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        ),
-    ).toMatchObject({ message: 'A secret value and expected revision are required.' });
-  },
-);

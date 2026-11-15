@@ -47,7 +47,7 @@ Categorical × categorical heatmap for dense analytics, confusion matrices, and 
 
 ## Rendering and theming
 
-MatrixChart uses SVG and derives its plot margins from the category labels instead of fixed offsets. The default foreground follows `currentColor`, the chart background remains transparent, and heatmap colors resolve through `--cinder-chart-series-*` against the semantic inset surface. Pass a partial `theme` to override the palette or chart colors. The semantic data table remains the exact, non-color representation of every cell.
+MatrixChart uses SVG and derives its plot margins from the category labels instead of fixed offsets. The default foreground follows `currentColor` and the chart background remains transparent. Cells take the shared chart ramp: `sequential` runs from `--cinder-chart-ramp-low`, a faint blue tint, to `--cinder-chart-ramp-high`, a vivid blue, and `diverging` from `--cinder-chart-ramp-negative` through `--cinder-chart-ramp-neutral` at zero to `--cinder-chart-ramp-positive`. A cell's number is black or white, whichever keeps 4.5:1 on that cell, so it switches once along the ramp and is never tinted. A cell with no value is the page canvas inside a hairline, never the lowest value. Pass a partial `theme` to override the palette or chart colors: a custom palette's first colour becomes the sequential ramp's strong end. The semantic data table remains the exact, non-color representation of every cell.
 
 ## Props
 

@@ -10,6 +10,7 @@
    * changes, as the tool calls are (`run-tool-calls.svelte`), so a call that starts or ends inside
    * one status shows up as it happens.
    */
+  import { Section } from '@lostgradient/cinder';
   import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -102,8 +103,7 @@
   );
 </script>
 
-<section class="ib-run__section" aria-labelledby="ib-run-happened" data-section="what-happened">
-  <h2 id="ib-run-happened" class="ib-run__heading-2">{RUN_DETAIL_COPY.happened.heading}</h2>
+<Section title={RUN_DETAIL_COPY.happened.heading} data-section="what-happened">
   <ol class="ib-run-happened" aria-label={RUN_DETAIL_COPY.happened.listLabel}>
     {#each entries as entry (entry.key)}
       <li class="ib-run-happened__entry" data-state={entry.state}>
@@ -117,4 +117,4 @@
       </li>
     {/each}
   </ol>
-</section>
+</Section>

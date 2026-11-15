@@ -61,6 +61,7 @@ test('concurrent remote clients generate one active plugin key using their obser
         ...client,
         mode: 'remote',
         deploymentSecrets: {
+          writable: false,
           read: async () => undefined,
           write: async () => {
             throw new Error('read-only');

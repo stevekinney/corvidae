@@ -12,6 +12,7 @@ setupHappyDom();
 
 const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
 const { default: CopyButton } = await import('./copy-button.svelte');
+const { createRawSnippet } = await import('svelte');
 
 type ClipboardLike = { writeText: (text: string) => Promise<void> };
 
@@ -73,9 +74,52 @@ describe('CopyButton', () => {
     expect(button?.getAttribute('aria-label')).toBe('Copy to clipboard');
   });
 
-  test('default text content is "Copy"', () => {
-    const { container } = render(CopyButton, { value: 'hello' });
-    expect(container.querySelector('button')?.textContent?.trim()).toBe('Copy');
+  test('the default face is the Copy icon alone, named by its label, in a tooltip', () => {
+    const { container } = render(CopyButton, { value: 'hello', label: 'Copy token' });
+    const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
+    expect(button.textContent?.trim()).toBe('');
+    expect(button.querySelector('svg.lucide-copy')).not.toBeNull();
+    expect(button.hasAttribute('data-cinder-icon-only')).toBe(true);
+    // The name shows as a tooltip, which does not describe the button a second time.
+    const wrapper = button.closest('.cinder-tooltip-wrapper');
+    expect(wrapper).not.toBeNull();
+    expect(button.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  test('textVisible puts the words after the icon, both laid out so the width never changes', async () => {
+    mockClipboard();
+    const { container } = render(CopyButton, { value: 'hello', textVisible: true });
+    const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
+    expect(button.hasAttribute('data-cinder-icon-only')).toBe(false);
+    expect(button.firstElementChild?.matches('svg.lucide-copy')).toBe(true);
+    const words = [...button.querySelectorAll('.cinder-copy-button__word')];
+    expect(words.map((word) => word.textContent?.trim())).toEqual(['Copy', 'Copied']);
+    expect(words.map((word) => word.hasAttribute('data-cinder-current'))).toEqual([true, false]);
+    expect(button.closest('.cinder-tooltip-wrapper')).toBeNull();
+
+    await fireEvent.click(button);
+    await waitFor(() => {
+      expect(button.firstElementChild?.matches('svg.lucide-check')).toBe(true);
+      expect(words.map((word) => word.hasAttribute('data-cinder-current'))).toEqual([false, true]);
+    });
+  });
+
+  test("inside a page's own Tooltip the icon face draws no second tooltip", async () => {
+    const { default: Fixture } =
+      await import('../../test/fixtures/copy-button-in-tooltip-fixture.svelte');
+    const { container } = render(Fixture);
+    expect(container.querySelectorAll('.cinder-tooltip-wrapper')).toHaveLength(1);
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe('Copy message');
+  });
+
+  test('page-written words show the text face, with the icon leading them', () => {
+    const { container } = render(CopyButton, {
+      value: 'hello',
+      children: createRawSnippet(() => ({ render: () => '<span>Copy key</span>' })),
+    });
+    const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
+    expect(button.firstElementChild?.matches('svg.lucide-copy')).toBe(true);
+    expect(button.querySelector('.cinder-copy-button__word')?.textContent?.trim()).toBe('Copy key');
   });
 
   test('custom label sets the idle aria-label', () => {
@@ -94,7 +138,6 @@ describe('CopyButton', () => {
       value: 'x',
       label: 'Copy code',
       copiedLabel: 'Code copied',
-      iconOnly: true,
     });
     const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
     expect(button.getAttribute('aria-label')).toBe('Copy code');
@@ -137,12 +180,12 @@ describe('CopyButton', () => {
     await waitFor(() => {
       expect(writes).toEqual(['payload']);
       expect(button.hasAttribute('data-cinder-copied')).toBe(true);
-      expect(button.textContent?.trim()).toBe('Copied');
+      expect(button.querySelector('svg.lucide-check')).not.toBeNull();
     });
   });
 
-  test('iconOnly mode renders Copy icon in idle state', () => {
-    const { container } = render(CopyButton, { value: 'hello', iconOnly: true });
+  test('the icon face renders the Copy icon in its idle state', () => {
+    const { container } = render(CopyButton, { value: 'hello' });
     const button = container.querySelector('button');
     // The icon SVG is the only content; aria-label on the button carries the accessible name.
     expect(button?.querySelector('svg')).not.toBeNull();
@@ -155,7 +198,6 @@ describe('CopyButton', () => {
   test('keeps its own bordered presentation, not a Button, so consumers that restyle it still win', async () => {
     const { container } = render(CopyButton, {
       value: 'hello',
-      iconOnly: true,
       label: 'Copy value',
       disabled: true,
     });
@@ -176,9 +218,9 @@ describe('CopyButton', () => {
     );
   });
 
-  test('iconOnly mode swaps icon and aria-label after click', async () => {
+  test('the icon face swaps Copy for Check after a click, keeping its name', async () => {
     mockClipboard();
-    const { container } = render(CopyButton, { value: 'hello', iconOnly: true });
+    const { container } = render(CopyButton, { value: 'hello' });
     const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
     const idleSvgPath = button.querySelector('svg path')?.getAttribute('d');
 
@@ -198,16 +240,16 @@ describe('CopyButton', () => {
     });
   });
 
-  test('default mode (no children, no confirmation) shows "Copied" text after click', async () => {
+  test('the text face with no confirmation snippet shows "Copied" after click', async () => {
     // Regression test for the bug Codex caught in plan-review:
     // when neither `children` nor `confirmation` snippets are provided,
     // the copied branch must fall through to the literal "Copied" text.
     mockClipboard();
-    const { container } = render(CopyButton, { value: 'hello' });
+    const { container } = render(CopyButton, { value: 'hello', textVisible: true });
     const button = requiredInstance(container.querySelector('button'), HTMLButtonElement);
     await fireEvent.click(button);
     await waitFor(() => {
-      expect(button.textContent?.trim()).toBe('Copied');
+      expect(button.querySelector('[data-cinder-current]')?.textContent?.trim()).toBe('Copied');
     });
   });
 
@@ -304,7 +346,7 @@ describe('CopyButton', () => {
 
     await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
     expect(button.hasAttribute('data-cinder-copied')).toBe(false);
-    expect(button.textContent?.trim()).toBe('Copy');
+    expect(button.querySelector('svg.lucide-copy')).not.toBeNull();
   });
 
   test('a failed clipboard write does not throw when onError is omitted', async () => {

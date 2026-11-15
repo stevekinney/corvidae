@@ -218,6 +218,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.workflows.delete', 'administrator'],
       ['bureau.workflows.get', 'shared'],
       ['bureau.workflows.list', 'shared'],
+      ['bureau.workflows.catalog', 'shared'],
       ['bureau.workflows.revisions', 'shared'],
       ['bureau.workflows.history', 'shared'],
       ['bureau.workflows.impact', 'shared'],
@@ -273,6 +274,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [
       ['bureau.settings.get', 'administrator'],
       ['bureau.settings.schema', 'administrator'],
+      ['bureau.decisions.models', 'administrator'],
       ['bureau.settings.update', 'administrator'],
       ['bureau.settings.events', 'administrator'],
     ],

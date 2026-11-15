@@ -17,6 +17,35 @@ Clusters related action buttons into a unified visual group with shared borders.
 </ButtonGroup>
 ```
 
+A group is one continuous shape: only its outer corners are rounded, every inner join is square, and one hairline seam separates neighbours. A vertical group caps its outer corners at the control radius, so pill-shaped Buttons stack into one rounded column rather than a column of lozenges. A member wrapped in another element, such as a `Tooltip` or a `Dropdown`, fills its place in the group like a bare Button.
+
+## Split button
+
+A `Dropdown` beside a `Button` in a group is a split button. Its `DropdownTrigger` draws as a Button and takes the variant and size of the Button beside it, so the two halves are one control with one seam; set `variant` or `size` on the trigger to choose its own.
+
+```svelte
+<script lang="ts">
+  import {
+    Button,
+    ButtonGroup,
+    Dropdown,
+    DropdownItem,
+    DropdownMenu,
+    DropdownTrigger,
+  } from '@lostgradient/cinder';
+</script>
+
+<ButtonGroup label="Save options">
+  <Button variant="primary">Save</Button>
+  <Dropdown id="save-options">
+    <DropdownTrigger aria-label="More save options" />
+    <DropdownMenu>
+      <DropdownItem>Save as draft</DropdownItem>
+    </DropdownMenu>
+  </Dropdown>
+</ButtonGroup>
+```
+
 ## Input with an attached Button
 
 An `Input` can be the first member of a group, with a `Button` as the trailing part of the field. The pair shares one border, one height and the outer corners: the Input and the Button take their height from the same step of the shared control height scale, so give both the same `size` and they match at `sm`, `md` and `lg`.

@@ -6,11 +6,11 @@
 import { describe, expect, test } from 'bun:test';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
+import { stepFieldId } from './workflow-builder-addresses.ts';
 import {
   FIRST_ADD_BUTTON,
   ID_FIELD,
   problemSummary,
-  stepFieldId,
   workflowProblems,
 } from './workflow-builder-problems.ts';
 
@@ -141,6 +141,66 @@ describe('problemSummary', () => {
     expect(problemSummary(workflowProblems(valid({ steps: [] }), create))).toBeUndefined();
   });
 
+  test('finds the empty containers the engine would refuse, each at the Add a step of its own list', () => {
+    const text = valid({
+      steps: [
+        { kind: 'map', over: '', steps: [] },
+        { kind: 'parallel', branches: { notify: [], log: [{ kind: 'sleep', duration: '1m' }] } },
+        { kind: 'parallel', branches: {} },
+        { kind: 'branch', on: '', cases: {} },
+        { kind: 'workflow', workflow: '' },
+      ],
+    });
+    const problems = workflowProblems(text, create);
+    expect(problems.map((problem) => [problem.kind, problem.address, problem.fieldId])).toEqual([
+      ['over', '1', 'workflow-builder-step-1-over'],
+      ['empty-list', '1', 'workflow-builder-add-1-s'],
+      ['empty-list', '2', 'workflow-builder-add-2-b1'],
+      ['no-branches', '3', 'workflow-builder-step-3-add-branch'],
+      ['on', '4', 'workflow-builder-step-4-on'],
+      ['no-cases', '4', 'workflow-builder-step-4-add-case'],
+      ['workflow', '5', 'workflow-builder-step-5-workflow'],
+    ]);
+    expect(problems.map((problem) => problem.summary)).toEqual([
+      copy.summary.over('step 1'),
+      copy.summary.emptyList('the repeated steps of step 1'),
+      copy.summary.emptyList('the notify list of step 2'),
+      copy.summary.noBranches('step 3'),
+      copy.summary.on('step 4'),
+      copy.summary.noCases('step 4'),
+      copy.summary.workflow('step 5'),
+    ]);
+    expect(copy.summary.emptyList('the repeated steps of step 1')).toBe(
+      'The repeated steps of step 1: add a step.',
+    );
+  });
+
+  test('finds a problem in a nested step by its address, and names the step it is in', () => {
+    const text = valid({
+      steps: [
+        {
+          kind: 'branch',
+          on: 'status',
+          cases: {
+            approved: [
+              { kind: 'await-signal', signal: 'fine' },
+              { kind: 'await-signal', signal: '' },
+            ],
+          },
+          otherwise: [{ kind: 'activity', handler: 'agent', input: { agent: '', message: 'x' } }],
+        },
+      ],
+    });
+    const problems = workflowProblems(text, create);
+    expect(problems.map((problem) => [problem.kind, problem.address, problem.position])).toEqual([
+      ['signal', '1-c1-2', 1],
+      ['agent', '1-o-1', 1],
+    ]);
+    expect(problems[0]?.fieldId).toBe(stepFieldId('1-c1-2', 'signal'));
+    expect(problems[0]?.summary).toBe('Step 2 of the approved case of step 1: name the signal.');
+    expect(problems[1]?.summary).toBe('Step 1 of the otherwise path of step 1: choose an agent.');
+  });
+
   test('lists two or more in order, each in its own short words', () => {
     const text = valid({
       name: 'morning-briefing',
@@ -151,7 +211,7 @@ describe('problemSummary', () => {
       ],
     });
     expect(problemSummary(workflowProblems(text, create))).toBe(
-      `${copy.summaryLead(2)} ${copy.summary.signal(2)} ${copy.summary.message(3)}`,
+      `${copy.summaryLead(2)} ${copy.summary.signal(WORKFLOW_COPY.builder.where.step(2))} ${copy.summary.message(WORKFLOW_COPY.builder.where.step(3))}`,
     );
   });
 });

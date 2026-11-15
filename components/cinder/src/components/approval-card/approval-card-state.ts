@@ -295,7 +295,7 @@ export function splitFilePath(path: string): { directorySegments: string[]; name
 }
 
 /**
- * Moves focus into the note field once "Add a note" has opened it. The toggle that held focus is
+ * Moves focus into the note field once "Add note" has opened it. The toggle that held focus is
  * gone by then, so without this the focus would fall back to the page.
  */
 export async function focusOpenedNote(fieldId: string): Promise<void> {

@@ -6,13 +6,19 @@
    * reports every committed draft: a number still being typed is not reported until it is a number.
    * The form reports nothing before the first edit, so the draft it shows at mount (a choice's first
    * option, a switch off) is reported once as well, and an untouched form saves what it displays.
-   * A kind whose schema has no fields says so, and one the form cannot draw says that.
+   * A kind whose schema has no fields says so, and one the form cannot draw says that. The form
+   * draws no Submit button: the page's own action saves what the form reports.
    */
   import { SchemaForm, schemaFormInitialDraft } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
   import { PLUGIN_KINDS_COPY } from '../app/copy/plugins.ts';
-  import { formSchemaOf, numbersCommitted } from '../routes/settings/settings-form-schema.ts';
+  import { numbersCommitted } from '../routes/settings/settings-form-schema.ts';
+  import {
+    contributedFormHasFields,
+    contributedFormSchema,
+    isSameJson,
+  } from './contributed-configuration.ts';
 
   interface Props {
     /** Names the kind, so the form starts over when the kind is another. */
@@ -23,41 +29,55 @@
     value?: unknown;
     /** Takes the configuration after each edit. */
     onChange: (value: Record<string, unknown>) => void;
+    /**
+     * Problems the host found with a value this form saved, each shown on the field its `path`
+     * names (`SchemaForm`'s `issues`), and cleared when that field is edited.
+     */
+    issues?: readonly { path: readonly (string | number)[]; message: string }[] | undefined;
+    /**
+     * Whether the form sits inside another form or a card, as a workflow's trigger and a step's
+     * input do: it is then a group, not a `<form>` of its own, and its groups draw no borders.
+     */
+    hosted?: boolean;
+    /**
+     * Whether the draft the form shows at mount is reported once, so an untouched form saves what
+     * it displays. A step's input turns it off: a step is given its starting input when it is
+     * added, and opening a file is not an edit.
+     */
+    reportInitialDraft?: boolean;
+    /** What it says when the schema takes no fields, and when the form cannot draw it. Default to the plugin words. */
+    noFieldsText?: string;
+    unavailableText?: string;
   }
 
-  let { kindId, schema, value, onChange }: Props = $props();
+  let {
+    kindId,
+    schema,
+    value,
+    onChange,
+    hosted = false,
+    reportInitialDraft = true,
+    noFieldsText = PLUGIN_KINDS_COPY.noFields,
+    unavailableText = PLUGIN_KINDS_COPY.fieldsUnavailable,
+    issues,
+  }: Props = $props();
 
-  /** The schema as the form reads it, without the dialect marker Zod writes. */
+  // The schema the form is drawn from keeps its identity while its content is the same: the form
+  // starts over when it is given another schema, so a read of the plugins that hands back an equal
+  // schema in a new object would otherwise throw away what a person has typed and not yet saved.
+  let drawn: Record<string, unknown> | undefined;
   const formSchema = $derived.by(() => {
-    if (schema === null) return undefined;
-    const { $schema: _dialect, ...rest } = schema;
-    return formSchemaOf(kindId, rest);
+    const next = contributedFormSchema(kindId, schema);
+    if (drawn !== undefined && next !== undefined && isSameJson(drawn, next)) return drawn;
+    drawn = next;
+    return next;
   });
-
-  /**
-   * Whether the schema has anything to draw: named properties, or free keys (`additionalProperties`
-   * that describes a value, which Zod writes for a record). A closed object with no properties is a
-   * kind that takes no settings.
-   */
-  const hasFields = $derived.by(() => {
-    const properties = formSchema?.['properties'];
-    if (
-      typeof properties === 'object' &&
-      properties !== null &&
-      Object.keys(properties).length > 0
-    ) {
-      return true;
-    }
-    const additional = formSchema?.['additionalProperties'];
-    return (
-      typeof additional === 'object' && additional !== null && Object.keys(additional).length > 0
-    );
-  });
+  const hasFields = $derived(contributedFormHasFields(formSchema));
 
   // The form emits no draft until an edit, so the one it shows at mount is reported here, once per
   // schema. `value` is read untracked: the report changes it, and must not run this again.
   $effect(() => {
-    if (formSchema === undefined || !hasFields) return;
+    if (!reportInitialDraft || formSchema === undefined || !hasFields) return;
     const shown = schemaFormInitialDraft(
       formSchema,
       untrack(() => value),
@@ -75,34 +95,6 @@
     untrack(() => onChange(shown as Record<string, unknown>));
   });
 
-  /** Whether two JSON values are equal, whatever order their keys came in. */
-  function isSameJson(left: unknown, right: unknown): boolean {
-    if (left === right) return true;
-    if (Array.isArray(left) || Array.isArray(right)) {
-      return (
-        Array.isArray(left) &&
-        Array.isArray(right) &&
-        left.length === right.length &&
-        left.every((item, index) => isSameJson(item, right[index]))
-      );
-    }
-    if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) {
-      return false;
-    }
-    const leftKeys = Object.keys(left);
-    return (
-      leftKeys.length === Object.keys(right).length &&
-      leftKeys.every(
-        (key) =>
-          Object.hasOwn(right, key) &&
-          isSameJson(
-            (left as Record<string, unknown>)[key],
-            (right as Record<string, unknown>)[key],
-          ),
-      )
-    );
-  }
-
   function draft(next: unknown): void {
     if (formSchema === undefined || !numbersCommitted(formSchema, next)) return;
     if (typeof next === 'object' && next !== null && !Array.isArray(next)) {
@@ -113,9 +105,9 @@
 
 <div class="ib-contributed-configuration" data-testid="contributed-configuration">
   {#if formSchema === undefined}
-    <p class="ib-contributed-configuration__note">{PLUGIN_KINDS_COPY.fieldsUnavailable}</p>
+    <p class="ib-contributed-configuration__note">{unavailableText}</p>
   {:else if !hasFields}
-    <p class="ib-contributed-configuration__note">{PLUGIN_KINDS_COPY.noFields}</p>
+    <p class="ib-contributed-configuration__note">{noFieldsText}</p>
   {:else}
     {#key kindId}
       <SchemaForm
@@ -123,6 +115,9 @@
         name={`configuration-${kindId}`}
         {value}
         jsonEditable={false}
+        submitVisible={false}
+        {hosted}
+        {issues}
         onDraftChange={draft}
       />
     {/key}

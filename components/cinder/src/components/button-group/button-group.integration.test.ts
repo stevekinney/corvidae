@@ -390,9 +390,13 @@ describe('ButtonGroup', () => {
     expect(css).toMatch(
       /\.cinder-button-group\s*>\s*\.cinder-dropdown\[data-cinder-button-group-item\]\s*\{[\s\S]*?display:\s*inline-flex;/,
     );
-    expect(css).toMatch(
-      /\.cinder-button-group[\s\S]*?>\s*\.cinder-dropdown\[data-cinder-button-group-item\][\s\S]*?>\s*\.cinder-dropdown-trigger\s*\{[\s\S]*?min-block-size:\s*100%;/,
+    // A wrapped member (a Dropdown, a Tooltip) is a flex box whose button grows to fill it, so
+    // the trigger fills its place in either orientation; `min-block-size: 100%` of a column's
+    // auto height left a vertical split button's trigger short.
+    expect(css).toContain(
+      '> [data-cinder-button-group-item]:not(.cinder-button, button, .cinder-input-field)\n    > :is(.cinder-button, button) {\n    flex: 1 1 auto;',
     );
+    expect(css).not.toContain('min-block-size: 100%');
   });
 
   test('seams use a pseudo-element line, not negative-margin overlap', async () => {

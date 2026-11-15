@@ -118,6 +118,9 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   // The version a host started at, which a `host.started` record carries so the log can say
   // "Interborough 2.4.1"; a release number, never content.
   'version',
+  // COR-2420: a routing decision's `decision.made` record names the supervisor step that asked it;
+  // the runs the step started take their ids from it. An id, never content.
+  'routingId',
 ];
 
 /**

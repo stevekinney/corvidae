@@ -71,7 +71,7 @@ Passing `children` replaces the generated words and keeps everything else; with 
 </Banner>
 ```
 
-The actions stack under the message at every width, in a row that wraps, and the message is capped at 68 characters wide; a button label never wraps. Below 640px, and on a touch pointer, each action is 44px tall. `stackActions` goes further below 640px: the actions take a row of their own, one above the next, each a full-width button, which is how a phone's restart notice offers Revert and Restart now.
+The actions sit at the inline end of the message's row, before the dismiss button, on one line and centred on the row. The banner reads its own width, not the viewport's: below 560px of it the actions drop under the message, in a row that wraps. The message is capped at 68 characters wide, and a button label never wraps. Below 640px, and on a touch pointer, each action is 44px tall. `stackActions` goes further below 640px: the actions take a row of their own, one above the next, each a full-width button, which is how a phone's restart notice offers Revert and Restart now.
 
 ### Feature
 
@@ -119,7 +119,7 @@ When to show one:
 | `retryInSeconds` | `number` | no | — | Seconds until the next automatic retry. A preset writes "Retrying in 4 s". |
 | `retryLabel` | `string` | no | `"Retry"` | Label of the Retry button. A preset labels it "Retry now" unless this says otherwise. |
 | `retryVariant` | `"primary"` \| `"secondary"` | no | — | How prominent the Retry button is. A preset makes it `primary` where Retry now is the way back (`stopped`) and `secondary` everywhere else, so one action at a time looks primary. |
-| `stackActions` | `boolean` | no | `false` | Below 640px, puts the actions on a row of their own under the words, one above the next, each a full-width 44px button. A phone's restart notice does this, so its buttons are targets wide enough to press; without it the actions stay at the right of their line, at 44px. |
+| `stackActions` | `boolean` | no | `false` | Below 640px, puts the actions on a row of their own under the words, one above the next, each a full-width 44px button. A phone's restart notice does this, so its buttons are targets wide enough to press; without it the actions sit at the inline end of the message's row, or in a row under the words when the banner is narrower than 560px, at 44px. |
 | `staleDataLabel` | `string` | no | `"Showing data from"` | Text that precedes the relative time in the stale-data notice. |
 | `sticky` | `boolean` | no | — | Keeps the banner at the top of its scroll container while the page scrolls under it. |
 | `subject` | `string` | no | `"what loaded"` | What the page is showing, completing the preset's "Showing … as of …" sentence. |

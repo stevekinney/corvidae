@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { hiddenRowCounts, snapScrollTop, wholeRowsBlockSize, type RowEdges } from './whole-rows.ts';
+import { hiddenRowCounts, wholeRowsBlockSize, type RowEdges } from './whole-rows.ts';
 
 // Rows stand `gap` apart after `start` of padding; a ready row is 40px, a failed row with an error
 // line is 62px.
@@ -45,18 +45,6 @@ describe('wholeRowsBlockSize', () => {
   });
 });
 
-describe('snapScrollTop', () => {
-  test('moves a half-scrolled list to the nearest row start', () => {
-    const edges = rows([40, 40, 40, 40]); // tops 8, 56, 104, 152
-    expect(snapScrollTop(edges, 70, 200)).toBe(56);
-    expect(snapScrollTop(edges, 90, 200)).toBe(104);
-  });
-
-  test('leaves the end of the scroll range alone', () => {
-    expect(snapScrollTop(rows([40, 40, 40, 40]), 120, 120)).toBe(120);
-  });
-});
-
 describe('hiddenRowCounts', () => {
   test('a row mostly in view is not counted as hidden', () => {
     const edges = rows([40, 40, 40, 40], 0, 0); // tops 0, 40, 80, 120
@@ -66,17 +54,11 @@ describe('hiddenRowCounts', () => {
     expect(hiddenRowCounts(edges, 0, 90)).toEqual({ above: 0, below: 2 });
   });
 
-  test('four choices, Something else open, in a 320 by 640 box: counts what is out of view', () => {
-    // Five rows of 56px (four choices and the own-answer row); the open field leaves the list a
-    // window of two rows, and the list snapped its scroll to a row boundary.
+  test('five rows in a two-row window: counts what is out of view at each end', () => {
     const edges = rows([56, 56, 56, 56, 56], 0, 0);
     const viewport = 112;
-    // A drifted offset snaps to the row boundary at 168.
-    const scrollTop = snapScrollTop(edges, 150, 168);
-    expect(scrollTop).toBe(168);
-    expect(hiddenRowCounts(edges, scrollTop, viewport)).toEqual({ above: 3, below: 0 });
-    // The drifted offset left rows half in view. Half out of view is not "more than half", so a
-    // row cut in half is counted as showing: two rows above, none below, never "3 more".
+    expect(hiddenRowCounts(edges, 168, viewport)).toEqual({ above: 3, below: 0 });
+    // A row cut in half is counted as showing, never "3 more".
     expect(hiddenRowCounts(edges, 140, viewport)).toEqual({ above: 2, below: 0 });
   });
 });

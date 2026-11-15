@@ -107,7 +107,6 @@
       value={sessionId}
       label={COPY.copySessionId}
       copiedLabel={`${COPY.sessionId} copied`}
-      iconOnly
     />
   </span>
 {/snippet}

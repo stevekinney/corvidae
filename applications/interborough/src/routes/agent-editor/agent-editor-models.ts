@@ -96,11 +96,11 @@ export function canonicalModel(written: string, catalog: AgentCatalog): string {
 /** A row of a provider the host reports without a key, which the catalog keeps `unavailable` (COR-2143). */
 function isUnconnectedRow(
   row: CatalogModel,
-  hostProviders: readonly { readonly name: string; readonly hasKey: boolean }[] | undefined,
+  hostProviders: readonly { readonly name: string; readonly connected: boolean }[] | undefined,
 ): boolean {
   return (
     row.availability === 'unavailable' &&
-    (hostProviders ?? []).some((provider) => provider.name === row.provider && !provider.hasKey)
+    (hostProviders ?? []).some((provider) => provider.name === row.provider && !provider.connected)
   );
 }
 
@@ -113,7 +113,7 @@ function isUnconnectedRow(
 export function keptModel(
   written: string,
   catalog: AgentCatalog,
-  hostProviders: readonly { readonly name: string; readonly hasKey: boolean }[] | undefined,
+  hostProviders: readonly { readonly name: string; readonly connected: boolean }[] | undefined,
 ): string | undefined {
   if (written === '') return undefined;
   const listed = canonicalModel(written, catalog);
@@ -142,14 +142,14 @@ export function unavailableReason(
  * catalog lacks (`kept`) joins its provider's group, so it can stay selected.
  *
  * @param catalog What `bureau.agents.catalog` returned.
- * @param hostProviders The providers the host can call, each with whether it has a key, or
+ * @param hostProviders The providers the host can call, each with whether it is connected, or
  *   `undefined` when the host did not say.
  * @param restrictions What the model policy forbids.
  * @param kept The model an agent file names that the catalog lacks, written `<provider>/<model>`.
  */
 export function modelGroups(
   catalog: AgentCatalog,
-  hostProviders: readonly { readonly name: string; readonly hasKey: boolean }[] | undefined,
+  hostProviders: readonly { readonly name: string; readonly connected: boolean }[] | undefined,
   restrictions: ModelRestrictions,
   kept: string | undefined,
 ): readonly ModelGroup[] {
@@ -180,7 +180,7 @@ export function modelGroups(
   const separator = kept === undefined ? -1 : kept.indexOf('/');
   const unconnected = new Map<string, ModelChoice[]>();
   for (const provider of hostProviders ?? []) {
-    if (!provider.hasKey && !byProvider.has(provider.name)) unconnected.set(provider.name, []);
+    if (!provider.connected && !byProvider.has(provider.name)) unconnected.set(provider.name, []);
   }
   if (kept !== undefined && separator > 0) {
     const provider = kept.slice(0, separator);

@@ -74,9 +74,26 @@ describe('createDecisionRouting', () => {
 
     await supervisor.delegate('Write it');
 
-    // No run exists while routing: the supervisor routes first and starts the runs after, so there
-    // is no run id to file the record under (COR-2155 AC3 reports this).
-    expect(optionsSeen).toEqual([{ principal: 'api-key:alice' }]);
+    // No run exists while routing: the supervisor routes first and starts the runs after, so the
+    // record is filed under the routing step's id instead of a task (COR-2420).
+    expect(optionsSeen).toEqual([
+      { principal: 'api-key:alice', routingId: expect.stringMatching(/^routing-/) },
+    ]);
+  });
+
+  it('asks without a routing id when the strategy is called without a context', async () => {
+    const optionsSeen: unknown[] = [];
+    const source: DecisionSource = {
+      decide: async (_request, options) => {
+        optionsSeen.push(options);
+        return { value: 'one', provider: 'scripted', model: 'model' };
+      },
+    };
+    const routing = createDecisionRouting<{ one: never; two: never }>(source);
+
+    await routing('Anything', [{ name: 'one' }, { name: 'two' }]);
+
+    expect(optionsSeen).toEqual([{}]);
   });
 
   it('returns the only agent without asking anything', async () => {

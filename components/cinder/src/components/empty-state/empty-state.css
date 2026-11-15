@@ -123,8 +123,11 @@
     margin-block-start: var(--cinder-space-3);
   }
 
+  /* A start-aligned state reads from the start, but its action row spans the state and ends at the
+   * trailing content edge, the primary last. A centred state keeps its centred action. */
   .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-action {
-    justify-content: flex-start;
+    align-self: stretch;
+    justify-content: flex-end;
   }
 
   /* Supporting content under the action, such as the steps of a manual set-up: the full width of
@@ -235,7 +238,7 @@
     }
 
     .cinder-empty-state[data-cinder-layout='row'] .cinder-empty-state-action {
-      justify-content: flex-start;
+      justify-content: flex-end;
       margin-block-start: var(--cinder-space-2);
     }
   }

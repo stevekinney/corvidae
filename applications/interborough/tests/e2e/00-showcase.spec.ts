@@ -89,6 +89,13 @@ for (const name of NAMES) {
       if (name === '/chats/:chat (question waiting)' && (width === 375 || width === 1280)) {
         const staging = page.getByRole('radio', { name: /^Staging\b/, exact: false });
         await expect(staging).toBeVisible();
+        // The text before the question is the agent talking to the person (owner decision of
+        // 14 November): it keeps its time, and is drawn in message ink, not as bare narration.
+        const preface = page
+          .locator('.chat-message-wrapper[data-asking]')
+          .filter({ hasText: 'Before I ship it I need one answer.' });
+        await expect(preface, `the asking text at ${width}px`).toBeVisible();
+        await expect(preface.locator('.chat-message-line time')).toBeVisible();
         await staging.click();
         const heldStatus = page.locator('.chat-question-status[data-state="held"]');
         await expect(heldStatus).toBeVisible();

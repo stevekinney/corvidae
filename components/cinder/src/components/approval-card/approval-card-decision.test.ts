@@ -154,16 +154,16 @@ describe('ApprovalCard decision layout', () => {
     expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
   });
 
-  test('offers Add a note, then Deny as secondary on the left and the named primary on the right', () => {
+  test('offers Add note, then Deny as secondary on the left and the named primary on the right', () => {
     const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
-    // "Add a note" is a quiet control in the action row, not a second caption row.
+    // "Add note" is a quiet control in the action row, not a second caption row.
     expect(container.querySelector('.cinder-approval-card__decision-tools button')).toBeNull();
     const labels = Array.from(
       container.querySelectorAll('.cinder-approval-card__row-actions button'),
       (button) => squash(button.textContent),
     );
 
-    expect(labels).toEqual(['Add a note', 'Deny', 'Refund $42.00']);
+    expect(labels).toEqual(['Add note', 'Deny', 'Refund $42.00']);
     expect(getByRole('button', { name: 'Deny' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
@@ -200,7 +200,7 @@ describe('ApprovalCard decision layout', () => {
       }),
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Add a note' }));
+    await fireEvent.click(getByRole('button', { name: 'Add note' }));
     await fireEvent.input(getByLabelText('Note'), { target: { value: 'Looks right' } });
     await fireEvent.click(getByRole('button', { name: 'Publish' }));
 
@@ -428,7 +428,7 @@ describe('ApprovalCard decision layout: why the agent wants to do this', () => {
 describe('ApprovalCard decision layout: the retained receipt', () => {
   // C#6 (chat stress sweep): a receipt repeated the question it asked ("Refund order 4471 for
   // $42.00?") beside "Approved", and never said what was approved.
-  test('an approval stays as what was approved, a check badge, who decided and when', () => {
+  test('an approval is the expired card pattern: what was approved, one status line, no time inside', () => {
     const { container, getByRole, queryByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'approved',
@@ -436,19 +436,25 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
         decidedAt: '2026-11-02T10:46:00.000Z',
       }),
     });
-    const badge = container.querySelector('.cinder-approval-card__receipt-head .cinder-badge');
 
-    expect(squash(badge?.textContent)).toBe('Approved');
-    expect(badge?.querySelector('svg')).not.toBeNull();
-    expect(badge?.getAttribute('aria-hidden')).toBe('true');
-    const title = container.querySelector('.cinder-approval-card__decision-title');
+    const row = container.querySelector(
+      '.cinder-approval-card__receipt > .cinder-approval-card__settled-row',
+    );
+    expect(row?.getAttribute('data-cinder-tone')).toBe('success');
+    const title = row?.querySelector('.cinder-approval-card__settled-title');
     expect(squash(title?.textContent)).toBe('Approved: Refund $42.00, order 4471');
-    expect(title?.querySelector('.cinder-sr-only')?.textContent).toBe('Approved: ');
+    expect(title?.querySelector('.cinder-sr-only')?.textContent).toBe('Approved:');
     expect(getByRole('article', { name: 'Approved: Refund $42.00, order 4471' })).toBeTruthy();
     expect(squash(title?.textContent)).not.toContain('Refund order 4471 for $42.00?');
-    expect(squash(container.querySelector('.cinder-approval-card__receipt-by')?.textContent)).toBe(
-      'by you, 10:46 AM',
+    // One status line: the word, then who. When it was decided is the host's, under the card.
+    expect(squash(row?.querySelector('.cinder-approval-card__settled-note')?.textContent)).toBe(
+      'Approved by you',
     );
+    expect(row?.querySelector('.cinder-approval-card__settled-dot')).not.toBeNull();
+    expect(container.textContent).not.toContain('10:46 AM');
+    // No badge, and none of the old receipt's parts.
+    expect(container.querySelector('.cinder-badge')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__receipt-by')).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Refund $42.00' })).toBeNull();
   });
@@ -463,9 +469,9 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
         decidedAt: '2026-11-02T10:46:00.000Z',
       }),
     });
-    const by = container.querySelector('.cinder-approval-card__receipt-by');
+    const by = container.querySelector('.cinder-approval-card__settled-note');
 
-    expect(squash(by?.textContent)).toBe('by Priya Raman in Reviews, 10:46 AM');
+    expect(squash(by?.textContent)).toBe('Approved by Priya Raman in Reviews');
     expect(by?.textContent).not.toContain(String.fromCodePoint(0xb7));
     const link = getByRole('link', { name: 'Reviews' });
     expect(link.getAttribute('href')).toBe('/reviews');
@@ -483,13 +489,13 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     });
 
     expect(queryByRole('link')).toBeNull();
-    expect(squash(container.querySelector('.cinder-approval-card__receipt-by')?.textContent)).toBe(
-      'by Priya Raman in Reviews, 10:46 AM',
-    );
+    expect(
+      squash(container.querySelector('.cinder-approval-card__settled-note')?.textContent),
+    ).toBe('Approved by Priya Raman in Reviews');
   });
 
-  test('a denial quotes its reason inline in neutral text', () => {
-    const { container } = render(ApprovalCard, {
+  test('a denial is the same pattern in a neutral tone, with its reason in the one disclosure', async () => {
+    const { container, getByRole } = render(ApprovalCard, {
       props: decisionCard({
         state: 'denied',
         decidedBy: 'you',
@@ -497,13 +503,44 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
         decisionNote: 'Refund it through the original card instead',
       }),
     });
-    const badge = container.querySelector('.cinder-approval-card__receipt-head .cinder-badge');
+    const row = container.querySelector('.cinder-approval-card__settled-row');
 
-    expect(squash(badge?.textContent)).toBe('Denied');
-    expect(badge?.getAttribute('data-cinder-variant')).toBe('neutral');
-    expect(
-      squash(container.querySelector('.cinder-approval-card__receipt-quote')?.textContent),
-    ).toBe('“Refund it through the original card instead”');
+    expect(row?.getAttribute('data-cinder-tone')).toBe('neutral');
+    expect(squash(row?.querySelector('.cinder-approval-card__settled-note')?.textContent)).toBe(
+      'Denied by you',
+    );
+    // The reason is not a second line on the card: it is in the disclosure, with the note's label.
+    expect(container.querySelector('.cinder-approval-card__receipt-quote')).toBeNull();
+    const details = container.querySelector('.cinder-approval-card__receipt-details');
+    expect(details?.hasAttribute('hidden')).toBe(true);
+    await fireEvent.click(getByRole('button', { name: 'Details' }));
+    expect(squash(details?.textContent)).toContain(
+      'Your note: Refund it through the original card instead',
+    );
+  });
+
+  test('approved, denied and expired share one structure and differ only in tone and words', () => {
+    const shapeOf = (state: 'approved' | 'denied' | 'expired'): string[] => {
+      const { container, unmount } = render(ApprovalCard, {
+        props: decisionCard({
+          state,
+          decidedBy: 'you',
+          ...(state === 'expired' ? { expiresAt: '2026-11-02T10:15:00.000Z' } : {}),
+        }),
+      });
+      const row = container.querySelector('.cinder-approval-card__settled-row');
+      const shape = [...(row?.children ?? [])].map((child) => child.className.split(' ')[0] ?? '');
+      unmount();
+      return shape;
+    };
+
+    // The title and the one status line, in that order, in every settled state.
+    for (const state of ['approved', 'denied', 'expired'] as const) {
+      expect(shapeOf(state).slice(0, 2)).toEqual([
+        'cinder-approval-card__settled-title',
+        'cinder-approval-card__settled-note',
+      ]);
+    }
   });
 
   test('expands to the note, the result and the command, and shows none of them until asked', async () => {
@@ -527,11 +564,41 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
 
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(details?.hasAttribute('hidden')).toBe(false);
-    expect(squash(details?.textContent)).toContain('Your note Checked the order first');
+    expect(squash(details?.textContent)).toContain('Your note: Checked the order first');
     expect(squash(details?.textContent)).toContain('Result: Refunded $42.00 to the original card.');
     expect(squash(details?.querySelector('.cinder-approval-card__command')?.textContent)).toContain(
       'refund --order 4471 --amount 42.00',
     );
+  });
+
+  test('writes "Your note:" and "Result:" as one label followed by one space each', async () => {
+    const { container, getByRole } = render(ApprovalCard, {
+      props: decisionCard({
+        state: 'approved',
+        decidedBy: 'you',
+        decidedAt: '2026-11-02T10:46:00.000Z',
+        decisionNote: 'Approved after confirming the duplicate charge.',
+        result: 'Refund completed successfully.',
+      }),
+    });
+    await fireEvent.click(getByRole('button', { name: 'Details' }));
+    const details = container.querySelector('.cinder-approval-card__receipt-details')!;
+    const note = details.querySelector('.cinder-approval-card__decision-note');
+    const result = details.querySelector('.cinder-approval-card__result');
+    expect(squash(note?.textContent)).toBe(
+      'Your note: Approved after confirming the duplicate charge.',
+    );
+    expect(squash(result?.textContent)).toBe('Result: Refund completed successfully.');
+    // The same classed label leads each, and each is followed by exactly one space.
+    for (const [block, label] of [
+      [note, 'decision-note-label'],
+      [result, 'result-label'],
+    ] as const) {
+      const span = block?.querySelector(`.cinder-approval-card__${label}`);
+      expect(span).not.toBeNull();
+      expect(span?.nextSibling?.textContent?.startsWith(' ')).toBe(true);
+      expect(span?.nextSibling?.textContent?.startsWith('  ')).toBe(false);
+    }
   });
 
   test('offers no disclosure when there is nothing more to show', () => {
@@ -562,8 +629,20 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     // The title carries the state, so no second "Expired" word or Irreversible badge follows it.
     expect(container.querySelector('[data-cinder-state-word]')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__irreversible')).toBeNull();
-    expect(container.textContent).toContain('10:15 AM');
+    // The time is the host's to write under the card, in the line any message's time uses.
+    expect(container.textContent).not.toContain('10:15 AM');
+    expect(container.querySelector('.cinder-approval-card__countdown')).toBeNull();
+    // One small muted line says why it is read-only; the title is the question alone.
+    expect(
+      squash(container.querySelector('.cinder-approval-card__settled-note')?.textContent),
+    ).toBe('Expired before a decision');
+    expect(container.querySelector('.cinder-approval-card__settled-dot')).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+    // "Ask again" is last, at the trailing end.
+    const expiryChildren = [
+      ...(container.querySelector('.cinder-approval-card__settled-actions')?.children ?? []),
+    ];
+    expect(expiryChildren.map((child) => child.tagName)).toEqual(['BUTTON']);
     await fireEvent.click(getByRole('button', { name: 'Ask again' }));
     expect(onAskAgain).toHaveBeenCalledTimes(1);
   });
@@ -686,6 +765,21 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/__why ~ \.cinder-approval-card__decision-tools/);
   });
 
+  test('every title fills its lines before it breaks, overriding the heading default of balancing', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    for (const title of [
+      'title',
+      'decision-title',
+      'row-question',
+      'settled-title',
+      'elsewhere-title',
+    ]) {
+      const rule = new RegExp(`\\n  \\.cinder-approval-card__${title} \\{([^}]*)\\}`).exec(css);
+      expect(rule?.[1], `${title} rule`).toMatch(/text-wrap:\s*wrap;/);
+    }
+    expect(css).not.toMatch(/text-wrap:\s*(balance|pretty)/);
+  });
+
   test('the action row sits one --cinder-space-3 under the metadata row in both layouts', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
@@ -699,48 +793,118 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
   });
 
-  test('the irreversible badge is at least 12px and is never moved above the title', () => {
+  test('the facts line is 12px text with 14px glyphs, under the title and at its end from 30rem', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
-    // Outranks the badge's own 10px `sm` size, which has an attribute selector.
-    expect(css).toContain(
-      '.cinder-approval-card .cinder-badge.cinder-approval-card__irreversible { font-size: var(--cinder-text-sm); }',
+    expect(css).toMatch(
+      /__facts-line \{[^}]*flex: 0 0 100%;[^}]*font-size: var\(--cinder-text-xs\);/,
+    );
+    expect(css).toMatch(/__facts-line-fact svg \{[^}]*inline-size: 14px;[^}]*block-size: 14px;/);
+    // The irreversible fact is muted danger text, never a filled badge.
+    expect(css).toMatch(
+      /__facts-line-fact\[data-cinder-tone='danger'\] \{ color: var\(--cinder-status-danger-text\); \}/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size >= 30rem\) \{[^@]*__decision-head \{[^}]*flex-wrap: nowrap;[^}]*\}[^@]*__facts-line \{[^}]*margin-inline-start: auto;/,
     );
     expect(css).not.toMatch(/__decision-head \.cinder-approval-card__irreversible \{ order:/);
-    expect(css).not.toMatch(/__decision-head:has\(\.cinder-approval-card__irreversible\)/);
+    expect(css).not.toContain('decision-tools');
   });
 
-  test('Add a note is a ghost small Cinder Button with an icon and a tooltip', () => {
+  test('one facts line holds the countdown and the irreversible warning under the title', () => {
+    const { container } = render(ApprovalCard, {
+      props: decisionCard({ expiresAt: new Date(Date.now() + 30_000).toISOString() }),
+    });
+    const line = container.querySelector('.cinder-approval-card__facts-line');
+    expect(line).not.toBeNull();
+    expect(container.querySelectorAll('.cinder-approval-card__facts-line')).toHaveLength(1);
+    expect(container.querySelector('.cinder-badge')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__countdown')).toBeNull();
+    const facts = [...(line?.querySelectorAll('.cinder-approval-card__facts-line-fact') ?? [])];
+    // The last child is the visible words; the glyph's tooltip panel sits beside the glyph.
+    expect(facts.map((fact) => squash(fact.lastElementChild?.textContent))).toEqual([
+      expect.stringMatching(/^Expires in \d+s$/),
+      "Can't be undone",
+    ]);
+    expect(facts.map((fact) => fact.querySelectorAll('svg').length)).toEqual([1, 1]);
+    expect(line?.previousElementSibling?.className).toContain(
+      'cinder-approval-card__decision-title',
+    );
+  });
+
+  test('the warning glyph has a tooltip that says what cannot be undone', () => {
+    const { container } = render(ApprovalCard, {
+      props: decisionCard({ consequence: 'Sends $42.00 back to the original card' }),
+    });
+    const tip = container.querySelector('.cinder-approval-card__facts-line-tip');
+    expect(tip?.querySelector('svg')).not.toBeNull();
+    expect(container.textContent).toContain('Sends $42.00 back to the original card');
+  });
+
+  test('Add note is a ghost small Cinder Button with an icon and a tooltip', () => {
     const { container, getByRole } = render(ApprovalCard, { props: decisionCard() });
-    const toggle = getByRole('button', { name: 'Add a note' });
+    const toggle = getByRole('button', { name: 'Add note' });
     expect(toggle.classList.contains('cinder-button')).toBe(true);
     expect(toggle.classList.contains('cinder-approval-card__note-toggle')).toBe(true);
     expect(toggle.getAttribute('data-cinder-variant')).toBe('ghost');
     expect(toggle.getAttribute('data-cinder-size')).toBe('sm');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.querySelector('.cinder-button__icon svg')).not.toBeNull();
-    expect(toggle.closest('.cinder-approval-card__note-toggle-tip')).not.toBeNull();
-    expect(container.querySelector('[role="tooltip"]')?.textContent ?? 'Add a note').toContain(
-      'Add a note',
-    );
+    const tip = toggle.closest('.cinder-approval-card__note-toggle-tip');
+    expect(tip).not.toBeNull();
+    expect(
+      tip?.querySelector('[role="tooltip"]')?.textContent ??
+        container.querySelector('.cinder-approval-card__note-toggle-tip [role="tooltip"]')
+          ?.textContent ??
+        'Add note',
+    ).toContain('Add note');
+    // The pencil is the glyph; the words are the label at the leading end of the action row.
+    expect(toggle.querySelector('svg.lucide-pencil')).not.toBeNull();
+    // The visible words are "Add note", and so is the accessible name: the label is in the name.
+    expect(squash(toggle.textContent)).toBe('Add note');
+    expect(toggle.getAttribute('aria-label')).toBe(squash(toggle.textContent));
+    const group = container.querySelector('[aria-label="Approval actions"]');
+    expect(group?.firstElementChild?.contains(toggle)).toBe(true);
   });
 
-  test('Add a note keeps space-3 before Deny and hides only its words under 30rem', () => {
+  test('the icon-only fallback of Add note takes the outline of Deny', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
     expect(css).toMatch(
-      /__note-toggle-tip \{[^}]*flex: none;[^}]*margin-inline-end: var\(--cinder-space-2\);/,
-    );
-    expect(css).toMatch(
-      /@container \(inline-size < 30rem\) \{[^@]*__note-toggle \.cinder-button__label \{[^}]*clip-path: inset\(50%\);/,
+      /\.cinder-button\.cinder-approval-card__note-toggle\[data-cinder-note-compact\] \{[^}]*border-color: var\(--cinder-button-border\);[^}]*background: var\(--cinder-button-background\);/,
     );
   });
 
-  test('Add a note sits on the text column and is a square icon face under 30rem', () => {
+  test('the note button is icon-only only when the row cannot fit its words, never by card width', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    // No container query decides it: the row measures itself and sets the attribute.
+    expect(css).not.toMatch(/@container \(inline-size < 30rem\)/);
+    const { container } = render(ApprovalCard, { props: decisionCard() });
+    // Nothing is measured without layout, so the words stay.
+    expect(container.querySelector('[data-cinder-note-compact]')).toBeNull();
+  });
+
+  test('Add note keeps space-3 before Deny and hides only its words when the row cannot fit them', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toMatch(
+      /__note-toggle-tip \{[^}]*flex: none;[^}]*margin-inline-end: auto;[^}]*padding-inline-end: var\(--cinder-space-2\);/,
+    );
+    expect(css).toMatch(
+      /__note-toggle\[data-cinder-note-compact\] \.cinder-button__label \{[^}]*clip-path: inset\(50%\);/,
+    );
+  });
+
+  test('Add note sits on the text column and is a square icon face when it must be compact', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -749,11 +913,11 @@ describe('ApprovalCard decision layout stylesheet', () => {
       /\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*margin-inline-start: calc\(-1 \* var\(--cinder-button-padding-x-sm\)\);/,
     );
     expect(css).toMatch(
-      /@container \(inline-size < 30rem\) \{ [^@]*\.cinder-button\.cinder-approval-card__note-toggle \{[^}]*inline-size: var\(--_cinder-painted-height-sm\);[^}]*block-size: var\(--_cinder-painted-height-sm\);[^}]*padding-inline: 0;/,
+      /\.cinder-button\.cinder-approval-card__note-toggle\[data-cinder-note-compact\] \{[^}]*inline-size: var\(--_cinder-painted-height-sm\);[^}]*block-size: var\(--_cinder-painted-height-sm\);[^}]*padding-inline: 0;/,
     );
   });
 
-  test('Add a note never squeezes or wraps its words on a card 30rem or wider', () => {
+  test('Add note never squeezes or wraps its words on a card 30rem or wider', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
@@ -828,7 +992,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/inline-size < 20rem\).*grid-template-columns: minmax\(0, 1fr\)/);
   });
 
-  // C#3 (chat stress sweep): the disclosures were text-sized on a phone. "Add a note" is a Button
+  // C#3 (chat stress sweep): the disclosures were text-sized on a phone. "Add note" is a Button
   // and owns its own hit area.
   test('on a coarse pointer the disclosures are 44px targets', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(

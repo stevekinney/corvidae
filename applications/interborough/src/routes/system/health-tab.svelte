@@ -127,7 +127,7 @@
       <div class="weft-health-tab__command">
         <Terminal aria-hidden="true" size={13} />
         <code>weft conformance -- &lt;worker-command&gt;</code>
-        <CopyButton value="weft conformance -- <worker-command>" iconOnly label="Copy command" />
+        <CopyButton value="weft conformance -- <worker-command>" label="Copy command" />
       </div>
       <a
         class="weft-health-tab__doc-link"

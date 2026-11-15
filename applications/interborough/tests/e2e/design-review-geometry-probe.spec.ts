@@ -326,3 +326,38 @@ test('a button that opens a menu or a dialog is a button; one that opens a list 
     expect.stringContaining('"Pick a date" is drawn 44px tall'),
   ]);
 });
+
+/**
+ * A floating button over the end of a scroller, as Jump to latest floats over a transcript: text a
+ * scroller clips away is not text the button lies on, and text it shows is.
+ */
+test('the probe finds a floating control on shown text and not on text a scroller clips away', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  const markup = (scrollerHeight: number): string => `
+    <style>
+      body { margin: 0; font: 14px/20px sans-serif; }
+      .wrap { position: relative; inline-size: 300px; }
+      .scroller { block-size: ${scrollerHeight}px; overflow: hidden; }
+      .fill { block-size: 100px; }
+      .last { margin: 0; text-align: end; }
+      .float { position: absolute; inset-inline-end: 0; inset-block-start: 84px; inline-size: 32px;
+        block-size: 32px; padding: 0; border: 1px solid #888; border-radius: 50%; background: #fff; }
+    </style>
+    <div class="wrap">
+      <div class="scroller"><div class="fill"></div><p class="last">0.0s</p></div>
+      <button class="float" aria-label="Jump to latest"></button>
+    </div>`;
+  const overText = async (scrollerHeight: number): Promise<string[]> => {
+    await page.setContent(markup(scrollerHeight));
+    const facts = await measureGeometry(page);
+    return facts.overlaps
+      .filter((overlap) => overlap.kind === 'over-text')
+      .map((overlap) => `${overlap.subject} over ${overlap.by}`);
+  };
+  // The last line is at 100 to 120, under the button's 84 to 116: shown when the scroller is 130
+  // tall, cut away at 60.
+  expect(await overText(130)).toEqual(['button.float over p.last']);
+  expect(await overText(60)).toEqual([]);
+});

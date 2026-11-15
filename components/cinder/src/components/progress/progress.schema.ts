@@ -17,7 +17,7 @@ const schema = {
       description: 'Visual variant. Default `bar`.',
     },
     size: {
-      enum: ['sm', 'md', 'lg'],
+      enum: ['xs', 'sm', 'md', 'lg'],
       description: 'Size token. Default `md`.',
     },
     label: {

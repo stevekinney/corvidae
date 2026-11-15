@@ -5,10 +5,12 @@ export {
   serializeChatAttachments,
   type SerializedChatAttachment,
 } from './chat-attachment-serialization.ts';
+export { ChatAttachmentUploadError } from './chat-attachment.ts';
 export type {
   ChatAttachment,
   ChatAttachmentErrorFormatter,
   ChatAttachmentFailure,
+  ChatAttachmentFailureKind,
   ChatAttachmentReference,
   ChatAttachmentUpload,
 } from './chat-attachment.ts';

@@ -61,7 +61,6 @@
                 value={document.address}
                 label={copy.copy(document.title)}
                 copiedLabel={copy.copied(document.title)}
-                iconOnly
               />
             </div>
           {/snippet}

@@ -6,7 +6,8 @@
    * placeholders, the rows in Cinder's grouped shape. The Needs you rows have no heading, as the
    * loaded ones do: the Spotlight is their title. Cinder's `skeleton` owns the timing: nothing
    * is drawn for the first 300 ms, so a load that is quick never flashes a placeholder, and after
-   * 10 s its own status line says the load is slow, with a ghost Cancel. The placeholders shimmer,
+   * 10 s its own status line says the load is slow, with a ghost Cancel, in the Spotlight
+   * placeholder's place, so the page does not move when it appears. The placeholders shimmer,
    * and are still under `prefers-reduced-motion`.
    */
   import { Skeleton, Stack, Statistic, StatisticGroup } from '@lostgradient/cinder';
@@ -39,8 +40,9 @@
     {#snippet focus()}
       <Stack gap="var(--cinder-space-4)" data-testid="home-loading-focus">
         <!-- One line of the Spotlight (32px type at its 1.1 leading), so nothing moves when it
-             arrives. -->
-        <Skeleton width="11rem" height="2.2rem" radius="var(--cinder-radius-md)" />
+             arrives. It is the page's first placeholder, so after 10 s the "Still loading" line
+             takes its place and nothing moves then either (COR-2329). -->
+        <Skeleton width="11rem" height="2.2rem" radius="var(--cinder-radius-md)" holdsStatusLine />
         <StatisticGroup
           label={HOME_COPY.countsLabel}
           columns={1}

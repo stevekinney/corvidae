@@ -329,7 +329,7 @@ const schema = {
     decidedInHref: {
       type: 'string',
       description:
-        'Where `decidedIn` leads, written as a link in the `decision` layout\'s receipt: "by Priya Raman in Reviews, 10:46 AM".',
+        'Where `decidedIn` leads, written as a link in the `decision` layout\'s receipt: "Approved by Priya Raman in Reviews".',
     },
     facts: {
       type: 'array',

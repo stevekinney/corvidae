@@ -1135,7 +1135,7 @@
       "exportName": "Citation",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Inline citation marker opening a paginated preview of source references.",
+      "purpose": "Inline citation marker opening one list of source references.",
       "tags": ["citation"],
       "useWhen": ["Attaching sources to an inline claim or generated answer."],
       "avoidWhen": [
@@ -4753,7 +4753,8 @@
           }
         ],
         "notes": [
-          "Invalid submission moves focus to the first invalid field and associates each field error through aria-describedby."
+          "Invalid submission moves focus to the first invalid field and associates each field error through aria-describedby.",
+          "A hosted form (`hosted`) is a `div` with `role=\"group\"`, never a form inside a form, and never submits."
         ]
       }
     },

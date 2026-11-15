@@ -1442,6 +1442,18 @@ describe('SortableList move buttons', () => {
     expect(list.container.querySelectorAll('[data-cinder-move]').length).toBe(0);
     expect(list.container.querySelectorAll('.cinder-sortable-handle').length).toBe(0);
   });
+
+  test('a row that holds a list of its own keeps focus on its own button after a move, never on a nested one', async () => {
+    const { default: Nested } = await import('./sortable-list-nested.fixture.svelte');
+    const { container } = render(Nested as any);
+    const up = requiredValue(container.querySelector<HTMLElement>('[aria-label="Move Second up"]'));
+    up.focus();
+    await fireEvent.click(up);
+    await tick();
+    // Second is now first, so it has no Move up. Its own Move down takes focus; the Move up of the
+    // list inside it, which comes first in the row, must not.
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Move Second down');
+  });
 });
 
 describe('SortableController step', () => {

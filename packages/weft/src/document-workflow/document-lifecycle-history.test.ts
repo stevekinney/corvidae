@@ -22,7 +22,13 @@ import type { DocumentWorkflowHost } from './document.ts';
 import { registerWorkflowDocuments } from './register.ts';
 
 const host: DocumentWorkflowHost = {
-  activities: { after: () => 'after', send: () => 'sent' },
+  activities: {
+    after: () => 'after',
+    send: () => 'sent',
+    list: () => ({ items: ['x', 'y'] }),
+    matrix: () => ({ rows: [{ cells: [1, 2] }, { cells: [3] }] }),
+    echo: ({ previous }) => previous,
+  },
   triggerKinds: { manual: () => undefined },
 };
 
@@ -195,16 +201,24 @@ describe('lifecycle history of a wait or sleep in a parallel branch', () => {
   const parallel = (branches: Record<string, unknown>) => ({ kind: 'parallel', branches });
 
   it('records a wait and a sleep branch, as the last step', async () => {
-    expect(
-      await lifecycleOf(
-        'parallel-last',
-        [parallel({ a: [{ kind: 'sleep', duration: 5 }], b: [wait] })],
-        {
-          signal: 'yes',
-        },
-      ),
-    ).toEqual([
+    // Each branch records its own steps as it settles them, so the order between two branches is
+    // the order they settled in; what is pinned is each branch's own sequence and the end.
+    const events = await lifecycleOf(
+      'parallel-last',
+      [parallel({ a: [{ kind: 'sleep', duration: 5 }], b: [wait] })],
+      { signal: 'yes' },
+    );
+    expect(events.at(-1)).toEqual(terminal);
+    const ofBranch = (address: string) =>
+      events.filter((event) => event.data['stepAddress'] === address);
+    expect(ofBranch('1#a')).toEqual([
       { type: 'file-workflow:step-started', data: { step: 1, stepAddress: '1#a', kind: 'sleep' } },
+      {
+        type: 'file-workflow:step-completed',
+        data: { step: 1, stepAddress: '1#a', kind: 'sleep' },
+      },
+    ]);
+    expect(ofBranch('2#b')).toEqual([
       {
         type: 'file-workflow:step-started',
         data: { step: 2, stepAddress: '2#b', kind: 'await-signal' },
@@ -214,10 +228,6 @@ describe('lifecycle history of a wait or sleep in a parallel branch', () => {
         data: { step: 2, stepAddress: '2#b', signal: 'go' },
       },
       {
-        type: 'file-workflow:step-completed',
-        data: { step: 1, stepAddress: '1#a', kind: 'sleep' },
-      },
-      {
         type: 'file-workflow:signal-received',
         data: { step: 2, stepAddress: '2#b', signal: 'go' },
       },
@@ -225,8 +235,8 @@ describe('lifecycle history of a wait or sleep in a parallel branch', () => {
         type: 'file-workflow:step-completed',
         data: { step: 2, stepAddress: '2#b', kind: 'await-signal' },
       },
-      terminal,
     ]);
+    expect(events).toHaveLength(7);
   });
 
   it('records the same events for a branch step with another step after it', async () => {
@@ -300,5 +310,154 @@ describe('lifecycle history of a wait or sleep in a parallel branch', () => {
         data: { step: 1, stepAddress: '1#a', kind: 'await-signal' },
       },
     ]);
+  });
+});
+
+/**
+ * COR-2418: a step inside a nested coordinator (a `map` in a `parallel` branch, a `parallel` in a
+ * `map`, a `map` in a `map`) records the lifecycle a top-level step does, at its own address. The
+ * completions of those steps were never recorded: only their starts were.
+ */
+describe('lifecycle history of steps nested in a coordinator', () => {
+  const echo = { kind: 'activity', handler: 'echo' };
+  const list = { kind: 'activity', handler: 'list' };
+  const matrix = { kind: 'activity', handler: 'matrix' };
+
+  /** What a top-level activity step records, at `address`. */
+  const activityEvents = (step: number, address: string, handler: string) => {
+    const identity = address === String(step) ? { step } : { step, stepAddress: address };
+    return [
+      { type: 'file-workflow:step-started', data: { ...identity, kind: 'activity' } },
+      { type: 'file-workflow:activity-started', data: { ...identity, handler } },
+      { type: 'file-workflow:activity-completed', data: { ...identity, handler } },
+      { type: 'file-workflow:step-completed', data: { ...identity, kind: 'activity' } },
+    ];
+  };
+
+  type Row = {
+    name: string;
+    steps: readonly unknown[];
+    /** Each nested `echo` step: its document step and its address. */
+    nested: readonly (readonly [number, string])[];
+  };
+  const rows: readonly Row[] = [
+    {
+      name: 'a map in a parallel branch',
+      steps: [
+        {
+          kind: 'parallel',
+          branches: { a: [list, { kind: 'map', over: 'items', steps: [echo] }] },
+        },
+      ],
+      nested: [
+        [3, '3#a.0'],
+        [3, '3#a.1'],
+      ],
+    },
+    {
+      name: 'a parallel in a map',
+      steps: [
+        list,
+        {
+          kind: 'map',
+          over: 'items',
+          steps: [{ kind: 'parallel', branches: { p: [echo], q: [echo] } }],
+        },
+      ],
+      nested: [
+        [3, '3#0.p'],
+        [4, '4#0.q'],
+        [3, '3#1.p'],
+        [4, '4#1.q'],
+      ],
+    },
+    {
+      name: 'a map in a map',
+      steps: [
+        matrix,
+        { kind: 'map', over: 'rows', steps: [{ kind: 'map', over: 'cells', steps: [echo] }] },
+      ],
+      nested: [
+        [3, '3#0.0'],
+        [3, '3#0.1'],
+        [3, '3#1.0'],
+      ],
+    },
+  ];
+
+  const byAddress = <Event extends { data: Record<string, unknown> }>(
+    events: Event[],
+    address: string,
+  ): Event[] => events.filter((event) => event.data['stepAddress'] === address);
+
+  for (const row of rows) {
+    it(`records every nested step of ${row.name} as a top-level step, on the terminal and the checkpoint path alike`, async () => {
+      const terminalPath = await lifecycleOf(
+        `nested-last-${row.name.replaceAll(' ', '-')}`,
+        row.steps,
+      );
+      const checkpointPath = await lifecycleOf(`nested-more-${row.name.replaceAll(' ', '-')}`, [
+        ...row.steps,
+        after,
+      ]);
+      for (const [step, address] of row.nested) {
+        const expected = activityEvents(step, address, 'echo');
+        expect(byAddress(terminalPath, address)).toEqual(expected);
+        // AC2: the checkpoint path records exactly what the terminal path does.
+        expect(byAddress(checkpointPath, address)).toEqual(expected);
+      }
+    });
+  }
+
+  it('records a sleep nested in a map in a branch as a top-level sleep, with a step after it (matrix row H7)', async () => {
+    const events = await lifecycleOf('nested-sleep', [
+      {
+        kind: 'parallel',
+        branches: {
+          a: [list, { kind: 'map', over: 'items', steps: [{ kind: 'sleep', duration: 1 }] }],
+        },
+      },
+      after,
+    ]);
+    const sleeps = events.filter((event) => String(event.data['stepAddress']).includes('.'));
+    for (const address of ['3#a.0', '3#a.1']) {
+      expect(byAddress(sleeps, address).map((event) => event.type)).toEqual([
+        'file-workflow:step-started',
+        'file-workflow:step-completed',
+      ]);
+      expect(byAddress(sleeps, address).map((event) => event.data['kind'])).toEqual([
+        'sleep',
+        'sleep',
+      ]);
+    }
+  });
+
+  it('still loads the history of a run persisted before nested steps recorded their completions', async () => {
+    // AC3: a fixture dumped on `main`, where the steps of a map in a parallel branch had a start
+    // and no completion. The events are read back as they were written, and nothing is amended.
+    const entries = (await Bun.file(
+      new URL('./__fixtures__/legacy-parallel/legacy-nested-history.json', import.meta.url),
+    ).json()) as [string, string][];
+    const storage = new MemoryStorage();
+    for (const [key, encoded] of entries) await storage.put(key, Buffer.from(encoded, 'base64'));
+    await using engine = new Engine({ storage });
+    const events = await engine.getEvents('legacy-nested-history-run');
+    const fileEvents = events
+      .filter((event) => event.type.startsWith('file-workflow:'))
+      .map(({ type, data }) => ({ type, data }));
+    const nested = ['4#a.0', '4#a.1'].flatMap((address) => byAddress(fileEvents, address));
+    expect(nested.map((event) => event.type)).toEqual([
+      'file-workflow:step-started',
+      'file-workflow:activity-started',
+      'file-workflow:step-started',
+      'file-workflow:activity-started',
+    ]);
+    expect(fileEvents.at(-1)).toEqual({
+      type: 'file-workflow:run-terminal',
+      data: { status: 'completed' },
+    });
+    expect(fileEvents).toHaveLength(17);
+    const state = await engine.get('legacy-nested-history-run');
+    expect(state?.status).toBe('completed');
   });
 });

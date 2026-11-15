@@ -7,7 +7,15 @@
  */
 
 import type { Message, ToolCallPair } from '../conversation-model.ts';
-import { pairToolCallsWithResults } from '../utilities/index.ts';
+import {
+  CINDER_ARTIFACT_METADATA_KEY,
+  CINDER_NOTES_METADATA_KEY,
+  CINDER_REASONING_METADATA_KEY,
+  CINDER_STEPS_METADATA_KEY,
+  CINDER_SUGGESTIONS_METADATA_KEY,
+  pairToolCallsWithResults,
+} from '../utilities/index.ts';
+import { classifyAssistantText } from '../utilities/message-narration.ts';
 
 // ==========================================================================
 // Types
@@ -37,12 +45,33 @@ export type TypingItem = {
   type: 'typing';
 };
 
+/** One thing in a settled turn's step group: a step (a tool call) or a line the agent said between steps. */
+export type ToolCallRunEntry =
+  { type: 'step'; message: Message } | { type: 'narration'; message: Message };
+
 export type ToolCallRunItem = {
   type: 'tool-call-group';
+  /** The tool-call messages of the group, in order. Narration is never in this list. */
   messages: Message[];
+  /**
+   * Set only when a settled turn folded into this one group: its steps and its narration in the
+   * order they happened. The answer is not here; it follows as a row of its own.
+   */
+  entries?: ToolCallRunEntry[];
 };
 
-export type ChatRenderRow = MessageWithDateItem | UnreadDividerItem | TypingItem | ToolCallRunItem;
+/**
+ * The notice, the line under it and the notes of a turn that said only what it was doing and then
+ * stopped or failed: its message draws the text, the step row follows, and this row ends the turn,
+ * so the step row reads as part of it and not as the start of a new one.
+ */
+export type TurnOutcomeItem = {
+  type: 'turn-outcome';
+  message: Message;
+};
+
+export type ChatRenderRow =
+  MessageWithDateItem | UnreadDividerItem | TypingItem | ToolCallRunItem | TurnOutcomeItem;
 
 // Re-export ToolCallPair type for convenience.
 export type { ToolCallPair } from '../conversation-model.ts';
@@ -72,11 +101,29 @@ export interface UseChatMessageGroupsOptions {
   /** Tool calls whose question was answered here; they keep their own row so the answer stays readable. */
   getAnsweredToolCallIds?: () => Iterable<string>;
   /** Live render options supplied by the transcript owner. */
-  getRenderOptions?: () => {
-    firstUnreadId?: string | null;
-    showTypingIndicator?: boolean;
-    ungroupedToolCallIds?: ReadonlySet<string>;
-  };
+  getRenderOptions?: () => ChatRenderRowOptions;
+}
+
+/** What the row builder reads besides the messages. */
+export interface ChatRenderRowOptions {
+  firstUnreadId?: string | null;
+  showTypingIndicator?: boolean;
+  ungroupedToolCallIds?: ReadonlySet<string>;
+  /**
+   * The messages of turns that are not settled: one streaming, reconnecting or still marked
+   * streaming. Such a turn is never folded; its narration is drawn muted where it falls.
+   */
+  unsettledMessageIds?: ReadonlySet<string>;
+  /** Tool calls still waiting on a person (an approval or a question). A turn holding one never folds. */
+  pendingToolCallIds?: ReadonlySet<string>;
+  /** Whether a narration message may fold; false when its message draws more than its text. */
+  canFoldNarration?: (message: Message) => boolean;
+  /**
+   * Whether an assistant message's outcome (a stopped or failed turn's notice) moves after the
+   * step row that follows the message. It applies only to a message that a run of tool calls
+   * follows directly, which is narration: the turn has no answer. Absent, no outcome moves.
+   */
+  deferOutcome?: (message: Message) => boolean;
 }
 
 /** Return type for the message groups helper */
@@ -161,25 +208,178 @@ export function buildMessagesWithDateSeparators(
   return result;
 }
 
+/** A settled turn that folds: the item range it covers and what the one group holds. */
+type TurnFold = {
+  lastIndex: number;
+  firstMessageId: string;
+  lastMessageId: string;
+  group: ToolCallRunItem;
+};
+
+/** The metadata a narration message may not carry: each is drawn by its message, which a fold drops. */
+const narrationOverlayKeys = (): readonly string[] => [
+  CINDER_REASONING_METADATA_KEY,
+  CINDER_NOTES_METADATA_KEY,
+  CINDER_STEPS_METADATA_KEY,
+  CINDER_SUGGESTIONS_METADATA_KEY,
+  CINDER_ARTIFACT_METADATA_KEY,
+];
+
+/**
+ * Whether a message's content holds a block that is not text: an image, or a native `thinking` or
+ * `redacted_thinking` block, which the message draws as its reasoning disclosure. A fold draws a
+ * narration message as its text alone, so any such block would be lost.
+ */
+function messageHasNonTextContent(message: Message): boolean {
+  return (
+    Array.isArray(message.content) &&
+    message.content.some(
+      (segment) =>
+        typeof segment !== 'object' ||
+        segment === null ||
+        !('type' in segment) ||
+        segment.type !== 'text',
+    )
+  );
+}
+
+/**
+ * Whether a narration message is only its text, so folding it into the step group drops nothing: no
+ * image, native or overlaid reasoning, structured entries, notes, steps, suggestions or artifact,
+ * and no failed send.
+ */
+function isPlainNarration(message: Message): boolean {
+  return (
+    message.role === 'assistant' &&
+    !message.hidden &&
+    !message.toolCall &&
+    message.metadata?.['_deliveryStatus'] !== 'failed' &&
+    !messageHasNonTextContent(message) &&
+    !messageHasStructuredEntries(message) &&
+    narrationOverlayKeys().every((key) => !Object.hasOwn(message.metadata ?? {}, key))
+  );
+}
+
+/**
+ * Finds the settled turns that fold into one step group, keyed by the item index each starts at.
+ *
+ * A turn is the run of items between two person's messages. It folds when all of these hold:
+ *
+ * - it is settled: none of its messages is in `unsettledMessageIds`;
+ * - it has an answer, the assistant text after its last tool message, and at least one narration;
+ * - from its first step or narration to its last step, every item is a step that groups or a plain
+ *   narration message. A date separator, an unread divider, a hidden or failed message, an unpaired
+ *   tool result, a call with a card or a question of its own, or a call still waiting on a person
+ *   ends the fold: that turn keeps today's rows, with its narration drawn in place.
+ *
+ * The turn's tail (the answer, and anything after it) is not part of the fold: it stays its own
+ * rows, so the answer's key never changes when the turn settles.
+ */
+function planTurnFolds(
+  items: readonly MessageWithDateItem[],
+  options: ChatRenderRowOptions | undefined,
+): Map<number, TurnFold> {
+  const folds = new Map<number, TurnFold>();
+  const messages = items.flatMap((item) => (item.type === 'message' ? [item.message] : []));
+  const roles = classifyAssistantText(messages);
+  const firstUnreadId = options?.firstUnreadId ?? null;
+
+  const planTurn = (from: number, to: number): void => {
+    const turnItems = items.slice(from, to);
+    if (
+      turnItems.some(
+        (item) => item.type === 'message' && options?.unsettledMessageIds?.has(item.message.id),
+      )
+    ) {
+      return;
+    }
+    const isStep = (item: MessageWithDateItem): boolean =>
+      item.type === 'message' && canGroupToolCall(item.message, options?.ungroupedToolCallIds);
+    const isNarration = (item: MessageWithDateItem): boolean =>
+      item.type === 'message' &&
+      roles.get(item.message.id) === 'narration' &&
+      isPlainNarration(item.message) &&
+      (options?.canFoldNarration?.(item.message) ?? true);
+    const firstIndex = turnItems.findIndex((item) => isStep(item) || isNarration(item));
+    const lastIndex = turnItems.findLastIndex(isStep);
+    if (firstIndex < 0 || lastIndex < firstIndex) return;
+    const span = turnItems.slice(firstIndex, lastIndex + 1);
+    const hasAnswer = turnItems
+      .slice(lastIndex + 1)
+      .some((item) => item.type === 'message' && roles.get(item.message.id) === 'answer');
+    if (!hasAnswer || !span.some(isNarration)) return;
+    const entries: ToolCallRunEntry[] = [];
+    for (const [position, item] of span.entries()) {
+      if (item.type !== 'message') return;
+      const step = isStep(item);
+      if (!step && !isNarration(item)) return;
+      if (position > 0 && item.message.id === firstUnreadId) return;
+      const callId = item.message.toolCall?.id;
+      if (callId !== undefined && options?.pendingToolCallIds?.has(callId)) return;
+      entries.push({ type: step ? 'step' : 'narration', message: item.message });
+    }
+    const firstEntry = entries[0];
+    const lastEntry = entries.at(-1);
+    if (firstEntry === undefined || lastEntry === undefined) return;
+    folds.set(from + firstIndex, {
+      lastIndex: from + lastIndex,
+      firstMessageId: firstEntry.message.id,
+      lastMessageId: lastEntry.message.id,
+      group: {
+        type: 'tool-call-group',
+        messages: entries.flatMap((entry) => (entry.type === 'step' ? [entry.message] : [])),
+        entries,
+      },
+    });
+  };
+
+  let turnStart = 0;
+  items.forEach((item, index) => {
+    if (item.type === 'message' && item.message.role === 'user') {
+      planTurn(turnStart, index);
+      turnStart = index + 1;
+    }
+  });
+  planTurn(turnStart, items.length);
+  return folds;
+}
+
 export function buildChatRenderRows(
   items: readonly MessageWithDateItem[],
-  options?: {
-    firstUnreadId?: string | null;
-    showTypingIndicator?: boolean;
-    ungroupedToolCallIds?: ReadonlySet<string>;
-  },
+  options?: ChatRenderRowOptions,
 ): ChatRenderRow[] {
   const rows: ChatRenderRow[] = [];
   const firstUnreadId = options?.firstUnreadId ?? null;
   let previousMessageId: string | null = null;
   let toolCallRun: Message[] = [];
+  const folds = planTurnFolds(items, options);
 
+  // A message whose outcome waits for the step row that follows it.
+  let deferredOutcome: Message | undefined;
   const flushToolCallRun = (): void => {
-    if (toolCallRun.length > 0) rows.push({ type: 'tool-call-group', messages: toolCallRun });
+    if (toolCallRun.length > 0) {
+      rows.push({ type: 'tool-call-group', messages: toolCallRun });
+      if (deferredOutcome !== undefined) {
+        rows.push({ type: 'turn-outcome', message: deferredOutcome });
+        deferredOutcome = undefined;
+      }
+    }
     toolCallRun = [];
   };
 
-  for (const item of items) {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index]!;
+    const fold = folds.get(index);
+    if (fold) {
+      flushToolCallRun();
+      if (fold.firstMessageId === firstUnreadId) {
+        rows.push({ type: 'unread-divider', afterMessageId: previousMessageId });
+      }
+      rows.push(fold.group);
+      previousMessageId = fold.lastMessageId;
+      index = fold.lastIndex;
+      continue;
+    }
     if (item.type === 'message') {
       if (item.message.id === firstUnreadId) {
         flushToolCallRun();
@@ -188,6 +388,18 @@ export function buildChatRenderRows(
       previousMessageId = item.message.id;
       if (canGroupToolCall(item.message, options?.ungroupedToolCallIds)) {
         toolCallRun.push(item.message);
+        continue;
+      }
+      const next = items[index + 1];
+      if (
+        item.message.role === 'assistant' &&
+        next?.type === 'message' &&
+        canGroupToolCall(next.message, options?.ungroupedToolCallIds) &&
+        options?.deferOutcome?.(item.message)
+      ) {
+        flushToolCallRun();
+        rows.push(item);
+        deferredOutcome = item.message;
         continue;
       }
     }
@@ -231,6 +443,8 @@ export function chatRenderRowKey(row: ChatRenderRow): string {
       return 'typing';
     case 'tool-call-group':
       return `tool-group-${row.messages[0]?.id ?? 'empty'}`;
+    case 'turn-outcome':
+      return `outcome-${row.message.id}`;
     default:
       throw new Error(`Unknown chat render row type: ${String(row)}`);
   }
@@ -244,7 +458,8 @@ export function findRenderRowIndexByMessageId(
     row.type === 'message'
       ? row.message.id === messageId
       : row.type === 'tool-call-group'
-        ? row.messages.some((message) => message.id === messageId)
+        ? row.messages.some((message) => message.id === messageId) ||
+          (row.entries?.some((entry) => entry.message.id === messageId) ?? false)
         : false,
   );
 }
@@ -326,6 +541,7 @@ export function useChatMessageGroups(
   const renderRows = $derived.by(() => {
     const renderOptions = getRenderOptions?.();
     return buildChatRenderRows(messagesWithDates, {
+      pendingToolCallIds: actionRequiredToolCallIds,
       ...renderOptions,
       ungroupedToolCallIds: new Set([
         ...(renderOptions?.ungroupedToolCallIds ?? []),

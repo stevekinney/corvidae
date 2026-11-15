@@ -42,9 +42,11 @@ test('a run is one header with one status and no tabs, and its sections are on t
   await expect(page.locator('[data-run-header] [data-status-word]')).toHaveCount(1);
   await expect(page.locator('[data-status-word]')).toHaveCount(1);
   await expect(page.getByRole('tab')).toHaveCount(0);
-  for (const name of ['Input and output', 'Activity', 'Change or ask this run', 'Details']) {
+  for (const name of ['Input and output', 'Change or ask this run', 'Details']) {
     await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
   }
+  // Inside How it ran, Activity is level 3 beside Raw payloads (COR-2329).
+  await expect(page.getByRole('heading', { level: 3, name: 'Activity' })).toBeVisible();
   await checkA11y('a run’s page');
 });
 

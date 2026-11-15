@@ -95,7 +95,9 @@ test('draws an upload’s progress on its tile as the Bureau takes each chunk (C
   const tile = page.locator('.chat-attachment-preview');
   const bar = tile.getByRole('progressbar');
   await expect(bar).toHaveAttribute('aria-valuenow', '33');
-  await expect(tile.getByText('33%')).toBeVisible();
+  // The chip shows its progress as a ring in the glyph's place, with no percentage in words, so the
+  // ring's value is what carries the fraction the Bureau acknowledged.
+  await expect(tile.getByText('33%')).toHaveCount(0);
 
   release?.();
   await expect(tile).toHaveAttribute('data-state', 'ready');

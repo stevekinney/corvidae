@@ -21,11 +21,6 @@
       "type": "string",
       "description": "Why the actions are off, drawn under the row and read as the description of every inert\ncontrol: \"Reconnecting… Send a message and Cancel run are off until the connection is back.\"\nIt is announced politely when it appears. Ignored while the bar is not `off`."
     },
-    "equalActions": {
-      "type": "boolean",
-      "description": "Gives the actions equal widths, so a pair such as Deny and Approve share the row evenly. On a\nnarrow bar the actions take their own row under the content and share it; with no content they\nfill the bar.",
-      "default": false
-    },
     "class": {
       "type": "string",
       "description": "Custom class merged with `.cinder-docked-action-bar`."

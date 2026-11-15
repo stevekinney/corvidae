@@ -83,6 +83,27 @@ describe('Progress (ring)', () => {
   });
 });
 
+describe('Progress extra-small size', () => {
+  test('the ring is the size of a 16px glyph and the bar a hairline', async () => {
+    const { container } = render(Progress, {
+      value: 30,
+      variant: 'ring',
+      size: 'xs',
+      ariaLabel: 'Uploading',
+    });
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute('data-cinder-size')).toBe(
+      'xs',
+    );
+    const css = await Bun.file(new URL('./progress.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-progress--ring\[data-cinder-size='xs'\] \.cinder-progress__svg\s*\{\s*width: 1rem;\s*height: 1rem;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-progress--bar\[data-cinder-size='xs'\] \.cinder-progress__track\s*\{\s*height: 0\.125rem;/,
+    );
+  });
+});
+
 describe('Progress accessible name', () => {
   test('ariaLabel is forwarded as aria-label on the bar progressbar element', () => {
     const { container } = render(Progress, { value: 50, ariaLabel: 'Upload progress' });

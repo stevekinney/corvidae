@@ -118,12 +118,22 @@ export type SkeletonProps = {
    */
   cancelLabel?: string;
   /**
+   * For a single block inside a page's own placeholder (the `children` of a Skeleton with
+   * `stillLoadingAfter`): the group's "Still loading" line takes this block's place when it
+   * appears, in a box as tall as the block, instead of being drawn above the page. Mark the first
+   * placeholder of the page, so nothing moves when the line appears or when the data arrives.
+   * Without a group that shows the line, the block is drawn as usual.
+   * @default false
+   */
+  holdsStatusLine?: boolean;
+  /**
    * The page's own placeholder, drawn instead of the bars, for a loading state whose shape is a
    * whole page (real labels and headings with placeholder values and rows). The group still owns
    * the timing: nothing is drawn until `delay` has passed, and the "Still loading" status leads
-   * the content, above it, after `stillLoadingAfter`. The group is marked busy while it shows. Draw each
-   * placeholder block with a `Skeleton` of its own; the content is not hidden from assistive
-   * technology, so text in it is read as written.
+   * the content, above it, after `stillLoadingAfter`, or takes the place of the block marked
+   * `holdsStatusLine`. The group is marked busy while it shows. Draw each placeholder block with a
+   * `Skeleton` of its own; the content is not hidden from assistive technology, so text in it is
+   * read as written.
    */
   children?: Snippet;
 };

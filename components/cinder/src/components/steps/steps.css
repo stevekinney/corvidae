@@ -482,12 +482,12 @@
       flex-wrap: wrap;
     }
 
-    /* Each action takes the full width under the text, one per line: a column that stretches its
-       items, so no rule has to reach into the Button from a variant ancestor. */
+    /* The actions take a line of their own under the text, as a wrapping row from the text's
+       leading edge, each button at its own width (COR-2329: buttons the width of the row read as
+       page-wide pills). */
     .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__action {
       flex-basis: 100%;
-      flex-direction: column;
-      align-items: stretch;
+      flex-flow: row wrap;
       justify-content: flex-start;
       padding-inline-start: calc(var(--_marker-size) + var(--cinder-space-3));
     }

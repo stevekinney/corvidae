@@ -87,7 +87,7 @@ type Options = {
   create?: BureauHandler;
   /** How the Bureau answers an update, which says it changed the goal unless said. */
   update?: BureauHandler;
-  hostProviders?: readonly { name: string; hasKey: boolean }[];
+  hostProviders?: readonly { name: string; hasKey: boolean; connected?: boolean }[];
 };
 
 function open(path: string, options: Options = {}) {
@@ -179,7 +179,7 @@ describe('the Edit goal page', () => {
 
   test('gates nothing on a provider, because saving starts no attempt', async () => {
     const view = open('/goals/goal-summarize/edit', {
-      hostProviders: [{ name: 'anthropic', hasKey: false }],
+      hostProviders: [{ name: 'anthropic', hasKey: false, connected: false }],
     });
     const page = await filledPage(view, copy.edit.title, 'tool-runner');
     expect(page.queryByTestId('goal-needs-provider')).toBeNull();
@@ -350,7 +350,7 @@ describe('the Edit goal page', () => {
 describe('Start again', () => {
   test('opens New goal with the goal’s agent, check and attempt limit, and its name as the prompt', async () => {
     const view = open('/goals/new?from=goal-summarize', {
-      hostProviders: [{ name: 'anthropic', hasKey: true }],
+      hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }],
     });
     const page = await filledPage(view, copy.title, 'tool-runner');
 
@@ -384,9 +384,25 @@ describe('Start again', () => {
   });
 });
 
+describe('a model agent chosen with only a keyless provider (COR-2414)', () => {
+  test('is gated by nothing: a keyless provider is connected with no key saved', async () => {
+    const view = open('/goals/new', {
+      hostProviders: [{ name: 'ollama', hasKey: false, connected: true }],
+    });
+    const page = await filledPage(view, copy.title, 'assistant');
+
+    await chooseAgent(page, 'tool-runner');
+
+    expect(page.queryByTestId('goal-needs-provider')).toBeNull();
+    expect(page.getByRole('button', { name: copy.createAction })).not.toBeDisabled();
+  });
+});
+
 describe('a model agent chosen with no provider connected', () => {
   test('says so above the first field, turns Create goal off, and goes away when Assistant is chosen', async () => {
-    const view = open('/goals/new', { hostProviders: [{ name: 'anthropic', hasKey: false }] });
+    const view = open('/goals/new', {
+      hostProviders: [{ name: 'anthropic', hasKey: false, connected: false }],
+    });
     const page = await filledPage(view, copy.title, 'assistant');
     // Assistant is scripted, so the form opens with nothing gated.
     expect(page.queryByTestId('goal-needs-provider')).toBeNull();
@@ -421,7 +437,9 @@ describe('a model agent chosen with no provider connected', () => {
   });
 
   test('is not a gate once a provider holds a key: the check is what stops Create goal, and it stays live', async () => {
-    const view = open('/goals/new', { hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    const view = open('/goals/new', {
+      hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }],
+    });
     const page = await filledPage(view, copy.title, 'assistant');
     await chooseAgent(page, 'tool-runner');
     await fireEvent.input(page.getByLabelText(copy.promptLabel), {
@@ -454,7 +472,7 @@ describe('a goal being created', () => {
     const answer = deferred<unknown>();
     const view = open('/goals/new', {
       create: () => answer.promise,
-      hostProviders: [{ name: 'anthropic', hasKey: true }],
+      hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }],
     });
     const page = await filledPage(view, copy.title, 'assistant');
     await fill(page);

@@ -328,7 +328,7 @@ export async function commitActivityReconciliationTransitionWithFencedWrite(
   );
 }
 
-function buildActivityReconciliationTransitionSideEffects(
+export function buildActivityReconciliationTransitionSideEffects(
   reference: ActivityReconciliationReference,
   expectedRecord: ActivityReconciliationRecord,
   nextRecord: ActivityReconciliationRecord,

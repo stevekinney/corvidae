@@ -14,7 +14,7 @@ import { ALLOWED_MODELS_COPY } from '../../src/app/copy/models.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
-import { withSampleCatalog } from './sample-catalog.ts';
+import { withKeylessProvider, withSampleCatalog } from './sample-catalog.ts';
 import { bureauCall } from './task-support.ts';
 
 const SOURCE = 'settings-allowed-models.spec.ts';
@@ -170,6 +170,22 @@ async function withDefaultEffort(request: APIRequestContext, original: unknown) 
   });
   return (await policyOf(request)) as { policyRevision: number };
 }
+
+test.describe('Settings › Allowed models, a keyless provider', () => {
+  test('lists the models of a provider that needs no key beside the keyed provider’s, each allowed', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withKeylessProvider(page);
+    await open(page, E2E_SHOWCASE_URL);
+    const local = page.locator('[data-model="ollama/llama-3-2"]');
+    await expect(local).toBeVisible();
+    await expect(local.getByRole('checkbox')).toBeChecked();
+    await expect(page.getByTestId('allowed-models-empty')).toHaveCount(0);
+    await checkA11y('allowed models, a keyless provider, at 1280px');
+    await captureAtEveryWidth(page, 'keyless-provider');
+  });
+});
 
 test.describe('Settings › Allowed models, provider connected', () => {
   test('lists the connected provider’s models, each allowed, and saves an edit with one Save', async ({

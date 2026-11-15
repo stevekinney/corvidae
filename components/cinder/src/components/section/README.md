@@ -4,6 +4,8 @@
 
 `Section` groups content under a heading with no box. It takes a heading, an optional description, an optional action aligned with the heading, and the content. Space, not a surface or a border, separates one section from the next. The content is a block, so its children never shrink inside a flex or scroll parent.
 
+The title steps down with its `level`, so a section inside a section reads as part of it: level 2 (the default) is the large size, level 3 is the base size, and level 4 and deeper are the small size in muted text. Pick the level from the page outline, never to make a title smaller: a level is never skipped.
+
 ## Usage
 
 ```svelte

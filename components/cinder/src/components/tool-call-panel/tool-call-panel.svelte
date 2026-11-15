@@ -28,7 +28,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Ban from '@lucide/svelte/icons/ban';
-  import Copy from '@lucide/svelte/icons/copy';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
   import X from '@lucide/svelte/icons/x';
@@ -84,7 +83,7 @@
   const noteId = `${baseId}-note`;
 
   let note = $state('');
-  // The note waits behind "Add a note"; once opened it stays open, so a typed note never hides.
+  // The note waits behind "Add note"; once opened it stays open, so a typed note never hides.
   let showNote = $state(false);
   let wasOpen = untrack(() => open);
 
@@ -110,7 +109,7 @@
     copyInput: labels?.copyInput ?? 'Copy input',
     copyResult: labels?.copyResult ?? `Copy ${resultLabel.toLowerCase()}`,
     copyError: labels?.copyError ?? 'Copy error',
-    addNote: labels?.addNote ?? 'Add a note',
+    addNote: labels?.addNote ?? 'Add note',
     note: labels?.note ?? 'Note',
     noteDescription:
       labels?.noteDescription ??
@@ -230,7 +229,6 @@
 
 {#snippet copyButton(value: string, label: string)}
   <CopyButton {value} {label} copiedLabel="Copied" class="cinder-tool-call-panel__copy">
-    <Copy class="cinder-icon-sm" aria-hidden="true" />
     {label}
   </CopyButton>
 {/snippet}

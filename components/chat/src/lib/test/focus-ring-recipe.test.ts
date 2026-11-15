@@ -85,6 +85,7 @@ const styles = {
   jumpControls: loadSvelteStyle('../components/chat/container/chat-jump-controls.svelte'),
   lightbox: loadSvelteStyle('../components/chat/message/image-lightbox.svelte'),
   message: loadSvelteStyle('../components/chat/message/chat-message.svelte'),
+  attachmentPreview: loadSvelteStyle('../components/chat/input/chat-attachment-preview.svelte'),
   messageAttachments: loadSvelteStyle('../components/chat/message/message-attachments.svelte'),
   markdownTable: loadSvelteStyle('../components/chat/message/markdown-table-scroller.svelte'),
   searchBar: loadSvelteStyle('../components/chat/container/chat-search-bar.svelte'),
@@ -99,6 +100,11 @@ describe('Chat focus-ring recipes', () => {
       'message attachment button',
       styles.messageAttachments,
       '.message-attachment-button:focus-visible',
+    ],
+    [
+      'attachment chip main area',
+      styles.attachmentPreview,
+      'button.chat-attachment-preview-main:focus-visible',
     ],
     [
       'markdown table scroller',
@@ -208,13 +214,9 @@ describe('Chat focus-ring recipes', () => {
     expect(styles.input).not.toContain('.chat-input[data-ready]');
   });
 
-  test('attachment Remove, Retry and "more" are Cinder Buttons whose ring wraps the painted face', () => {
+  test('attachment Remove and the failure line’s action are Cinder Buttons whose ring wraps the painted face', () => {
     const source = load('../components/chat/input/chat-input.svelte');
-    for (const name of [
-      'chat-input-attachment-remove',
-      'chat-input-attachment-retry',
-      'chat-input-attachment-more',
-    ]) {
+    for (const name of ['chat-input-attachment-remove', 'chat-input-attachment-reason-action']) {
       expect(source).toMatch(new RegExp(`<Button[^>]*?class="${name}"`, 'u'));
       // No Chat rule repaints or suppresses the ring: Cinder's own recipe is the only one.
       expect(styles.input).not.toMatch(new RegExp(`\\.${name}[^{]*:focus`, 'u'));

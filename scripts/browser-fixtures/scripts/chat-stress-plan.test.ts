@@ -76,7 +76,7 @@ describe('question witnesses', () => {
       {
         action: 'expect-text',
         text: 'Which ledger should orders_reconciliation_ledger_export_with_a_very_long_generated_identifier_v2 export?',
-        scope: '[data-chat-question-dock] fieldset',
+        scope: '[data-chat-question-dock]',
         exact: true,
       },
       {
@@ -97,7 +97,25 @@ describe('question witnesses', () => {
         name: 'Canary',
         scope: '[data-chat-question-dock] fieldset',
       },
+      { action: 'expect-question-dock', choices: 7 },
     ]);
+  });
+
+  it('puts four questions to the dock in case 81: the first answered, the second open, then the ends', () => {
+    const four = caseNumbered(81);
+    expect(four.params).toEqual({ shape: 'four', placement: 'docked' });
+    expect(four.steps).toEqual([
+      { action: 'expect-text', text: 'Question 1 of 4' },
+      { action: 'click', role: 'radio', name: 'Staging' },
+      { action: 'click', role: 'button', name: 'Answer' },
+      { action: 'expect-text', text: 'Question 2 of 4' },
+      { action: 'expect-question-steps', position: 2, total: 4 },
+      { action: 'expect-question-dock', choices: 3 },
+    ]);
+    expect(four.variants.map((variant) => variant.name)).toEqual(['first-answered', 'last']);
+    for (const variant of four.variants) {
+      expect(variant.steps.at(-1)).toMatchObject({ action: 'expect-question-steps', total: 4 });
+    }
   });
 });
 
@@ -145,12 +163,12 @@ describe('image names', () => {
 });
 
 describe('expectedCounts', () => {
-  it('hold 320 primaries and 115 fixed variants before any focus image', () => {
+  it('hold 340 primaries and 159 fixed variants before any focus image', () => {
     const counts = expectedCounts(cases, STRESS_PROFILES, {});
-    expect(counts.primary).toBe(320);
-    expect(counts.fixedVariants).toBe(115);
+    expect(counts.primary).toBe(340);
+    expect(counts.fixedVariants).toBe(159);
     expect(counts.focus).toBe(0);
-    expect(counts.total).toBe(435);
+    expect(counts.total).toBe(499);
   });
 
   it('add the focus stops each profile found', () => {
@@ -161,7 +179,7 @@ describe('expectedCounts', () => {
       '320-dark': 13,
     });
     expect(counts.focus).toBe(54);
-    expect(counts.total).toBe(489);
+    expect(counts.total).toBe(553);
   });
 });
 
@@ -506,14 +524,14 @@ describe('countProblems', () => {
   it('names a missing primary image', () => {
     const records = completeRun().filter((entry) => entry.file !== '320-dark-24.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 320 primary images, found 319',
+      'expected 340 primary images, found 339',
     ]);
   });
 
   it('names a missing fixed variant', () => {
     const records = completeRun().filter((entry) => entry.file !== '390-light-33-expanded.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 115 fixed variant images, found 114',
+      'expected 159 fixed variant images, found 158',
     ]);
   });
 
@@ -609,8 +627,8 @@ describe('renderGallery', () => {
 
 describe('selectCases', () => {
   it('keeps every case when nothing is selected', () => {
-    expect(selectCases(cases, undefined)).toHaveLength(80);
-    expect(selectCases(cases, ' ')).toHaveLength(80);
+    expect(selectCases(cases, undefined)).toHaveLength(85);
+    expect(selectCases(cases, ' ')).toHaveLength(85);
   });
 
   it('reads numbers and ranges, in case order', () => {
@@ -619,7 +637,7 @@ describe('selectCases', () => {
 
   it('refuses a malformed part and a number that is not a case', () => {
     expect(() => selectCases(cases, '9,x')).toThrow("'x' is not a case number");
-    expect(() => selectCases(cases, '81')).toThrow('Unknown case numbers: 81.');
+    expect(() => selectCases(cases, '86')).toThrow('Unknown case numbers: 86.');
   });
 
   it('marks a summary that did not draw every case as a partial run in its gallery', () => {

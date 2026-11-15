@@ -26,7 +26,7 @@ Visual indicator of task completion as a filled bar or percentage readout. Use `
 | `class` | `string` | no | — | Additional class names merged with `.cinder-progress`. |
 | `label` | `string` | no | — | Human-readable status, exposed as `aria-valuetext`. NOT the accessible name — supply `ariaLabel` or `ariaLabelledby` for that. |
 | `max` | `number` | no | — | Maximum value. Defaults to 100. |
-| `size` | `"sm"` \| `"md"` \| `"lg"` | no | — | Size token. Default `md`. |
+| `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` | no | — | Size token. Default `md`. |
 | `value` | `number` | no | — | Current progress value. Omit for indeterminate. |
 | `variant` | `"bar"` \| `"ring"` | no | — | Visual variant. Default `bar`. |
 

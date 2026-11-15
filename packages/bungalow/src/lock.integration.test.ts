@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { openBungalow } from './bungalow.ts';
+import { openBungalow, openLocalBungalow } from './bungalow.ts';
 import { BungalowFilesystemError, BungalowLockedError, BungalowStateError } from './errors.ts';
 import { homeEnvironment, TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
 import { startLockChild } from './lock-children.test-support.ts';
@@ -149,8 +149,52 @@ async function runContentionScenario(): Promise<Round[]> {
   }
 }
 
+type ReadOnlyScenario = {
+  readonly childProcessIdentifier: number;
+  readonly held: string;
+  readonly readerDeploymentId: string;
+  readonly readerConfiguration: string | undefined;
+  readonly lockFileWhileReading: string;
+  readonly lockFileAfterReading: string;
+  readonly writerAfterReading: unknown;
+};
+
+/** A child holds the real lock; this process opens the same root for reading, and then for writing. */
+async function runReadOnlyScenario(): Promise<ReadOnlyScenario> {
+  const root = scenarioRoot();
+  const child = await startLockChild(root);
+  try {
+    const held = await child.ask('open');
+    const reader = await openLocalBungalow({ name: TEST_NAME, root, access: 'read' });
+    const readerDeploymentId = reader.deploymentId;
+    const snapshot = await reader.readConfiguration();
+    const readerConfiguration = snapshot.text;
+    const lockFileWhileReading = readFileSync(join(root, 'lock'), 'utf8');
+    reader.close();
+    let writerAfterReading: unknown;
+    try {
+      const writer = await openIn(root);
+      writer.close();
+    } catch (error) {
+      writerAfterReading = error;
+    }
+    return {
+      childProcessIdentifier: child.processIdentifier,
+      held,
+      readerDeploymentId,
+      readerConfiguration,
+      lockFileWhileReading,
+      lockFileAfterReading: readFileSync(join(root, 'lock'), 'utf8'),
+      writerAfterReading,
+    };
+  } finally {
+    await child.kill();
+  }
+}
+
 const holder = await runHolderScenario();
 const contention = await runContentionScenario();
+const readOnly = await runReadOnlyScenario();
 
 describe('a lock held by another process', () => {
   test('makes a second open throw BungalowLockedError naming the holder', () => {
@@ -166,6 +210,22 @@ describe('a lock held by another process', () => {
     if ('error' in holder.afterKill) throw holder.afterKill.error;
     expect(holder.afterKill.deploymentId).toBe(holder.held.split(' ')[1]!);
     expect(holder.lockFileAfterKill).toBe('');
+  });
+});
+
+describe('a lock held by another process and a read-only open', () => {
+  test('opens the same root for reading, takes no lock, and leaves the holder holding', () => {
+    expect(readOnly.held).toMatch(/^HELD [0-7][0-9A-HJKMNP-TV-Z]{25}$/);
+    expect(readOnly.readerDeploymentId).toBe(readOnly.held.split(' ')[1]!);
+    expect(readOnly.readerConfiguration).toBeUndefined();
+    // The lock file still names the child, before and after the reader closed.
+    expect(readOnly.lockFileWhileReading).toBe(`${readOnly.childProcessIdentifier}\n`);
+    expect(readOnly.lockFileAfterReading).toBe(`${readOnly.childProcessIdentifier}\n`);
+    // Closing the reader released nothing, because it held nothing: a writer is still refused.
+    expect(readOnly.writerAfterReading).toBeInstanceOf(BungalowLockedError);
+    expect((readOnly.writerAfterReading as BungalowLockedError).holderProcessIdentifier).toBe(
+      readOnly.childProcessIdentifier,
+    );
   });
 });
 

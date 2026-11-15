@@ -23,9 +23,11 @@ test.describe('Card padding', () => {
     await expect(body).toHaveCSS('padding-right', '0px');
     await expect(body).toHaveCSS('padding-bottom', '0px');
     await expect(body).toHaveCSS('padding-left', '0px');
-    await expect(footer).toHaveCSS('padding-top', '12px');
+    // Under a flush body the footer keeps the card's padding on every side, so its action never
+    // touches the content (a padded body's footer has no top padding of its own).
+    await expect(footer).toHaveCSS('padding-top', '16px');
     await expect(footer).toHaveCSS('padding-right', '16px');
-    await expect(footer).toHaveCSS('padding-bottom', '12px');
+    await expect(footer).toHaveCSS('padding-bottom', '16px');
     await expect(footer).toHaveCSS('padding-left', '16px');
   });
   test('the flush-body example has no horizontal overflow', async ({ page }) => {

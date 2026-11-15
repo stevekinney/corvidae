@@ -167,6 +167,10 @@ export const OPERATION_MAP = {
   'bureau.workflows.delete': { workspaceClass: 'administrator-shared', member: 'workflows.delete' },
   'bureau.workflows.get': { workspaceClass: 'member-shared-read', member: 'workflows.get' },
   'bureau.workflows.list': { workspaceClass: 'member-shared-read', member: 'workflows.list' },
+  'bureau.workflows.catalog': {
+    workspaceClass: 'member-shared-read',
+    member: 'workflows.catalog',
+  },
   'bureau.workflows.revisions': {
     workspaceClass: 'member-shared-read',
     member: 'workflows.revisions',
@@ -226,6 +230,7 @@ export const OPERATION_MAP = {
   },
 
   'bureau.decisions.decide': { workspaceClass: 'deployment-operator', member: 'decisions.decide' },
+  'bureau.decisions.models': { workspaceClass: 'administrator-shared', member: 'decisions.models' },
 
   'bureau.settings.get': { workspaceClass: 'administrator-shared', member: 'settings.get' },
   'bureau.settings.schema': { workspaceClass: 'administrator-shared', member: 'settings.schema' },

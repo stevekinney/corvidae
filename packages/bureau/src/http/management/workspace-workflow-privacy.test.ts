@@ -31,6 +31,7 @@ const cases = [
   ['bureau.workflows.delete', 'administrator'],
   ['bureau.workflows.get', 'shared'],
   ['bureau.workflows.list', 'shared'],
+  ['bureau.workflows.catalog', 'shared'],
   ['bureau.workflows.revisions', 'shared'],
   ['bureau.workflows.history', 'shared'],
   ['bureau.workflows.impact', 'shared'],
@@ -73,7 +74,7 @@ for (const [operation, access] of cases) {
     const input: Record<string, unknown> =
       operation === 'bureau.workflows.list'
         ? { includeRuns: true }
-        : operation === 'bureau.workflows.runs.list'
+        : operation === 'bureau.workflows.runs.list' || operation === 'bureau.workflows.catalog'
           ? {}
           : [
                 'bureau.workflows.runs.get',

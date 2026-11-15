@@ -1,3 +1,15 @@
+<script lang="ts" module>
+  /** A line the agent said between a settled turn's steps. */
+  export type ToolCallTimelineNarration = {
+    /** The message the line came from. */
+    id: string;
+    /** How many of the group's steps come before the line. */
+    beforePairIndex: number;
+    /** The line's markdown. */
+    content: string;
+  };
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import {
@@ -11,7 +23,6 @@
     Search,
     Terminal,
     X,
-    Copy,
     CopyButton,
     formatDuration,
     Spinner,
@@ -23,6 +34,8 @@
   import type { ToolCallPair } from '../conversation-model.ts';
   import type { ToolCallPresentation } from '../utilities/types.ts';
   import { formatToolCallProse } from '../utilities/utilities.ts';
+  import type { MarkdownNodeOverride } from './chat-message-parts.ts';
+  import MessageContent from './message-content.svelte';
   import RetryButton from './retry-button.svelte';
   import ToolPayloadCode from './tool-payload-code.svelte';
   import { resolveTurnLabels, type ChatTurnLabels } from './turn-labels.ts';
@@ -40,6 +53,7 @@
     toolCallSummaryParts,
     totalToolCallDuration,
     type ToolCallRowStatus,
+    type ToolCallStep,
   } from './tool-call-summary.ts';
 
   let {
@@ -55,8 +69,19 @@
     onRetryStep,
     cardOwnedCallIds,
     labels,
+    narration,
+    markdownNode,
   }: {
     pairs: ToolCallPair[];
+    /**
+     * What the agent said between the steps of a settled turn, which the group draws when open.
+     * Each line sits before the step at `beforePairIndex` (a count of `pairs`, so a line after the
+     * last step has `pairs.length`). Lines are not steps: the count, the position and the summary
+     * count steps only. Without it the group is its steps alone.
+     */
+    narration?: readonly ToolCallTimelineNarration[] | undefined;
+    /** Per-node override for code blocks, tables, and Mermaid blocks inside a narration line's markdown. */
+    markdownNode?: MarkdownNodeOverride | undefined;
     messageId?: string;
     describeToolCall?: ((pair: ToolCallPair) => ToolCallPresentation | undefined) | undefined;
     expanded?: boolean;
@@ -147,10 +172,38 @@
   function repeatKey(row: TimelineRow): string | undefined {
     return row.status === 'succeeded' ? `${row.pair.call.name}\u0000${row.prose ?? ''}` : undefined;
   }
-  const steps = $derived(foldRepeatedSteps(rows, repeatKey));
+  // A line the agent said between steps ends a run of identical calls: the calls on either side of
+  // it are not consecutive, so they never fold across it. The list is the steps and the lines in
+  // the order they happened.
+  const listEntries = $derived.by(() => {
+    const lines = [...(narration ?? [])].sort((a, b) => a.beforePairIndex - b.beforePairIndex);
+    const entries: (
+      | { kind: 'narration'; line: ToolCallTimelineNarration }
+      | { kind: 'step'; step: ToolCallStep<TimelineRow> }
+    )[] = [];
+    let from = 0;
+    const addSteps = (to: number): void => {
+      for (const step of foldRepeatedSteps(rows.slice(from, to), repeatKey)) {
+        entries.push({ kind: 'step', step });
+      }
+      from = Math.max(from, to);
+    };
+    for (const line of lines) {
+      addSteps(Math.min(line.beforePairIndex, rows.length));
+      entries.push({ kind: 'narration', line });
+    }
+    addSteps(rows.length);
+    return entries;
+  });
+  const steps = $derived(
+    listEntries.flatMap((entry) => (entry.kind === 'step' ? [entry.step] : [])),
+  );
   const hasRepeatedSummary = $derived(steps.some((step) => step.kind === 'repeated'));
-  function stepKey(step: (typeof steps)[number]): string {
+  function stepKey(step: ToolCallStep<TimelineRow>): string {
     return step.kind === 'single' ? step.row.key : `repeated:${step.rows[0].key}`;
+  }
+  function entryKey(entry: (typeof listEntries)[number]): string {
+    return entry.kind === 'narration' ? `narration:${entry.line.id}` : stepKey(entry.step);
   }
   // A call that has no answer yet and that the host words in the present tense ("Using Lookup
   // order…") is what the group's line says while it runs, in place of the past-tense count.
@@ -377,7 +430,7 @@
 {/snippet}
 
 <!-- A failed step (R7): what went wrong in one danger line, the rest of the error wrapping under
-     it, and Retry, then Copy error. -->
+     it, and Copy error, then Retry last so the action ends at the trailing edge. -->
 {#snippet failure(pair: ToolCallPair)}
   {@const failed = toolCallFailure(pair, words.stepFailed)}
   {#if failed}
@@ -390,6 +443,15 @@
         <pre class="chat-tool-call-diagnostic" dir="auto">{failed.diagnostic}</pre>
       {/if}
       <div class="chat-tool-call-failure-actions">
+        <Tooltip text={words.copyError} placement="top" describe={false}>
+          <CopyButton
+            value={failed.copy}
+            label={words.copyError}
+            copiedLabel={words.errorCopied}
+            confirmDuration={2000}
+            class="chat-tool-call-failure-action"
+          />
+        </Tooltip>
         {#if onRetryStep}
           <RetryButton
             class="chat-tool-call-failure-action"
@@ -397,18 +459,6 @@
             onclick={() => onRetryStep(pair.call.id)}
           />
         {/if}
-        <Tooltip text={words.copyError} placement="top" describe={false}>
-          <CopyButton
-            value={failed.copy}
-            label={words.copyError}
-            copiedLabel={words.errorCopied}
-            confirmDuration={2000}
-            iconOnly
-            class="chat-tool-call-failure-action"
-          >
-            <Copy class="cinder-icon-xs" aria-hidden="true" />
-          </CopyButton>
-        </Tooltip>
       </div>
     </div>
   {/if}
@@ -506,106 +556,115 @@
     </button>
   </h3>
   <ol id={listId} class="chat-tool-call-list" aria-label={callsLabel} hidden={!groupOpen}>
-    {#each steps as step (stepKey(step))}
-      {#if step.kind === 'single'}
-        {@const row = step.row}
-        {@const open = isStepOpen(row.key, isProblemStatus(row.status))}
-        <li class="chat-tool-call-item" data-cinder-tool-call-status={row.status}>
-          {#if row.deniedApproval}
-            <div class="chat-tool-call-row chat-tool-call-row-summary">
-              {@render statusIcon(row.status, false)}
-              <code class="chat-tool-call-name">{row.pair.call.name}</code>
-              <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
-            </div>
-          {:else}
+    {#each listEntries as entry (entryKey(entry))}
+      {#if entry.kind === 'narration'}
+        <!-- What the agent said before the next step: muted, one step smaller than the answer, and
+             on the steps' text edge. It is a list item so a screen reader meets it in order. -->
+        <li class="chat-tool-call-narration">
+          <MessageContent content={entry.line.content} {markdownNode} />
+        </li>
+      {:else}
+        {@const step = entry.step}
+        {#if step.kind === 'single'}
+          {@const row = step.row}
+          {@const open = isStepOpen(row.key, isProblemStatus(row.status))}
+          <li class="chat-tool-call-item" data-cinder-tool-call-status={row.status}>
+            {#if row.deniedApproval}
+              <div class="chat-tool-call-row chat-tool-call-row-summary">
+                {@render statusIcon(row.status, false)}
+                <code class="chat-tool-call-name">{row.pair.call.name}</code>
+                <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
+              </div>
+            {:else}
+              <button
+                type="button"
+                class="chat-tool-call-row"
+                aria-expanded={open}
+                aria-controls={row.detailsId}
+                onclick={() => toggleStep(row.key, isProblemStatus(row.status))}
+              >
+                {@render statusIcon(row.status, row.active)}
+                {#if row.presentation}
+                  <span class="chat-tool-call-label">{row.prose}</span>
+                  <code class="chat-tool-call-name">{row.pair.call.name}</code>
+                {:else}
+                  <code class="chat-tool-call-name">{row.pair.call.name}</code>
+                  {#if row.keyArgument}<span>{row.keyArgument}</span>{/if}
+                {/if}
+                <span class="chat-tool-call-result">
+                  {#if row.status !== 'failed' && row.resultLine}→ {row.resultLine}{/if}
+                </span>
+                {#if row.status !== 'succeeded' && row.status !== 'failed'}
+                  <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
+                {/if}
+                {#if row.duration !== undefined}
+                  <span class="chat-tool-call-duration">{formatDuration(row.duration)}</span>
+                {/if}
+              </button>
+              <div id={row.detailsId} class="chat-tool-call-details" hidden={!open}>
+                {#if open}
+                  {@render payload(words.input, row.pair.call.arguments)}
+                  {@render output(row.pair, row.status)}
+                {/if}
+              </div>
+            {/if}
+          </li>
+        {:else}
+          {@const first = step.rows[0]}
+          {@const key = stepKey(step)}
+          {@const open = isStepOpen(key, false)}
+          {@const total = totalToolCallDuration(step.rows.map((row) => row.duration))}
+          <li
+            class="chat-tool-call-item"
+            data-cinder-tool-call-status="succeeded"
+            data-cinder-tool-call-repeat={step.rows.length}
+          >
             <button
               type="button"
               class="chat-tool-call-row"
               aria-expanded={open}
-              aria-controls={row.detailsId}
-              onclick={() => toggleStep(row.key, isProblemStatus(row.status))}
+              aria-controls={`${first.detailsId}-repeated`}
+              onclick={() => toggleStep(key, false)}
             >
-              {@render statusIcon(row.status, row.active)}
-              {#if row.presentation}
-                <span class="chat-tool-call-label">{row.prose}</span>
-                <code class="chat-tool-call-name">{row.pair.call.name}</code>
-              {:else}
-                <code class="chat-tool-call-name">{row.pair.call.name}</code>
-                {#if row.keyArgument}<span>{row.keyArgument}</span>{/if}
-              {/if}
-              <span class="chat-tool-call-result">
-                {#if row.status !== 'failed' && row.resultLine}→ {row.resultLine}{/if}
-              </span>
-              {#if row.status !== 'succeeded' && row.status !== 'failed'}
-                <span class="chat-tool-call-status">{words.toolStatus(row.status)}</span>
-              {/if}
-              {#if row.duration !== undefined}
-                <span class="chat-tool-call-duration">{formatDuration(row.duration)}</span>
+              {@render statusIcon('succeeded', false)}
+              {#if first.prose}<span class="chat-tool-call-label">{first.prose}</span>{/if}
+              <code class="chat-tool-call-name">{first.pair.call.name} ×{step.rows.length}</code>
+              <span class="chat-tool-call-result"></span>
+              {#if total !== undefined}
+                <span class="chat-tool-call-duration">{formatDuration(total)}</span>
               {/if}
             </button>
-            <div id={row.detailsId} class="chat-tool-call-details" hidden={!open}>
+            <div id={`${first.detailsId}-repeated`} class="chat-tool-call-details" hidden={!open}>
               {#if open}
-                {@render payload(words.input, row.pair.call.arguments)}
-                {@render output(row.pair, row.status)}
+                {#each step.rows as member, memberIndex (member.key)}
+                  <div class="chat-tool-call-repeated-call">
+                    <span class="chat-tool-call-repeated-heading">
+                      {memberIndex + 1} of {step.rows.length}{#if member.keyArgument}
+                        {' '}{member.keyArgument}{/if}
+                    </span>
+                    {@render payload(words.input, member.pair.call.arguments)}
+                    {@render output(member.pair, member.status)}
+                  </div>
+                {/each}
               {/if}
             </div>
-          {/if}
-        </li>
-      {:else}
-        {@const first = step.rows[0]}
-        {@const key = stepKey(step)}
-        {@const open = isStepOpen(key, false)}
-        {@const total = totalToolCallDuration(step.rows.map((row) => row.duration))}
-        <li
-          class="chat-tool-call-item"
-          data-cinder-tool-call-status="succeeded"
-          data-cinder-tool-call-repeat={step.rows.length}
-        >
-          <button
-            type="button"
-            class="chat-tool-call-row"
-            aria-expanded={open}
-            aria-controls={`${first.detailsId}-repeated`}
-            onclick={() => toggleStep(key, false)}
-          >
-            {@render statusIcon('succeeded', false)}
-            {#if first.prose}<span class="chat-tool-call-label">{first.prose}</span>{/if}
-            <code class="chat-tool-call-name">{first.pair.call.name} ×{step.rows.length}</code>
-            <span class="chat-tool-call-result"></span>
-            {#if total !== undefined}
-              <span class="chat-tool-call-duration">{formatDuration(total)}</span>
-            {/if}
-          </button>
-          <div id={`${first.detailsId}-repeated`} class="chat-tool-call-details" hidden={!open}>
-            {#if open}
-              {#each step.rows as member, memberIndex (member.key)}
-                <div class="chat-tool-call-repeated-call">
-                  <span class="chat-tool-call-repeated-heading">
-                    {memberIndex + 1} of {step.rows.length}{#if member.keyArgument}
-                      {' '}{member.keyArgument}{/if}
-                  </span>
-                  {@render payload(words.input, member.pair.call.arguments)}
-                  {@render output(member.pair, member.status)}
-                </div>
-              {/each}
-            {/if}
-          </div>
-        </li>
+          </li>
+        {/if}
       {/if}
     {/each}
   </ol>
 </section>
 
 <style>
-  /* Contiguous steps share one bordered group on the page, with no fill: a header line with the
-   * step count and the time, then one row to a step. Text is muted 12.5px. */
+  /* Contiguous steps are one group on the page with no frame and no fill: a header line with the
+   * step count and the time, then one row to a step. The rows have no inline padding, so the
+   * chevron starts on the prose's left edge and the time ends on the column's right edge. Text is
+   * muted 12.5px. */
   .chat-tool-call-timeline {
     inline-size: 100%;
     max-inline-size: var(--cinder-chat-message-max-width, 48rem);
     box-sizing: border-box;
     min-inline-size: 0;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
     font-size: 12.5px;
     line-height: 1.4;
     color: var(--cinder-text-muted);
@@ -642,9 +701,7 @@
     gap: var(--cinder-space-2);
     inline-size: 100%;
     min-inline-size: 0;
-    min-block-size: 1.5rem;
-    padding-block: 0;
-    padding-inline: var(--cinder-space-3);
+    padding: 0;
     border: 0;
     background: transparent;
     color: var(--cinder-text-default);
@@ -661,11 +718,12 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
+  /* The chevron is 14px beside 13px text: a glyph follows its text (12 to 14px beside 12 to 13px). */
   .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
-    inline-size: 1rem;
-    block-size: 1rem;
+    inline-size: 14px;
+    block-size: 14px;
     flex: none;
-    margin-block: calc((1lh - 1rem) / 2);
+    margin-block: calc((1lh - 14px) / 2);
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
@@ -685,11 +743,44 @@
     transform: scaleX(-1);
   }
 
+  /* On a touch screen a row is still painted at its text line height; its 44px hit area is a
+   * pseudo-element that reaches past the row and adds no layout. The row stands above the message
+   * line before it (a stacking position of its own), so the overhang is reachable there. Rows
+   * stacked at their text height would cover each other's faces if each overhung both ways, so the
+   * header overhangs on both sides, a step row ends at its own edges, and only the last row
+   * overhangs, below: a tap between two rows goes to the nearer one. */
   @media (any-pointer: coarse) {
     .chat-tool-call-toggle,
     .chat-tool-call-row {
-      min-block-size: var(--cinder-touch-target-min);
-      padding-block: var(--cinder-space-2);
+      position: relative;
+      z-index: 1;
+    }
+
+    .chat-tool-call-toggle::before,
+    .chat-tool-call-row::before {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block: 0;
+    }
+
+    .chat-tool-call-toggle::before {
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
+    .chat-tool-call-item:last-child > .chat-tool-call-row::before {
+      inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
+    /* A line of narration between two steps is text, not a control: the step beside it overhangs
+     * into it, as the last row overhangs below, so a tap on the row's 44px region is not taken by
+     * the line. The line is read, never tapped, and the overhang sits above it. */
+    .chat-tool-call-narration + .chat-tool-call-item > .chat-tool-call-row::before {
+      inset-block-start: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+
+    .chat-tool-call-item:has(+ .chat-tool-call-narration) > .chat-tool-call-row::before {
+      inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 
@@ -843,12 +934,25 @@
     flex-direction: column;
     margin: 0;
     padding: 0;
-    border-block-start: 1px solid var(--cinder-border-muted);
     list-style: none;
   }
 
-  .chat-tool-call-item + .chat-tool-call-item {
-    border-block-start: 1px solid var(--cinder-border-muted);
+  /* What the agent said between steps. It starts on the steps' text edge (the status icon and its
+   * gap in), is muted and at the notice size, one step under the answer's body size, and keeps the
+   * message gap above and below. The rendered Markdown sets its own size and leading, so the size
+   * is set on it too; the lines are a whole 21px at 13px. */
+  .chat-tool-call-narration {
+    margin-block: var(--cinder-space-1);
+    padding-inline-start: calc(12px + var(--cinder-space-2));
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-weight: var(--cinder-font-normal, 400);
+  }
+
+  .chat-tool-call-narration :global(.cinder-markdown-content) {
+    color: inherit;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    line-height: calc(21 / 13);
   }
 
   .chat-tool-call-list[hidden],
@@ -936,7 +1040,8 @@
     flex-direction: column;
     gap: 4px;
     margin: 0;
-    padding: 0 var(--cinder-space-3) var(--cinder-space-2);
+    padding-block: 0 var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3) 0;
   }
 
   /* A folded run opens to its calls, one block each, with a muted "2 of 20" heading. */
@@ -979,6 +1084,10 @@
     flex: none;
     align-items: center;
     block-size: 1lh;
+    /* The header's phrases align on a baseline, and a box with no text of its own has its bottom
+       edge for one, which would push the sentence beside it below the spinner. The spinner is
+       one text line tall, so it stands on the first line and the sentence keeps that line. */
+    align-self: flex-start;
   }
 
   .chat-tool-call-spinner :global(.cinder-spinner),
@@ -1033,6 +1142,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--cinder-space-2);
   }
 
@@ -1044,16 +1154,6 @@
     min-inline-size: 0;
     max-inline-size: none;
     padding-inline: var(--cinder-space-2);
-  }
-
-  /* On a touch screen the group's summary line and each step's row are full touch targets (C#3). A
-   * failed step's controls are Cinder Buttons: they keep their painted size and reach 44px by the
-   * button's own hit area, so no minimum is set on them here. */
-  @media (any-pointer: coarse) {
-    .chat-tool-call-toggle,
-    .chat-tool-call-row {
-      min-block-size: var(--cinder-touch-target-min);
-    }
   }
 
   .chat-tool-call-activity-icon {

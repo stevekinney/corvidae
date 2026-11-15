@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Copy from '@lucide/svelte/icons/copy';
   import { default as CopyButton } from '../copy-button/index.ts';
 
   import { isOpaqueForFormat, type ColorOutputFormat } from '../../utilities/color-format.ts';
@@ -191,10 +190,7 @@
       class="cinder-color-picker__format"
       disabled={!internalValue || disabled}
     >
-      <span class="cinder-color-picker__hex-value">{hexValue || '—'}</span><Copy
-        class="cinder-icon-xs"
-        aria-hidden="true"
-      />
+      <span class="cinder-color-picker__hex-value">{hexValue || '—'}</span>
     </CopyButton>
     <CopyButton
       value={formatRgb}
@@ -203,7 +199,7 @@
       class="cinder-color-picker__format"
       disabled={!internalValue || disabled}
     >
-      <span>RGB {formatRgb}</span><Copy class="cinder-icon-xs" aria-hidden="true" />
+      <span>RGB {formatRgb}</span>
     </CopyButton>
     <CopyButton
       value={formatHsl}
@@ -212,7 +208,7 @@
       class="cinder-color-picker__format"
       disabled={!internalValue || disabled}
     >
-      <span>HSL {formatHsl}</span><Copy class="cinder-icon-xs" aria-hidden="true" />
+      <span>HSL {formatHsl}</span>
     </CopyButton>
   </div>
 </div>

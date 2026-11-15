@@ -39,7 +39,7 @@ import {
 } from './checkpoint-replay.ts';
 import {
   clearPendingAtomicWorkflowCommitSideEffects,
-  takePendingAtomicWorkflowCommitSideEffects,
+  takeCommitSideEffects,
   type AtomicWorkflowCommitSideEffects,
 } from './checkpoint-side-effects.ts';
 import {
@@ -48,12 +48,13 @@ import {
   type CompactionResult,
 } from './event-log-compaction.ts';
 import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-write.ts';
+import type { FileWorkflowEvent } from './file-workflow-completion-events.ts';
 import { appendFileWorkflowCheckpointEvents } from './file-workflow-history.ts';
 import type { EngineInternals } from './internals.ts';
 import { getTimelineInputSummary, getTimelineOperationLabel } from './state-utilities.ts';
 import { buildPendingTimelineOperation } from './termination.ts';
 import {
-  captureActivityCompletionReceipts,
+  captureCommitReceipts,
   type ActivityCompletionReceipt,
 } from './timeline-coordinator-detail.ts';
 import { notifyWorkflowFeedCommit } from './workflow-feed.ts';
@@ -89,7 +90,19 @@ export type PersistCheckpointOptions = {
    * reads the live context.
    */
   pendingStepIndex?: number;
+  /** With `preserve-pending`: the branch activities whose completion receipts this commit reports. */
+  settledBranchOperationIds?: readonly string[];
+  /** With `preserve-pending`: the file-workflow completion events this commit records. */
+  settledFileWorkflowEvents?: readonly FileWorkflowEvent[];
+  /** With `preserve-pending`: the held side effects it writes in place of the staged ones. */
+  sideEffects?: AtomicWorkflowCommitSideEffects;
 };
+
+/** What a commit made while its operation is still running reports for the steps it settled. */
+export type MidOperationCommitReport = Omit<
+  PersistCheckpointOptions,
+  'timeline' | 'pendingStepIndex'
+>;
 
 export type PersistCheckpointCallbacks = {
   appendTimelineBatchOperations: (
@@ -420,7 +433,12 @@ async function commitCheckpoint(
   callbacks: PersistCheckpointCallbacks,
   options: PersistCheckpointOptions,
 ): Promise<void> {
-  const activityCompletionReceipts = captureActivityCompletionReceipts(internals, workflowId);
+  const activityCompletionReceipts = captureCommitReceipts(
+    internals,
+    workflowId,
+    options.timeline,
+    options.settledBranchOperationIds,
+  );
   dispatchCheckpointSizeWarning(internals, workflowId, commit, callbacks);
   const nextPendingTimelineEntry =
     options.timeline === 'preserve-pending'
@@ -440,6 +458,7 @@ async function commitCheckpoint(
     commit.stepIndex,
     commit.operations,
     internals.eventLogHeads.get(workflowId) ?? EMPTY_EVENT_HEAD,
+    options.settledFileWorkflowEvents,
   );
   const { newHead, timestamp } = appendCheckpointEventLog(
     internals,
@@ -465,10 +484,11 @@ async function commitCheckpoint(
           retentionWindow,
           commit.operations,
         );
-  const pendingSideEffects = takePendingAtomicWorkflowCommitSideEffects(
+  const { sideEffects: pendingSideEffects, fromStaged } = takeCommitSideEffects(
     internals,
     workflowId,
     commit.checkpoint.workflowExecutionToken,
+    options.sideEffects,
   );
   if (pendingSideEffects !== undefined) {
     commit.operations.push(...pendingSideEffects.operations);
@@ -514,7 +534,7 @@ async function commitCheckpoint(
     commit,
     newHead,
     nextPendingTimelineEntry,
-    pendingSideEffects !== undefined,
+    fromStaged,
   );
   for (const receipt of activityCompletionReceipts) {
     dispatchActivityCompletionReceipt(callbacks, workflowId, receipt);

@@ -160,6 +160,10 @@ export const queryKeys = {
   },
   /** The trigger and hook action kinds running plugins contribute (`bureau.plugins.contributions`). */
   pluginKinds: () => ['plugin-kinds'] as const,
+  /** The catalog rows that can answer decisions, with their availability and the row that answers (`bureau.decisions.models`). */
+  decisionModels: () => ['decisions', 'models'] as const,
+  /** The model providers running plugins contribute, with their plugins' configuration schemas (`bureau.plugins.contributions`). */
+  contributedProviders: () => ['plugin-kinds', 'providers'] as const,
   /** The caller's hooks (`bureau.hooks.*`) and the event kinds a hook can listen to. */
   hooks: {
     list: () => ['hooks', 'list'] as const,
@@ -202,6 +206,8 @@ export const queryKeys = {
     /** Which of the agents a workflow builder's steps name need a model while no provider is connected. */
     builderBlockedAgents: (agentIds: readonly string[]) =>
       ['workflows', 'builder', 'provider-blocked', agentIds] as const,
+    /** The activities a step can call and the code workflows a `workflow` step can start (`bureau.workflows.catalog`). */
+    builderCatalog: () => ['workflows', 'builder', 'catalog'] as const,
   },
   schedules: {
     list: (filter: ScheduleFilter) => ['schedules', 'list', filter] as const,

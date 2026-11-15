@@ -8,6 +8,7 @@
  * going to their own Bureau, so a fault is told to them in the words of {@link AttachmentFaultKind},
  * never as the raw message, which can name an asset or an upload.
  */
+import type { ChatAttachmentFailureKind } from '@lostgradient/chat';
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
@@ -65,6 +66,23 @@ export class AttachmentUploadError extends Error {
     this.name = 'AttachmentUploadError';
     this.kind = kind;
     this.limit = options.limit;
+  }
+
+  /**
+   * Why the file failed, in the words Chat's composer sorts failures by: a file over its limit and
+   * a file the Bureau refused can only be removed, a request that never completed is a connection
+   * fault, and anything else is tried again as it was.
+   */
+  get failureKind(): ChatAttachmentFailureKind {
+    if (this.kind === 'too-large') return 'too-large';
+    if (this.kind === 'rejected') return 'unsupported-type';
+    if (this.kind === 'upload-failed' && this.cause instanceof TypeError) return 'network';
+    return 'unknown';
+  }
+
+  /** The limit in bytes of a file that was too large, as Chat's composer words it. */
+  get maxFileSize(): number | undefined {
+    return this.limit;
   }
 }
 

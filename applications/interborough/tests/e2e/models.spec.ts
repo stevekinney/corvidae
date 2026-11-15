@@ -193,7 +193,8 @@ test('connects a provider after testing its key, adds its models with no restart
   await row.getByRole('button', { name: /Manage/ }).click();
   const manage = page.getByRole('dialog', { name: 'Gemini' });
   await expect(manage).toContainText(MODELS_COPY.manageDialog.connected);
-  await expect(manage.locator('input')).toHaveCount(0);
+  await expect(manage.getByLabel(MODELS_COPY.connectDialog.keyLabel)).toHaveCount(0);
+  await expect(manage.locator('input[type="password"]')).toHaveCount(0);
   await manage.getByRole('button', { name: MODELS_COPY.manageDialog.done }).click();
   await expect(manage).toBeHidden();
 
@@ -257,7 +258,9 @@ test('switches the decision model, and the Bureau holds the choice', async ({ pa
   const row = page.locator('[data-setting="decisions.model"]');
   await expect(row.getByRole('link', { name: MODELS_COPY.decisions.model.connect })).toBeVisible();
   await expect(row.getByRole('combobox')).toBeEnabled();
-  await expect(page.locator('[data-setting="decisions.fallbackModel"] select')).toBeEnabled();
+  await expect(
+    page.locator('[data-setting="decisions.fallbackModel"]').getByRole('combobox'),
+  ).toBeEnabled();
   // The three decision settings are here, and are not on General.
   await expect(page.locator('[data-setting^="decisions."]')).toHaveCount(3);
   await page.goto('/settings');
@@ -270,8 +273,10 @@ test('switches the decision model, and the Bureau holds the choice', async ({ pa
   await setDecisionModel(request, 'anthropic/claude-haiku-4-5');
   try {
     await openModels(page);
-    await expect(row.getByRole('combobox')).toHaveValue('anthropic/claude-haiku-4-5');
-    await row.getByRole('combobox').selectOption('typesafe/jev');
+    // The select lists the Bureau's own rows; the stored one reads as its name, listed or not.
+    await expect(row.getByRole('combobox')).toContainText(/haiku/i);
+    await row.getByRole('combobox').click();
+    await page.getByRole('option', { name: /Jev/ }).click();
     // It saves as the field is left, with no page-level Save; the row then says the fallback model
     // answers until TypeSafe's key is saved.
     await expect(page.getByRole('button', { name: SETTINGS_COPY.saveAction })).toHaveCount(0);
