@@ -1562,7 +1562,20 @@
   $effect(() => {
     const scroller = viewport;
     const messageId = approvalWait.messageId;
+    // TEMPORARY DIAGNOSTICS (COR-2327 B1): what the reminder rule last computed, for CI.
+    const debugRule = (detail: Record<string, unknown>): void => {
+      const target = containerRef ?? scroller;
+      if (target === null || target === undefined) return;
+      const count = Number(target.dataset['debugApprovalCount'] ?? '0') + 1;
+      target.dataset['debugApprovalCount'] = String(count);
+      target.dataset['debugApproval'] = JSON.stringify({
+        ...detail,
+        n: count,
+        at: performance.now(),
+      });
+    };
     if (scroller === null || !approvalWaiting || messageId === undefined) {
+      debugRule({ skipped: true, scroller: scroller !== null, approvalWaiting, messageId });
       approvalFullyVisible = false;
       return undefined;
     }
@@ -1577,10 +1590,19 @@
       detachScroll = undefined;
       const card = pendingApprovalCard(containerRef, messageId);
       if (card === null) {
+        debugRule({ card: null, messageId });
         approvalFullyVisible = false;
         return;
       }
-      const updateVisibility = (): void => {
+      const updateVisibility = (source: unknown = 'call'): void => {
+        const from =
+          typeof source === 'string'
+            ? source
+            : source instanceof Event
+              ? source.type
+              : Array.isArray(source) && source[0] instanceof IntersectionObserverEntry
+                ? 'intersection'
+                : 'resize';
         const cardBox = card.getBoundingClientRect();
         const viewportBox = scroller.getBoundingClientRect();
         // Happy DOM and an initial browser layout can report zero-sized boxes before the first
@@ -1592,6 +1614,7 @@
           viewportBox.width <= 0 ||
           viewportBox.height <= 0
         ) {
+          debugRule({ from, zero: true });
           approvalFullyVisible = false;
           return;
         }
@@ -1603,12 +1626,29 @@
         // draws no row falls back to the whole card.
         const actionRow = approvalActionRow(card);
         const reminder = readApprovalReminder();
+        const rowBox = actionRow === null ? cardBox : actionRow.getBoundingClientRect();
         approvalFullyVisible = approvalRowVisible(
-          actionRow === null ? cardBox : actionRow.getBoundingClientRect(),
+          rowBox,
           viewportBox,
           reminder.shown,
           reminder.blockSize,
         );
+        const rect = (box: DOMRect) => ({
+          top: box.top,
+          bottom: box.bottom,
+          left: box.left,
+          right: box.right,
+        });
+        debugRule({
+          from,
+          row: actionRow === null ? null : rect(rowBox),
+          card: rect(cardBox),
+          cardId: card.getAttribute('data-cinder-tool-approval-call-id'),
+          viewport: rect(viewportBox),
+          reminderShown: reminder.shown,
+          reminderBlockSize: reminder.blockSize,
+          result: approvalFullyVisible,
+        });
       };
       observer = new IntersectionObserver(updateVisibility, { root: scroller, threshold: 1 });
       resizeObserver = new ResizeObserver(updateVisibility);
