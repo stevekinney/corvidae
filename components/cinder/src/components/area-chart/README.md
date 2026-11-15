@@ -26,7 +26,7 @@ Filled SVG area chart for showing magnitude and cumulative trends across an orde
 
 ## Rendering and customization
 
-AreaChart uses SVG, with guide margins derived from the rendered tick labels, rotation, and axis titles. Its default theme inherits `currentColor`, keeps the chart background transparent, and resolves series colors from `--cinder-chart-series-*`; pass `theme` to override only the fields you need. Gradient resource IDs are scoped to the component's existing `id`.
+AreaChart uses SVG, with guide margins derived from the rendered tick labels, rotation, and axis titles. Its default theme inherits `currentColor`, keeps the chart background transparent, and resolves series colors from `--cinder-chart-series-*`; pass `theme` to override only the fields you need. Each area fills with a tint of its own line colour, from 55% opacity at the series peak to 35% at the baseline, so the fill keeps its hue rather than fading to grey in both themes; every fill paints before any line, so an overlapping series never hides another's line. Gradient resource IDs are scoped to the component's existing `id`.
 
 Set `tooltip={true}` for the default focus-aware visual tooltip, or pass a `Snippet<[ChartTarget]>` for custom content. Pass `mark` to replace each default series mark while retaining the chart's scales, guides, focus targets, and semantic data table. Mark points include `pixelY0`, the resolved lower baseline for filled areas and stacked bands. Series above 2,000 points are decimated for SVG rendering. The interaction model retains the complete dataset, while the data table evenly samples at most 2,000 rows and discloses the displayed and total point counts in its caption.
 

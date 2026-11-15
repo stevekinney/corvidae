@@ -98,6 +98,34 @@ describe('AreaChart', () => {
     );
   });
 
+  test('fills each area with a tint of its line colour that keeps its hue to the baseline', () => {
+    // The old 0.42 to 0.08 ramp left the lower area near-grey (OKLCH chroma under 0.03); 0.35 at
+    // the baseline keeps every default series at chroma 0.045 or more in both themes.
+    const { container } = render(AreaChart, { label: 'Usage trend', series });
+    const stops = [...container.querySelectorAll('linearGradient')[0]!.querySelectorAll('stop')];
+    const line = container.querySelector('.cinder-area-chart__line[data-cinder-series="usage"]');
+
+    expect(stops.map((stop) => stop.getAttribute('stop-opacity'))).toEqual(['0.55', '0.35']);
+    expect(stops.map((stop) => stop.getAttribute('stop-color'))).toEqual([
+      line?.getAttribute('stroke'),
+      line?.getAttribute('stroke'),
+    ]);
+  });
+
+  test('paints every fill before any line so a later fill never covers an earlier line', () => {
+    const { container } = render(AreaChart, { label: 'Usage trend', series });
+    const marks = [
+      ...container.querySelectorAll('.cinder-area-chart__area, .cinder-area-chart__line'),
+    ].map((path) => `${path.getAttribute('class')}:${path.getAttribute('data-cinder-series')}`);
+
+    expect(marks).toEqual([
+      'cinder-area-chart__area:usage',
+      'cinder-area-chart__area:storage',
+      'cinder-area-chart__line:usage',
+      'cinder-area-chart__line:storage',
+    ]);
+  });
+
   test('escapes functional-IRI characters in explicit chart ids', () => {
     const { container } = render(AreaChart, { id: 'usage)', label: 'Unsafe id usage', series });
     const gradient = container.querySelector('linearGradient');
