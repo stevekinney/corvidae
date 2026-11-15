@@ -226,6 +226,41 @@ describe('what keeps a turn from folding', () => {
     ).toBe(false);
   });
 
+  // A fold draws a narration message as its text alone, so a native reasoning block (drawn by the
+  // message as its "Thinking" disclosure) would be lost even with the group open.
+  test.each([
+    ['thinking', { type: 'thinking', thinking: 'The ledger comes first.' }],
+    ['redacted_thinking', { type: 'redacted_thinking', data: 'opaque' }],
+  ] as const)('narration with a native %s block stays where it is', (_name, block) => {
+    const withNativeReasoning = [
+      person('u'),
+      message({
+        id: 'say-1',
+        role: 'assistant',
+        content: [block, { type: 'text', text: 'Reading' }] as Message['content'],
+      }),
+      step('s1'),
+      text('answer', 'Done.'),
+    ];
+    const rows = rowsOf(withNativeReasoning);
+    expect(rows.some((row) => row.type === 'tool-call-group' && row.entries)).toBe(false);
+    expect(shape(rows)).toContain('message:say-1');
+  });
+
+  test('narration whose content is text blocks only still folds', () => {
+    const blocks = [
+      person('u'),
+      message({
+        id: 'say-1',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Reading' }] as Message['content'],
+      }),
+      step('s1'),
+      text('answer', 'Done.'),
+    ];
+    expect(rowsOf(blocks).some((row) => row.type === 'tool-call-group' && row.entries)).toBe(true);
+  });
+
   test('a hidden message between the steps ends the fold', () => {
     const rows = rowsOf([
       person('u'),

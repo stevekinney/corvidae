@@ -226,8 +226,27 @@ const narrationOverlayKeys = (): readonly string[] => [
 ];
 
 /**
+ * Whether a message's content holds a block that is not text: an image, or a native `thinking` or
+ * `redacted_thinking` block, which the message draws as its reasoning disclosure. A fold draws a
+ * narration message as its text alone, so any such block would be lost.
+ */
+function messageHasNonTextContent(message: Message): boolean {
+  return (
+    Array.isArray(message.content) &&
+    message.content.some(
+      (segment) =>
+        typeof segment !== 'object' ||
+        segment === null ||
+        !('type' in segment) ||
+        segment.type !== 'text',
+    )
+  );
+}
+
+/**
  * Whether a narration message is only its text, so folding it into the step group drops nothing: no
- * image, structured entries, reasoning, notes, steps, suggestions or artifact, and no failed send.
+ * image, native or overlaid reasoning, structured entries, notes, steps, suggestions or artifact,
+ * and no failed send.
  */
 function isPlainNarration(message: Message): boolean {
   return (
@@ -235,7 +254,7 @@ function isPlainNarration(message: Message): boolean {
     !message.hidden &&
     !message.toolCall &&
     message.metadata?.['_deliveryStatus'] !== 'failed' &&
-    !messageHasImageContent(message) &&
+    !messageHasNonTextContent(message) &&
     !messageHasStructuredEntries(message) &&
     narrationOverlayKeys().every((key) => !Object.hasOwn(message.metadata ?? {}, key))
   );
