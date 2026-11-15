@@ -357,7 +357,9 @@ describe('Citation', () => {
 
     expect(panel).toContain('--_cinder-citation-row-inset: calc(var(--cinder-space-2) + 2px);');
     expect(panel).toContain('margin-inline: calc(-1 * var(--_cinder-citation-row-inset));');
-    expect(panel).toContain('padding-inline: var(--_cinder-citation-row-inset);');
+    // Padding the panel back in would push the words off the heading's edge.
+    expect(panel).toContain('padding: 0;');
+    expect(panel).not.toContain('padding-inline');
     // A negative margin on the list would make it wider than the panel and scroll it sideways.
     expect(list).toContain('margin: 0;');
     // The foundation's list-item bottom margin would leave a gap under every row.

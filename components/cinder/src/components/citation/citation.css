@@ -61,15 +61,14 @@
     text-align: start;
     overflow-wrap: anywhere;
     line-height: var(--cinder-leading-normal);
-    /* The owning Popover/Drawer supplies the surface inset, so the panel adds no band of its own
-       above or below the rows. A row's own inset (its padding and its 2px current-row edge) is
-       pulled out of the surface's inset by the margin and put back by the padding: the words line
-       up with the heading above the list, the hover face overhangs into the surface's padding,
-       and the list stays inside the panel, so nothing scrolls sideways. */
+    /* The owning Popover/Drawer supplies the surface inset, so the panel adds no band of its own.
+       A row's own inset (its padding and its 2px current-row edge) is pulled out of the surface's
+       inset by the panel's margin: the words line up with the heading above the list and the hover
+       face overhangs into the surface's padding. The margin is on the panel, not the list, so the
+       list stays inside the panel and nothing scrolls sideways. */
     --_cinder-citation-row-inset: calc(var(--cinder-space-2) + 2px);
     margin-inline: calc(-1 * var(--_cinder-citation-row-inset));
-    padding-block: 0;
-    padding-inline: var(--_cinder-citation-row-inset);
+    padding: 0;
   }
 
   .cinder-citation--in-place .cinder-citation__panel {

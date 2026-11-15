@@ -124,6 +124,32 @@ for (const viewport of viewports) {
         "Link hidden: the address isn't a safe web link",
       );
 
+      // A row's words start on the surface's content edge, where a heading above the list starts:
+      // the row's own inset overhangs into the surface's padding.
+      const edges = await panel.evaluate((element) => {
+        const surface = element.parentElement!;
+        const style = getComputedStyle(surface);
+        const rtl = style.direction === 'rtl';
+        const box = surface.getBoundingClientRect();
+        const title = element.querySelector('.cinder-citation__title')!.getBoundingClientRect();
+        return rtl
+          ? {
+              surface:
+                box.right -
+                Number.parseFloat(style.borderRightWidth) -
+                Number.parseFloat(style.paddingRight),
+              title: title.right,
+            }
+          : {
+              surface:
+                box.left +
+                Number.parseFloat(style.borderLeftWidth) +
+                Number.parseFloat(style.paddingLeft),
+              title: title.left,
+            };
+      });
+      expect(Math.abs(edges.title - edges.surface)).toBeLessThanOrEqual(0.5);
+
       // A long unbroken title is clamped to two lines.
       const title = await items
         .nth(2)
