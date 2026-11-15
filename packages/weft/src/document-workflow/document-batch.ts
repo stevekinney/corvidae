@@ -1,10 +1,12 @@
 /**
- * Lockstep rounds over the item generators of a `map` batch or a `parallel` step.
+ * Lockstep rounds over the item generators of a `map` batch, and of a `parallel` step a run began
+ * before its branches advanced on their own (see `runParallel` in the interpreter).
  *
  * @module document-workflow/document-batch
  */
 
 import type { ContextOperationRequest } from '../core/context/operation-request.ts';
+import { forgetEarlierRoundResults, markRound } from '../core/context/round-results.ts';
 import type { WorkflowContext } from '../core/types.ts';
 
 /**
@@ -44,6 +46,10 @@ export function* runMapBatch(
     resume: { kind: 'next', value: undefined },
   }));
   while (pending.length > 0) {
+    // The items resume below with the outcomes of the round before, and record them under that
+    // round's numbers; the round's own entry holds them, so they are forgotten once recorded and
+    // a replay asks for every operation again (see `round-results.ts`).
+    const mark = markRound(context);
     const nextPending: typeof pending = [];
     const operations: Generator<ContextOperationRequest, unknown, unknown>[] = [];
     for (const entry of pending) {
@@ -61,6 +67,7 @@ export function* runMapBatch(
         nextPending.push(entry);
       }
     }
+    forgetEarlierRoundResults(context, mark);
     if (operations.length === 0) break;
     const operationResults = yield* context.allSettled(operations) as unknown as Generator<
       ContextOperationRequest,

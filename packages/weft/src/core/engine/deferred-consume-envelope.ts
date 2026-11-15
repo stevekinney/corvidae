@@ -25,6 +25,8 @@
  * nested coordinator surfaces up to its parent.
  */
 
+import type { SideEffectHold } from './held-side-effects.ts';
+
 const DEFERRED_CONSUME_BRAND: unique symbol = Symbol('weft.deferredConsume');
 const KEYED_RACE_RESULT_BRAND: unique symbol = Symbol('weft.keyedRaceResult');
 const SETTLED_FULFILLED_BRAND: unique symbol = Symbol('weft.settledFulfilled');
@@ -35,8 +37,11 @@ const SETTLED_FULFILLED_BRAND: unique symbol = Symbol('weft.settledFulfilled');
  */
 export type DeferredConsumeEnvelope = {
   readonly [DEFERRED_CONSUME_BRAND]: true;
-  /** Perform the single destructive consume and return the consumed payload. */
-  readonly finalize: () => Promise<unknown>;
+  /**
+   * Perform the single destructive consume and return the consumed payload. The consume's delete is
+   * staged into the workflow's next commit, or handed to `hold` when the caller commits it itself.
+   */
+  readonly finalize: (hold?: SideEffectHold) => Promise<unknown>;
 };
 
 type KeyedRaceResultEnvelope = {
@@ -85,7 +90,7 @@ function isKeyedRaceResultEnvelope(value: unknown): value is KeyedRaceResultEnve
 
 /** Wrap a deferred consume into a branded envelope. */
 export function createDeferredConsumeEnvelope(
-  finalize: () => Promise<unknown>,
+  finalize: (hold?: SideEffectHold) => Promise<unknown>,
 ): DeferredConsumeEnvelope {
   return { [DEFERRED_CONSUME_BRAND]: true, finalize };
 }
@@ -118,19 +123,22 @@ export function isDeferredConsumeEnvelope(value: unknown): value is DeferredCons
  * because coordination results are cache-safe encoded data: they round-trip
  * `encode`/`decode` for the durable cache, so sparse holes, custom array
  * properties, subclasses, and array identity are not preserved semantics here.
+ *
+ * Given `hold`, every consume hands its delete to it instead of staging it (see
+ * `held-side-effects.ts`): the caller commits the deletes with the result they produced.
  */
-export async function finalizeAndUnwrap(value: unknown): Promise<unknown> {
+export async function finalizeAndUnwrap(value: unknown, hold?: SideEffectHold): Promise<unknown> {
   if (isDeferredConsumeEnvelope(value)) {
-    return value.finalize();
+    return value.finalize(hold);
   }
   if (Array.isArray(value)) {
-    return Promise.all(value.map((element) => finalizeAndUnwrap(element)));
+    return Promise.all(value.map((element) => finalizeAndUnwrap(element, hold)));
   }
   if (isKeyedRaceResultEnvelope(value)) {
-    return { key: value.key, value: await finalizeAndUnwrap(value.value) };
+    return { key: value.key, value: await finalizeAndUnwrap(value.value, hold) };
   }
   if (isSettledFulfilledEnvelope(value)) {
-    return { status: 'fulfilled', value: await finalizeAndUnwrap(value.value) };
+    return { status: 'fulfilled', value: await finalizeAndUnwrap(value.value, hold) };
   }
   return value;
 }

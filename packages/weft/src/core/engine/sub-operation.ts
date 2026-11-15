@@ -5,7 +5,10 @@ import {
   readAtomicStateSnapshot,
 } from '../atomic-state.ts';
 import type { ContextOperationRequest } from '../context.ts';
+import { branchDriversOf } from '../context/branch-driver.ts';
 import type { HumanReviewOptions } from '../review/index.ts';
+import { nestedLinkOf } from './advancing-branch-tree.ts';
+import { runAdvancingBranches } from './advancing-branches.ts';
 import {
   assertChildWorkflowNestingDepth,
   executeChildWorkflow,
@@ -30,7 +33,8 @@ import {
 } from './operations-coordination.ts';
 import type { OperationWithCallerStack } from './operations-router.ts';
 import type { StateOperationCallbacks } from './operations-state.ts';
-import { normalizeRejectionReason } from './parallel-dispatch.ts';
+import { normalizeRejectionReason, valuesFromSlots } from './parallel-dispatch.ts';
+import { inheritSideEffectCapture } from './side-effect-capture.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callMemoFunction } from './state-utilities.ts';
 import { workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
@@ -85,6 +89,11 @@ export async function executeSubOperation(
   const executor = subOperationExecutors[operation.type];
   if (!executor) {
     throw new Error(`Unsupported sub-operation type: ${operation.type}`);
+  }
+  // What a coordinator's operations stage belongs to the branch operation that runs them: a
+  // `parallel` or `race` passes the capture a coordinator attached to it on to its own operations.
+  if (operation.type === 'parallel' || operation.type === 'race') {
+    inheritSideEffectCapture(operation, operation.operations);
   }
 
   return executor(
@@ -259,6 +268,34 @@ async function executeParallelSubOperation(
   speculativeState?: SpeculativeExecutionState,
 ): Promise<unknown> {
   signal?.throwIfAborted();
+
+  // An advancing parallel step nested in another coordinator's branch runs its branches on their
+  // own, with no commit of its own: the outermost coordinator owns durability. Nested in a branch
+  // of another advancing step, it reports its progress, and the consumes its branches take,
+  // through that step (see `NestedLink`).
+  const drivers = branchDriversOf(operation);
+  if (drivers !== undefined) {
+    const result = await runAdvancingBranches({
+      internals,
+      workflowId,
+      operation,
+      drivers,
+      execute: (request, branchSignal) =>
+        executeSubOperation(
+          internals,
+          workflowId,
+          request,
+          callbacks,
+          branchSignal,
+          speculativeState,
+        ),
+      parentSignal: signal,
+      nested: nestedLinkOf(operation),
+    });
+    if (result.fatal !== undefined) throw result.fatal.error;
+    if (result.hasFirstError) throw result.firstError;
+    return valuesFromSlots(result.slots);
+  }
 
   // A nested `ctx.all` keeps `Promise.all`'s reject-fast result semantics (the
   // outer coordinator owns durability and partial-result preservation), but it
