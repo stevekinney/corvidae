@@ -63,7 +63,7 @@ Step indicator for multi-step wizards and onboarding flows, a first-run checklis
 <Steps {steps} variant="checklist" heading="Get started" />
 ```
 
-The root is a `<section>` named by the heading rather than a navigation landmark, because a checklist's actions do their own navigating. On a narrow container the actions drop under the text, one per line and each the full width of the step.
+The root is a `<section>` named by the heading rather than a navigation landmark, because a checklist's actions do their own navigating. On a narrow container the actions drop under the text as a wrapping row from the text's leading edge, each button at its own width.
 
 ## Status list
 

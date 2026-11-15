@@ -93,8 +93,6 @@ export const HOME_COPY = {
     placeholder: 'Ask an agent to do something',
     agentLabel: 'Agent',
     send: 'Send',
-    /** Why Send is disabled while the server is off: its description and its tooltip. */
-    offNote: 'Off until it’s back',
     /** What the card says when the agents it offers could not be read. */
     failed: 'Couldn’t load agents.',
   },

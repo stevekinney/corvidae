@@ -677,9 +677,27 @@ export const CONTRACT: Record<string, ComponentContract> = {
         default: L('Still loading. This is taking longer than usual.'),
       },
       cancelLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Cancel') },
+      // COR-2329: a block in a page's own placeholder that takes its group's "Still loading" line.
+      holdsStatusLine: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       statusMarker: { optional: true, type_kind: 'TSTypeReference', default: L('bar') },
     },
     snippets: { children: s0(true) },
+  },
+
+  spotlight: {
+    kind: 'intersection',
+    html_attrs: 'HTMLAttributes',
+    props: {
+      value: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
+      status: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      statusLabel: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+    },
+    snippets: {
+      caveat: s0(true),
+      // COR-2329: the value's action, at the end of its first line ("Open Reviews ›").
+      action: s0(true),
+    },
   },
 
   spinner: {

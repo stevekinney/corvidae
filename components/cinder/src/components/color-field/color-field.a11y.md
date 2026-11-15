@@ -24,7 +24,7 @@ Beyond ARIA, parse errors also participate in HTML constraint validation. The co
 
 ## The picker trigger and swatch
 
-The trailing surface is an accessible native `<button>`. Its visual swatch remains a nested `<span aria-hidden="true">`, and the adjacent pipette icon is also decorative — neither is independently reachable or announced; the button itself is the sole operable surface and the sole thing assistive technology sees. Because it's a real `<button>`, standard button semantics apply for free: it is `Tab`-reachable, both `Enter` and `Space` activate it, and it is excluded from the tab order and from `aria-label` announcement while `disabled` or `readonly`.
+The trailing surface is an accessible native `<button>`. Its visual swatch is a nested `<span aria-hidden="true">`, the button's only content, which is not independently reachable or announced; the button itself is the sole operable surface and the sole thing assistive technology sees. Because it's a real `<button>`, standard button semantics apply for free: it is `Tab`-reachable, both `Enter` and `Space` activate it, and it is excluded from the tab order and from `aria-label` announcement while `disabled` or `readonly`.
 
 The accessible name is computed, not static, so it conveys both purpose and current state: `"Choose a color, current color #ff0000"` once a value is committed, or `"Choose a color, no color selected"` before anything has been committed. The name recomputes from `committedHex` — the same source the visible swatch color reads from — so an uncommitted in-progress keystroke draft never leaks into the announced name, matching the swatch's own commit-only color policy described below.
 

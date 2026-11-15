@@ -81,17 +81,18 @@
      width it is given, so it takes the column's. -->
 <Stack gap="var(--cinder-space-4)" data-testid="home-focus">
   {#if waiting !== undefined}
-    <!-- The Spotlight is the title of the reviews under it, so the way out to Reviews sits beside
-         it, as a section's action sits beside its heading. -->
-    <div class="ib-home-focus__lead">
-      <Spotlight value={HOME_COPY.needsYou.spotlight(waiting)} data-testid="home-spotlight" />
-      <Link
-        variant="more"
-        href={router.href('/reviews')}
-        onclick={(event: MouseEvent) => openInApplication(event, '/reviews')}
-        >{HOME_COPY.needsYou.link}</Link
-      >
-    </div>
+    <!-- The Spotlight is the title of the reviews under it, so the way out to Reviews is its
+         action, at the end of its line as a section's action sits beside its heading. -->
+    <Spotlight value={HOME_COPY.needsYou.spotlight(waiting)} data-testid="home-spotlight">
+      {#snippet action()}
+        <Link
+          variant="more"
+          href={router.href('/reviews')}
+          onclick={(event: MouseEvent) => openInApplication(event, '/reviews')}
+          >{HOME_COPY.needsYou.link}</Link
+        >
+      {/snippet}
+    </Spotlight>
   {:else if !reviews.isError}
     <!-- One line of the Spotlight (32px type at its 1.1 leading), so nothing moves when it arrives. -->
     <Skeleton width="11rem" height="2.2rem" radius="var(--cinder-radius-md)" />
@@ -110,16 +111,3 @@
     />
   </StatisticGroup>
 </Stack>
-
-<style>
-  /* The Spotlight and, at the end of its line, the way out to Reviews. On a phone too narrow for both
-   * the link drops under the Spotlight at the start, never squeezing it. */
-  .ib-home-focus__lead {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-1) var(--cinder-space-4);
-    min-inline-size: 0;
-  }
-</style>

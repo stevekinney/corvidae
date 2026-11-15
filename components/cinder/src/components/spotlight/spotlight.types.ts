@@ -12,6 +12,13 @@ export type SpotlightProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   statusLabel?: string;
   /** Staleness or a caution, such as "Updated 12 min ago", drawn in warning text directly under the value. */
   caveat?: Snippet;
+  /**
+   * The value's action, such as a `Link` in its `more` form to the page that holds the rest
+   * ("Open Reviews"), when the value is the title of what follows it. It sits at the end of the
+   * value's first line, centred on it, as a section's action sits beside its heading, and drops to
+   * the next line only when the two do not fit side by side.
+   */
+  action?: Snippet;
   /** Custom class merged with `.cinder-spotlight`. */
   class?: string;
 };

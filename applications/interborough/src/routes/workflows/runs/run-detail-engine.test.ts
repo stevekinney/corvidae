@@ -172,6 +172,15 @@ describe('a run of a workflow file the engine does not hold', () => {
     expect(view.container.querySelector('[data-status-word]')?.textContent).toContain('Running');
     expect(view.queryAllByRole('tab').length).toBe(0);
     expect(view.getByRole('heading', { level: 2, name: 'Input and output' })).not.toBeNull();
+    // COR-2329 round two: the page hand-built Cinder's Section; these are Cinder's own now.
+    for (const name of ['Input and output', 'Activity']) {
+      const section = view.getByRole('heading', { level: 2, name }).closest('section');
+      expect(section?.classList.contains('cinder-section'), name).toBe(true);
+      expect(
+        view.getByRole('heading', { level: 2, name }).classList.contains('cinder-section__title'),
+        name,
+      ).toBe(true);
+    }
     const rail = view.getByRole('complementary');
     const link = [...rail.querySelectorAll('a')].find(
       (one) => one.textContent === workflowTypeName('e2e-approval'),
