@@ -286,7 +286,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/kbd/kbd.css': [
     { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
   ],
-  'components/cinder/src/components/media-controls/media-controls.css': [
+  'components/cinder/src/components/_internal/media-controls.css': [
     {
       declaration: 'background-color: var(--cinder-border-contrast);',
       category: 'area',

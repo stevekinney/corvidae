@@ -963,7 +963,6 @@ const FROZEN_EXISTING_COMPONENT_NAMES: ReadonlySet<string> = new Set([
   'marquee',
   'masonry',
   'matrix-chart',
-  'media-controls',
   'mega-menu',
   'menu-bar',
   'message',

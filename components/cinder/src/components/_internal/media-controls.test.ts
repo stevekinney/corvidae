@@ -317,4 +317,92 @@ describe('MediaControls', () => {
     await fireEvent.input(slider);
     expect(seeks).toEqual([]);
   });
+
+  test('shows the elapsed and total time and speaks it as the slider value', () => {
+    const { container, getByRole } = render(MediaControls, {
+      progress: 0.5,
+      elapsed: 100,
+      duration: 200,
+      onSeek: () => {},
+    });
+    expect(container.querySelector('.cinder-media-controls__time')?.textContent).toBe(
+      '1:40 / 3:20',
+    );
+    const slider = getByRole('slider');
+    expect(slider.getAttribute('aria-valuetext')).toBe('1:40 of 3:20');
+    expect(slider.getAttribute('step')).toBe('any');
+  });
+
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, 0])(
+    'shows no time for a duration of %p',
+    (duration) => {
+      const { container } = render(MediaControls, { progress: 0, elapsed: 0, duration });
+      expect(container.querySelector('.cinder-media-controls__time')).toBeNull();
+    },
+  );
+
+  test('the arrow and page keys seek by seconds and a tenth once the duration is known', async () => {
+    const seeks: number[] = [];
+    const { getByRole } = render(MediaControls, {
+      progress: 0.5,
+      elapsed: 100,
+      duration: 200,
+      onSeek: (position: number) => seeks.push(position),
+    });
+    const slider = getByRole('slider');
+    await fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    await fireEvent.keyDown(slider, { key: 'ArrowLeft' });
+    await fireEvent.keyDown(slider, { key: 'PageUp' });
+    await fireEvent.keyDown(slider, { key: 'PageDown' });
+    await fireEvent.keyDown(slider, { key: 'Home' });
+    expect(seeks.map((value) => Math.round(value * 1000) / 1000)).toEqual([0.525, 0.475, 0.6, 0.4]);
+  });
+
+  test('leaves the slider keys to the browser without a duration', async () => {
+    const seeks: number[] = [];
+    const { getByRole } = render(MediaControls, {
+      progress: 0.5,
+      onSeek: (position: number) => seeks.push(position),
+    });
+    await fireEvent.keyDown(getByRole('slider'), { key: 'ArrowRight' });
+    expect(seeks).toEqual([]);
+  });
+
+  test('renders the mute and full-screen toggles only when asked, as pressed toggles', async () => {
+    const calls: string[] = [];
+    const { getByRole, queryByRole, rerender } = render(MediaControls, {});
+    expect(queryByRole('button', { name: 'Mute' })).toBeNull();
+    expect(queryByRole('button', { name: 'Full screen' })).toBeNull();
+    await rerender({
+      muted: true,
+      onToggleMute: () => calls.push('mute'),
+      fullscreen: false,
+      onToggleFullscreen: () => calls.push('fullscreen'),
+    });
+    const mute = getByRole('button', { name: 'Mute' });
+    const fullscreen = getByRole('button', { name: 'Full screen' });
+    expect(mute.getAttribute('aria-pressed')).toBe('true');
+    expect(fullscreen.getAttribute('aria-pressed')).toBe('false');
+    await fireEvent.click(mute);
+    await fireEvent.click(fullscreen);
+    expect(calls).toEqual(['mute', 'fullscreen']);
+  });
+
+  test('the toggles stay out while unavailable and do nothing while disabled', async () => {
+    const calls: string[] = [];
+    const onToggleMute = () => calls.push('mute');
+    const onToggleFullscreen = () => calls.push('fullscreen');
+    const { getByRole, queryByRole, rerender } = render(MediaControls, {
+      unavailable: true,
+      onToggleMute,
+      onToggleFullscreen,
+    });
+    expect(queryByRole('button', { name: 'Mute', hidden: true })).toBeNull();
+    await rerender({ unavailable: false, disabled: true, onToggleMute, onToggleFullscreen });
+    const mute = getByRole('button', { name: 'Mute' });
+    expect(mute.getAttribute('aria-disabled')).toBe('true');
+    await fireEvent.click(mute);
+    await fireEvent.click(getByRole('button', { name: 'Full screen' }));
+    expect(calls).toEqual([]);
+  });
 });

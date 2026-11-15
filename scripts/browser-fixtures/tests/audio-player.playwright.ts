@@ -28,6 +28,10 @@ test('AudioPlayer plays, pauses, and seeks from the controls and the keyboard', 
   await expect(media).toHaveJSProperty('readyState', 4);
   await expect(button).toHaveAttribute('aria-pressed', 'false');
 
+  // The elapsed and total time show once the length is known; the slider speaks the same.
+  await expect(player.locator('.cinder-media-controls__time')).toHaveText('0:00 / 0:04');
+  await expect(player.getByRole('slider')).toHaveAttribute('aria-valuetext', '0:00 of 0:04');
+
   // Pointer: play, then pause.
   await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
