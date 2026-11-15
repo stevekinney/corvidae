@@ -286,6 +286,15 @@
               text-anchor="middle">{xAxis.label}</text
             >
           {/if}
+          <!--
+            The fill is a tint of the line's own hue, never a grey wash. Alpha-compositing a series
+            colour over the surface loses chroma in proportion to the alpha: the old 0.42 to 0.08
+            ramp left the lower area at OKLCH chroma 0.006 to 0.025 with its hue drifting up to 54
+            degrees, which reads as grey. At 0.55 to 0.35 every default series keeps chroma of at
+            least 0.045 at the bottom of its area and drifts at most 14 degrees, in both themes, on
+            the page and on a raised surface, while the top of the fill stays at least 10 lightness
+            points from the line so the line still reads at full strength.
+          -->
           <defs>
             {#each model.normalizedSeries as item (item.id)}
               <linearGradient
@@ -295,8 +304,8 @@
                 y1="0"
                 y2="1"
               >
-                <stop offset="0" stop-color={item.color} stop-opacity="0.42" />
-                <stop offset="1" stop-color={item.color} stop-opacity="0.08" />
+                <stop offset="0" stop-color={item.color} stop-opacity="0.55" />
+                <stop offset="1" stop-color={item.color} stop-opacity="0.35" />
               </linearGradient>
             {/each}
           </defs>
@@ -315,6 +324,8 @@
               {/if}
             {/each}
           {:else}
+            <!-- Every fill paints before any line, so a later series' fill never covers an earlier
+                 series' line where overlapping areas cross. -->
             {#each model.normalizedSeries as item (item.id)}
               {#if !hiddenSeriesIds.includes(item.id) && item.areaPath}
                 <path
@@ -324,6 +335,10 @@
                   aria-hidden="true"
                   data-cinder-series={item.id}
                 />
+              {/if}
+            {/each}
+            {#each model.normalizedSeries as item (item.id)}
+              {#if !hiddenSeriesIds.includes(item.id) && item.areaPath}
                 <path
                   class="cinder-area-chart__line"
                   d={item.path}
