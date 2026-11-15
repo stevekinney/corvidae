@@ -77,19 +77,17 @@ describe('chat message action buttons', () => {
     expect(buttonRule).toContain('min-inline-size: 1.5rem;');
   });
 
-  test('on a touch screen each line action keeps its painted box and takes a layout-free 44px hit region (C#3)', () => {
+  test('on a touch screen each line action keeps its painted box and takes a layout-free hit region that is under 44px and clear of text (C#3, COR-2406)', () => {
     const coarse = extractMediaBlock(
       source,
       '@media (any-pointer: coarse) {',
       ':global(.chat-message-action-button:not(.cinder-button))::after',
     );
-    expect(coarse).toContain('inset-inline: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
-    // The region reaches 2px above the line and the rest of its 44px below it, never 10px up into
-    // the answer's last line (COR-2406): a symmetric region covered the middle of a one-line answer.
-    expect(coarse).toContain('inset-block-start: -2px;');
-    expect(coarse).toContain(
-      'inset-block-end: calc(1.5rem - var(--cinder-touch-target-min) + 2px);',
-    );
+    // Owner decision of 2026-11-15 (COR-2406): the region is the line's box plus the gap below it,
+    // smaller than 44px, with no reach above into the answer's text and half the action gap across.
+    expect(coarse).toContain('inset-block-start: 0;');
+    expect(coarse).toContain('inset-block-end: calc(var(--_cinder-chat-row-gap, 0px) * -1);');
+    expect(coarse).toContain('inset-inline: calc(var(--cinder-space-2) / -2);');
     expect(coarse.replace(/\s+/g, ' ')).toContain(
       ".chat-message-line :global(.cinder-button.chat-message-action-button[data-cinder-hit-target='44'])::before",
     );

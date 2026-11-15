@@ -229,6 +229,26 @@ describe('target-undersized', () => {
     expect(rules(found)).toEqual(['target-undersized']);
     expect(found[0]?.measured).toContain('under the 44px minimum on a touch screen');
   });
+
+  test('holds a message line action to the 24px minimum on a touch screen, not the 44px one (COR-2406, owner decision of 2026-11-15)', () => {
+    const action = button(8, 4, {
+      rect: { x: 10, y: 10, width: 56, height: 24 },
+      content: { x: 18, y: 14, width: 40, height: 16 },
+      hit: { x: 6, y: 10, width: 64, height: 32 },
+      lineAction: true,
+    });
+    expect(audit(facts({ pointerCoarse: true, controls: [action] }), capture())).toEqual([]);
+    // Every other control keeps the 44px rule at the same size...
+    const ordinary = { ...action, lineAction: false };
+    expect(rules(audit(facts({ pointerCoarse: true, controls: [ordinary] }), capture()))).toEqual([
+      'target-undersized',
+    ]);
+    // ...and the line action still may not fall under the 24px floor.
+    const tiny = { ...action, lineAction: true, hit: { x: 10, y: 10, width: 20, height: 20 } };
+    expect(rules(audit(facts({ pointerCoarse: true, controls: [tiny] }), capture()))).toEqual([
+      'target-undersized',
+    ]);
+  });
 });
 
 describe('hit-takes-space', () => {

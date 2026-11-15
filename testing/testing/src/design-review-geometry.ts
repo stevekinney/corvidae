@@ -16,6 +16,12 @@ export interface ControlFact {
   readonly hasIcon: boolean;
   /** Whether it is laid out inline in a sentence, which WCAG 2.5.8 exempts from the target size. */
   readonly inline: boolean;
+  /**
+   * Whether it is an action on a message's time-and-actions line. On a touch screen its tap area is
+   * smaller than 44px and stays clear of all text (owner decision of 2026-11-15 on COR-2406), so
+   * the touch minimum and the 22px probe do not apply to it; the WCAG 2.5.8 minimum does.
+   */
+  readonly lineAction?: boolean;
   /** The Cinder variant it is drawn in, or empty when it names none. */
   readonly variant: string;
   /**
@@ -489,7 +495,7 @@ function auditControls(facts: GeometryFacts, capture: GeometryCapture): Geometry
     }
     // A text field is as wide as its row, so it is held to the touch minimum only by its height's floor.
     const minimum =
-      facts.pointerCoarse && control.kind !== 'field'
+      facts.pointerCoarse && control.kind !== 'field' && control.lineAction !== true
         ? thresholds.touchTargetMinimum
         : thresholds.targetMinimum;
     if (!control.inline && Math.min(control.hit.width, control.hit.height) < minimum) {
@@ -501,6 +507,7 @@ function auditControls(facts: GeometryFacts, capture: GeometryCapture): Geometry
     } else if (
       facts.pointerCoarse &&
       control.kind !== 'field' &&
+      control.lineAction !== true &&
       !control.inline &&
       (control.unreached ?? []).length > 0 &&
       // One covered control is one finding: the covering check names what lies on its face.

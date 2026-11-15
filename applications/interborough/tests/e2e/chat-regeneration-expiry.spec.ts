@@ -246,6 +246,37 @@ function viewportIsDesktop(page: Page): boolean {
  * text's own element: what a hit region laid over the words would be. Empty when the words answer
  * their own taps.
  */
+/**
+ * The message text, across every message of the conversation, that a message line's action takes
+ * a tap over: the answer above a line and the next message's first line below it. Empty when no
+ * action's region reaches any word (owner decision of 2026-11-15 on COR-2406).
+ */
+async function textUnderLineActions(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const covered = new Set<string>();
+    for (const body of document.querySelectorAll('.chat-message')) {
+      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if ((node.textContent ?? '').trim() === '') continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const line of range.getClientRects()) {
+          for (let y = line.top + 0.5; y < line.bottom; y += 2) {
+            for (let x = line.left + 1; x < line.right; x += 6) {
+              const hit = document.elementFromPoint(x, y)?.closest('.chat-message-action-button');
+              if (hit)
+                covered.add(
+                  `${(node.textContent ?? '').trim().slice(0, 30)} at y=${Math.round(y)}`,
+                );
+            }
+          }
+        }
+      }
+    }
+    return [...covered];
+  });
+}
+
 async function textCoveredByAnotherElement(target: Locator): Promise<string[]> {
   return target.evaluate((holder) => {
     const range = document.createRange();
@@ -337,6 +368,25 @@ for (const viewport of VIEWPORTS) {
       hasTouch: viewport.width < 500,
       isMobile: viewport.width < 500,
       viewport: { width: viewport.width, height: viewport.height },
+    });
+
+    test(`no line action takes a tap over the words above or below it at ${viewport.label}`, async ({
+      page,
+      request,
+    }) => {
+      const threadId = newThreadId('line-action-region');
+      await runToEnd(request, REGENERATION_PROOF_AGENT, threadId, 'Verify the proof record');
+      await runToEnd(request, REGENERATION_PROOF_AGENT, threadId, 'Verify it once more');
+      await page.goto(`/chats/${threadId}`);
+      const conversationRegion = page.getByRole('region', {
+        name: 'Chat conversation',
+        exact: true,
+      });
+      await expect(conversationRegion).toContainText(
+        'The verified answer is retained after the real tool step.',
+      );
+      await expect(conversationRegion.locator('.chat-message-line').nth(3)).toBeVisible();
+      expect(await textUnderLineActions(page)).toEqual([]);
     });
 
     test(`regenerates the latest ended answer through the real Bureau RPC at ${viewport.label}`, async ({

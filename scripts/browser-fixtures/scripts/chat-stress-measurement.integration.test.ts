@@ -1064,6 +1064,66 @@ describe('chat stress visual measurement', () => {
       await browser.close();
     }
   });
+  describe('message line action touch region', () => {
+    // Owner decision of 2026-11-15 on COR-2406: a line action's region on touch is smaller than
+    // 44px and clear of text; the 44px rule does not apply to it. An answer, its line of time and
+    // actions pulled up under it, an 8px gap, then the next message.
+    const regionFor = async (pseudo: string) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 640 } });
+        await page.setContent(`
+          <style>
+            body { margin: 0; font: 14px/22px sans-serif; }
+            main { padding: 40px 28px; }
+            .chat-message-wrapper { display: block; margin-block-end: 8px; }
+            .chat-message-wrapper p { margin: 0; }
+            .chat-message-line { position: relative; z-index: 1; height: 24px; margin-block-start: -2px; font-size: 12px; }
+            .chat-message-action-button { position: relative; width: 24px; height: 24px; padding: 0; border: 0; background: #ccc; }
+            .chat-message-action-button::after { content: ''; position: absolute; ${pseudo} }
+          </style>
+          <main data-testid="chat-stress-shell">
+            <div class="chat-message-wrapper"><p>The verified answer is retained.</p><div class="chat-message-line"><button class="chat-message-action-button" aria-label="Copy"></button></div></div>
+            <div class="chat-message-wrapper"><p>The next message starts here.</p></div>
+          </main>`);
+        const measurement = await page.evaluate(measureInPage, {
+          coarse: true,
+          rtl: false,
+          settledApproval: false,
+        });
+        return measurement.smallTargets;
+      } finally {
+        await browser.close();
+      }
+    };
+
+    it('passes a region that is the line plus the gap below it, clear of both texts', async () => {
+      expect(await regionFor('inset: 0 -4px -8px;')).toEqual([]);
+    });
+
+    it('fails a region that reaches up into the answer above it', async () => {
+      const targets = await regionFor('inset: -10px -4px -8px;');
+      expect(targets).toHaveLength(1);
+      expect(targets[0]?.lineActionProblems).toEqual([
+        expect.stringContaining('covers the text "The verified answer'),
+      ]);
+    });
+
+    it("fails a region that reaches into the next message's first line", async () => {
+      const targets = await regionFor('inset: 0 -4px -20px;');
+      expect(targets).toHaveLength(1);
+      expect(targets[0]?.lineActionProblems).toEqual([
+        expect.stringContaining('covers the text "The next message'),
+      ]);
+    });
+
+    it('fails a region that shrinks further than the room allows', async () => {
+      const targets = await regionFor('inset: 0 -4px 0;');
+      expect(targets).toHaveLength(1);
+      expect(targets[0]?.lineActionProblems).toEqual([expect.stringContaining('shorter than the')]);
+    });
+  });
+
   describe('touch target hit area', () => {
     // The real mechanism of Cinder's Button (`button.css`): the box is the painted face, and a
     // positioned pseudo-element reaches 44px without taking layout space.

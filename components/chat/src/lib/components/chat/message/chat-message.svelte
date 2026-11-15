@@ -2154,8 +2154,8 @@
     );
   }
 
-  /* The line's actions reach 44px by a hit area that overhangs the line, 2px above and 18px below on a touch screen. The
-   * next message's bubble (`content-visibility: auto` makes it a stacking context painted in tree order)
+  /* The line's actions' hit area overhangs the line below it, by the gap to the next message, on a
+   * touch screen. The next message's bubble (`content-visibility: auto` makes it a stacking context painted in tree order)
    * would otherwise paint over that overhang, so a tap just under Copy would land on the next
    * message's text. A stacking position of its own puts the line's overhang above it. */
   .chat-message-line {
@@ -2260,26 +2260,28 @@
    * pseudo-element that adds no layout, so the glyphs pitch at the painted size plus the gap and
    * their hit regions overlap invisibly. Copy is a Cinder Button, which draws its own region.
    *
-   * The region never reaches the middle of the text above (COR-2406). The line is pulled up under
-   * an assistant's text, so the air between the last line's letters and the line's top edge is
-   * about 2px; a region centred on the 24px box reached 10px up and covered the centre of a
-   * one-line answer, which on Linux's narrower fonts is every answer that fits. The region takes
-   * 2px above the box (the fringe of the last line's descenders) and the rest of its 44px, 18px,
-   * below it, where the message gap and the next message's own air lie (about 14px on a phone, so
-   * the region ends a few px into the next first line, short of its middle). */
+   * Owner decision of 2026-11-15 on COR-2406: on touch these actions' region is smaller than 44px
+   * and stays clear of all text. The line is pulled up under an assistant's text, so the box
+   * starts where that text's last line ends and the region keeps to the box at its top (a region
+   * centred on the 24px box reached 10px up and covered the centre of a one-line answer, which on
+   * Linux's narrower fonts is every answer that fits). Below, the region reaches the gap that
+   * separates the line from the next message, which holds no text, and stops there; it is the
+   * line's own box plus that gap, so it follows the density and the viewport and fits any font.
+   * Across, it reaches half the gap between actions, so neighbours' regions meet and never
+   * overlap. */
   @media (any-pointer: coarse) {
     .chat-message-line :global(.chat-message-action-button:not(.cinder-button))::after {
       content: '';
       position: absolute;
-      inset-inline: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
     }
 
     .chat-message-line :global(.chat-message-action-button:not(.cinder-button))::after,
     .chat-message-line
       :global(.cinder-button.chat-message-action-button[data-cinder-hit-target='44'])::before,
     .chat-message-line :global(.cinder-copy-button.chat-message-action-button)::before {
-      inset-block-start: -2px;
-      inset-block-end: calc(1.5rem - var(--cinder-touch-target-min) + 2px);
+      inset-block-start: 0;
+      inset-block-end: calc(var(--_cinder-chat-row-gap, 0px) * -1);
+      inset-inline: calc(var(--cinder-space-2) / -2);
     }
   }
 

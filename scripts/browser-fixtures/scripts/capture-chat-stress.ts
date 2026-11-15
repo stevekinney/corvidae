@@ -245,6 +245,7 @@ export function measureInPage(options: {
     width: number;
     height: number;
     shortSides: string[];
+    lineActionProblems?: string[];
   }[] = [];
   const controlGeometry: {
     controlId: string;
@@ -358,6 +359,72 @@ export function measureInPage(options: {
       }
       return short;
     };
+    // Named exception to the 44px rule, for the actions on a message's time-and-actions line on a
+    // touch pointer (owner decision of 2026-11-15 on COR-2406): their region is smaller than 44px
+    // and stays clear of text. The guard is not loosened: these controls instead must (a) cover no
+    // pixel of any text outside the line, above or below, and (b) be at least as tall as the room
+    // allows, the line's box down to the next message (at most 44px), so a region that shrinks
+    // further than it must still fails. Every other control keeps the 44px probe above.
+    let textRectangles: { rect: DOMRect; text: string }[] | undefined;
+    const lineActionRegionProblems = (element: HTMLElement, box: DOMRect): string[] => {
+      const centreX = box.left + box.width / 2;
+      const centreY = box.top + box.height / 2;
+      const answers = (x: number, y: number): boolean => {
+        const hit = document.elementFromPoint(x, y);
+        return hit !== null && (hit === element || element.contains(hit));
+      };
+      // How far past an edge a tap still reaches the control, in whole pixels.
+      const reach = (dx: number, dy: number): number => {
+        let count = 0;
+        while (count < 80) {
+          const distance = count + 0.5;
+          const x = dx === 0 ? centreX : dx < 0 ? box.left - distance : box.right + distance;
+          const y = dy === 0 ? centreY : dy < 0 ? box.top - distance : box.bottom + distance;
+          if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight || !answers(x, y)) break;
+          count += 1;
+        }
+        return count;
+      };
+      const region = {
+        left: box.left - reach(-1, 0),
+        right: box.right + reach(1, 0),
+        top: box.top - reach(0, -1),
+        bottom: box.bottom + reach(0, 1),
+      };
+      if (textRectangles === undefined) {
+        textRectangles = [];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+          const holder = node.parentElement;
+          const text = (node.textContent ?? '').trim();
+          if (holder === null || text === '' || !isVisible(holder)) continue;
+          if (holder.closest('.chat-message-line, script, style') !== null) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          for (const rect of range.getClientRects()) {
+            if (rect.width > 0 && rect.height > 0) textRectangles.push({ rect, text });
+          }
+        }
+      }
+      const problems: string[] = [];
+      const covered = new Set<string>();
+      for (const { rect, text } of textRectangles) {
+        const across = Math.min(rect.right, region.right) - Math.max(rect.left, region.left);
+        const down = Math.min(rect.bottom, region.bottom) - Math.max(rect.top, region.top);
+        if (across > 0.5 && down > 0.5) covered.add(text.slice(0, 40));
+      }
+      for (const text of covered) problems.push(`its region covers the text "${text}"`);
+      const next = element.closest('.chat-message-wrapper')?.nextElementSibling ?? null;
+      const room = next === null ? box.height : next.getBoundingClientRect().top - box.top;
+      const required = Math.min(44, room) - 1;
+      const height = region.bottom - region.top;
+      if (room > 0 && height < required) {
+        problems.push(
+          `its region is ${Math.round(height * 10) / 10} px tall, shorter than the ${Math.round(required * 10) / 10} px the line and the gap below it allow`,
+        );
+      }
+      return problems;
+    };
     for (const [index, element] of controls.entries()) {
       if (!isVisible(element) || element.getAttribute('aria-hidden') === 'true') continue;
       if ((element as HTMLButtonElement).disabled) continue;
@@ -403,6 +470,19 @@ export function measureInPage(options: {
       const centreX = box.left + box.width / 2;
       const centreY = box.top + box.height / 2;
       if (!hitTargetAt(element, centreX, centreY)) continue;
+      if (element.matches('.chat-message-line .chat-message-action-button')) {
+        const lineActionProblems = lineActionRegionProblems(element, box);
+        if (lineActionProblems.length > 0) {
+          smallTargets.push({
+            name: nameOf(element),
+            width: Math.round(box.width),
+            height: Math.round(box.height),
+            shortSides: [],
+            lineActionProblems,
+          });
+        }
+        continue;
+      }
       const shortSides = probeHitArea(element, centreX, centreY);
       if (shortSides.length > 0) {
         smallTargets.push({

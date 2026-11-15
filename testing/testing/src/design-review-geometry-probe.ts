@@ -506,6 +506,7 @@ export function collectGeometryFacts(): GeometryFacts {
         accessibleLabel: element.getAttribute('aria-label') ?? element.getAttribute('title') ?? '',
         hasIcon: element.querySelector('svg, img') !== null,
         inline: style.display === 'inline',
+        lineAction: element.matches('.chat-message-line .chat-message-action-button'),
         variant: element.getAttribute('data-cinder-variant') ?? '',
         layout: boxOf(union(null, layout)),
         rect: {
