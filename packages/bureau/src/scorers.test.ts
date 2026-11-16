@@ -190,7 +190,7 @@ function scriptedEvaluationIds(ids: string[]): EvaluationIdentifierSeam {
   };
 }
 
-/** A judge whose `evaluate()` never resolves until `resolveAll()` is called. */
+/** A judge whose `score()` never resolves until `resolveAll()` is called. */
 function blockingJudge(name = 'blocking-judge'): {
   judge: PluginScorer;
   resolveAll: () => void;
@@ -199,9 +199,9 @@ function blockingJudge(name = 'blocking-judge'): {
   const judge: PluginScorer = {
     name,
     version: '1.0.0',
-    evaluate: () =>
+    score: () =>
       new Promise<PluginScore>((resolve) => {
-        resolvers.push(() => resolve({ pass: true, score: 1, message: 'unblocked' }));
+        resolvers.push(() => resolve({ outcome: 'pass', score: 1, message: 'unblocked' }));
       }),
   };
   return {
@@ -216,7 +216,7 @@ function passingMatcher(name = 'exact-match'): PluginScorer {
   return {
     name,
     version: '1.0.0',
-    evaluate: (): PluginScore => ({ pass: true, score: 1, message: 'matched' }),
+    score: (): PluginScore => ({ outcome: 'pass', score: 1, message: 'matched' }),
   };
 }
 
@@ -224,7 +224,7 @@ function failingMatcher(name = 'exact-match', score = 0): PluginScorer {
   return {
     name,
     version: '1.0.0',
-    evaluate: (): PluginScore => ({ pass: false, score, message: 'did not match' }),
+    score: (): PluginScore => ({ outcome: 'fail', score, message: 'did not match' }),
   };
 }
 
@@ -357,7 +357,7 @@ describe('createScorerSampler', () => {
       detail: {
         judgeName: 'judge-a',
         judgeVersion: '1.0.0',
-        pass: true,
+        outcome: 'pass',
         score: 1,
         message: 'matched',
       },
@@ -365,7 +365,7 @@ describe('createScorerSampler', () => {
     expect(records[1]).toMatchObject({
       runId: 'run-1',
       type: 'eval.sample.recorded',
-      detail: { judgeName: 'judge-b', pass: false, score: 0.2, message: 'did not match' },
+      detail: { judgeName: 'judge-b', outcome: 'fail', score: 0.2, message: 'did not match' },
     });
 
     await sampler.dispose();
@@ -377,7 +377,7 @@ describe('createScorerSampler', () => {
     const judge: PluginScorer = {
       name: 'linear:triage-quality',
       version: '2.1.0',
-      evaluate: (): PluginScore => ({ pass: true, score: 0.9, message: 'fine' }),
+      score: (): PluginScore => ({ outcome: 'pass', score: 0.9, message: 'fine' }),
     };
     const sampler = createScorerSampler(bureau, auditTrail, undefined, {
       list: [judge],
@@ -397,13 +397,13 @@ describe('createScorerSampler', () => {
     await sampler.dispose();
   });
 
-  it('records a failed judge (throws) as a score-0 audit entry instead of crashing', async () => {
+  it('records a judge that throws as an error audit entry instead of crashing', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail, records } = createStubAuditTrail();
     const throwingJudge: PluginScorer = {
       name: 'flaky-judge',
       version: '1.0.0',
-      evaluate: () => {
+      score: () => {
         throw new Error('judge exploded');
       },
     };
@@ -420,7 +420,11 @@ describe('createScorerSampler', () => {
     expect(records[0]).toMatchObject({
       runId: 'run-1',
       type: 'eval.sample.recorded',
-      detail: { judgeName: 'flaky-judge', pass: false, score: 0 },
+      detail: {
+        judgeName: 'flaky-judge',
+        outcome: 'error',
+        message: 'Judge threw: judge exploded',
+      },
     });
 
     await sampler.dispose();
@@ -455,7 +459,7 @@ describe('createScorerSampler', () => {
       name: 'quality-judge',
       version: '1.0.0',
       alertThreshold: 0.5,
-      evaluate: (): PluginScore => ({ pass: true, score: 0.2, message: 'quality dropped' }),
+      score: (): PluginScore => ({ outcome: 'pass', score: 0.2, message: 'quality dropped' }),
     };
     const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
       list: [breachingJudge],
@@ -476,9 +480,10 @@ describe('createScorerSampler', () => {
         judgeVersion: '1.0.0',
         score: 0.2,
         threshold: 0.5,
-        message: 'quality dropped',
       },
     });
+    // The scorer's text stays on the audit record; an alert is a pushed event (COR-2199).
+    expect(notifications[0]?.detail).not.toHaveProperty('message');
 
     await sampler.dispose();
   });
@@ -491,7 +496,7 @@ describe('createScorerSampler', () => {
       name: 'quality-judge',
       version: '1.0.0',
       alertThreshold: 0.5,
-      evaluate: (): PluginScore => ({ pass: true, score: 0.5, message: 'fine' }),
+      score: (): PluginScore => ({ outcome: 'pass', score: 0.5, message: 'fine' }),
     };
     const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
       list: [okJudge],
@@ -506,7 +511,7 @@ describe('createScorerSampler', () => {
     await sampler.dispose();
   });
 
-  it('falls back to firing on pass:false when no alertThreshold is configured', async () => {
+  it('falls back to firing on a fail outcome when no alertThreshold is configured', async () => {
     const { bureau, emit } = createStubBureau();
     const { auditTrail } = createStubAuditTrail();
     const { webhookNotifier, notifications } = createStubWebhookNotifier();
@@ -532,7 +537,7 @@ describe('createScorerSampler', () => {
       name: 'quality-judge',
       version: '1.0.0',
       alertThreshold: 0.5,
-      evaluate: (): PluginScore => ({ pass: false, score: 0.1, message: 'bad' }),
+      score: (): PluginScore => ({ outcome: 'fail', score: 0.1, message: 'bad' }),
     };
     // No webhookNotifier passed (undefined) — the breach is still recorded.
     const sampler = createScorerSampler(bureau, auditTrail, undefined, {
@@ -559,7 +564,7 @@ describe('createScorerSampler', () => {
       name: 'quality-judge',
       version: '1.0.0',
       alertThreshold: 0.1,
-      evaluate: (): PluginScore => ({ pass: true, score: 0.95, message: 'excellent' }),
+      score: (): PluginScore => ({ outcome: 'pass', score: 0.95, message: 'excellent' }),
     };
     const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
       list: [healthyJudge],
@@ -600,9 +605,9 @@ describe('createScorerSampler', () => {
     const gatedJudge: PluginScorer = {
       name: 'gated-judge',
       version: '1.0.0',
-      evaluate: () =>
+      score: () =>
         new Promise<PluginScore>((resolve) => {
-          releaseJudge = () => resolve({ pass: true, score: 1, message: 'released' });
+          releaseJudge = () => resolve({ outcome: 'pass', score: 1, message: 'released' });
         }),
     };
     const sampler = createScorerSampler(bureau, auditTrail, undefined, {
@@ -643,7 +648,7 @@ describe('createScorerSampler', () => {
     const neverSettlingJudge: PluginScorer = {
       name: 'never-settling-judge',
       version: '1.0.0',
-      evaluate: () => new Promise<PluginScore>(() => {}),
+      score: () => new Promise<PluginScore>(() => {}),
     };
     const sampler = createScorerSampler(bureau, auditTrail, undefined, {
       list: [neverSettlingJudge],
@@ -674,18 +679,18 @@ describe('createScorerSampler', () => {
     const firstJudge: PluginScorer = {
       name: 'first-judge',
       version: '1.0.0',
-      evaluate: () =>
+      score: () =>
         new Promise<PluginScore>((resolve) => {
-          releaseFirstJudge = () => resolve({ pass: true, score: 1, message: 'first' });
+          releaseFirstJudge = () => resolve({ outcome: 'pass', score: 1, message: 'first' });
         }),
     };
     let secondJudgeCalled = false;
     const secondJudge: PluginScorer = {
       name: 'second-judge',
       version: '1.0.0',
-      evaluate: (): PluginScore => {
+      score: (): PluginScore => {
         secondJudgeCalled = true;
-        return { pass: true, score: 1, message: 'second' };
+        return { outcome: 'pass', score: 1, message: 'second' };
       },
     };
     const sampler = createScorerSampler(bureau, auditTrail, undefined, {
@@ -731,7 +736,7 @@ describe('createScorerSampler', () => {
     const selfAbortingJudge: PluginScorer = {
       name: 'self-aborting-judge',
       version: '1.0.0',
-      evaluate: () => {
+      score: () => {
         controller.abort(new Error('aborted by the judge itself'));
         return new Promise<PluginScore>(() => {});
       },
@@ -757,16 +762,16 @@ describe('createScorerSampler', () => {
     controller.abort(new Error('shutting down before evaluation started'));
 
     // Tracks whether the judge was actually invoked, not just whether the
-    // eventual race against `signal` rejects — `judge.evaluate(runResult)`
+    // eventual race against `signal` rejects — `judge.score(runResult, signal)`
     // is evaluated as a plain argument expression BEFORE `raceAgainstAbort`
     // runs, so a race-only guard cannot prevent the judge from starting.
     let judgeInvoked = false;
     const trackedJudge: PluginScorer = {
       name: 'tracked-judge',
       version: '1.0.0',
-      evaluate: () => {
+      score: () => {
         judgeInvoked = true;
-        return { pass: true, score: 1, message: 'ok' };
+        return { outcome: 'pass', score: 1, message: 'ok' };
       },
     };
 
@@ -817,7 +822,7 @@ describe('createScorerSampler', () => {
     const breachingJudge: PluginScorer = {
       name: 'breaching-judge',
       version: '1.0.0',
-      evaluate: () => ({ pass: false, score: 0, message: 'breach' }),
+      score: () => ({ outcome: 'fail', score: 0, message: 'breach' }),
     };
     const sampler = createScorerSampler(bureau, auditTrail, webhookNotifier, {
       list: [breachingJudge],

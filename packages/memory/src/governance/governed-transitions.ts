@@ -176,7 +176,7 @@ export async function promoteRecord(
     { source: governance.source, memoryClass: governance.memoryClass, trust: governance.trust },
   );
   if (scan.flagged) {
-    const { flagged: _flagged, ...diagnostic } = scan;
+    const { flagged: _flagged, failed: _failed, ...diagnostic } = scan;
     await context.recordEvent({
       tenantId: authority.tenantId,
       type: 'memory.promotion.rejected',

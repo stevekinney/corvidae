@@ -34,7 +34,7 @@ describe('definePlugin', () => {
           {
             name: configuration.teamKey,
             version: '1.0.0',
-            evaluate: () => ({ pass: true, score: 1, message: 'ok' }),
+            score: () => ({ outcome: 'pass', score: 1, message: 'ok' }),
           },
         ],
       }),

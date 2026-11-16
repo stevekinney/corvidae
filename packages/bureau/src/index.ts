@@ -61,6 +61,7 @@ export type {
   PluginListing,
   PluginLoadSource,
   PluginMemoryContributions,
+  PluginMemoryGuardrailSource,
   PluginModelContributions,
   PluginProblem,
   PluginProviderContribution,

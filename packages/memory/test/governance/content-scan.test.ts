@@ -7,7 +7,13 @@ import {
   type GovernedContentScanOptions,
   scanGovernedContent,
 } from '../../src/governance/content-scan';
-import { createGovernedFixture, principalA, recordIdOf } from './governed-memory-harness';
+import type { TextSearchProvider } from '../../src/text-search-provider';
+import {
+  authority,
+  createGovernedFixture,
+  principalA,
+  recordIdOf,
+} from './governed-memory-harness';
 
 const quiet: InputDetector = {
   name: 'quiet',
@@ -52,6 +58,7 @@ describe('scanGovernedContent', () => {
     };
     expect(await scan('fact', [spy, loud, broken], 'ingested-document')).toEqual({
       flagged: true,
+      failed: false,
       detector: 'loud',
       category: 'poison',
       confidence: 0.8,
@@ -59,12 +66,27 @@ describe('scanGovernedContent', () => {
     expect(seen).toEqual(['ingested-document']);
   });
 
-  it('fails closed when a detector throws', async () => {
+  it('fails closed when a detector throws, and says it failed', async () => {
     expect(await scan('fact', [broken, quiet], 'recalled-memory')).toEqual({
       flagged: true,
+      failed: true,
       detector: 'broken',
       category: 'detector-failure',
       confidence: 1,
+    });
+  });
+
+  it('does not call a detector’s own `detector-failure` category a failure (COR-2194)', async () => {
+    const reporting: InputDetector = {
+      name: 'reporting',
+      detect: async () => ({ triggered: true, confidence: 0.5, category: 'detector-failure' }),
+    };
+    expect(await scan('fact', [reporting], 'recalled-memory')).toEqual({
+      flagged: true,
+      failed: false,
+      detector: 'reporting',
+      category: 'detector-failure',
+      confidence: 0.5,
     });
   });
 });
@@ -293,5 +315,281 @@ describe('the record a detector is told about', () => {
     seen.length = 0;
     await fixture.memory.promote(principalA, { id, collection: 'notes' });
     expect(seen[0]).toEqual(RECORD);
+  });
+});
+
+/**
+ * COR-2194: what a guardrail that fails does, by where it runs. At recall a failure withholds the
+ * record from that recall and leaves it `active`, so a later recall scans it again; a guardrail that
+ * trips still quarantines it. At admission and promotion a failure is still a detection.
+ *
+ * | guardrail                              | admission   | recall                      | promotion |
+ * | -------------------------------------- | ----------- | --------------------------- | --------- |
+ * | throws                                 | quarantined | withheld, record `active`   | rejected  |
+ * | cancelled by the recall's signal       | n/a         | `canceled`, record `active` | n/a       |
+ * | trips                                  | quarantined | quarantined                 | rejected  |
+ * | trips with a category of its own naming | quarantined | quarantined                 | rejected  |
+ */
+describe('a guardrail that fails (COR-2194)', () => {
+  const CONTENT = 'The build runs on Bun.';
+  const inspector = authority({ capabilities: ['memory:get', 'memory:inspect'] });
+
+  /** A text index that finds nothing and notes which entries were taken out of it. */
+  function indexSpy(removed: string[]): TextSearchProvider {
+    return {
+      init: async () => undefined,
+      close: async () => undefined,
+      index: async () => undefined,
+      remove: async (id) => {
+        removed.push(id);
+      },
+      clear: async () => undefined,
+      search: async () => new Map(),
+    };
+  }
+
+  /** A recall guardrail whose behavior a test changes between recalls. */
+  function switchable(behavior: { current: 'throw' | 'pass' }, calls: string[]): InputDetector {
+    return {
+      name: 'switchable',
+      detect: async (input) => {
+        calls.push(input);
+        if (behavior.current === 'throw') throw new Error('detector offline: secret detail');
+        return { triggered: false, confidence: 0, category: 'none' };
+      },
+    };
+  }
+
+  async function withRecallGuardrail(detector: InputDetector) {
+    const removed: string[] = [];
+    const fixture = await createGovernedFixture('in-memory', {
+      policy: { recall: { detectors: [detector] } },
+      governed: { textSearchProvider: indexSpy(removed) },
+    });
+    const id = await recordIdOf(
+      fixture.memory.write(principalA, CONTENT, { collection: 'notes', source: 'conversation' }),
+    );
+    const recall = (options: { signal?: AbortSignal } = {}) =>
+      fixture.memory.recallForModel(principalA, 'build', { collection: 'notes', ...options });
+    const stateOf = async () => {
+      const stored = await fixture.memory.get(inspector, { id, collection: 'notes' });
+      return stored?.governance?.state;
+    };
+    const eventsOf = () => fixture.memory.listEvents(inspector, { type: 'memory.recall.withheld' });
+    return { fixture, id, removed, recall, stateOf, eventsOf };
+  }
+
+  describe('at recall', () => {
+    it('finds the record when no guardrail objects, so the rows below are about the guardrail', async () => {
+      const { recall, stateOf, eventsOf } = await withRecallGuardrail(quiet);
+      const bundle = await recall();
+      expect(bundle.evidence).toHaveLength(1);
+      expect(await stateOf()).toBe('active');
+      expect(await eventsOf()).toEqual([]);
+    });
+
+    it('withholds a record whose guardrail throws, and leaves it active and in the index', async () => {
+      const { id, removed, recall, stateOf, eventsOf } = await withRecallGuardrail(broken);
+      const bundle = await recall();
+      expect(bundle).toMatchObject({ evidence: [], withheld: 1, rendered: '' });
+      expect(bundle.exclusions).toEqual([
+        expect.objectContaining({
+          recordId: id,
+          reason: 'content-policy',
+          detection: { detector: 'broken', category: 'detector-failure', confidence: 1 },
+        }),
+      ]);
+      expect(await stateOf()).toBe('active');
+      expect(removed).toEqual([]);
+      const events = await eventsOf();
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'memory.recall.withheld',
+        outcome: 'withheld',
+        reason: 'content-policy',
+        recordIds: [id],
+      });
+      // Exactly these fields: no `failed` or `flagged`, and no error text.
+      expect(events[0]?.diagnostic).toEqual({
+        detector: 'broken',
+        category: 'detector-failure',
+        confidence: 1,
+        contentDigest: expect.any(String),
+      });
+    });
+
+    it('records and pushes no error text and no content for a guardrail that throws', async () => {
+      const { eventsOf, fixture, recall } = await withRecallGuardrail(
+        switchable({ current: 'throw' }, []),
+      );
+      const bundle = await recall();
+      const everything = JSON.stringify([
+        await eventsOf(),
+        fixture.notifications,
+        bundle.exclusions,
+        bundle.rendered,
+        bundle.stages,
+      ]);
+      expect(fixture.notifications.length).toBeGreaterThan(0);
+      expect(everything).not.toContain('secret detail');
+      expect(everything).not.toContain('offline');
+      expect(everything).not.toContain(CONTENT);
+    });
+
+    it('scans the record again on a later recall, and recalls it once the guardrail answers', async () => {
+      const behavior = { current: 'throw' as 'throw' | 'pass' };
+      const calls: string[] = [];
+      const { recall, stateOf, eventsOf } = await withRecallGuardrail(switchable(behavior, calls));
+
+      const first = await recall();
+      const second = await recall();
+      expect([first.evidence, second.evidence]).toEqual([[], []]);
+      expect(calls).toEqual([CONTENT, CONTENT]);
+      expect(await eventsOf()).toHaveLength(2);
+
+      behavior.current = 'pass';
+      const healed = await recall();
+      expect(healed.evidence).toHaveLength(1);
+      expect(calls).toHaveLength(3);
+      expect(await stateOf()).toBe('active');
+    });
+
+    it('ends as canceled when the signal cancels a guardrail, withholding and quarantining nothing', async () => {
+      let started!: () => void;
+      const hasStarted = new Promise<void>((resolve) => (started = resolve));
+      const hangingDetector: InputDetector = {
+        name: 'hanging',
+        detect: () => {
+          started();
+          return new Promise(() => undefined);
+        },
+      };
+      const { removed, recall, stateOf, eventsOf } = await withRecallGuardrail(hangingDetector);
+      const controller = new AbortController();
+      const pending = recall({ signal: controller.signal });
+      await hasStarted;
+      controller.abort(new Error('caller left'));
+      const bundle = await pending;
+      expect(bundle).toMatchObject({ evidence: [], stopReason: 'canceled' });
+      expect(await stateOf()).toBe('active');
+      expect(removed).toEqual([]);
+      expect(await eventsOf()).toEqual([]);
+    });
+
+    it('does not count a guardrail that throws because the signal cancelled it as a failure', async () => {
+      const controller = new AbortController();
+      const throwing: InputDetector = {
+        name: 'throwing',
+        detect: async () => {
+          controller.abort(new Error('caller left'));
+          throw new Error('the guardrail gave up');
+        },
+      };
+      const { recall, stateOf, eventsOf } = await withRecallGuardrail(throwing);
+      expect(await recall({ signal: controller.signal })).toMatchObject({
+        stopReason: 'canceled',
+      });
+      expect(await stateOf()).toBe('active');
+      expect(await eventsOf()).toEqual([]);
+    });
+
+    it('still quarantines a record a guardrail trips on, and takes it out of the index', async () => {
+      const { id, removed, recall, stateOf, eventsOf } = await withRecallGuardrail(loud);
+      const bundle = await recall();
+      expect(bundle).toMatchObject({ evidence: [], withheld: 1 });
+      expect(await stateOf()).toBe('quarantined');
+      expect(removed).toEqual([id]);
+      expect(await eventsOf()).toEqual([
+        expect.objectContaining({
+          outcome: 'quarantined',
+          reason: 'content-policy',
+          diagnostic: {
+            detector: 'loud',
+            category: 'poison',
+            confidence: 0.8,
+            contentDigest: expect.any(String),
+          },
+        }),
+      ]);
+    });
+
+    it('still quarantines when a guardrail that trips names its category `detector-failure`', async () => {
+      const reporting: InputDetector = {
+        name: 'reporting',
+        detect: async () => ({ triggered: true, confidence: 0.5, category: 'detector-failure' }),
+      };
+      const { id, removed, recall, stateOf, eventsOf } = await withRecallGuardrail(reporting);
+      await recall();
+      expect(await stateOf()).toBe('quarantined');
+      expect(removed).toEqual([id]);
+      expect(await eventsOf()).toEqual([expect.objectContaining({ outcome: 'quarantined' })]);
+    });
+  });
+
+  describe('at admission', () => {
+    it('still quarantines a write whose guardrail throws', async () => {
+      const fixture = await createGovernedFixture('in-memory', {
+        policy: { admission: { detectors: [broken] } },
+      });
+      const receipt = await fixture.memory.write(principalA, CONTENT, {
+        collection: 'notes',
+        source: 'conversation',
+      });
+      expect(receipt.status).toBe('quarantined');
+      const stored = await fixture.memory.get(inspector, {
+        id: receipt.recordId!,
+        collection: 'notes',
+      });
+      expect(stored?.governance?.state).toBe('quarantined');
+      const [event] = await fixture.memory.listEvents(inspector, {
+        type: 'memory.write.quarantined',
+      });
+      expect(event?.diagnostic).toEqual({
+        detector: 'broken',
+        category: 'detector-failure',
+        confidence: 1,
+        contentDigest: expect.any(String),
+      });
+    });
+
+    it('still rejects a write whose guardrail throws when the policy rejects detections', async () => {
+      const fixture = await createGovernedFixture('in-memory', {
+        policy: { admission: { detectors: [broken], onDetection: 'reject' } },
+      });
+      expect(
+        await fixture.memory.write(principalA, CONTENT, {
+          collection: 'notes',
+          source: 'conversation',
+        }),
+      ).toMatchObject({ status: 'rejected', reason: 'content-policy' });
+    });
+  });
+
+  describe('at promotion', () => {
+    it('still rejects a promotion whose guardrail throws, and leaves the source active', async () => {
+      const behavior = { current: 'pass' as 'throw' | 'pass' };
+      const fixture = await createGovernedFixture('in-memory', {
+        policy: { admission: { detectors: [switchable(behavior, [])] } },
+      });
+      const id = await recordIdOf(
+        fixture.memory.write(principalA, CONTENT, { collection: 'notes', source: 'conversation' }),
+      );
+      behavior.current = 'throw';
+      expect(await fixture.memory.promote(principalA, { id, collection: 'notes' })).toMatchObject({
+        status: 'rejected',
+        reason: 'verification-failed',
+      });
+      const stored = await fixture.memory.get(inspector, { id, collection: 'notes' });
+      expect(stored?.governance?.state).toBe('active');
+      const [event] = await fixture.memory.listEvents(inspector, {
+        type: 'memory.promotion.rejected',
+      });
+      expect(event?.diagnostic).toEqual({
+        detector: 'switchable',
+        category: 'detector-failure',
+        confidence: 1,
+        contentDigest: expect.any(String),
+      });
+    });
   });
 });

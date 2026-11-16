@@ -32,7 +32,7 @@
  * | hook action kind (`run`) | waits: a delivery makes no attempt and stays pending with its lease released, and the registration's `availability` is `needs-setup` (COR-2176) | the waiting deliveries are driven without a restart and delivered after one attempt | waits again: a new delivery makes no attempt and waits, it does not fail |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
  * | memory guardrail, `guardrails.memory` (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
- * | scorer (`evaluate`) | refuses; the sample is not scored | works | refuses |
+ * | scorer (`score`) | refuses with {@link PluginNeedsSetupError}; the sampler records the sample as `unavailable`, with the error's message, and raises no alert | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | `host.publish` (COR-2224) | rejects {@link PluginNeedsSetupError}; nothing is published | works | rejects |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
@@ -602,7 +602,7 @@ export function gatedContributions<T extends PluginContributions>(
       : {
           scorers: result.scorers.map((judge) => ({
             ...judge,
-            evaluate: gated(gate, idOf(judge.name), judge.evaluate.bind(judge)),
+            score: gated(gate, idOf(judge.name), judge.score.bind(judge)),
           })),
         }),
     ...(result.formatters === undefined
