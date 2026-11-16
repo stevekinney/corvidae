@@ -94,6 +94,12 @@ export interface ProcessLease {
   halt(): void;
   /** Stops renewing and removes the stored lease, so a peer need not wait for it to lapse. */
   release(): Promise<void>;
+  /**
+   * COR-2167 — calls `listener` after each renewal write that succeeds, the timer's and
+   * {@link renew}'s, but not after the first write of {@link start}, nor after {@link halt}. A
+   * listener that throws is diagnosed, and renewal goes on. Returns its unsubscribe.
+   */
+  onRenewed(listener: () => void): () => void;
 }
 
 /** What {@link openProcessLease} needs. */
@@ -117,6 +123,7 @@ const NO_LEASE: ProcessLease = {
   renew: () => Promise.resolve(),
   halt: () => undefined,
   release: () => Promise.resolve(),
+  onRenewed: () => () => undefined,
 };
 
 /**
@@ -136,6 +143,21 @@ export function openProcessLease(options: OpenProcessLeaseOptions): ProcessLease
   let released = false;
   /** The renewals in flight, so a release is never overtaken by a write that was already started. */
   const writes = new Set<Promise<void>>();
+  /** Who {@link ProcessLease.onRenewed} tells, in the order they subscribed. */
+  const renewedListeners = new Set<() => void>();
+
+  /** A renewal write succeeded: tell each listener, unless the lease was halted meanwhile. */
+  const renewed = (): void => {
+    for (const listener of [...renewedListeners]) {
+      if (released) return;
+      if (!renewedListeners.has(listener)) continue;
+      try {
+        listener();
+      } catch (error) {
+        diagnose(`A listener of the renewals of process "${processId}" failed`, error);
+      }
+    }
+  };
 
   const write = (): Promise<void> => {
     const pending = kv.set(key, JSON.stringify({ expiresAt: clock.now() + leaseMilliseconds }));
@@ -154,7 +176,7 @@ export function openProcessLease(options: OpenProcessLeaseOptions): ProcessLease
         handle: timers.setInterval(
           () => {
             if (released) return;
-            write().catch((error: unknown) => {
+            write().then(renewed, (error: unknown) => {
               diagnose(`Could not renew the lease of process "${processId}"`, error);
             });
           },
@@ -163,7 +185,9 @@ export function openProcessLease(options: OpenProcessLeaseOptions): ProcessLease
       };
     },
     async renew() {
-      if (!released) await write();
+      if (released) return;
+      await write();
+      renewed();
     },
     halt() {
       released = true;
@@ -174,6 +198,12 @@ export function openProcessLease(options: OpenProcessLeaseOptions): ProcessLease
       this.halt();
       await Promise.allSettled(writes);
       await kv.delete(key);
+    },
+    onRenewed(listener) {
+      // A wrapper of its own, so one listener subscribed twice is two subscriptions.
+      const subscription = (): void => listener();
+      renewedListeners.add(subscription);
+      return () => void renewedListeners.delete(subscription);
     },
   };
 }

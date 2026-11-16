@@ -2625,6 +2625,20 @@ async function constructBureau<const D extends AgentDefinitions>(
       { cause: failures[0] },
     );
   };
+  // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
+  // and holds a lease under that name, which is how a later boot tells a task whose process is gone
+  // from one whose process is another Bureau still running over the same store. Opened before the
+  // workflow runtime, which runs a contributed trigger's listener only while it holds that
+  // trigger's record under this lease (COR-2167); it is first written in `start()`.
+  const processLease = openProcessLease({
+    kv: runtime.kv,
+    persistence: options.storage?.capabilities().persistence,
+    clock: runtimeServices.clock,
+    timers: runtimeServices.timers,
+    identifiers: runtimeServices.identifiers,
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+  });
   try {
     runtime.skillEvents.addEventListener(SkillLoadedEvent.type, (event) => {
       emitter.dispatch(new SkillLoadedEvent(event.skillName, event.correlation));
@@ -3104,6 +3118,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               pluginRegistry.reportTriggerFailure(plugin, workflow, message),
             onTriggerRecovered: (plugin, workflow) =>
               pluginRegistry.clearTriggerFailure(plugin, workflow),
+            listenerLease: { processLease, kv: runtime.kv },
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',
@@ -3433,18 +3448,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1915: what each run of a chat spent, which a file agent's `limits.cost.chat` is
   // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
   const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
-  // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
-  // and holds a lease under that name, which is how a later boot tells a task whose process is gone
-  // from one whose process is another Bureau still running over the same store.
-  const processLease = openProcessLease({
-    kv: runtime.kv,
-    persistence: options.storage?.capabilities().persistence,
-    clock: runtimeServices.clock,
-    timers: runtimeServices.timers,
-    identifiers: runtimeServices.identifiers,
-    diagnose: (message, cause) =>
-      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
-  });
   const tasks = createTaskRegistry({
     kv: runtime.kv,
     clock: runtimeServices.clock,

@@ -27,7 +27,7 @@ import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { type ConditionalTextValueStore, MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   buildWorkflowDocumentManifest,
   checkWorkflowCompatibility,
@@ -99,6 +99,8 @@ import {
   type TriggerFireRequest,
 } from './workflow-trigger-supervisor';
 import { createTriggerStorage, sweepTriggerState } from './workflow-trigger-state';
+import { createWorkflowTriggerLease } from './workflow-trigger-lease';
+import type { ProcessLease } from './process-lease';
 import { formatVersionedId } from './versioned-catalog';
 import {
   acceptContributedTriggers,
@@ -185,7 +187,8 @@ function codeInputIssues(schema: unknown, input: unknown): readonly WorkflowSche
  * What a file's contributed trigger is doing (COR-2165): `listening` once its `start` resolved,
  * `waiting-for-secret` while a secret its plugin declares is missing, `failed` with a `code` when
  * its `start` threw or its kind refused the configuration, and `stopped` for a paused file. A kind
- * that only defines `receive` (COR-2168) is `ready` instead of `listening`. `since` is when the
+ * that only defines `receive` (COR-2168) is `ready` instead of `listening`, and one whose listener
+ * another Bureau sharing the store runs is `standby` (COR-2167). `since` is when the
  * state last changed and `lastFiredAt` when a fire last started a run, one of a `receive` too. It
  * is kept in memory: a restart starts it again.
  */
@@ -832,6 +835,17 @@ export interface WorkflowRuntimeOptions {
     ((plugin: string, workflow: string, message: string) => void) | undefined;
   /** COR-2165 — told when that listener is no longer failed, or its file is gone. */
   readonly onTriggerRecovered?: ((plugin: string, workflow: string) => void) | undefined;
+  /**
+   * COR-2167 — this process's lease and the key-value store it is kept in, which decide which of
+   * the Bureaus sharing the store runs each contributed trigger's listener. Absent, or a lease that
+   * holds nothing (memory storage), and every listener runs.
+   */
+  readonly listenerLease?:
+    | {
+        readonly processLease: ProcessLease;
+        readonly kv: ConditionalTextValueStore | undefined;
+      }
+    | undefined;
   readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST' | 'CONFLICT') => Error;
   /**
    * The engine's cap on one payload's encoded size, or `null` for none. A signal's payload and the
@@ -1167,8 +1181,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    * fires with one key start one run. The key is not given to Weft: its own key mapping outlives
    * the run record, and a key lives exactly as long as the run it started. Only a fire that
    * starts a run takes its key; a skipped or failed one leaves it free for the redelivery. Two
-   * Bureaus over one storage can both look up before either has started a run, and start two; the
-   * listener lease does not close that for a `receive`-only trigger.
+   * Bureaus over one storage can both look up before either has started a run, and start two: the
+   * listener lease (COR-2167) fences a fire against the record before it gets here, but a fire that
+   * passed the old holder's fence and the new holder's fire of the same key, in the window of a
+   * handover, can both start one. A redelivery after the handover finds the first run's tag.
    */
   async function fireTrigger(request: TriggerFireRequest): Promise<PluginTriggerOutcome> {
     const { workflowId: id, kind, version, idempotencyKey } = request;
@@ -1249,6 +1265,15 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     reportFailure: (plugin, workflow, message) =>
       options.onTriggerFailed?.(plugin, workflow, message),
     clearFailure: (plugin, workflow) => options.onTriggerRecovered?.(plugin, workflow),
+    lease:
+      options.listenerLease === undefined
+        ? undefined
+        : createWorkflowTriggerLease({
+            kv: options.listenerLease.kv,
+            processLease: options.listenerLease.processLease,
+            now: () => options.runtime.clock.now(),
+            diagnose: options.diagnose,
+          }),
   });
 
   /** What the contributed trigger of `listing` is doing; `null` unless it is a ready file's. */
