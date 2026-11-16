@@ -27,6 +27,7 @@
     as = 'td',
     truncate = false,
     controls = false,
+    stack,
     detail,
     title,
     class: className,
@@ -38,8 +39,35 @@
   const tableContext = tryGetTableContext();
   $effect(() => {
     if (!controls) return;
-    return tableContext?.registerControls?.();
+    return tableContext?.registerControls?.(controls !== 'fit');
   });
+
+  // On a stacked `fit` table the row header is the card's title: it holds to two lines, and the
+  // whole of it opens in a tooltip from the title's link, or from the title itself when it has none.
+  const clampTitle = $derived(as === 'th' && !truncate && tableContext?.stackCard === true);
+  let titleElement = $state<HTMLElement | null>(null);
+  let titleTrigger = $state<HTMLElement | null>(null);
+  let titleText = $state<string | undefined>();
+  const holdTitle: Attachment<HTMLElement> = (element) => {
+    const read = (): void => {
+      const link = element.querySelector<HTMLElement>('a');
+      if (!link) element.tabIndex = 0;
+      titleTrigger = link ?? element;
+      const text = element.textContent?.trim();
+      titleText = text === undefined || text === '' ? undefined : text;
+    };
+    titleElement = element;
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(element, { childList: true, characterData: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      if (titleElement === element) {
+        titleElement = null;
+        titleTrigger = null;
+      }
+    };
+  };
 
   // A truncating cell shows the full text on hover. Unless the caller supplied
   // a `title`, read it from the rendered text so a snippet child needs no
@@ -78,6 +106,7 @@
   class={classNames('cinder-table__cell', className)}
   data-cinder-align={align}
   data-cinder-truncate={truncate || undefined}
+  data-cinder-stack={stack}
   data-cinder-controls={controls === 'fit' ? 'fit' : controls ? '' : undefined}
 >
   {#if truncate}
@@ -90,6 +119,9 @@
     >
       {@render children?.()}
     </span><FullTextTooltip text={title ?? renderedText ?? ''} triggerRef={textElement} />
+  {:else if clampTitle}
+    <span class="cinder-table__cell-title" {@attach holdTitle}>{@render children?.()}</span
+    ><FullTextTooltip text={title ?? titleText ?? ''} triggerRef={titleTrigger} />
   {:else}
     {@render children?.()}
   {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}

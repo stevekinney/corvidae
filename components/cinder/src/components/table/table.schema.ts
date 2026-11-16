@@ -41,7 +41,7 @@ const schema = {
     fit: {
       type: 'boolean',
       description:
-        "Fits the table to its container's width so a long value never makes it scroll sideways. The\ncolumns share the width (a fixed table layout: set a column's width on its header cell or a\n`<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full\ntext in a tooltip, and any other cell wraps its text. Leave it off for a table whose columns\nshould keep their natural widths and scroll when they do not fit.",
+        'Fits the table to its container\'s width so a long value never makes it scroll sideways. The\ncolumns share the width (a fixed table layout: set a column\'s width on its header cell or a\n`<col>`), a `truncate` cell ends its text with an ellipsis at its column\'s width with the full\ntext in a tooltip, and any other cell wraps its text. Leave it off for a table whose columns\nshould keep their natural widths and scroll when they do not fit.\n\nA `fit` table also stacks below `stackBelow`, as a list of flat rows: the `as="th"` cell (or the\nfirst cell with text) is the title, a cell with `stack="end"` sits at its inline end, a cell\nwith `stack="status"` starts the second line, and every other cell is a line of its column\'s\nheader text and its value. A table with a `controls` cell that fills its cell keeps the control\nlayout instead.',
       default: false,
     },
     stackBelow: {
@@ -54,7 +54,7 @@ const schema = {
         },
       ],
       description:
-        "Width of the table's own container below which a table whose cells hold controls stacks. Each\nbody row becomes a card: the name and its muted detail on the first line, the controls full\nwidth at 44px beneath. A table with no `controls` cell never stacks; it scrolls. The width\nis the container's (the scroll box, or the parent when `scrollable` is false), not the\nwindow's, so a table in a narrow column stacks in a wide window. A simple CSS length such as\n`'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit\nfalls back to the viewport. `false` keeps the table layout at every width.",
+        "Width of the table's own container below which a table whose cells hold controls, or a `fit`\ntable, stacks. With controls, each body row becomes a card: the name and its muted detail on\nthe first line, the controls full width at 44px beneath. A `fit` table stacks into flat rows\n(see `fit`). A table that is neither `fit` nor holds a `controls` cell never stacks; it\nscrolls. The width\nis the container's (the scroll box, or the parent when `scrollable` is false), not the\nwindow's, so a table in a narrow column stacks in a wide window. A simple CSS length such as\n`'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit\nfalls back to the viewport. `false` keeps the table layout at every width.",
       default: '640px',
     },
     class: {
