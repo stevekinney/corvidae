@@ -67,10 +67,13 @@
   import {
     approvalActionRow,
     approvalActionRowShift,
+    approvalArrivalShift,
     approvalReviewBox,
     approvalRowVisible,
+    approvalTallerThanTranscript,
     approvalVisibleBox,
     focusPendingApproval,
+    PENDING_APPROVAL_CARD_SELECTOR,
     pendingApprovalCard,
   } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
@@ -1769,16 +1772,20 @@
         reminder.blockSize,
       );
       const cardBox = card.getBoundingClientRect();
-      if (cardBox.height >= viewportBox.bottom - viewportBox.top) return;
-      const shift = approvalActionRowShift(
-        approvalReviewBox(
-          actionRow.getBoundingClientRect(),
-          cardBox,
-          viewportBox.bottom - viewportBox.top,
-        ),
-        viewportBox,
-        0,
-      );
+      // A card taller than the transcript has its bottom, Deny and Approve, aligned to the
+      // transcript's bottom with the clearance to spare (COR-2327); the lift leaves such a card
+      // alone, so the two never pull against each other.
+      const shift = approvalTallerThanTranscript(cardBox, viewportBox)
+        ? approvalArrivalShift(cardBox, viewportBox)
+        : approvalActionRowShift(
+            approvalReviewBox(
+              actionRow.getBoundingClientRect(),
+              cardBox,
+              viewportBox.bottom - viewportBox.top,
+            ),
+            viewportBox,
+            0,
+          );
       if (shift !== 0) {
         scroller.scrollTop += shift;
       }
@@ -1846,6 +1853,17 @@
       );
       if (!pinned) return;
       const targetBox = target.getBoundingClientRect();
+      // A waiting approval taller than the transcript keeps its Deny and Approve in view: the
+      // arrival settle aligns its bottom, and lifting its top would push them off (COR-2327).
+      if (target.matches(PENDING_APPROVAL_CARD_SELECTOR)) {
+        const reminder = readApprovalReminder();
+        const box = approvalVisibleBox(
+          scroller.getBoundingClientRect(),
+          reminder.shown,
+          reminder.blockSize,
+        );
+        if (approvalTallerThanTranscript(targetBox, box)) return;
+      }
       const shift = revealTopShift(
         {
           viewportTop: scroller.getBoundingClientRect().top,

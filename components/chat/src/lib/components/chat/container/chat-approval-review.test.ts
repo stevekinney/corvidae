@@ -16,9 +16,11 @@ import {
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
   approvalActionRowShift,
+  approvalArrivalShift,
   approvalCardFitsViewport,
   approvalReviewBox,
   approvalRowVisible,
+  approvalTallerThanTranscript,
   approvalVisibleBox,
   findPendingApprovalMessageId,
   focusPendingApproval,
@@ -278,6 +280,41 @@ describe('approval action row shift', () => {
 
   test('does nothing when the row cannot fit the viewport with its inset', () => {
     expect(approvalActionRowShift({ top: 100, bottom: 500 }, viewport, 8)).toBe(0);
+  });
+});
+
+describe('where a waiting approval lands when it opens (COR-2327)', () => {
+  // A transcript 286px tall, as on a 320 by 640 phone, and the 12px clearance under a card.
+  const viewport = { top: 100, bottom: 386 };
+
+  test('a card that fits is shown whole: scrolled down until its bottom and the clearance show', () => {
+    const card = { top: 300, bottom: 540 };
+    expect(approvalTallerThanTranscript(card, viewport)).toBe(false);
+    expect(approvalArrivalShift(card, viewport)).toBe(540 + APPROVAL_BOTTOM_CLEARANCE - 386);
+  });
+
+  test('a card that fits with its top above the transcript scrolls up to its top', () => {
+    expect(approvalArrivalShift({ top: 40, bottom: 200 }, viewport)).toBe(-60);
+  });
+
+  test('a card that fits and is in view stays where it is', () => {
+    expect(approvalArrivalShift({ top: 120, bottom: 360 }, viewport)).toBe(0);
+  });
+
+  test('a card taller than the transcript has its actions aligned to the bottom, its top off', () => {
+    const below = { top: 200, bottom: 585 };
+    expect(approvalTallerThanTranscript(below, viewport)).toBe(true);
+    expect(approvalArrivalShift(below, viewport)).toBe(585 + APPROVAL_BOTTOM_CLEARANCE - 386);
+    // Shown from its top (as a lift would), it scrolls down until the bottom is at the bottom.
+    const fromTop = { top: 108, bottom: 493 };
+    expect(approvalArrivalShift(fromTop, viewport)).toBe(493 + APPROVAL_BOTTOM_CLEARANCE - 386);
+    // Already aligned, it stays.
+    expect(approvalArrivalShift({ top: -11, bottom: 374 }, viewport)).toBe(0);
+  });
+
+  test('the clearance counts: a card exactly the transcript tall is taller with it', () => {
+    expect(approvalTallerThanTranscript({ top: 100, bottom: 386 }, viewport)).toBe(true);
+    expect(approvalTallerThanTranscript({ top: 100, bottom: 374 }, viewport)).toBe(false);
   });
 });
 

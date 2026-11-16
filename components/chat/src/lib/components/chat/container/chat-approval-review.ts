@@ -82,6 +82,39 @@ export function approvalReviewBox(
   return { top: row.top, bottom: Math.max(row.bottom, bottom), left: row.left, right: row.right };
 }
 
+/**
+ * Whether a waiting approval card, with the clearance kept under it, is taller than the transcript's
+ * box: then it cannot be shown whole, and its decision buttons are what the page shows.
+ */
+export function approvalTallerThanTranscript(
+  card: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  clearance = APPROVAL_BOTTOM_CLEARANCE,
+): boolean {
+  return card.bottom + clearance - card.top > viewport.bottom - viewport.top + 0.5;
+}
+
+/**
+ * How far the transcript scrolls, in pixels (positive scrolls down), to bring a waiting approval
+ * into view when it opens or the chat opens on it (COR-2327). A card that fits the transcript with
+ * the clearance under it is shown whole: scrolled down until its bottom and the clearance are in
+ * view, or up until its top is. A card taller than the transcript has its bottom, where Deny and
+ * Approve are, aligned to the transcript's bottom with the clearance to spare; its top may scroll
+ * off. Half a pixel of rounding is no shift.
+ */
+export function approvalArrivalShift(
+  card: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  viewport: Pick<DOMRectReadOnly, 'top' | 'bottom'>,
+  clearance = APPROVAL_BOTTOM_CLEARANCE,
+): number {
+  const below = card.bottom + clearance - viewport.bottom;
+  let shift = 0;
+  if (approvalTallerThanTranscript(card, viewport, clearance)) shift = below;
+  else if (below > 0) shift = below;
+  else if (card.top < viewport.top) shift = card.top - viewport.top;
+  return Math.abs(shift) <= 0.5 ? 0 : shift;
+}
+
 /** The selector of a pending approval card's row of decision buttons. */
 const APPROVAL_ACTION_ROW_SELECTOR =
   '.cinder-approval-card__row-actions, .cinder-approval-card__action-row';
@@ -110,7 +143,8 @@ export function approvalActionRowShift(
   return above > 0 ? -above : 0;
 }
 
-const PENDING_APPROVAL_CARD = '.cinder-approval-card[data-cinder-state="pending"]';
+/** The selector of an approval card still waiting on the person. */
+export const PENDING_APPROVAL_CARD_SELECTOR = '.cinder-approval-card[data-cinder-state="pending"]';
 
 /**
  * Returns the pending approval card rendered by the message that is waiting. A host that draws its
@@ -127,8 +161,8 @@ export function pendingApprovalCard(
     `article[data-message-id="${CSS.escape(messageId)}"]`,
   );
   return (
-    message?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD) ??
-    root?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD) ??
+    message?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD_SELECTOR) ??
+    root?.querySelector<HTMLElement>(PENDING_APPROVAL_CARD_SELECTOR) ??
     null
   );
 }

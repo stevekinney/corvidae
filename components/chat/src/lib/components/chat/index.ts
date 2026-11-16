@@ -29,6 +29,10 @@ export type {
   ReadReceipt,
   TypingParticipant,
 } from './chat.types.ts';
+export {
+  approvalArrivalShift,
+  approvalTallerThanTranscript,
+} from './container/chat-approval-review.ts';
 export type { ChatMarkdownNode, MarkdownNodeOverride } from './message/chat-message-parts.ts';
 export { default as ChatNote } from './message/parts/note-part.svelte';
 export { DEFAULT_TURN_LABELS } from './message/turn-labels.ts';
