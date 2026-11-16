@@ -21,6 +21,7 @@ import type {
   ProjectedValidatorOutcome,
   ProjectedValidatorResult,
   ValidatorIdentity,
+  ValidatorJudge,
 } from '../goal-decision';
 import type { FinishReason } from '../types';
 import { RUN_ENGINE_WORKFLOW_TYPE } from './run-engine-workflow-types';
@@ -68,6 +69,8 @@ export interface GoalWorkflowValidation {
   readonly completedAt: string;
   readonly outcome: ProjectedValidatorOutcome;
   readonly decisionId: string;
+  /** What judged the attempt (COR-2112); absent when no validator ran, and on a record written before it. */
+  readonly judgedBy?: ValidatorJudge | undefined;
 }
 
 export interface GoalWorkflowAttemptUsage {

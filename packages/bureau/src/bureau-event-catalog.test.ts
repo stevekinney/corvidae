@@ -104,6 +104,10 @@ const GOAL = (kind: ConstructorParameters<typeof GoalLifecycleEvent>[0]) => ({
       validatorIdentity: { name: 'check', version: '1' },
       outcomeKind: 'pass',
       feedbackDigest: 'digest',
+      judgedBy: {
+        validator: { name: 'check', version: '1' },
+        source: { kind: 'bureau', name: 'bureau', version: '0.1.0' },
+      },
       terminalReason: 'done',
       validatorError: { kind: 'error', code: 'E', message: 'dropped' },
       controllerRestarts: 1,

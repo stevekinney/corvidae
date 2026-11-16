@@ -151,6 +151,8 @@ const GOAL_PARAMETERS = {
   bounds: { maximumAttempts: 1, maximumTotalSteps: 1 },
   // COR-2017: an update names the revision it read, so the call reaches its own check.
   expectedRevision: 0,
+  // COR-2112: a verdict names an attempt, so the call reaches its own check.
+  attemptIndex: 0,
 } as const;
 
 /**

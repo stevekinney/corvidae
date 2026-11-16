@@ -91,6 +91,7 @@ export const OPERATION_MAP = {
   'bureau.events.format': { workspaceClass: 'member-shared-read', member: 'formatEvent' },
   'bureau.plugins.contributions': { workspaceClass: 'member-shared-read', member: 'plugins' },
   'bureau.guardrails.list': { workspaceClass: 'member-shared-read', member: 'plugins.guardrails' },
+  'bureau.validators.list': { workspaceClass: 'member-shared-read', member: 'goals.validators' },
   'operative.runs.events': {
     workspaceClass: 'private-owned',
     exempt: 'a transport subscription over a run’s event feed',
@@ -152,6 +153,7 @@ export const OPERATION_MAP = {
 
   'bureau.goals.list': { workspaceClass: 'private-owned', member: 'goals.list' },
   'bureau.goals.get': { workspaceClass: 'private-owned', member: 'goals.get' },
+  'bureau.goals.verdict': { workspaceClass: 'private-owned', member: 'goals.get' },
   'bureau.goals.create': { workspaceClass: 'private-owned', member: 'goals.create' },
   'bureau.goals.cancel': { workspaceClass: 'private-owned', member: 'goals.cancel' },
   'bureau.goals.update': { workspaceClass: 'private-owned', member: 'goals.update' },

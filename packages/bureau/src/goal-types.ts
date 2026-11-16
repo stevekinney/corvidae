@@ -22,6 +22,7 @@ import type {
 import type { RegistryAgnosticEngine } from '@lostgradient/weft';
 
 import type { GoalState } from './goal-state';
+import type { GoalValidatorSource } from './goal-validator-catalog';
 import type { DurableEventHistoryRead, DurableEventHistorySubscribe } from './bureau-types/common';
 
 /** The slice of the durable engine the goal control plane drives. */
@@ -503,7 +504,29 @@ export interface BureauGoalRecoveryReport {
 // The control plane
 // ---------------------------------------------------------------------------
 
+/**
+ * COR-2111 — one validator a goal may name, as `bureau.validators.list` serves it: its pinned
+ * identity, whether it supplies deterministic evidence (`null` when it did not declare it), and
+ * who it comes from.
+ */
+export interface BureauGoalValidatorListing {
+  /** The name a goal's `validator` names it by. */
+  readonly name: string;
+  /** The version a goal's `validator` pins. */
+  readonly version: string;
+  /** Whether it supplies deterministic evidence; `null` when it did not declare it. */
+  readonly determinism: 'deterministic' | 'stochastic' | null;
+  /** Who the validator comes from. */
+  readonly source: GoalValidatorSource;
+}
+
 export interface BureauGoals<TName extends string = string> {
+  /**
+   * COR-2111 — every validator a goal may name, in registration order: the ones this Bureau was
+   * configured with, then the running plugins'. The catalog is built at startup, so a plugin
+   * enabled or disabled takes effect on the next restart.
+   */
+  validators(): readonly BureauGoalValidatorListing[];
   /**
    * Persists the goal, then starts its controller. The record is written
    * first, so a crash between the two is healed by `recover()` or by repeating

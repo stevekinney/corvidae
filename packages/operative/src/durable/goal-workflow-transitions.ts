@@ -399,6 +399,7 @@ export function buildValidationDecision(
         completedAt: result.completedAt,
         outcome: result.outcome,
         decisionId: identifiers.decisionId(attempt.attemptId),
+        ...(result.judgedBy === undefined ? {} : { judgedBy: result.judgedBy }),
       },
     }),
     usage: usageFor(view, nowMs),
