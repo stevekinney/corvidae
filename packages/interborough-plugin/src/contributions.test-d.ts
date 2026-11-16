@@ -7,6 +7,7 @@ import type { OperativeHookMap, OutputValidator, ToolCallValidator } from '@lost
 import type { InputDetector } from 'armorer';
 import { z } from 'zod';
 
+import { defineTrigger } from './define-trigger.ts';
 import type {
   PluginAgent,
   PluginContributions,
@@ -218,3 +219,46 @@ export const undescribedFactory: PluginGuardrailFactory<InputDetector> = {
 
 // @ts-expect-error -- memory guardrails guard the host, so no agent configures one
 export const memoryFactory: PluginGuardrails = { memory: [detectorFactory] };
+
+// COR-2161 — a trigger declared through `defineTrigger` reads its configuration as the schema
+// parses it, with no second parse in `start`, and is accepted wherever a `PluginTrigger` is.
+export const heartbeat = defineTrigger({
+  name: 'heartbeat',
+  description: 'Fires every interval.',
+  configuration: z.object({ seconds: z.number() }),
+  async start({ configuration }) {
+    const seconds: number = configuration.seconds;
+    // @ts-expect-error -- `seconds` is a number, not a string
+    const asText: string = configuration.seconds;
+    // @ts-expect-error -- the schema declares no `minutes`
+    const minutes: unknown = configuration.minutes;
+    return () => void [seconds, asText, minutes];
+  },
+});
+
+export const typedTriggers: PluginContributions = {
+  triggers: [
+    heartbeat,
+    defineTrigger({
+      name: 'webhook',
+      description: 'Fires on a request.',
+      configuration: z.object({ path: z.string() }),
+      async start({ configuration }) {
+        const path: string = configuration.path;
+        return () => void path;
+      },
+    }),
+  ],
+};
+
+// A kind written without the helper keeps an untyped `configuration`.
+export const untypedTrigger: PluginTrigger = {
+  name: 'plain',
+  description: 'Fires on anything.',
+  configuration: z.object({ seconds: z.number() }),
+  async start({ configuration }) {
+    // @ts-expect-error -- without `defineTrigger` the configuration is `unknown`
+    const seconds: number = configuration.seconds;
+    return () => void seconds;
+  },
+};

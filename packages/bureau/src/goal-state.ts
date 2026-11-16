@@ -45,6 +45,7 @@ import {
   validateRetryPolicy,
   VALIDATOR_ERROR_KINDS,
   type ValidatorIdentity,
+  type ValidatorJudge,
 } from '@lostgradient/operative';
 
 import { principalDefect } from './owner-of-record';
@@ -169,6 +170,13 @@ export interface DurableGoalValidation {
   /** JSON-safe: `ValidatorError.cause` and evidence `detail` are already projected. */
   readonly outcome: ProjectedValidatorOutcome;
   readonly decisionId: string;
+  /**
+   * COR-2112 — what judged the attempt, captured when the validator ran and never read again from
+   * the goal: the validator, its source, and the configuration it was passed. Absent when no
+   * validator ran (the catalog no longer held it), and on a record written before it, which reads
+   * `judgedBy: null`.
+   */
+  readonly judgedBy?: ValidatorJudge | undefined;
 }
 
 export interface DurableGoalAttempt {
@@ -713,10 +721,48 @@ export function isProjectedValidatorOutcome(value: unknown): value is ProjectedV
   return OUTCOME_CHECKS[kind as ProjectedValidatorOutcome['kind']](value);
 }
 
+/**
+ * The judge as `goal.attempt.validated` carries it: the validator and its source, in one fixed
+ * order, as plain JSON. The configuration stays on the record, like a goal's prompt, because an
+ * event is published to every observer and a configuration is the goal's own content.
+ */
+export function judgedByPayload(judge: ValidatorJudge): JSONValue {
+  return {
+    validator: { name: judge.validator.name, version: judge.validator.version },
+    source: { kind: judge.source.kind, name: judge.source.name, version: judge.source.version },
+  };
+}
+
+/** A validator's judge as a record keeps it: exactly the validator, its source, and the configuration. */
+export function isValidatorJudge(value: unknown): value is ValidatorJudge {
+  if (!isPlainRecord(value) || !hasExactKeys(value, ['validator', 'source', 'configuration'])) {
+    return false;
+  }
+  const source = value['source'];
+  return (
+    isValidatorIdentity(value['validator']) &&
+    isPlainRecord(source) &&
+    hasExactKeys(source, ['kind', 'name', 'version']) &&
+    (source['kind'] === 'bureau' || source['kind'] === 'plugin') &&
+    isNonEmptyString(source['name']) &&
+    isNonEmptyString(source['version']) &&
+    value['configuration'] !== undefined &&
+    isJsonValue(value['configuration'])
+  );
+}
+
 function isValidation(value: unknown): value is DurableGoalValidation {
   return (
     isPlainRecord(value) &&
-    hasExactKeys(value, ['identity', 'startedAt', 'completedAt', 'outcome', 'decisionId']) &&
+    hasExactKeys(value, [
+      'identity',
+      'startedAt',
+      'completedAt',
+      'outcome',
+      'decisionId',
+      'judgedBy',
+    ]) &&
+    (value['judgedBy'] === undefined || isValidatorJudge(value['judgedBy'])) &&
     isValidatorIdentity(value['identity']) &&
     isTimestamp(value['startedAt']) &&
     isTimestamp(value['completedAt']) &&
@@ -1024,7 +1070,14 @@ function isAttemptStartedPayload(record: PlainRecord, payload: PlainRecord): boo
 }
 
 function isAttemptValidatedPayload(record: PlainRecord, payload: PlainRecord): boolean {
-  const keys = ['goalRunId', 'attemptId', 'validatorIdentity', 'outcomeKind', 'feedbackDigest'];
+  const keys = [
+    'goalRunId',
+    'attemptId',
+    'validatorIdentity',
+    'outcomeKind',
+    'feedbackDigest',
+    'judgedBy',
+  ];
   if (!hasAllKeys(payload, keys.slice(0, 4)) || !hasExactKeys(payload, keys)) return false;
   const attempts = record['attempts'] as readonly DurableGoalAttempt[];
   const attempt = attempts.find((candidate) => candidate.attemptId === payload['attemptId']);
@@ -1046,6 +1099,15 @@ function isAttemptValidatedPayload(record: PlainRecord, payload: PlainRecord): b
     recorded.outcome.kind !== outcomeKind ||
     recorded.identity.name !== identity.name ||
     recorded.identity.version !== identity.version
+  ) {
+    return false;
+  }
+  // COR-2112: an event written before `judgedBy` has none; one that has it reports the record's.
+  const judgedBy = payload['judgedBy'];
+  if (
+    judgedBy !== undefined &&
+    (recorded.judgedBy === undefined ||
+      JSON.stringify(judgedBy) !== JSON.stringify(judgedByPayload(recorded.judgedBy)))
   ) {
     return false;
   }

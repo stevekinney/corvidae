@@ -48,7 +48,7 @@ import type { DurableEventHistory } from './durable-event-history';
 import { markEventSource } from './event-source';
 import { GOAL_EVENT_KINDS, type GoalEventKind, GoalLifecycleEvent } from './events';
 import type { GoalAuditEvent, GoalState } from './goal-state';
-import { goalRestartId, goalTransitionId } from './goal-state';
+import { goalRestartId, goalTransitionId, judgedByPayload } from './goal-state';
 import type { GoalStoreObservation } from './goal-store';
 import type { DiagnosticSink } from './bureau-types/options';
 
@@ -145,6 +145,9 @@ function attemptValidatedEvent(record: GoalState): GoalAuditEvent[] {
         },
         outcomeKind,
         ...(outcome.kind === 'fail' ? { feedbackDigest: sha256HexSync(outcome.feedback) } : {}),
+        ...(validation.judgedBy === undefined
+          ? {}
+          : { judgedBy: judgedByPayload(validation.judgedBy) }),
       },
       dedupeKey: keyFor(record),
       at: validation.completedAt,

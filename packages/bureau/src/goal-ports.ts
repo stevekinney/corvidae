@@ -73,6 +73,7 @@ import {
   projectValidatorResult,
   readDurableRunResult,
   type RunOptions,
+  type ValidatorJudge,
 } from '@lostgradient/operative';
 
 import {
@@ -594,7 +595,16 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       completedAt: execution.completedAt,
       outcome: execution.outcome,
     });
-    return { ...projected, outcome: boundValidationOutcome(projected.outcome) };
+    // COR-2112: what judged the attempt is taken from the entry that ran, here and now, and
+    // travels with the verdict: the goal's validator may change before or after this commits.
+    // No validator takes a configuration yet (COR-2117), so none was passed.
+    const { identity, source } = resolution.entry;
+    const judgedBy: ValidatorJudge = {
+      validator: { name: identity.name, version: identity.version },
+      source: { kind: source.kind, name: source.name, version: source.version },
+      configuration: null,
+    };
+    return { ...projected, outcome: boundValidationOutcome(projected.outcome), judgedBy };
   }
 
   async function abortAttempt(request: GoalWorkflowAbortRequest): Promise<void> {

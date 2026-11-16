@@ -128,6 +128,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
    * stops following. Called once construction can stop it again at shutdown.
    */
   readonly watchSecrets: () => () => void;
+  /**
+   * COR-2164 — the store every plugin's own storage (`plugin:<name>:`) is a prefix of: the Bureau's
+   * `storage`, or the in-memory one composition made when it has none. The workflow runtime keeps a
+   * trigger's per-file state in the same store, under the plugin's prefix.
+   */
+  readonly storage: Storage;
 }
 
 const HOST_PARTY: PluginClashParty = Object.freeze({ source: 'built-in', location: 'host' });
@@ -617,6 +623,11 @@ class Contributed {
   readonly activities: { plugin: string; version: string; result: PluginSetupResult }[] = [];
   readonly agentSources: { plugin: string; result: PluginSetupResult }[] = [];
   readonly validators: NonNullable<BureauOptions['validators']>[number][] = [];
+  readonly validatorSources: {
+    plugin: string;
+    version: string;
+    validator: NonNullable<BureauOptions['validators']>[number];
+  }[] = [];
   readonly actionKinds: NonNullable<NonNullable<BureauOptions['hooks']>['actionKinds']>[number][] =
     [];
   readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
@@ -652,11 +663,14 @@ class Contributed {
       this.agentSources.push({ plugin, result });
     }
     for (const validator of result.validators ?? []) {
-      this.validators.push({
+      const contributed: NonNullable<BureauOptions['validators']>[number] = {
         ...validator,
         identity: { ...validator.identity, name: id(validator.identity.name) },
         validate: (input, signal) => validator.validate(input, signal),
-      });
+      };
+      this.validators.push(contributed);
+      // COR-2111: the goal validator catalog names each validator's plugin and its version.
+      this.validatorSources.push({ plugin, version, validator: contributed });
     }
     for (const kind of result.reactions ?? []) {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
@@ -734,11 +748,34 @@ function providerEmptyProblems(
 function catalogWith(
   host: VersionedCatalog | undefined,
   contributed: Contributed['activities'],
+  validators: Contributed['validatorSources'],
 ): VersionedCatalog | undefined {
-  if (contributed.length === 0) return host;
+  if (contributed.length === 0 && validators.length === 0) return host;
   const catalog = createVersionedCatalog();
   for (const kind of VERSIONED_CATALOG_KINDS) {
     for (const entry of host?.entries(kind) ?? []) catalog.register(entry);
+  }
+  // COR-2111: a plugin's validators record who contributed them, which the goal validator
+  // catalog reads back as each validator's source.
+  for (const { plugin, version, validator } of validators) {
+    const own = validator.identity;
+    // An identity the goal validator catalog refuses is left for it to refuse, with its own message.
+    if (
+      typeof own.name !== 'string' ||
+      own.name.length === 0 ||
+      typeof own.version !== 'string' ||
+      own.version.length === 0 ||
+      own.version.includes('@')
+    ) {
+      continue;
+    }
+    catalog.register({
+      kind: 'validator',
+      name: validator.identity.name,
+      version: validator.identity.version,
+      value: validator,
+      source: { name: plugin, version },
+    });
   }
   for (const { plugin, version, result } of contributed) {
     const source = { name: plugin, version };
@@ -817,7 +854,11 @@ function shippedContentOf(
 
 /** Folds what the running plugins contributed into the options construction reads. */
 function optionsWith<O extends ComposableOptions>(options: O, contributed: Contributed): O {
-  const contributionCatalog = catalogWith(options.contributionCatalog, contributed.activities);
+  const contributionCatalog = catalogWith(
+    options.contributionCatalog,
+    contributed.activities,
+    contributed.validatorSources,
+  );
   const agentContributions = agentContributionsWith(
     options.agentContributions,
     contributed.agentSources,
@@ -1288,6 +1329,7 @@ export async function composePlugins<O extends ComposableOptions>(
     unavailableAgents,
     unavailableTools,
     agentDetails: contributed.agentDetails,
+    storage,
     watchSecrets: () => {
       const stops = gates.map((gate) => gate.watch());
       return () => {

@@ -254,6 +254,15 @@
       }
     },
     {
+      "files": [
+        "src/server/authentication/rotating-api-key-store.test.ts",
+        "src/server/package-authorization-scopes.test.ts"
+      ],
+      "rules": {
+        "typescript/no-floating-promises": "error"
+      }
+    },
+    {
       "files": ["**/*.test-d.ts"],
       "rules": {
         "typescript/no-unnecessary-type-parameters": "off"

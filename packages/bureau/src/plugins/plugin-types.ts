@@ -447,7 +447,7 @@ export interface PluginTriggerListing {
   readonly id: string;
   /** What the trigger listens for. */
   readonly description: string;
-  /** The version a revision that uses it pins: the kind's own, else its plugin's. */
+  /** The version the listener runs at, the kind's own else its plugin's; a change restarts it. */
   readonly version: string;
   /**
    * The kind's configuration schema as JSON Schema (the fields a trigger holds besides `kind`), or

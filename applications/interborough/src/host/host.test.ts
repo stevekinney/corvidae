@@ -276,6 +276,50 @@ describe('the relay to Weft’s server', () => {
     expect(body.error?.data?.weftCode).toBe('NotFound');
   });
 
+  test('serves Bureau and Weft operations together on /jsonrpc and lists both in rpc.discover', async () => {
+    const host = await start();
+    const call = async (id: number, method: string) => {
+      const response = await fetch(new URL('/jsonrpc', host.url), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id, method, params: {} }),
+      });
+      expect(response.status).toBe(200);
+      return (await response.json()) as { id: number; result?: unknown; error?: unknown };
+    };
+    const agents = await call(1, 'bureau.agents.list');
+    expect(agents.error).toBeUndefined();
+    expect(agents.result).toHaveProperty('agents');
+    const capabilities = await call(2, 'weft.storage.capabilities');
+    expect(capabilities.error).toBeUndefined();
+    const discovered = (await call(3, 'rpc.discover')) as {
+      result: { methods: { name: string }[] };
+    };
+    const names = discovered.result.methods.map((method) => method.name);
+    expect(names).toContain('bureau.agents.list');
+    expect(names).toContain('weft.storage.capabilities');
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  test('answers a batch that mixes Bureau and Weft operations with a response for each id', async () => {
+    const host = await start();
+    const response = await fetch(new URL('/jsonrpc', host.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify([
+        { jsonrpc: '2.0', id: 'agents', method: 'bureau.agents.list', params: {} },
+        { jsonrpc: '2.0', id: 'storage', method: 'weft.storage.capabilities', params: {} },
+        { jsonrpc: '2.0', id: 'who', method: 'weft.system.principal', params: {} },
+        { jsonrpc: '2.0', method: 'bureau.agents.list', params: {} },
+      ]),
+    });
+    expect(response.status).toBe(200);
+    const answers = (await response.json()) as { id: string; result?: unknown; error?: unknown }[];
+    expect(answers.map((answer) => answer.id)).toEqual(['agents', 'storage', 'who']);
+    for (const answer of answers) expect(answer.error).toBeUndefined();
+    expect(answers[0]?.result).toHaveProperty('agents');
+  });
+
   test('derives the signing secret from the key without echoing it', () => {
     const secret = deriveStartOverrideSigningSecret('a-process-key');
     expect(secret).toMatch(/^[0-9a-f]{64}$/);

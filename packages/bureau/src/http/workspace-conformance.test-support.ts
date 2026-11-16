@@ -90,6 +90,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.events.format', 'shared'],
       ['bureau.plugins.contributions', 'shared'],
       ['bureau.guardrails.list', 'shared'],
+      ['bureau.validators.list', 'shared'],
       ['bureau.skills.list', 'shared'],
     ],
   },
@@ -176,6 +177,12 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.goals.cancel', 'owner'],
       ['bureau.goals.update', 'owner'],
     ],
+  },
+  {
+    testFile: 'management/goals-verdict-operation.test.ts',
+    inputFixture: 'Failed attempt of an owned goal whose verdict holds private feedback',
+    sentinel: 'VERDICT-FEEDBACK-SENTINEL-3b7d',
+    operations: [['bureau.goals.verdict', 'owner']],
   },
   {
     testFile: 'management/notifications-operations.test.ts',
