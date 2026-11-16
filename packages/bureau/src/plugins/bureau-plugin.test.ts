@@ -17,6 +17,7 @@ import { z } from 'zod';
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { eventSourceOf } from '../event-source';
+import type { DefinitionsChangedEvent } from '../events';
 import { agentFileDirectory } from '../sources/agent-file-directory';
 import { hashDefinitionBytes } from '../sources/definition-source';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
@@ -314,13 +315,22 @@ describe('the source of an event a bureau tool causes', () => {
  * edits the same file, and the write is released. The watcher is live (`fs.watch` and a heartbeat
  * rescan), so how many scans run before the owner's edit lands is not the test's to decide: a scan
  * can read the tool's bytes (and its event is then the tool's), or only the owner's. What the
- * contract promises is that each `definitions.changed` event's source follows the bytes the scan
- * that announced it read.
+ * contract promises is that each `definitions.changed` event's source follows the bytes it
+ * announces.
+ *
+ * Those bytes are read from the catalog inside the listener. The scan replaces the catalog's entries
+ * and then tells its listeners, and every hop from there to this listener is synchronous, so the
+ * catalog the listener reads is the one the event announces, and the hash `sourceOfChange`
+ * attributes by.
+ *
+ * Recording stops before the directory is removed: the harness keeps watching until `afterEach`, and
+ * a scan of the removal would otherwise be recorded as one more event, which announces no bytes.
  *
  * `scanBetween` forces a scan between the tool's bytes and the owner's edit.
  */
 async function ownerEditDuringToolWrite(scanBetween: boolean) {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-attribution-'));
+  let stopRecording = (): void => {};
   try {
     const inner = workflowFileDirectory(directory);
     // Holds each write after it is on disk and before the catalog reads it back.
@@ -330,15 +340,7 @@ async function ownerEditDuringToolWrite(scanBetween: boolean) {
     let release: () => void = () => {};
     const released = new Promise<void>((resolve) => (release = resolve));
     let toolHash: string | undefined;
-    // The hash of `nightly` in the latest load. A scan is single-flight and tells its listeners
-    // right after its own load, so at the moment an event is dispatched this is what that scan read.
-    let loadedHash: string | undefined;
     const gated: typeof inner = Object.assign(Object.create(inner) as typeof inner, {
-      async load() {
-        const entries = await inner.load();
-        loadedHash = entries.find((entry) => entry.id === 'nightly')?.hash;
-        return entries;
-      },
       async write(...input: Parameters<typeof inner.write>) {
         const entry = await inner.write(...input);
         if (holdWrites) {
@@ -355,12 +357,17 @@ async function ownerEditDuringToolWrite(scanBetween: boolean) {
     const hash = listed.find((listing) => listing.id === 'nightly')?.hash;
     expect(hash).toBeDefined();
 
-    const events: Array<{ source: string | undefined; read: string | undefined }> = [];
-    harness.bureau.addEventListener('definitions.changed', (event) => {
-      if ((event as unknown as { catalog: string }).catalog === 'workflows') {
-        events.push({ source: eventSourceOf(event), read: loadedHash });
-      }
-    });
+    const events: Announcement[] = [];
+    const record = (event: Event): void => {
+      const change = event as DefinitionsChangedEvent;
+      if (change.catalog !== 'workflows') return;
+      const announced = harness.bureau
+        .workflows!.list()
+        .find((listing) => listing.id === 'nightly');
+      events.push({ source: eventSourceOf(event), hash: announced?.hash, removed: change.removed });
+    };
+    harness.bureau.addEventListener('definitions.changed', record);
+    stopRecording = () => harness.bureau.removeEventListener('definitions.changed', record);
 
     holdWrites = true;
     const call = harness.callTool('bureau__workflows-pause', {
@@ -382,14 +389,48 @@ async function ownerEditDuringToolWrite(scanBetween: boolean) {
     await harness.bureau.workflows!.refresh();
     const finalListing = await harness.bureau.workflows!.list();
     const finalHash = finalListing.find((listing) => listing.id === 'nightly')?.hash;
-    return { outcome, events, toolHash, ownerHash: hashDefinitionBytes(edited), finalHash };
+    stopRecording();
+    return {
+      outcome,
+      events: [...events],
+      toolHash,
+      ownerHash: hashDefinitionBytes(edited),
+      finalHash,
+    };
   } finally {
+    stopRecording();
     await rm(directory, { recursive: true, force: true });
   }
 }
 
+/** One `definitions.changed` event for the workflows, with the hash of `nightly` it announces. */
+interface Announcement {
+  readonly source: string | undefined;
+  /** The hash the catalog holds for `nightly` as the event is dispatched. */
+  readonly hash: string | undefined;
+  readonly removed: readonly string[];
+}
+
+/** What every run of {@link ownerEditDuringToolWrite} must show, however its scans interleave. */
+function expectSourcesFollowTheBytes(
+  events: readonly Announcement[],
+  toolHash: string | undefined,
+  ownerHash: string,
+): void {
+  expect(events.length).toBeGreaterThan(0);
+  for (const event of events) {
+    // Nothing removes the workflow, and every event announces either the tool's bytes, as the
+    // tool's, or other bytes, as nobody's.
+    expect(event.removed).toEqual([]);
+    expect(event.hash).toBeDefined();
+    expect(event.source).toBe(event.hash === toolHash ? 'bureau' : undefined);
+  }
+  // The change to the owner's bytes is announced last, and is nobody's.
+  expect(events.at(-1)).toEqual({ source: undefined, hash: ownerHash, removed: [] });
+}
+
 describe('an owner edit that lands while a bureau tool is writing the same workflow', () => {
-  it('is not marked as the tool’s: the source follows the bytes each scan read', async () => {
+  it('is not marked as the tool’s: the source follows the bytes each event announces', async () => {
     const { outcome, events, toolHash, ownerHash, finalHash } =
       await ownerEditDuringToolWrite(false);
 
@@ -397,12 +438,7 @@ describe('an owner edit that lands while a bureau tool is writing the same workf
     expect(toolHash).toBeDefined();
     expect(toolHash).not.toBe(ownerHash);
     expect(finalHash).toBe(ownerHash);
-    expect(events.length).toBeGreaterThan(0);
-    for (const { source, read } of events) {
-      expect(source).toBe(read === toolHash ? 'bureau' : undefined);
-    }
-    // The change to the owner's bytes is announced last, and is nobody's.
-    expect(events.at(-1)).toEqual({ source: undefined, read: ownerHash });
+    expectSourcesFollowTheBytes(events, toolHash, ownerHash);
   });
 
   it('is announced as the tool’s when a scan reads the tool’s bytes first, and as nobody’s once the owner’s bytes are read', async () => {
@@ -410,12 +446,10 @@ describe('an owner edit that lands while a bureau tool is writing the same workf
       await ownerEditDuringToolWrite(true);
 
     expect(outcome).toBe('success');
+    expect(toolHash).toBeDefined();
     expect(finalHash).toBe(ownerHash);
-    expect(events.map(({ read }) => read)).toContain(toolHash);
-    for (const { source, read } of events) {
-      expect(source).toBe(read === toolHash ? 'bureau' : undefined);
-    }
-    expect(events.at(-1)).toEqual({ source: undefined, read: ownerHash });
+    expect(events.map(({ hash }) => hash)).toContain(toolHash);
+    expectSourcesFollowTheBytes(events, toolHash, ownerHash);
   });
 });
 
