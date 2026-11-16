@@ -15,17 +15,21 @@ import {
 /** The registry id {@link createTestEmbedders} registers its embedder under. */
 export const TEST_EMBEDDER_ID = 'test';
 
+/** The model {@link createTestEmbedders} registers its embedder with unless it is given another. */
+export const TEST_EMBEDDER_MODEL = 'test-model';
+
 /**
  * The governed-memory options that make `embedder` the one memory starts with: a registry holding
- * it under {@link TEST_EMBEDDER_ID} with `dimension`, and that id as the initial embedder. Spread
- * it into `createGovernedMemory` beside a `vectors` store.
+ * it under {@link TEST_EMBEDDER_ID} with `dimension` and `model`, and that id as the initial
+ * embedder. Spread it into `createGovernedMemory` beside a `vectors` store.
  */
 export function createTestEmbedders(
   embedder: Embedder,
   dimension: number,
+  model: string = TEST_EMBEDDER_MODEL,
 ): { readonly embedders: EmbedderRegistry; readonly initialEmbedder: string } {
   return {
-    embedders: createEmbedderRegistry([{ id: TEST_EMBEDDER_ID, embedder, dimension }]),
+    embedders: createEmbedderRegistry([{ id: TEST_EMBEDDER_ID, embedder, dimension, model }]),
     initialEmbedder: TEST_EMBEDDER_ID,
   };
 }

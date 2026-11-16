@@ -1,0 +1,74 @@
+{
+  "generatedFrom": "60eb049732df10c6577239fb4e134f6eaf1e3836",
+  "prefix": "app:agent-bureau:memory-vectors:v1:",
+  "scenarios": {
+    "fresh": {
+      "app:agent-bureau:memory-vectors:v1:active": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:p:legacy-embed:8:1": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}"
+    },
+    "vectors-and-queue": {
+      "app:agent-bureau:memory-vectors:v1:active": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:p:legacy-embed:8:1": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:q:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:gamma": "{\"schemaVersion\":1,\"id\":\"gamma\",\"tenantId\":\"tenant-a\",\"namespace\":\"agent:notes\",\"queuedAt\":1000}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:alpha": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0,0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:beta": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:gamma": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5,0.5625]}"
+    },
+    "running-job": {
+      "app:agent-bureau:memory-vectors:v1:active": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:generation": "{\"schemaVersion\":1,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:job": "{\"schemaVersion\":1,\"from\":{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1},\"target\":{\"schemaVersion\":1,\"embedderId\":\"ollama:embed\",\"dimension\":8,\"generation\":2},\"state\":\"running\",\"done\":1,\"total\":3}",
+      "app:agent-bureau:memory-vectors:v1:p:legacy-embed:8:1": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:p:ollama%3Aembed:8:2": "{\"schemaVersion\":1,\"embedderId\":\"ollama:embed\",\"dimension\":8,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:q:ollama%3Aembed:8:2:t:tenant-a:n:agent%3Anotes:r:beta": "{\"schemaVersion\":1,\"id\":\"beta\",\"tenantId\":\"tenant-a\",\"namespace\":\"agent:notes\",\"queuedAt\":2000}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:alpha": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0,0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:beta": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:gamma": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5,0.5625]}",
+      "app:agent-bureau:memory-vectors:v1:v:ollama%3Aembed:8:2:t:tenant-a:n:agent%3Anotes:r:alpha": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.3125,0.375,0.4375,0.5,0.5625,0.625,0.6875,0.75]}"
+    },
+    "failed-job": {
+      "app:agent-bureau:memory-vectors:v1:active": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:generation": "{\"schemaVersion\":1,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:job": "{\"schemaVersion\":1,\"from\":{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1},\"target\":{\"schemaVersion\":1,\"embedderId\":\"ollama:embed\",\"dimension\":8,\"generation\":2},\"state\":\"failed\",\"done\":1,\"total\":3,\"error\":\"target-unavailable\"}",
+      "app:agent-bureau:memory-vectors:v1:p:legacy-embed:8:1": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:alpha": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0,0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:beta": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:gamma": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5,0.5625]}"
+    },
+    "failed-job-free-text": {
+      "app:agent-bureau:memory-vectors:v1:active": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:generation": "{\"schemaVersion\":1,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:job": "{\"schemaVersion\":1,\"from\":{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1},\"target\":{\"schemaVersion\":1,\"embedderId\":\"ollama:embed\",\"dimension\":8,\"generation\":2},\"state\":\"failed\",\"done\":1,\"total\":3,\"error\":\"Ollama API error: 500 model not found\"}",
+      "app:agent-bureau:memory-vectors:v1:p:legacy-embed:8:1": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:alpha": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0,0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:beta": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:gamma": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5,0.5625]}"
+    },
+    "cancelled-job": {
+      "app:agent-bureau:memory-vectors:v1:active": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:generation": "{\"schemaVersion\":1,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:job": "{\"schemaVersion\":1,\"from\":{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1},\"target\":{\"schemaVersion\":1,\"embedderId\":\"ollama:embed\",\"dimension\":8,\"generation\":2},\"state\":\"cancelled\",\"done\":1,\"total\":3}",
+      "app:agent-bureau:memory-vectors:v1:p:legacy-embed:8:1": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:alpha": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0,0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:beta": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:gamma": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5,0.5625]}"
+    },
+    "completed-switch": {
+      "app:agent-bureau:memory-vectors:v1:active": "{\"schemaVersion\":1,\"embedderId\":\"ollama:embed\",\"dimension\":8,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:generation": "{\"schemaVersion\":1,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:p:legacy-embed:8:1": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:p:ollama%3Aembed:8:2": "{\"schemaVersion\":1,\"embedderId\":\"ollama:embed\",\"dimension\":8,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:previous": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:q:ollama%3Aembed:8:2:t:tenant-a:n:agent%3Anotes:r:beta": "{\"schemaVersion\":1,\"id\":\"beta\",\"tenantId\":\"tenant-a\",\"namespace\":\"agent:notes\",\"queuedAt\":2000}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:alpha": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0,0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:beta": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.0625,0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5]}",
+      "app:agent-bureau:memory-vectors:v1:v:legacy-embed:8:1:t:tenant-a:n:agent%3Anotes:r:gamma": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.125,0.1875,0.25,0.3125,0.375,0.4375,0.5,0.5625]}",
+      "app:agent-bureau:memory-vectors:v1:v:ollama%3Aembed:8:2:t:tenant-a:n:agent%3Anotes:r:alpha": "{\"schemaVersion\":1,\"version\":1,\"vector\":[0.3125,0.375,0.4375,0.5,0.5625,0.625,0.6875,0.75]}"
+    },
+    "deletion-checkpoint": {
+      "app:agent-bureau:memory-vectors:v1:active": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}",
+      "app:agent-bureau:memory-vectors:v1:d:ollama%3Aembed:8:2": "{\"schemaVersion\":1,\"embedderId\":\"ollama:embed\",\"dimension\":8,\"generation\":2}",
+      "app:agent-bureau:memory-vectors:v1:p:legacy-embed:8:1": "{\"schemaVersion\":1,\"embedderId\":\"legacy-embed\",\"dimension\":8,\"generation\":1}"
+    }
+  }
+}
