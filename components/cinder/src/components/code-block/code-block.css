@@ -142,14 +142,17 @@
    * comment grey #6a737d (4.22:1). Each takes the Cinder text role of its hue, which clears AA on
    * the inset. The selector anchors on the inline `color:` so it never matches a `--shiki-dark`
    * value, and the dark-theme swap below is more specific, so a dark theme is unchanged. */
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='color:#d73a49' i] {
     color: var(--cinder-status-danger-text) !important;
   }
 
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='color:#22863a' i] {
     color: var(--cinder-status-success-text) !important;
   }
 
+  /* cinder-allow-raw-color: domain-rendering — matches the colour Shiki writes inline, never paints it */
   .cinder-code-block :where(pre.shiki) span[style*='color:#6a737d' i] {
     color: var(--cinder-text-subtle) !important;
   }
