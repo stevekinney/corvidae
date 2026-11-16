@@ -83,4 +83,13 @@ export interface PluginHost {
     /** Starts a goal; `outcome` says whether it was created, already existed, or was rejected. */
     create: (request: PluginGoalRequest) => Promise<{ readonly outcome: string }>;
   };
+  /**
+   * Publishes one of the events the plugin declared (`events` in its setup result) on
+   * `bureau.events`, as `<plugin>:<name>` with `source: <plugin>`. The payload is checked against
+   * the declared schema, and the event replays after a feed reconnect like any Bureau event.
+   * Rejects with a `TypeError` naming `name` when the plugin declared no such event, with a
+   * `TypeError` when the payload fails the declared schema, and with the plugin's needs-setup error
+   * while a secret it declared is not set. A rejected call publishes nothing.
+   */
+  publish: (name: string, payload: unknown) => Promise<void>;
 }

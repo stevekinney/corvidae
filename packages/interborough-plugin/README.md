@@ -8,7 +8,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
-| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
+| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`, `publish` (publishes an event the plugin declared as `<plugin>:<name>`, with the payload checked against its schema). |
 | `PluginContributions` | Tools, activities, code workflows, validators, guardrails, interceptors, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, events, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 

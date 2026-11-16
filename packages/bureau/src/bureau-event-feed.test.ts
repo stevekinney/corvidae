@@ -24,6 +24,7 @@ import {
 } from './bureau-event-feed.ts';
 import { bureauEventEnvelopeSchema } from './bureau-events-operation.ts';
 import { markEventSource } from './event-source.ts';
+import { PluginPublishedEvent } from './plugin-published-event.ts';
 import {
   ActionEvent,
   AssetLifecycleEvent,
@@ -86,6 +87,29 @@ describe('the source of an event', () => {
     markEventSource(event, 'slack');
     expect(() => markEventSource(event, 'calendar')).toThrow(TypeError);
     expect(markEventSource(event, 'slack')).toBe(event);
+  });
+});
+
+describe('a plugin event on the feed (COR-2224)', () => {
+  it('replays after a reconnect from the last cursor seen, like a core event', async () => {
+    const feed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    const first = feed.publish(new RunRegisteredEvent('before'))!;
+    feed.publish(
+      markEventSource(new PluginPublishedEvent('demo:greeted', { greetingId: 'g-1' }), 'demo'),
+    );
+    feed.publish(new RunRegisteredEvent('after'));
+
+    const replay: BureauEventEnvelope[] = [];
+    for await (const event of feed.feed.replay({ fromCursor: first.cursor })) replay.push(event);
+
+    expect(replay.map(({ kind }) => kind)).toEqual(['demo:greeted', 'run.registered']);
+    expect(replay[0]).toMatchObject({
+      kind: 'demo:greeted',
+      source: 'demo',
+      payload: { greetingId: 'g-1' },
+    });
+    expect(bureauEventEnvelopeSchema.parse(replay[0])).toMatchObject({ kind: 'demo:greeted' });
+    feed.dispose();
   });
 });
 

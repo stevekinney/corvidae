@@ -71,6 +71,7 @@ import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
 import { createAssetTools } from './asset-tools';
+import { createPluginEventPublisher } from './plugins/plugin-event-publish';
 import { createPluginRegistry, hostGuardrailRows } from './plugins/plugin-registry';
 import { createGoalForPlugin } from './goals';
 import {
@@ -5400,7 +5401,17 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the goal it creates stores the plugin, so every `goal.*` event of the goal carries it.
    */
   function pluginHostApiOf(host: Bureau, plugin: string): PluginHost {
+    const record = composedPlugins.records.find(
+      (candidate) => candidate.entry.descriptor.name === plugin,
+    );
     return {
+      publish: createPluginEventPublisher({
+        plugin,
+        declarations: record?.setup?.result.events ?? [],
+        gate: record?.gate,
+        // The feed records it from the emitter, as it records every other event.
+        dispatch: (event) => emitter.dispatchEvent(event),
+      }),
       agents: { list: () => host.agents.list() },
       schedules: {
         create: (definition) => createSchedule(definition, undefined, plugin),

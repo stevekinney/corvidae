@@ -33,6 +33,7 @@
  * | memory guardrail, `guardrails.memory` (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
  * | scorer (`evaluate`) | refuses; the sample is not scored | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
+ * | `host.publish` (COR-2224) | rejects {@link PluginNeedsSetupError}; nothing is published | works | rejects |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
  * | provider, panel | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for a panel, which the host serves as a static page from `bureau.plugins.panels()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
  *
