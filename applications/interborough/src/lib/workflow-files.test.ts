@@ -368,6 +368,9 @@ describe('the newest instances of a file', () => {
           runFixture('agent', 'one', {
             origin: { kind: 'agent', parentRunId: 'parent-1', agentName: 'assistant' },
           }),
+          runFixture('trigger', 'one', {
+            origin: { kind: 'trigger', plugin: 'linear', workflowId: 'one' },
+          }),
         ],
       }),
     );
@@ -377,6 +380,7 @@ describe('the newest instances of a file', () => {
       'agent',
       'chat',
       'person',
+      'trigger',
     ]);
   });
 });

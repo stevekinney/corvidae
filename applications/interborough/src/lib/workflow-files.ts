@@ -358,6 +358,7 @@ const runSummarySchema = z.object({
       z.object({ kind: z.literal('goal'), goalRunId: z.string(), attemptId: z.string() }),
       z.object({ kind: z.literal('parent'), parentRunId: z.string() }),
       z.object({ kind: z.literal('system') }),
+      z.object({ kind: z.literal('trigger'), plugin: z.string(), workflowId: z.string() }),
     ])
     .nullable()
     .default(null),

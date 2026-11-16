@@ -112,7 +112,7 @@ A trigger's `start` receives the `workflowId` of the file it starts and a `stora
 
 The state survives a restart, a pause, a configuration edit and a plugin upgrade. The host deletes it at the next reconcile after the file is deleted, or after the file's trigger becomes another kind (including another kind of the same plugin), so the file starts the new kind with empty state. A file that is `invalid` or that this Bureau cannot read keeps it, and so does the state of a plugin that is not loaded: it stays until the plugin loads and a reconcile runs. So does the state of a file another plugin ships while that plugin is not running, because the file is absent for that start only.
 
-A cursor is advanced after the work it stands for, never before: fire first, then advance. A crash between the two fires that item again on the next start, which is an at-least-once start the workflow must tolerate, where advancing first would lose the item. Because a configuration edit does not reset state, a cursor that depends on the configuration (the account a poll reads, the query it runs) stores a hash of what it depends on beside it, and resets itself when the hash no longer matches. The host never resets a key for you. Hash only what the cursor depends on: an edit to anything else, such as how often the poll runs, keeps the cursor. The function `start` resolves with must not return while a write to `storage` is still pending: the host waits for it before it starts the replacement, so a write that outlives it could land after the replacement has reset the state.
+A cursor is advanced after the work it stands for, never before: fire first, then advance. A crash between the two fires that item again on the next start, where advancing first would lose the item. Pass `fire` an `idempotencyKey` (the id the source gave the item) and the repeat starts nothing: the host remembers the key per workflow file and trigger kind for as long as the run it started exists, and answers `{ outcome: 'duplicate', runId }` with that run. `fire` resolves with a `PluginTriggerOutcome`: `started` or `duplicate` with a `runId`, or `skipped` with a `reason` of `stopped`, `paused` or `closed`, which starts nothing and leaves the key free, so the delivery is redelivered when the trigger runs again. A key is a non-empty string; an empty or non-string key rejects. Because a configuration edit does not reset state, a cursor that depends on the configuration (the account a poll reads, the query it runs) stores a hash of what it depends on beside it, and resets itself when the hash no longer matches. The host never resets a key for you. Hash only what the cursor depends on: an edit to anything else, such as how often the poll runs, keeps the cursor. The function `start` resolves with must not return while a write to `storage` is still pending: the host waits for it before it starts the replacement, so a write that outlives it could land after the replacement has reset the state.
 
 ```ts
 import { defineTrigger } from '@lostgradient/interborough-plugin';
@@ -145,7 +145,9 @@ export const newIssues = defineTrigger({
       const cursor = Number((await state.get('cursor')) ?? '0');
       for (const issue of await issuesAfter(configuration.account, cursor)) {
         if (signal.aborted) return;
-        await fire({ id: issue.id });
+        const outcome = await fire({ id: issue.id }, { idempotencyKey: String(issue.id) });
+        // A skipped fire started nothing and kept its key, so the cursor stays and the item is fired again.
+        if (outcome.outcome === 'skipped') return;
         await state.set('cursor', String(issue.id));
       }
     };

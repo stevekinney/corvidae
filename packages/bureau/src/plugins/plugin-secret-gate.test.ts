@@ -541,7 +541,7 @@ describe('the secret-gating outcome matrix', () => {
       configuration: {},
       workflowId: 'watcher',
       storage: new MemoryStorage(),
-      fire: async () => undefined,
+      fire: async () => ({ outcome: 'skipped', reason: 'stopped' }),
       signal: controller.signal,
     };
     const stop = await kind!.start(context);

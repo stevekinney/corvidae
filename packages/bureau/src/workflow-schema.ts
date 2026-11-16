@@ -121,7 +121,7 @@ function onlyKeys(record: Readonly<Record<string, unknown>>, allowed: readonly s
  *
  * Only the exact envelopes Bureau and Weft write are unwrapped: `{ kind: 'manual', input, origin }`,
  * `{ kind: 'signal', name, payload }`, `{ kind: 'schedule', scheduleId, input? }`, and a contributed
- * trigger kind's `{ kind: 'plugin:name', payload }`, each with its required fields, optional host-owned `workspaceAuthority`, and no other fields (schedules also carry `authorityHold`). A raw start whose input merely has a `kind` of `manual`, `signal`
+ * trigger kind's `{ kind: 'plugin:name', version?, payload, idempotencyKey?, origin? }`, each with its required fields, optional host-owned `workspaceAuthority`, and no other fields (schedules also carry `authorityHold`). A raw start whose input merely has a `kind` of `manual`, `signal`
  * or `schedule` (`{ kind: 'manual', city: 'Oslo' }`) is its own input. A raw input that spells out
  * a whole envelope is indistinguishable from one, which is why the trigger is the one place the
  * envelope's shape is decided.
@@ -150,9 +150,14 @@ export function workflowInputOf(trigger: unknown): unknown {
         ? (record['input'] ?? null)
         : trigger;
     default:
+      // A contributed trigger's envelope: the `version` it started at, its `idempotencyKey` and its
+      // `origin` are optional, because a run an earlier release started has none of them.
       return typeof record['kind'] === 'string' &&
         isNamespacedIdentifier(record['kind']) &&
-        onlyKeys(record, ['kind', 'payload'])
+        onlyKeys(record, ['kind', 'payload', 'version', 'idempotencyKey', 'origin']) &&
+        (record['version'] === undefined || typeof record['version'] === 'string') &&
+        (record['idempotencyKey'] === undefined || typeof record['idempotencyKey'] === 'string') &&
+        (record['origin'] === undefined || isObject(record['origin']))
         ? (record['payload'] ?? null)
         : trigger;
   }

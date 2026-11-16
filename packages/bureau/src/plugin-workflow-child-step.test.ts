@@ -456,6 +456,20 @@ describe('the child envelope and the authority check (O6, O13)', () => {
     ).toEqual({ kind: 'manual', input: { team: 'core' }, origin });
   });
 
+  it('carries a contributed trigger’s origin, and the parent origin for a run an earlier release started (COR-2163)', () => {
+    const origin = { kind: 'trigger', plugin: 'linear', workflowId: 'sync' };
+    expect(
+      host().childInput?.(
+        argument({ kind: 'linear:webhook', version: '1', payload: { id: 1 }, origin }),
+      ),
+    ).toEqual({ kind: 'manual', input: { team: 'core' }, origin });
+    expect(host().childInput?.(argument({ kind: 'linear:webhook', payload: { id: 1 } }))).toEqual({
+      kind: 'manual',
+      input: { team: 'core' },
+      origin: { kind: 'parent', parentRunId: 'parent-run' },
+    });
+  });
+
   async function runWith(admit: (() => Promise<void>) | undefined) {
     const engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
     cleanups.push(async () => engine[Symbol.asyncDispose]());

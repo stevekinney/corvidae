@@ -1807,7 +1807,8 @@
               "agent-run",
               "goal",
               "parent",
-              "system"
+              "system",
+              "trigger"
             ],
             "type": "string"
           }
@@ -2185,6 +2186,27 @@
                               "kind"
                             ],
                             "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "trigger",
+                                "type": "string"
+                              },
+                              "plugin": {
+                                "type": "string"
+                              },
+                              "workflowId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "plugin",
+                              "workflowId"
+                            ],
+                            "type": "object"
                           }
                         ]
                       },
@@ -2296,7 +2318,8 @@
               "agent-run",
               "goal",
               "parent",
-              "system"
+              "system",
+              "trigger"
             ],
             "type": "string"
           },
@@ -2672,6 +2695,27 @@
                       },
                       "required": [
                         "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "trigger",
+                          "type": "string"
+                        },
+                        "plugin": {
+                          "type": "string"
+                        },
+                        "workflowId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "plugin",
+                        "workflowId"
                       ],
                       "type": "object"
                     }
@@ -3506,6 +3550,27 @@
                             "kind"
                           ],
                           "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "trigger",
+                              "type": "string"
+                            },
+                            "plugin": {
+                              "type": "string"
+                            },
+                            "workflowId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "plugin",
+                            "workflowId"
+                          ],
+                          "type": "object"
                         }
                       ]
                     },
@@ -3978,6 +4043,27 @@
                           },
                           "required": [
                             "kind"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "trigger",
+                              "type": "string"
+                            },
+                            "plugin": {
+                              "type": "string"
+                            },
+                            "workflowId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "plugin",
+                            "workflowId"
                           ],
                           "type": "object"
                         }
@@ -18955,6 +19041,27 @@
                               "kind"
                             ],
                             "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "trigger",
+                                "type": "string"
+                              },
+                              "plugin": {
+                                "type": "string"
+                              },
+                              "workflowId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "plugin",
+                              "workflowId"
+                            ],
+                            "type": "object"
                           }
                         ]
                       },
@@ -19378,6 +19485,27 @@
                       },
                       "required": [
                         "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "trigger",
+                          "type": "string"
+                        },
+                        "plugin": {
+                          "type": "string"
+                        },
+                        "workflowId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "plugin",
+                        "workflowId"
                       ],
                       "type": "object"
                     }
@@ -21147,7 +21275,7 @@
                     "type": "string"
                   },
                   "version": {
-                    "description": "The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener.",
+                    "description": "The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.",
                     "type": "string"
                   }
                 },

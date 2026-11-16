@@ -43,10 +43,17 @@ import {
   type WorkflowEvent,
   type WorkflowStatus,
 } from '@lostgradient/weft';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import type { PluginTriggerOutcome } from '@lostgradient/interborough-plugin';
 import { z } from 'zod';
 
 import { auditTrailWorkflowOwnerId } from './audit-trail';
-import { taskOriginTag, type TaskOrigin, type TaskPersonSurface } from './task-origin';
+import {
+  taskOriginTag,
+  type TaskOrigin,
+  type TaskPersonSurface,
+  type TriggerTaskOrigin,
+} from './task-origin';
 import { ownerOrLocal } from './owner-of-record';
 import type { DefinitionChange, DefinitionScannerHealth } from './definition-scanner';
 import type { WorkflowSource } from './sources/definition-source';
@@ -83,6 +90,7 @@ import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflo
 import {
   createWorkflowTriggerSupervisor,
   type DesiredTrigger,
+  type TriggerFireRequest,
 } from './workflow-trigger-supervisor';
 import { sweepTriggerState } from './workflow-trigger-state';
 import { formatVersionedId } from './versioned-catalog';
@@ -787,6 +795,21 @@ function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefine
   };
 }
 
+/** A contributed trigger's fire that started nothing, and why. */
+function skippedFire(reason: 'stopped' | 'paused' | 'closed'): PluginTriggerOutcome {
+  return { outcome: 'skipped', reason };
+}
+
+/**
+ * The tag a run carries for the idempotency key its trigger fired with: `trigger:` and the SHA-256
+ * hex digest of the key under its workflow file and trigger kind. The digest fits a tag whatever
+ * the key's length, and keeps one file's or kind's key apart from another's, and from a manual
+ * start's or a hook's.
+ */
+function triggerKeyTag(workflowId: string, kind: string, key: string): string {
+  return `trigger:${sha256HexSync(`trigger:${workflowId}:${kind}:${key}`)}`;
+}
+
 export { createWorkflowSnapshotStore };
 
 export function createWorkflowRuntime(options: WorkflowRuntimeOptions): WorkflowRuntime {
@@ -1008,24 +1031,6 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return desired;
   }
 
-  /**
-   * A contributed trigger fired for workflow `id`: start an instance with the payload, as a signal
-   * trigger does. A payload the `inputSchema` refuses rejects with {@link WorkflowInputInvalidError},
-   * which the plugin that fired sees.
-   *
-   * The fire takes one snapshot, the file whose revision the engine has applied
-   * ({@link appliedFiles}), judges the payload by that revision's `inputSchema`, and starts that
-   * same revision: both happen under {@link withRegistration}, so no registration can move the
-   * engine's active revision in between. A fire that lands while a change to the files is queued or
-   * applying runs the revision applied before it; one after the change registered runs the new
-   * one. A revision that was paused, or whose trigger is another kind, starts nothing.
-   *
-   * It never waits for an apply. An apply that stops this trigger awaits the trigger's `stop`, and
-   * a trigger's `stop` may wait for its fires in flight (a webhook server's does), so a fire that
-   * waited for the apply would wait for itself. The registration lock holds only the registration,
-   * never a trigger's `start` or `stop`. A failed apply is reported as it is to `start`: the fire
-   * rejects with {@link WorkflowApplyError} until an apply succeeds.
-   */
   async function triggerAuthority(authorizingOwner: string | undefined) {
     if (options.workspace === undefined) return {};
     const authority = await captureRunWorkspaceAuthority(
@@ -1037,27 +1042,94 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return { workspaceAuthority: authority };
   }
 
-  async function fireTrigger(id: string, kind: string, payload: unknown): Promise<void> {
-    if (closed) return;
+  /**
+   * A contributed trigger fired for workflow `request.workflowId`: start an instance with the
+   * payload, as a signal trigger does, and say what became of the fire ({@link PluginTriggerOutcome}).
+   * A payload the `inputSchema` refuses rejects with {@link WorkflowInputInvalidError}, which the
+   * plugin that fired sees.
+   *
+   * The fire takes one snapshot, the file whose revision the engine has applied
+   * ({@link appliedFiles}), judges the payload by that revision's `inputSchema`, and starts that
+   * same revision: both happen under {@link withRegistration}, so no registration can move the
+   * engine's active revision in between. A fire that lands while a change to the files is queued or
+   * applying runs the revision applied before it; one after the change registered runs the new
+   * one. A file that is paused starts nothing and answers `skipped`.
+   *
+   * It never waits for an apply. An apply that stops this trigger awaits the trigger's `stop`, and
+   * a trigger's `stop` may wait for its fires in flight (a webhook server's does), so a fire that
+   * waited for the apply would wait for itself. The registration lock holds only the registration,
+   * never a trigger's `start` or `stop`. A failed apply is reported as it is to `start`: the fire
+   * rejects with {@link WorkflowApplyError} until an apply succeeds.
+   *
+   * The checks run in this order, and the first that applies answers: the Bureau is closed; the
+   * file is not applied or is another trigger kind (`stopped`, because its listener is about to
+   * be); a run already carries the idempotency key (`duplicate`); the last apply failed; the file
+   * is paused; the payload is not JSON; the `inputSchema` refuses it. So a repeat of a delivery
+   * that already started a run is answered with that run, however the file has moved since.
+   *
+   * An idempotency key is a tag on the run it starts, `trigger:` and the SHA-256 digest of
+   * `trigger:<workflow>:<plugin:name>:<key>` (a key of any length fits a tag, and one workflow's
+   * or kind's key is never another's). The lookup of that tag and the start sit in one
+   * {@link withRegistration} section with no `await` between that lets another fire in, so two
+   * fires with one key start one run. The key is not given to Weft: its own key mapping outlives
+   * the run record, and a key lives exactly as long as the run it started. Only a fire that
+   * starts a run takes its key; a skipped or failed one leaves it free for the redelivery. Two
+   * Bureaus over one storage can both look up before either has started a run, and start two; the
+   * listener lease does not close that for a `receive`-only trigger.
+   */
+  async function fireTrigger(request: TriggerFireRequest): Promise<PluginTriggerOutcome> {
+    const { workflowId: id, kind, version, idempotencyKey } = request;
+    if (closed) return skippedFire('closed');
+    if (
+      idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== 'string' || idempotencyKey === '')
+    ) {
+      throw options.createError('The idempotency key must be a non-empty string.', 'BAD_REQUEST');
+    }
     // The caller owns `payload`: snapshot it before the first await. A value that is not JSON is
     // refused below, once the file it would start is known, as before.
-    const requested: unknown = payload ?? null;
+    const requested: unknown = request.payload ?? null;
     const isJson = z.json().safeParse(requested).success;
     const input: unknown = isJson ? structuredClone(requested) : requested;
-    await withRegistration(async () => {
-      if (closed) return;
+    const keyTag =
+      idempotencyKey === undefined ? undefined : triggerKeyTag(id, kind, idempotencyKey);
+    return withRegistration(async (): Promise<PluginTriggerOutcome> => {
+      if (closed) return skippedFire('closed');
+      const file = appliedFiles.get(id);
+      if (file === undefined || file.document.trigger.kind !== kind) return skippedFire('stopped');
+      if (keyTag !== undefined) {
+        const earlier = await engine.list({ type: weftNameOf(id), tags: [keyTag], limit: 1 });
+        const first = earlier.items[0];
+        if (first !== undefined) return { outcome: 'duplicate', runId: first.id };
+      }
       const failure = registrationFailure ?? applyFailure;
       if (failure !== undefined) throw new WorkflowApplyError(failure);
-      const file = appliedFiles.get(id);
-      if (file === undefined || file.paused || file.document.trigger.kind !== kind) return;
+      if (file.paused) return skippedFire('paused');
       if (!isJson) {
         throw options.createError('The trigger payload must be a JSON value.', 'BAD_REQUEST');
       }
       const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
       if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
-      const trigger = { kind, payload: input, ...(await triggerAuthority(undefined)) };
+      // The origin names the plugin that contributes the kind and the file it started; the kind
+      // itself is the run's `trigger.kind`.
+      const origin: TriggerTaskOrigin = {
+        kind: 'trigger',
+        plugin: contributions.triggers.get(kind)?.source.name ?? kind.slice(0, kind.indexOf(':')),
+        workflowId: id,
+      };
+      const trigger = {
+        kind,
+        version,
+        payload: input,
+        ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+        origin,
+        ...(await triggerAuthority(undefined)),
+      };
       assertSendable('trigger payload', trigger);
-      await engine.start(weftNameOf(id), trigger);
+      const handle = await engine.start(weftNameOf(id), trigger, {
+        tags: [taskOriginTag(origin), ...(keyTag === undefined ? [] : [keyTag])],
+      });
+      return { outcome: 'started', runId: handle.id };
     });
   }
 
