@@ -57,6 +57,8 @@
     type ApprovalResolution,
   } from '@lostgradient/cinder';
   import {
+    approvalArrivalShift,
+    approvalTallerThanTranscript,
     Chat,
     ChatNote,
     ChatQuestion,
@@ -784,6 +786,24 @@
     }
   });
 
+  /**
+   * Brings a waiting approval into view (COR-2327): centred while the whole card fits the
+   * transcript, and otherwise with its bottom, where Deny and Approve are, on the transcript's
+   * bottom with Chat's clearance to spare, so the decision is in view and its top may scroll off.
+   */
+  function bringApprovalIntoView(row: HTMLElement): void {
+    const transcript = row.closest<HTMLElement>('.chat-timeline');
+    if (transcript !== null) {
+      const card = row.getBoundingClientRect();
+      const box = transcript.getBoundingClientRect();
+      if (approvalTallerThanTranscript(card, box)) {
+        transcript.scrollTop += approvalArrivalShift(card, box);
+        return;
+      }
+    }
+    row.scrollIntoView?.({ block: 'center' });
+  }
+
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
   async function focusApproval(): Promise<void> {
     let focused = false;
@@ -800,7 +820,7 @@
         const lost =
           active === null || active === document.body || (active !== row && active.contains(row));
         if (!focused || lost) {
-          row.scrollIntoView?.({ block: 'center' });
+          bringApprovalIntoView(row);
           row.focus({ preventScroll: true });
           focused = true;
         } else if (!row.isConnected || document.activeElement !== row) {
