@@ -3874,7 +3874,7 @@
   "code-block.background": {
     "$type": "color",
     "$value": { "colorSpace": "oklch", "components": [0.21, 0.012, 265] },
-    "$description": "Code surface background. Light arm MUST stay pure `surface-raised` (not `surface-inset`) -- Shiki's github-light token colors measure their AA contrast against that surface with almost no margin; darkening it fails the axe sweep. See code-block.css for the full rationale. Dark arm uses `surface-inset` for the deeper github-dark ground.",
+    "$description": "Code surface background: the recessed inset well in both themes (owner, 2026-11-16), so a code block inside a white card or panel reads as sunk into it rather than as a second white box. Shiki's github-light colors that fall under AA on the light inset are lifted to Cinder text roles in code-block.css; see check-token-contrast-code-block.test.ts.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-code-block-background",
@@ -3886,15 +3886,15 @@
   },
   "code-block.edge": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.08 },
-    "$description": "The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues.",
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0 },
+    "$description": "The block's edge against the page. Transparent in both themes: the inset field sets the block apart by its fill alone, so the block never carries two cues and never draws a box inside a card. A consumer can set it to draw a hairline.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-code-block-edge",
         "public": true,
         "category": "color",
         "component": "code-block",
-        "cssRecipe": "light-dark(var(--cinder-border-muted), transparent)"
+        "cssRecipe": "transparent"
       }
     }
   },

@@ -18819,7 +18819,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'code-block',
       description:
-        "Code surface background. Light arm MUST stay pure `surface-raised` (not `surface-inset`) -- Shiki's github-light token colors measure their AA contrast against that surface with almost no margin; darkening it fails the axe sweep. See code-block.css for the full rationale. Dark arm uses `surface-inset` for the deeper github-dark ground.",
+        "Code surface background: the recessed inset well in both themes (owner, 2026-11-16), so a code block inside a white card or panel reads as sunk into it rather than as a second white box. Shiki's github-light colors that fall under AA on the light inset are lifted to Cinder text roles in code-block.css; see check-token-contrast-code-block.test.ts.",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -18827,10 +18827,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
-        dtcgExport: 'subset',
-        cssSerialization: 'mixed',
-        reason:
-          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
       },
       variants: [
         {
@@ -18854,15 +18852,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 path: 'code-block.background',
               },
             },
-            inputs: {
-              aliases: ['surface.raised'],
-              refs: [],
-              extends: [],
-              recipes: [
-                { cssProperty: '--cinder-surface-raised', path: 'surface.raised' },
-                { cssProperty: '--cinder-surface-inset', path: 'surface.inset' },
-              ],
-            },
+            inputs: { aliases: ['surface.inset'], refs: [], extends: [], recipes: [] },
           },
         },
         {
@@ -18901,7 +18891,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'code-block',
       description:
-        "The block's one edge against the page. A hairline in the light theme, where the white code field sits on a near-white page; transparent in the dark theme, where the deeper field sets the block apart by its fill alone, so the block never carries two cues.",
+        "The block's edge against the page. Transparent in both themes: the inset field sets the block apart by its fill alone, so the block never carries two cues and never draws a box inside a card. A consumer can set it to draw a hairline.",
       themeAware: false,
       deprecated: false,
       profile: 'color',
@@ -18939,12 +18929,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'local',
               declaredAt: { document: 'sets/components.tokens.json', path: 'code-block.edge' },
             },
-            inputs: {
-              aliases: ['border.muted'],
-              refs: [],
-              extends: [],
-              recipes: [{ cssProperty: '--cinder-border-muted', path: 'border.muted' }],
-            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
           },
         },
       ],
