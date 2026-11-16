@@ -3086,7 +3086,9 @@ describe('the trigger events a supervisor publishes (COR-2250)', () => {
     });
     await rig.reconcile({ a: {} });
     rig.events.length = 0;
-    const thrown = await rejectionOf(rig.contexts[0]!.fire({ token: 'sk-live' }, { idempotencyKey: 'k' }));
+    const thrown = await rejectionOf(
+      rig.contexts[0]!.fire({ token: 'sk-live' }, { idempotencyKey: 'k' }),
+    );
     expect(thrown).toBeInstanceOf(WorkflowInputInvalidError);
     expect(rig.events).toEqual([
       { kind: 'trigger.fired', ...BASE, outcome: 'refused', errorCode: 'INPUT_INVALID' },
@@ -3137,7 +3139,15 @@ describe('the trigger events a supervisor publishes (COR-2250)', () => {
     ]);
     for (const event of rig.events) {
       for (const key of Object.keys(event)) {
-        expect(['kind', 'workflowId', 'trigger', 'version', 'outcome', 'runId', 'errorCode']).toContain(key);
+        expect([
+          'kind',
+          'workflowId',
+          'trigger',
+          'version',
+          'outcome',
+          'runId',
+          'errorCode',
+        ]).toContain(key);
       }
     }
     expect(JSON.stringify(rig.events)).not.toContain('payload-text');
@@ -3163,7 +3173,11 @@ describe('the trigger events a supervisor publishes (COR-2250)', () => {
     expect(rig.events.at(-1)).toEqual({ kind: 'trigger.stopped', ...BASE });
     rig.behaviour.fail = true;
     await rig.reconcile({ a: { account: 'failing' } });
-    expect(rig.events.at(-1)).toEqual({ kind: 'trigger.failed', ...BASE, errorCode: 'START_FAILED' });
+    expect(rig.events.at(-1)).toEqual({
+      kind: 'trigger.failed',
+      ...BASE,
+      errorCode: 'START_FAILED',
+    });
     rig.behaviour.fail = false;
     await rig.reconcile({ a: { account: 'again' } });
     expect(rig.events.at(-1)).toEqual({ kind: 'trigger.started', ...BASE });

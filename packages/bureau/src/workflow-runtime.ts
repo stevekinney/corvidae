@@ -1256,7 +1256,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     try {
       options.onTriggerEvent?.(event);
     } catch (error) {
-      options.diagnose(`Could not publish "${event.kind}" for workflow "${event.workflowId}".`, error);
+      options.diagnose(
+        `Could not publish "${event.kind}" for workflow "${event.workflowId}".`,
+        error,
+      );
     }
   }
 

@@ -85,7 +85,7 @@ const NUMBER_INPUT = {
 async function everyEnvelope(harness: WorkflowBureauHarness): Promise<Envelope[]> {
   const found: Envelope[] = [];
   for await (const envelope of harness.bureau.internals.eventFeed.feed.replay()) {
-    found.push(envelope as Envelope);
+    found.push(envelope);
   }
   return found;
 }
@@ -144,7 +144,12 @@ describe('the trigger events on a Bureau’s feed (COR-2250)', () => {
     });
     expect(triggers).toContainEqual({
       kind: 'trigger.failed',
-      payload: { workflowId: 'bad', trigger: 'x:watch', version: '1.0.0', errorCode: 'START_FAILED' },
+      payload: {
+        workflowId: 'bad',
+        trigger: 'x:watch',
+        version: '1.0.0',
+        errorCode: 'START_FAILED',
+      },
     });
     for (const workflowId of ['good', 'hooked']) {
       expect(triggers).toContainEqual({

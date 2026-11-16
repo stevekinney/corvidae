@@ -217,7 +217,11 @@ const LISTENER_ERROR_CODES: Readonly<Record<ListenerCode, string>> = {
 };
 
 /** The states in which a listener is running in this process, as `trigger.started` counts them. */
-const RUNNING_STATES: ReadonlySet<ListenerState> = new Set(['listening', 'waiting-for-secret', 'ready']);
+const RUNNING_STATES: ReadonlySet<ListenerState> = new Set([
+  'listening',
+  'waiting-for-secret',
+  'ready',
+]);
 
 /** The `trigger.fired` record of a fire the host or the supervisor answered. */
 export function triggerFiredRecord(
@@ -365,6 +369,7 @@ export function createWorkflowTriggerSupervisor(
     leaseTails.set(id, tail);
     void tail.then(() => {
       if (leaseTails.get(id) === tail) leaseTails.delete(id);
+      return undefined;
     });
     return result;
   }
@@ -475,12 +480,20 @@ export function createWorkflowTriggerSupervisor(
     try {
       options.publish(event);
     } catch (error) {
-      options.diagnose(`Could not publish "${event.kind}" for workflow "${event.workflowId}".`, error);
+      options.diagnose(
+        `Could not publish "${event.kind}" for workflow "${event.workflowId}".`,
+        error,
+      );
     }
   }
 
   function publishStopped(id: string, prior: ListenerRecord): void {
-    publish({ kind: 'trigger.stopped', workflowId: id, trigger: prior.kind, version: prior.version });
+    publish({
+      kind: 'trigger.stopped',
+      workflowId: id,
+      trigger: prior.kind,
+      version: prior.version,
+    });
   }
 
   /**
@@ -765,15 +778,17 @@ export function createWorkflowTriggerSupervisor(
         // The fence: the record is read before the host is called, and the plugin's payload is
         // copied before that read awaits. A read that throws rejects the fire, starting nothing.
         const snapshot = snapshotOf(payload);
-        return lease.holds(id).then((holds): PluginTriggerOutcome | Promise<PluginTriggerOutcome> => {
-          if (closed) return answered(skipped('closed'));
-          if (controller.signal.aborted) return answered(skipped('stopped'));
-          if (!holds) {
-            lostLease(id, entry);
-            return answered(skipped('stopped'));
-          }
-          return forward(snapshot);
-        }, refused);
+        return lease
+          .holds(id)
+          .then((holds): PluginTriggerOutcome | Promise<PluginTriggerOutcome> => {
+            if (closed) return answered(skipped('closed'));
+            if (controller.signal.aborted) return answered(skipped('stopped'));
+            if (!holds) {
+              lostLease(id, entry);
+              return answered(skipped('stopped'));
+            }
+            return forward(snapshot);
+          }, refused);
       },
     };
     // What a gated kind says about its own listener reaches the entry, not the status: it is held
@@ -872,7 +887,8 @@ export function createWorkflowTriggerSupervisor(
    */
   async function tickPass(): Promise<void> {
     if (lease === undefined) return;
-    for (const [id, entry] of [...running]) {
+    // A replaced attempt is set under the same key, which the iteration does not visit again.
+    for (const [id, entry] of running) {
       if (closed) return;
       if (!isCurrent(id, entry) || !entry.settled) continue;
       if (entry.standby) {

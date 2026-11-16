@@ -148,9 +148,9 @@ export function openProcessLease(options: OpenProcessLeaseOptions): ProcessLease
 
   /** A renewal write succeeded: tell each listener, unless the lease was halted meanwhile. */
   const renewed = (): void => {
-    for (const listener of [...renewedListeners]) {
+    // A listener unsubscribed by an earlier one in this pass is not visited: a `Set` skips it.
+    for (const listener of renewedListeners) {
       if (released) return;
-      if (!renewedListeners.has(listener)) continue;
       try {
         listener();
       } catch (error) {

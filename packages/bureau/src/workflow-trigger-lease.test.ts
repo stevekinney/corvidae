@@ -11,10 +11,7 @@ import type {
   PluginTriggerContext,
   PluginTriggerOutcome,
 } from '@lostgradient/interborough-plugin';
-import {
-  createManualRuntimeServices,
-  type ManualRuntimeServices,
-} from '@lostgradient/lifecycle';
+import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
@@ -63,8 +60,7 @@ const SECRET_KEY = 'x-token';
 const RECORD = triggerLeaseKey('a');
 
 /** The ISO time `seconds` after the origin. */
-const at = (seconds: number): string =>
-  new Date(Date.parse(ORIGIN) + seconds * 1000).toISOString();
+const at = (seconds: number): string => new Date(Date.parse(ORIGIN) + seconds * 1000).toISOString();
 
 /**
  * A promise a test settles by hand. Every gate is opened in cleanup, before the peers close, so a
@@ -117,7 +113,8 @@ function instrumented(
       return base.delete(key);
     },
     conditionalBatch: async (conditions, operations) => {
-      for (const operation of operations) if (isLease(operation.key)) log.writes.push(operation.key);
+      for (const operation of operations)
+        if (isLease(operation.key)) log.writes.push(operation.key);
       await faults.batch?.(conditions, operations);
       const committed = await base.conditionalBatch(conditions, operations);
       await faults.afterBatch?.(operations, committed);
@@ -299,8 +296,10 @@ async function peer(
     nowISO: () => services.clock.nowISO(),
     timers: services.timers,
     exclusive,
-    reportFailure: (pluginName, workflow) => void state.calls.push(`report ${pluginName}/${workflow}`),
-    clearFailure: (pluginName, workflow) => void state.calls.push(`clear ${pluginName}/${workflow}`),
+    reportFailure: (pluginName, workflow) =>
+      void state.calls.push(`report ${pluginName}/${workflow}`),
+    clearFailure: (pluginName, workflow) =>
+      void state.calls.push(`clear ${pluginName}/${workflow}`),
     lease,
     publish: (event) => void published.push(event),
   });
@@ -472,7 +471,9 @@ function expectRetryAtToMatchTheTimers(p: Peer): void {
       if (p.supervisor.listener(id, kind)?.retryAt != null) published += 1;
     }
   }
-  expect(published, `published retryAt values of ${p.name}`).toBe(p.services.pendingTimers().length);
+  expect(published, `published retryAt values of ${p.name}`).toBe(
+    p.services.pendingTimers().length,
+  );
 }
 
 interface LeaseRow {
@@ -746,7 +747,9 @@ const rows: readonly LeaseRow[] = [
         diagnose: () => undefined,
       });
       const seen: Array<string | null> = [];
-      lease.onRenewed(() => void kv.get(processLeaseKey(lease.processId!)).then((raw) => seen.push(raw)));
+      lease.onRenewed(
+        () => void kv.get(processLeaseKey(lease.processId!)).then((raw) => seen.push(raw)),
+      );
       await lease.start('timer');
       await services.advance(PROCESS_LEASE_MILLISECONDS / 3);
       await lease.renew();
@@ -1218,7 +1221,7 @@ const rows: readonly LeaseRow[] = [
       payload.nested.list.push(2);
       options.idempotencyKey = 'second';
       reading.open();
-      expect((await firing).outcome).toBe('started');
+      expect(await firing).toMatchObject({ outcome: 'started' });
       expect(holder.requests[0]!.payload).toEqual({ n: 1, nested: { list: [1] } });
       expect(holder.requests[0]!.idempotencyKey).toBe('first');
     },
@@ -1235,7 +1238,9 @@ const rows: readonly LeaseRow[] = [
       expect(holder.requests).toEqual([]);
       expect(holder.status()).toEqual(status('listening', ORIGIN));
       holder.faults = {};
-      expect((await holder.starts[0]!.fire({}, { idempotencyKey: 'k' })).outcome).toBe('started');
+      expect(await holder.starts[0]!.fire({}, { idempotencyKey: 'k' })).toMatchObject({
+        outcome: 'started',
+      });
     },
   },
   {
@@ -1250,7 +1255,9 @@ const rows: readonly LeaseRow[] = [
         runId: `${holder.name}-run-1`,
       });
       expect(holder.reads.length - reads).toBe(1);
-      expect(holder.requests).toEqual([{ workflowId: 'a', kind: KIND, version: '1', payload: { n: 1 } }]);
+      expect(holder.requests).toEqual([
+        { workflowId: 'a', kind: KIND, version: '1', payload: { n: 1 } },
+      ]);
       expect(holder.status()?.lastFiredAt).toBe(ORIGIN);
     },
   },
@@ -1509,7 +1516,7 @@ const rows: readonly LeaseRow[] = [
       });
       expect(p.starts).toHaveLength(1);
       stopping.open();
-      expect((await retrying)?.state).toBe('listening');
+      expect(await retrying).toMatchObject({ state: 'listening' });
       await p.settled();
       expect(p.starts).toHaveLength(2);
       expect(await shared.kv.get(RECORD)).toBe(p.own);
@@ -1702,7 +1709,8 @@ const rows: readonly LeaseRow[] = [
       const shared = sharedStore();
       const holderSecrets = await secretGated();
       const holder = await peer(shared, { wrap: holderSecrets.wrap });
-      const standby = await peer(shared, { wrap: (await secretGated()).wrap });
+      const standbySecrets = await secretGated();
+      const standby = await peer(shared, { wrap: standbySecrets.wrap });
       await holder.reconcile({ a: {} });
       await standby.reconcile({ a: {} });
       expect(holder.status()?.state).toBe('waiting-for-secret');
@@ -1833,7 +1841,9 @@ const rows: readonly LeaseRow[] = [
         outcome: 'skipped',
         reason: 'stopped',
       });
-      expect((await standby.starts[0]!.fire({}, { idempotencyKey: 'K' })).outcome).toBe('started');
+      expect(await standby.starts[0]!.fire({}, { idempotencyKey: 'K' })).toMatchObject({
+        outcome: 'started',
+      });
       expect(holder.requests).toEqual([]);
     },
   },
@@ -1882,7 +1892,11 @@ describe('the listener lease and fenced fires (COR-2167 outcome matrix)', () => 
   afterEach(() => {
     for (const p of peersOfTheRow.splice(0)) expectRetryAtToMatchTheTimers(p);
   });
-  for (const { row, run } of rows) it(row, run);
+  for (const { row, run } of rows) {
+    it(row, async () => {
+      await run();
+    });
+  }
 });
 
 describe('the trigger events of a takeover (COR-2250)', () => {
@@ -1955,7 +1969,9 @@ describe('the listener lease, through a Bureau (wiring)', () => {
     );
     await harness.put('a.json', workflowFileText('a', { trigger: { kind: KIND } }));
     await harness.bureau.workflows?.refresh();
-    expect((await harness.bureau.workflows?.get('a'))?.listener?.state).toBe('listening');
+    expect(await harness.bureau.workflows?.get('a')).toMatchObject({
+      listener: { state: 'listening' },
+    });
     // COR-2250: the Bureau publishes what the listener did.
     expect(started).toEqual([
       {
@@ -1963,7 +1979,9 @@ describe('the listener lease, through a Bureau (wiring)', () => {
         payload: { workflowId: 'a', trigger: KIND, version: '1.0.0' },
       },
     ]);
-    expect(await textValueStore(storage, { disposeUnderlyingStorage: false }).list('bureau-trigger:')).toEqual([]);
+    expect(
+      await textValueStore(storage, { disposeUnderlyingStorage: false }).list('bureau-trigger:'),
+    ).toEqual([]);
   });
 
   it('a persistent Bureau takes the record, ticks at maintain(), takes over a lapsed holder, starts a manual run with no lease, and deletes the record before it releases its process lease', async () => {
@@ -1986,8 +2004,11 @@ describe('the listener lease, through a Bureau (wiring)', () => {
           const text = JSON.stringify(args, (_key, value: unknown) =>
             value instanceof Uint8Array ? new TextDecoder().decode(value) : value,
           );
-          if ((property === 'delete' || property === 'batch' || property === 'conditionalBatch') && text.includes('bureau-'))
-            order.push(`${String(property)} ${text.includes('bureau-trigger:') ? 'trigger' : 'process'}`);
+          if (
+            (property === 'delete' || property === 'batch' || property === 'conditionalBatch') &&
+            text.includes('bureau-')
+          )
+            order.push(`${property} ${text.includes('bureau-trigger:') ? 'trigger' : 'process'}`);
           return (member as (...a: unknown[]) => unknown).apply(target, args);
         };
       },
@@ -2008,12 +2029,17 @@ describe('the listener lease, through a Bureau (wiring)', () => {
     await harness.put('a.json', workflowFileText('a', { trigger: { kind: KIND } }));
     await harness.put('m.json', workflowFileText('m'));
     await harness.bureau.workflows?.refresh();
-    expect((await harness.bureau.workflows?.get('a'))?.listener?.state).toBe('standby');
+    expect(await harness.bureau.workflows?.get('a')).toMatchObject({
+      listener: { state: 'standby' },
+    });
     expect(plugin.contexts).toHaveLength(0);
     runtime.setTime(Date.parse(ORIGIN) + PROCESS_LEASE_MILLISECONDS + 1);
     await harness.bureau.maintain?.();
     await waitUntil(
-      async () => (await harness.bureau.workflows?.get('a'))?.listener?.state === 'listening',
+      async () => {
+        const detail = await harness.bureau.workflows?.get('a');
+        return detail?.listener?.state === 'listening';
+      },
       { message: 'the takeover at maintain()' },
     );
     expect(plugin.contexts).toHaveLength(1);
