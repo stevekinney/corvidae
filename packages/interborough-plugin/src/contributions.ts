@@ -435,6 +435,40 @@ export interface PluginEmbedder {
 }
 
 /**
+ * Where a panel appears in the host (COR-2212). A panel declares each place it opens, so a page
+ * panel needs no MCP tool to open from, and a place several plugins can fill takes no claim.
+ * Setup refuses a placement with another `kind`, a `page` group outside `work`, `build` and
+ * `system`, and a `page` path outside `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`.
+ */
+export type PluginPanelPlacement =
+  | {
+      /** The panel is a page of its own in the host's router. */
+      readonly kind: 'page';
+      /** The route path under the host, in lowercase segments of letters, digits and hyphens. */
+      readonly path: string;
+      /** A sidebar entry for the page; without one the page is reachable only by its path. */
+      readonly sidebar?: {
+        /** The sidebar group the entry sits in. */
+        readonly group: 'work' | 'build' | 'system';
+        /** The name of a Lucide icon drawn beside the entry. */
+        readonly icon?: string;
+      };
+    }
+  | {
+      /** The panel shows on a run's page, beside the run it belongs to. */
+      readonly kind: 'run';
+    }
+  | {
+      /** The panel opens inline in Chat from a tool call of the agent tool `agentTool`. */
+      readonly kind: 'chat-tool';
+      /**
+       * The agent tool id whose call opens the panel. A Bureau given its agent tools refuses an
+       * id it does not hold, except the workflow tools it adds itself.
+       */
+      readonly agentTool: string;
+    };
+
+/**
  * An interface panel, an MCP App page, that renders inside the host. The host bundles `entry` into one
  * self-contained page and serves it as the `ui://` resource `uri`, under a content security policy
  * that denies every origin and permission.
@@ -449,8 +483,11 @@ export interface PluginPanel {
   /** What the panel shows. */
   readonly description?: string;
   /**
-   * The `ui://` resource the page is served at, unique across plugins. The version is part of the
-   * URI: a changed contract is a new one.
+   * The `ui://` resource the page is served at. It begins `ui://<plugin>/`, the contributing
+   * plugin's own name, so two plugins never hold one URI: setup refuses any other prefix. The
+   * version is part of the URI: a changed contract is a new one, and a start that serves
+   * different bytes under a URI an earlier start served lists a `panel-changed` problem (the page
+   * is still served).
    */
   readonly uri: string;
   /** The browser entry module (TypeScript or JavaScript) the host bundles into the page. */
@@ -459,17 +496,26 @@ export interface PluginPanel {
   readonly styles?: string;
   /** The Bureau MCP tool names the panel may call. A panel may call no other tool. */
   readonly allowedTools: string[];
-  /** Bureau tools callable only by this host panel, outside the generic MCP inventory. */
+  /**
+   * Bureau operations callable only by this host panel, outside the generic MCP inventory. Each
+   * is one of `allowedTools`, and must be in the Bureau's `HOST_PANEL_OPERATIONS`: setup refuses
+   * any other name, and the host answers 403 for it.
+   */
   readonly hostOnlyTools?: string[];
-  /** An agent tool id that may open this app in an inline Chat tool call. */
-  readonly opensFromAgentTool?: string;
+  /**
+   * Where the panel appears in the host. A panel that declares none is served and linked from
+   * `opensFromTool` alone. Two plugins' panels can both have a `run` placement: a placement is no
+   * claim on a name.
+   */
+  readonly placements?: readonly PluginPanelPlacement[];
   /**
    * The one Bureau MCP tool a client runs to open the page: the host links this tool to the page.
    * It is one of `allowedTools`, and unique across plugins: a tool links to one page, so a plugin
-   * whose app opens from a tool another app already opens is skipped with `name-clash`. An app
-   * whose entry does not build leaves the plugin running with a `panel-failed` problem.
+   * whose app opens from a tool another app already opens is skipped with `name-clash`. Without
+   * one, no tool links to the page and nothing is claimed, so a page panel needs no MCP opener. An
+   * app whose entry does not build leaves the plugin running with a `panel-failed` problem.
    */
-  readonly opensFromTool: string;
+  readonly opensFromTool?: string;
 }
 
 /** A rendering of one event for the host's activity views. */

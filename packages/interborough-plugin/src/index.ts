@@ -21,6 +21,7 @@ export type {
   PluginOutputGuardrail,
   PluginOutputGuardrailEntry,
   PluginPanel,
+  PluginPanelPlacement,
   PluginProvider,
   PluginReaction,
   PluginReactionContext,

@@ -108,7 +108,12 @@
   import { isRunning, listTasks, type TaskView } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
-  import { getPanels, loadPluginApp, pluginToolCaller } from '../../lib/host-panels.ts';
+  import {
+    chatToolsOf,
+    getPanels,
+    loadPluginApp,
+    pluginToolCaller,
+  } from '../../lib/host-panels.ts';
   import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
   import { getBureauReview, listBureauReviews } from '../../lib/bureau-reviews.ts';
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
@@ -1542,8 +1547,8 @@
     return () => observer.disconnect();
   });
   const workflowRevisionPanels = $derived(
-    (panels.data ?? []).filter(
-      (panel) => panel.opensFromAgentTool === 'bureau:workflows-propose-update',
+    (panels.data ?? []).filter((panel) =>
+      chatToolsOf(panel).includes('bureau:workflows-propose-update'),
     ),
   );
   const revisionProposalText = (entry: ToolCallEntry): string | undefined => {
@@ -2241,8 +2246,8 @@
               {#snippet mcpApp(entry)}
                 {@const panel = workflowRevisionPanels.find(
                   (candidate) =>
-                    candidate.opensFromAgentTool === entry.name ||
-                    candidate.opensFromAgentTool === entry.name.replace('__', ':'),
+                    chatToolsOf(candidate).includes(entry.name) ||
+                    chatToolsOf(candidate).includes(entry.name.replace('__', ':')),
                 )}
                 {@const proposalText = revisionProposalText(entry)}
                 {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}

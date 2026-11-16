@@ -388,6 +388,19 @@ describe('problemView', () => {
       status: { label: 'Loaded, a panel was not built', dot: 'warning' },
       body: 'The panel one is not served. no entry',
     });
+    expect(
+      problemView({
+        code: 'panel-changed',
+        app: 'one',
+        uri: 'ui://a/one/v1',
+        previousDigest: 'sha256:old',
+        contentDigest: 'sha256:new',
+      }),
+    ).toMatchObject({
+      status: { label: 'Loaded, a panel changed', dot: 'warning' },
+      title: 'A panel’s page changed',
+      body: 'The panel one serves a different page than at the last start. That is expected after the plugin is updated; if it was not, check where the plugin is installed from.',
+    });
   });
 
   test('reads an empty field as the whole configuration, and a model list as its own problem', () => {

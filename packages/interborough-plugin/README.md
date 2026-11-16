@@ -342,7 +342,7 @@ export default definePlugin({
 });
 ```
 
-An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. Put the version in the `uri`, so a changed contract is a new resource.
+An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
 
 ```ts
 import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
@@ -350,9 +350,10 @@ import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugi
 const runInspector: PluginPanel = {
   name: 'run-inspector',
   title: 'Run inspector',
-  uri: 'ui://example/run-inspector/v1',
+  uri: 'ui://inspector/run-inspector/v1',
   entry: new URL('./run-inspector/app.ts', import.meta.url),
   allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.cancel'],
+  placements: [{ kind: 'run' }],
   opensFromTool: 'bureau.tasks.inspect',
 };
 
@@ -363,6 +364,14 @@ export default definePlugin({
   setup: () => ({ panels: [runInspector] }),
 });
 ```
+
+A panel declares where it appears with `placements` (`PluginPanelPlacement`), each one of three kinds:
+
+- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`.
+- `{ kind: 'run' }`: the panel shows on a run's page. Two plugins can both place a panel there.
+- `{ kind: 'chat-tool', agentTool }`: Chat opens the panel inline when the agent tool `agentTool` is called. A Bureau given its agent tools refuses an id it does not hold, except the workflow tools it adds itself.
+
+`opensFromTool` is optional: leave it out for a panel that needs no MCP opener, such as a page, and no tool is linked to it and none is claimed. A placement claims nothing. Setup refuses an unknown `kind`, a `page` group outside the three, and a `page` path outside the grammar. `GET /host/panels` lists each panel's `placements`, always, and an empty list when it declares none.
 
 An entry that does not build leaves the plugin `running` with a `panel-failed` problem, and the other contributions keep working.
 
@@ -531,6 +540,7 @@ export default definePlugin({
 | `setup-failed` | `skipped` | `setup` threw, or returned something that cannot be registered. `message`. |
 | `start-failed` | `running` | `start` threw. `message`. |
 | `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
+| `panel-changed` | `running` | A start served a page under a `uri` with a different `contentDigest` than an earlier start served under it. The page is still served. `app`, `uri`, `previousDigest`, `contentDigest`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |
 | `workflow-field-missing` | `skipped` | A code workflow has no `title` or no `inputSchema`, which the workflow list and the start check need. `workflow`, `field`. |

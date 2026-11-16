@@ -12,12 +12,33 @@
  * - a stored provider allowlist that names a model its provider does not offer.
  */
 import { openBungalow } from '@lostgradient/bungalow';
-import { afterEach, expect, test } from 'bun:test';
+import { rejectionOf } from '@lostgradient/testing';
+import { afterAll, afterEach, expect, mock, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { startHost, type Host } from './host.ts';
+import type { Host } from './host.ts';
+
+// Snapshot the real exports before mocking: module mocks are process-wide, so the real module is
+// restored after this file. The mock passes everything through unless a test asks the host's
+// catalog composition, a step that runs after the listener is up, to fail.
+const actualComposed = { ...(await import('./composed-json-rpc.ts')) };
+const forced = { composition: false };
+
+afterAll(() => {
+  void mock.module('./composed-json-rpc.ts', () => actualComposed);
+});
+
+void mock.module('./composed-json-rpc.ts', () => ({
+  ...actualComposed,
+  composeOperationNames: (...names: Parameters<typeof actualComposed.composeOperationNames>) => {
+    if (forced.composition) throw new Error('forced: the composed catalog failed');
+    return actualComposed.composeOperationNames(...names);
+  },
+}));
+
+const { startHost } = await import('./host.ts');
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -39,8 +60,8 @@ export default definePlugin({
 `;
 
 /** An MCP app whose entry is `./app.ts` beside the plugin (written when `buildable`, else absent). */
-const appSource = (name: string, tool: string, entry = './app.ts'): string =>
-  `{ name: '${name}', title: '${name}', uri: 'ui://fixture/${name}/v1', entry: new URL('${entry}', import.meta.url),
+const appSource = (plugin: string, name: string, tool: string, entry = './app.ts'): string =>
+  `{ name: '${name}', title: '${name}', uri: 'ui://${plugin}/${name}/v1', entry: new URL('${entry}', import.meta.url),
     allowedTools: ['${tool}'], opensFromTool: '${tool}' }`;
 
 async function writeFolderPlugin(
@@ -84,20 +105,26 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
     'broken-entry',
     pluginSource(
       'broken-entry',
-      `{ panels: [${appSource('broken', 'bureau.tasks.events', './missing.ts')}] }`,
+      `{ panels: [${appSource('broken-entry', 'broken', 'bureau.tasks.events', './missing.ts')}] }`,
     ),
     false,
   );
   await writeFolderPlugin(
     plugins,
     'first-opener',
-    pluginSource('first-opener', `{ panels: [${appSource('first', 'bureau.tasks.cancel')}] }`),
+    pluginSource(
+      'first-opener',
+      `{ panels: [${appSource('first-opener', 'first', 'bureau.tasks.cancel')}] }`,
+    ),
     true,
   );
   await writeFolderPlugin(
     plugins,
     'second-opener',
-    pluginSource('second-opener', `{ panels: [${appSource('second', 'bureau.tasks.cancel')}] }`),
+    pluginSource(
+      'second-opener',
+      `{ panels: [${appSource('second-opener', 'second', 'bureau.tasks.cancel')}] }`,
+    ),
     true,
   );
   await writeFolderPlugin(plugins, 'bureau', pluginSource('bureau', '{}'), false);
@@ -143,8 +170,120 @@ test('a plugin contributing a malformed startup input is skipped or carries a pr
   const uris = (host.bureau.plugins.panels() as readonly { app: { uri: string } }[]).map(
     ({ app }) => app.uri,
   );
-  expect(uris).toContain('ui://bureau/run-inspector/v1');
-  expect(uris).toContain('ui://fixture/first/v1');
-  expect(uris).not.toContain('ui://fixture/broken/v1');
-  expect(uris).not.toContain('ui://fixture/second/v1');
+  expect(uris).toContain('ui://inspectors/run-inspector/v1');
+  expect(uris).toContain('ui://first-opener/first/v1');
+  expect(uris).not.toContain('ui://broken-entry/broken/v1');
+  expect(uris).not.toContain('ui://second-opener/second/v1');
+});
+
+/**
+ * A home with one folder plugin, `drifting`, whose panel the test can change between starts, and a
+ * `start` that runs a host on it and reads back what it lists for that plugin.
+ */
+async function driftingHome() {
+  const home = await mkdtemp(join(tmpdir(), 'interborough-panel-changed-'));
+  directories.push(home);
+  // The deployment identity exists before the folder does, as it does on a real machine.
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
+  bungalow.close();
+  const plugins = join(home, 'plugins');
+  await writeFolderPlugin(
+    plugins,
+    'drifting',
+    pluginSource(
+      'drifting',
+      `{ panels: [${appSource('drifting', 'page', 'bureau.tasks.cancel')}] }`,
+    ),
+    true,
+  );
+  const start = async (port = 0) => {
+    const host = await startHost({
+      environment: { INTERBOROUGH_HOME: home },
+      port,
+      log: () => {},
+    });
+    hosts.push(host);
+    const pluginsResponse = await fetch(new URL('/host/plugins', host.url));
+    const report = (await pluginsResponse.json()) as { plugins: Standing[] };
+    const panelsResponse = await fetch(new URL('/host/panels', host.url));
+    const panels = (await panelsResponse.json()) as {
+      apps: { plugin: string; app: string; uri: string }[];
+    };
+    const standing = report.plugins.find(({ descriptor }) => descriptor.name === 'drifting');
+    return { host, standing, panels: panels.apps.filter(({ plugin }) => plugin === 'drifting') };
+  };
+  const stop = async (host: Host) => {
+    await host.close();
+    hosts.splice(hosts.indexOf(host), 1);
+  };
+  const change = () =>
+    writeFile(join(plugins, 'drifting', 'app.ts'), "document.body.textContent = 'changed';\n");
+  return { start, stop, change };
+}
+
+test('a page whose bytes changed under a URI an earlier start served is listed as panel-changed, and still served (COR-2210)', async () => {
+  const { start, stop, change } = await driftingHome();
+  const first = await start();
+  expect(first.standing).toMatchObject({ status: 'running', problems: [] });
+  expect(first.panels.map(({ uri }) => uri)).toEqual(['ui://drifting/page/v1']);
+  await stop(first.host);
+
+  // The same start again is quiet; changed bytes under the same URI are not.
+  const same = await start();
+  expect(same.standing).toMatchObject({ status: 'running', problems: [] });
+  await stop(same.host);
+
+  await change();
+  const changed = await start();
+  expect(changed.standing?.status).toBe('running');
+  expect(changed.standing?.problems).toEqual([
+    {
+      code: 'panel-changed',
+      app: 'page',
+      uri: 'ui://drifting/page/v1',
+      previousDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      contentDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    },
+  ]);
+  const [problem] = changed.standing?.problems ?? [];
+  expect(problem?.['previousDigest']).not.toBe(problem?.['contentDigest']);
+  // Still served.
+  expect(changed.panels.map(({ uri }) => uri)).toEqual(['ui://drifting/page/v1']);
+});
+
+test('a start that fails before it returns leaves the digest record alone, so the next start reports the change (COR-2210)', async () => {
+  const { start, stop, change } = await driftingHome();
+  const first = await start();
+  await stop(first.host);
+  await change();
+
+  // The port is held, so the host builds its panels and then cannot listen.
+  const holder = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('held') });
+  try {
+    expect(await rejectionOf(start(holder.port))).toBeInstanceOf(Error);
+  } finally {
+    await holder.stop(true);
+  }
+
+  // The listener comes up and a later step fails: the host composes its operation catalog after
+  // `server.ready`, so the record must not have been written before it.
+  forced.composition = true;
+  try {
+    expect(await rejectionOf(start())).toBeInstanceOf(Error);
+  } finally {
+    forced.composition = false;
+  }
+
+  const reported = await start();
+  expect(reported.standing?.problems).toEqual([
+    expect.objectContaining({ code: 'panel-changed', uri: 'ui://drifting/page/v1' }),
+  ]);
+  await stop(reported.host);
+
+  // Recorded now that a start succeeded: one warning per change.
+  const quiet = await start();
+  expect(quiet.standing).toMatchObject({ status: 'running', problems: [] });
 });

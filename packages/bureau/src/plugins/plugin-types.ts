@@ -303,6 +303,23 @@ export type PluginProblem =
       readonly message: string;
     }
   | {
+      /**
+       * The host served a panel's page under a URI it served before, with a different
+       * `contentDigest` (COR-2210). The page is still served: a URI names a contract, and bytes
+       * that changed under it are worth a person's attention, not a refusal. Reported by the host
+       * through {@link BureauPlugins.reportPanelChange} once it has built the app.
+       */
+      readonly code: 'panel-changed';
+      /** The app's name. */
+      readonly app: string;
+      /** The app's `ui://` resource URI. */
+      readonly uri: string;
+      /** The `contentDigest` the host served under `uri` on an earlier start. */
+      readonly previousDigest: string;
+      /** The `contentDigest` the host serves under `uri` now. */
+      readonly contentDigest: string;
+    }
+  | {
       /** `start` threw or rejected; the plugin's contributions stay registered. */
       readonly code: 'start-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
@@ -542,6 +559,19 @@ export interface BureauPlugins {
    * ignored.
    */
   reportPanelFailure(plugin: string, app: string, message: string): void;
+  /**
+   * Records that the host served `plugin`'s panel `app` under `uri` with `contentDigest` where an
+   * earlier start served `previousDigest` (COR-2210): the plugin lists a `panel-changed` problem
+   * carrying both digests. The app is still listed and served, and the plugin keeps its status.
+   * Names no running plugin or app, and repeats, are ignored.
+   */
+  reportPanelChange(
+    plugin: string,
+    app: string,
+    uri: string,
+    previousDigest: string,
+    contentDigest: string,
+  ): void;
   /**
    * The trigger kinds of the running plugins, in load order: what a workflow file's trigger can
    * name besides `schedule` and `signal`. Fixed once the Bureau is built.

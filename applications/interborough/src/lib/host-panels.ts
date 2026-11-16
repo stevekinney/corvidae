@@ -13,6 +13,22 @@ import type { Fetcher } from './bureau-client.ts';
 /** The route that lists the panels the host serves. */
 export const HOST_PANELS_ROUTE = '/host/panels';
 
+/** A place a panel appears in the host (COR-2212), as `GET /host/panels` lists it. */
+const placementSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('page'),
+    path: z.string().min(1),
+    sidebar: z
+      .object({
+        group: z.enum(['work', 'build', 'system']),
+        icon: z.string().optional(),
+      })
+      .optional(),
+  }),
+  z.object({ kind: z.literal('run') }),
+  z.object({ kind: z.literal('chat-tool'), agentTool: z.string() }),
+]);
+
 const appsSchema = z.object({
   apps: z.array(
     z.object({
@@ -20,14 +36,27 @@ const appsSchema = z.object({
       app: z.string().min(1),
       title: z.string(),
       uri: z.string().min(1),
-      opensFromTool: z.string().min(1),
-      opensFromAgentTool: z.string().min(1).optional(),
+      opensFromTool: z.string().min(1).optional(),
+      placements: z.array(placementSchema),
     }),
   ),
 });
 
-/** One panel the host serves: the plugin that contributes it, its name, and the tool it opens from. */
+/**
+ * One panel the host serves: the plugin that contributes it, its name, the tool it opens from when
+ * it names one, and the places it appears.
+ */
 export type HostPanel = z.infer<typeof appsSchema>['apps'][number];
+
+/**
+ * The agent tool ids whose Chat tool calls open `panel`: one for each `chat-tool` placement it
+ * declares.
+ */
+export function chatToolsOf(panel: HostPanel): readonly string[] {
+  return panel.placements.flatMap((placement) =>
+    placement.kind === 'chat-tool' ? [placement.agentTool] : [],
+  );
+}
 
 // The page's security block is read loosely: `McpApp` sanitizes what it declares, and a field this
 // client does not know is the component's to judge.

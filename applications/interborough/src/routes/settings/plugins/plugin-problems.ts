@@ -259,6 +259,12 @@ export function problemView(problem: PluginProblem, plugin?: PluginStanding): Pr
         title: words.panelFailed.title,
         body: words.panelFailed.body(text(problem, 'app'), text(problem, 'message')),
       };
+    case 'panel-changed':
+      return {
+        status: { label: words.panelChanged.status, dot: WARNING },
+        title: words.panelChanged.title,
+        body: words.panelChanged.body(text(problem, 'app')),
+      };
     default:
       return {
         status: { label: words.unknownStatus, dot: 'neutral' },

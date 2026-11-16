@@ -12,10 +12,11 @@ export const runInspector: PluginPanel = {
   name: 'run-inspector',
   title: 'Run inspector',
   description: 'Liveness, ownership tree, progress, result, and abort for one Bureau task.',
-  uri: 'ui://bureau/run-inspector/v1',
+  uri: 'ui://inspectors/run-inspector/v1',
   entry: new URL('./run-inspector/app.ts', import.meta.url),
   styles: BASE_STYLES,
   allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.events', 'bureau.tasks.cancel'],
+  placements: [{ kind: 'run' }],
   opensFromTool: 'bureau.tasks.inspect',
 };
 
@@ -29,7 +30,7 @@ export const pendingReview: PluginPanel = {
   name: 'pending-review',
   title: 'Pending reviews',
   description: 'The reviews waiting for the caller: approve, deny, or reject with feedback.',
-  uri: 'ui://bureau/pending-review/v1',
+  uri: 'ui://inspectors/pending-review/v1',
   entry: new URL('./pending-review/app.ts', import.meta.url),
   styles: PENDING_REVIEW_STYLES,
   allowedTools: ['bureau.reviews.list', 'bureau.reviews.get', 'bureau.reviews.resolve'],
@@ -41,13 +42,13 @@ export const workflowRevisionReview: PluginPanel = {
   name: 'workflow-revision-review',
   title: 'Review workflow revision',
   description: 'Compare and apply a proposed workflow revision.',
-  uri: 'ui://bureau/workflow-revision-review/v1',
+  uri: 'ui://inspectors/workflow-revision-review/v1',
   entry: new URL('./workflow-revision/app.ts', import.meta.url),
   styles: WORKFLOW_REVISION_STYLES,
   allowedTools: ['bureau.workflows.get', 'bureau.workflows.update'],
   hostOnlyTools: ['bureau.workflows.update'],
+  placements: [{ kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' }],
   opensFromTool: 'bureau.workflows.update',
-  opensFromAgentTool: 'bureau:workflows-propose-update',
 };
 
 /**
