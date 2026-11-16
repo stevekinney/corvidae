@@ -57,7 +57,9 @@ import {
  *   Interborough's own API over the Bureau, each operation checked against the session's scopes
  *   (`api-routes.ts`, `api-description.ts`).
  * - The rest of `/api/*` (`/api/v1/*` and so on), `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery
- *   documents: Weft's engine operations, relayed to its server.
+ *   documents: Weft's engine operations, relayed to its server. `POST /jsonrpc` also answers a
+ *   Bureau method, and `rpc.discover` over both catalogs, itself (`composed-json-rpc.ts`, COR-2269):
+ *   Weft's calls are relayed, Bureau's go to its handler as at `/bureau/jsonrpc`.
  * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
  *   served by `createBureauHandler` with the `/bureau` prefix removed. A request that needs a scope
  *   of Interborough's API the session does not hold is refused before it reaches Bureau
@@ -65,7 +67,8 @@ import {
  *   `settings:write`. A WebSocket upgrade there
  *   (`bureau.events` at `/bureau/jsonrpc`) goes to the same handler's `upgrade`, and
  *   `host-websocket.ts` dispatches the upgraded socket to Bureau beside the engine relay's. They
- *   do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
+ *   do not share Weft's root because both catalogs claim `/v1/…`, and `/jsonrpc` is composed over
+ *   HTTP only.
  * - `/bureau/a2a/<agent>`: the A2A 1.0.1 interface of every agent that opts in, and its public Agent
  *   Card at `/bureau/a2a/<agent>/.well-known/agent-card.json` (COR-1819). A file agent opts in with
  *   `a2a: true` in its own file; a code agent opts in by being named in {@link HostOptions.a2aAgents}.
@@ -162,6 +165,12 @@ import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
 import { API_DESCRIPTION_ROUTE, apiDescription } from './api-description.ts';
 import { apiRoutes, localApiPrincipal, type ApiPrincipal } from './api-routes.ts';
+import {
+  COMPOSED_JSON_RPC_PATH,
+  composeOperationNames,
+  engineOperationNames,
+  serveComposedJsonRpc,
+} from './composed-json-rpc.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import {
   createDevReload,
@@ -1366,6 +1375,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const upstream = new Promise<EngineUpstream>((resolve) => {
       engineUpstream = resolve;
     });
+    // The methods Bureau answers on `/jsonrpc` beside Weft's (COR-2269), known once both catalogs are.
+    let bureauMethods: ((methods: ReadonlySet<string>) => void) | undefined;
+    const composedBureauMethods = new Promise<ReadonlySet<string>>((resolve) => {
+      bureauMethods = resolve;
+    });
     // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
     let listening: Bun.Server<HostSocketData> | undefined;
     const refuse = createRequestGuard(() => listening?.port ?? 0);
@@ -1571,9 +1585,28 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           if (isShellNavigation(request)) return shell();
           return new Response('Not found', { status: 404 });
         }
+        const { url, key } = await upstream;
+        // `/jsonrpc` answers a Bureau method or `rpc.discover` itself (COR-2269), each catalog behind
+        // its own gate: Weft's operations need the deployment operator, as the relay's do, and
+        // Bureau's need only what `/bureau/jsonrpc` asks.
+        if (request.method === 'POST' && new URL(request.url).pathname === COMPOSED_JSON_RPC_PATH) {
+          const composed = await serveComposedJsonRpc(request, {
+            bureauMethods: await composedBureauMethods,
+            authorizeEngine: (engineRequest) =>
+              authority.authorize(engineRequest, 'deployment-operator'),
+            relay: (engineRequest) => relayRequest(engineRequest, url, key),
+            // The scopes of Interborough's API, as `/bureau/jsonrpc` checks them (`scope-gate.ts`).
+            refuseBureau: (bureauRequest) =>
+              bureauScopeRefusal(bureauRequest, apiPrincipal(request)),
+            bureau: async (bureauRequest) =>
+              bureauHandler === undefined
+                ? new Response('The Bureau is not serving yet.', { status: 503 })
+                : bureauHandler(bureauRequest),
+          });
+          if (composed !== undefined) return composed;
+        }
         const denied = await authority.authorize(request, 'deployment-operator');
         if (denied !== undefined) return denied;
-        const { url, key } = await upstream;
         if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const data = webSocketRelayData(request, url, key);
           if (data !== undefined && listener.upgrade(request, { data })) return undefined;
@@ -1690,6 +1723,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     held.server = server;
     await server.ready;
     engineUpstream?.({ url: server.url, key });
+    // Both catalogs are known here. A name they both define stops the host from starting.
+    bureauMethods?.(
+      composeOperationNames(
+        await engineOperationNames(server.url, key),
+        bureauHandler.resourceInventory
+          .filter((entry) => entry.kind === 'operation' && entry.transports.includes('jsonRpcHttp'))
+          .map((entry) => entry.key),
+      ),
+    );
     return {
       routeInventory: Object.freeze([
         ...inventoryHostRoutes(publicRoutes, bureauHandler.resourceInventory),

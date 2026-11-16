@@ -1,0 +1,21 @@
+{
+  "error": {
+    "code": -32602,
+    "data": {
+      "httpStatus": 400,
+      "issues": [
+        {
+          "code": "invalid_type",
+          "message": "Invalid input: expected string, received undefined",
+          "path": [
+            "taskId"
+          ]
+        }
+      ],
+      "weftCode": "InvalidParams"
+    },
+    "message": "invalid params"
+  },
+  "id": "golden",
+  "jsonrpc": "2.0"
+}

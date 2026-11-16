@@ -30,6 +30,7 @@ import type {
   ProviderConfigurationBase,
   ProviderDefinition,
 } from '@lostgradient/operative/provider-kit';
+import type { Storage } from '@lostgradient/storage';
 import type { ActivityDefinition, WorkflowDefinition } from '@lostgradient/weft';
 import type { AnyTool, Embedder, InputDetector } from 'armorer';
 import type { z } from 'zod';
@@ -277,28 +278,53 @@ export interface PluginInterceptor {
   readonly onError?: PluginInterceptorHook<OnErrorHook>;
 }
 
-/** What a trigger kind's `start` receives. */
-export interface PluginTriggerContext {
+/**
+ * What a trigger kind's `start` receives. `TConfiguration` is what the kind's `configuration`
+ * schema parses to, so a kind declared through `defineTrigger` reads it with no second parse.
+ */
+export interface PluginTriggerContext<TConfiguration = unknown> {
   /** The trigger's configuration, parsed with the kind's `configuration` schema. */
-  readonly configuration: unknown;
+  readonly configuration: TConfiguration;
+  /** The identifier of the workflow file this trigger starts: `stem`, or `plugin:stem` for a plugin's own file. */
+  readonly workflowId: string;
+  /**
+   * Durable state for this one file, confined to the key prefix
+   * `plugin:<name>:trigger:<trigger-name>:<workflow-id>:` (the Weft form of the identifier, so
+   * `plugin:stem` is written `plugin__stem`). It survives a restart, a pause, a configuration edit
+   * and a plugin upgrade, so a cursor kept here is not lost. It is deleted when the file is
+   * deleted, or when the file's trigger becomes another kind; a file that is `invalid` or cannot
+   * be read keeps it. Two files that use one kind see disjoint keys.
+   *
+   * A cursor that depends on the configuration (the account a poll reads, the query it runs)
+   * should store a hash of that configuration beside it and reset itself when the hash no longer
+   * matches: the host never resets a key on a configuration edit.
+   */
+  readonly storage: Storage;
   /** Reports that the trigger fired, with the payload the started work receives. */
   fire(payload: unknown): Promise<void>;
   /** Aborts when the host stops the trigger. */
   readonly signal: AbortSignal;
 }
 
-/** A new kind of trigger, an external source that starts work in the host. */
-export interface PluginTrigger {
+/**
+ * A new kind of trigger, an external source that starts work in the host. `TSchema` is the
+ * `configuration` schema and `start` receives what it parses to; declare a kind with
+ * `defineTrigger` to have it inferred from the entry.
+ */
+export interface PluginTrigger<TSchema extends z.ZodType = z.ZodType> {
   /** The kind's name, unique within the plugin. */
   readonly name: string;
-  /** The kind's own version; a record that pins it uses the plugin's version without one. */
+  /**
+   * The kind's own version; the plugin's version stands in without one. A change to it restarts
+   * the listener of every file that uses the kind.
+   */
   readonly version?: string;
   /** What the trigger listens for. */
   readonly description: string;
   /** The schema an instance's configuration is parsed with. */
-  readonly configuration: z.ZodType;
+  readonly configuration: TSchema;
   /** Starts listening; the function it resolves with stops it. */
-  start(context: PluginTriggerContext): Promise<() => void | Promise<void>>;
+  start(context: PluginTriggerContext<z.output<TSchema>>): Promise<() => void | Promise<void>>;
 }
 
 /** What a hook action kind's `run` receives. */

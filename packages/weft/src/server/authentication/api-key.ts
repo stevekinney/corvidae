@@ -142,7 +142,10 @@ export async function tryAdmitApiKey(
     }
     return { authenticated: false, error: 'No valid credentials provided' };
   }
-  if (apiKeyEntries !== null && findConstantTimeApiKeyMatch(presentedKey, apiKeyEntries) !== null) {
+  if (
+    apiKeyEntries !== null &&
+    (await findConstantTimeApiKeyMatch(presentedKey, apiKeyEntries)) !== null
+  ) {
     const principal = principalFromApiKey({
       subject: SHARED_API_KEY_SUBJECT,
       scopes: defaultApiKeyScopes,

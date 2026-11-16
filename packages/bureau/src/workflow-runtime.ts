@@ -27,6 +27,7 @@ import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   buildWorkflowDocumentManifest,
   checkWorkflowCompatibility,
@@ -83,6 +84,7 @@ import {
   createWorkflowTriggerSupervisor,
   type DesiredTrigger,
 } from './workflow-trigger-supervisor';
+import { sweepTriggerState } from './workflow-trigger-state';
 import { formatVersionedId } from './versioned-catalog';
 import {
   acceptContributedTriggers,
@@ -710,6 +712,17 @@ export interface WorkflowRuntimeOptions {
    * Absent for a Bureau without plugins.
    */
   readonly contributions?: WorkflowContributions | undefined;
+  /**
+   * The store the plugins' own storage is a prefix of (COR-2164): a contributed trigger keeps its
+   * per-file state under `plugin:<plugin>:trigger:<trigger-name>:<workflow-id>:` in it. One that
+   * lasts as long as the runtime when omitted.
+   */
+  readonly storage?: Storage | undefined;
+  /**
+   * The plugins that are loaded (COR-2164): the ones whose trigger state a reconcile sweeps for
+   * files that are gone. The state of a plugin not listed stays until it loads. None when omitted.
+   */
+  readonly loadedPlugins?: readonly string[] | undefined;
   /** Where snapshots live; durable in a Bureau, since this needs the durable engine. */
   readonly snapshotStore: WorkflowSnapshotStore;
   /**
@@ -928,8 +941,60 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       holds: scheduleHolds,
       workspace: options.workspace,
     });
-    await triggers.reconcile(desiredTriggers(), unreadable);
+    // One read of the catalog serves the reconcile and the sweep: a file that changes while the
+    // reconcile awaits a stop is judged by the next reconcile, so state is never deleted under a
+    // trigger this reconcile left running.
+    const snapshot = triggerSnapshot();
+    await triggers.reconcile(snapshot.desired, unreadable);
+    await sweepOrphanedTriggerState(snapshot.files);
     await forgetVanishedHookOrigins();
+  }
+
+  /**
+   * What a reconcile of the triggers reads from the catalog, in one synchronous step: the
+   * triggers the files want listening, and every listed file with its trigger kind (`undefined`
+   * for a file that is `invalid` or unreadable). `files` is `undefined` when the latest scan did
+   * not succeed, because the catalog then keeps the entries of the last good scan, or none.
+   */
+  function triggerSnapshot(): {
+    readonly desired: Map<string, DesiredTrigger>;
+    readonly files: ReadonlyMap<string, string | undefined> | undefined;
+  } {
+    const desired = desiredTriggers();
+    const health = catalog.health();
+    if (health.lastScanAt === undefined || health.lastScanError !== undefined) {
+      return { desired, files: undefined };
+    }
+    const files = new Map<string, string | undefined>();
+    for (const listing of catalog.list()) {
+      files.set(listing.id, catalog.find(listing.id)?.document.trigger.kind);
+    }
+    return { desired, files };
+  }
+
+  /**
+   * Delete the trigger state nothing owns any more (COR-2164), once the triggers that no longer
+   * belong have stopped: a file that is gone, or whose trigger became another kind. The state is
+   * swept only when every party that could bring the file back is present and the file is still
+   * absent; see {@link sweepTriggerState} for how each party is checked. A scan that did not
+   * succeed sweeps nothing. A file that is `invalid` or unreadable keeps its state, as a paused
+   * one does.
+   */
+  async function sweepOrphanedTriggerState(
+    files: ReadonlyMap<string, string | undefined> | undefined,
+  ): Promise<void> {
+    if (closed || files === undefined) return;
+    // The plugins that are loaded, and the plugin each contributed trigger kind is named for, which
+    // also covers a kind a host's own catalog contributes with no plugin loaded for it.
+    const plugins = new Set(options.loadedPlugins);
+    for (const kind of contributions.triggers.keys()) plugins.add(kind.slice(0, kind.indexOf(':')));
+    await sweepTriggerState({
+      storage: triggerStorage,
+      plugins,
+      runningPlugins: new Set(options.loadedPlugins),
+      files,
+      diagnose: options.diagnose,
+    });
   }
 
   /** The contributed triggers the ready, unpaused files want listening (COR-1874). */
@@ -996,9 +1061,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     });
   }
 
+  const triggerStorage = options.storage ?? new MemoryStorage();
   const triggers = createWorkflowTriggerSupervisor({
     fire: fireTrigger,
     diagnose: options.diagnose,
+    storage: triggerStorage,
   });
 
   /** The identifiers a write is between claiming the hook origin of and listing the file for. */

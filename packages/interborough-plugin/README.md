@@ -5,6 +5,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | Export | What it is |
 | --- | --- |
 | `definePlugin` | Declares a plugin and refuses a malformed descriptor where it is written. |
+| `defineTrigger` | Declares a trigger kind and types `start`'s `configuration` with what the kind's schema parses to. |
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
@@ -105,6 +106,69 @@ The descriptor's members:
 | `events` | Event kinds the plugin declares, `{ name, description, payload, version? }` (`PluginEventDeclaration`). The kind is `plugin:name`; see [Declared events](#declared-events). |
 | `agents` | Agents defined in code. Each may carry a `title` (its listing's label), a `visibility` (`'chat'` by default; `'hidden'` keeps it in `bureau.agents.list`, which marks it `visibility: "hidden"`, and Chat does not offer it, while workflows, children and a direct start still run it by `plugin:name`) and a `version` (a run pins it in place of the plugin's version; a run recovered under a different one settles failed with `definition-drifted`). |
 
+### Trigger state
+
+A trigger's `start` receives the `workflowId` of the file it starts and a `storage` for that one file, confined to the key prefix `plugin:<name>:trigger:<trigger-name>:<workflow-id>:`. A plugin file `linear:sync` is written `linear__sync` in that prefix, so no file's prefix lies inside another's. Two files that use one kind see disjoint keys. The prefix lies inside the plugin's own `storage`, so a key the plugin writes itself that begins `trigger:` is reserved for this and may be deleted by the sweep below.
+
+The state survives a restart, a pause, a configuration edit and a plugin upgrade. The host deletes it at the next reconcile after the file is deleted, or after the file's trigger becomes another kind (including another kind of the same plugin), so the file starts the new kind with empty state. A file that is `invalid` or that this Bureau cannot read keeps it, and so does the state of a plugin that is not loaded: it stays until the plugin loads and a reconcile runs. So does the state of a file another plugin ships while that plugin is not running, because the file is absent for that start only.
+
+A cursor is advanced after the work it stands for, never before: fire first, then advance. A crash between the two fires that item again on the next start, which is an at-least-once start the workflow must tolerate, where advancing first would lose the item. Because a configuration edit does not reset state, a cursor that depends on the configuration (the account a poll reads, the query it runs) stores a hash of what it depends on beside it, and resets itself when the hash no longer matches. The host never resets a key for you. Hash only what the cursor depends on: an edit to anything else, such as how often the poll runs, keeps the cursor. The function `start` resolves with must not return while a write to `storage` is still pending: the host waits for it before it starts the replacement, so a write that outlives it could land after the replacement has reset the state.
+
+```ts
+import { defineTrigger } from '@lostgradient/interborough-plugin';
+import { textValueStore } from '@lostgradient/storage';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+
+/** The issues of `account` created after `after`, oldest first. */
+declare function issuesAfter(
+  account: string,
+  after: number,
+): Promise<readonly { readonly id: number }[]>;
+
+export const newIssues = defineTrigger({
+  name: 'new-issues',
+  description: 'Fires once for each issue created after the last one it reported.',
+  configuration: z.object({ account: z.string(), pollSeconds: z.number().int().positive() }),
+  async start({ configuration, storage, fire, signal }) {
+    const state = textValueStore(storage, { disposeUnderlyingStorage: false });
+
+    // The cursor is an id in one account, so a different account is a different cursor.
+    const dependsOn = createHash('sha256').update(configuration.account).digest('hex');
+    if ((await state.get('depends-on')) !== dependsOn) {
+      await state.delete('cursor');
+      await state.set('depends-on', dependsOn);
+    }
+
+    let polling: Promise<void> | undefined;
+    const poll = async (): Promise<void> => {
+      const cursor = Number((await state.get('cursor')) ?? '0');
+      for (const issue of await issuesAfter(configuration.account, cursor)) {
+        if (signal.aborted) return;
+        await fire({ id: issue.id });
+        await state.set('cursor', String(issue.id));
+      }
+    };
+
+    const timer = setInterval(() => {
+      if (polling !== undefined) return;
+      polling = poll()
+        .catch((error: unknown) => console.error('The issue poll failed.', error))
+        .finally(() => {
+          polling = undefined;
+        });
+    }, configuration.pollSeconds * 1000);
+
+    // Stopping waits for the poll in flight, so a write of the old account's cursor cannot land
+    // after the replacement trigger has reset the state.
+    return async () => {
+      clearInterval(timer);
+      await polling;
+    };
+  },
+});
+```
+
 ### Declared events
 
 A plugin declares the event kinds it will publish with `events: [{ name, description, payload }]`, where `payload` is a Zod object. The kind is `<plugin>:<name>`, `name` follows the contribution name grammar, and `version` is optional and defaults to the plugin's.
@@ -173,10 +237,10 @@ export default definePlugin({
 });
 ```
 
-Four kinds are worth seeing in code, because they take a schema or a callback whose shape is not obvious from the name. A trigger kind starts listening and resolves with the function that stops it; a hook action kind receives an `idempotencyKey` that is the same for every attempt of one delivery, because a delivery interrupted by a restart is attempted again.
+Four kinds are worth seeing in code, because they take a schema or a callback whose shape is not obvious from the name. A trigger kind starts listening and resolves with the function that stops it, and `defineTrigger` types its `start` with what the `configuration` schema parses to, so `configuration.seconds` below is a `number` with no second parse; a hook action kind receives an `idempotencyKey` that is the same for every attempt of one delivery, because a delivery interrupted by a restart is attempted again.
 
 ```ts
-import { definePlugin } from '@lostgradient/interborough-plugin';
+import { definePlugin, defineTrigger } from '@lostgradient/interborough-plugin';
 import { z } from 'zod';
 
 export default definePlugin({
@@ -193,18 +257,17 @@ export default definePlugin({
       },
     ],
     triggers: [
-      {
+      defineTrigger({
         name: 'heartbeat',
         description: 'Fires every interval.',
         configuration: z.object({ seconds: z.number().int().positive() }),
         async start({ configuration, fire, signal }) {
-          const { seconds } = z.object({ seconds: z.number() }).parse(configuration);
           const timer = setInterval(() => {
             if (!signal.aborted) void fire({ at: Date.now() });
-          }, seconds * 1000);
+          }, configuration.seconds * 1000);
           return () => clearInterval(timer);
         },
-      },
+      }),
     ],
     reactions: [
       {
