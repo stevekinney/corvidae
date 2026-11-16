@@ -401,7 +401,11 @@ export interface PluginPanel {
   readonly styles?: string;
   /** The Bureau MCP tool names the panel may call. A panel may call no other tool. */
   readonly allowedTools: string[];
-  /** Bureau tools callable only by this host panel, outside the generic MCP inventory. */
+  /**
+   * Bureau operations callable only by this host panel, outside the generic MCP inventory. Each
+   * is one of `allowedTools`, and must be in the Bureau's `HOST_PANEL_OPERATIONS`: setup refuses
+   * any other name, and the host answers 403 for it.
+   */
   readonly hostOnlyTools?: string[];
   /** An agent tool id that may open this app in an inline Chat tool call. */
   readonly opensFromAgentTool?: string;

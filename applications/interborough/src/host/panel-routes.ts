@@ -12,7 +12,10 @@
  *   backs the panel's `onToolCall`. It runs only a tool the app declared in `allowedTools`, spelled
  *   exactly, and only a Bureau MCP tool (`bureau.*`); anything else answers 403 and reaches
  *   nothing. A declared tool becomes a JSON-RPC `tools/call` that goes in process to the Bureau's
- *   handler as its authenticated caller. Only authentication headers reach the in-process
+ *   handler as its authenticated caller. A `hostOnlyTools` entry is not an MCP tool: it goes to the
+ *   Bureau's `/jsonrpc` surface as a direct call of the operation, and only when the operation is
+ *   in the Bureau's `HOST_PANEL_OPERATIONS`; any other host-only name answers 403 and the Bureau is
+ *   never called (COR-2208). Only authentication headers reach the in-process
  *   verifier; caller-selected identity and workspace headers are discarded. A panel never
  *   calls a toolbox tool, so approval policy and idempotency, which belong to a run, do not apply.
  *
@@ -22,6 +25,7 @@
  *
  * @module panel-routes
  */
+import { HOST_PANEL_OPERATIONS } from '@lostgradient/bureau';
 import { MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 
 import { MCP_APP_UI_META, type ServedPanel } from './panel-mounts.ts';
@@ -119,9 +123,15 @@ export function panelRoutes(apps: readonly ServedPanel[], refuse: Refuse, callBu
     if (!name.startsWith(BUREAU_TOOL_PREFIX) || !app.allowedTools.includes(name)) {
       return refusal(403, 'forbidden-tool', 'This panel may not call that tool.');
     }
+    const hostOnly = app.hostOnlyTools.includes(name);
+    // A host-only tool goes to `/jsonrpc`, which also answers operations no MCP client may call, so
+    // a name outside the Bureau's list of operations open to host panels never reaches it, even
+    // when a panel declared it (COR-2208).
+    if (hostOnly && !HOST_PANEL_OPERATIONS.has(name)) {
+      return refusal(403, 'forbidden-tool', 'This panel may not call that tool.');
+    }
     // Preserve only authentication credentials for the in-process Bureau verifier. Never forward
     // caller-selected identity, workspace, cookies, origin or arbitrary headers.
-    const hostOnly = app.hostOnlyTools.includes(name);
     const mcpUrl = new URL(hostOnly ? '/jsonrpc' : '/mcp', request.url);
     const answer = await callBureau(
       new Request(mcpUrl, {

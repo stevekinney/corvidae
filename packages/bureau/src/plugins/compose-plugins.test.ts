@@ -1051,6 +1051,32 @@ describe('MCP apps a plugin contributes', () => {
     ]);
   });
 
+  it('skips a plugin whose host-only tool is not an operation open to host panels', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({
+          panels: [{ ...mcpApp('one', 'ui://a/one/v1'), hostOnlyTools: ['bureau.tasks.inspect'] }],
+        })),
+        pluginEntry('b', () => ({
+          panels: [
+            {
+              ...mcpApp('two', 'ui://b/two/v1', 'bureau.tasks.events'),
+              allowedTools: ['bureau.tasks.events', 'bureau.workflows.update'],
+              hostOnlyTools: ['bureau.workflows.update'],
+            },
+          ],
+        })),
+      ],
+    });
+    expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+    expect(records[0]?.problems).toEqual([
+      expect.objectContaining({
+        code: 'setup-failed',
+        message: expect.stringContaining('not an operation open to host panels'),
+      }),
+    ]);
+  });
+
   it('skips a plugin whose app is opened from a tool it may not call', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [

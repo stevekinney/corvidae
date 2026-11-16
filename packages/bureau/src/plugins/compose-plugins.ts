@@ -54,6 +54,7 @@ import {
   createAgentContributions,
   guardrailContractFault,
 } from '../agent-contributions';
+import { HOST_PANEL_OPERATIONS } from '../http/host-panel-operations';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../bureau-types/options';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
@@ -425,6 +426,13 @@ function planOf(
       if (!app.allowedTools.includes(tool) || !tool.startsWith('bureau.')) {
         throw new TypeError(
           `setup returned the panel "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
+        );
+      }
+      // `/jsonrpc` also answers operations no MCP client may call, so a panel reaches only the
+      // operations the Bureau lists as open to host panels (COR-2208).
+      if (!HOST_PANEL_OPERATIONS.has(tool)) {
+        throw new TypeError(
+          `setup returned the panel "${app.name}" with host-only tool "${tool}", which is not an operation open to host panels.`,
         );
       }
     }

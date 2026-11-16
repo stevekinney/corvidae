@@ -943,6 +943,7 @@ export {
   A2A_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
+export { HOST_PANEL_OPERATIONS } from './http/host-panel-operations';
 export { startIdleTurn } from './http/ag-ui-thread-admission';
 export type { SkillSourceStanding, SkillsStanding } from './http/management/skills-operations';
 export {

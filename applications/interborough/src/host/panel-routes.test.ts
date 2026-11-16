@@ -183,6 +183,32 @@ describe('POST a panel’s tool call', () => {
     });
   });
 
+  test('refuses a declared host-only tool the Bureau does not open to host panels, and never calls the Bureau (COR-2208)', async () => {
+    const bureau = bureauDouble();
+    const response = await call(
+      routes(bureau, [
+        app({
+          name: 'workflow-revision-review',
+          // `bureau.tasks.cancel` is a real tool a panel may declare in `allowedTools`, but it is
+          // not in `HOST_PANEL_OPERATIONS`, so a host-only declaration must not reach `/jsonrpc`.
+          allowedTools: ['bureau.tasks.cancel'],
+          hostOnlyTools: ['bureau.tasks.cancel'],
+        }),
+      ]),
+      'call',
+      {
+        path: '/host/plugins/inspectors/apps/workflow-revision-review/tool-calls',
+        body: { name: 'bureau.tasks.cancel', arguments: { taskId: 'task-1' } },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: 'forbidden-tool',
+      message: 'This panel may not call that tool.',
+    });
+    expect(bureau).not.toHaveBeenCalled();
+  });
+
   test('normalizes a host-only JSON-RPC fault for the panel', async () => {
     const bureau = bureauDouble({
       jsonrpc: '2.0',
