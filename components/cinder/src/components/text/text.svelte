@@ -152,8 +152,7 @@
     data-cinder-variant={variant}
     data-cinder-truncate="end"
     {@attach holdEndElement}>{text}</svelte:element
-  >
-  {#if !insideTooltip}<FullTextTooltip text={endText} triggerRef={endElement} />{/if}
+  >{#if !insideTooltip}<FullTextTooltip text={endText} triggerRef={endElement} />{/if}
 {:else if middleParts !== undefined}
   <!-- The cut text is focusable, so a keyboard or touch user reaches the whole value in the tooltip. -->
   <Tooltip

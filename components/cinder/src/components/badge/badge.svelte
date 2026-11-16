@@ -147,8 +147,7 @@
       tabindex="0"
       {@attach readLabelText}
       {@attach holdLabelElement}>{@render children?.()}</span
-    >
-    {#if !insideTooltip}<FullTextTooltip text={labelText ?? ''} triggerRef={labelElement} />{/if}
+    >{#if !insideTooltip}<FullTextTooltip text={labelText ?? ''} triggerRef={labelElement} />{/if}
   {:else}
     {@render children?.()}
   {/if}

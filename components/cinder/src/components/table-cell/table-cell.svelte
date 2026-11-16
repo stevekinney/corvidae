@@ -89,8 +89,7 @@
       {@attach holdTextElement}
     >
       {@render children?.()}
-    </span>
-    <FullTextTooltip text={title ?? renderedText ?? ''} triggerRef={textElement} />
+    </span><FullTextTooltip text={title ?? renderedText ?? ''} triggerRef={textElement} />
   {:else}
     {@render children?.()}
   {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}

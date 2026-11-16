@@ -62,12 +62,13 @@ describe('WorkflowTable — active-versus-bound badge (COR-15)', () => {
 
 describe('WorkflowTable', () => {
   test('renders a row per workflow with status label and truncated id', async () => {
-    const { getByText } = render(WorkflowTable, {
+    const { getByText, getAllByText } = render(WorkflowTable, {
       props: { rows: [summary({ status: 'failed', type: 'payment-failing' })] },
     });
 
     expect(getByText('Failed')).not.toBeNull();
-    expect(getByText('payment-failing')).not.toBeNull();
+    // A cut type is also the text of its tooltip.
+    expect(getAllByText('payment-failing').length).toBeGreaterThan(0);
     expect(getByText('wf_4a9f1…2c10')).not.toBeNull();
   });
 
@@ -91,12 +92,13 @@ describe('WorkflowTable', () => {
   });
 
   test('renders every tag as a badge', async () => {
-    const { getByText } = render(WorkflowTable, {
+    const { getAllByText } = render(WorkflowTable, {
       props: { rows: [summary({ tags: ['prod', 'nightly'] })] },
     });
 
-    expect(getByText('prod')).not.toBeNull();
-    expect(getByText('nightly')).not.toBeNull();
+    // A cut tag is also the text of its tooltip.
+    expect(getAllByText('prod').length).toBeGreaterThan(0);
+    expect(getAllByText('nightly').length).toBeGreaterThan(0);
   });
 
   test('renders agent-run provenance as a human link and hides its technical tag', () => {

@@ -1146,8 +1146,8 @@ describe('what the page looks up to word an event', () => {
         }),
       },
     );
-    await view.findByText('“prefers long summaries”');
-    await view.findByText('Daily summary');
+    await view.findAllByText('“prefers long summaries”');
+    await view.findAllByText('Daily summary');
     // A schedule with no name is a schedule, not an identifier.
     expect(view.getAllByText('A schedule').length).toBeGreaterThan(0);
   });
@@ -1201,8 +1201,8 @@ describe('what the page looks up to word an event', () => {
     await waitFor(() => expect(stub?.callsTo('bureau.contexts.get')).toHaveLength(chats.length));
     expect(most).toBe(AUDIT_LOOKUPS_IN_FLIGHT);
     // Every chat was read, so none of them reads as deleted.
-    await view.findByText('Chat › Title of chat-39');
-    await view.findByText('Chat › Title of chat-0');
+    await view.findAllByText('Chat › Title of chat-39');
+    await view.findAllByText('Chat › Title of chat-0');
   });
 });
 
