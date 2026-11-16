@@ -780,17 +780,60 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).not.toMatch(/text-wrap:\s*(balance|pretty)/);
   });
 
-  test('the action row sits one --cinder-space-3 under the metadata row in both layouts', () => {
+  test('groups stand one stack gap apart, and the action row takes no margin of its own', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
       /\s+/g,
       ' ',
     );
-    expect(css).toContain(
-      '.cinder-approval-card--decision .cinder-approval-card__row-actions { margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-2)); }',
+    for (const container of [
+      '--decision',
+      '--row',
+      '__row-main',
+      '__row-body, .cinder-approval-card--row > .cinder-approval-card__result',
+      '__receipt',
+      '__body',
+      '__title-group',
+      '--detail',
+      '__detail-header',
+      '__detail-body',
+    ]) {
+      const rule = new RegExp(`\\.cinder-approval-card${container} \\{([^}]*)\\}`).exec(css);
+      expect(rule?.[1], `${container} rule`).toContain('gap: var(--cinder-gap-stack);');
+    }
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-title-line \{[^}]*gap: var\(--cinder-gap-stack\) var\(--cinder-space-2\);/,
     );
-    expect(css).toContain(
-      '.cinder-approval-card--row .cinder-approval-card__row-actions { margin-block-start: calc(var(--cinder-space-3) - var(--cinder-space-1)); }',
+    expect(css).toMatch(
+      /\.cinder-approval-card__decision-head \{[^}]*gap: var\(--cinder-gap-stack\) var\(--cinder-space-2\);/,
     );
+    expect(css).not.toMatch(/__row-actions \{ margin-block-start:/);
+    expect(css).not.toMatch(/__body > \.cinder-approval-card__actions \{ margin-block-start:/);
+  });
+
+  test('every line keeps the body line height, never a tighter one', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+    for (const text of [
+      'title',
+      'decision-title',
+      'row-question',
+      'settled-title',
+      'settled-note',
+      'line',
+      'facts-line',
+      'consequence',
+      'context',
+      'reason',
+      'footnote',
+      'outcome',
+      'detail-ask',
+      'elsewhere-title',
+      'elsewhere-body',
+    ]) {
+      const rule = new RegExp(
+        `\\n  \\.cinder-approval-card__${text}(?:,\\n[^{]*)? \\{([^}]*)\\}`,
+      ).exec(css);
+      expect(rule?.[1], `${text} rule`).toMatch(/line-height: var\(--cinder-leading-normal\);/);
+    }
   });
 
   test('the facts line is 12px text with 14px glyphs, under the title and at its end from 30rem', () => {
