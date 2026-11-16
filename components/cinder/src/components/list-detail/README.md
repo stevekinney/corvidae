@@ -244,7 +244,8 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-selectable-row-padding-inline`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents
