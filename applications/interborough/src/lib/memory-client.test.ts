@@ -8,7 +8,13 @@ import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import type { Fetcher } from './bureau-client.ts';
-import { exportMemories, getMemory, memoryFaultOf, rememberMemory } from './memory-client.ts';
+import {
+  exportMemories,
+  getMemory,
+  listMemories,
+  memoryFaultOf,
+  rememberMemory,
+} from './memory-client.ts';
 
 const MEMORY = {
   id: 'memory-1',
@@ -70,6 +76,26 @@ describe('memoryFaultOf', () => {
         }),
       ),
     ).toEqual({ kind: 'successor-not-admitted' });
+  });
+
+  test('sorts a release the server refused by its reason, and leaves an unknown reason as the failure it is', () => {
+    const unprocessable = (reason: string) =>
+      memoryFaultOf(wireFault({ weftCode: 'Unprocessable', httpStatus: 422, reason }));
+
+    for (const reason of [
+      'verification-failed',
+      'derived-record',
+      'deletion-pending',
+      'superseded',
+      'tampered',
+    ] as const) {
+      expect(unprocessable(`memory-${reason}`)).toEqual({ kind: 'not-released', reason });
+    }
+    expect(unprocessable('memory-something-new')).toEqual({
+      kind: 'other',
+      message: 'It failed.',
+      status: 422,
+    });
   });
 
   test('sorts a memory that was not admitted', () => {
@@ -155,6 +181,35 @@ describe('the memory operations', () => {
       },
     ]);
     expect(result.outcome === 'added' && result.memory.kind).toBe('how-to');
+  });
+
+  test('asks for the quarantined, and answers each with why it was quarantined', async () => {
+    const bodies: unknown[] = [];
+    const quarantine = {
+      at: '2026-11-02T09:00:00.000Z',
+      by: 'admission',
+      detector: 'memory-poisoning',
+      category: 'memory-poisoning',
+    } as const;
+
+    const page = await listMemories(
+      'tool-runner',
+      { limit: 20, offset: 0, state: 'quarantined' },
+      { fetch: answering({ memories: [{ ...MEMORY, quarantine }], nextOffset: null }, bodies) },
+    );
+
+    expect(bodies).toMatchObject([
+      { params: { agentId: 'tool-runner', limit: 20, offset: 0, state: 'quarantined' } },
+    ]);
+    expect(page.memories[0]?.quarantine).toEqual(quarantine);
+    const plain = await listMemories(
+      'tool-runner',
+      {},
+      {
+        fetch: answering({ memories: [MEMORY], nextOffset: null }),
+      },
+    );
+    expect(plain.memories[0]?.quarantine).toBeUndefined();
   });
 
   test('exports each memory with its history, under the file name the server gives it', async () => {

@@ -200,6 +200,12 @@ const schema = {
         description: 'Rendered in the list when `items` is empty.',
       },
       {
+        name: 'listFooter',
+        reason: 'function-or-snippet',
+        description:
+          'Drawn at the end of the list pane, after the rows or after `listEmpty`, and outside `items`: it\nis not a row, so it never stops `listEmpty` from drawing, is not selectable, and J and K never\nland on it. Use it for a link to a related list that has no place among the rows, such as the\narchived or quarantined ones. It is not drawn while the list is loading.',
+      },
+      {
         name: 'onSelectedKeyChange',
         reason: 'function-or-snippet',
         description:
