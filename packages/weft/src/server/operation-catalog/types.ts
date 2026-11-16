@@ -410,8 +410,31 @@ export type RegistrableOperation<Host = unknown> =
   | StreamRegistrableOperation<Host>
   | SubscriptionRegistrableOperation<Host>;
 
+/**
+ * What the host that owns a registry decides about the faults its operations throw. The generic
+ * dispatch code reads no environment variable and names no engine error class: it asks this.
+ */
+export type FaultPolicy = {
+  /**
+   * Whether a thrown `OperationFault` whose code is neither declared in the operation's
+   * `producibleFaults` nor a universal default answers `EngineFailure` (strict) or passes
+   * through with a warning. A function is read on every undeclared fault, so a host can follow
+   * a setting that changes while the registry lives. Omitted, strict: a host that supplies
+   * nothing never lets an undeclared fault through silently.
+   */
+  readonly strict?: boolean | (() => boolean);
+  /**
+   * Classifies a thrown value the dispatch code does not recognise (anything that is not an
+   * `OperationFault`), such as the host's own error classes. Return `undefined` to leave it to
+   * the generic message heuristics.
+   */
+  readonly classifyError?: (error: unknown) => OperationFault | undefined;
+};
+
 export type DispatchContext<Host = unknown> = {
   readonly principal: Principal;
+  /** The registry's {@link FaultPolicy}, which `createOperationRegistry` puts on every dispatch. */
+  readonly faultPolicy?: FaultPolicy;
   /** See {@link OperationContext.host}. */
   readonly host: Host;
   readonly transport: TransportKind;

@@ -8,17 +8,7 @@ import type { FaultCode } from '../../core/fault-code.ts';
 import { resolveServerEnvironment } from '../../runtime/environment-configuration.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import type { ErasedOperation } from './types.ts';
-
-/**
- * Fault codes that every operation can raise through the shared pipeline
- * without listing them in `producibleFaults`.
- */
-export const UNIVERSAL_FAULT_DEFAULTS: ReadonlySet<FaultCode> = new Set([
-  'Unauthorized',
-  'Forbidden',
-  'InvalidParams',
-  'EngineFailure',
-]);
+import { UNIVERSAL_FAULT_DEFAULTS } from './universal-faults.ts';
 
 /**
  * Throw an `OperationFault` after checking it against an operation's declared

@@ -34,7 +34,7 @@ export async function dispatchUnary<Input, InvokeOutput, SchemaOutput, Host>(
     tracePipeline(context.pipelineTrace, 'invoked');
     return { ok: true, value: output };
   } catch (error) {
-    return { ok: false, fault: classifyEngineError(error, operation) };
+    return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
   }
 }
 
@@ -63,7 +63,7 @@ export async function dispatchStream<
     tracePipeline(context.pipelineTrace, 'invoked');
     return { ok: true, value: output };
   } catch (error) {
-    return { ok: false, fault: classifyEngineError(error, operation) };
+    return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
   }
 }
 
@@ -92,7 +92,7 @@ export async function dispatchSubscription<
     tracePipeline(context.pipelineTrace, 'invoked');
     return { ok: true, value: output };
   } catch (error) {
-    return { ok: false, fault: classifyEngineError(error, operation) };
+    return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
   }
 }
 

@@ -28,7 +28,6 @@
 
 import { z } from 'zod';
 
-import type { FaultCode } from '../core/fault-code.ts';
 import {
   serializeAccessPolicy,
   serializeParameterizedAccess,
@@ -45,11 +44,9 @@ import { asPlainObject, compareStrings } from './json-schema-utilities.ts';
 import { MCP_DISCOVERY_PATH, MCP_TOOLS_LIST_METHOD } from './mcp-discovery.ts';
 import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';
 import { buildOpenRpcComponentsErrors } from './openrpc-errors.ts';
-import {
-  UNIVERSAL_FAULT_DEFAULTS,
-  type ErasedOperation,
-  type OperationRegistry,
-} from './operation-catalog.ts';
+import type { ErasedOperation, OperationRegistry } from './operation-catalog.ts';
+import { UNIVERSAL_FAULT_DEFAULTS } from './operation-catalog/universal-faults.ts';
+import type { OperationFault } from './operation-fault.ts';
 import { zodToJsonSchema } from './zod-json-schema.ts';
 
 /** Transports that MAY be listed in `OpenRpcOptions.transports`. */
@@ -324,6 +321,8 @@ function buildDiscoverMethod(): OpenRpcMethod {
     'x-weft-access': { kind: 'public' },
   };
 }
+
+type FaultCode = OperationFault['code'];
 
 const UNIVERSAL_FAULT_CODES: ReadonlyArray<FaultCode> = [...UNIVERSAL_FAULT_DEFAULTS];
 
