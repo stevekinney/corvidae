@@ -10,12 +10,14 @@ import { Window } from 'happy-dom';
 
 import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
 import { VIEW_COPY } from '../../app/copy/view-pages.ts';
+import { RETRY_LABEL } from '../../app/copy/views.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   catalogFixture,
   faults,
   installBureauStub,
   readyAgent,
+  StubFault,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -114,6 +116,41 @@ describe('an agent that cannot be edited', () => {
     expect(await findByRole('heading', { level: 1, name: NOT_FOUND?.title ?? '' })).not.toBeNull();
     expect(frameOf(container).dataset['state']).toBe('not-found');
     expect(container.querySelector('form')).toBeNull();
+  });
+
+  test('is not found when its file is deleted after the frame looked and before the page read it', async () => {
+    // The frame's probe finds the agent; the page's own read, a moment later, does not.
+    let reads = 0;
+    bureau(() => {
+      reads += 1;
+      if (reads === 1) return readyAgent();
+      throw faults.notFound('researcher');
+    });
+    landAt('/agents/researcher/edit');
+    const { container } = mountOutlet();
+
+    await waitFor(() => expect(frameOf(container).dataset['state']).toBe('not-found'));
+    // Not the load-failed alert: the page never said the server did not answer.
+    expect(container.textContent).not.toContain(AGENT_EDITOR_COPY.loadFailed.title);
+    expect(container.querySelector('form')).toBeNull();
+  });
+
+  test('shows the load-failed alert with Retry when the page’s read fails for another reason, and is not found when Retry finds the agent gone', async () => {
+    let reads = 0;
+    bureau(() => {
+      reads += 1;
+      if (reads === 1) return readyAgent();
+      if (reads === 2) throw new StubFault('Unavailable', 503, 'The Bureau did not answer.');
+      throw faults.notFound('researcher');
+    });
+    landAt('/agents/researcher/edit');
+    const { container, findByText, getByRole } = mountOutlet();
+
+    expect(await findByText(AGENT_EDITOR_COPY.loadFailed.title)).not.toBeNull();
+    expect(frameOf(container).dataset['state']).toBe('ready');
+    await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
+    await waitFor(() => expect(frameOf(container).dataset['state']).toBe('not-found'));
+    expect(container.textContent).not.toContain(AGENT_EDITOR_COPY.loadFailed.title);
   });
 
   test('is failing, not not found, when the Bureau breaks', async () => {

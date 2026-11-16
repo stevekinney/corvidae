@@ -499,10 +499,22 @@
     return 'ready';
   });
 
+  /**
+   * The page's own read of the agent, or its Retry, answered that there is no such agent: it was
+   * deleted after the frame looked. That is the frame's not-found state, not a server that did not
+   * answer, so the frame is asked to look again instead.
+   */
+  const detailGone = $derived(
+    agentId !== undefined && detail.isError && agentFaultOf(detail.error).kind === 'not-found',
+  );
+  $effect(() => {
+    if (detailGone) agentIsGone();
+  });
+
   // A new agent's form is built without its catalog when that fails (row 42v), so only the other
   // pages count a failed catalog as a page that could not be loaded.
   const loadFailed = $derived(
-    (catalog.isError && !freshAgent) || (agentId !== undefined && detail.isError),
+    (catalog.isError && !freshAgent) || (agentId !== undefined && detail.isError && !detailGone),
   );
   /** The agent to copy could not be read, or is a file with nothing to copy. */
   const copyFailed = $derived(
