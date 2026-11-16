@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Button,
+    DockedActionBar,
     NavigationBar,
     NavigationItem,
     ToastRegion,
@@ -10,10 +11,22 @@
   let pauseCount = $state(0);
 
   // COR-2327: a phone's bottom tab bar under the toasts, drawn only behind a query parameter so the
-  // default fixture, its baselines and its axe sweep stay as they are.
-  const bottomTabBar =
-    new URLSearchParams(globalThis.location.search).get('bottom-tab-bar') === '1';
+  // default fixture, its baselines and its axe sweep stay as they are. `docked-stack=1` stacks a
+  // docked action bar on the tab bar, as a page's actions sit on a phone shell's tabs.
+  const parameters = new URLSearchParams(globalThis.location.search);
+  const dockedStack = parameters.get('docked-stack') === '1';
+  const bottomTabBar = dockedStack || parameters.get('bottom-tab-bar') === '1';
 </script>
+
+{#snippet tabBar()}
+  <NavigationBar placement="bottom" label="Tabs">
+    {#snippet items({ variant })}
+      <NavigationItem {variant} href="#home" active>Home</NavigationItem>
+      <NavigationItem {variant} href="#chat">Chat</NavigationItem>
+      <NavigationItem {variant} href="#runs">Runs</NavigationItem>
+    {/snippet}
+  </NavigationBar>
+{/snippet}
 
 <ToastRegion>
   {#snippet children()}
@@ -50,14 +63,21 @@
       Undo fired: {undoCount} · Pause fired: {pauseCount}
     </p>
     {#if bottomTabBar}
-      <div data-testid="bottom-tab-bar" style="position: fixed; inset-inline: 0; bottom: 0;">
-        <NavigationBar placement="bottom" label="Tabs">
-          {#snippet items({ variant })}
-            <NavigationItem {variant} href="#home" active>Home</NavigationItem>
-            <NavigationItem {variant} href="#chat">Chat</NavigationItem>
-            <NavigationItem {variant} href="#runs">Runs</NavigationItem>
-          {/snippet}
-        </NavigationBar>
+      <!-- One column fixed to the bottom, as a phone shell's page sits on its tabs: whatever is
+           docked above the tab bar ends where the tab bar starts. -->
+      <div
+        data-testid="bottom-tab-bar"
+        style="position: fixed; inset-inline: 0; bottom: 0; display: flex; flex-direction: column;"
+      >
+        {#if dockedStack}
+          <DockedActionBar label="Run actions">
+            {#snippet actions()}
+              <Button variant="secondary" label="Send a message" />
+              <Button variant="secondary" label="Cancel run" />
+            {/snippet}
+          </DockedActionBar>
+        {/if}
+        {@render tabBar()}
       </div>
     {/if}
   {/snippet}

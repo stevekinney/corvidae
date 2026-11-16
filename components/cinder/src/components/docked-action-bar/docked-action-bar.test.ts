@@ -9,7 +9,7 @@ setupHappyDom();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: DockedActionBar } = await import('./docked-action-bar.svelte');
 const { default: Harness } = await import('./docked-action-bar-harness.test.svelte');
-const { DOCKED_BAR_HEIGHT_PROPERTY, trackDockedBarHeight } =
+const { DOCKED_BAR_HEIGHT_PROPERTY, trackDockedBar } =
   await import('../../_internal/docked-bar-height.ts');
 const { KEYBOARD_INSET_PROPERTY } = await import('../../_internal/keyboard-inset.ts');
 const { createRawSnippet, flushSync } = await import('svelte');
@@ -22,6 +22,11 @@ function textSnippet(text: string) {
 
 function rootProperty(name: string): string {
   return document.documentElement.style.getPropertyValue(name);
+}
+
+/** The box of a bar `height` tall whose bottom edge is the bottom of the viewport. */
+function dockedBox(height: number): DOMRect {
+  return { height, top: window.innerHeight - height, bottom: window.innerHeight } as DOMRect;
 }
 
 class TestResizeObserver {
@@ -176,11 +181,11 @@ describe('DockedActionBar and the page (rows 04u, 04w)', () => {
       configurable: true,
       value: TestResizeObserver,
     });
-    HTMLElement.prototype.getBoundingClientRect = () => ({ height }) as DOMRect;
+    HTMLElement.prototype.getBoundingClientRect = () => dockedBox(height);
 
     try {
       const bar = document.createElement('div');
-      const stop = trackDockedBarHeight(bar);
+      const stop = trackDockedBar(bar);
       const observer = TestResizeObserver.instances.at(-1);
       expect(observer).toBeDefined();
       expect(rootProperty(DOCKED_BAR_HEIGHT_PROPERTY)).toBe('72px');
@@ -206,7 +211,7 @@ describe('DockedActionBar and the page (rows 04u, 04w)', () => {
     Object.defineProperty(globalThis, 'document', { configurable: true, value: undefined });
 
     try {
-      const stop = trackDockedBarHeight(bar);
+      const stop = trackDockedBar(bar);
       expect(() => stop()).not.toThrow();
     } finally {
       if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument);
@@ -216,7 +221,7 @@ describe('DockedActionBar and the page (rows 04u, 04w)', () => {
 
   test('publishes its height while mounted and removes it on unmount', async () => {
     const original = HTMLElement.prototype.getBoundingClientRect;
-    HTMLElement.prototype.getBoundingClientRect = () => ({ height: 71.2 }) as DOMRect;
+    HTMLElement.prototype.getBoundingClientRect = () => dockedBox(71.2);
     try {
       const { unmount } = render(DockedActionBar, { actions: textSnippet('buttons') });
       await waitUntil(() => rootProperty(DOCKED_BAR_HEIGHT_PROPERTY) !== '');
