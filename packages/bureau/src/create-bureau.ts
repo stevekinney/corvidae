@@ -3071,6 +3071,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               contributions: workflowContributions,
             }),
             contributions: workflowContributions,
+            storage: composedPlugins.storage,
+            loadedPlugins: composedPlugins.records
+              .filter((record) => record.status === 'running')
+              .map((record) => record.entry.descriptor.name),
             snapshotStore: createWorkflowSnapshotStore({
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,

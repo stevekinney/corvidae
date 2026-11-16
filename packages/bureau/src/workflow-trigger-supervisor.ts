@@ -12,8 +12,10 @@
  */
 
 import type { PluginTrigger } from '@lostgradient/interborough-plugin';
+import type { Storage } from '@lostgradient/storage';
 
 import type { VersionedCatalogEntry } from './versioned-catalog';
+import { createTriggerStorage } from './workflow-trigger-state';
 
 /** A file's trigger that should be listening. */
 export interface DesiredTrigger {
@@ -42,6 +44,11 @@ export interface WorkflowTriggerSupervisorOptions {
    */
   readonly fire: (id: string, kind: string, payload: unknown) => Promise<void>;
   readonly diagnose: (message: string, cause: unknown) => void;
+  /**
+   * The store the plugins' own storage is a prefix of. A trigger receives the part of it under
+   * `plugin:<plugin>:trigger:<trigger-name>:<workflow-id>:` (see `workflow-trigger-state.ts`).
+   */
+  readonly storage: Storage;
 }
 
 interface RunningTrigger {
@@ -85,9 +92,21 @@ export function createWorkflowTriggerSupervisor(
       );
       return;
     }
+    let storage: Storage;
+    try {
+      storage = createTriggerStorage(options.storage, kind.name, id);
+    } catch (error) {
+      options.diagnose(
+        `Could not give the "${kind.name}" trigger of workflow "${id}" its storage; it stays stopped until its file changes or Bureau restarts.`,
+        error,
+      );
+      return;
+    }
     try {
       entry.stop = await kind.value.start({
         configuration: parsed.data,
+        workflowId: id,
+        storage,
         signal: controller.signal,
         fire: (payload) =>
           controller.signal.aborted ? Promise.resolve() : options.fire(id, kind.name, payload),

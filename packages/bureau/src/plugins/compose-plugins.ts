@@ -128,6 +128,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
    * stops following. Called once construction can stop it again at shutdown.
    */
   readonly watchSecrets: () => () => void;
+  /**
+   * COR-2164 — the store every plugin's own storage (`plugin:<name>:`) is a prefix of: the Bureau's
+   * `storage`, or the in-memory one composition made when it has none. The workflow runtime keeps a
+   * trigger's per-file state in the same store, under the plugin's prefix.
+   */
+  readonly storage: Storage;
 }
 
 const HOST_PARTY: PluginClashParty = Object.freeze({ source: 'built-in', location: 'host' });
@@ -1279,6 +1285,7 @@ export async function composePlugins<O extends ComposableOptions>(
     unavailableAgents,
     unavailableTools,
     agentDetails: contributed.agentDetails,
+    storage,
     watchSecrets: () => {
       const stops = gates.map((gate) => gate.watch());
       return () => {
