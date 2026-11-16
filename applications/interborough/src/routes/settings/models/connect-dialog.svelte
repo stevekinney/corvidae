@@ -10,7 +10,15 @@
    * The key sequence lives in `key-flow.svelte.ts`. The key is held only in the field, only until the
    * host has saved it or the dialog is dismissed, and it is never put in a message.
    */
-  import { Button, Callout, InlineLoading, Input, Link, Modal } from '@lostgradient/cinder';
+  import {
+    Button,
+    Callout,
+    InlineLoading,
+    Input,
+    Link,
+    Modal,
+    SettingRow,
+  } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy/models.ts';
@@ -128,55 +136,58 @@
           void flow.submit();
         }}
       >
-        {#if connected}
-          <Input
-            id="provider-api-key"
-            type="text"
-            variant="code"
-            label={copy.keyLabel}
-            required
-            disabled
-            description={copy.keyHelp}
-            value={provider === null ? '' : maskedKey(provider)}
-          >
-            {#snippet descriptionAction()}
-              {#if keyPage !== undefined}
-                <Link href={keyPage} external underline="always">{copy.getKey}</Link>
-              {/if}
-            {/snippet}
-          </Input>
-        {:else}
-          <Input
-            id="provider-api-key"
-            type={masked ? 'text' : 'password'}
-            autocomplete="off"
-            spellcheck={false}
-            variant="code"
-            label={copy.keyLabel}
-            placeholder={copy.keyPlaceholder}
-            required
-            description={copy.keyHelp}
-            bind:value={
-              () => shownKey,
-              (next) => {
-                if (!masked) flow.key = next;
-              }
-            }
-            onValueChange={() => {
-              if (!masked) flow.edited();
-            }}
-            onfocus={() => (revealed = true)}
-            onblur={() => (revealed = false)}
-            error={flow.fieldError}
-            readonly={flow.busy}
-          >
-            {#snippet descriptionAction()}
-              {#if keyPage !== undefined}
-                <Link href={keyPage} external underline="always">{copy.getKey}</Link>
-              {/if}
-            {/snippet}
-          </Input>
-        {/if}
+        <!-- The key is a row like the provider's own settings below it, so the dialog has one shape. -->
+        <SettingRow
+          id="provider-api-key"
+          label={copy.keyLabel}
+          description={copy.keyHelp}
+          required
+          disabled={connected}
+          controlWidth="16rem"
+          {...!connected && flow.fieldError ? { error: flow.fieldError } : {}}
+        >
+          {#snippet descriptionAction()}
+            {#if keyPage !== undefined}
+              <Link href={keyPage} external underline="always">{copy.getKey}</Link>
+            {/if}
+          {/snippet}
+          {#snippet control()}
+            {#if connected}
+              <Input
+                id="provider-api-key"
+                type="text"
+                variant="code"
+                label={copy.keyLabel}
+                required
+                disabled
+                value={provider === null ? '' : maskedKey(provider)}
+              />
+            {:else}
+              <Input
+                id="provider-api-key"
+                type={masked ? 'text' : 'password'}
+                autocomplete="off"
+                spellcheck={false}
+                variant="code"
+                label={copy.keyLabel}
+                placeholder={copy.keyPlaceholder}
+                required
+                bind:value={
+                  () => shownKey,
+                  (next) => {
+                    if (!masked) flow.key = next;
+                  }
+                }
+                onValueChange={() => {
+                  if (!masked) flow.edited();
+                }}
+                onfocus={() => (revealed = true)}
+                onblur={() => (revealed = false)}
+                readonly={flow.busy}
+              />
+            {/if}
+          {/snippet}
+        </SettingRow>
         {#if flow.busy}
           <InlineLoading status="active" description={copy.testing} />
         {/if}

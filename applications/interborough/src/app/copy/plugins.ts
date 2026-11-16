@@ -111,11 +111,6 @@ export const PLUGINS_COPY = {
     rejected: (message: string): string => (message === '' ? 'The host refused it.' : message),
     locked:
       'This host keeps its plugin choices in its deployment, so the configuration cannot be saved here.',
-    notSet: 'Not set',
-    addTag: 'Add a value',
-    tagsLabel: (label: string): string => label,
-    json: (label: string): string => `${label}, as JSON`,
-    invalidJson: 'This is not valid JSON.',
   },
   secrets: {
     set: 'Set',

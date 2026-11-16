@@ -7,7 +7,7 @@ export type SchemaFormSchema = JsonSchemaObject;
 export type SchemaFormOutput = unknown;
 
 /** How a SchemaForm draws its fields; see {@link SchemaFormProps.variant}. */
-export type SchemaFormVariant = 'default' | 'input';
+export type SchemaFormVariant = 'default' | 'input' | 'setting-rows';
 
 export type SchemaFormDraftChangeHandler = (value: SchemaFormOutput) => void;
 
@@ -52,10 +52,20 @@ export type SchemaFormProps = Omit<HTMLFormAttributes, 'class' | 'onsubmit'> & {
    * that runs or schedules something: short fields share a row two at a time (a switch, an
    * array, a group or a JSON field takes the whole row), a boolean is a switch with its
    * description beside it, and an array of objects is one JSON editor whose status line counts
-   * the items.
+   * the items. `setting-rows` draws each top-level property as one Settings row (`SettingRow`):
+   * the label, the key and the description at the start, the control at the inline end, and a
+   * hairline between rows. A property whose control does not fit a column (an object, an array of
+   * objects, a JSON field) is drawn under its row, full width and with no box of its own. The
+   * rows stack below a container width. A large form keeps the same rows: no Find a field, no
+   * Edit as JSON, no reordering.
    * @default "default"
    */
   variant?: SchemaFormVariant;
+  /**
+   * Whether every control is disabled, such as a form the host locks. The form is also disabled
+   * while it validates a submit. Defaults to `false`.
+   */
+  disabled?: boolean;
   /**
    * Whether the form draws its own submit button. Set `false` when the host submits the form from
    * a button elsewhere on the page, such as a footer, whose `form` attribute names this form's

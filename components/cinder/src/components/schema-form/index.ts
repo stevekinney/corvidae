@@ -4,6 +4,7 @@ import SchemaForm from './schema-form.svelte';
 
 export default SchemaForm;
 export {
+  sentenceCaseLabel as schemaFormFieldLabel,
   initialDraftOf as schemaFormInitialDraft,
   schemaHoldsConcealedField,
 } from './schema-form-model.ts';

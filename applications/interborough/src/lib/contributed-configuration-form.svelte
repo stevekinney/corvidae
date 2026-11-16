@@ -9,7 +9,7 @@
    * A kind whose schema has no fields says so, and one the form cannot draw says that. The form
    * draws no Submit button: the page's own action saves what the form reports.
    */
-  import { SchemaForm, schemaFormInitialDraft } from '@lostgradient/cinder';
+  import { SchemaForm, schemaFormInitialDraft, type SchemaFormVariant } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
   import { PLUGIN_KINDS_COPY } from '../app/copy/plugins.ts';
@@ -45,6 +45,16 @@
      * added, and opening a file is not an edit.
      */
     reportInitialDraft?: boolean;
+    /**
+     * How the fields are drawn (`SchemaForm`'s `variant`). A page that shows a plugin's configuration
+     * as settings passes `setting-rows`; the hook editor and the workflow builder pass nothing and
+     * keep the stacked fields.
+     */
+    variant?: SchemaFormVariant;
+    /** Called when a number is being typed and is not yet one, so no draft is reported for it. */
+    onPending?: () => void;
+    /** Whether every control is disabled, as a page does for a configuration its deployment holds. */
+    disabled?: boolean;
     /** What it says when the schema takes no fields, and when the form cannot draw it. Default to the plugin words. */
     noFieldsText?: string;
     unavailableText?: string;
@@ -57,6 +67,9 @@
     onChange,
     hosted = false,
     reportInitialDraft = true,
+    variant = 'default',
+    disabled = false,
+    onPending,
     noFieldsText = PLUGIN_KINDS_COPY.noFields,
     unavailableText = PLUGIN_KINDS_COPY.fieldsUnavailable,
     issues,
@@ -81,6 +94,7 @@
     const shown = schemaFormInitialDraft(
       formSchema,
       untrack(() => value),
+      variant,
     );
     if (typeof shown !== 'object' || shown === null || Array.isArray(shown)) return;
     // A configuration that already holds what the form shows is left alone, so opening a file or a
@@ -96,7 +110,13 @@
   });
 
   function draft(next: unknown): void {
-    if (formSchema === undefined || !numbersCommitted(formSchema, next)) return;
+    if (formSchema === undefined) return;
+    if (!numbersCommitted(formSchema, next)) {
+      // A number still being typed is an edit that has not finished: it is not reported, but a
+      // page that holds a Save button needs to know the form is no longer as it was.
+      onPending?.();
+      return;
+    }
     if (typeof next === 'object' && next !== null && !Array.isArray(next)) {
       onChange(next as Record<string, unknown>);
     }
@@ -117,6 +137,8 @@
         jsonEditable={false}
         submitVisible={false}
         {hosted}
+        {variant}
+        {disabled}
         {issues}
         onDraftChange={draft}
       />

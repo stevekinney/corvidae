@@ -6,13 +6,12 @@
  * for still lists, with the code, instead of vanishing. Nothing here touches the page: an action is
  * described, and `plugin-problem-card.svelte` carries it out.
  */
-import type { StatusDotStatus } from '@lostgradient/cinder';
+import { schemaFormFieldLabel, type StatusDotStatus } from '@lostgradient/cinder';
 
 import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
 import { nameList } from '../../../app/copy/shared.ts';
 import { agentEditPath } from '../../../lib/agent-paths.ts';
 import type { PluginProblem, PluginStanding } from '../../../lib/host-plugins.ts';
-import { fieldWords } from './plugin-configuration.ts';
 import { identifierOf } from './plugin-presentation.ts';
 
 /** What a problem's button does. */
@@ -133,7 +132,7 @@ export function configurationBody(field: string, message: string): string {
       .replaceAll(/\[\d+\]/g, '')
       .split('.')
       .pop() ?? '';
-  const label = last === '' ? '' : fieldWords(last);
+  const label = last === '' ? '' : schemaFormFieldLabel(last);
   const named = label !== '' && message.toLowerCase().startsWith(label.toLowerCase());
   return PLUGINS_COPY.problems.configurationInvalid.body(named ? '' : label, message);
 }
