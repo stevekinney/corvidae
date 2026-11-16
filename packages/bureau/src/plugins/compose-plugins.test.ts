@@ -16,6 +16,7 @@ import {
   type ComposableOptions,
   composePlugins,
   HOST_HELD_KINDS,
+  REDACTED_SECRET,
   registersKind,
 } from './compose-plugins';
 import { createPluginRegistry } from './plugin-registry';
@@ -896,6 +897,39 @@ describe('composePlugins', () => {
           message: expect.stringContaining('ran out of budget'),
         }),
       ]);
+    });
+
+    it('redacts a secret the plugin was handed from the budget refusal message', async () => {
+      const fresh = (): z.ZodObject =>
+        z.object({
+          get l() {
+            return fresh().optional();
+          },
+          get r() {
+            return fresh().optional();
+          },
+        });
+      const descriptor = definePlugin({
+        name: 'endless',
+        version: '1.0.0',
+        description: 'endless',
+        secrets: ['api-key'],
+        setup: async ({ secrets }) => {
+          await secrets.get('api-key');
+          return { events: [{ name: 'endless', description: 'Never ends.', payload: fresh() }] };
+        },
+      });
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [{ descriptor, source: 'package', location: '@example/endless' }],
+        // The secret is a word of the host's own message, so the message changes only if it is redacted.
+        pluginSecrets: { get: async () => 'budget', watch: () => () => undefined },
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      const [problem] = records[0]?.problems ?? [];
+      expect(problem).toMatchObject({ code: 'event-payload-content', event: 'endless' });
+      expect(JSON.stringify(problem)).not.toContain('budget');
+      expect(JSON.stringify(problem)).toContain(REDACTED_SECRET);
     });
 
     it('accepts a z.enum status and a marked identifier, which a plugin’s payload may hold', async () => {

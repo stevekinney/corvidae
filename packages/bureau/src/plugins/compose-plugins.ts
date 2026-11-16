@@ -1100,7 +1100,9 @@ function eventPayloadProblems(
         field,
         ...(budgetExhausted
           ? {
-              message: `the payload is too large to check: the host read ${EVENT_PAYLOAD_NODE_BUDGET} schemas and ran out of budget at this field; no content was found there`,
+              message: redact(
+                `the payload is too large to check: the host read ${EVENT_PAYLOAD_NODE_BUDGET} schemas and ran out of budget at this field; no content was found there`,
+              ),
             }
           : {}),
       }));
