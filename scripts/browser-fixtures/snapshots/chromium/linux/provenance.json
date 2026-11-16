@@ -6,5 +6,11 @@
   "osCodename": "jammy",
   "architecture": "arm64",
   "dockerImageTag": "corvidae-browser-fixtures:1.63.0-jammy-arm64",
-  "suiteExitCode": 0
+  "suiteExitCode": 0,
+  "componentRenders": {
+    "stacked-list-item": {
+      "renderedSourceSha": "b89a8de7628a80a3e4eccc96c941761633368743",
+      "suiteExitCode": 0
+    }
+  }
 }
