@@ -15,6 +15,26 @@ describe('defineTrigger', () => {
     expect(defineTrigger(entry)).toBe(entry);
   });
 
+  test('returns an entry that only receives, with no start (COR-2168)', async () => {
+    const entry = {
+      name: 'inbox',
+      description: 'Receives a delivery.',
+      configuration: z.object({ path: z.string() }),
+      receive: async (_request: Request) => new Response(null, { status: 204 }),
+    };
+    const declared = defineTrigger(entry);
+    expect(declared).toBe(entry);
+    expect(declared.start).toBeUndefined();
+    const answer = await declared.receive?.(new Request('https://hooks.example.test/'), {
+      configuration: { path: '/' },
+      workflowId: 'inbox',
+      storage: new MemoryStorage(),
+      fire: async () => ({ outcome: 'skipped', reason: 'stopped' }),
+      signal: new AbortController().signal,
+    });
+    expect(answer?.status).toBe(204);
+  });
+
   test('reads the configuration a start receives as the schema parses it', async () => {
     const seen: number[] = [];
     const heartbeat = defineTrigger({
@@ -33,7 +53,7 @@ describe('defineTrigger', () => {
       setup: () => ({ triggers: [heartbeat] }),
     });
     expect(plugin.name).toBe('example');
-    await heartbeat.start({
+    await heartbeat.start?.({
       configuration: heartbeat.configuration.parse({ seconds: 3 }),
       workflowId: 'pulse',
       storage: new MemoryStorage(),

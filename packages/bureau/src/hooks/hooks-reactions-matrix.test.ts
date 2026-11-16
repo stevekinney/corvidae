@@ -5,7 +5,7 @@
  * engine of `hooks-reactions.test-support.ts`, so no row waits on a real timer.
  */
 import { generateEncryptionKey } from '@lostgradient/cryptography';
-import { PluginReactionError } from '@lostgradient/interborough-plugin';
+import { type PluginReactionContext, PluginReactionError } from '@lostgradient/interborough-plugin';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
@@ -33,6 +33,7 @@ import {
   secretReader,
   untilAborted,
   type Harness,
+  type HarnessOptions,
 } from './hooks-reactions.test-support.ts';
 
 const NOTICE_PREFIX = '[bureau] Hook hook-1 did not run its plugin action: Skipped:';
@@ -40,7 +41,8 @@ const NOTICE_PREFIX = '[bureau] Hook hook-1 did not run its plugin action: Skipp
 /** The shape of one row: the matrix line, the issue that owns it, and what it asserts. */
 interface Row {
   readonly line: number;
-  readonly owner: 'main' | 'COR-2173' | 'COR-2174' | 'COR-2175' | 'COR-2176' | 'COR-2177';
+  readonly owner:
+    'main' | 'COR-2173' | 'COR-2174' | 'COR-2175' | 'COR-2176' | 'COR-2177' | 'COR-2183';
   readonly name: string;
   readonly check: () => Promise<void>;
 }
@@ -2475,6 +2477,1060 @@ const SECRET_REFERENCE_ROWS: readonly Row[] = [
   },
 ];
 
+/** The wait after attempt `attempt` under the notifier's default schedule: 1000 ms, doubling. */
+const exponential = (attempt: number) => 1_000 * 2 ** (attempt - 1);
+
+/** What a run that fails every time does. */
+const failing = () => Promise.reject(new Error('Slack is down'));
+
+const memory = () => textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
+
+/** The test delivery `hooks.test` answers for `hookId`. */
+async function tested(h: Harness, hookId: string) {
+  const delivery = await h.hooks.test(hookId);
+  expect(delivery).toBeDefined();
+  return delivery!;
+}
+
+/** What `hooks.test` is refused with, which must be a `HookError`. */
+async function testRefusal(h: Harness, hookId: string): Promise<HookError> {
+  const error = await h.hooks.test(hookId).then(
+    () => undefined,
+    (thrown: unknown) => thrown,
+  );
+  expect(error).toBeInstanceOf(HookError);
+  return error as HookError;
+}
+
+/** Waits until `h` holds exactly one backoff wait after its `attempt`-th call, and says how long it is. */
+async function waitAfter(h: Harness, attempt: number): Promise<number> {
+  await waitUntil(() => h.held.length === 1 && h.calls.length === attempt, {
+    message: `the wait after attempt ${attempt}`,
+  });
+  return h.held[0]!.milliseconds;
+}
+
+/** The test deliveries and their records are the matrix of reactions batch 2: COR-2183 (R12). */
+const MAX_ATTEMPTS_ROWS: readonly Row[] = [
+  {
+    line: 73,
+    owner: 'COR-2183',
+    name: 'a reaction’s maxAttempts is the maxAttempts of its new non-test delivery, and an absent one gives the engine’s',
+    check: async () => {
+      const own = harness({ maxAttempts: 3, reactionMaxAttempts: 5 });
+      const ownHook = await own.hook();
+      await own.open();
+      own.dispatch();
+      await own.drain();
+      const ownRecord = await own.record(ownHook.id);
+      expect(ownRecord.maxAttempts).toBe(5);
+      const absent = harness({ maxAttempts: 3 });
+      const absentHook = await absent.hook();
+      await absent.open();
+      absent.dispatch();
+      await absent.drain();
+      const absentRecord = await absent.record(absentHook.id);
+      expect(absentRecord.maxAttempts).toBe(3);
+    },
+  },
+  {
+    line: 76,
+    owner: 'COR-2183',
+    name: 'a direct registration with a maxAttempts that is not an integer from 1 to 20 makes createHooks throw, naming the kind',
+    check: async () => {
+      for (const value of [0, 21, 1.5, Number.NaN, '5' as unknown as number]) {
+        expect(() => harness({ reactionMaxAttempts: value })).toThrow(
+          /slack\/post-message.*maxAttempts/,
+        );
+      }
+      for (const value of [1, 20]) {
+        expect(() => harness({ reactionMaxAttempts: value })).not.toThrow();
+      }
+    },
+  },
+  {
+    line: 77,
+    owner: 'COR-2183',
+    name: 'maxAttempts 1 and a plain error: one error attempt, exhausted, audited with attempts 1',
+    check: async () => {
+      const h = harness({ maxAttempts: 3, reactionMaxAttempts: 1, run: failing });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(delivery.status).toBe('exhausted');
+      expect(outcomes(delivery)).toEqual(['error']);
+      const exhausted = h.auditEntries.filter((entry) => entry.type === 'hook.delivery.exhausted');
+      expect(exhausted.map((entry) => entry.detail)).toEqual([
+        {
+          hookId: hook.id,
+          owner: 'anonymous:local',
+          deliveryId: delivery.id,
+          attempts: 1,
+          status: 'exhausted',
+        },
+      ]);
+    },
+  },
+  {
+    line: 78,
+    owner: 'main',
+    name: 'a reaction maxAttempts below the engine’s does not change a permanent failure: failed after one rejected attempt',
+    check: async () => {
+      const h = harness({
+        maxAttempts: 3,
+        reactionMaxAttempts: 2,
+        run: () => Promise.reject(new PluginReactionError('No such channel', { permanent: true })),
+      });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(delivery.status).toBe('failed');
+      expect(outcomes(delivery)).toEqual(['rejected']);
+    },
+  },
+  {
+    line: 79,
+    owner: 'COR-2183',
+    name: 'a reaction maxAttempts above the engine’s (5 against 3) gives five attempts with the backoff after each of the first four, then exhausted',
+    check: async () => {
+      const h = harness({
+        maxAttempts: 3,
+        reactionMaxAttempts: 5,
+        backoffFor: exponential,
+        run: failing,
+      });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      const waits: number[] = [];
+      for (const attempt of [1, 2, 3, 4]) {
+        waits.push(await waitAfter(h, attempt));
+        h.releaseWaits();
+      }
+      await h.drain();
+      expect(waits).toEqual([1_000, 2_000, 4_000, 8_000]);
+      const delivery = await h.only(hook.id);
+      expect(delivery.status).toBe('exhausted');
+      expect(outcomes(delivery)).toEqual(['error', 'error', 'error', 'error', 'error']);
+      expect(h.calls).toHaveLength(5);
+    },
+  },
+  {
+    line: 80,
+    owner: 'COR-2183',
+    name: 'every waiting write holds its lease past nextAttemptAt + timeout + 5 s, so no other process claims the delivery during a backoff longer than the engine’s own',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const options = {
+        kv,
+        clock,
+        maxAttempts: 3,
+        reactionMaxAttempts: 5,
+        backoffFor: exponential,
+      } as const;
+      const a = harness({ ...options, run: failing });
+      const hook = await a.hook();
+      await a.open();
+      a.dispatch();
+      for (const attempt of [1, 2, 3, 4]) {
+        await waitAfter(a, attempt);
+        const record = await a.record(hook.id);
+        expect(record.nextAttemptAt).toBe(START + exponential(attempt));
+        expect(record.leaseUntil).toBeGreaterThanOrEqual(
+          record.nextAttemptAt! + DEFAULT_TIMEOUT + 5_000,
+        );
+        if (attempt === 4) {
+          // Another process starting inside the wait finds the lease live: it claims nothing, and
+          // schedules one re-scan for the lease's expiry.
+          const b = harness({ ...options });
+          await b.open();
+          expect(b.calls).toHaveLength(0);
+          expect(b.held.map((wait) => wait.milliseconds)).toEqual([
+            record.leaseUntil - clock.milliseconds,
+          ]);
+          b.shutdown();
+          await b.drain();
+        }
+        a.releaseWaits();
+      }
+      await a.drain();
+      expect(await a.status(hook.id)).toBe('exhausted');
+    },
+  },
+  {
+    line: 81,
+    owner: 'main',
+    name: 'a backoff wait past the engine’s last attempt ends by a shutdown (lease released, nextAttemptAt dropped) or by a retry wake (the next attempt at once)',
+    check: async () => {
+      const stopped = harness({
+        maxAttempts: 3,
+        reactionMaxAttempts: 5,
+        backoffFor: exponential,
+        run: failing,
+      });
+      const stoppedHook = await stopped.hook();
+      await stopped.open();
+      stopped.dispatch();
+      for (const attempt of [1, 2, 3]) {
+        await waitAfter(stopped, attempt);
+        stopped.releaseWaits();
+      }
+      await waitAfter(stopped, 4);
+      stopped.shutdown();
+      await stopped.drain();
+      const released = await stopped.record(stoppedHook.id);
+      expect(released.status).toBe('pending');
+      expect(released.leaseUntil).toBe(0);
+      expect(released.nextAttemptAt).toBeUndefined();
+
+      const woken = harness({
+        maxAttempts: 3,
+        reactionMaxAttempts: 5,
+        backoffFor: exponential,
+        run: (_context, call) => (call < 5 ? failing() : Promise.resolve()),
+      });
+      const wokenHook = await woken.hook();
+      await woken.open();
+      woken.dispatch();
+      for (const attempt of [1, 2, 3]) {
+        await waitAfter(woken, attempt);
+        woken.releaseWaits();
+      }
+      // The wait after attempt 4 is longer than the engine's own schedule reaches: Retry now cuts it short.
+      await waitAfter(woken, 4);
+      const waiting = await woken.only(wokenHook.id);
+      await woken.hooks.retryDelivery(wokenHook.id, waiting.id);
+      await woken.drain();
+      expect(woken.calls).toHaveLength(5);
+      const record = await woken.record(wokenHook.id);
+      expect(record.status).toBe('delivered');
+      expect(record.nextAttemptAt).toBeUndefined();
+    },
+  },
+  {
+    line: 82,
+    owner: 'COR-2183',
+    name: 'a webhook delivery’s lease is unchanged, test or not: the request timeout, the backoff after the engine’s last attempt and 5 s',
+    check: async () => {
+      for (const asTest of [false, true]) {
+        const response = deferred<Response>();
+        let sent = 0;
+        const h = harness({
+          keys: await generateEncryptionKey(),
+          maxAttempts: 3,
+          backoffFor: exponential,
+          fetch: (() => {
+            sent += 1;
+            return response.promise;
+          }) as unknown as typeof fetch,
+        });
+        const hook = await h.created.hooks.create({
+          events: ['run.settled'],
+          url: 'https://example.com/hook',
+          signingSecret: 'a-signing-secret-long-enough',
+        });
+        await h.open();
+        let finished: Promise<unknown>;
+        if (asTest) {
+          finished = h.hooks.test(hook.id);
+        } else {
+          h.dispatch();
+          finished = h.drain();
+        }
+        await waitUntil(() => sent === 1, { message: 'the request' });
+        const record = await h.record(hook.id);
+        expect(record.maxAttempts).toBe(asTest ? 1 : 3);
+        expect(record.leaseUntil).toBe(START + 10_000 + exponential(3) + 5_000);
+        response.resolve(new Response('ok'));
+        await finished;
+        await h.drain();
+      }
+    },
+  },
+  {
+    line: 83,
+    owner: 'COR-2183',
+    name: 'a retry that reopens a settled delivery refreshes its lease from the record as it is after the reopen',
+    check: async () => {
+      const answer = deferred();
+      const h = harness({
+        maxAttempts: 3,
+        reactionMaxAttempts: 2,
+        backoffFor: exponential,
+        run: (_context, call) => (call <= 2 ? failing() : answer.promise),
+      });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await waitAfter(h, 1);
+      h.releaseWaits();
+      await h.drain();
+      const settled = await h.only(hook.id);
+      expect(settled.status).toBe('exhausted');
+      const retrying = h.hooks.retryDelivery(hook.id, settled.id);
+      await runStarted(h, 3);
+      const reopened = await h.record(hook.id);
+      expect(reopened.maxAttempts).toBe(3);
+      expect(reopened.leaseUntil).toBe(START + DEFAULT_TIMEOUT + exponential(3) + 5_000);
+      answer.resolve();
+      await retrying;
+      await h.drain();
+    },
+  },
+  {
+    line: 84,
+    owner: 'main',
+    name: 'a retry of a settled delivery makes one more attempt: maxAttempts is the attempts so far plus one, whatever the reaction says',
+    check: async () => {
+      const h = harness({ maxAttempts: 2, reactionMaxAttempts: 5, run: failing });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await h.drain();
+      const settled = await h.only(hook.id);
+      expect(settled.status).toBe('exhausted');
+      expect(settled.attempts).toHaveLength(5);
+      await h.hooks.retryDelivery(hook.id, settled.id);
+      const record = await h.record(hook.id);
+      expect(record.maxAttempts).toBe(settled.attempts.length + 1);
+      expect(h.calls).toHaveLength(settled.attempts.length + 1);
+    },
+  },
+  {
+    line: 85,
+    owner: 'main',
+    name: 'a pending delivery keeps the maxAttempts it was made with when an upgrade changes the reaction’s',
+    check: async () => {
+      const kv = memory();
+      const first: Harness = harness({
+        kv,
+        reactionMaxAttempts: 5,
+        run: () => {
+          first.shutdown();
+          return Promise.reject(new Error('the process is stopping'));
+        },
+      });
+      const hook = await first.hook();
+      await first.open();
+      first.dispatch();
+      await first.drain();
+      const second = harness({ kv, reactionMaxAttempts: 2 });
+      await second.open();
+      await second.drain();
+      const record = await second.record(hook.id);
+      expect(record.maxAttempts).toBe(5);
+      expect(record.status).toBe('delivered');
+    },
+  },
+  {
+    line: 86,
+    owner: 'main',
+    name: 'interrupted attempts that fill the record’s maxAttempts leave the delivery exhausted at the next start, with no call',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      let hookId = '';
+      for (const attempt of [1, 2]) {
+        const process = harness({ kv, clock, reactionMaxAttempts: 2, run: never });
+        if (attempt === 1) {
+          const made = await process.hook();
+          hookId = made.id;
+        }
+        // A restart's `open` waits for the delivery it resumes, which never answers.
+        const opening = process.open();
+        if (attempt === 1) process.dispatch();
+        await runStarted(process);
+        process.shutdown();
+        await opening;
+        await process.drain();
+      }
+      const restart = harness({ kv, clock, reactionMaxAttempts: 2 });
+      await restart.open();
+      await restart.drain();
+      const delivery = await restart.only(hookId);
+      expect(delivery.status).toBe('exhausted');
+      expect(outcomes(delivery)).toEqual(['interrupted', 'interrupted']);
+      expect(restart.calls).toHaveLength(0);
+    },
+  },
+  {
+    line: 87,
+    owner: 'COR-2183',
+    name: 'a test delivery has maxAttempts 1 whatever the reaction says',
+    check: async () => {
+      const h = harness({
+        maxAttempts: 3,
+        reactionMaxAttempts: 5,
+        dryRun: () => Promise.resolve(),
+      });
+      const hook = await h.hook();
+      const delivery = await tested(h, hook.id);
+      expect(delivery.test).toBe(true);
+      expect(delivery.maxAttempts).toBe(1);
+    },
+  },
+  {
+    line: 88,
+    owner: 'COR-2183',
+    name: 'at maxAttempts 20 and the default 1000 ms base a crashed delivery holds its lease about 2.4 minutes, not days, and is resumed when it expires',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const options = {
+        kv,
+        clock,
+        maxAttempts: 8,
+        reactionMaxAttempts: 20,
+        backoffFor: exponential,
+      };
+      const crashed = harness({ ...options, run: never });
+      const hook = await crashed.hook();
+      await crashed.open();
+      crashed.dispatch();
+      await runStarted(crashed);
+      const held = await crashed.record(hook.id);
+      expect(held.maxAttempts).toBe(20);
+      // The request timeout, the backoff after the engine’s eighth attempt (128 s) and 5 s.
+      expect(held.leaseUntil).toBe(START + DEFAULT_TIMEOUT + exponential(8) + 5_000);
+      clock.milliseconds = held.leaseUntil;
+      const restart = harness({ ...options });
+      await restart.open();
+      await restart.drain();
+      expect(restart.calls).toHaveLength(1);
+      expect(restart.calls[0]?.attempt).toBe(2);
+      expect(await restart.status(hook.id)).toBe('delivered');
+    },
+  },
+];
+
+/** The rows of the context a reaction receives: `hookId`, `owner` and `attempt`. */
+const CONTEXT_ROWS: readonly Row[] = [
+  {
+    line: 89,
+    owner: 'COR-2183',
+    name: 'a run’s context carries hookId, owner and a 1-based attempt with the ids it had',
+    check: async () => {
+      const h = harness({
+        backoff: 1_000,
+        run: (_context, call) => (call === 1 ? failing() : Promise.resolve()),
+      });
+      const hook = await h.hook();
+      await h.open();
+      h.dispatch();
+      await waitAfter(h, 1);
+      h.releaseWaits();
+      await h.drain();
+      const delivery = await h.only(hook.id);
+      expect(h.calls.map((call) => call.attempt)).toEqual([1, 2]);
+      for (const call of h.calls) {
+        expect(call).toMatchObject({
+          hookId: hook.id,
+          owner: 'anonymous:local',
+          deliveryId: delivery.id,
+          idempotencyKey: `hook:${hook.id}:${delivery.id}`,
+        });
+      }
+    },
+  },
+  {
+    line: 90,
+    owner: 'main',
+    name: 'the attempt after an interrupted one counts it: attempt 2',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const first = harness({ kv, clock, run: never });
+      const hook = await first.hook();
+      await first.open();
+      first.dispatch();
+      await runStarted(first);
+      first.shutdown();
+      await first.drain();
+      const second = harness({ kv, clock });
+      await second.open();
+      await second.drain();
+      expect(second.calls.map((call) => call.attempt)).toEqual([2]);
+      expect(await second.status(hook.id)).toBe('delivered');
+    },
+  },
+  {
+    line: 91,
+    owner: 'main',
+    name: 'an attempt made again after a needs-setup drop carries the same attempt number',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const first = harness({
+        kv,
+        clock,
+        run: () =>
+          Promise.reject(
+            Object.assign(new Error('"post-message" needs setup'), {
+              name: 'PluginNeedsSetupError',
+            }),
+          ),
+      });
+      const hook = await first.hook();
+      await first.open();
+      first.dispatch();
+      await first.drain();
+      const dropped = await first.record(hook.id);
+      expect(dropped.attempts).toEqual([]);
+      const second = harness({ kv, clock });
+      await second.open();
+      await second.drain();
+      expect(first.calls.map((call) => call.attempt)).toEqual([1]);
+      expect(second.calls.map((call) => call.attempt)).toEqual([1]);
+    },
+  },
+];
+
+/**
+ * The registrations of a kind with a `dryRun` that is available for the one check `hooks.test`
+ * makes and needs setup after it, so the test delivery it writes waits, unattempted, released and
+ * pending (the state a restart finds one in).
+ */
+const unattemptedTestKind =
+  (version?: string): NonNullable<HarnessOptions['registrations']> =>
+  (run) => {
+    let asked = 0;
+    return [
+      {
+        plugin: 'slack',
+        ...(version === undefined ? {} : { version }),
+        availability: () => (++asked === 1 ? 'available' : 'needs-setup'),
+        kind: {
+          name: 'post-message',
+          description: 'Posts.',
+          configuration: CONFIGURATION,
+          run,
+          dryRun: () => Promise.resolve(),
+        },
+      },
+    ];
+  };
+
+/** The rows of `hooks.test` on a plugin hook, and of what a test delivery does. */
+const DRY_RUN_ROWS: readonly Row[] = [
+  {
+    line: 93,
+    owner: 'COR-2183',
+    name: 'hooks.test on a hook whose reaction has dryRun, enabled or disabled: one test record, dryRun once with run’s context, run never, delivered, audited as tested',
+    check: async () => {
+      for (const enabled of [true, false]) {
+        const h = harness({ dryRun: () => Promise.resolve() });
+        const hook = await h.hook();
+        if (!enabled) await h.hooks.update(hook.id, { enabled: false });
+        const delivery = await tested(h, hook.id);
+        expect(delivery).toMatchObject({
+          status: 'delivered',
+          test: true,
+          maxAttempts: 1,
+          kind: 'hook.test',
+          actionType: 'plugin',
+        });
+        expect(outcomes(delivery)).toEqual(['completed']);
+        expect(h.calls).toHaveLength(0);
+        expect(h.dryRunCalls).toHaveLength(1);
+        expect(h.dryRunCalls[0]).toMatchObject({
+          hookId: hook.id,
+          owner: 'anonymous:local',
+          attempt: 1,
+          deliveryId: delivery.id,
+          idempotencyKey: `hook:${hook.id}:${delivery.id}`,
+          event: { kind: 'hook.test' },
+        });
+        const stored = await createHookStore(h.kv).listStoredDeliveries();
+        expect(
+          stored.map(({ record }) => ({ test: record.test, maxAttempts: record.maxAttempts })),
+        ).toEqual([{ test: true, maxAttempts: 1 }]);
+        expect(h.audits).toEqual([
+          'hook.created',
+          ...(enabled ? [] : ['hook.updated']),
+          'hook.tested',
+        ]);
+      }
+    },
+  },
+  {
+    line: 94,
+    owner: 'COR-2183',
+    name: 'hooks.test on a hook whose reaction has no dryRun is refused at action: no record, no audit, run never called',
+    check: async () => {
+      const h = harness();
+      const hook = await h.hook();
+      const error = await testRefusal(h, hook.id);
+      expect(error.code).toBe('invalid');
+      expect(error.issues.map((issue) => issue.path)).toEqual([['action']]);
+      expect(await createHookStore(h.kv).listStoredDeliveries()).toEqual([]);
+      expect(h.audits).not.toContain('hook.tested');
+      expect(h.calls).toHaveLength(0);
+    },
+  },
+  {
+    line: 95,
+    owner: 'COR-2183',
+    name: 'hooks.test on a hook whose reaction is not registered is refused at action, with no record',
+    check: async () => {
+      const kv = memory();
+      const first = harness({ kv, dryRun: () => Promise.resolve() });
+      const hook = await first.hook();
+      const gone = harness({ kv, registrations: () => [] });
+      const error = await testRefusal(gone, hook.id);
+      expect(error.issues.map((issue) => issue.path)).toEqual([['action']]);
+      expect(await createHookStore(kv).listStoredDeliveries()).toEqual([]);
+    },
+  },
+  {
+    line: 96,
+    owner: 'COR-2183',
+    name: 'hooks.test on a hook whose plugin needs setup is refused at action, with no record',
+    check: async () => {
+      const gate = availabilityGate(false);
+      const h = harness({ gate, dryRun: () => Promise.resolve() });
+      const hook = await h.hook();
+      const error = await testRefusal(h, hook.id);
+      expect(error.issues.map((issue) => issue.path)).toEqual([['action']]);
+      expect(await createHookStore(h.kv).listStoredDeliveries()).toEqual([]);
+      expect(h.dryRunCalls).toHaveLength(0);
+    },
+  },
+  {
+    line: 97,
+    owner: 'main',
+    name: 'hooks.test on a notify or start-workflow hook is still refused',
+    check: async () => {
+      const h = harness({
+        dryRun: () => Promise.resolve(),
+        workflows: () => ({
+          assertStartable: () => undefined,
+          findStart: () => Promise.resolve(undefined),
+          start: () => Promise.reject(new Error('must not start')),
+        }),
+      });
+      const notify = await h.created.hooks.create({
+        events: ['run.settled'],
+        action: { type: 'notify' },
+      });
+      const start = await h.created.hooks.create({
+        events: ['run.settled'],
+        action: { type: 'start-workflow', workflowId: 'lookup' },
+      });
+      for (const hook of [notify, start]) {
+        const error = await testRefusal(h, hook.id);
+        expect(error.issues.map((issue) => issue.path)).toEqual([['action']]);
+      }
+      expect(await createHookStore(h.kv).listStoredDeliveries()).toEqual([]);
+    },
+  },
+  {
+    line: 98,
+    owner: 'main',
+    name: 'hooks.test on a webhook is a signed send with one attempt, as it was',
+    check: async () => {
+      const requests: string[] = [];
+      const h = harness({
+        keys: await generateEncryptionKey(),
+        dryRun: () => Promise.resolve(),
+        fetch: (async (url: string | URL | Request) => {
+          requests.push(url instanceof Request ? url.url : url.toString());
+          return new Response('ok');
+        }) as typeof fetch,
+      });
+      const hook = await h.created.hooks.create({
+        events: ['run.settled'],
+        url: 'https://example.com/hook',
+        signingSecret: 'a-signing-secret-long-enough',
+      });
+      const delivery = await tested(h, hook.id);
+      expect(delivery).toMatchObject({ status: 'delivered', test: true, maxAttempts: 1 });
+      expect(requests).toEqual(['https://example.com/hook']);
+      expect(h.dryRunCalls).toHaveLength(0);
+    },
+  },
+  {
+    line: 99,
+    owner: 'COR-2183',
+    name: 'a real event while a test runs calls run, never dryRun, and the test adds no attempt to the real delivery',
+    check: async () => {
+      const release = deferred();
+      const h = harness({ dryRun: () => release.promise });
+      const hook = await h.hook();
+      await h.open();
+      const testing = h.hooks.test(hook.id);
+      await waitUntil(() => h.dryRunCalls.length === 1, { message: 'the dry run' });
+      h.dispatch();
+      await waitUntil(() => h.calls.length === 1, { message: 'the real run' });
+      release.resolve();
+      const testRecord = await testing;
+      await h.drain();
+      const all = await h.deliveries(hook.id);
+      expect(all.map((delivery) => [delivery.test, outcomes(delivery)])).toEqual([
+        [true, ['completed']],
+        [false, ['completed']],
+      ]);
+      expect(testRecord?.test).toBe(true);
+      expect(h.calls).toHaveLength(1);
+      expect(h.dryRunCalls).toHaveLength(1);
+      expect(h.calls[0]?.attempt).toBe(1);
+    },
+  },
+  {
+    line: 100,
+    owner: 'COR-2183',
+    name: 'a test record whose kind has lost its dryRun fails at attempt time: rejected, failed, run never called, no exhaustion audit',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const first = harness({ kv, clock, registrations: unattemptedTestKind() });
+      const hook = await first.hook();
+      await first.open();
+      const waiting = await tested(first, hook.id);
+      expect(waiting.status).toBe('pending');
+      expect(waiting.attempts).toEqual([]);
+      // The upgrade ships the kind without its dryRun.
+      const upgraded = harness({ kv, clock });
+      await upgraded.open();
+      await upgraded.drain();
+      const delivery = await upgraded.only(hook.id);
+      expect(delivery.status).toBe('failed');
+      expect(outcomes(delivery)).toEqual(['rejected']);
+      expect(upgraded.calls).toHaveLength(0);
+      expect(upgraded.dryRunCalls).toHaveLength(0);
+      expect(upgraded.audits).not.toContain('hook.delivery.exhausted');
+    },
+  },
+  {
+    line: 101,
+    owner: 'main',
+    name: 'a test record pinned to a version that changed fails permanently as version-mismatch',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const first = harness({ kv, clock, registrations: unattemptedTestKind('1.0.0') });
+      const hook = await first.hook();
+      await first.open();
+      await tested(first, hook.id);
+      const upgraded = harness({ kv, clock, version: '2.0.0', dryRun: () => Promise.resolve() });
+      await upgraded.open();
+      await upgraded.drain();
+      const delivery = await upgraded.only(hook.id);
+      expect(delivery.status).toBe('failed');
+      expect(delivery.attempts.at(-1)?.error).toContain('version-mismatch');
+      expect(upgraded.dryRunCalls).toHaveLength(0);
+    },
+  },
+  {
+    line: 102,
+    owner: 'main',
+    name: 'a dryRun that rejects with a plain error is one error attempt, exhausted, audited without the error text',
+    check: async () => {
+      const h = harness({ dryRun: failing });
+      const hook = await h.hook();
+      const delivery = await tested(h, hook.id);
+      expect(delivery.status).toBe('exhausted');
+      expect(outcomes(delivery)).toEqual(['error']);
+      expect(delivery.attempts[0]?.error).toBe('Slack is down');
+      const exhausted = h.auditEntries.filter((entry) => entry.type === 'hook.delivery.exhausted');
+      expect(exhausted.map((entry) => entry.detail)).toEqual([
+        {
+          hookId: hook.id,
+          owner: 'anonymous:local',
+          deliveryId: delivery.id,
+          attempts: 1,
+          status: 'exhausted',
+        },
+      ]);
+    },
+  },
+  {
+    line: 103,
+    owner: 'main',
+    name: 'a dryRun that rejects with a permanent PluginReactionError is rejected and failed, and not audited',
+    check: async () => {
+      const h = harness({
+        dryRun: () =>
+          Promise.reject(new PluginReactionError('No such channel', { permanent: true })),
+      });
+      const hook = await h.hook();
+      const delivery = await tested(h, hook.id);
+      expect(delivery.status).toBe('failed');
+      expect(outcomes(delivery)).toEqual(['rejected']);
+      expect(h.audits).not.toContain('hook.delivery.exhausted');
+    },
+  },
+  {
+    line: 104,
+    owner: 'main',
+    name: 'a dryRun that exceeds its timeout is one error attempt naming the timeout, exhausted',
+    check: async () => {
+      const h = harness({ dryRun: untilAborted, timeoutMilliseconds: 2_000 });
+      const hook = await h.hook();
+      const testing = h.hooks.test(hook.id);
+      await waitUntil(() => h.timeouts.length === 1 && h.dryRunCalls.length === 1, {
+        message: 'the dry run and its timeout',
+      });
+      expect(h.timeouts[0]?.milliseconds).toBe(2_000);
+      h.timeouts[0]!.fire();
+      const delivery = (await testing)!;
+      expect(delivery.status).toBe('exhausted');
+      expect(delivery.attempts).toHaveLength(1);
+      expect(delivery.attempts[0]).toMatchObject({
+        outcome: 'error',
+        error: 'The reaction timed out after 2000 ms',
+      });
+    },
+  },
+  {
+    line: 105,
+    owner: 'main',
+    name: 'a reference that cannot be resolved fails the one test attempt naming the key: exhausted and audited, dryRun not called, the value nowhere',
+    check: async () => {
+      for (const configurationSecrets of UNRESOLVABLE_READERS) {
+        const h = harness({
+          dryRun: () => Promise.resolve(),
+          configuration: SECRET_CONFIGURATION,
+          ...(configurationSecrets === undefined ? {} : { configurationSecrets }),
+        });
+        const hook = await h.hookWith(withToken(reference('slack-token')));
+        const delivery = await tested(h, hook.id);
+        expect(delivery.status).toBe('exhausted');
+        expect(outcomes(delivery)).toEqual(['error']);
+        expect(delivery.attempts[0]?.error).toContain('slack-token');
+        expect(JSON.stringify(delivery)).not.toContain(SENTINEL);
+        expect(h.dryRunCalls).toHaveLength(0);
+        expect(h.audits).toContain('hook.delivery.exhausted');
+      }
+    },
+  },
+  {
+    line: 106,
+    owner: 'main',
+    name: 'a plain value stored in a field now marked secret fails the test permanently, and dryRun never receives it',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const before = harness({
+        kv,
+        clock,
+        configuration: z.object({ channel: z.string(), token: z.string() }),
+      });
+      const hook = await before.hookWith(withToken(SENTINEL));
+      const reader = secretReader({ 'slack-token': SENTINEL });
+      const h = harness({
+        kv,
+        clock,
+        dryRun: () => Promise.resolve(),
+        configuration: SECRET_CONFIGURATION,
+        configurationSecrets: reader,
+      });
+      const delivery = await tested(h, hook.id);
+      expect(delivery.status).toBe('failed');
+      expect(outcomes(delivery)).toEqual(['rejected']);
+      expect(delivery.attempts[0]?.error).not.toContain(SENTINEL);
+      expect(h.dryRunCalls).toHaveLength(0);
+      expect(reader.reads).toEqual([]);
+    },
+  },
+  {
+    line: 0,
+    owner: 'COR-2183',
+    name: 'a dryRun that rejects with the resolved secret in its message leaves the value out of every stored text, audit and diagnostic',
+    check: async () => {
+      const reader = secretReader({ 'slack-token': SENTINEL });
+      const h = harness({
+        configuration: SECRET_CONFIGURATION,
+        configurationSecrets: reader,
+        dryRun: (context) =>
+          Promise.reject(
+            new Error(`rejected ${(context.configuration as { token: string }).token}`),
+          ),
+      });
+      const hook = await h.hookWith(withToken(reference('slack-token')));
+      const delivery = await tested(h, hook.id);
+      expect(delivery.status).toBe('exhausted');
+      expect(delivery.attempts[0]?.error).toBe('rejected [redacted]');
+      expect(h.dryRunCalls[0]?.configuration).toMatchObject({ token: SENTINEL });
+      expect(await rawStoreOf(h.kv)).not.toContain(SENTINEL);
+      expect(JSON.stringify(h.auditEntries)).not.toContain(SENTINEL);
+      expect(h.diagnostics.join('\n')).not.toContain(SENTINEL);
+    },
+  },
+  {
+    line: 107,
+    owner: 'main',
+    name: 'a plugin that turns needs-setup after the hooks.test check: the test waits, released and pending, and the next availability change calls dryRun with attempt 1',
+    check: async () => {
+      let asked = 0;
+      let ready = false;
+      let notify: () => void = () => undefined;
+      const dry: PluginReactionContext[] = [];
+      const h = harness({
+        registrations: (run) => [
+          {
+            plugin: 'slack',
+            availability: () => (ready || ++asked === 1 ? 'available' : 'needs-setup'),
+            onAvailabilityChange: (listener) => {
+              notify = listener;
+              return () => undefined;
+            },
+            kind: {
+              name: 'post-message',
+              description: 'Posts.',
+              configuration: CONFIGURATION,
+              run,
+              dryRun: (context) => {
+                dry.push(context);
+                return Promise.resolve();
+              },
+            },
+          },
+        ],
+      });
+      const hook = await h.hook();
+      await h.open();
+      const waiting = await tested(h, hook.id);
+      expect(waiting.status).toBe('pending');
+      expect(waiting.attempts).toEqual([]);
+      expect(dry).toHaveLength(0);
+      ready = true;
+      notify();
+      await h.drain();
+      await waitUntil(() => dry.length === 1, { message: 'the dry run' });
+      await h.drain();
+      expect(dry[0]?.attempt).toBe(1);
+      expect(await h.status(hook.id)).toBe('delivered');
+    },
+  },
+  {
+    line: 108,
+    owner: 'COR-2183',
+    name: 'a dryRun that is refused for a missing declared secret drops the attempt and releases the lease: no attempt counted, the same attempt number next time',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const first = harness({
+        kv,
+        clock,
+        dryRun: () =>
+          Promise.reject(
+            Object.assign(new Error('"post-message" needs setup'), {
+              name: 'PluginNeedsSetupError',
+            }),
+          ),
+      });
+      const hook = await first.hook();
+      const waiting = await tested(first, hook.id);
+      expect(waiting.status).toBe('pending');
+      expect(waiting.attempts).toEqual([]);
+      const record = await first.record(hook.id);
+      expect(record.leaseUntil).toBe(0);
+      const second = harness({ kv, clock, dryRun: () => Promise.resolve() });
+      await second.open();
+      await second.drain();
+      expect(second.dryRunCalls.map((call) => call.attempt)).toEqual([1]);
+      expect(await second.status(hook.id)).toBe('delivered');
+    },
+  },
+  {
+    line: 109,
+    owner: 'main',
+    name: 'disabling the hook during a dryRun aborts it: aborted, with no audit',
+    check: async () => {
+      const h = harness({ dryRun: untilAborted });
+      const hook = await h.hook();
+      const testing = h.hooks.test(hook.id);
+      await waitUntil(() => h.dryRunCalls.length === 1, { message: 'the dry run' });
+      await h.hooks.update(hook.id, { enabled: false });
+      const delivery = (await testing)!;
+      expect(delivery.status).toBe('aborted');
+      expect(h.dryRunCalls[0]?.signal.aborted).toBe(true);
+      expect(h.audits).not.toContain('hook.delivery.exhausted');
+    },
+  },
+  {
+    line: 110,
+    owner: 'main',
+    name: 'disabling a hook that is already disabled, during a dryRun, aborts nothing: the test completes',
+    check: async () => {
+      const release = deferred();
+      const h = harness({ dryRun: () => release.promise });
+      const hook = await h.hook();
+      await h.hooks.update(hook.id, { enabled: false });
+      const testing = h.hooks.test(hook.id);
+      await waitUntil(() => h.dryRunCalls.length === 1, { message: 'the dry run' });
+      await h.hooks.update(hook.id, { enabled: false });
+      expect(h.dryRunCalls[0]?.signal.aborted).toBe(false);
+      release.resolve();
+      const finished = await testing;
+      expect(finished?.status).toBe('delivered');
+    },
+  },
+  {
+    line: 111,
+    owner: 'main',
+    name: 'deleting the hook during a dryRun leaves no record, and the stale attempt writes nothing',
+    check: async () => {
+      const release = deferred();
+      const h = harness({ dryRun: () => release.promise });
+      const hook = await h.hook();
+      const testing = h.hooks.test(hook.id);
+      await waitUntil(() => h.dryRunCalls.length === 1, { message: 'the dry run' });
+      await h.hooks.delete(hook.id);
+      release.resolve();
+      expect(await testing).toBeUndefined();
+      expect(await createHookStore(h.kv).listStoredDeliveries()).toEqual([]);
+    },
+  },
+  {
+    line: 112,
+    owner: 'main',
+    name: 'a shutdown during a dryRun leaves the attempt interrupted and the lease released; at restart attempt 2 exceeds maxAttempts 1, so it is exhausted with no call',
+    check: async () => {
+      const kv = memory();
+      const clock = { milliseconds: START };
+      const first = harness({ kv, clock, dryRun: never });
+      const hook = await first.hook();
+      const testing = first.hooks.test(hook.id);
+      await waitUntil(() => first.dryRunCalls.length === 1, { message: 'the dry run' });
+      first.shutdown();
+      const pending = (await testing)!;
+      expect(pending.status).toBe('pending');
+      expect(outcomes(pending)).toEqual(['interrupted']);
+      const record = await first.record(hook.id);
+      expect(record.leaseUntil).toBe(0);
+      const restart = harness({ kv, clock, dryRun: () => Promise.resolve() });
+      await restart.open();
+      await restart.drain();
+      const delivery = await restart.only(hook.id);
+      expect(delivery.status).toBe('exhausted');
+      expect(restart.dryRunCalls).toHaveLength(0);
+    },
+  },
+  {
+    line: 113,
+    owner: 'COR-2183',
+    name: 'retrying a settled test delivery by hand calls dryRun again, never run',
+    check: async () => {
+      const h = harness({
+        dryRun: (_context, call) => (call === 1 ? failing() : Promise.resolve()),
+      });
+      const hook = await h.hook();
+      const failed = await tested(h, hook.id);
+      expect(failed.status).toBe('exhausted');
+      const retried = await h.hooks.retryDelivery(hook.id, failed.id);
+      expect(retried?.status).toBe('delivered');
+      expect(h.dryRunCalls.map((call) => call.attempt)).toEqual([1, 2]);
+      expect(h.calls).toHaveLength(0);
+    },
+  },
+];
+
 const ROWS: readonly Row[] = [
   ...LOOP_GUARD_ROWS,
   ...PERMANENT_ROWS,
@@ -2487,5 +3543,14 @@ const ROWS: readonly Row[] = [
 describe('the outcome matrix of a plugin reaction’s delivery', () => {
   for (const row of ROWS) {
     it(`[${row.owner}, matrix line ${row.line}] ${row.name}`, row.check);
+  }
+});
+
+/** The rows of the second matrix (reactions batch 2, `tmp/chef/briefs/reactions-2-matrix.md`) that COR-2183 owns. */
+const REACTIONS_2_ROWS: readonly Row[] = [...MAX_ATTEMPTS_ROWS, ...CONTEXT_ROWS, ...DRY_RUN_ROWS];
+
+describe('the outcome matrix of dryRun, a reaction’s maxAttempts and the richer context (reactions-2)', () => {
+  for (const row of REACTIONS_2_ROWS) {
+    it(`[${row.owner}, reactions-2 matrix line ${row.line}] ${row.name}`, row.check);
   }
 });

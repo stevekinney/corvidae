@@ -1721,6 +1721,7 @@
     "$.reactions[].configuration|anyOf[0].*",
     "$.reactions[].configuration|anyOf[0].*.*",
     "$.reactions[].description",
+    "$.reactions[].dryRun",
     "$.reactions[].kind",
     "$.reactions[].plugin",
     "$.reactions[].version",

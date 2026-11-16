@@ -21,20 +21,9 @@ import type { ParameterizedAccessHint } from './operation-catalog/types.ts';
 import type { UnarySchemaOperationDefinition } from './operation-registry.ts';
 import { defineOperation } from './operation-registry.ts';
 
+/** A defaulted field is optional on the input side and always present on the output side. */
 function directionalSchema(): z.ZodType {
-  const schema = z.custom<unknown>();
-  Object.defineProperty(schema, '~standard', {
-    configurable: true,
-    value: {
-      version: 1,
-      vendor: 'openrpc-output-direction',
-      jsonSchema: {
-        input: () => ({ type: 'object', properties: { beforeParse: { type: 'string' } } }),
-        output: () => ({ type: 'string' }),
-      },
-    },
-  });
-  return schema;
+  return z.object({ count: z.number().default(0) });
 }
 
 function makeOp(overrides: {
@@ -115,7 +104,7 @@ describe('generateOpenRpcDocument — result, tags, nested shapes', () => {
       throw new Error('expected directional method');
     }
     const result = record(method['result'], 'method result');
-    expect(result).toMatchObject({ schema: { type: 'string' } });
+    expect(result).toMatchObject({ schema: { required: ['count'] } });
   });
 
   it('emits a result ContentDescriptor with name, required, and schema', () => {

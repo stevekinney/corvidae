@@ -5,7 +5,7 @@ import type {
   CatalogOperationTypes,
   ClientOperationTypes,
 } from '../src/client/generated/operation-client.generated.ts';
-import { createCatalogSnapshot } from '../src/server/operation-catalog-snapshot.ts';
+import { createCatalogSnapshot } from '../src/server/weft-catalog-snapshot.ts';
 
 import { generatedSourcesText, snapshotOperation } from './operation-client-test-support.ts';
 describe('schedule update operation generation', () => {

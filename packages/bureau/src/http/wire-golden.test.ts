@@ -9,6 +9,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { VERSION } from '@lostgradient/weft';
+
+import { buildBureau } from './bureau-handler-fixtures.test-support.ts';
+import { createBureauHandler } from './create-bureau-handler.ts';
 import {
   assertGoldenDirectory,
   formatGoldenJson,
@@ -60,6 +64,23 @@ describe('Bureau wire goldens', () => {
         await Bun.file(join(BUREAU_WIRE_GOLDEN_DIRECTORY, name)).text(),
       ) as { info: { version: string } };
       expect(document.info.version, name).toBe(GOLDEN_VERSION);
+    }
+  });
+
+  it("titles each document Bureau and versions it at Weft's version, which the goldens mask", async () => {
+    const bureau = await buildBureau();
+    try {
+      const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
+      for (const path of ['/openapi.json', '/openrpc.json', '/asyncapi.json']) {
+        const response = await handler(new Request(`http://localhost${path}`));
+        const document = (await response.json()) as {
+          info: { title: string; version: string };
+        };
+        expect(document.info.title, path).toBe('Bureau');
+        expect(document.info.version, path).toBe(VERSION);
+      }
+    } finally {
+      await bureau.dispose();
     }
   });
 

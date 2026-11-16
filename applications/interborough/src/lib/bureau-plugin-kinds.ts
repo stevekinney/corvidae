@@ -24,6 +24,8 @@ const hookActionKindSchema = z.object({
   kind: z.string(),
   description: z.string(),
   version: z.string(),
+  /** Whether `hooks.test` can call the kind's `dryRun`: a hook of a kind without one cannot be tested. */
+  dryRun: z.boolean(),
   configuration: configurationSchema,
 });
 

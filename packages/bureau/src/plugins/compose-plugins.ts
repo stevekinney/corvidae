@@ -57,6 +57,7 @@ import {
   createAgentContributions,
   guardrailContractFault,
 } from '../agent-contributions';
+import { REACTION_MAXIMUM_ATTEMPTS, isReactionMaxAttempts } from '../hooks/hook-types';
 import { HOST_PANEL_OPERATIONS } from '../http/host-panel-operations';
 import { resolveDiagnosticSink } from '../serialization';
 import { createToolApprovalHooks } from '../tool-approval';
@@ -68,7 +69,11 @@ import {
   type VersionedCatalog,
 } from '../versioned-catalog';
 import { createClaims, type Claim, type Claims } from './plugin-claims';
-import { eventPayloadContent, isEventPayload } from './plugin-event-payload';
+import {
+  EVENT_PAYLOAD_NODE_BUDGET,
+  isEventPayload,
+  judgeEventPayload,
+} from './plugin-event-payload';
 import { lateHostApi, type PluginRecord } from './plugin-registry';
 import {
   createPluginSecretGate,
@@ -76,6 +81,7 @@ import {
   type PluginSecretGate,
 } from './plugin-secret-gate';
 import { pluginTool } from './plugin-tools';
+import { assertTriggerKindShape } from '../trigger-kind-shape';
 import type {
   BureauPluginEntry,
   BureauPluginSettings,
@@ -423,7 +429,12 @@ function planOf(
     tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);
-  for (const kind of contributions.triggers ?? []) contribute('trigger', kind.name);
+  for (const kind of contributions.triggers ?? []) {
+    // A malformed kind is the plugin's `setup-failed`, not a listener that retries forever, a 503
+    // for every request, or an error that stops the Bureau (COR-2168).
+    assertTriggerKindShape(formatToolId({ namespace: plugin, name: kind.name }), kind);
+    contribute('trigger', kind.name);
+  }
   for (const validator of contributions.validators ?? []) {
     contribute('validator', validator.identity.name);
   }
@@ -1078,6 +1089,14 @@ async function setUp(
     // A reaction's timeout builds its delivery's lease, so a value that is not a positive safe
     // integer skips this plugin here, and never reaches `createHooks`, which would fail the Bureau.
     for (const reaction of returned.reactions ?? []) {
+      // The same for its own attempt limit (COR-2183): an integer from 1 to 20, and not a value the
+      // host would refuse in `createHooks`, which fails the Bureau.
+      const { maxAttempts } = reaction;
+      if (maxAttempts !== undefined && !isReactionMaxAttempts(maxAttempts)) {
+        throw new Error(
+          `The reaction "${reaction.name}" has a maxAttempts of ${String(maxAttempts)}, which is not an integer from 1 to ${REACTION_MAXIMUM_ATTEMPTS}`,
+        );
+      }
       const { timeoutMilliseconds } = reaction;
       if (
         timeoutMilliseconds !== undefined &&
@@ -1221,13 +1240,21 @@ function eventPayloadProblems(
   redact: (message: string) => string,
 ): PluginProblem[] {
   try {
-    return (contributions.events ?? []).flatMap((declaration) =>
-      eventPayloadContent(declaration.payload).map((field): PluginProblem => ({
+    return (contributions.events ?? []).flatMap((declaration) => {
+      const { fields, budgetExhausted } = judgeEventPayload(declaration.payload);
+      return fields.map((field): PluginProblem => ({
         code: 'event-payload-content',
         event: declaration.name,
         field,
-      })),
-    );
+        ...(budgetExhausted
+          ? {
+              message: redact(
+                `the payload is too large to check: the host read ${EVENT_PAYLOAD_NODE_BUDGET} schemas and ran out of budget at this field; no content was found there`,
+              ),
+            }
+          : {}),
+      }));
+    });
   } catch (error) {
     // A schema that throws when read (a getter that fails) skips its plugin; it never rejects the host.
     return [

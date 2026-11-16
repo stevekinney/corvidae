@@ -7,6 +7,7 @@ import { generateOpenApiDocument } from './openapi.ts';
 import type { ErasedOperation } from './operation-catalog.ts';
 import { defineOperation } from './operation-registry.ts';
 import { isRecord } from './protocol.test-support.ts';
+import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
 
 function operation(producibleFaults?: readonly FaultCode[]): ErasedOperation {
   const base = defineOperation({
@@ -36,7 +37,10 @@ function responseSchema(response: unknown): unknown {
 
 describe('OpenAPI error responses', () => {
   it('documents the generated canonical REST fault component and audited data fields (#720, #763, #771)', () => {
-    const document = generateOpenApiDocument();
+    const document = generateOpenApiDocument({
+      registry: createLiveOperationRegistry(),
+      restBindings: createLiveRestBindings(),
+    });
     const components = isRecord(document['components']) ? document['components'] : undefined;
     const schemas =
       components && isRecord(components['schemas']) ? components['schemas'] : undefined;

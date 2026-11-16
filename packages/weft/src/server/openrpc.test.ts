@@ -14,7 +14,6 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { VERSION } from '../version.ts';
 import { accessPolicyMetadataExamples } from './access-policy-metadata.test-support.ts';
 import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';
 import { generateOpenRpcDocument } from './openrpc.ts';
@@ -78,8 +77,8 @@ describe('generateOpenRpcDocument — basic shape', () => {
     expect(document['openrpc']).toBe('1.3.2');
     expect(typeof document['info']).toBe('object');
     const info = isRecord(document['info']) ? document['info'] : undefined;
-    expect(info?.['title']).toBeDefined();
-    expect(info?.['version']).toBe(VERSION);
+    expect(info?.['title']).toBe('API');
+    expect(info?.['version']).toBe('0.0.0');
     expect(Array.isArray(document['methods'])).toBe(true);
   });
 

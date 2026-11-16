@@ -18,6 +18,7 @@ import {
   type ComposableOptions,
   composePlugins,
   HOST_HELD_KINDS,
+  REDACTED_SECRET,
   registersKind,
 } from './compose-plugins';
 import { createPluginRegistry } from './plugin-registry';
@@ -434,6 +435,64 @@ describe('composePlugins', () => {
         expect(registered).toEqual(['fine/ping']);
       },
     );
+  });
+
+  describe('a reaction’s maxAttempts and dryRun (COR-2183, reactions-2 matrix line 75)', () => {
+    it.each([0, 21, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '5' as unknown as number])(
+      'skips only the plugin whose reaction sets maxAttempts %p, naming the reaction and the value, and loads the others',
+      async (maxAttempts) => {
+        const { records, options } = await composePlugins<ComposableOptions>({
+          plugins: [
+            pluginEntry('broken', () => ({
+              reactions: [{ ...actionKind('page'), maxAttempts }],
+            })),
+            pluginEntry('fine', () => ({
+              reactions: [{ ...actionKind('ping'), maxAttempts: 5 }],
+            })),
+          ],
+          hooks: {},
+        });
+
+        expect(records.map((record) => record.status)).toEqual(['skipped', 'running']);
+        const [problem] = records[0]?.problems ?? [];
+        expect(problem?.code).toBe('setup-failed');
+        const message = problem?.code === 'setup-failed' ? problem.message : '';
+        expect(message).toContain(`"page"`);
+        expect(message).toContain(String(maxAttempts));
+        const registered = options.hooks?.actionKinds?.map(
+          (registration) => `${registration.plugin}/${registration.kind.name}`,
+        );
+        expect(registered).toEqual(['fine/ping']);
+      },
+    );
+
+    it.each([1, 8, 20])('loads a reaction whose maxAttempts is %p', async (maxAttempts) => {
+      const { records, options } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('fine', () => ({ reactions: [{ ...actionKind('ping'), maxAttempts }] })),
+        ],
+        hooks: {},
+      });
+      expect(records.map((record) => record.status)).toEqual(['running']);
+      expect(options.hooks?.actionKinds?.[0]?.kind.maxAttempts).toBe(maxAttempts);
+    });
+
+    it('hands the host a reaction’s dryRun and its maxAttempts unchanged, and lists whether it has a dryRun', async () => {
+      const dryRun = async () => undefined;
+      const { options } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('fine', () => ({
+            reactions: [{ ...actionKind('ping'), maxAttempts: 4, dryRun }, actionKind('pong')],
+          })),
+        ],
+        hooks: {},
+      });
+      const [ping, pong] = options.hooks?.actionKinds ?? [];
+      expect(ping?.kind.dryRun).toBeDefined();
+      expect(ping?.kind.maxAttempts).toBe(4);
+      expect(pong?.kind.dryRun).toBeUndefined();
+      expect(pong?.kind.maxAttempts).toBeUndefined();
+    });
   });
 
   describe('guardrail families', () => {
@@ -1037,8 +1096,45 @@ describe('composePlugins', () => {
 
       expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
       expect(records[0]?.problems).toEqual([
-        expect.objectContaining({ code: 'event-payload-content', event: 'endless' }),
+        expect.objectContaining({
+          code: 'event-payload-content',
+          event: 'endless',
+          message: expect.stringContaining('ran out of budget'),
+        }),
       ]);
+    });
+
+    it('redacts a secret the plugin was handed from the budget refusal message', async () => {
+      const fresh = (): z.ZodObject =>
+        z.object({
+          get l() {
+            return fresh().optional();
+          },
+          get r() {
+            return fresh().optional();
+          },
+        });
+      const descriptor = definePlugin({
+        name: 'endless',
+        version: '1.0.0',
+        description: 'endless',
+        secrets: ['api-key'],
+        setup: async ({ secrets }) => {
+          await secrets.get('api-key');
+          return { events: [{ name: 'endless', description: 'Never ends.', payload: fresh() }] };
+        },
+      });
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [{ descriptor, source: 'package', location: '@example/endless' }],
+        // The secret is a word of the host's own message, so the message changes only if it is redacted.
+        pluginSecrets: { get: async () => 'budget', watch: () => () => undefined },
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      const [problem] = records[0]?.problems ?? [];
+      expect(problem).toMatchObject({ code: 'event-payload-content', event: 'endless' });
+      expect(JSON.stringify(problem)).not.toContain('budget');
+      expect(JSON.stringify(problem)).toContain(REDACTED_SECRET);
     });
 
     it('accepts a z.enum status and a marked identifier, which a plugin’s payload may hold', async () => {

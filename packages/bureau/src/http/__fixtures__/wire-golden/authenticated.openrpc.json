@@ -342,7 +342,7 @@
     }
   },
   "info": {
-    "title": "Weft Workflow Engine",
+    "title": "Bureau",
     "version": "0.0.0-golden"
   },
   "methods": [
@@ -16353,7 +16353,7 @@
       }
     },
     {
-      "description": "Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret` or `stopped`, and answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.",
+      "description": "Starts the failed `listener` of the workflow `id`’s contributed trigger at once, with its backoff cleared, and answers `{ id, listener }` once the attempt has settled: a listener that fails again is `failed` with its next `retryAt`. It does nothing when the listener is `listening`, `waiting-for-secret`, `stopped` or `ready`, and answers an attempt already in flight instead of starting a second one. A listener whose kind refuses the file’s configuration is parsed again, and stays `failed` with no `retryAt` when it is refused again. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`, as for a file that is not there or for the id of a code workflow, which is not a file. A file that is not a ready file with a contributed trigger kind (a built-in kind, an `invalid` file) is `Unprocessable` with `data.reason` `no-listener`. A ready file with a contributed kind that has no listener because the last change to the files did not apply is `Unavailable` with `data.reason` `workflow-apply-failed`, as a start is, and is retried by the next successful apply.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -16441,12 +16441,13 @@
                   "type": "string"
                 },
                 "state": {
-                  "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, and `stopped` for a paused file.",
+                  "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
                   "enum": [
                     "listening",
                     "waiting-for-secret",
                     "failed",
-                    "stopped"
+                    "stopped",
+                    "ready"
                   ],
                   "type": "string"
                 }
@@ -16494,7 +16495,7 @@
       }
     },
     {
-      "description": "Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed` or `stopped`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
+      "description": "Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its `listener` (what a contributed trigger is doing: `state` is `listening`, `waiting-for-secret`, `failed`, `stopped` or `ready`, with `since`, `code` when it failed, and `lastFiredAt`; `null` for a built-in trigger kind, a file that is not `ready`, and a listener whose first start has not settled), its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -16609,12 +16610,13 @@
                       "type": "string"
                     },
                     "state": {
-                      "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, and `stopped` for a paused file.",
+                      "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
                       "enum": [
                         "listening",
                         "waiting-for-secret",
                         "failed",
-                        "stopped"
+                        "stopped",
+                        "ready"
                       ],
                       "type": "string"
                     }
@@ -17028,12 +17030,13 @@
                                 "type": "string"
                               },
                               "state": {
-                                "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, and `stopped` for a paused file.",
+                                "description": "`listening` once the kind’s `start` resolved, `waiting-for-secret` while a secret the plugin declares is missing, `failed` when `start` threw or the kind refused the configuration, `stopped` for a paused file, and `ready` for a kind that only receives requests and has no listener to start.",
                                 "enum": [
                                   "listening",
                                   "waiting-for-secret",
                                   "failed",
-                                  "stopped"
+                                  "stopped",
+                                  "ready"
                                 ],
                                 "type": "string"
                               }
@@ -21559,6 +21562,10 @@
                     "description": "What the action does.",
                     "type": "string"
                   },
+                  "dryRun": {
+                    "description": "Whether the kind has a `dryRun`, which `bureau.hooks.test` calls instead of the action: a hook of a kind without one cannot be tested.",
+                    "type": "boolean"
+                  },
                   "kind": {
                     "description": "The kind’s name within the plugin: the `kind` of the action.",
                     "type": "string"
@@ -21577,6 +21584,7 @@
                   "kind",
                   "description",
                   "version",
+                  "dryRun",
                   "configuration"
                 ],
                 "type": "object"
@@ -35153,7 +35161,7 @@
       }
     },
     {
-      "description": "Sends one signed `hook.test` delivery to a webhook hook (any other action is `InvalidParams`, because a test would start a real run or write a real notification), with one attempt and no retry, and answers its record once the attempt has ended: the request, the response status and a bounded excerpt of the response, or the error. It works on a disabled hook and sends a fixed message, never an event, so it needs no `bureau.events:observe-all`. A caller tests its own hooks; `bureau.hooks:write` tests any owner’s. A failed delivery is an answer (`status: \"exhausted\"`), not a fault.",
+      "description": "Sends one `hook.test` delivery to a webhook hook (signed), or to a plugin hook whose reaction has a `dryRun` (`bureau.plugins.contributions` says which; the reaction’s `dryRun` is called with the usual context, and its `run` never is). Any other action, and a plugin hook whose reaction has no `dryRun`, is not registered or needs setup, is `InvalidParams`, because a test would start a real run, write a real notification or run a real plugin action. It makes one attempt with no retry, and answers its record once the attempt has ended: the request, the response status and a bounded excerpt of the response, or the error. It works on a disabled hook and sends a fixed message, never an event, so it needs no `bureau.events:observe-all`. A caller tests its own hooks; `bureau.hooks:write` tests any owner’s. A failed delivery is an answer (`status: \"exhausted\"`), not a fault.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"

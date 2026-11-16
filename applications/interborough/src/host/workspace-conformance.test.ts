@@ -275,9 +275,30 @@ test('two authenticated workspaces share definition names without sharing privat
   expect(engine.children.every((entry) => entry.workspaceClass === 'deployment-operator')).toBe(
     true,
   );
+  // A route with an admission is not checked against the workspace's membership: a trigger delivery
+  // (COR-2169) has no member to name, its trigger authenticates it, and it is witnessed below.
   const deploymentRoutes = aRoutes.filter(
-    (entry) => entry.resourceClass === 'deployment-operator' && !entry.delegated,
+    (entry) =>
+      entry.resourceClass === 'deployment-operator' &&
+      !entry.delegated &&
+      entry.admission === undefined,
   );
+  const admitted = aRoutes.filter((entry) => entry.admission !== undefined);
+  expect(admitted.map((entry) => `${entry.key} ${entry.admission}`).toSorted()).toEqual([
+    'GET /host/oauth/callback/:id durable-oauth-callback',
+    'POST /triggers/:workflow trigger-receive',
+  ]);
+  // The trigger route answers every actor, and no actor's credential or workspace changes what it
+  // answers: no workspace session reaches the workflow, and an unknown identifier is a 404.
+  for (const actor of ['alice', 'bob', 'admin', 'grantee', 'foreign', 'removed']) {
+    const response = await fetch(new URL('/triggers/fixture-resource', a.host.url), {
+      method: 'POST',
+      headers: { 'x-api-key': actor },
+      body: '{}',
+    });
+    expect(response.status, actor).toBe(404);
+    expect(await response.text()).toBe('');
+  }
   expect(deploymentRoutes.length).toBeGreaterThan(0);
   const deploymentWitnesses = new Set<string>();
   for (const entry of deploymentRoutes) {
@@ -487,6 +508,10 @@ test('two authenticated workspaces share definition names without sharing privat
       `host:${key}`,
       'static shell or asset response excludes seeded private task data',
     );
+  hostProjectionConformance.set(
+    'host:POST /triggers/:workflow',
+    'six actors reach the same trigger answer: no workspace session is read, and the trigger authenticates the sender',
+  );
   hostProjectionConformance.set(
     'host:* /bureau/*',
     'delegated Bureau operations and mounts have separate producer witnesses',

@@ -13,7 +13,7 @@ import type {
   CatalogOperationSnapshot,
   CatalogSnapshot,
 } from '../src/server/operation-catalog-snapshot.ts';
-import { createCatalogSnapshot } from '../src/server/operation-catalog-snapshot.ts';
+import { createCatalogSnapshot } from '../src/server/weft-catalog-snapshot.ts';
 
 import { renderAliasDeclarations, selectAliases } from './operation-client-aliases.ts';
 import {

@@ -232,6 +232,11 @@ export type PluginProblem =
       readonly event: string;
       /** The dotted path of the field, `*` for an object that accepts any other key. */
       readonly field: string;
+      /**
+       * Present only when the host ran out of its schema budget before it finished the payload:
+       * `field` is where the count ran out, and the message says no content was found there.
+       */
+      readonly message?: string;
     }
   | {
       /**
@@ -505,6 +510,11 @@ export interface PluginReactionListing {
   readonly description: string;
   /** The version a delivery pins: the kind's own, else its plugin's. */
   readonly version: string;
+  /**
+   * Whether the kind has a `dryRun` (COR-2183), which `hooks.test` calls instead of `run`: a hook of
+   * a kind without one cannot be tested.
+   */
+  readonly dryRun: boolean;
   /** The kind's configuration schema as JSON Schema, or `null` when it cannot be written as one. */
   readonly configuration: Readonly<Record<string, unknown>> | null;
 }

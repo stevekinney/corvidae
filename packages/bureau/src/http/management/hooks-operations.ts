@@ -976,7 +976,7 @@ export const hooksTestOperation = defineOperation<
   mcpExposable: false,
   summary: 'Send a test delivery',
   description:
-    'Sends one signed `hook.test` delivery to a webhook hook (any other action is `InvalidParams`, because a test would start a real run or write a real notification), with one attempt and no retry, and answers its record once the attempt has ended: the request, the response status and a bounded excerpt of the response, or the error. It works on a disabled hook and sends a fixed message, never an event, so it needs no `bureau.events:observe-all`. A caller tests its own hooks; `bureau.hooks:write` tests any owner’s. A failed delivery is an answer (`status: "exhausted"`), not a fault.',
+    'Sends one `hook.test` delivery to a webhook hook (signed), or to a plugin hook whose reaction has a `dryRun` (`bureau.plugins.contributions` says which; the reaction’s `dryRun` is called with the usual context, and its `run` never is). Any other action, and a plugin hook whose reaction has no `dryRun`, is not registered or needs setup, is `InvalidParams`, because a test would start a real run, write a real notification or run a real plugin action. It makes one attempt with no retry, and answers its record once the attempt has ended: the request, the response status and a bounded excerpt of the response, or the error. It works on a disabled hook and sends a fixed message, never an event, so it needs no `bureau.events:observe-all`. A caller tests its own hooks; `bureau.hooks:write` tests any owner’s. A failed delivery is an answer (`status: "exhausted"`), not a fault.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: idInput,
