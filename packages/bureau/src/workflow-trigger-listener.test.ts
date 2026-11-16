@@ -59,6 +59,10 @@ async function failedWorkflows(harness: WorkflowBureauHarness): Promise<string[]
   return (problems ?? []).map((problem) => (problem as { workflow: string }).workflow);
 }
 
+/** Whether the catalog lists workflow `id`: what `retryTrigger` reads first. */
+const catalogLists = (harness: WorkflowBureauHarness, id: string) =>
+  harness.bureau.workflows?.list().some((entry) => entry.id === id) === true;
+
 /** What `workflows.get` says the listener of workflow `id` is doing. */
 async function listenerOf(harness: WorkflowBureauHarness, id: string) {
   const detail = await harness.bureau.workflows?.get(id);
@@ -245,11 +249,17 @@ describe('the listener of a contributed trigger, through a Bureau', () => {
 
     it('waits for a file queued behind another file’s slow start, instead of answering that it has no listener', async () => {
       const { plugin, harness } = await onManualTimers();
+      // The hold comes first: a scan the file watcher starts between the writes can apply
+      // `aa-held` too, and it must find the hold already in place.
+      const release = plugin.hold('hold');
       await harness.put('aa-held.json', watching('aa-held', 'hold'));
       await harness.put('bb-late.json', watching('bb-late', 'late'));
-      const release = plugin.hold('hold');
       const applying = harness.bureau.workflows?.refresh();
       await waitUntil(() => plugin.startCounts.get('hold') === 1, { message: 'the held start' });
+      // The start of `aa-held` may come from a scan that ran before `bb-late` was written.
+      await waitUntil(() => catalogLists(harness, 'bb-late'), {
+        message: 'the catalog to list bb-late',
+      });
       expect(plugin.startCounts.get('late')).toBeUndefined();
 
       const retrying = harness.bureau.workflows?.retryTrigger('bb-late');
@@ -258,6 +268,31 @@ describe('the listener of a contributed trigger, through a Bureau', () => {
         outcome: 'retried',
         listener: { state: 'listening' },
       });
+      await applying;
+      expect(plugin.startCounts.get('late')).toBe(1);
+    });
+
+    it('waits for a file queued behind a start that a scan between the two writes began', async () => {
+      const { plugin, harness } = await onManualTimers();
+      const release = plugin.hold('hold');
+      await harness.put('aa-held.json', watching('aa-held', 'hold'));
+      // Stands in for the file watcher's scan that lands between the two writes.
+      const watcherApply = harness.bureau.workflows?.refresh();
+      await waitUntil(() => plugin.startCounts.get('hold') === 1, { message: 'the held start' });
+      await harness.put('bb-late.json', watching('bb-late', 'late'));
+      const applying = harness.bureau.workflows?.refresh();
+      await waitUntil(() => catalogLists(harness, 'bb-late'), {
+        message: 'the catalog to list bb-late',
+      });
+      expect(plugin.startCounts.get('late')).toBeUndefined();
+
+      const retrying = harness.bureau.workflows?.retryTrigger('bb-late');
+      release();
+      expect(await retrying).toMatchObject({
+        outcome: 'retried',
+        listener: { state: 'listening' },
+      });
+      await watcherApply;
       await applying;
       expect(plugin.startCounts.get('late')).toBe(1);
     });

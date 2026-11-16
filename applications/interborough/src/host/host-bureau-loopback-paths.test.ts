@@ -73,6 +73,27 @@ function run(host: Host, threadId: string) {
   });
 }
 
+/**
+ * The CLI's `chat --thread <id> --cursor <n>` (`runStream` in cli-chat.ts): a GET of the thread's
+ * `run` path that accepts an event stream and carries the cursor as `Last-Event-ID`. The thread's
+ * run has finished, so the stream is one event, which this reads.
+ */
+async function reattach(host: Host, threadId: string, cursor = '0') {
+  const answer = await send(host, `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/run`, {
+    headers: { accept: 'text/event-stream', 'Last-Event-ID': cursor },
+  });
+  const data = answer.text
+    .split('\n')
+    .find((line) => line.startsWith('data: '))
+    ?.slice('data: '.length);
+  const event = (data === undefined ? {} : JSON.parse(data)) as {
+    type?: string;
+    code?: string;
+    message?: string;
+  };
+  return { ...answer, event };
+}
+
 describe('a thread whose id holds a slash, on loopback', () => {
   test('is created, read and reattached through the paths the page and the CLI build', async () => {
     const host = await start();
@@ -89,30 +110,35 @@ describe('a thread whose id holds a slash, on loopback', () => {
       expect(read.status, `read ${threadId}`).toBe(200);
       expect(JSON.parse(read.text).threadId).toBe(threadId);
 
-      // The CLI's `chat --thread <id> --cursor <n>` in cli-chat.ts.
-      const reattached = await send(
-        host,
-        `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/run`,
-        { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' },
-      );
+      const reattached = await reattach(host, threadId);
       expect(reattached.refused, `reattach ${threadId}`).toBe(false);
+      expect(reattached.status, `reattach ${threadId}`).toBe(200);
+      expect(reattached.event.code, `reattach ${threadId}`).toBe('RUN_NOT_FOUND');
     }
   });
 
-  test('reads and reattaches as the thread with no slash does: the same status for each', async () => {
+  test('reads and reattaches as the thread with no slash does: the same status and event for each', async () => {
     const host = await start();
     await run(host, 'standup');
     await run(host, 'team/standup');
-    for (const suffix of ['messages', 'run']) {
-      const init: RequestInit =
-        suffix === 'run'
-          ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }
-          : {};
-      const control = await send(host, `/bureau/ag-ui/threads/standup/${suffix}`, init);
-      const slashed = await send(host, `/bureau/ag-ui/threads/team%2Fstandup/${suffix}`, init);
-      expect(slashed.refused).toBe(false);
-      expect(slashed.status).toBe(control.status);
-    }
+
+    const control = await send(host, '/bureau/ag-ui/threads/standup/messages');
+    const slashed = await send(host, '/bureau/ag-ui/threads/team%2Fstandup/messages');
+    expect(slashed.refused).toBe(false);
+    expect(slashed.status).toBe(control.status);
+
+    const controlReattached = await reattach(host, 'standup');
+    const slashedReattached = await reattach(host, 'team/standup');
+    expect(slashedReattached.refused).toBe(false);
+    expect(slashedReattached.status).toBe(controlReattached.status);
+    // Each thread's run has finished, so each reattach is answered with the same event, naming
+    // its own thread: the slashed id reached the Bureau whole.
+    expect(slashedReattached.event).toMatchObject({
+      type: controlReattached.event.type,
+      code: controlReattached.event.code,
+      message: 'Thread "team/standup" has no run to attach to',
+    });
+    expect(controlReattached.event.message).toBe('Thread "standup" has no run to attach to');
   });
 });
 
