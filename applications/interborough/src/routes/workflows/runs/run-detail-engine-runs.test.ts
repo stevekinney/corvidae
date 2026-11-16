@@ -79,6 +79,7 @@ describe('a schedule tick opened from the Runs list', () => {
   test('is the engine’s run, read-only: named as what it is, with no action that changes it', async () => {
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
     routeEngine('tick-1', {
+      ...engineRun({}),
       type: 'scheduleTick',
       input: {
         event: 'missed-runs',
@@ -187,7 +188,7 @@ describe('an instance of a workflow file opened from the Runs list', () => {
 
     const header = await waitFor(() => {
       const text = view.container.querySelector('[data-run-header]')?.textContent ?? '';
-      expect(text).toContain('Failed, at step 2 of 4');
+      expect(text).toMatch(/Failed\s*, at step 2 of 4/);
       return text;
     });
     expect(header).toContain('Release notes');

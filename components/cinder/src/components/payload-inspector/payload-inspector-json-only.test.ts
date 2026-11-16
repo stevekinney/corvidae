@@ -17,7 +17,13 @@ const INPUT = { question: 'Where is order 4472?', maximumSteps: 8, runId: 'run-7
 
 describe('the fields only the JSON view shows (jsonOnly)', () => {
   test('leave the Fields view with the others, and end it with a muted "1 more in JSON" line', () => {
-    const view = render(PayloadInspector, { value: INPUT, label: 'Input', jsonOnly: ['runId'] });
+    // A bare payload is always a list of one label and value per row.
+    const view = render(PayloadInspector, {
+      value: INPUT,
+      label: 'Input',
+      bare: true,
+      jsonOnly: ['runId'],
+    });
 
     const terms = [...view.container.querySelectorAll('dt')].map((term) =>
       term.textContent?.trim(),
