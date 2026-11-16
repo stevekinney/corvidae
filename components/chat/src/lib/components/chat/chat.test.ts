@@ -408,7 +408,8 @@ describe('Chat — scrollFadeVisible', () => {
 
   test('the approval reminder stands one --cinder-space-3 gap clear of the row under it', async () => {
     const drawerPath = new URL('./container/chat-approval-drawer.svelte', import.meta.url);
-    const source = (await Bun.file(drawerPath).text()).replace(/\s+/g, ' ');
+    const text = await Bun.file(drawerPath).text();
+    const source = text.replace(/\s+/g, ' ');
     expect(source).toContain(
       ':global(.chat-approval-drawer) { margin-block: var(--cinder-space-1) var(--cinder-space-3); }',
     );
@@ -416,7 +417,8 @@ describe('Chat — scrollFadeVisible', () => {
 
   test('the mask fades an edge only while content lies past it, and never in default mode', async () => {
     const chatSveltePath = new URL('./container/chat.svelte', import.meta.url);
-    const source = (await Bun.file(chatSveltePath).text()).replace(/\s+/g, ' ');
+    const text = await Bun.file(chatSveltePath).text();
+    const source = text.replace(/\s+/g, ' ');
     expect(source).toMatch(
       /\.chat-container\[data-surface-mode='default'\] \.chat-timeline\.cinder-_scroll-fade \{ --_cinder-scroll-fade-color: var\(--_cinder-chat-shared-surface\)/,
     );
