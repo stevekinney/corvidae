@@ -12,7 +12,8 @@ declare const bureau: Bureau;
 
 // The default `Bureau`, whose agent names are plain strings, is what a host hands a plugin. A
 // `Bureau` typed with literal agent names narrows `agentName` and so is not a `PluginHost`.
-export const hostApi: PluginHost = bureau;
+// `publish` is the one call Bureau does not carry: it is bound to the plugin that makes it.
+export const hostApi: Omit<PluginHost, 'publish'> = bureau;
 
 // A host whose `goals.create` requires a field `PluginGoalRequest` lacks is not a `PluginHost`.
 declare const strictGoals: Omit<PluginHost, 'goals'> & {

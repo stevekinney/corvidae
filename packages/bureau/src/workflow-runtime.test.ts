@@ -1002,6 +1002,110 @@ describe('a contributed trigger that fires while the Bureau closes (COR-1874)', 
   });
 });
 
+describe('the Trigger block an agent step shows for a contributed trigger (COR-2162)', () => {
+  it('shows the version the kind runs at and the idempotency key, and records them on the run', async () => {
+    const w = await world();
+    const ticker = createTickerController();
+    await w.put('pipeline', {
+      trigger: { kind: 'x:ticker', channel: 'alerts' },
+      steps: [{ kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'Write' } }],
+    });
+    const { runtime } = await w.boot({
+      contributions: createWorkflowContributions(
+        // The kind's own version is not its plugin's, so the block can tell them apart.
+        contributionCatalog({
+          activityVersion: '1',
+          ticker,
+          triggerVersion: '4',
+          triggerSourceVersion: '9',
+        }),
+      ),
+    });
+    await runtime.workflows.refresh();
+
+    const outcome = await ticker.fire({ issue: 'COR-7' }, { idempotencyKey: 'delivery-1' });
+    expect(outcome.outcome).toBe('started');
+    await waitUntil(() => w.requests.length === 1, { message: 'the agent step to run' });
+
+    const message = w.requests[0]?.message ?? '';
+    expect(message).toContain('"version": "4"');
+    expect(message).toContain('"idempotencyKey": "delivery-1"');
+    expect(message).toContain('"origin": {');
+    expect(message).toContain('"workflowId": "pipeline"');
+    expect(message).not.toContain('workspaceAuthority');
+    const runId = outcome.outcome === 'started' ? outcome.runId : '';
+    const detail = await runtime.workflows.getRun(runId);
+    expect(detail?.trigger).toEqual({
+      kind: 'x:ticker',
+      version: '4',
+      payload: { issue: 'COR-7' },
+      idempotencyKey: 'delivery-1',
+      origin: { kind: 'trigger', plugin: 'x', workflowId: 'pipeline' },
+    });
+  });
+});
+
+describe('the origin of a run a contributed trigger started (COR-2163)', () => {
+  const trigger = (overrides: Record<string, unknown>) => ({
+    steps: [{ kind: 'activity', handler: 'x:y', input: 'hello' }],
+    ...overrides,
+  });
+
+  /** One run each by a trigger, a signal and a manual start. */
+  async function threeRuns() {
+    const w = await world();
+    const ticker = createTickerController();
+    await w.put('fired', trigger({ trigger: { kind: 'x:ticker', channel: 'alerts' } }));
+    await w.put('signalled', trigger({ trigger: { kind: 'signal', name: 'go' } }));
+    await w.put('manual', trigger({ trigger: { kind: 'manual' } }));
+    const { engine, runtime } = await w.boot({
+      contributions: createWorkflowContributions(
+        contributionCatalog({ activityVersion: '1', ticker }),
+      ),
+    });
+    await runtime.workflows.refresh();
+    const outcome = await ticker.fire({ issue: 'COR-8' });
+    const fired = outcome.outcome === 'started' ? outcome.runId : '';
+    await runtime.workflows.signal('go', null);
+    await runtime.workflows.start('manual', { owner: 'anonymous:local' });
+    return { engine, runtime, fired };
+  }
+
+  it('carries the origin on the run and the tag origin:trigger, named for the plugin and the file', async () => {
+    const { engine, runtime, fired } = await threeRuns();
+
+    const origin = { kind: 'trigger', plugin: 'x', workflowId: 'fired' } as const;
+    const detail = await runtime.workflows.getRun(fired);
+    expect(detail?.trigger).toEqual({
+      kind: 'x:ticker',
+      version: '1',
+      payload: { issue: 'COR-8' },
+      origin,
+    });
+    expect(detail?.origin).toEqual(origin);
+    const summary = await engine.get(fired);
+    expect(summary?.tags).toEqual(['origin:trigger']);
+  });
+
+  it('is on exactly the trigger-started run of a trigger, a signal and a manual start', async () => {
+    const { engine, runtime } = await threeRuns();
+
+    const page = await runtime.workflows.listRuns({ limit: 100, offset: 0 });
+    const originOf = (workflow: string) =>
+      page.runs.filter((run) => run.workflow === workflow).map((run) => run.origin);
+    expect(originOf('fired')).toEqual([{ kind: 'trigger', plugin: 'x', workflowId: 'fired' }]);
+    expect(page.runs).toHaveLength(3);
+    for (const workflow of ['signalled', 'manual']) {
+      expect(originOf(workflow).map((origin) => origin?.kind ?? null)).not.toContain('trigger');
+    }
+
+    // A workflow file's run is not a task: the tag is on the engine's run, never on the list.
+    const tagged = await engine.list({ tags: ['origin:trigger'], limit: 100 });
+    expect(tagged.items.map((item) => item.type)).toEqual(['fired']);
+    for (const run of page.runs) expect(Object.keys(run)).not.toContain('tags');
+  });
+});
+
 describe('the version a manual start reports (COR-1927)', () => {
   it('filters ownership before reading origin state and preserves the page order', async () => {
     const w = await world();

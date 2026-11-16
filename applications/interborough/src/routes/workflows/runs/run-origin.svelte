@@ -86,6 +86,8 @@
     {@render link(origin.href)} ({TASK_COPY.workflow})
   {:else if origin.kind === 'system'}
     {STARTED_BY_LABELS.system}
+  {:else if origin.kind === 'trigger'}
+    {STARTED_BY_LABELS.trigger}
   {:else}
     {TASK_COPY.originUnrecorded}
   {/if}

@@ -574,6 +574,7 @@ export function lateHostApi(plugin: string): {
         list: async (filter) => host().schedules.list(filter),
       },
       goals: { create: async (request) => host().goals.create(request) },
+      publish: async (name, payload) => host().publish(name, payload),
     },
     bind: (given) => {
       bound = given;

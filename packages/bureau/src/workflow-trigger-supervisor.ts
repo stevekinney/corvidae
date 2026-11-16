@@ -11,7 +11,7 @@
  * @module workflow-trigger-supervisor
  */
 
-import type { PluginTrigger } from '@lostgradient/interborough-plugin';
+import type { PluginTrigger, PluginTriggerOutcome } from '@lostgradient/interborough-plugin';
 import type { Storage } from '@lostgradient/storage';
 
 import type { VersionedCatalogEntry } from './versioned-catalog';
@@ -36,13 +36,32 @@ export interface WorkflowTriggerSupervisor {
   close(): Promise<void>;
 }
 
+/** One fire of a listener that is still running, as the supervisor hands it to the runtime. */
+export interface TriggerFireRequest {
+  /** The workflow file the trigger starts. */
+  readonly workflowId: string;
+  /** The contributed kind, `plugin:name`. */
+  readonly kind: string;
+  /** The kind's own version, else its plugin's, as of when this listener started. */
+  readonly version: string;
+  /** What the trigger gave `fire`; the caller still owns it. */
+  readonly payload: unknown;
+  /**
+   * What the trigger gave as `options.idempotencyKey`: absent when it gave none, and otherwise
+   * whatever the plugin passed, for the runtime to check, since the supervisor does not.
+   */
+  readonly idempotencyKey?: unknown;
+}
+
 export interface WorkflowTriggerSupervisorOptions {
   /**
-   * Starts an instance of workflow `id` for the trigger `kind`; called by a trigger's `fire`, which
-   * may come before its `start` resolves. It must never wait for a reconcile: a reconcile awaits a
-   * trigger's `stop`, and a `stop` may wait for the trigger's fires in flight.
+   * Starts an instance of the request's workflow for its trigger kind, or says why it did not;
+   * called by a trigger's `fire`, which may come before its `start` resolves. It must never wait
+   * for a reconcile: a reconcile awaits a trigger's `stop`, and a `stop` may wait for the trigger's
+   * fires in flight. The supervisor answers `skipped` itself, without calling it, for a listener it
+   * stopped or after it closed.
    */
-  readonly fire: (id: string, kind: string, payload: unknown) => Promise<void>;
+  readonly fire: (request: TriggerFireRequest) => Promise<PluginTriggerOutcome>;
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
    * The store the plugins' own storage is a prefix of. A trigger receives the part of it under
@@ -57,6 +76,11 @@ interface RunningTrigger {
   readonly controller: AbortController;
   /** What `start` resolved with; absent when `start` failed, so the same trigger is not retried. */
   stop?: (() => void | Promise<void>) | undefined;
+}
+
+/** A fire that started nothing, and why. */
+function skipped(reason: 'stopped' | 'paused' | 'closed'): PluginTriggerOutcome {
+  return { outcome: 'skipped', reason };
 }
 
 /** Build a supervisor. */
@@ -83,6 +107,9 @@ export function createWorkflowTriggerSupervisor(
     const entry: RunningTrigger = { key, controller };
     running.set(id, entry);
     const { kind, trigger } = desired;
+    // Captured now, as part of the listener that is starting: a fire records the version of the
+    // listener it came from, however the catalog moves afterwards.
+    const version = kind.version;
     const { kind: _kind, ...rest } = trigger;
     const parsed = kind.value.configuration.safeParse(rest);
     if (!parsed.success) {
@@ -108,8 +135,22 @@ export function createWorkflowTriggerSupervisor(
         workflowId: id,
         storage,
         signal: controller.signal,
-        fire: (payload) =>
-          controller.signal.aborted ? Promise.resolve() : options.fire(id, kind.name, payload),
+        fire: (payload, fireOptions) => {
+          // The plugin owns `fireOptions`: read the key once, before anything awaits. Closed is
+          // checked before aborted, because `close` aborts every listener and that is not a stop.
+          const idempotencyKey: unknown = fireOptions?.idempotencyKey;
+          if (closed) return Promise.resolve<PluginTriggerOutcome>(skipped('closed'));
+          if (controller.signal.aborted) {
+            return Promise.resolve<PluginTriggerOutcome>(skipped('stopped'));
+          }
+          return options.fire({
+            workflowId: id,
+            kind: kind.name,
+            version,
+            payload,
+            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+          });
+        },
       });
     } catch (error) {
       options.diagnose(

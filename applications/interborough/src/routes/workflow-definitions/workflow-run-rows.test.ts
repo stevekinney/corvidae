@@ -61,6 +61,20 @@ describe('one instance as a row', () => {
     expect(row.agentName).toBe('journey-author');
   });
 
+  test('names a trigger-started instance by its origin, and says a trigger started it on line two', () => {
+    const row = workflowRunRow(
+      summary({ origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } }),
+      CONTEXT,
+    );
+    expect(row.origin).toEqual({ kind: 'trigger' });
+    const line = runLineTwo(row, {
+      now: 1_760_000_010_000,
+      zone: 'America/Chicago',
+      agentLabel: (name) => name,
+    });
+    expect(line.startsWith(TASK_COPY.list.kinds.trigger)).toBe(true);
+  });
+
   test('has no duration while it is still going', () => {
     expect(workflowRunRow(summary({ status: 'running' }), CONTEXT).durationMs).toBeNull();
   });
