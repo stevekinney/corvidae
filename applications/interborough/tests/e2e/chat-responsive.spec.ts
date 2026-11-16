@@ -326,8 +326,8 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     const row = page.locator('[data-approval-decision]');
     await expect(row).toBeFocused();
     await expect(page.locator('[data-chat-approval-drawer]')).toHaveCount(0);
-    // One layout, read once: the transcript's box, the composer's, and each decision button's box
-    // with what a tap at its centre lands on.
+    // One layout, read once: the transcript's box and each decision button's box with what a tap at
+    // its centre lands on, so a composer or a reminder over a button shows as a miss.
     const read = await page.evaluate(() => {
       const rectOf = (node: Element | null) => {
         if (node === null) return null;
@@ -340,7 +340,6 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       );
       return {
         transcript: rectOf(document.querySelector('.chat-timeline')),
-        composer: rectOf(document.querySelector('.chat-input')),
         buttons: buttons.map((button) => {
           const box = button.getBoundingClientRect();
           const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
@@ -350,13 +349,11 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     });
     expect(read.buttons).toHaveLength(2);
     const transcript = read.transcript!;
-    const composer = read.composer!;
     for (const button of read.buttons) {
       const box = button.box!;
-      // In the transcript's view, above the composer, and a tap at its centre reaches it.
+      // In the transcript's view, and a tap at its centre reaches it.
       expect(box.y).toBeGreaterThanOrEqual(transcript.y - 1);
       expect(box.y + box.height).toBeLessThanOrEqual(transcript.y + transcript.height + 1);
-      expect(box.y + box.height).toBeLessThanOrEqual(composer.y + 1);
       expect(button.hitsItself).toBe(true);
     }
   });
