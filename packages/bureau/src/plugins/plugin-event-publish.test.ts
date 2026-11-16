@@ -202,9 +202,13 @@ describe('host.publish', () => {
       watch: () => () => undefined,
     };
     const { bureau, host } = await start(secrets);
-    await waitUntil(async () => (await listedPlugins(bureau))[0]?.status === 'running', {
-      message: 'the plugin to run',
-    });
+    await waitUntil(
+      async () => {
+        const [listing] = await listedPlugins(bureau);
+        return listing?.status === 'running';
+      },
+      { message: 'the plugin to run' },
+    );
 
     await host.publish('greeted', { greetingId: 'greeting-1', [KEY]: 'secret-value' });
 
@@ -236,9 +240,8 @@ describe('host.publish', () => {
     const replay = await replayed(bureau, first.cursor);
 
     expect(replay.map(({ kind }) => kind)).toEqual(['demo:greeted', 'run.registered']);
-    expect(replay.map(({ sequence }) => sequence)).toEqual(
-      [...replay.map(({ sequence }) => sequence)].sort((a, b) => a - b),
-    );
+    const sequences = replay.map(({ sequence }) => sequence);
+    expect(sequences).toEqual(sequences.toSorted((a, b) => a - b));
     expect(replay[1]?.payload['runId']).toBe('second');
   });
 
@@ -249,15 +252,15 @@ describe('host.publish', () => {
     const afterPlugin = published(await recorded(bureau))[0]!;
     coreEvent(bureau, 'second');
 
-    expect((await replayed(bureau, afterPlugin.cursor)).map(({ kind }) => kind)).toEqual([
-      'run.registered',
-    ]);
+    const afterReplay = await replayed(bureau, afterPlugin.cursor);
+    expect(afterReplay.map(({ kind }) => kind)).toEqual(['run.registered']);
     const subscription = bureau.internals.eventFeed.feed.subscribe({
       fromCursor: afterPlugin.cursor,
     });
     const reading = readThrough(subscription, 'third');
     coreEvent(bureau, 'third');
-    expect((await reading).map(({ kind }) => kind)).toEqual(['run.registered', 'run.registered']);
+    const live = await reading;
+    expect(live.map(({ kind }) => kind)).toEqual(['run.registered', 'run.registered']);
   });
 
   it('records two concurrent publishes at distinct positions, in call order, once each (row 7)', async () => {
