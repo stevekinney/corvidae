@@ -1,15 +1,8 @@
 import { z } from 'zod';
 
-import { WeftError } from '../../core/weft-error.ts';
-
-import {
-  WorkflowAlreadyExistsError,
-  WorkflowNotFoundError,
-  WorkflowNotRegisteredError,
-} from '../../core/engine/errors.ts';
-import { resolveServerEnvironment } from '../../runtime/environment-configuration.ts';
 import type { FlattenedZodIssue, OperationFault, TransportKind } from '../operation-fault.ts';
-import type { TransportAvailability, UnknownKeyPolicy } from './types.ts';
+import type { FaultPolicy, TransportAvailability, UnknownKeyPolicy } from './types.ts';
+import { UNIVERSAL_FAULT_DEFAULTS } from './universal-faults.ts';
 
 export const SUPPORTED_TRANSPORTS: ReadonlyArray<TransportKind> = [
   'http-rest',
@@ -94,32 +87,26 @@ export function flattenZodIssues(
   }));
 }
 
-const UNIVERSAL_PRODUCIBLE_FAULTS: ReadonlySet<string> = new Set([
-  'Unauthorized',
-  'Forbidden',
-  'InvalidParams',
-  'EngineFailure',
-]);
-
 /**
  * Translate a thrown value from `invoke` into a transport-neutral
  * OperationFault.
  *
- * Typed engine errors (`WorkflowAlreadyExistsError`,
- * `WorkflowNotFoundError`, `WorkflowNotRegisteredError`) are matched first
- * so the fault classification is robust against future error-message
- * rewording. Plain `Error` instances fall through to the message-pattern
- * heuristics, which exist as a last-resort generic catch-all.
+ * A thrown `OperationFault` is checked against the operation's declared
+ * faults. Any other value goes to the host's `policy.classifyError` first (the
+ * host's own typed errors, matched by class so the classification is robust
+ * against error-message rewording), then to the message-pattern heuristics,
+ * which exist as a last-resort generic catch-all.
  *
  * **Producible-faults enforcement.** When `operation` is supplied (the
  * dispatch pipeline always supplies it), any direct `OperationFault`
  * throw whose `code` is NOT in the operation's `producibleFaults` ∪
- * universal-defaults set is logged as a declaration violation:
+ * universal-defaults set is a declaration violation. `policy.strict` decides
+ * what happens, and it is strict when the host supplies nothing:
  *
- *   - Test/dev (`NODE_ENV !== 'production'` OR `WEFT_STRICT_FAULTS=1`):
- *     console.error so the developer notices and either declares the
- *     fault or migrates the throw to `raiseFault`.
- *   - Production: silent log. The original fault is preserved on the
+ *   - Strict: the fault is replaced by an `EngineFailure` that carries the
+ *     diagnostic, so the developer notices and either declares the fault or
+ *     migrates the throw to `raiseFault`.
+ *   - Not strict: a `console.warn`. The original fault is preserved on the
  *     wire to keep clients' actionable semantics intact.
  *
  * This makes the producibleFaults declarations runtime-load-bearing for
@@ -129,9 +116,10 @@ const UNIVERSAL_PRODUCIBLE_FAULTS: ReadonlySet<string> = new Set([
 export function classifyEngineError(
   error: unknown,
   operation?: { name: string; producibleFaults?: ReadonlyArray<string> },
+  policy?: FaultPolicy,
 ): OperationFault {
   if (isOperationFault(error)) {
-    const violation = findUndeclaredFault(operation, error.code);
+    const violation = findUndeclaredFault(operation, error.code, policy);
     if (violation !== null) {
       // Strict mode caught an undeclared fault. Surface as
       // EngineFailure with the diagnostic message so the test runner
@@ -145,27 +133,8 @@ export function classifyEngineError(
     }
     return error;
   }
-  if (error instanceof WorkflowAlreadyExistsError) {
-    return {
-      code: 'Conflict',
-      message: 'conflict',
-      data: { reason: 'resource already exists' },
-    };
-  }
-  if (error instanceof WorkflowNotRegisteredError) {
-    return {
-      code: 'InvalidParams',
-      message: error.message,
-      data: { issues: [] },
-    };
-  }
-  if (error instanceof WorkflowNotFoundError) {
-    return {
-      code: 'NotFound',
-      message: 'not found',
-      data: { resource: 'workflow' },
-    };
-  }
+  const hostFault = policy?.classifyError?.(error);
+  if (hostFault !== undefined) return hostFault;
   if (error instanceof Error) {
     return classifyErrorMessage(error);
   }
@@ -179,34 +148,42 @@ export function classifyEngineError(
  * `EngineFailure` so test failures point at the declaration mismatch
  * rather than silently passing through.
  */
-class UndeclaredFaultError extends WeftError<'UndeclaredFaultError'> {
+export class UndeclaredFaultError extends Error {
+  /** Stable machine-readable discriminant; equals the class name, as a `WeftError`'s does. */
+  readonly code = 'UndeclaredFaultError';
   readonly operationName: string;
   readonly faultCode: string;
 
   constructor(operationName: string, faultCode: string) {
     super(
-      'UndeclaredFaultError',
       `[weft] Operation "${operationName}" raised undeclared fault "${faultCode}". ` +
         "Add it to the operation's `producibleFaults` array or migrate the throw to " +
         '`raiseFault(operation, fault)`.',
     );
+    this.name = this.code;
     this.operationName = operationName;
     this.faultCode = faultCode;
   }
 }
 
+/** Strict unless the host said otherwise: a host that supplies nothing gets strict mode. */
+function isStrictFaultPolicy(policy: FaultPolicy | undefined): boolean {
+  const strict = policy?.strict;
+  if (strict === undefined) return true;
+  return typeof strict === 'function' ? strict() : strict;
+}
+
 function findUndeclaredFault(
   operation: { name: string; producibleFaults?: ReadonlyArray<string> } | undefined,
   code: string,
+  policy: FaultPolicy | undefined,
 ): UndeclaredFaultError | null {
   if (operation === undefined) return null;
-  if (UNIVERSAL_PRODUCIBLE_FAULTS.has(code)) return null;
+  if ((UNIVERSAL_FAULT_DEFAULTS as ReadonlySet<string>).has(code)) return null;
   const declared = operation.producibleFaults;
   if (declared !== undefined && declared.includes(code)) return null;
 
-  const environment = resolveServerEnvironment();
-  const isStrict = environment.weftStrictFaults || environment.nodeEnv !== 'production';
-  if (isStrict) {
+  if (isStrictFaultPolicy(policy)) {
     // Strict mode: hand the diagnostic back so the regression is observable
     // through the test framework's normal failure path, with its message
     // intact instead of swallowed as a bare `EngineFailure`.

@@ -15,6 +15,7 @@ import {
   matchesQuery,
   matchesWriter,
   memoryTimes,
+  quarantineWhy,
   refusalWords,
   rowLine,
   writerName,
@@ -301,6 +302,79 @@ describe('matchesQuery', () => {
       expect(matchesQuery(text, query)).toBe(
         highlightSegments(text, query).some((segment) => segment.match),
       );
+    }
+  });
+});
+
+describe('quarantineWhy', () => {
+  const detail = MEMORY_COPY.govern.release.detail;
+  const how = detail.how;
+  const known = { detector: 'memory-poisoning', category: 'memory-poisoning' } as const;
+  const at = '2026-11-02T09:00:00.000Z';
+
+  test('words what is known, what is not, and what is missing, for the checks and for its owner', () => {
+    const table: ReadonlyArray<readonly [string, Memory['quarantine'], string]> = [
+      ['no ledger entry', undefined, how.unknown],
+      ['its owner', { at, by: 'owner', detector: null, category: null }, how.owner],
+      [
+        'a known check at admission',
+        { at, by: 'admission', ...known },
+        how.admission(detail.detectors['memory-poisoning'], detail.categories['memory-poisoning']),
+      ],
+      [
+        'a known check at recall',
+        { at, by: 'recall', ...known },
+        how.recall(detail.detectors['memory-poisoning'], detail.categories['memory-poisoning']),
+      ],
+      [
+        'a known check that failed',
+        { at, by: 'admission', detector: 'memory-poisoning', category: 'detector-failure' },
+        how.admission(detail.detectors['memory-poisoning'], detail.categories['detector-failure']),
+      ],
+      [
+        'an unknown check at admission',
+        { at, by: 'admission', detector: 'contributed:acme', category: 'memory-poisoning' },
+        how.admissionUnnamed,
+      ],
+      [
+        'an unknown category at recall',
+        { at, by: 'recall', detector: 'memory-poisoning', category: 'something-new' },
+        how.recallUnnamed,
+      ],
+      [
+        'a missing diagnostic at admission',
+        { at, by: 'admission', detector: null, category: null },
+        how.admissionUnnamed,
+      ],
+      [
+        'a missing category at recall',
+        { at, by: 'recall', detector: 'memory-poisoning', category: null },
+        how.recallUnnamed,
+      ],
+      [
+        'an inherited key as a name',
+        { at, by: 'admission', detector: 'toString', category: 'constructor' },
+        how.admissionUnnamed,
+      ],
+    ];
+    for (const [name, quarantine, expected] of table) {
+      expect([name, quarantineWhy(quarantine)]).toEqual([name, expected]);
+    }
+  });
+
+  test('never puts an identifier in quotes or leaves an empty one', () => {
+    for (const by of ['admission', 'recall'] as const) {
+      for (const quarantine of [
+        { at, by, ...known },
+        { at, by, detector: 'x-unknown', category: 'y-unknown' },
+        { at, by, detector: null, category: null },
+        { at, by, detector: '', category: '' },
+      ]) {
+        const text = quarantineWhy(quarantine);
+        expect(text).not.toMatch(/[“”]/);
+        expect(text).not.toMatch(/memory-poisoning|x-unknown|y-unknown/);
+        expect(text).not.toMatch(/ {2}| as \./);
+      }
     }
   });
 });
