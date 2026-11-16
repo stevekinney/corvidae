@@ -24,7 +24,7 @@ import {
   type TextValueStoreCondition,
 } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { z } from 'zod';
 
 import { projectBureauEvent } from './bureau-event-feed';
@@ -66,10 +66,15 @@ const RECORD = triggerLeaseKey('a');
 const at = (seconds: number): string =>
   new Date(Date.parse(ORIGIN) + seconds * 1000).toISOString();
 
-/** A promise a test settles by hand. */
+/**
+ * A promise a test settles by hand. Every gate is opened in cleanup, before the peers close, so a
+ * row that fails before it opens one fails on its assertion instead of hanging the close.
+ */
 function gate(): { promise: Promise<void>; open: () => void } {
   const { promise, resolve } = Promise.withResolvers<void>();
-  return { promise, open: () => resolve() };
+  const open = () => resolve();
+  cleanups.push(open);
+  return { promise, open };
 }
 
 /** What a peer's store does before it passes a call on: a test may hold it, or throw. */
@@ -424,21 +429,36 @@ function secretStore() {
       values.add(SECRET_KEY);
       for (const listener of watchers) listener();
     },
+    remove: () => {
+      values.delete(SECRET_KEY);
+      for (const listener of watchers) listener();
+    },
   };
 }
 
-/** A wrapper that gates the kind on secret `x-token`, as a plugin that declares it does. */
-async function secretGated(): Promise<(kind: PluginTrigger) => PluginTrigger> {
+/**
+ * A wrapper that gates the kind on secret `x-token`, as a plugin that declares it does, with the
+ * process's own secret store to save it to and remove it from.
+ */
+async function secretGated(): Promise<{
+  readonly wrap: (kind: PluginTrigger) => PluginTrigger;
+  readonly save: () => void;
+  readonly remove: () => void;
+}> {
   const secrets = secretStore();
   const secretGate = await createPluginSecretGate('x', [SECRET_KEY], secrets.reader);
   cleanups.push(secretGate.watch());
-  return (trigger) =>
-    gatedContributions(
-      { triggers: [trigger] },
-      secretGate,
-      (name) => `x:${name}`,
-      () => undefined,
-    ).triggers[0]!;
+  return {
+    wrap: (trigger) =>
+      gatedContributions(
+        { triggers: [trigger] },
+        secretGate,
+        (name) => `x:${name}`,
+        () => undefined,
+      ).triggers[0]!,
+    save: secrets.save,
+    remove: secrets.remove,
+  };
 }
 
 /**
@@ -559,6 +579,8 @@ const rows: readonly LeaseRow[] = [
       await shared.kv.set(RECORD, p.own);
       await p.reconcile({ a: {} });
       expect(p.status()?.state).toBe('listening');
+      // The acquire read the record, found its own value, and wrote nothing.
+      expect(p.reads).toEqual([RECORD]);
       expect(p.writes).toEqual([]);
       expect(p.starts).toHaveLength(1);
     },
@@ -944,9 +966,12 @@ const rows: readonly LeaseRow[] = [
       const p = await peer(shared);
       await p.reconcile({ a: {} });
       const writes = p.writes.length;
+      const reads = p.reads.length;
       p.passTime(5_000);
       await p.tick();
       expect(p.status()).toEqual(status('listening', ORIGIN));
+      // The pass read the record once, found it names this process, and wrote nothing.
+      expect(p.reads.length - reads).toBe(1);
       expect(p.writes).toHaveLength(writes);
       expect(p.stops).toEqual([]);
     },
@@ -1501,15 +1526,22 @@ const rows: readonly LeaseRow[] = [
       const standby = await peer(shared);
       await holder.reconcile({ a: {} });
       await standby.reconcile({ a: {} });
-      holder.onStart = boom;
-      await holder.reconcile({ a: { account: 'edited' } });
-      await standby.reconcile({ a: { account: 'edited' } });
+      // The holder's own start fails after it settled (as a gated plugin's does): it is failed and
+      // gives its record back.
+      reportListener(holder.starts[0]!, { state: 'failed', error: new Error('gone') });
+      await waitUntil(async () => (await shared.kv.get(RECORD)) === null, {
+        message: 'the failed holder to give its record back',
+      });
       expect(holder.status()?.state).toBe('failed');
+      expect(standby.status()?.state).toBe('standby');
+      // The peer's next tick takes it.
       await standby.tick();
       expect(standby.status()?.state).toBe('listening');
-      holder.onStart = () => undefined;
+      expect(standby.starts).toHaveLength(1);
+      // The failed process's timer attempt then finds a live holder.
       await holder.advance(1_000);
       expect(holder.status()?.state).toBe('standby');
+      expect(holder.starts).toHaveLength(1);
       expect(await shared.kv.get(RECORD)).toBe(standby.own);
     },
   },
@@ -1628,14 +1660,35 @@ const rows: readonly LeaseRow[] = [
       expect(standby.reads).toHaveLength(reads);
       expect(standby.writes).toEqual([]);
       expect(await shared.kv.get(RECORD)).toBe(holder.own);
+
+      // A standby that holds a fenced stop: its close waits for that stop, and writes no record.
+      const other = sharedStore();
+      const fenced = await peer(other);
+      const taker = await peer(other);
+      await fenced.reconcile({ a: {} });
+      await takenBy(other.kv, taker);
+      const stopping = gate();
+      fenced.onStop = () => stopping.promise;
+      await fenced.starts[0]!.fire({});
+      expect(fenced.status()?.state).toBe('standby');
+      const writes = fenced.writes.length;
+      let closed = false;
+      const closing = fenced.close().then(() => void (closed = true));
+      await fenced.settled();
+      expect(closed).toBe(false);
+      stopping.open();
+      await closing;
+      expect(fenced.writes).toHaveLength(writes);
+      expect(await other.kv.get(RECORD)).toBe(taker.own);
     },
   },
   {
     row: 'M59: a gated holder waiting for its secret keeps the record, peers stay standby, and a fenced gated fire reaches nothing',
     run: async () => {
       const shared = sharedStore();
-      const holder = await peer(shared, { wrap: await secretGated() });
-      const standby = await peer(shared, { wrap: await secretGated() });
+      const holderSecrets = await secretGated();
+      const holder = await peer(shared, { wrap: holderSecrets.wrap });
+      const standby = await peer(shared, { wrap: (await secretGated()).wrap });
       await holder.reconcile({ a: {} });
       await standby.reconcile({ a: {} });
       expect(holder.status()?.state).toBe('waiting-for-secret');
@@ -1643,6 +1696,22 @@ const rows: readonly LeaseRow[] = [
       await holder.tick();
       expect(holder.status()?.state).toBe('waiting-for-secret');
       expect(await shared.kv.get(RECORD)).toBe(holder.own);
+
+      // The secret is saved: the plugin's own listener starts, and its fires reach the fence
+      // through the host's fire.
+      holderSecrets.save();
+      await waitUntil(() => holder.status()?.state === 'listening', {
+        message: 'the gated listener to start',
+      });
+      await takenBy(shared.kv, standby);
+      expect(await holder.starts[0]!.fire({})).toEqual({ outcome: 'skipped', reason: 'stopped' });
+      expect(holder.requests).toEqual([]);
+      expect(holder.status()?.state).toBe('standby');
+      // Once fenced, the gate reports nothing: removing the secret does not move the state.
+      holderSecrets.remove();
+      await quietFor(50);
+      await holder.settled();
+      expect(holder.status()?.state).toBe('standby');
     },
   },
   {
