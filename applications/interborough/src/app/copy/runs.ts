@@ -244,6 +244,8 @@ export const RUN_DETAIL_COPY = {
     agentRun: 'Chat with an agent',
     goalRun: 'Work on a goal',
     durableHeartbeatTick: 'Agent heartbeat',
+    /** The schedule tick, the run that records what the scheduler did (COR-2009). */
+    scheduleTick: 'Schedule tick',
   },
   /** Said after the identifier of a workflow Interborough runs itself. */
   builtIn: '(built in)',

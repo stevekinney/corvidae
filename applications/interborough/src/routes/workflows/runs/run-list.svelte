@@ -47,9 +47,10 @@
   import { agentLabel as agentLabelOf } from '../../../lib/agent-label.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
-  import { isRunning, listAllTasks } from '../../../lib/bureau-tasks.ts';
+  import { listAllTasks } from '../../../lib/bureau-tasks.ts';
   import { followLinks } from '../../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../../lib/format/clock.ts';
+  import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../../home/home-clock.svelte.ts';
@@ -63,6 +64,7 @@
     buildRunRows,
     filterLabelOf,
     filterRunRows,
+    isRunRowRunning,
     parseRunFilter,
     RUN_PAGE_SIZE,
     RUN_SEGMENTS,
@@ -164,6 +166,7 @@
   const others = $derived<RunFilter>({
     ...(filter.agent === undefined ? {} : { agent: filter.agent }),
     ...(filter.startedBy === undefined ? {} : { startedBy: filter.startedBy }),
+    ...(filter.workflow === undefined ? {} : { workflow: filter.workflow }),
     ...(filter.search === undefined ? {} : { search: filter.search }),
   });
   const unsegmented = $derived(filterRunRows(everyRun, others, agentLabel));
@@ -192,7 +195,7 @@
   // list is going, so its duration ticks in place, and each minute otherwise.
   const zone = viewerTimeZone();
   let now = $state(Date.now());
-  const going = $derived(rows.some((row) => isRunning(row)));
+  const going = $derived(rows.some((row) => isRunRowRunning(row, now)));
   $effect(() => {
     const period = going ? RUNNING_CLOCK_MILLISECONDS : HOME_CLOCK_MILLISECONDS;
     // poll-reason: clock
@@ -210,6 +213,17 @@
         ...(filter.agent === undefined ? [] : [filter.agent]),
       ]),
     ].toSorted(),
+  );
+
+  // The workflows to filter by are the ones the runs ran on (row 52d), each named as a person
+  // reads it, so "Chat with an agent" and "Release notes" are choices and `agentRun` is not.
+  const workflowTypes = $derived(
+    [
+      ...new Set([
+        ...everyRun.flatMap((row) => (row.workflowType == null ? [] : [row.workflowType])),
+        ...(filter.workflow === undefined ? [] : [filter.workflow]),
+      ]),
+    ].toSorted((left, right) => workflowTypeName(left).localeCompare(workflowTypeName(right))),
   );
 
   const segments = $derived<FilterSegment[]>(
@@ -233,6 +247,13 @@
     },
     {
       type: 'choice',
+      key: 'workflow',
+      label: TASK_COPY.workflowLabel,
+      multiple: false,
+      options: workflowTypes.map((value) => ({ value, label: workflowTypeName(value) })),
+    },
+    {
+      type: 'choice',
       key: 'agent',
       label: TASK_COPY.agentLabel,
       multiple: false,
@@ -243,6 +264,9 @@
     ...(filter.startedBy === undefined
       ? []
       : [{ key: 'startedBy', value: filter.startedBy, label: TASK_COPY.startedByLabel }]),
+    ...(filter.workflow === undefined
+      ? []
+      : [{ key: 'workflow', value: filter.workflow, label: TASK_COPY.workflowLabel }]),
     ...(filter.agent === undefined
       ? []
       : [{ key: 'agent', value: filter.agent, label: TASK_COPY.agentLabel }]),

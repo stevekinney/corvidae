@@ -210,6 +210,46 @@ describe('the Started by and Agent chips', () => {
     await waitFor(() => expect(rowIds(view.container)).toHaveLength(3));
   });
 
+  test('Workflow offers the workflows the runs ran, by name, and the one chosen narrows the list (row 52d)', async () => {
+    const notes = taskFixture({
+      id: 'notes-run',
+      contextId: 'notes-run',
+      kind: 'catalog',
+      agentName: null,
+      status: 'completed',
+      origin: { kind: 'api' },
+      workflow: {
+        type: 'release-notes',
+        scheduleId: null,
+        scheduleName: null,
+        tick: null,
+        steps: { total: 4, at: 4 },
+        awaitingSignal: null,
+      },
+    });
+    const view = open('/runs', { tasks: [notes] });
+    await waitFor(() => expect(rowIds(view.container)).toHaveLength(4));
+    await fireEvent.click(view.getByRole('button', { name: TASK_COPY.workflowLabel }));
+    flushSync();
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-filter-bar__options')).not.toBeNull(),
+    );
+    const radios = [
+      ...document.querySelectorAll<HTMLInputElement>(
+        '.cinder-filter-bar__options input[type="radio"]',
+      ),
+    ];
+    // The goal's attempt and the ordinary runs are workflows too, each named as a person reads it.
+    expect(radios.map((radio) => radio.value)).toEqual(['release-notes', 'goalRun']);
+
+    await fireEvent.click(radios[0]!);
+    await waitFor(() => expect(router.search.get('workflow')).toBe('release-notes'));
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['notes-run']));
+    expect(
+      view.getByRole('button', { name: 'Remove filter: Workflow: Release notes' }),
+    ).not.toBeNull();
+  });
+
   test('a long agent name is cut on the chip, and the address keeps the whole name (COR-1862)', async () => {
     const LONG = `responsive-agent-${'a'.repeat(47)}`;
     const view = open(`/runs?agent=${LONG}`);

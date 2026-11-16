@@ -12,11 +12,15 @@ import {
   goalFixture,
   taskFixture,
 } from '../../../lib/bureau-fixtures.test-support.ts';
+import { isRunning } from '../../../lib/bureau-tasks.ts';
 import type { MissedRuns } from './missed-runs.ts';
 import {
   buildRunRows,
   durationWords,
+  filterRunRows,
   goalTitle,
+  isRunRowRunning,
+  parseRunFilter,
   RUN_PAGE_SIZE,
   runDayGroup,
   runLineTwo,
@@ -25,6 +29,7 @@ import {
   runSegmentCounts,
   runSegmentOf,
   runStatusWord,
+  serializeRunFilter,
   waitedWords,
   type RunRow,
 } from './run-rows.ts';
@@ -437,5 +442,220 @@ describe('a goal’s name', () => {
     expect(goalTitle('3f2a9c10-1111-4aaa-8bbb-000000000000')).toBe(
       '3f2a9c10-1111-4aaa-8bbb-000000000000',
     );
+  });
+});
+
+/** What the Bureau says of the workflow a task ran on, with nothing recorded unless a test says. */
+function workflowOf(
+  type: string,
+  rest: Partial<NonNullable<RunRow['workflow']>> = {},
+): NonNullable<RunRow['workflow']> {
+  return {
+    type,
+    scheduleId: null,
+    scheduleName: null,
+    tick: null,
+    steps: null,
+    awaitingSignal: null,
+    ...rest,
+  };
+}
+
+describe('the Bureau’s own runs (COR-2423)', () => {
+  test('a schedule tick is "Schedule tick", from Interborough, and says what it logged (rows 09p, 52g, 53k)', () => {
+    const row = onlyRow({
+      tasks: [
+        taskFixture({
+          id: 'schedule-tick:missed-runs:daily-summary:1:2',
+          contextId: 'schedule-tick:missed-runs:daily-summary:1:2',
+          kind: 'catalog',
+          agentName: null,
+          status: 'completed',
+          origin: { kind: 'system' },
+          createdAt: '2026-11-02T09:00:00-06:00',
+          updatedAt: '2026-11-02T09:00:01-06:00',
+          workflow: workflowOf('scheduleTick', {
+            scheduleId: 'daily-summary',
+            scheduleName: 'Daily summary',
+            tick: { event: 'missed-runs', missedRuns: 4, whileStopped: true },
+          }),
+        }),
+      ],
+      goals: [],
+      chats: [],
+    });
+
+    expect(row).toMatchObject({ title: 'Schedule tick', workflowType: 'scheduleTick' });
+    expect(runStatusWord(row)).toBe('Done');
+    expect(runLineTwo(row, context)).toBe(
+      'Internal, Interborough started, logged 4 missed runs, 1 s',
+    );
+  });
+
+  test('a tick of a schedule that came due names the schedule (row 53l)', () => {
+    const row = onlyRow({
+      tasks: [
+        taskFixture({
+          id: 'schedule-tick:came-due:fire-1',
+          kind: 'catalog',
+          agentName: null,
+          status: 'completed',
+          origin: { kind: 'system' },
+          createdAt: '2026-10-29T04:00:00-05:00',
+          updatedAt: '2026-10-29T04:00:01-05:00',
+          workflow: workflowOf('scheduleTick', {
+            scheduleId: 'daily-summary',
+            scheduleName: 'Daily summary',
+            tick: { event: 'came-due', missedRuns: null, whileStopped: false },
+          }),
+        }),
+      ],
+      goals: [],
+      chats: [],
+    });
+    expect(runLineTwo(row, context)).toBe(
+      'Internal, Interborough started, Daily summary came due, 1 s',
+    );
+  });
+
+  test('an instance is named by its workflow and its schedule, and reads "failed at step 2 of 4" (rows 09r, 52i, 52t)', () => {
+    const row = onlyRow({
+      tasks: [
+        taskFixture({
+          id: 'release-notes-run',
+          contextId: 'release-notes-run',
+          kind: 'catalog',
+          agentName: null,
+          status: 'failed',
+          statusMessage: 'GitHub didn’t answer (HTTP 503)',
+          origin: { kind: 'schedule', scheduleId: 'release-notes-digest', fireId: '' },
+          createdAt: '2026-10-30T11:00:00-05:00',
+          updatedAt: '2026-10-30T11:00:03-05:00',
+          workflow: workflowOf('release-notes', {
+            scheduleId: 'release-notes-digest',
+            steps: { total: 4, at: 2 },
+          }),
+        }),
+      ],
+      goals: [],
+      chats: [],
+      scheduleNames: new Map([['release-notes-digest', 'Release notes digest']]),
+    });
+
+    expect(row).toMatchObject({
+      id: 'release-notes-run',
+      title: 'Release notes',
+      workflowType: 'release-notes',
+    });
+    expect(runStatusWord(row)).toBe('Failed');
+    expect(runLineTwo(row, context)).toBe(
+      'Schedule, Release notes digest, failed at step 2 of 4, GitHub didn’t answer (HTTP 503), 3 s',
+    );
+  });
+
+  test('an instance with its own row is not folded into a second "Workflow run" by its steps', () => {
+    const rows = runListRows(
+      buildRunRows({
+        tasks: [
+          taskFixture({
+            id: 'release-notes-run',
+            kind: 'catalog',
+            agentName: null,
+            status: 'working',
+            origin: { kind: 'person', principal: 'p', surface: 'web' },
+            workflow: workflowOf('release-notes', { steps: { total: 4, at: 2 } }),
+          }),
+          taskFixture({
+            id: 'step-2',
+            kind: 'catalog',
+            agentName: 'assistant',
+            status: 'working',
+            origin: { kind: 'parent', parentRunId: 'release-notes-run' },
+          }),
+        ],
+        goals: [],
+        chats: [],
+      }),
+    );
+    expect(rows.map((row) => row.id)).toEqual(['release-notes-run']);
+    expect(rows[0]?.title).toBe('Release notes');
+  });
+
+  test('an instance parked at a signal is Waiting and names the signal, and is not counted as running (row 10h)', () => {
+    const row = onlyRow({
+      tasks: [
+        taskFixture({
+          id: 'release-notes-run',
+          kind: 'catalog',
+          agentName: null,
+          status: 'working',
+          origin: { kind: 'api' },
+          createdAt: '2026-11-02T10:20:00-06:00',
+          updatedAt: '2026-11-02T10:20:01-06:00',
+          workflow: workflowOf('release-notes', {
+            steps: { total: 4, at: 2 },
+            awaitingSignal: 'notes-approved',
+          }),
+        }),
+      ],
+      goals: [],
+      chats: [],
+    });
+    expect(runStatusWord(row, NOW)).toBe('Waiting');
+    expect(runLineTwo(row, context)).toBe('API, step 2 of 4, waiting for signal notes-approved');
+    expect(isRunRowRunning(row, NOW)).toBe(false);
+    expect(isRunning({ status: 'working', workflow: row.workflow ?? undefined })).toBe(false);
+    expect(isRunning({ status: 'working', workflow: workflowOf('agentRun') })).toBe(true);
+  });
+
+  test('a run that asked to be woken is Scheduled, and says when it is due (row 10h)', () => {
+    const row = onlyRow({
+      tasks: [
+        taskFixture({
+          id: 'refund-audit',
+          status: 'working',
+          agentName: 'tool-runner',
+          origin: { kind: 'schedule', scheduleId: 'weekly-refund-audit', fireId: 'f' },
+          createdAt: '2026-11-02T08:00:00-06:00',
+          updatedAt: '2026-11-02T08:00:01-06:00',
+          wakeAt: '2026-11-02T11:00:00-06:00',
+        }),
+      ],
+      goals: [],
+      chats: [],
+    });
+    expect(runStatusWord(row, NOW)).toBe('Scheduled');
+    expect(runLineTwo(row, context)).toContain('Tool runner, due today at 11:00 AM');
+    expect(isRunRowRunning(row, NOW)).toBe(false);
+    // Once the time has passed it is running again.
+    expect(runStatusWord(row, NOW + 3_600_000)).toBe('Running');
+  });
+
+  test('the Workflow filter keeps the runs of one workflow, and rides in the address', () => {
+    const rows = runListRows(
+      buildRunRows({
+        tasks: [
+          taskFixture({ id: 'chat-run', workflow: workflowOf('agentRun') }),
+          taskFixture({
+            id: 'notes-run',
+            kind: 'catalog',
+            agentName: null,
+            origin: { kind: 'api' },
+            workflow: workflowOf('release-notes'),
+          }),
+        ],
+        goals: [goalFixture('goal-1', { attempts: [goalAttemptFixture('attempt-1')] })],
+        chats: [],
+      }),
+    );
+    expect(filterRunRows(rows, { workflow: 'release-notes' }).map((row) => row.id)).toEqual([
+      'notes-run',
+    ]);
+    expect(filterRunRows(rows, { workflow: 'goalRun' }).map((row) => row.id)).toEqual([
+      'attempt-1',
+    ]);
+    const filter = parseRunFilter(new URLSearchParams('workflow=release-notes&status=failed'));
+    expect(filter).toEqual({ status: 'failed', workflow: 'release-notes' });
+    expect(serializeRunFilter(filter)).toBe('status=failed&workflow=release-notes');
   });
 });

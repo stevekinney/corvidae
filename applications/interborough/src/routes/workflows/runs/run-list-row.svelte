@@ -31,7 +31,7 @@
 
   let { row, now, zone, agentLabel, href = undefined }: Props = $props();
 
-  const word = $derived(runStatusWord(row));
+  const word = $derived(runStatusWord(row, now));
   const lineTwo = $derived(runLineTwo(row, { now, zone, agentLabel }));
 </script>
 

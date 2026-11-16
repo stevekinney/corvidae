@@ -93,6 +93,30 @@ export const taskViewSchema = z.object({
    * task ended. Absent from a Bureau that does not report it, which reads as `null`.
    */
   wakeAt: z.string().nullable().optional(),
+  /**
+   * The workflow the task ran on (COR-2423). Absent from a Bureau that does not report it, which
+   * reads as an ordinary run. `type` is `agentRun`, `goalRun`, `durableHeartbeatTick`,
+   * `scheduleTick`, or the identifier of a workflow file for one of its instances; `scheduleId` is
+   * the schedule the run belongs to; `tick` is what a schedule tick recorded; `steps` is how many
+   * steps an instance's workflow has and the one it is at, failed at or finished on (from one); and
+   * `awaitingSignal` is the signal an unfinished instance waits for.
+   */
+  workflow: z
+    .object({
+      type: z.string(),
+      scheduleId: z.string().nullable(),
+      scheduleName: z.string().nullable(),
+      tick: z
+        .object({
+          event: z.enum(['came-due', 'missed-runs']),
+          missedRuns: z.number().nullable(),
+          whileStopped: z.boolean(),
+        })
+        .nullable(),
+      steps: z.object({ total: z.number(), at: z.number().nullable() }).nullable(),
+      awaitingSignal: z.string().nullable(),
+    })
+    .optional(),
 });
 
 /** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
@@ -143,6 +167,8 @@ export type TaskFilter = {
    * the children of every run in its thread in one read.
    */
   readonly parentContextId?: string;
+  /** Only the tasks that ran on this workflow type (COR-2423); a task's `workflow.type` says which. */
+  readonly workflow?: string;
 };
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
@@ -197,7 +223,9 @@ const RUNNING_STATES = ['working', 'submitted'] as const satisfies readonly Task
  * different count. Home's count and its Running now card both go through this, so they cannot
  * disagree.
  */
-export function isRunning(task: Pick<TaskView, 'status'>): boolean {
+export function isRunning(task: Pick<TaskView, 'status' | 'workflow'>): boolean {
+  // An instance parked at an `await-signal` step is waiting, not running (row 10h).
+  if (task.workflow?.awaitingSignal != null) return false;
   return RUNNING_STATES.some((state) => state === task.status);
 }
 
