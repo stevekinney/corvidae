@@ -5,8 +5,12 @@
 
   type Chat = { id: string; title: string };
 
-  type FixtureProps = Partial<Omit<ListDetailProps<Chat>, 'items' | 'key' | 'list' | 'detail'>> & {
+  type FixtureProps = Partial<
+    Omit<ListDetailProps<Chat>, 'items' | 'key' | 'list' | 'detail' | 'listFooter'>
+  > & {
     items?: Chat[];
+    /** Draws a link to the archived chats as the list's footer. */
+    withFooter?: boolean;
   };
 
   const defaultItems: Chat[] = [
@@ -15,10 +19,24 @@
     { id: 'gamma', title: 'Gamma chat' },
   ];
 
-  let { items = defaultItems, selectedKey = $bindable(null), ...rest }: FixtureProps = $props();
+  let {
+    items = defaultItems,
+    selectedKey = $bindable(null),
+    withFooter = false,
+    ...rest
+  }: FixtureProps = $props();
 </script>
 
-<ListDetail {items} key={(chat) => chat.id} label="Chats" bind:selectedKey {...rest}>
+{#snippet archivedLink()}<a href="#archived">Archived chats</a>{/snippet}
+
+<ListDetail
+  {items}
+  key={(chat) => chat.id}
+  label="Chats"
+  bind:selectedKey
+  {...withFooter ? { listFooter: archivedLink } : {}}
+  {...rest}
+>
   {#snippet header({ listToggle })}
     <div class="list-detail-fixture-title-row">
       <h2>Chats</h2>

@@ -57,7 +57,8 @@ export function sourcePermitted(authority: MemoryAuthority, source: MemorySource
   return authority.principal.kind === 'user' || holdsGovernanceAuthority(authority);
 }
 
-function provenanceFor(source: MemorySourceKind): GuardrailProvenance {
+/** The provenance an admission guardrail is told of content from `source`; a release tells it the same. */
+export function provenanceFor(source: MemorySourceKind): GuardrailProvenance {
   return source === 'ingested-document' ? 'ingested-document' : 'user-input';
 }
 

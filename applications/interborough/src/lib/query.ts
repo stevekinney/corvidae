@@ -76,6 +76,10 @@ export const queryKeys = {
     /** Every query of one agent's memory, for the invalidation a forget or a correction needs. */
     all: (agentId: string) => ['memory', agentId] as const,
     list: (agentId: string) => ['memory', agentId, 'list'] as const,
+    /** The agent's quarantined memories, which `bureau.memory.list` answers for `state: 'quarantined'`. */
+    quarantined: (agentId: string) => ['memory', agentId, 'quarantined'] as const,
+    /** Whether the agent has any quarantined memory, which decides if the tab offers their view. */
+    quarantinedAny: (agentId: string) => ['memory', agentId, 'quarantined-any'] as const,
     search: (agentId: string, query: string) => ['memory', agentId, 'search', query] as const,
     detail: (agentId: string, id: string) => ['memory', agentId, 'detail', id] as const,
   },

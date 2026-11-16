@@ -28008,7 +28008,7 @@
       }
     },
     {
-      "description": "Lists what the agent `agentId` remembers of the caller’s chats with it, newest first. Requires `bureau.memory:read`, which grants no one else’s memory: a caller without it is `Forbidden`. A memory that was corrected is not listed, its correction is; a quarantined or revoked one is not either. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A Bureau with no governed memory answers `UnsupportedCapability`.",
+      "description": "Lists what the agent `agentId` remembers of the caller’s chats with it, newest first. Requires `bureau.memory:read`, which grants no one else’s memory: a caller without it is `Forbidden`. A memory that was corrected is not listed, its correction is; a quarantined or revoked one is not either. With `state` `quarantined` it lists instead the caller’s quarantined memories, newest first, each with `quarantine`: `at` (when it was quarantined), `by` (`admission` when the admission checks held it as it was written, `owner` when the caller or an earlier quarantine of what it derives from did, `recall` when a recall guardrail withheld it), and `detector` and `category`, the guardrail that held it and the category it reported, both `null` when `by` is `owner`; `quarantine` is absent when the ledger does not explain the memory. They are the memories `bureau.memory.quarantine.release` can release. Inspecting flagged content is a governance act, so `state` `quarantined` requires `bureau.memory:govern` instead of `bureau.memory:read`: a caller without it is `Forbidden` whether or not it has quarantined memories, and a caller that holds only `bureau.memory:read` still lists what is in use as before. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A Bureau with no governed memory answers `UnsupportedCapability`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -28058,6 +28058,17 @@
             "minimum": 0,
             "type": "integer"
           }
+        },
+        {
+          "name": "state",
+          "required": false,
+          "schema": {
+            "description": "Lists only the memories in this state. Without it the list is what is in use. `quarantined` lists the caller’s quarantined memories, each with why it was quarantined, and needs `bureau.memory:govern`.",
+            "enum": [
+              "quarantined"
+            ],
+            "type": "string"
+          }
         }
       ],
       "result": {
@@ -28096,6 +28107,41 @@
                       "resource"
                     ],
                     "type": "string"
+                  },
+                  "quarantine": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "type": "string"
+                      },
+                      "by": {
+                        "enum": [
+                          "admission",
+                          "owner",
+                          "recall"
+                        ],
+                        "type": "string"
+                      },
+                      "category": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "detector": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "by",
+                      "detector",
+                      "category"
+                    ],
+                    "type": "object"
                   },
                   "sessionId": {
                     "type": [
@@ -28196,6 +28242,13 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "state": {
+            "description": "Lists only the memories in this state. Without it the list is what is in use. `quarantined` lists the caller’s quarantined memories, each with why it was quarantined, and needs `bureau.memory:govern`.",
+            "enum": [
+              "quarantined"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -28670,7 +28723,7 @@
       }
     },
     {
-      "description": "Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as the `kind` given, a `fact` (governed memory’s `semantic` class) by default or a `how-to` (its `procedural` class), either kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and no other operation reaches it), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
+      "description": "Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as the `kind` given, a `fact` (governed memory’s `semantic` class) by default or a `how-to` (its `procedural` class), either kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and only `bureau.memory.quarantine.release`, once it passes the admission checks again, returns it to use), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -29788,7 +29841,7 @@
       }
     },
     {
-      "description": "Takes one memory of the agent `agentId`, and everything derived from it, out of use pending inspection: it is no longer listed, searched, read or recalled, and the quarantine does not block deletion (`bureau.memory.forget` still removes it, and a legal hold still holds it). Bureau offers no way back to active use from here; the memory is kept for an inspector. Quarantining a memory already quarantined is not an error: `changed` is `false`. A blank `reason` is `InvalidParams`. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
+      "description": "Takes one memory of the agent `agentId`, and everything derived from it, out of use pending inspection: it is no longer listed, searched, read or recalled, and the quarantine does not block deletion (`bureau.memory.forget` still removes it, and a legal hold still holds it). `bureau.memory.quarantine.release` is the way back to active use; until then the memory is kept for an inspector. Quarantining a memory already quarantined is not an error: `changed` is `false`. A blank `reason` is `InvalidParams`. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -29902,6 +29955,107 @@
           "agentId",
           "id",
           "reason"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns one quarantined memory of the agent `agentId` to active use after inspection, when the admission checks that apply now pass it: governed memory scans its text again, as the record’s own source and kind of memory, with the guardrails of the policy in force at the time of the call. The memory alone becomes active, is searchable and listed again, and a `memory.released` ledger event is recorded under the caller’s owner; memories derived from it stay quarantined. A memory the checks hold stays quarantined and is `Unprocessable` with `data.reason` `memory-verification-failed`, and the ledger’s `memory.release.rejected` event names the guardrail that held it for an inspector. Other refusals are `Unprocessable` too, with `data.reason` `memory-derived-record` (a memory derived from another record is never released, and releasing the one it came from leaves it quarantined), `memory-deletion-pending` (a deletion has claimed it), `memory-superseded` (a correction replaced it) and `memory-tampered` (its text no longer matches what was admitted); each records `memory.release.rejected`. Releasing a memory that is already active is not an error: `changed` is `false`. A memory that was revoked, another owner’s memory and a missing one are `NotFound`. Releasing again after a memory is quarantined again, whether by `bureau.memory.quarantine` or because recall withheld it, runs the checks again. Requires `bureau.memory:govern`, which no other memory scope implies; a caller without it is `Forbidden`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.memory.quarantine.release",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "agentId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the agent whose memory this addresses.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the memory.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Release one quarantined memory",
+      "tags": [
+        {
+          "name": "Memory"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "agentId": {
+            "description": "The identifier of the agent whose memory this addresses.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The identifier of the memory.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentId",
+          "id"
         ],
         "type": "object"
       }
