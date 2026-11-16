@@ -108,6 +108,7 @@ export {
   validateOperationName,
 } from './server/operation-catalog/types.ts';
 export type {
+  FaultPolicy,
   OperationContext,
   OperationKind,
   StreamOperationInvocation,
@@ -123,6 +124,7 @@ export type {
   SubscriptionSchemaOperationDefinition,
   UnarySchemaOperationDefinition,
 } from './server/operation-registry.ts';
+export { weftFaultPolicy } from './server/weft-fault-policy.ts';
 /*
  * `weft.system.principal`, as a definition a package handler registers beside its
  * own operations. It reads only the request's principal, so it needs no engine; a

@@ -15,7 +15,7 @@ export type { CatalogActivityDefinition } from './activity-adapter.ts';
 export { DISPATCH_ALLOWLIST } from './dispatch-allowlist.ts';
 export { classifyEngineError } from './pipeline-helpers.ts';
 export { executeOperation } from './pipeline.ts';
-export { UNIVERSAL_FAULT_DEFAULTS, raiseFault } from './raise-fault.ts';
+export { raiseFault } from './raise-fault.ts';
 export { createOperationRegistry } from './registry.ts';
 export {
   SubscriptionElementValidationError,
@@ -30,6 +30,7 @@ export {
   type DispatchContext,
   type DispatchResult,
   type ErasedOperation,
+  type FaultPolicy,
   type McpToolMetadata,
   type OperationContext,
   type OperationDefinition,
@@ -47,5 +48,6 @@ export {
   type UnknownKeyDisposition,
   type UnknownKeyPolicy,
 } from './types.ts';
+export { UNIVERSAL_FAULT_DEFAULTS } from './universal-faults.ts';
 export { catalogWorkflow } from './workflow-adapter.ts';
 export type { CatalogWorkflowOptions } from './workflow-adapter.ts';

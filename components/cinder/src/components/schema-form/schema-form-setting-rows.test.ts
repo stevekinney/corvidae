@@ -291,15 +291,33 @@ describe('SchemaForm setting-rows variant', () => {
     expect(screen.getByRole('button', { name: 'Remove Extra folders item 1' })).toBeDefined();
   });
 
-  test('leaves out the key when it reads the same as the label, and keeps it when it does not', async () => {
+  test('leaves out the key when the label is made from it', async () => {
     const view = await mount({
       type: 'object',
-      properties: { models: { type: 'string' }, baseURL: { type: 'string' } },
+      properties: {
+        includeSnippets: { type: 'boolean' },
+        baseURL: { type: 'string' },
+        blank: { type: 'string', title: '   ' },
+      },
     });
-    expect(rowOf(view, 'models').querySelector('.cinder-setting-row__identifier')).toBeNull();
+    for (const key of ['includeSnippets', 'baseURL', 'blank']) {
+      expect(rowOf(view, key).querySelector('.cinder-setting-row__identifier')).toBeNull();
+    }
+    expect(rowOf(view, 'baseURL').textContent).toContain('Base URL');
+  });
+
+  test('shows the key beside a title the schema supplies, unless the title is the key in another case', async () => {
+    const view = await mount({
+      type: 'object',
+      properties: {
+        baseURL: { type: 'string', title: 'Endpoint' },
+        models: { type: 'string', title: 'Models' },
+      },
+    });
     expect(
       rowOf(view, 'baseURL').querySelector('.cinder-setting-row__identifier')?.textContent,
     ).toBe('baseURL');
+    expect(rowOf(view, 'models').querySelector('.cinder-setting-row__identifier')).toBeNull();
   });
 
   test('starts an optional choice with no default unset, can clear it, and reports it as absent', async () => {
