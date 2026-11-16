@@ -39,7 +39,7 @@ export default definePlugin({
   setup: ({ secrets }) => {
     // The key is read when text is embedded, so a key saved after startup is used with no restart.
     let built: { readonly key: string; readonly embed: Embedder } | undefined;
-    const embed: Embedder = async (texts) => {
+    const embed: Embedder = async (texts, options) => {
       const apiKey = await secrets.get(OPENAI_API_KEY_SECRET);
       if (apiKey === undefined || apiKey === '') {
         throw new Error(`The secret "${OPENAI_API_KEY_SECRET}" is not set.`);
@@ -50,7 +50,7 @@ export default definePlugin({
           embed: createOpenAIEmbedder({ apiKey, model: OPENAI_EMBEDDING_MODEL }),
         };
       }
-      return built.embed(texts);
+      return built.embed(texts, options);
     };
     return {
       providers: [{ ...openaiProvider, rows: openAIRows() }],

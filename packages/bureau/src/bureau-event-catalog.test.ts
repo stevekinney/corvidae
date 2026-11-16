@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  type Action,
   AgentScheduledEvent,
   ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
@@ -36,6 +37,7 @@ import {
   ActionEvent,
   AssetLifecycleEvent,
   BureauDisposedEvent,
+  DecisionMadeEvent,
   DefinitionsChangedEvent,
   DiagnosticEvent,
   GoalLifecycleEvent,
@@ -53,8 +55,16 @@ import {
   ReviewRequestedEvent,
   ReviewRevokedEvent,
   ReviewSupersededEvent,
+  BudgetThresholdRecordedEvent,
+  RunAbortedOutcomeEvent,
   RunAbortSettledEvent,
+  RunCompletedOutcomeEvent,
+  RunFailedOutcomeEvent,
+  RunGuardrailRecordedEvent,
   RunRegisteredEvent,
+  RunTripwireRecordedEvent,
+  ToolErrorRecordedEvent,
+  ToolPolicyDeniedRecordedEvent,
   RunRemovedEvent,
   RunSettledEvent,
   ScheduleMissedEvent,
@@ -131,6 +141,22 @@ const ASSET = (kind: ConstructorParameters<typeof AssetLifecycleEvent>[0]) => ({
     }),
 });
 
+/** An action as the run store records one (COR-2096): the event's own fields are its detail. */
+const recordedAction = (type: string, detail: Record<string, unknown>): Action => ({
+  sequence: 1,
+  runId: 'run-1',
+  type,
+  detail: { step: 0, ...detail },
+  timestamp: 1_800_000_000_000,
+});
+const GUARDRAIL_DETAIL = {
+  guardrailName: 'sentinel',
+  category: 'prompt-injection',
+  phase: 'input',
+  confidence: 0.9,
+};
+const TOOL_DETAIL = { toolName: 'refund', toolCallId: 'call-1' };
+
 const SKILL = (
   Skill:
     | typeof SkillLoadedEvent
@@ -162,8 +188,68 @@ const EVENTS: Record<
         timestamp: 1_800_000_000_000,
       }),
   },
+  'run.tripwire': {
+    sparsest: () => new RunTripwireRecordedEvent(recordedAction('run.tripwire', GUARDRAIL_DETAIL)),
+  },
+  'run.guardrail': {
+    sparsest: () =>
+      new RunGuardrailRecordedEvent(
+        recordedAction('run.guardrail', { ...GUARDRAIL_DETAIL, action: 'block' }),
+      ),
+  },
+  'budget.threshold': {
+    sparsest: () =>
+      new BudgetThresholdRecordedEvent(
+        recordedAction('budget.threshold', {
+          threshold: 0.5,
+          currentCost: 0.1,
+          budget: 0.15,
+          model: 'cheap',
+        }),
+      ),
+    fullest: () =>
+      new BudgetThresholdRecordedEvent(
+        recordedAction('budget.threshold', {
+          step: 0,
+          threshold: 0.5,
+          currentCost: 0.1,
+          budget: 0.15,
+          model: 'cheap',
+        }),
+      ),
+  },
+  'tool.policy-denied': {
+    sparsest: () =>
+      new ToolPolicyDeniedRecordedEvent(recordedAction('tool.policy-denied', TOOL_DETAIL)),
+  },
+  'tool.error': {
+    sparsest: () =>
+      new ToolErrorRecordedEvent(
+        recordedAction('tool.error', { ...TOOL_DETAIL, error: new Error('no code') }),
+      ),
+  },
   'run.registered': { sparsest: () => new RunRegisteredEvent('run-1') },
-  'run.settled': { sparsest: () => new RunSettledEvent('run-1') },
+  'run.settled': {
+    sparsest: () => new RunSettledEvent('run-1', 'completed'),
+    fullest: () => new RunSettledEvent('run-1', 'failed', 'tripwire'),
+  },
+  'run.completed': {
+    sparsest: () => new RunCompletedOutcomeEvent('run-1'),
+    fullest: () => new RunCompletedOutcomeEvent('run-1', 'stop-condition'),
+  },
+  'run.error': {
+    sparsest: () => new RunFailedOutcomeEvent('run-1', 'error'),
+    fullest: () =>
+      new RunFailedOutcomeEvent('run-1', 'error', {
+        step: 3,
+        errorCode: 'INTERNAL_ERROR',
+        errorKind: 'generate',
+      }),
+  },
+  'run.aborted': {
+    sparsest: () => new RunAbortedOutcomeEvent('run-1'),
+    fullest: () => new RunAbortedOutcomeEvent('run-1', 'aborted'),
+  },
   'run.removed': { sparsest: () => new RunRemovedEvent('run-1') },
   'run.abort-settled': { sparsest: () => new RunAbortSettledEvent('run-1') },
   'bureau.disposed': { sparsest: () => new BureauDisposedEvent() },
@@ -282,6 +368,18 @@ const EVENTS: Record<
         operationId: 'op-1',
       }),
   },
+  // Sparsest: a refusal no model was reached for. Fullest: every field set.
+  'decision.made': {
+    sparsest: () => new DecisionMadeEvent({ kind: 'boolean', outcome: 'refused' }),
+    fullest: () =>
+      new DecisionMadeEvent({
+        kind: 'choice',
+        outcome: 'answered',
+        row: 'anthropic/claude-haiku-5-5',
+        path: 'native',
+        taskId: 'task-1',
+      }),
+  },
 };
 
 function typeMatches(field: BureauEventField, value: unknown): boolean {
@@ -372,6 +470,7 @@ describe('the Bureau event catalog', () => {
         'asset.expired',
         'asset.upload.purged',
         'asset.upload.started',
+        'decision.made',
         'definitions.changed',
         'diagnostic',
         'memory.governance',
@@ -445,5 +544,140 @@ describe('the Bureau event catalog', () => {
         expect(Object.keys(payload).toSorted()).toEqual([...declared.keys()].toSorted());
       }
     });
+  });
+});
+
+describe('the decision.made kind (COR-2249)', () => {
+  it('is unattributed with no scope, because taskId is optional, and names exactly its fields', () => {
+    expect(BUREAU_EVENT_CATALOG['decision.made']).toMatchObject({
+      kind: 'decision.made',
+      origin: 'unattributed',
+      scopes: [],
+    });
+    expect(
+      BUREAU_EVENT_CATALOG['decision.made'].payload.map((field) => [field.name, field.optional]),
+    ).toEqual([
+      ['kind', false],
+      ['outcome', false],
+      ['row', true],
+      ['path', true],
+      ['taskId', true],
+    ]);
+  });
+
+  it('names no field that could hold the request, the value, the rationale or the schema', () => {
+    const names = BUREAU_EVENT_CATALOG['decision.made'].payload.map((field) => field.name);
+    for (const forbidden of [
+      'question',
+      'context',
+      'value',
+      'rationale',
+      'schema',
+      'schemaSha256',
+    ]) {
+      expect(names).not.toContain(forbidden);
+    }
+  });
+});
+
+describe('the guardrail, budget and tool kinds (COR-2096)', () => {
+  const GUARDRAIL_FIELDS = [
+    ['runId', false],
+    ['step', false],
+    ['guardrailName', false],
+    ['category', false],
+    ['phase', false],
+    ['confidence', false],
+  ];
+  const TOOL_FIELDS = [
+    ['runId', false],
+    ['step', false],
+    ['toolName', false],
+    ['toolCallId', false],
+  ];
+  const FIELDS_BY_KIND = {
+    'run.tripwire': GUARDRAIL_FIELDS,
+    'run.guardrail': [...GUARDRAIL_FIELDS, ['action', false]],
+    'budget.threshold': [
+      ['runId', false],
+      ['step', true],
+      ['threshold', false],
+      ['currentCost', false],
+      ['budget', false],
+      ['model', false],
+    ],
+    'tool.policy-denied': TOOL_FIELDS,
+    'tool.error': [...TOOL_FIELDS, ['errorCode', false]],
+  } as const;
+
+  it.each(Object.entries(FIELDS_BY_KIND))(
+    'lists %s with origin run, every scope and exactly its fields',
+    (kind, fields) => {
+      const entry = BUREAU_EVENT_CATALOG[kind as keyof typeof FIELDS_BY_KIND];
+
+      expect(entry).toMatchObject({
+        kind,
+        origin: 'run',
+        scopes: ['agent', 'workflow', 'schedule'],
+      });
+      expect(entry.payload.map((field) => [field.name, field.optional])).toEqual(
+        fields.map(([name, optional]) => [name, optional]),
+      );
+    },
+  );
+
+  it('names no free text: no payload field is a reason, a message, a detail or an argument list', () => {
+    const forbidden = ['reason', 'message', 'detail', 'arguments', 'input', 'error', 'text'];
+    for (const kind of Object.keys(FIELDS_BY_KIND)) {
+      const names = BUREAU_EVENT_CATALOG[kind as keyof typeof FIELDS_BY_KIND].payload.map(
+        (field) => field.name,
+      );
+      for (const name of forbidden) expect(names).not.toContain(name);
+    }
+  });
+});
+
+describe('the run outcome kinds (COR-2095)', () => {
+  it.each(['run.completed', 'run.error', 'run.aborted'] as const)(
+    'lists %s with origin run, scoped to agent, workflow and schedule',
+    (kind) => {
+      expect(BUREAU_EVENT_CATALOG[kind]).toMatchObject({
+        kind,
+        origin: 'run',
+        scopes: ['agent', 'workflow', 'schedule'],
+      });
+    },
+  );
+
+  it('gives run.error exactly the fields the issue names, in projection order', () => {
+    expect(
+      BUREAU_EVENT_CATALOG['run.error'].payload.map((field) => [field.name, field.optional]),
+    ).toEqual([
+      ['runId', false],
+      ['finishReason', false],
+      ['step', true],
+      ['errorCode', true],
+      ['errorKind', true],
+    ]);
+  });
+
+  it('gives run.settled a status and an optional finishReason', () => {
+    expect(
+      BUREAU_EVENT_CATALOG['run.settled'].payload.map((field) => [field.name, field.optional]),
+    ).toEqual([
+      ['runId', false],
+      ['status', false],
+      ['finishReason', true],
+    ]);
+  });
+
+  it('states that no payload carries error text, and the owner-lost double announcement, in its header', async () => {
+    const source = await Bun.file(new URL('./bureau-event-catalog.ts', import.meta.url)).text();
+    const header = source.slice(0, source.indexOf('*/') + 2);
+
+    expect(header).toContain('no free text, errors included');
+    expect(header).toContain('bureau.tasks.get');
+    expect(header).not.toContain('redactErrorMessage');
+    expect(header).toContain('owner-lost');
   });
 });

@@ -17,6 +17,8 @@
   import JsonEditor from '../json-editor/json-editor.svelte';
   import NumberInput from '../number-input/number-input.svelte';
   import Segment from '../segment/segment.svelte';
+  import SettingRow from '../setting-row/setting-row.svelte';
+  import TagInput from '../tag-input/tag-input.svelte';
   import SegmentedControl from '../segmented-control/segmented-control.svelte';
   import Select from '../select/select.svelte';
   import Textarea from '../textarea/textarea.svelte';
@@ -31,7 +33,9 @@
     getValueAtPath,
     initialValueForField,
     isTemporalStringSchema,
+    modelOptionsForVariant,
     schemaHoldsConcealedField,
+    sentenceCaseLabel,
     isRecord,
     pathId,
     pathKey,
@@ -72,6 +76,16 @@
     'json',
   ]);
 
+  /** Kinds a setting row carries at its inline end; every other kind is drawn full width under the row. */
+  const INLINE_KINDS: ReadonlySet<SchemaFormField['kind']> = new Set([
+    'string',
+    'enum',
+    'boolean',
+    'number',
+    'integer',
+    'tags',
+  ]);
+
   /** Kinds edited by one control that holds many values, so their descendants' issues show on it. */
   const AGGREGATE_KINDS: ReadonlySet<SchemaFormField['kind']> = new Set([
     'enumArray',
@@ -98,6 +112,7 @@
     submitLabel = 'Submit',
     variant = 'default',
     submitVisible = true,
+    disabled = false,
     hosted = false,
     class: customClassName,
     onSubmit,
@@ -113,7 +128,7 @@
   // the schema+value at mount time.
   /** How the schema is read: the `input` variant draws an array of objects as one JSON field. */
   function modelOptions() {
-    return { objectArraysAsJson: variant === 'input' };
+    return modelOptionsForVariant(variant);
   }
 
   function createInitialState() {
@@ -129,11 +144,14 @@
   let formElement = $state<HTMLElement>();
   let serializedInputElement = $state<HTMLInputElement>();
   let submitting = $state(false);
+  /** Whether the controls are held: while a submit validates, or when the host disables the form. */
+  const frozen = $derived(submitting || disabled);
+  const settingRows = $derived(variant === 'setting-rows');
   let allowNativeSubmit = false;
   let activeSubmitId = 0;
 
   const formState = createSchemaFormState(initialModel, initialFormValue, {
-    getSubmitting: () => submitting,
+    getSubmitting: () => frozen,
     onDraftChange: (draft) => onDraftChange?.(draft),
   });
 
@@ -174,7 +192,10 @@
 
   // The panel prints the whole value as text, which a form with a secret field cannot do safely.
   const jsonPanelAllowed = $derived(jsonEditable && !hosted && !schemaHoldsConcealedField(schema));
-  const largeForm = $derived(countLeafFields(model.field) > LARGE_FORM_FIELD_THRESHOLD);
+  // The setting rows keep one shape at any size: no filter, no JSON panel, no reordering, no groups.
+  const largeForm = $derived(
+    !settingRows && countLeafFields(model.field) > LARGE_FORM_FIELD_THRESHOLD,
+  );
   const filterQuery = $derived(filterText.trim().toLowerCase());
 
   const formId = $derived((rest.id as string | undefined) ?? `${generatedId}-form`);
@@ -223,13 +244,37 @@
   function enumValue(field: SchemaFormField): string {
     const current = getValueAtPath(formState.formValue, field.path);
     const option = field.options.find((candidate) => Object.is(candidate.value, current));
+    if (field.clearable) return option?.encodedValue ?? '';
     return option?.encodedValue ?? field.options[0]?.encodedValue ?? '';
+  }
+
+  /** What a setting row calls a field: the schema's title, else its key in sentence case. */
+  function rowLabel(field: SchemaFormField): string {
+    const title = field.schema['title'];
+    return typeof title === 'string' && title.trim().length > 0
+      ? title
+      : sentenceCaseLabel(field.key);
+  }
+
+  /** The words a field is named with: sentence case in the `setting-rows` variant, the model's label otherwise. */
+  function textOf(field: SchemaFormField): string {
+    return settingRows ? rowLabel(field) : field.label;
+  }
+
+  /** A row shows its key beside the label unless the label already reads as the key ("Models" for `models`). */
+  function rowIdentifier(field: SchemaFormField): string | undefined {
+    // "Base URL" beside `baseURL` stays: only a label that is the key itself, in another case, goes.
+    return rowLabel(field).toLowerCase() === field.key.toLowerCase() ? undefined : field.key;
   }
 
   /** Map a field's options to Select's `{ value, label }` shape, keyed on the
    *  encoded (string) value so the native <option> values stay round-trippable. */
   function selectOptions(field: SchemaFormField): Array<{ value: string; label: string }> {
-    return field.options.map((option) => ({ value: option.encodedValue, label: option.label }));
+    const choices = field.options.map((option) => ({
+      value: option.encodedValue,
+      label: option.label,
+    }));
+    return field.clearable ? [{ value: '', label: 'Not set' }, ...choices] : choices;
   }
 
   /** NumberInput binds a `number | null`; the model stores `undefined` for an
@@ -444,7 +489,7 @@
 
 {#snippet groupLegend(field: SchemaFormField, showError = true)}
   <legend class="cinder-schema-form__legend">
-    {field.label}
+    {textOf(field)}
     {#if field.required}
       <span class="cinder-_required-marker" aria-hidden="true"></span>
     {/if}
@@ -466,6 +511,187 @@
   {/if}
 {/snippet}
 
+{#snippet arrayBody(field: SchemaFormField)}
+  <div
+    class="cinder-schema-form__array"
+    data-cinder-empty={formState.arrayRows(field).length === 0 || undefined}
+  >
+    {#each formState.arrayRows(field) as row (row.key)}
+      {@const itemField = field.item
+        ? rebaseFieldPath(field.item, [...field.path, String(row.index)])
+        : undefined}
+      <div class="cinder-schema-form__array-item">
+        {#if itemField}
+          {@render renderField(itemField)}
+        {/if}
+        <button
+          type="button"
+          class="cinder-schema-form__secondary-button"
+          aria-label={`Remove ${textOf(field)} item ${row.index + 1}`}
+          disabled={frozen}
+          onclick={() => formState.removeArrayItem(field, row.index)}
+        >
+          Remove
+        </button>
+      </div>
+    {/each}
+  </div>
+  <button
+    type="button"
+    class="cinder-schema-form__secondary-button"
+    disabled={frozen}
+    onclick={() => formState.addArrayItem(field)}
+  >
+    Add {textOf(field)}
+  </button>
+{/snippet}
+
+<!-- The control of a setting row, which sits at the inline end. Its label, description and error
+     belong to the row, so the control takes none of its own. -->
+{#snippet settingControl(field: SchemaFormField, id: string)}
+  {#if field.kind === 'string'}
+    <Input
+      {id}
+      label={rowLabel(field)}
+      variant="code"
+      type={field.schema['writeOnly'] === true ? 'password' : 'text'}
+      autocomplete={field.schema['writeOnly'] === true ? 'off' : undefined}
+      required={field.required}
+      disabled={frozen}
+      onblur={() => formState.validateTouchedField(field)}
+      bind:value={
+        () => stringValue(field),
+        (next) =>
+          formState.updateValue(
+            field.path,
+            next === '' && isTemporalStringSchema(field.schema) ? blankMomentValue(field) : next,
+          )
+      }
+    />
+  {:else if field.kind === 'enum'}
+    <Select
+      {id}
+      label={rowLabel(field)}
+      labelVisible={false}
+      required={field.required}
+      disabled={frozen}
+      options={selectOptions(field)}
+      value={enumValue(field)}
+      onchange={(event) => formState.updateEnum(field, event)}
+      onblur={() => formState.validateTouchedField(field)}
+    />
+  {:else if field.kind === 'boolean'}
+    <Toggle
+      {id}
+      label={rowLabel(field)}
+      disabled={frozen}
+      bind:checked={() => booleanValue(field), (next) => formState.updateValue(field.path, next)}
+    />
+  {:else if field.kind === 'tags'}
+    <TagInput
+      value={stringArrayValue(field)}
+      placeholder="Add a value"
+      duplicateValuesAllowed={field.schema['uniqueItems'] !== true}
+      commitOnSubmit
+      disabled={frozen}
+      onValueChange={(next) => formState.updateValue(field.path, next)}
+      onblur={() => formState.validateTouchedField(field)}
+    />
+  {:else if (field.kind === 'number' || field.kind === 'integer') && field.unit}
+    <DurationField
+      {id}
+      required={field.required}
+      disabled={frozen}
+      integer={field.kind === 'integer'}
+      value={numberFieldValue(field)}
+      onValueChange={(next) => formState.updateNumberValue(field, next)}
+      onblur={() => formState.validateTouchedField(field)}
+    />
+  {:else if field.kind === 'number' || field.kind === 'integer'}
+    <NumberInput
+      {id}
+      required={field.required}
+      disabled={frozen}
+      step={field.kind === 'integer' ? 1 : undefined}
+      onblur={() => formState.validateTouchedField(field)}
+      value={numberFieldValue(field)}
+      onValueChange={(next) => formState.updateNumberValue(field, next)}
+    />
+  {/if}
+{/snippet}
+
+<!-- What a setting row cannot carry at the inline end, drawn full width under the row's label and
+     description with no box of its own. -->
+{#snippet settingDisclosure(field: SchemaFormField, id: string, error: string | undefined)}
+  {#if field.kind === 'object'}
+    {@render renderFields(field.fields)}
+  {:else if field.kind === 'array'}
+    <div class="cinder-schema-form__setting-body">{@render arrayBody(field)}</div>
+  {:else if field.kind === 'enumArray'}
+    <div role="group" aria-label={rowLabel(field)}>
+      <SchemaFormChips
+        options={field.options}
+        selected={arrayOptionValues(field)}
+        disabled={frozen}
+        onValueChange={(next) => formState.updateValue(field.path, next)}
+      />
+    </div>
+  {:else if field.kind === 'record'}
+    <fieldset class="cinder-schema-form__bare-fieldset" disabled={frozen}>
+      <SchemaFormRecord
+        label={textOf(field)}
+        entries={formState.recordEntries(field)}
+        onValueChange={(next) => formState.updateRecordEntries(field, next)}
+      />
+    </fieldset>
+  {:else if field.kind === 'choice'}
+    {@render renderField(field)}
+  {:else if field.kind === 'json'}
+    <JsonEditor
+      {id}
+      label={`${rowLabel(field)} as JSON`}
+      rows={5}
+      validFeedbackVisible={false}
+      required={field.required}
+      disabled={frozen}
+      {...error === undefined ? {} : { error }}
+      onblur={() => formState.validateTouchedField(field)}
+      value={rawJsonValue(field)}
+      onValueChange={(next) => formState.updateRawJsonValue(field, next)}
+    />
+  {/if}
+{/snippet}
+
+{#snippet settingRow(field: SchemaFormField)}
+  {@const id = fieldDomId(field)}
+  {@const error = fieldError(field)}
+  {@const inline = INLINE_KINDS.has(field.kind)}
+  {@const identifier = rowIdentifier(field)}
+  <div
+    class="cinder-schema-form__setting"
+    data-cinder-field={field.key}
+    oninput={inline ? (event) => formState.handleFieldInput(field, event) : undefined}
+  >
+    <SettingRow
+      {id}
+      label={rowLabel(field)}
+      {...identifier === undefined ? {} : { identifier }}
+      required={field.required}
+      disabled={frozen}
+      controlWidth={field.kind === 'boolean' ? 'auto' : '16rem'}
+      {...field.description === undefined ? {} : { description: field.description }}
+      {...error === undefined ? {} : { error }}
+    >
+      {#snippet control()}
+        {#if inline}{@render settingControl(field, id)}{/if}
+      {/snippet}
+      {#snippet disclosure()}
+        {#if !inline}{@render settingDisclosure(field, id, error)}{/if}
+      {/snippet}
+    </SettingRow>
+  </div>
+{/snippet}
+
 {#snippet renderFields(fields: SchemaFormField[])}
   <div class="cinder-schema-form__fields" data-cinder-columns={paired ? 'two' : undefined}>
     {#each fields as child (pathKey(child.path))}
@@ -479,7 +705,7 @@
   {@const error = fieldError(field)}
   {@const span = spanOf(field)}
   {@const labelledProps = {
-    label: field.label,
+    label: textOf(field),
     // `description`/`error` are optional `string` props (no `| undefined`), and
     // exactOptionalPropertyTypes rejects passing an explicit `undefined`. Spread
     // them only when present so the control sees the prop omitted, not undefined.
@@ -532,12 +758,12 @@
       {@render groupLegend(field, !literalHasControl)}
       <SegmentedControl
         id="{id}-choice"
-        label={field.label}
+        label={textOf(field)}
         labelVisible={false}
         value={activeIsObject ? 'object' : 'literal'}
         onValueChange={(next) =>
           formState.selectChoiceBranch(field, next === 'object' ? objectBranch! : literalBranch!)}
-        disabled={submitting}
+        disabled={frozen}
       >
         <Segment value="literal">{literalBranch?.label}</Segment>
         <Segment value="object">{objectBranch?.label}</Segment>
@@ -554,15 +780,15 @@
       <SchemaFormChips
         options={field.options}
         selected={arrayOptionValues(field)}
-        disabled={submitting}
+        disabled={frozen}
         onValueChange={(next) => formState.updateValue(field.path, next)}
       />
     </fieldset>
   {:else if field.kind === 'record'}
-    <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span} disabled={submitting}>
+    <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span} disabled={frozen}>
       {@render groupLegend(field)}
       <SchemaFormRecord
-        label={field.label}
+        label={textOf(field)}
         entries={formState.recordEntries(field)}
         onValueChange={(next) => formState.updateRecordEntries(field, next)}
       />
@@ -570,38 +796,7 @@
   {:else if field.kind === 'array'}
     <fieldset class="cinder-schema-form__fieldset" data-cinder-span={span}>
       {@render groupLegend(field)}
-      <div
-        class="cinder-schema-form__array"
-        data-cinder-empty={formState.arrayRows(field).length === 0 || undefined}
-      >
-        {#each formState.arrayRows(field) as row (row.key)}
-          {@const itemField = field.item
-            ? rebaseFieldPath(field.item, [...field.path, String(row.index)])
-            : undefined}
-          <div class="cinder-schema-form__array-item">
-            {#if itemField}
-              {@render renderField(itemField)}
-            {/if}
-            <button
-              type="button"
-              class="cinder-schema-form__secondary-button"
-              aria-label={`Remove ${field.label} item ${row.index + 1}`}
-              disabled={submitting}
-              onclick={() => formState.removeArrayItem(field, row.index)}
-            >
-              Remove
-            </button>
-          </div>
-        {/each}
-      </div>
-      <button
-        type="button"
-        class="cinder-schema-form__secondary-button"
-        disabled={submitting}
-        onclick={() => formState.addArrayItem(field)}
-      >
-        Add {field.label}
-      </button>
+      {@render arrayBody(field)}
     </fieldset>
   {:else}
     <div
@@ -616,7 +811,7 @@
           type={field.schema['writeOnly'] === true ? 'password' : 'text'}
           autocomplete={field.schema['writeOnly'] === true ? 'off' : undefined}
           required={field.required}
-          disabled={submitting}
+          disabled={frozen}
           onblur={() => formState.validateTouchedField(field)}
           bind:value={
             () => stringValue(field),
@@ -632,11 +827,11 @@
       {:else if field.kind === 'tags'}
         <SchemaFormTags
           {id}
-          label={field.label}
+          label={textOf(field)}
           description={field.description}
           {error}
           required={field.required}
-          disabled={submitting}
+          disabled={frozen}
           value={stringArrayValue(field)}
           draft={formState.tagDraft(field)}
           duplicateValuesAllowed={field.schema['uniqueItems'] !== true}
@@ -646,11 +841,11 @@
       {:else if (field.kind === 'number' || field.kind === 'integer') && field.unit}
         <DurationField
           {id}
-          label={field.label}
+          label={textOf(field)}
           description={field.description}
           {error}
           required={field.required}
-          disabled={submitting}
+          disabled={frozen}
           integer={field.kind === 'integer'}
           value={numberValue(field)}
           onValueChange={(next) => formState.updateNumberValue(field, next)}
@@ -661,7 +856,7 @@
           {id}
           {...labelledProps}
           required={field.required}
-          disabled={submitting}
+          disabled={frozen}
           step={field.kind === 'integer' ? 1 : undefined}
           onblur={() => formState.validateTouchedField(field)}
           value={numberFieldValue(field)}
@@ -672,7 +867,7 @@
           {id}
           {...labelledProps}
           required={field.required}
-          disabled={submitting}
+          disabled={frozen}
           options={selectOptions(field)}
           value={enumValue(field)}
           onchange={(event) => formState.updateEnum(field, event)}
@@ -686,10 +881,10 @@
         {#if variant === 'input'}
           <Toggle
             {id}
-            label={field.label}
+            label={textOf(field)}
             {...field.description !== undefined ? { description: field.description } : {}}
             descriptionPlacement="below"
-            disabled={submitting}
+            disabled={frozen}
             bind:checked={
               () => booleanValue(field), (next) => formState.updateValue(field.path, next)
             }
@@ -698,7 +893,7 @@
           <Checkbox
             {id}
             {...labelledProps}
-            disabled={submitting}
+            disabled={frozen}
             bind:checked={
               () => booleanValue(field), (next) => formState.updateValue(field.path, next)
             }
@@ -709,7 +904,7 @@
           {id}
           {...labelledProps}
           required={field.required}
-          disabled={submitting}
+          disabled={frozen}
           statusLabel={jsonStatusLabel(field)}
           onblur={() => formState.validateTouchedField(field)}
           value={rawJsonValue(field)}
@@ -720,7 +915,7 @@
           {id}
           {...labelledProps}
           required={field.required}
-          disabled={submitting}
+          disabled={frozen}
           rows={6}
           spellcheck={false}
           variant="code"
@@ -742,6 +937,7 @@
   bind:this={formElement}
   class={classNames('cinder-schema-form', customClassName)}
   data-cinder-hosted={hosted ? '' : undefined}
+  data-cinder-variant={settingRows ? 'setting-rows' : undefined}
   role={hosted ? 'group' : undefined}
   novalidate={hosted ? undefined : (novalidate ?? true)}
   onsubmit={hosted ? undefined : handleSubmit}
@@ -773,7 +969,7 @@
           type="button"
           class="cinder-schema-form__secondary-button"
           aria-expanded={jsonPanelOpen}
-          disabled={submitting}
+          disabled={frozen}
           onclick={toggleJsonPanel}
         >
           Edit as JSON
@@ -785,7 +981,7 @@
         id="{formId}-json"
         text={jsonText}
         error={jsonError}
-        disabled={submitting}
+        disabled={frozen}
         onTextChange={(next) => (jsonText = next)}
         onApply={applyJsonPanel}
         onCancel={() => (jsonPanelOpen = false)}
@@ -797,7 +993,15 @@
     <p class="cinder-schema-form__description" role="status">No fields match your search.</p>
   {/if}
 
-  {@render renderFields(rootFields)}
+  {#if settingRows && model.field.kind === 'object'}
+    <div class="cinder-schema-form__setting-rows">
+      {#each rootFields as field (pathKey(field.path))}
+        {@render settingRow(field)}
+      {/each}
+    </div>
+  {:else}
+    {@render renderFields(rootFields)}
+  {/if}
 
   {#if !hosted}
     <input
@@ -813,7 +1017,7 @@
       type="submit"
       variant="primary"
       class="cinder-schema-form__submit"
-      disabled={submitting}
+      disabled={frozen}
       label={submitting ? 'Validating...' : submitLabel}
     />
   {/if}

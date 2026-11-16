@@ -75,8 +75,9 @@ export type MemoryRecallStopReason = (typeof MEMORY_RECALL_STOP_REASONS)[number]
 
 /**
  * What one recall may spend. `maxTokens` bounds the rendered evidence (four
- * characters to a token); `maxCost` counts embedder calls and recall detector
- * scans; `maxCandidates` bounds how many filtered candidates are scored, most
+ * characters to a token); `maxCost` counts embedder calls and recall guardrail
+ * runs, one unit for each guardrail that runs on each candidate, so a scan by three guardrails
+ * costs three and never starts unless the budget covers all three; `maxCandidates` bounds how many filtered candidates are scored, most
  * recent first; `maxIterations` bounds scoring passes, so a value above one
  * allows reformulation.
  */

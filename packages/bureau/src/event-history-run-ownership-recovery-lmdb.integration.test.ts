@@ -146,7 +146,8 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
         cursor: '2',
         emittedAtMs: expect.any(Number),
         schemaVersion: 1,
-        payload: { runId },
+        // COR-2095: the settled entry carries the task's status and finish reason.
+        payload: { runId, status: 'completed', finishReason: 'stop-condition' },
       },
     ],
     hasMore: false,

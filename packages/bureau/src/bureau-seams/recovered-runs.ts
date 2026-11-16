@@ -162,6 +162,7 @@ export function createRecoveredRuns<D extends AgentDefinitions>(
     store,
     emitter,
     runEventFeeds,
+    runOutcomeDetails,
     runSessionIdentifiers,
     runSessionIncarnations,
     runtime,
@@ -412,6 +413,7 @@ export function createRecoveredRuns<D extends AgentDefinitions>(
     // removed.
     const disposeRecoveredRunEventFeed = attachRunEventFeed(runId, recoveredRun, runEventFeeds, {
       now: runtimeServices.clock.now,
+      outcomeDetails: runOutcomeDetails,
       onError: (error, kind) => {
         diagnose({
           level: 'error',

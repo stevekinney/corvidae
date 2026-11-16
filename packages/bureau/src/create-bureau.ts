@@ -71,6 +71,7 @@ import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
 import { createAssetTools } from './asset-tools';
+import { createPluginEventPublisher } from './plugins/plugin-event-publish';
 import { createPluginRegistry, hostGuardrailRows } from './plugins/plugin-registry';
 import { createGoalForPlugin } from './goals';
 import {
@@ -141,7 +142,6 @@ import {
   ReviewDeniedEvent,
   ReviewRejectedEvent,
   RunRegisteredEvent,
-  RunSettledEvent,
   RunRemovedEvent,
   NotificationCreatedEvent,
   SessionTaintEvent,
@@ -178,6 +178,9 @@ import { createModels, validateModelsOptions, type Models } from './models/creat
 import { createScorerSampler, type ScorerSampler } from './scorers';
 import { agentTaintThresholdField } from './agent-taint-threshold.ts';
 import { disposeRunEventFeed } from './run-event-feed-attachment.ts';
+import { recordedRunEvent as recordedRunEventOf } from './recorded-run-events.ts';
+import { announceRunOutcome } from './run-outcome-announcement.ts';
+import { createRunOutcomeDetails } from './run-outcome-details.ts';
 import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolution,
@@ -573,9 +576,15 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-2118 — the guardrails the host gave, read before plugins' join them (and before any await),
   // so a listing tells them apart.
   const hostGuardrails = hostGuardrailRows(options.agentContributions);
+  // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
+  // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
+  // COR-2191 — made before plugins are composed, so a skipped memory guardrail reports through it.
+  const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
+  const { diagnose } = diagnostics;
   const composedPlugins = await composePlugins({
     ...options,
     plugins: withBuiltInPlugin(options.plugins, bureauTools),
+    onDiagnostic: diagnose,
   });
   options = composedPlugins.options;
   options = withPluginContentLayers(options, given, composedPlugins.shippedContent);
@@ -584,10 +593,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   const pluginRegistry = createPluginRegistry(composedPlugins.records, {
     guardrails: hostGuardrails,
   });
-  // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
-  // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
-  const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
-  const { diagnose } = diagnostics;
   // COR-1710 — the settings: validated here, read in `bootSettings` below, before the engine.
   const settingsLocked = validateSettingsOptions(options, toBadRequest);
   const settingsDefaults = settingsDefaultsOf(options);
@@ -719,6 +724,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   // is registered and reaped when it is removed. See
   // `run-event-feed-attachment.ts`.
   const runEventFeeds = createAgentRunEventRegistry();
+  const runOutcomeDetails = createRunOutcomeDetails();
   // Snapshot `agents` synchronously, before the first `await` below — the
   // "fixed at createBureau() call time" catalog contract otherwise has a
   // real mutation window: a caller that mutates the SAME `agents` object it
@@ -1438,6 +1444,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     eventFeedSubscription,
     stopForwarding,
     runEventFeeds,
+    runOutcomeDetails,
     agentsSnapshot,
     goalWorkflowHost,
     goalAttemptFenceHost,
@@ -2356,6 +2363,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   } = createSessions<D>(core, peers);
   const {
     registerCatalogRun,
+    observeRunEvents,
     registerScheduledFireReviews,
     trackSubordinateRun,
     runWorkflowAgentStep,
@@ -2738,6 +2746,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         audit: async (entry) => {
           await auditTrailInstance?.record(entry);
         },
+        // COR-2249: sent once the decision's audit call has returned, as `onCreated` sends a notification's.
+        published: (event) => emitter.dispatch(event),
       }),
     );
     // COR-1710: the settings, over the record read at boot. A live engine key is applied through
@@ -3090,6 +3100,10 @@ async function constructBureau<const D extends AgentDefinitions>(
             runtime: runtimeServices,
             onPinnedUnavailable: (activity, runId) =>
               pluginRegistry.notePinnedUnavailable(activity, runId),
+            onTriggerFailed: (plugin, workflow, message) =>
+              pluginRegistry.reportTriggerFailure(plugin, workflow, message),
+            onTriggerRecovered: (plugin, workflow) =>
+              pluginRegistry.clearTriggerFailure(plugin, workflow),
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',
@@ -3440,7 +3454,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     // durable history. A Bureau with no persistent storage has none, and no second process.
     onFireSettled: appendFireSettledEvent,
     onSettled: async (record) => {
-      emitter.dispatch(new RunSettledEvent(record.taskId));
+      announceRunOutcome(record, {
+        details: runOutcomeDetails,
+        dispatch: (event) => emitter.dispatch(event),
+      });
     },
     onCleanupAcknowledged: (taskId, cleanup) => {
       emitter.dispatch(new TaskCleanupAcknowledgedEvent(taskId, cleanup));
@@ -3674,6 +3691,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
         recordTaskSettlement(storeActionEvent.action);
         recordTaskWakeup(storeActionEvent.action);
+        // COR-2096: a guardrail, a budget threshold and a tool's failure or refusal are published
+        // under their own kinds, for a run in the store whether or not its actions stay off the
+        // `'action'` stream below (a `bureau.run()` run's do).
+        const recordedRunEvent = recordedRunEventOf(storeActionEvent.action);
+        if (recordedRunEvent !== undefined) emitter.dispatch(recordedRunEvent);
         // COR-1302: a `bureau.run()` run is on `store` only so `getRun` and
         // `abortRun` resolve its id. Its actions stay off this bureau's
         // `'action'` stream and live frames, as they were before it was
@@ -3714,6 +3736,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         // lifetime signal, so a client still reading it ends cleanly rather
         // than parking on a generator that can never yield again.
         disposeRunEventFeed(removedRunId, runEventFeeds);
+        runOutcomeDetails.forget(removedRunId);
         catalogRunIds.delete(removedRunId);
         runRequestContexts.delete(removedRunId);
         recoveredRunIds.delete(removedRunId);
@@ -4293,6 +4316,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       createBureauError: (message, code) => new BureauError(message, code),
       validateAgentRunInput,
       registerCatalogRun,
+      observeRunEvents,
       // COR-1630 — a run's asset claims are released when its handle settles, if the run ended.
       onCatalogRunEnded: ({ runId, principal, settled }) =>
         catalogSettlements.follow(
@@ -4612,6 +4636,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       hasDurableEngine: runCreationLedger !== undefined,
       eventFeed,
       runEventFeeds,
+      runOutcomeDetails,
       store,
       sessionStore: runtime.sessionStore,
       pendingScheduledTaintCount: () => runtime.pendingScheduledTaintCount(),
@@ -4919,6 +4944,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       workspace === undefined
         ? undefined
         : (owner) => mayRunUseSharedConfiguration(workspace, owner, 'bureau.workflows:write', true),
+    configurationSecrets: options.pluginSecrets,
     options: options.hooks,
     engine: webhookNotifierInstance?.engine,
     kv: runtime.kv,
@@ -5409,7 +5435,20 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the goal it creates stores the plugin, so every `goal.*` event of the goal carries it.
    */
   function pluginHostApiOf(host: Bureau, plugin: string): PluginHost {
+    const record = composedPlugins.records.find(
+      (candidate) => candidate.entry.descriptor.name === plugin,
+    );
     return {
+      publish: createPluginEventPublisher({
+        plugin,
+        declarations: record?.setup?.result.events ?? [],
+        gate: record?.gate,
+        // The feed records it from the emitter, as it records every other event.
+        dispatch: (event) => emitter.dispatchEvent(event),
+        // The emitter completes in the same synchronous stretch that stops the feed recording, so
+        // no publish resolves between the feed stopping and this turning true (`shutdown`).
+        isDisposed: () => emitter.completed,
+      }),
       agents: { list: () => host.agents.list() },
       schedules: {
         create: (definition) => createSchedule(definition, undefined, plugin),

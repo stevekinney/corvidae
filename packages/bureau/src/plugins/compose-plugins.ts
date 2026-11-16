@@ -22,6 +22,8 @@ import type {
   PluginContributions,
   PluginHost,
   PluginMemoryGate,
+  PluginPanel,
+  PluginPanelPlacement,
   PluginSecrets,
   PluginSetupContext,
   PluginSetupResult,
@@ -36,6 +38,7 @@ import type { GovernedMemory } from '@lostgradient/memory';
 import { type GuardrailEntry, guardrailActionOf, guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
+  type DetectorContext,
   formatToolId,
   fromNamespacedToolName,
   parseToolId,
@@ -54,6 +57,8 @@ import {
   createAgentContributions,
   guardrailContractFault,
 } from '../agent-contributions';
+import { HOST_PANEL_OPERATIONS } from '../http/host-panel-operations';
+import { resolveDiagnosticSink } from '../serialization';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../bureau-types/options';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
@@ -300,6 +305,77 @@ function checkedGuardrailName(
 /** A `ui://` resource URI: the scheme, then a host and path with no whitespace. */
 const PANEL_URI_PATTERN = /^ui:\/\/\S+$/;
 
+/** The path of a `page` placement: lowercase segments of letters, digits and hyphens (COR-2212). */
+const PANEL_PAGE_PATH_PATTERN = /^[a-z][a-z0-9-]*(\/[a-z][a-z0-9-]*)*$/;
+
+/** The sidebar groups a `page` placement may sit in; `home` is the host's own. */
+const PANEL_SIDEBAR_GROUPS: readonly string[] = ['work', 'build', 'system'];
+
+/**
+ * Throws a `TypeError` when `placement` of the panel `app` is not one the host can place: another
+ * `kind`, a `page` group outside {@link PANEL_SIDEBAR_GROUPS}, a `page` path outside
+ * {@link PANEL_PAGE_PATH_PATTERN}, or a `chat-tool` agent tool the Bureau does not hold (checked
+ * only when it is given its agent tools, and the workflow tools it adds itself always pass). The
+ * `sidebar.icon` is not checked here (COR-2212).
+ */
+function checkPlacement(
+  app: PluginPanel,
+  placement: PluginPanelPlacement,
+  agentTools: AgentSource['tools'] | undefined,
+): void {
+  const refusal = (reason: string): TypeError =>
+    new TypeError(`setup returned the panel "${app.name}" with ${reason}.`);
+  // A plugin's value may hold what the type forbids: an entry that is no object has no fields to
+  // read, so it is refused before they are.
+  const entry: unknown = placement;
+  if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+    throw refusal(`a placement that is not an object (${JSON.stringify(entry) ?? String(entry)})`);
+  }
+  const { kind, path, sidebar, agentTool } = entry as {
+    kind?: unknown;
+    path?: unknown;
+    sidebar?: unknown;
+    agentTool?: unknown;
+  };
+  if (kind === 'page') {
+    if (typeof path !== 'string' || !PANEL_PAGE_PATH_PATTERN.test(path)) {
+      throw refusal(
+        `a page placement at ${JSON.stringify(path)}, which is not a path of lowercase segments (letters, digits and hyphens, each starting with a letter) such as "reviews/queue"`,
+      );
+    }
+    if (sidebar !== undefined) {
+      const group: unknown =
+        typeof sidebar === 'object' && sidebar !== null ? Reflect.get(sidebar, 'group') : undefined;
+      if (typeof group !== 'string' || !PANEL_SIDEBAR_GROUPS.includes(group)) {
+        throw refusal(
+          `a page placement in the sidebar group ${JSON.stringify(group)}, which is not one of ${PANEL_SIDEBAR_GROUPS.join(', ')}`,
+        );
+      }
+    }
+  } else if (kind === 'chat-tool') {
+    // The host lists the id to Chat, which reads it as text, so a value that is not would fail
+    // the whole listing for every panel.
+    if (typeof agentTool !== 'string' || agentTool === '') {
+      throw refusal(
+        `a chat-tool placement whose agent tool ${JSON.stringify(agentTool)} is not a name`,
+      );
+    }
+    if (
+      agentTools !== undefined &&
+      !Object.hasOwn(agentTools, agentTool) &&
+      !WORKFLOW_TOOL_NAMES.some((name) => agentTool === `bureau:${name}`)
+    ) {
+      throw new TypeError(
+        `setup returned the panel "${app.name}" opened from unknown agent tool "${agentTool}".`,
+      );
+    }
+  } else if (kind !== 'run') {
+    throw refusal(
+      `a placement of kind ${JSON.stringify(kind)}, which is not page, run or chat-tool`,
+    );
+  }
+}
+
 /**
  * What `contributions` claims and registers. Throws when a contribution cannot be registered: a
  * name outside the plugin name grammar (which also keeps `plugin__name` injective), a tool that
@@ -422,7 +498,15 @@ function planOf(
         `setup returned the panel "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
       );
     }
-    if (!app.allowedTools.includes(app.opensFromTool)) {
+    // The URI is global to a host, so a plugin may serve only under its own name: that keeps two
+    // plugins from squatting each other's pages, and a name another plugin owns is never theirs (COR-2210).
+    if (!app.uri.startsWith(`ui://${plugin}/`)) {
+      throw new TypeError(
+        `setup returned the panel "${app.name}" with the URI "${app.uri}", which is outside the plugin's namespace: a panel URI begins ui://${plugin}/.`,
+      );
+    }
+    // A page panel declares a placement and needs no MCP opener, so the tool link is optional.
+    if (app.opensFromTool !== undefined && !app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
         `setup returned the panel "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
       );
@@ -433,24 +517,22 @@ function planOf(
           `setup returned the panel "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
         );
       }
+      // `/jsonrpc` also answers operations no MCP client may call, so a panel reaches only the
+      // operations the Bureau lists as open to host panels (COR-2208).
+      if (!HOST_PANEL_OPERATIONS.has(tool)) {
+        throw new TypeError(
+          `setup returned the panel "${app.name}" with host-only tool "${tool}", which is not an operation open to host panels.`,
+        );
+      }
     }
-    if (
-      app.opensFromAgentTool !== undefined &&
-      agentTools !== undefined &&
-      !Object.hasOwn(agentTools ?? {}, app.opensFromAgentTool) &&
-      !(
-        app.opensFromAgentTool.startsWith('bureau:') &&
-        WORKFLOW_TOOL_NAMES.some((name) => app.opensFromAgentTool === `bureau:${name}`)
-      )
-    ) {
-      throw new TypeError(
-        `setup returned the panel "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
-      );
-    }
+    for (const placement of app.placements ?? []) checkPlacement(app, placement, agentTools);
     contribute('panel', app.name);
     claims.push({ space: 'panel-uri', name: app.uri });
-    // A tool links to one page, so the host cannot serve two apps opened from the same tool.
-    claims.push({ space: 'panel-tool', name: app.opensFromTool });
+    // A tool links to one page, so the host cannot serve two apps opened from the same tool. A
+    // placement takes no claim: a page path or a chat tool names no tool another plugin holds, and
+    // two plugins can both place a panel on a run's page (COR-2212).
+    if (app.opensFromTool !== undefined)
+      claims.push({ space: 'panel-tool', name: app.opensFromTool });
   }
   // A formatter may list a kind its plugin declares (COR-2225). The declaration holds that kind in
   // `event-kind`, so the formatter's own claim on it is kept apart and still catches a repeat.
@@ -637,8 +719,9 @@ class Contributed {
   readonly memory: {
     admission: PluginMemoryContributions['guardrails']['admission'][number][];
     recall: PluginMemoryContributions['guardrails']['recall'][number][];
+    sources: PluginMemoryContributions['guardrails']['sources'][number][];
     embedders: PluginMemoryContributions['embedders'][number][];
-  } = { admission: [], recall: [], embedders: [] };
+  } = { admission: [], recall: [], sources: [], embedders: [] };
   readonly providers: PluginProviderContribution[] = [];
 
   add(
@@ -673,12 +756,28 @@ class Contributed {
       this.validatorSources.push({ plugin, version, validator: contributed });
     }
     for (const kind of result.reactions ?? []) {
-      // A delivery pins the kind's own version, else its plugin's (COR-1879).
-      this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
+      // A delivery pins the kind's own version, else its plugin's (COR-1879). While a secret the
+      // plugin declared is missing a delivery waits instead of failing, and the gate says when it
+      // is saved (COR-2176).
+      this.actionKinds.push({
+        plugin,
+        kind,
+        version: kind.version ?? version,
+        ...(gate === undefined
+          ? {}
+          : {
+              availability: () => (gate.available() ? 'available' : 'needs-setup'),
+              onAvailabilityChange: (listener) => gate.onChange(listener),
+            }),
+      });
     }
     for (const formatter of result.formatters ?? []) this.formatters.push({ plugin, formatter });
     for (const judge of result.scorers ?? []) {
-      this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
+      this.scorers.push({
+        ...judge,
+        name: id(judge.name),
+        score: (run, signal) => judge.score(run, signal),
+      });
     }
     for (const item of result.agents ?? []) {
       this.agents[id(item.name)] = item.agent;
@@ -692,11 +791,24 @@ class Contributed {
     }
     this.providers.push(...providers);
     for (const detector of result.guardrails?.memory ?? []) {
-      // The detector itself, not a copy of its fields: it may be an instance whose methods live on
-      // its prototype.
+      // One wrapper for both gates, named by its family-qualified identity (COR-2190), so the ledger
+      // tells two plugins' `pii` apart. It calls the detector rather than spreading it: its methods
+      // may live on a prototype. A throw still propagates, so a `detector-failure` carries the id too.
       const gates = detector.gates ?? MEMORY_GATES;
-      if (gates.includes('admission')) this.memory.admission.push(detector);
-      if (gates.includes('recall')) this.memory.recall.push(detector);
+      const named = {
+        name: guardrailId(plugin, 'memory', detector.name),
+        detect: (input: string, context: DetectorContext) => detector.detect(input, context),
+      };
+      if (gates.includes('admission')) this.memory.admission.push(named);
+      if (gates.includes('recall')) this.memory.recall.push(named);
+      // COR-2192: the host folds each source into its policy revision, so a plugin change withdraws
+      // evidence recalled under the old set. Gates are canonical: declaration order and repeats are not a change.
+      this.memory.sources.push({
+        id: named.name,
+        plugin,
+        version,
+        gates: MEMORY_GATES.filter((point) => gates.includes(point)),
+      });
     }
     for (const embedder of result.embedders ?? []) {
       this.memory.embedders.push({
@@ -864,7 +976,11 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     contributed.agentSources,
   );
   const memory = memoryOf(options.memory, {
-    guardrails: { admission: contributed.memory.admission, recall: contributed.memory.recall },
+    guardrails: {
+      admission: contributed.memory.admission,
+      recall: contributed.memory.recall,
+      sources: contributed.memory.sources,
+    },
     embedders: contributed.memory.embedders,
   });
   // A factory never reaches the rest of construction: it is replaced by what it built.
@@ -968,13 +1084,30 @@ async function setUp(
         interceptor,
       );
     }
+    // A reaction's timeout builds its delivery's lease, so a value that is not a positive safe
+    // integer skips this plugin here, and never reaches `createHooks`, which would fail the Bureau.
+    for (const reaction of returned.reactions ?? []) {
+      const { timeoutMilliseconds } = reaction;
+      if (
+        timeoutMilliseconds !== undefined &&
+        !(Number.isSafeInteger(timeoutMilliseconds) && timeoutMilliseconds > 0)
+      ) {
+        throw new Error(
+          `The reaction "${reaction.name}" has a timeoutMilliseconds of ${String(timeoutMilliseconds)}, which is not a positive safe integer`,
+        );
+      }
+    }
     // Registered now and refused while a declared secret is missing: the options that receive
     // contributions are read once, so one added later would never be seen (COR-1874).
     const result =
       gate === undefined
         ? returned
-        : gatedContributions(returned, gate, (name) =>
-            formatToolId({ namespace: descriptor.name, name }),
+        : gatedContributions(
+            returned,
+            gate,
+            (name) => formatToolId({ namespace: descriptor.name, name }),
+            // COR-2191: a skipped memory guardrail is reported to the host's sink.
+            resolveDiagnosticSink(options.onDiagnostic),
           );
     const plan = planOf(
       descriptor.name,

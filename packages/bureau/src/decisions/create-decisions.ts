@@ -12,6 +12,7 @@ import { isStandardSchema, isZodSchema } from 'armorer';
 import { z } from 'zod';
 
 import { canonicalJson } from '../command-ledger.ts';
+import { DecisionMadeEvent } from '../events.ts';
 import { ModelPolicyDeniedError } from '../file-agent-generate.ts';
 import { type BureauModelPolicyOptions, modelPolicyDenialOf } from '../model-policy.ts';
 import { findDecisionRow, type Models, type ModelsOptions } from '../models/create-models.ts';
@@ -74,6 +75,13 @@ export type DecisionsDependencies = {
     readonly detail: Readonly<Record<string, string | number | boolean>>;
     readonly principal?: string;
   }) => Promise<void>;
+  /**
+   * Publishes a decision on the event feed (COR-2249). Called once the decision's audit call has
+   * returned: after it resolves for an answered decision, and after the attempt to write a failure's
+   * record, whether or not that attempt succeeded. An answered decision whose audit call rejects
+   * publishes nothing.
+   */
+  readonly published: (event: DecisionMadeEvent) => void;
 };
 
 /** `bureau.decisions` and what the Bureau itself needs from it. */
@@ -268,6 +276,10 @@ type AuditBase = {
     readonly principal?: string;
   };
   readonly detail: Readonly<Record<string, string | number | boolean>>;
+  /** The decision's kind, which the published event names. */
+  readonly kind: string;
+  /** The task the decision was asked for, which the published event names. */
+  readonly taskId: string | undefined;
 };
 
 /** The `row` that answered (`<provider>/<model>`) and the `path` it answered by, for a record's detail. */
@@ -413,24 +425,36 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       error instanceof ModelPolicyDeniedError ||
       (typeof code === 'string' && code === 'NOT_CONFIGURED');
     const denied = error instanceof ModelPolicyDeniedError ? error : undefined;
+    const outcome = refused ? 'refused' : 'error';
+    // No answerer: a policy denial names the row it forbade, any other refusal names none.
+    const answeredBy: { readonly row?: string; readonly path?: DecisionPath } =
+      answerer === undefined
+        ? denied === undefined
+          ? {}
+          : { row: `${denied.provider}/${denied.model}` }
+        : answererDetail(answerer);
     try {
       await dependencies.audit({
         ...base.entry,
         detail: {
           ...base.detail,
-          outcome: refused ? 'refused' : 'error',
+          outcome,
           reason: typeof code === 'string' ? code : typeof name === 'string' ? name : 'Error',
-          ...(answerer === undefined
-            ? denied === undefined
-              ? {}
-              : { row: `${denied.provider}/${denied.model}` }
-            : answererDetail(answerer)),
+          ...answeredBy,
         },
       });
     } catch {
       // The decision's own failure is what the caller must see; a trail that cannot take its record
       // does not replace it.
     }
+    dependencies.published(
+      new DecisionMadeEvent({
+        kind: base.kind,
+        outcome,
+        ...answeredBy,
+        taskId: base.taskId,
+      }),
+    );
   }
 
   const decisions: BureauDecisions = {
@@ -480,6 +504,8 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
           ...(digest === undefined ? {} : { schemaSha256: digest }),
           ...(routingId === undefined ? {} : { routingId }),
         },
+        kind,
+        taskId,
       };
       let answerer: Answerer;
       try {
@@ -498,6 +524,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
         await auditFailure(error, base, answerer);
         throw error;
       }
+      const answeredBy = answererDetail(answerer, decision);
       await dependencies.audit({
         ...base.entry,
         detail: {
@@ -505,11 +532,14 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
           provider: decision.provider,
           model: decision.model,
           outcome: 'answered',
-          ...answererDetail(answerer, decision),
+          ...answeredBy,
           ...(digest === undefined ? {} : { schemaSha256: digest }),
           ...(routingId === undefined ? {} : { routingId }),
         },
       });
+      dependencies.published(
+        new DecisionMadeEvent({ kind, outcome: 'answered', ...answeredBy, taskId }),
+      );
       return decision as Decision<DecisionValue<Request>>;
     },
   };

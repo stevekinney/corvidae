@@ -241,8 +241,8 @@ describe('startBuiltInNotifications', () => {
       'run-2': task({ id: 'run-2', agentName: 'second' }),
     });
 
-    dispatch(new RunSettledEvent('run-1'));
-    dispatch(new RunSettledEvent('run-2'));
+    dispatch(new RunSettledEvent('run-1', 'completed'));
+    dispatch(new RunSettledEvent('run-2', 'completed'));
     await running.drain();
 
     expect(created.map((input) => input.dedupeKey)).toEqual([
@@ -264,8 +264,8 @@ describe('startBuiltInNotifications', () => {
       'run-2': task({ id: 'run-2' }),
     });
 
-    dispatch(new RunSettledEvent('run-1'));
-    dispatch(new RunSettledEvent('run-2'));
+    dispatch(new RunSettledEvent('run-1', 'completed'));
+    dispatch(new RunSettledEvent('run-2', 'completed'));
     await running.drain();
 
     expect(created.map((input) => input.dedupeKey)).toEqual(['run.settled:run-2']);
@@ -275,9 +275,9 @@ describe('startBuiltInNotifications', () => {
   it('stops listening on stop, and drain waits for a write already started', async () => {
     const { running, dispatch, created, listeners } = open({ 'run-1': task({ id: 'run-1' }) });
 
-    dispatch(new RunSettledEvent('run-1'));
+    dispatch(new RunSettledEvent('run-1', 'completed'));
     running.stop();
-    dispatch(new RunSettledEvent('run-1'));
+    dispatch(new RunSettledEvent('run-1', 'completed'));
     await running.drain();
 
     expect(listeners.size).toBe(0);

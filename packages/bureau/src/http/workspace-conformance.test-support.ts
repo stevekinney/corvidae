@@ -223,6 +223,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.workflows.pause', 'administrator'],
       ['bureau.workflows.resume', 'administrator'],
       ['bureau.workflows.delete', 'administrator'],
+      ['bureau.workflows.triggers.retry', 'administrator'],
       ['bureau.workflows.get', 'shared'],
       ['bureau.workflows.list', 'shared'],
       ['bureau.workflows.catalog', 'shared'],

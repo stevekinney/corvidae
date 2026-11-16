@@ -19,6 +19,32 @@ export interface DetectorContext {
   sessionTainted: boolean;
   /** Where the content being scanned originated from. */
   provenance: GuardrailProvenance;
+  /**
+   * The memory record being scanned, when governed memory is scanning one. It is left out for
+   * content that is not a memory record, such as a prompt or a tool result. Memory fills it at
+   * admission, at recall and at promotion, so a memory guardrail can judge a record by where it
+   * came from. Armorer does not depend on Memory, so the values are plain strings.
+   */
+  memory?: {
+    /**
+     * Where the content came from: `conversation`, `model-tool`, `tool-result`,
+     * `ingested-document`, `derived`, `operator` or `system`.
+     */
+    readonly source: string;
+    /**
+     * What kind of memory it is: `working`, `episodic`, `semantic`, `procedural`, `identity` or
+     * `resource`.
+     */
+    readonly memoryClass: string;
+    /** How far the record is trusted: `untrusted`, `verified` or `system`. */
+    readonly trust: string;
+  };
+  /**
+   * Aborts when the operation that asked for the scan is cancelled. A detector that waits on
+   * something slow (a model, a network call) should stop waiting when it aborts. A caller whose
+   * operation cannot be cancelled leaves it out.
+   */
+  signal?: AbortSignal;
 }
 
 /** Result of running a detector against a piece of content. */

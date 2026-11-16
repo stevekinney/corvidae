@@ -14,6 +14,11 @@
  * (chroma at most 0.014) with a white border ink at 12% and 8%, and its status backgrounds are
  * `color-mix(in oklab, <solid> 14%, <surface>)`. The derived values below are what that recipe
  * evaluates to in each arm (`scripts/tokens/derived-values.ts`).
+ *
+ * The owner then found the grey surface made every panel read as a grey slab (2026-11-15) and
+ * chose the consumer ladder for the default light arm too: the surface is pure white like raised,
+ * the canvas a grey page at 97.6% (3.51:1 for the focus ring; 97.0% would read 3.45:1), and the well
+ * 95.5%. The hover, pressed and soft accent washes now mix from white, so they follow.
  */
 
 import { describe, expect, test } from 'bun:test';
@@ -53,17 +58,17 @@ function expectColor(arm: 'light' | 'dark', [property, components, alpha]: Expec
 // `hue-travel.test.ts` fails any OKLCH mix whose operands are more than 40° apart, and the hover
 // and pressed washes mix it toward the accent at hue 272.
 const LIGHT_VALUES: readonly ExpectedColor[] = [
-  ['--cinder-surface-canvas', [0.994, 0.002, 265]],
-  ['--cinder-surface', [0.976, 0.007, 272]],
+  ['--cinder-surface-canvas', [0.976, 0.004, 265]],
+  ['--cinder-surface', [1, 0, 255]],
   ['--cinder-surface-raised', [1, 0, 255]],
-  ['--cinder-surface-inset', [0.958, 0.011, 275]],
-  ['--cinder-surface-hover', [0.94864, 0.02098, 272]],
-  ['--cinder-surface-pressed', [0.92128, 0.03496, 272]],
+  ['--cinder-surface-inset', [0.955, 0.005, 265]],
+  ['--cinder-surface-hover', [0.9712, 0.0144, 256.02]],
+  ['--cinder-surface-pressed', [0.9424, 0.0288, 257.04]],
   ['--cinder-surface-raised-hover', [0.9664, 0.0168, 256.19]],
   ['--cinder-text-muted', [0.44, 0.01, 265]],
   ['--cinder-text-subtle', [0.5, 0.01, 265]],
   ['--cinder-accent-solid', [0.52, 0.24, 272]],
-  ['--cinder-accent-background', [0.92128, 0.03496, 272]],
+  ['--cinder-accent-background', [0.9424, 0.0288, 257.04]],
   ['--cinder-status-success-solid', [0.6, 0.174, 148]],
   ['--cinder-status-success-contrast', [0.15, 0.03, 148]],
   ['--cinder-status-success-solid-hover', [0.64, 0.174, 148]],
@@ -227,7 +232,7 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
   // L#3 (light sweep): the disabled field fill aliased `fill.disabled` (86%) in light, darker than
   // the white enabled control beside it. It is now the inset, the fill a disabled Button uses.
   test('the disabled control fill is the inset in light and fill.disabled in dark', () => {
-    expectColor('light', ['--cinder-control-background-disabled', [0.958, 0.011, 275]]);
+    expectColor('light', ['--cinder-control-background-disabled', [0.955, 0.005, 265]]);
     expectColor('dark', ['--cinder-control-background-disabled', [0.3, 0.015, 245]]);
   });
 

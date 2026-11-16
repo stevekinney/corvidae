@@ -16,6 +16,7 @@ const unstartedHost: PluginHost = {
   agents: { list: () => [] },
   schedules: { create: async () => undefined, list: async () => undefined },
   goals: { create: async () => ({ outcome: 'rejected' }) },
+  publish: async () => undefined,
 };
 
 describe('definePlugin', () => {
@@ -33,7 +34,7 @@ describe('definePlugin', () => {
           {
             name: configuration.teamKey,
             version: '1.0.0',
-            evaluate: () => ({ pass: true, score: 1, message: 'ok' }),
+            score: () => ({ outcome: 'pass', score: 1, message: 'ok' }),
           },
         ],
       }),

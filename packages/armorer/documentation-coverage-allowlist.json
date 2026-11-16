@@ -30,7 +30,6 @@
     ". DirectIdempotencyExecuteOptions",
     ". EXTERNAL_PROJECTION_VERSION",
     ". EffectiveToolExecutionContext",
-    ". Embedder",
     ". EmbeddingEntry",
     ". EmbeddingMatch",
     ". EmbeddingVector",

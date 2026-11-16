@@ -57,12 +57,15 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
         raisedL - bgL,
         'surface-raised must sit above the page background in light mode',
       ).toBeGreaterThan(0);
-      expect(bgL, 'the light-mode page background must read as white').toBeGreaterThanOrEqual(0.97);
+      expect(
+        bgL,
+        'the light-mode page background must stay a light page, not a slate plate',
+      ).toBeGreaterThanOrEqual(0.97);
       await page.goto(themeFixtureRoute, { waitUntil: 'load' });
       const surfaceL = await paintedL(page, '.cinder-table', 'backgroundColor');
       const insetL = await paintedL(page, "[data-testid='surface-inset']", 'backgroundColor');
-      // COR-2308 retuned the light ladder to the app-shell steps (surface 0.976, inset 0.958): an
-      // 0.018 step the owner asked for, held to at least 0.015 by tokens-light-ladder.test.ts.
+      // Since 2026-11-15 the light surface is white (1.000) over a 0.955 inset: a 0.045 step,
+      // held to at least 0.015 by tokens-light-ladder.test.ts.
       expect(
         surfaceL - insetL,
         'surface must sit above surface-inset so sunken regions read',

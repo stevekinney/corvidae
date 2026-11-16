@@ -1,73 +1,44 @@
-/** The configuration form of a plugin, worked out from the JSON Schema its own Zod schema writes. */
+/** What the Plugins page works out around a plugin's configuration form: the changes, what to send, the field a refusal names. */
 import { describe, expect, test } from 'bun:test';
-import { z } from 'zod';
 
 import {
-  configurationFields,
+  configurationChanges,
   configurationToSave,
-  fieldWords,
-  jsonText,
-  parseJsonField,
+  hasConfigurationField,
   refusedField,
 } from './plugin-configuration.ts';
 
-/** What a plugin's own Zod schema becomes: one field of each control the form has. */
-const SCHEMA = z.toJSONSchema(
-  z.object({
-    searchAddress: z.string().meta({ title: 'Search address', description: 'The service.' }),
-    region: z.enum(['us', 'eu']).optional(),
-    blockedSites: z.array(z.string()).default([]),
-    includeSnippets: z.boolean().default(true),
-    cacheMs: z.number().default(300_000),
-    limit: z.number().min(0).max(1).default(0.8),
-    roots: z.array(z.object({ path: z.string() })).default([]),
-    nickname: z.string().nullable().optional(),
-  }),
-  { io: 'input' },
-);
-
-describe('configurationFields', () => {
-  test('reads a field for each property, in the order the schema declares them, with the control its shape calls for', () => {
-    const fields = configurationFields(SCHEMA);
-    expect(fields.map((field) => [field.key, field.control.kind])).toEqual([
-      ['searchAddress', 'text'],
-      ['region', 'select'],
-      ['blockedSites', 'tags'],
-      ['includeSnippets', 'switch'],
-      ['cacheMs', 'duration'],
-      ['limit', 'number'],
-      ['roots', 'json'],
-      ['nickname', 'text'],
-    ]);
-    expect(fields[1]?.control).toEqual({ kind: 'select', options: ['us', 'eu'] });
+describe('configurationChanges', () => {
+  test('names only the fields whose value is not the one the form opened with', () => {
+    const initial = { teamKey: 'COR', region: 'us', labels: [], snippets: false };
+    const draft = { teamKey: 'ENG', region: 'us', labels: [], snippets: false };
+    expect(configurationChanges(initial, draft)).toEqual({ teamKey: 'ENG' });
   });
 
-  test('takes the schema’s title and description, and the key as words when there is no title', () => {
-    const [address, region] = configurationFields(SCHEMA);
-    expect(address).toMatchObject({
-      label: 'Search address',
-      description: 'The service.',
-      required: true,
+  test('compares a list or a group by its content, not its identity', () => {
+    expect(
+      configurationChanges(
+        { labels: ['a'], roots: [{ path: 'x' }] },
+        { labels: ['a'], roots: [{ path: 'x' }] },
+      ),
+    ).toEqual({});
+    expect(configurationChanges({ labels: ['a'] }, { labels: ['a', 'b'] })).toEqual({
+      labels: ['a', 'b'],
     });
-    expect(region).toMatchObject({ label: 'Region', description: '', required: false });
-    expect(configurationFields(SCHEMA).find((field) => field.key === 'cacheMs')?.defaultValue).toBe(
-      300_000,
-    );
   });
 
-  test('draws a schema that is not an object with properties as no form at all', () => {
-    expect(configurationFields(null)).toEqual([]);
-    expect(configurationFields({ type: 'string' })).toEqual([]);
+  test('reports a field the draft dropped as changed to nothing, and one it gained as changed', () => {
+    expect(configurationChanges({ teamKey: 'COR' }, {})).toEqual({ teamKey: undefined });
+    expect(configurationChanges({}, { teamKey: 'COR' })).toEqual({ teamKey: 'COR' });
+  });
+
+  test('holds no change for a draft that is not an object', () => {
+    expect(configurationChanges({ a: 1 }, null)).toEqual({ a: undefined });
+    expect(configurationChanges(undefined, undefined)).toEqual({});
   });
 });
 
 describe('words and values', () => {
-  test('puts a key in words', () => {
-    expect(fieldWords('blockedSites')).toBe('Blocked sites');
-    expect(fieldWords('search-address')).toBe('Search address');
-    expect(fieldWords('')).toBe('');
-  });
-
   test('sends only the fields that hold something', () => {
     expect(configurationToSave({ a: 'x', b: '', c: undefined, d: 0, e: false, f: [] })).toEqual({
       a: 'x',
@@ -85,11 +56,11 @@ describe('words and values', () => {
     expect(refusedField(undefined)).toBeUndefined();
   });
 
-  test('reads the fallback editor’s text back, or says it is not JSON', () => {
-    expect(jsonText(undefined)).toBe('');
-    expect(jsonText({ a: 1 })).toBe('{\n  "a": 1\n}');
-    expect(parseJsonField('')).toEqual({ value: undefined });
-    expect(parseJsonField('[1]')).toEqual({ value: [1] });
-    expect(parseJsonField('{')).toBe('invalid');
+  test('knows which fields the schema declares, so a refusal names a row only when there is one', () => {
+    const schema = { type: 'object', properties: { teamKey: { type: 'string' } } };
+    expect(hasConfigurationField(schema, 'teamKey')).toBe(true);
+    expect(hasConfigurationField(schema, 'other')).toBe(false);
+    expect(hasConfigurationField(schema, 'constructor')).toBe(false);
+    expect(hasConfigurationField(null, 'teamKey')).toBe(false);
   });
 });

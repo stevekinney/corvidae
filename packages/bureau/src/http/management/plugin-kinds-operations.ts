@@ -56,7 +56,7 @@ const kindsOutput = z.object({
         version: z
           .string()
           .describe(
-            'The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener.',
+            'The version the listener runs at, the kind’s own else its plugin’s; a change restarts the listener, and it is recorded on each run.',
           ),
         configuration: configurationSchema,
       }),

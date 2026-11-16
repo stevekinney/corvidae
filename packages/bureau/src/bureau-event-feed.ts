@@ -26,7 +26,9 @@ import {
 } from '@lostgradient/weft';
 
 import { eventSourceOf } from './event-source.ts';
+import { PluginPublishedEvent } from './plugin-published-event.ts';
 import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
+import { publishableErrorCode, publishableErrorKind } from './published-error-names.ts';
 import {
   ActionEvent,
   AssetLifecycleEvent,
@@ -34,6 +36,7 @@ import {
   type BureauAssetEventKind,
   BureauDisposedEvent,
   type BureauEventMap,
+  DecisionMadeEvent,
   DefinitionsChangedEvent,
   DiagnosticEvent,
   GOAL_EVENT_KINDS,
@@ -56,11 +59,20 @@ import {
   ReviewRejectedEvent,
   ReviewRevokedEvent,
   ReviewSupersededEvent,
+  BudgetThresholdRecordedEvent,
+  RunAbortedOutcomeEvent,
+  RunCompletedOutcomeEvent,
+  RunFailedOutcomeEvent,
+  RunGuardrailRecordedEvent,
   RunRegisteredEvent,
+  RunTripwireRecordedEvent,
+  ToolErrorRecordedEvent,
+  ToolPolicyDeniedRecordedEvent,
   RunSettledEvent,
   RunRemovedEvent,
 } from './events.ts';
 import {
+  type Action,
   AgentScheduledEvent,
   ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
@@ -132,6 +144,57 @@ function definedFields(
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
 }
 
+/** The fields a recorded action's `detail` holds, or none when it is not an object. */
+function detailOf(action: Action): Readonly<Record<string, unknown>> {
+  return action.detail !== null && typeof action.detail === 'object'
+    ? (action.detail as Readonly<Record<string, unknown>>)
+    : {};
+}
+
+/** A string field of a recorded action's detail, or `undefined` when it is anything else. */
+function detailString(detail: Readonly<Record<string, unknown>>, key: string): string | undefined {
+  const value = Object.hasOwn(detail, key) ? detail[key] : undefined;
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** A finite number field of a recorded action's detail, or `undefined` when it is anything else. */
+function detailNumber(detail: Readonly<Record<string, unknown>>, key: string): number | undefined {
+  const value = Object.hasOwn(detail, key) ? detail[key] : undefined;
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * What a guardrail's recorded event publishes (COR-2096): the guardrail, what it found, where it
+ * looked and how sure it was. The guardrail's `detail`, which can quote the flagged text, is never read.
+ */
+function projectGuardrail(action: Action): Record<string, unknown> {
+  const detail = detailOf(action);
+  return {
+    runId: action.runId,
+    step: detailNumber(detail, 'step'),
+    guardrailName: detailString(detail, 'guardrailName'),
+    category: detailString(detail, 'category'),
+    phase: detailString(detail, 'phase'),
+    confidence: detailNumber(detail, 'confidence'),
+  };
+}
+
+/** The code a `run.error` publishes for a failure whose own code is not an identifier. */
+const FALLBACK_RUN_ERROR_CODE = 'UNKNOWN';
+
+/**
+ * The error code a recorded `tool.error` publishes: the error's own `code` when it is an
+ * identifier (upper-case letters, digits and underscores), and `INTERNAL_ERROR` otherwise, which is
+ * the code Armorer gives a failure that names none. A code with any other shape could be free text.
+ */
+function toolErrorCode(error: unknown): string {
+  const code =
+    error !== null && typeof error === 'object' && 'code' in error
+      ? (error as { readonly code: unknown }).code
+      : undefined;
+  return publishableErrorCode(code, 'INTERNAL_ERROR');
+}
+
 /**
  * A settled review, projected identically whichever verb settled it.
  *
@@ -161,8 +224,16 @@ export type DeclaredKeys<T> = keyof {
 /** Classifies every declared Bureau event as publishable or explicitly denied. */
 export const BUREAU_EVENT_CLASSIFICATION = {
   action: 'published',
+  'run.tripwire': 'published',
+  'run.guardrail': 'published',
+  'budget.threshold': 'published',
+  'tool.policy-denied': 'published',
+  'tool.error': 'published',
   'run.registered': 'published',
   'run.settled': 'published',
+  'run.completed': 'published',
+  'run.error': 'published',
+  'run.aborted': 'published',
   'run.removed': 'published',
   'run.abort-settled': 'published',
   'bureau.disposed': 'published',
@@ -214,6 +285,7 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'notification.created': 'published',
   diagnostic: 'published',
   'memory.governance': 'published',
+  'decision.made': 'published',
 } as const satisfies Record<DeclaredKeys<BureauEventMap>, 'published' | { denied: string }>;
 
 export type PublishedBureauEventKind = {
@@ -231,12 +303,87 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     actionType: event.action.type,
     timestamp: event.action.timestamp,
   })),
+  // The five events a run records (COR-2096), published from the recorded action field by field:
+  // never the guardrail's detail, a policy's reason, a tool's arguments or an error's message.
+  projection(RunTripwireRecordedEvent.type, isInstance(RunTripwireRecordedEvent), (event) =>
+    definedFields(projectGuardrail(event.action)),
+  ),
+  projection(RunGuardrailRecordedEvent.type, isInstance(RunGuardrailRecordedEvent), (event) =>
+    definedFields({
+      ...projectGuardrail(event.action),
+      action: detailString(detailOf(event.action), 'action'),
+    }),
+  ),
+  projection(
+    BudgetThresholdRecordedEvent.type,
+    isInstance(BudgetThresholdRecordedEvent),
+    (event) => {
+      const detail = detailOf(event.action);
+      return definedFields({
+        runId: event.action.runId,
+        step: detailNumber(detail, 'step'),
+        threshold: detailNumber(detail, 'threshold'),
+        currentCost: detailNumber(detail, 'currentCost'),
+        budget: detailNumber(detail, 'budget'),
+        model: detailString(detail, 'model'),
+      });
+    },
+  ),
+  projection(
+    ToolPolicyDeniedRecordedEvent.type,
+    isInstance(ToolPolicyDeniedRecordedEvent),
+    (event) => {
+      const detail = detailOf(event.action);
+      return definedFields({
+        runId: event.action.runId,
+        step: detailNumber(detail, 'step'),
+        toolName: detailString(detail, 'toolName'),
+        toolCallId: detailString(detail, 'toolCallId'),
+      });
+    },
+  ),
+  projection(ToolErrorRecordedEvent.type, isInstance(ToolErrorRecordedEvent), (event) => {
+    const detail = detailOf(event.action);
+    return definedFields({
+      runId: event.action.runId,
+      step: detailNumber(detail, 'step'),
+      toolName: detailString(detail, 'toolName'),
+      toolCallId: detailString(detail, 'toolCallId'),
+      errorCode: toolErrorCode(Object.hasOwn(detail, 'error') ? detail['error'] : undefined),
+    });
+  }),
   projection(RunRegisteredEvent.type, isInstance(RunRegisteredEvent), (event) => ({
     runId: event.runId,
   })),
-  projection(RunSettledEvent.type, isInstance(RunSettledEvent), (event) => ({
-    runId: event.runId,
-  })),
+  projection(RunSettledEvent.type, isInstance(RunSettledEvent), (event) =>
+    definedFields({
+      runId: event.runId,
+      status: event.status,
+      finishReason: event.finishReason,
+    }),
+  ),
+  projection(RunCompletedOutcomeEvent.type, isInstance(RunCompletedOutcomeEvent), (event) =>
+    definedFields({ runId: event.runId, finishReason: event.finishReason }),
+  ),
+  // No error text (COR-2095, Revision 2026-11-16): a failure is named by its finish reason, a kind
+  // from the error-kind enum and a code that is an identifier, each checked again here at the
+  // boundary. The text is read through the authorized task read by `runId`, never from a pushed
+  // event, and the error object, its cause and its stack are never part of the event.
+  projection(RunFailedOutcomeEvent.type, isInstance(RunFailedOutcomeEvent), (event) =>
+    definedFields({
+      runId: event.runId,
+      finishReason: event.finishReason,
+      step: event.step,
+      errorKind: publishableErrorKind(event.errorKind),
+      errorCode:
+        event.errorCode === undefined
+          ? undefined
+          : publishableErrorCode(event.errorCode, FALLBACK_RUN_ERROR_CODE),
+    }),
+  ),
+  projection(RunAbortedOutcomeEvent.type, isInstance(RunAbortedOutcomeEvent), (event) =>
+    definedFields({ runId: event.runId, finishReason: event.finishReason }),
+  ),
   projection(RunRemovedEvent.type, isInstance(RunRemovedEvent), (event) => ({
     runId: event.runId,
   })),
@@ -452,6 +599,18 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
       operationId: event.operationId,
     }),
   ),
+  // The decision's kind, how it ended, the row that answered and the path, and the task: never the
+  // request, the value, the rationale, the schema, the principal, the provider and model as the
+  // model reported them, the routing id or the audit record's reason (COR-2249).
+  projection(DecisionMadeEvent.type, isInstance(DecisionMadeEvent), (event) =>
+    definedFields({
+      kind: event.kind,
+      outcome: event.outcome,
+      row: event.row,
+      path: event.path,
+      taskId: event.taskId,
+    }),
+  ),
 ];
 
 /** Every event kind this feed publishes, derived from the exhaustive classification. */
@@ -469,6 +628,8 @@ export const publishedBureauEventKinds: readonly string[] = PROJECTIONS.map((ent
 export function projectBureauEvent(
   event: unknown,
 ): { kind: string; payload: Readonly<Record<string, unknown>> } | undefined {
+  // COR-2224: a plugin's declared kind is dynamic, so it has no entry in the registry above.
+  if (event instanceof PluginPublishedEvent) return { kind: event.type, payload: event.payload };
   for (const entry of PROJECTIONS) {
     const payload = entry.tryProject(event);
     if (payload !== undefined) return { kind: entry.kind, payload };

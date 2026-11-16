@@ -21,6 +21,7 @@ export type {
   PluginOutputGuardrail,
   PluginOutputGuardrailEntry,
   PluginPanel,
+  PluginPanelPlacement,
   PluginProvider,
   PluginReaction,
   PluginReactionContext,
@@ -29,6 +30,7 @@ export type {
   PluginToolGuardrailEntry,
   PluginTrigger,
   PluginTriggerContext,
+  PluginTriggerOutcome,
   PluginWorkflow,
 } from './contributions.ts';
 export { definePlugin } from './define-plugin.ts';
@@ -49,5 +51,6 @@ export type {
   PluginSetupContext,
 } from './plugin-descriptor.ts';
 export { isPluginName, pluginNamePattern } from './plugin-name.ts';
+export { PluginReactionError } from './plugin-reaction-error.ts';
 export { createPluginStorage, pluginStoragePrefix } from './plugin-storage.ts';
-export type { PluginScore, PluginScorer } from './scorer.ts';
+export type { PluginScore, PluginScoreOutcome, PluginScorer } from './scorer.ts';

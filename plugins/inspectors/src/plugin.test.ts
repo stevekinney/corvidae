@@ -20,18 +20,23 @@ describe('the inspectors plugin', () => {
     } finally {
       await host.dispose();
     }
-    expect(runInspector.uri).toBe('ui://bureau/run-inspector/v1');
-    expect(pendingReview.uri).toBe('ui://bureau/pending-review/v1');
-    expect(workflowRevisionReview.uri).toBe('ui://bureau/workflow-revision-review/v1');
+    expect(runInspector.uri).toBe('ui://inspectors/run-inspector/v1');
+    expect(pendingReview.uri).toBe('ui://inspectors/pending-review/v1');
+    expect(workflowRevisionReview.uri).toBe('ui://inspectors/workflow-revision-review/v1');
   });
 
   it('links each panel to the tool a client runs to open it, one it may call', () => {
     expect(runInspector.opensFromTool).toBe('bureau.tasks.inspect');
     expect(pendingReview.opensFromTool).toBe('bureau.reviews.list');
-    expect(runInspector.allowedTools).toContain(runInspector.opensFromTool);
-    expect(pendingReview.allowedTools).toContain(pendingReview.opensFromTool);
-    expect(workflowRevisionReview.opensFromAgentTool).toBe('bureau:workflows-propose-update');
-    expect(workflowRevisionReview.allowedTools).toContain(workflowRevisionReview.opensFromTool);
+    expect(runInspector.allowedTools).toContain('bureau.tasks.inspect');
+    expect(pendingReview.allowedTools).toContain('bureau.reviews.list');
+    expect(runInspector.placements).toEqual([{ kind: 'run' }]);
+    expect(pendingReview.placements).toBeUndefined();
+    expect(workflowRevisionReview.placements).toEqual([
+      { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+    ]);
+    expect(workflowRevisionReview.opensFromTool).toBe('bureau.workflows.update');
+    expect(workflowRevisionReview.allowedTools).toContain('bureau.workflows.update');
   });
 
   it('lists every Bureau tool a page names in its source, so the list cannot drift', async () => {

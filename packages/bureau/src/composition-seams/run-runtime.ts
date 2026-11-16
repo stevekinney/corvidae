@@ -360,20 +360,26 @@ export function createRunRuntimeSeam(core: CompositionCore, peers: RunRuntimePee
         DEFAULT_TAINT_THRESHOLD;
       hooks.on(
         'prepareStep',
-        createMemoryRecallHook(memory, memoryAuthority, memoryTarget, (detection, step) => {
-          if (detection.confidence < recallTaintThreshold) return;
-          recallTaint.taint({
-            reason: `Recalled memory flagged by ${detection.detector} (${detection.category})`,
-            detector: detection.detector,
-            category: detection.category,
-            confidence: detection.confidence,
-            step,
-            provenance: 'recalled-memory',
-          });
-          // The write that stores the taint completes before the recall hook returns, as
-          // the guardrail hooks' own does (COR-2105).
-          return recallTaint.settled();
-        }),
+        createMemoryRecallHook(
+          memory,
+          memoryAuthority,
+          memoryTarget,
+          (detection, step) => {
+            if (detection.confidence < recallTaintThreshold) return;
+            recallTaint.taint({
+              reason: `Recalled memory flagged by ${detection.detector} (${detection.category})`,
+              detector: detection.detector,
+              category: detection.category,
+              confidence: detection.confidence,
+              step,
+              provenance: 'recalled-memory',
+            });
+            // The write that stores the taint completes before the recall hook returns, as
+            // the guardrail hooks' own does (COR-2105).
+            return recallTaint.settled();
+          }, // COR-2197: the recall guardrails are told whether this session is already tainted.
+          () => recallTaint.isTainted(),
+        ),
         {
           id: 'bureau:memory-recall',
           // Recall admission records the read and can quarantine a poisoned
@@ -383,14 +389,29 @@ export function createRunRuntimeSeam(core: CompositionCore, peers: RunRuntimePee
       );
       hooks.on(
         'onStep',
-        createMemoryPersistHook(memory, memoryAuthority, memoryTarget, request.runId, (receipt) =>
-          diagnose({
-            level: 'warn',
-            scope: 'memory',
-            message:
-              `[bureau] Governed memory rejected the answer of run "${request.runId ?? request.sessionId}" ` +
-              `for agent "${memoryTarget.collection}" (${receipt.reason ?? 'no reason given'}), so it was not remembered.`,
-          }),
+        createMemoryPersistHook(
+          memory,
+          memoryAuthority,
+          memoryTarget,
+          request.runId,
+          (receipt) =>
+            diagnose({
+              level: 'warn',
+              scope: 'memory',
+              message:
+                `[bureau] Governed memory rejected the answer of run "${request.runId ?? request.sessionId}" ` +
+                `for agent "${memoryTarget.collection}" (${receipt.reason ?? 'no reason given'}), so it was not remembered.`,
+            }),
+          // COR-2191: a quarantined answer is held out of recall, and says so here, by run and
+          // agent and never by content.
+          () =>
+            diagnose({
+              level: 'warn',
+              scope: 'memory',
+              message:
+                `[bureau] Governed memory quarantined the answer of run "${request.runId ?? request.sessionId}" ` +
+                `for agent "${memoryTarget.collection}", so it was not remembered.`,
+            }),
         ),
         {
           id: 'bureau:memory-persist',

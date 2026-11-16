@@ -36,6 +36,15 @@
  * check-token-contrast-borders.test.ts). The dark arm is now a neutral ladder at hue 265
  * with chroma at most 0.014: canvas 0.145, surface 0.185, inset 0.210, raised 0.235.
  *
+ * The owner then said tables (and with them every card-like panel) were "just a little too
+ * dark" (2026-11-15): a 0.976 surface on a 0.994 page reads as a grey slab. The default light
+ * arm took the consumer ladder's shape: the surface is pure white like raised, the canvas drops
+ * to a grey page at 0.976 (the focus ring reads 3.51:1 there; 0.970 would read 3.45:1), and the
+ * well sits at 0.955, near-neutral (chroma 0.005, hue 265), so the faint hairline still reads
+ * 1.1:1 on it. The order is inset < canvas < surface = raised: a white panel separates from the
+ * page by fill, and a well recedes inside it. The comfortable density keeps its deeper steps
+ * (canvas 0.955, well 0.925).
+ *
  * The previous version of this file measured separation as ΔL only. That metric
  * cannot see the current design at all: light-mode hover/pressed now wash toward
  * the ACCENT, so a state and a tier can share a lightness and still be obviously
@@ -243,10 +252,11 @@ describe('light mode anchors at white', () => {
     raised: bothArms(TIER_TOKENS.raised).light,
   };
 
-  test('the page canvas reads as white', () => {
+  test('the page canvas stays a light page, not a slate plate', () => {
     // The regression this file exists to prevent. `--cinder-surface-canvas` is the single
     // largest painted area in any light-mode screen; at 0.921 it read as a pale
-    // slate plate. Anything below ~0.97 stops reading as "white page".
+    // slate plate. Since 2026-11-15 it is a light grey page under white panels (0.976);
+    // anything below ~0.97 stops reading as a light page.
     expect(tiers.bg.L).toBeGreaterThanOrEqual(0.97);
   });
 
@@ -260,8 +270,8 @@ describe('light mode anchors at white', () => {
     // Chroma on the large light surfaces is most of what "drab" and "sad" actually
     // described: a 0.014-chroma canvas is not a neutral, it is a pale slate. Keep
     // the cast present but well under the threshold where it reads as a blue theme.
-    // The well is the one tinted tier (COR-2308: chroma 0.011 at hue 275), so it reads
-    // as a recess rather than a grey plate; it still stays under 0.012.
+    // The well may carry a faint tint (COR-2308 gave it chroma 0.011 at hue 275; it is 0.005
+    // since 2026-11-15) so it reads as a recess rather than a grey plate; it stays under 0.012.
     for (const [name, tier] of Object.entries(tiers)) {
       expect(tier.C, name).toBeLessThanOrEqual(name === 'inset' ? 0.012 : 0.008);
     }
@@ -272,21 +282,21 @@ describe('light mode anchors at white', () => {
     expect(tiers.raised.C).toBe(0);
   });
 
-  test('the app-shell ladder is strictly ordered inset < surface < bg < raised', () => {
-    // COR-2308: the page canvas is near-white and the grouped surface is the grey step below it.
-    expect(tiers.inset.L).toBeLessThan(tiers.surface.L);
-    expect(tiers.surface.L).toBeLessThan(tiers.bg.L);
-    expect(tiers.bg.L).toBeLessThan(tiers.raised.L);
+  test('the ladder is ordered inset < bg < surface, with surface as white as raised', () => {
+    // 2026-11-15: the panel is a white sheet on a grey page, and the well is the step below both.
+    expect(tiers.inset.L).toBeLessThan(tiers.bg.L);
+    expect(tiers.bg.L).toBeLessThan(tiers.surface.L);
+    expect(tiers.surface.L).toBe(tiers.raised.L);
   });
 
   test('the surface separates from the canvas by fill', () => {
-    // 0.994 - 0.976 = 0.018: the step the owner asked for, so a group no longer needs a hairline.
-    expect(tiers.bg.L - tiers.surface.L).toBeGreaterThanOrEqual(0.015);
+    // 1.000 - 0.976 = 0.024, so a white panel reads off the page without a hairline.
+    expect(tiers.surface.L - tiers.bg.L).toBeGreaterThanOrEqual(0.015);
   });
 
   test('the well separates from the surface and the canvas by fill alone', () => {
     // A sunken region has no shadow to fall back on, so its fill has to do the work unaided:
-    // 0.976 - 0.958 = 0.018 below the surface, 0.994 - 0.958 = 0.036 below the canvas.
+    // 1.000 - 0.955 = 0.045 below the surface, 0.976 - 0.955 = 0.021 below the canvas.
     expect(tiers.surface.L - tiers.inset.L).toBeGreaterThanOrEqual(0.015);
     expect(tiers.bg.L - tiers.inset.L).toBeGreaterThanOrEqual(0.015);
   });

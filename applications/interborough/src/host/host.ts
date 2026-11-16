@@ -230,7 +230,12 @@ import {
 } from './locations.ts';
 import { createHostMemory } from './memory.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
-import { PANEL_PREBUILT_DIRECTORY_VARIABLE, panelMounts } from './panel-mounts.ts';
+import {
+  commitPanelDigests,
+  PANEL_PREBUILT_DIRECTORY_VARIABLE,
+  panelMounts,
+  reportPanelChanges,
+} from './panel-mounts.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
@@ -1342,6 +1347,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // which only a client that guessed the port could see.
     const mcpMounts = await panelMounts(
       bureau.plugins.panels(),
+      storage,
       environment[PANEL_PREBUILT_DIRECTORY_VARIABLE]?.trim() || undefined,
     );
     // A plugin's app that does not build is left out and listed as a problem on the plugin; it
@@ -1350,6 +1356,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       bureau.plugins.reportPanelFailure(failure.plugin, failure.app, failure.message);
       log(`Plugin ${failure.plugin}: its panel ${failure.app} did not build: ${failure.message}`);
     }
+    // A page whose bytes differ from what an earlier start served under its URI is still served,
+    // and listed as a problem on the plugin (COR-2210).
+    reportPanelChanges(bureau.plugins, mcpMounts.changes, log);
     let bureauHandler: BureauHandler | undefined;
     const bureauSockets: BureauHandler['websocket'] = {
       open: (socket) => bureauHandler?.websocket.open(socket),
@@ -1717,11 +1726,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           .map((entry) => entry.key),
       ),
     );
+    const routeInventory = Object.freeze([
+      ...inventoryHostRoutes(publicRoutes, bureauHandler.resourceInventory),
+      engineInventory,
+    ]);
+    // Recorded as the last step that can fail: a start that throws anywhere earlier leaves the
+    // record alone, so the next start still reports the change (COR-2210).
+    await commitPanelDigests(storage, mcpMounts.pendingDigests);
     return {
-      routeInventory: Object.freeze([
-        ...inventoryHostRoutes(publicRoutes, bureauHandler.resourceInventory),
-        engineInventory,
-      ]),
+      routeInventory,
       url: new URL(`http://${LOOPBACK}:${publicPort}/`),
       bureau,
       engine,

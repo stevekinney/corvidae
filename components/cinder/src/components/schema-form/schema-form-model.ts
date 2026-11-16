@@ -47,6 +47,8 @@ export type SchemaFormField = {
   item?: SchemaFormField;
   /** Set on a `number` or `integer` field that holds a duration, stored in milliseconds. */
   unit?: 'milliseconds';
+  /** Set on an optional `enum` field that starts unset and offers an empty choice to clear it. */
+  clearable?: true;
 };
 
 /**
@@ -76,7 +78,28 @@ export type SchemaFormModelOptions = {
    * groups are harder to read and fill than the JSON they stand for.
    */
   readonly objectArraysAsJson?: boolean;
+  /**
+   * Whether an optional choice with no default starts unset and can be cleared (`clearable`),
+   * instead of starting on its first option. The `setting-rows` variant uses it, because a setting
+   * a person never set is not the same as the first thing it could be set to.
+   */
+  readonly optionalEnumsUnset?: boolean;
 };
+
+/** How the model reads a schema for a variant of the form. */
+export function modelOptionsForVariant(
+  variant: 'default' | 'input' | 'setting-rows' | undefined,
+): SchemaFormModelOptions {
+  return {
+    objectArraysAsJson: variant === 'input' || variant === 'setting-rows',
+    optionalEnumsUnset: variant === 'setting-rows',
+  };
+}
+
+/** A property key in words as a setting row reads it, in sentence case: `baseURL` is "Base URL". */
+export function sentenceCaseLabel(key: string): string {
+  return humanizeIdentifier(key, { casing: 'sentence' });
+}
 
 export function createSchemaFormModel(
   schema: JsonSchemaObject,
@@ -102,7 +125,13 @@ function fieldFromJsonSchema(
   const normalizedSchema = schema;
   const options = enumOptions(normalizedSchema);
   if (options.length > 0) {
-    return { ...baseField('enum', normalizedSchema, path, key, required), options };
+    const clearable =
+      modelOptions.optionalEnumsUnset === true && !required && !('default' in normalizedSchema);
+    return {
+      ...baseField('enum', normalizedSchema, path, key, required),
+      options,
+      ...(clearable ? { clearable: true as const } : {}),
+    };
   }
 
   const choiceBranches = choiceBranchSchemas(normalizedSchema);
@@ -420,6 +449,7 @@ export function defaultValueForField(field: SchemaFormField): unknown {
     return literalBranch ? defaultValueForField(literalBranch) : null;
   }
   if (field.kind === 'boolean') return false;
+  if (field.kind === 'enum' && field.clearable) return undefined;
   if (field.kind === 'enum') return field.options.length > 0 ? field.options[0]!.value : '';
   if (field.kind === 'string')
     return isTemporalStringSchema(field.schema) ? blankMomentValue(field) : '';
@@ -440,8 +470,12 @@ export function initialValueForField(field: SchemaFormField, value: unknown): un
  * reports a draft only after an edit, so a host that saves an untouched form reads this to hold
  * what the person sees.
  */
-export function initialDraftOf(schema: JsonSchemaObject, value?: unknown): unknown {
-  const model = createSchemaFormModel(schema);
+export function initialDraftOf(
+  schema: JsonSchemaObject,
+  value?: unknown,
+  variant?: 'default' | 'input' | 'setting-rows',
+): unknown {
+  const model = createSchemaFormModel(schema, modelOptionsForVariant(variant));
   return pruneUndefined(initialValueForField(model.field, value));
 }
 

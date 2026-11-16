@@ -77,6 +77,8 @@ function withCreate(bureau: SeededBureau, create: Create): PluginHost {
     agents: { list: () => bureau.agents.list() },
     schedules: { create, list: (filter) => bureau.schedules.list(filter) },
     goals: { create: (request) => bureau.goals.create(request) },
+    // The seeding publishes no event, and a `SeededBureau` has no host `publish` to forward to.
+    publish: () => Promise.reject(new Error('The seeding does not publish an event.')),
   };
 }
 

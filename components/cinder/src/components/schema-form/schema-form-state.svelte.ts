@@ -214,7 +214,11 @@ export class SchemaFormState {
     if (this.#options.getSubmitting()) return;
     const select = event.currentTarget;
     if (!(select instanceof HTMLSelectElement)) return;
-    this.updateValue(field.path, decodeEnumValue(select.value));
+    // The empty choice of a clearable field leaves it unset, which the draft reports as absent.
+    this.updateValue(
+      field.path,
+      field.clearable && select.value === '' ? undefined : decodeEnumValue(select.value),
+    );
   }
 
   /** JSON fields hold a raw text draft (validated/parsed on submit), so the

@@ -433,6 +433,8 @@ export function composeHooks(input: {
   readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   readonly eventForHookOwner?: HooksDependencies['eventForHookOwner'];
   readonly mayStartWorkflows?: HooksDependencies['mayStartWorkflows'];
+  /** Reads the secrets a reaction's stored references name (COR-2177): `BureauOptions.pluginSecrets`. */
+  readonly configurationSecrets?: HooksDependencies['configurationSecrets'];
   readonly options: BureauOptions<AgentDefinitions>['hooks'];
   readonly engine: WebhookDeliveryEngine | undefined;
   readonly kv: ConditionalTextValueStore | undefined;
@@ -455,6 +457,7 @@ export function composeHooks(input: {
     workspace: input.workspace,
     eventForHookOwner: input.eventForHookOwner,
     mayStartWorkflows: input.mayStartWorkflows,
+    configurationSecrets: input.configurationSecrets,
     kv,
     engine,
     secrets: options.secrets,

@@ -18,10 +18,15 @@ const schema = {
       description: 'Label for the built-in submit button. Defaults to `Submit`.',
     },
     variant: {
-      enum: ['default', 'input'],
+      enum: ['default', 'input', 'setting-rows'],
       description:
-        'How the fields are drawn. `default` is the plain form. `input` is the Input block of a page\nthat runs or schedules something: short fields share a row two at a time (a switch, an\narray, a group or a JSON field takes the whole row), a boolean is a switch with its\ndescription beside it, and an array of objects is one JSON editor whose status line counts\nthe items.',
+        'How the fields are drawn. `default` is the plain form. `input` is the Input block of a page\nthat runs or schedules something: short fields share a row two at a time (a switch, an\narray, a group or a JSON field takes the whole row), a boolean is a switch with its\ndescription beside it, and an array of objects is one JSON editor whose status line counts\nthe items. `setting-rows` draws each top-level property as one Settings row (`SettingRow`):\nthe label, the key and the description at the start, the control at the inline end, and a\nhairline between rows. A property whose control does not fit a column (an object, an array of\nobjects, a JSON field) is drawn under its row, full width and with no box of its own. The\nrows stack below a container width. A large form keeps the same rows: no Find a field, no\nEdit as JSON, no reordering.',
       default: 'default',
+    },
+    disabled: {
+      type: 'boolean',
+      description:
+        'Whether every control is disabled, such as a form the host locks. The form is also disabled\nwhile it validates a submit. Defaults to `false`.',
     },
     submitVisible: {
       type: 'boolean',

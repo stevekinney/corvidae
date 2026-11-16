@@ -9,7 +9,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
-| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
+| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`, `publish` (publishes an event the plugin declared as `<plugin>:<name>`, with the payload checked against its schema; rejects with `PluginHostDisposedError` once the Bureau is disposed, and publishes nothing). |
 | `PluginContributions` | Tools, activities, code workflows, validators, guardrails, interceptors, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, events, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
@@ -100,7 +100,7 @@ The descriptor's members:
 | `reactions` | New things a hook can do when its event happens. |
 | `providers` | Model providers, each with the catalog rows of its models (a row with `decisions: { kinds, only: true }` answers those decision kinds natively through the provider's `decide` and runs no agent, as the `typesafe` plugin's does) and, optionally, the `secretKey` of the declared secret that holds its API key (see [Provider keys](#provider-keys)). |
 | `embedders` | Embedders the `memory.embedder` setting can name. |
-| `scorers` | Scorers that score a sample of completed runs. |
+| `scorers` | Scorers that score a sample of completed runs: `score(run, signal)` returns a `PluginScore` (`outcome`, `message`, optional `score` from 0 to 1) and may declare `determinism`. The signal aborts on shutdown and after 30 seconds. |
 | `panels` | Interface panels. |
 | `formatters` | Titles and bodies for the activity views, and optionally a `tier` (`critical`, `warning` or `info`, which is also what the view gets when a formatter names none), an `icon` (a Lucide icon name) and a `link` (a router-relative path starting with one `/` and holding no whitespace or control character; the host drops any other value, a URL, a `//host` path or a path with a tab or line break among them). A formatter formats from the event alone, synchronously: `format(event)` is handed nothing else and returns no promise. The host keeps a `title` to one line of 200 characters (newlines become spaces) and a `body` to 2,000, cutting a longer one rather than refusing it, and drops a `body` that is not a string with a `warn` diagnostic. A formatter that lists one kind twice, or a kind another plugin's formatter holds, skips the plugin with `name-clash`. |
 | `events` | Event kinds the plugin declares, `{ name, description, payload, version? }` (`PluginEventDeclaration`). The kind is `plugin:name`; see [Declared events](#declared-events). |
@@ -112,7 +112,7 @@ A trigger's `start` receives the `workflowId` of the file it starts and a `stora
 
 The state survives a restart, a pause, a configuration edit and a plugin upgrade. The host deletes it at the next reconcile after the file is deleted, or after the file's trigger becomes another kind (including another kind of the same plugin), so the file starts the new kind with empty state. A file that is `invalid` or that this Bureau cannot read keeps it, and so does the state of a plugin that is not loaded: it stays until the plugin loads and a reconcile runs. So does the state of a file another plugin ships while that plugin is not running, because the file is absent for that start only.
 
-A cursor is advanced after the work it stands for, never before: fire first, then advance. A crash between the two fires that item again on the next start, which is an at-least-once start the workflow must tolerate, where advancing first would lose the item. Because a configuration edit does not reset state, a cursor that depends on the configuration (the account a poll reads, the query it runs) stores a hash of what it depends on beside it, and resets itself when the hash no longer matches. The host never resets a key for you. Hash only what the cursor depends on: an edit to anything else, such as how often the poll runs, keeps the cursor. The function `start` resolves with must not return while a write to `storage` is still pending: the host waits for it before it starts the replacement, so a write that outlives it could land after the replacement has reset the state.
+A cursor is advanced after the work it stands for, never before: fire first, then advance. A crash between the two fires that item again on the next start, where advancing first would lose the item. Pass `fire` an `idempotencyKey` (the id the source gave the item) and the repeat starts nothing: the host remembers the key per workflow file and trigger kind for as long as the run it started exists, and answers `{ outcome: 'duplicate', runId }` with that run. `fire` resolves with a `PluginTriggerOutcome`: `started` or `duplicate` with a `runId`, or `skipped` with a `reason` of `stopped`, `paused` or `closed`, which starts nothing and leaves the key free, so the delivery is redelivered when the trigger runs again. A key is a non-empty string; an empty or non-string key rejects. Because a configuration edit does not reset state, a cursor that depends on the configuration (the account a poll reads, the query it runs) stores a hash of what it depends on beside it, and resets itself when the hash no longer matches. The host never resets a key for you. Hash only what the cursor depends on: an edit to anything else, such as how often the poll runs, keeps the cursor. The function `start` resolves with must not return while a write to `storage` is still pending: the host waits for it before it starts the replacement, so a write that outlives it could land after the replacement has reset the state.
 
 ```ts
 import { defineTrigger } from '@lostgradient/interborough-plugin';
@@ -145,7 +145,9 @@ export const newIssues = defineTrigger({
       const cursor = Number((await state.get('cursor')) ?? '0');
       for (const issue of await issuesAfter(configuration.account, cursor)) {
         if (signal.aborted) return;
-        await fire({ id: issue.id });
+        const outcome = await fire({ id: issue.id }, { idempotencyKey: String(issue.id) });
+        // A skipped fire started nothing and kept its key, so the cursor stays and the item is fired again.
+        if (outcome.outcome === 'skipped') return;
         await state.set('cursor', String(issue.id));
       }
     };
@@ -177,6 +179,7 @@ A plugin declares the event kinds it will publish with `events: [{ name, descrip
 - **Payloads hold no content.** An event reaches hooks, activity views and other plugins, so its payload carries identifiers, statuses and counts. A field is accepted when every value it can hold is a number, a boolean, a literal, a `z.enum` (a status), or a string marked `.meta({ identifier: true })`; objects, arrays, unions, optionals, nullables and defaults of those are accepted too. A free `z.string()`, `z.unknown()`, `z.any()`, a record, a tuple, a date and an object that accepts other keys are refused: the plugin is `skipped` with `event-payload-content`, naming the event and the field (at most 32 fields are named). A schema that refers to itself through a getter is accepted when every leaf passes. The host reads at most 1,000 schemas of one payload, wrappers and getter reads included; a payload that needs more, such as one whose getter builds a new schema on every read, is refused with `event-payload-content` at the path where the count ran out.
 - **Formatting.** Only the publisher formats its own kinds: a formatter may list a kind Bureau publishes or one its own plugin declares. A formatter that lists a kind another plugin declares skips the plugin with `formatter-foreign-kind`, naming the kind and the owner; one that lists any other kind, such as an undeclared `<plugin>:<name>`, skips it with `formatter-unknown-kind`.
 - **Listing.** `bureau.events.catalog` lists each running plugin's declared kinds after Bureau's own, with the payload fields, `origin: 'unattributed'`, no scopes and `source: '<plugin>'`.
+- **Publishing.** `host.publish(name, payload)` publishes `<plugin>:<name>` with `source: '<plugin>'`, so a plugin can publish only under its own name. It rejects, and publishes nothing, with a `TypeError` naming the full kind (`<plugin>:<name>`) for an undeclared name, a `TypeError` for a payload the declared schema refuses, the needs-setup error while a secret the plugin declared is not set, and `PluginHostDisposedError` once the Bureau is disposed. A published event replays after a `bureau.events` reconnect like any other, and a subscription's `kinds` filter accepts a kind a loaded plugin declares.
 - **Identity.** Its identity kind is `event`, with the id `plugin:name`, the event's version and a digest of its payload schema, so marking a field `identifier` or changing its type changes the digest.
 
 ```ts
@@ -302,6 +305,12 @@ export default definePlugin({
 
 A reaction must be safe to run twice: pass `idempotencyKey` to the service it calls, so an attempt repeated after a restart does not repeat the effect. Set the reaction's own `version`. A delivery pins the version of the reaction it was created against, and the pin defaults to the plugin's `version`, so without one every plugin release fails each delivery still pending (`version-mismatch`) instead of running it. A stored hook action, `{ type: 'plugin', plugin, kind }`, names the reaction by plugin and name, so it keeps delivering through the `reactions` contribution.
 
+A reaction that rejects fails that attempt, and its delivery is tried again until it runs out of attempts. When a retry cannot change the answer (the channel does not exist, the service refuses the input for good), reject with `new PluginReactionError(message, { permanent: true })` instead: the delivery then ends `failed` after that one attempt. Bureau recognises the error by its `name` and its `permanent` property, not by `instanceof`, so a plugin loaded from a folder, which carries its own copy of this package, is understood too. A `PluginReactionError` without `permanent: true` is an ordinary rejection.
+
+The `signal` a reaction's `run` receives aborts when the host shuts down, when the reaction's `timeoutMilliseconds` have passed, and when its hook is disabled or deleted; pass it to whatever `run` waits on. The attempt ends when the signal aborts even if `run` ignores it. A shutdown leaves the delivery to be resumed; a timeout ends the attempt in error (`The reaction timed out after N ms`) and it is tried again; a disabled or deleted hook ends the delivery `aborted`. `timeoutMilliseconds` is a positive safe integer, and a reaction that sets none gets the host's webhook request timeout (10 seconds by default).
+
+A reaction's configuration can hold a secret without storing it. Mark the field with `.meta({ secret: true })`, as in `token: z.string().meta({ secret: true })`: a hook then keeps `{ "$secret": "<key>" }` in that field, where the key names a secret the workspace has published, and a plain value in the field is refused when the hook is written. Each attempt resolves the key to the value published then and passes it to `run` as the string the schema declares. An attempt whose key has no value fails and is tried again; it never falls back to another value. Mark only fields reached through an object's properties (optional or not); a marker under an array or a record, and a marked field that is a union, are refused, because a reference has no single place to be kept there. A `.nullable()` field is a union, so `.meta({ secret: true }).nullable()` and `.nullable().meta({ secret: true })` are both refused: hold the secret in a field that is always a string, and make the field optional instead. A `{ secret: true }` inside a `default` or an `examples` value is data, never a marker. While the plugin itself needs setup (a secret it declared is missing), a delivery of its reactions waits, without making an attempt, until the secret is saved.
+
 An interceptor has a member for each point of Operative's hook map (`onRunError`, `validateToolResult` and `selectTools` among them), and a point is written as the function or as `{ handler, replay, onError, priority }`. `replay: 'safe'` marks a hook with no external side effect, so a recovered durable run knows it can run again; a hook that says nothing is `effectful`. `onError` returns `'continue'` to go on to the next hook when this one throws, or `'abort'` to fail the step, which is also what a hook with no `onError` does. A `priority` sorts a higher number first, within a range of at most 999: a number below the one just above Operative's guardrails is raised to it, so a plugin never sorts behind them, and a number above 999 is lowered to it, because the host adds a tier's band to a priority and bands are 1000 apart, so a higher one would sort the plugin's hook ahead of the host's own invariants. The observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) and `onError` are settled by Operative whatever `onError` says. While the plugin needs setup (a declared secret is missing), every hook of every interceptor refuses to run its handler.
 
 An interceptor that declares `appliesTo: 'every-agent'` runs for every run the host starts (file agents, code agents, dispatched agents and their children) without any agent file listing it. The host composes it in a `plugin` tier between its own hooks and the agent's, so its entries show `tier: 'plugin'` in a run's hook plan. An agent file that also lists it gets it once, in its own tier, as an interceptor it chose. While its plugin needs setup, such an interceptor refuses for an agent that lists it, as any chosen interceptor does, and is skipped for every other agent: its handlers do not run, and the run goes on as if it were absent, so a missing secret never fails an agent that did not choose it.
@@ -347,7 +356,7 @@ export default definePlugin({
 });
 ```
 
-An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. Put the version in the `uri`, so a changed contract is a new resource.
+An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. The `uri` begins `ui://<your plugin's name>/`, and setup refuses any other prefix, so a plugin cannot squat another's pages. Put the version in the `uri`, so a changed contract is a new resource: a start that serves different bytes under a `uri` an earlier start served lists a `panel-changed` problem, and still serves the page.
 
 ```ts
 import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
@@ -355,9 +364,10 @@ import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugi
 const runInspector: PluginPanel = {
   name: 'run-inspector',
   title: 'Run inspector',
-  uri: 'ui://example/run-inspector/v1',
+  uri: 'ui://inspector/run-inspector/v1',
   entry: new URL('./run-inspector/app.ts', import.meta.url),
   allowedTools: ['bureau.tasks.inspect', 'bureau.tasks.cancel'],
+  placements: [{ kind: 'run' }],
   opensFromTool: 'bureau.tasks.inspect',
 };
 
@@ -368,6 +378,14 @@ export default definePlugin({
   setup: () => ({ panels: [runInspector] }),
 });
 ```
+
+A panel declares where it appears with `placements` (`PluginPanelPlacement`), each one of three kinds:
+
+- `{ kind: 'page', path, sidebar? }`: a page of its own in the host's router. `path` matches `^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$`, and a `sidebar` entry names a `group` of `work`, `build` or `system` and, optionally, an `icon`.
+- `{ kind: 'run' }`: the panel shows on a run's page. Two plugins can both place a panel there.
+- `{ kind: 'chat-tool', agentTool }`: Chat opens the panel inline when the agent tool `agentTool` is called. A Bureau given its agent tools refuses an id it does not hold, except the workflow tools it adds itself.
+
+`opensFromTool` is optional: leave it out for a panel that needs no MCP opener, such as a page, and no tool is linked to it and none is claimed. A placement claims nothing. Setup refuses an unknown `kind`, a `page` group outside the three, and a `page` path outside the grammar. `GET /host/panels` lists each panel's `placements`, always, and an empty list when it declares none.
 
 An entry that does not build leaves the plugin `running` with a `panel-failed` problem, and the other contributions keep working.
 
@@ -536,6 +554,8 @@ export default definePlugin({
 | `setup-failed` | `skipped` | `setup` threw, or returned something that cannot be registered. `message`. |
 | `start-failed` | `running` | `start` threw. `message`. |
 | `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
+| `trigger-failed` | `running` | The listener of a workflow file that uses one of the plugin's trigger kinds failed: its `start` threw, or the kind refused the file's configuration. One per failed workflow, removed once it is not failed. `workflow`, `message`. |
+| `panel-changed` | `running` | A start served a page under a `uri` with a different `contentDigest` than an earlier start served under it. The page is still served. `app`, `uri`, `previousDigest`, `contentDigest`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `activity-field-missing` | `skipped` | An activity has no `title` or no `inputSchema`, which the workflow editor lists it by. `activity`, `field`. |
 | `workflow-field-missing` | `skipped` | A code workflow has no `title` or no `inputSchema`, which the workflow list and the start check need. `workflow`, `field`. |

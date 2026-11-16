@@ -15,6 +15,12 @@
 - A choice renders a `radiogroup` with one radio per branch inside a `fieldset` named by the field label.
 - A millisecond field renders a labelled number input and a select named `<label> unit`.
 
+## Setting Rows
+
+- The `setting-rows` variant draws each top-level property as a `SettingRow`: the visible label is a `<label>` for the row's control, the key is outside the label so it is not part of the control's name, and the description and error are connected to the control with `aria-describedby`.
+- A property drawn under its row (an object, an array of objects) keeps its label and description on the row; the nested fields and the JSON editor carry their own names. No group has a border, and none is a `fieldset` unless the schema nests a group inside another.
+- The row stacks the control under the label when its container is narrow; the reading and focus order do not change.
+
 ## Large Forms
 
 - Collapsible groups are disclosure buttons with `aria-expanded`; the closed-group summary is part of the button's name.

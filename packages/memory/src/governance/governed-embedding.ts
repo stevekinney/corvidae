@@ -1,3 +1,4 @@
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { Embedder } from 'armorer';
 
 import { type EmbedderRegistry, EmbedderRegistryError } from '../embedder-registry';
@@ -7,6 +8,7 @@ import {
   type MemoryVectorStore,
   MemoryVectorDimensionError,
 } from '../memory-vector-store';
+import { raceAbort } from './abort-race';
 import type { MemoryEmbedderAvailability, MemoryEmbeddingStatus } from './governed-memory-types';
 
 /**
@@ -20,10 +22,28 @@ export interface ActiveEmbedding {
   /**
    * Embeds `texts` with the profile's embedder. A vector of another length than the profile's
    * dimension, or holding an entry that is not a finite number, throws
-   * {@link MemoryVectorDimensionError}, so nothing it made is ever stored.
+   * {@link MemoryVectorDimensionError}, so nothing it made is ever stored. An answer with another
+   * number of vectors than `texts` throws too, so a vector is never paired with another text's
+   * record (COR-2187).
+   *
+   * Every embed is bounded (COR-2185): it gets its own signal, which aborts when
+   * {@link CreateGovernedEmbeddingInput.embedTimeoutMilliseconds} has passed or when
+   * `options.signal` aborts. The embedder is given that signal, and the embed rejects with the
+   * signal's reason as soon as it aborts, even when the embedder ignores it. The bound's reason is
+   * a `TimeoutError`; the caller's is the caller's own.
+   *
+   * `options.timeoutMilliseconds` shortens the bound for this one embed (the smaller of it and the
+   * configured bound applies). It is a bound and not a signal on purpose: an aborted `signal` means
+   * the caller gave up, and a bound that ran out only means the embedder did not answer.
    */
-  embed(texts: readonly string[]): Promise<Float32Array[]>;
+  embed(
+    texts: readonly string[],
+    options?: { readonly signal?: AbortSignal; readonly timeoutMilliseconds?: number },
+  ): Promise<Float32Array[]>;
 }
+
+/** How long one embed may take before it is abandoned, in milliseconds, when no bound is given. */
+export const DEFAULT_EMBED_TIMEOUT_MILLISECONDS = 120_000;
 
 /**
  * An embedder whose cache can evict entries by the SHA-256 digest of the content they embedded,
@@ -91,6 +111,13 @@ export interface CreateGovernedEmbeddingInput {
   readonly vectors: MemoryVectorStore;
   /** The embedder a store with no active profile starts with. */
   readonly initialEmbedder: string;
+  /** Where the bound on each embed gets its timer, so a test drives it by hand. */
+  readonly runtime: RuntimeServices;
+  /**
+   * How long one embed may take before it is abandoned. Defaults to
+   * {@link DEFAULT_EMBED_TIMEOUT_MILLISECONDS}. A positive, finite number.
+   */
+  readonly embedTimeoutMilliseconds?: number;
 }
 
 /**
@@ -100,7 +127,13 @@ export interface CreateGovernedEmbeddingInput {
  * with another model or dimension than the one that made its vectors.
  */
 export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): GovernedEmbedding {
-  const { registry, vectors } = input;
+  const { registry, vectors, runtime } = input;
+  const embedTimeout = input.embedTimeoutMilliseconds ?? DEFAULT_EMBED_TIMEOUT_MILLISECONDS;
+  if (!Number.isFinite(embedTimeout) || embedTimeout <= 0) {
+    throw new RangeError(
+      `embedTimeoutMilliseconds must be a positive, finite number of milliseconds, not ${String(embedTimeout)}.`,
+    );
+  }
   const initial = registry.describe(input.initialEmbedder);
   if (initial === undefined) {
     throw new EmbedderRegistryError(
@@ -128,16 +161,50 @@ export function createGovernedEmbedding(input: CreateGovernedEmbeddingInput): Go
     const embedder = registry.resolve(profile.embedderId);
     return {
       profile,
-      async embed(texts) {
-        const embedded = await embedder([...texts]);
-        return embedded.map((vector) => {
-          // Checked here, as the store checks a vector it is given, so a vector the store would
-          // refuse fails the embed itself: an admission stores nothing, and a switch fails.
-          if (vector.length !== profile.dimension || !vector.every(Number.isFinite)) {
-            throw new MemoryVectorDimensionError(profile, vector.length);
+      async embed(texts, options) {
+        const caller = options?.signal;
+        caller?.throwIfAborted();
+        // Read once, before the first await: the caller owns `texts` and `options`.
+        const sent = [...texts];
+        const requested = options?.timeoutMilliseconds;
+        const limit = requested === undefined ? embedTimeout : Math.min(embedTimeout, requested);
+        // Each embed has its own bound, so a hung embedder holds one embed and never the memory.
+        const bound = new AbortController();
+        const timer = runtime.timers.setTimeout(() => {
+          bound.abort(
+            new DOMException(
+              `The embedder "${profile.embedderId}" did not answer within ${limit} milliseconds.`,
+              'TimeoutError',
+            ),
+          );
+        }, limit);
+        const signal =
+          caller === undefined ? bound.signal : AbortSignal.any([caller, bound.signal]);
+        try {
+          // Called inside the `try`: an embedder that throws before it returns a promise is a
+          // failed embed, not an exception out of this one.
+          const embedded = await raceAbort(
+            Promise.resolve(embedder([...sent], { signal })),
+            signal,
+          );
+          // One vector per text: a batch answered with another count is a failed embed, so no
+          // caller pairs a vector with the wrong record (COR-2187).
+          if (!Array.isArray(embedded) || embedded.length !== sent.length) {
+            throw new Error(
+              `The embedder "${profile.embedderId}" answered with the wrong number of vectors (expected ${sent.length}, got ${Array.isArray(embedded) ? embedded.length : 'none'}).`,
+            );
           }
-          return new Float32Array(vector);
-        });
+          return embedded.map((vector) => {
+            // Checked here, as the store checks a vector it is given, so a vector the store would
+            // refuse fails the embed itself: an admission stores nothing, and a switch fails.
+            if (vector.length !== profile.dimension || !vector.every(Number.isFinite)) {
+              throw new MemoryVectorDimensionError(profile, vector.length);
+            }
+            return new Float32Array(vector);
+          });
+        } finally {
+          runtime.timers.clearTimeout(timer);
+        }
       },
     };
   }

@@ -243,7 +243,9 @@ async function loaded(container: HTMLElement, plugin: string) {
 
 /** A field of the open plugin's configuration form. */
 const fieldOf = (container: HTMLElement, key: string) =>
-  container.querySelector<HTMLElement>(`[data-configuration-field="${key}"]`)!;
+  container.querySelector<HTMLElement>(
+    `[data-testid="plugin-configuration"] [data-cinder-field="${key}"]`,
+  )!;
 const saveButton = (container: HTMLElement) =>
   within(container).getByRole('button', { name: PLUGINS_COPY.configuration.save });
 
@@ -475,8 +477,8 @@ describe('a plugin’s configuration', () => {
     expect(form.textContent).toContain(PLUGINS_COPY.configuration.description);
     expect(container.querySelector('textarea')).toBeNull();
     expect(
-      [...form.querySelectorAll('[data-configuration-field]')].map((row) =>
-        row.getAttribute('data-configuration-field'),
+      [...form.querySelectorAll('[data-cinder-field]')].map((row) =>
+        row.getAttribute('data-cinder-field'),
       ),
     ).toEqual(['teamKey', 'region', 'labels', 'snippets', 'cacheMs']);
     const team = fieldOf(container, 'teamKey');
@@ -545,7 +547,8 @@ describe('a plugin’s configuration', () => {
       'ENG',
     );
     expect(bannerText(container)).toBeNull();
-    // Save is still there, and pressing it again goes through.
+    // Save is still there and still on, as the retry, and pressing it again goes through.
+    expect(saveButton(container).hasAttribute('disabled')).toBe(false);
     await fireEvent.click(saveButton(container));
     await waitFor(() => expect(bannerText(container)).not.toBeNull());
     expect(banner(container)?.textContent).toContain(BANNER.title(1));
@@ -554,6 +557,9 @@ describe('a plugin’s configuration', () => {
   test('a value the host refuses is named at its field, and nothing else is claimed', async () => {
     const { container } = open('linear');
     await loaded(container, 'linear');
+    await fireEvent.input(fieldOf(container, 'teamKey').querySelector('input')!, {
+      target: { value: 'eng' },
+    });
     host!.refuseNext = Response.json(
       {
         error: 'invalid',
@@ -572,6 +578,55 @@ describe('a plugin’s configuration', () => {
     );
     expect(container.querySelector('[data-testid="plugin-configuration-failed"]')).toBeNull();
     expect(bannerText(container)).toBeNull();
+  });
+
+  test('Save is on only while the form differs from what is stored, and sends the stored values with only the changes', async () => {
+    const { container } = open('linear');
+    await loaded(container, 'linear');
+    expect(saveButton(container).hasAttribute('disabled')).toBe(true);
+
+    const input = fieldOf(container, 'teamKey').querySelector('input')!;
+    await fireEvent.input(input, { target: { value: 'ENG' } });
+    await waitFor(() => expect(saveButton(container).hasAttribute('disabled')).toBe(false));
+    // Typing it back is no change: the form holds what is stored again.
+    await fireEvent.input(input, { target: { value: 'COR' } });
+    await waitFor(() => expect(saveButton(container).hasAttribute('disabled')).toBe(true));
+  });
+
+  test('turns Save on as soon as a number is being typed, before it is a number the form can report', async () => {
+    const { container } = open('linear');
+    await loaded(container, 'linear');
+    expect(saveButton(container).hasAttribute('disabled')).toBe(true);
+
+    await fireEvent.input(fieldOf(container, 'cacheMs').querySelector('input')!, {
+      target: { value: '5' },
+    });
+
+    await waitFor(() => expect(saveButton(container).hasAttribute('disabled')).toBe(false));
+  });
+
+  test('offers Not set for an optional choice with no default, and starts on it', async () => {
+    const { container } = open('linear');
+    await loaded(container, 'linear');
+    const select = fieldOf(container, 'region').querySelector('select')!;
+    expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
+      'Not set',
+      'us',
+      'eu',
+    ]);
+    expect(select.value).toBe('');
+    // Nothing is a change until the person makes one: Save stays off.
+    expect(saveButton(container).hasAttribute('disabled')).toBe(true);
+  });
+
+  test('draws a number with a unit as a number and its unit, and a list as tags', async () => {
+    const { container } = open('linear');
+    await loaded(container, 'linear');
+
+    // cacheMs names milliseconds, so its row keeps the unit control beside the number.
+    expect(fieldOf(container, 'cacheMs').querySelector('select')).not.toBeNull();
+    expect(fieldOf(container, 'labels').querySelector('textarea')).toBeNull();
+    expect(fieldOf(container, 'labels').querySelector('input')).not.toBeNull();
   });
 
   test('Revert on the notice puts a saved configuration back, so nothing waits for a restart', async () => {
@@ -1420,9 +1475,11 @@ describe('a host that keeps its choices in its deployment', () => {
     await loaded(container, 'linear');
 
     expect(saveButton(container).hasAttribute('disabled')).toBe(true);
-    expect(
-      (fieldOf(container, 'teamKey').querySelector('input') as HTMLInputElement).disabled,
-    ).toBe(true);
+    for (const key of ['teamKey', 'region', 'labels', 'snippets', 'cacheMs']) {
+      const controls = [...fieldOf(container, key).querySelectorAll('input, select, button')];
+      expect(controls.length).toBeGreaterThan(0);
+      expect(controls.every((control) => (control as HTMLInputElement).disabled)).toBe(true);
+    }
   });
 });
 

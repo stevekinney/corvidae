@@ -237,6 +237,12 @@ export function createMemoryRecallHook(
   authority: MemoryAuthority,
   target: RunMemoryTarget,
   onDetection?: (detection: MemoryRecallDetection, step: number) => void | Promise<void>,
+  /**
+   * Whether the run's session is tainted now (COR-2197), passed to every recall guardrail as
+   * `DetectorContext.sessionTainted`. Read on each recall, so a retry after a policy change sees a
+   * taint the first recall's own detection raised. Left out, a recall reads the session as untainted.
+   */
+  getSessionTainted?: () => boolean,
 ): PrepareStepHook {
   return async (context) => {
     // The current prompt, whatever its shape: a string, or the text parts of a
@@ -268,6 +274,7 @@ export function createMemoryRecallHook(
         collection: target.collection,
         limit: 5,
         contextId: authority.principal.id,
+        sessionTainted: getSessionTainted?.() ?? false,
       });
     // A policy change that lands while recall runs leaves the bundle admitted
     // under the old policy, so it is recalled once more; if the policy moves
@@ -330,6 +337,12 @@ export function createMemoryPersistHook(
    * Receives the receipt, which names a reason and never the content.
    */
   onRejected?: (receipt: MemoryWriteReceipt) => void,
+  /**
+   * Told of a write governed memory quarantined, which keeps the record out of recall and so leaves
+   * nothing else to say the answer was held back (COR-2191). Receives the receipt, which carries
+   * no reason and never the content.
+   */
+  onQuarantined?: (receipt: MemoryWriteReceipt) => void,
 ): OnStepHook {
   return async (context) => {
     if (!context.final || !context.content.trim()) {
@@ -366,5 +379,6 @@ export function createMemoryPersistHook(
       },
     });
     if (receipt.status === 'rejected') onRejected?.(receipt);
+    if (receipt.status === 'quarantined') onQuarantined?.(receipt);
   };
 }

@@ -37,7 +37,7 @@ describe('defineTrigger', () => {
       configuration: heartbeat.configuration.parse({ seconds: 3 }),
       workflowId: 'pulse',
       storage: new MemoryStorage(),
-      fire: async () => undefined,
+      fire: async () => ({ outcome: 'skipped', reason: 'stopped' }),
       signal: new AbortController().signal,
     });
     expect(seen).toEqual([3]);

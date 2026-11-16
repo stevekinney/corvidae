@@ -116,7 +116,12 @@ describe('a workflow file that uses a contributed activity and trigger kind', ()
     });
     const [run] = await runsOf(harness, 'pipeline');
     const detail = await harness.bureau.workflows?.getRun(run!.id);
-    expect(detail?.trigger).toEqual({ kind: 'x:ticker', payload: { issue: 'COR-1' } });
+    expect(detail?.trigger).toEqual({
+      kind: 'x:ticker',
+      version: '1',
+      payload: { issue: 'COR-1' },
+      origin: { kind: 'trigger', plugin: 'x', workflowId: 'pipeline' },
+    });
     expect(detail?.result).toBe(activityAnswer('1', 'hello'));
   });
 
@@ -271,7 +276,10 @@ describe('a workflow file that uses a contributed activity and trigger kind', ()
     await listing(harness, 'pipeline');
     expect(ticker.stopped).toBe(1);
     expect(ticker.contexts[0]?.signal.aborted).toBe(true);
-    await ticker.contexts[0]!.fire('late');
+    expect(await ticker.contexts[0]!.fire('late')).toEqual({
+      outcome: 'skipped',
+      reason: 'stopped',
+    });
     expect(await runsOf(harness, 'pipeline')).toEqual([]);
   });
 

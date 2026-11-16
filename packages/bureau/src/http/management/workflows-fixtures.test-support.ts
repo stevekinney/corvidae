@@ -60,6 +60,11 @@ export interface ServeOptions {
   readonly authentication?: AuthConfig;
   /** Plugins the Bureau loads, for a test that lists a plugin's code workflow. */
   readonly plugins?: BureauOptions<AgentDefinitions>['plugins'];
+  /**
+   * The runtime services the Bureau runs on: a manual one keeps a retry's timer from firing
+   * between two reads of a failed trigger's listener.
+   */
+  readonly runtime?: BureauOptions<AgentDefinitions>['runtime'];
 }
 
 export async function serveWorkflows(
@@ -78,6 +83,7 @@ export async function serveWorkflows(
       : { workflowSource: workflowFileDirectory(directory) }),
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
+    ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     storage: new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),

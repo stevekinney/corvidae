@@ -168,9 +168,9 @@
   }
 
   /* The current page is a raised white pill with the hairline shadow on the retuned light ladder
-   * (COR-2315 AC9, COR-2308): the sidebar is the soft `--cinder-surface` tint and the selected row
-   * lifts off it as `--cinder-surface-raised`, which is white in light and a step above the surface
-   * in dark. The text stays default and semibold, because the accent is for actions and links, so
+   * (COR-2315 AC9, COR-2308): the sidebar paints `--cinder-surface` and the selected row is
+   * `--cinder-surface-raised`, a step above the surface in dark. In light both are white since
+   * 2026-11-15, so the pill reads there by its hairline shadow and its semibold label. The text stays default and semibold, because the accent is for actions and links, so
    * the place the person is in is never accent-coloured (owner, 2026-11-10; AC2). The ink tint
    * (about 7%) remains where the row sits on a raised drawer panel (`sidebar.css`), where a raised
    * pill would not read. */

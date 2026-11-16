@@ -45,6 +45,25 @@ describe('isTaskOrigin', () => {
     expect(isTaskOrigin({ kind: 'parent', parentRunId: 'r' })).toBe(true);
   });
 
+  it('accepts a trigger origin with its plugin and workflow, and a stored one round-trips (COR-2163)', () => {
+    const origin = { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } as const;
+    expect(TASK_ORIGIN_KINDS).toContain('trigger');
+    expect(isTaskOrigin(origin)).toBe(true);
+    expect(isStoredTaskOrigin(origin)).toBe(true);
+    expect(taskOriginView(JSON.parse(JSON.stringify(origin)))).toEqual(origin);
+    for (const value of [
+      { kind: 'trigger' },
+      { kind: 'trigger', plugin: 'linear' },
+      { kind: 'trigger', workflowId: 'sync' },
+      { kind: 'trigger', plugin: '', workflowId: 'sync' },
+      { kind: 'trigger', plugin: 'linear', workflowId: 3 },
+    ]) {
+      expect(isTaskOrigin(value), JSON.stringify(value)).toBe(false);
+      // Stored loosely, so a release that cannot read it still settles and lists the record.
+      expect(isStoredTaskOrigin(value), JSON.stringify(value)).toBe(true);
+    }
+  });
+
   it('rejects what a reader could not use, and every name an object inherits', () => {
     for (const value of [
       undefined,
@@ -135,6 +154,7 @@ describe('taskOriginTag', () => {
       'origin:goal',
       'origin:parent',
       'origin:system',
+      'origin:trigger',
     ]);
   });
 });
@@ -166,7 +186,15 @@ describe('isTopLevelTaskOrigin', () => {
   });
 
   it('refuses the subordinate kinds, and every kind it does not know', () => {
-    for (const kind of ['agent', 'goal', 'parent', 'teleport', 'constructor', '__proto__']) {
+    for (const kind of [
+      'agent',
+      'goal',
+      'parent',
+      'trigger',
+      'teleport',
+      'constructor',
+      '__proto__',
+    ]) {
       expect(isTopLevelTaskOrigin({ kind }), kind).toBe(false);
     }
   });

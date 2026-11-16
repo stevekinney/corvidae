@@ -265,6 +265,40 @@ describe('connecting a provider whose plugin has settings', () => {
     expect(order).toEqual(['PUT /host/providers/openai']);
   });
 
+  test('writes no settings when the form is as it opened, though the schema holds an optional choice with no default', async () => {
+    const SCHEMA = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      properties: { baseURL: { type: 'string' }, tier: { type: 'string', enum: ['free', 'pro'] } },
+      required: ['baseURL'],
+      additionalProperties: false,
+    };
+    const { container } = open({
+      providers: [{ plugin: 'openai', name: 'openai', configuration: SCHEMA }],
+      plugins: [
+        {
+          name: 'openai',
+          title: 'OpenAI',
+          configurationSchema: SCHEMA,
+          configuration: { baseURL: 'https://a.example' },
+        },
+      ],
+    });
+    await loaded(container);
+    const dialog = await beginConnect(container);
+
+    await fireEvent.input(within(dialog).getByLabelText(copy.keyLabel), {
+      target: { value: KEY },
+    });
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect }));
+
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('provider-connect-success')).toBeDefined(),
+    );
+    expect(pluginWrites()).toEqual([]);
+    expect(order).toEqual(['PUT /host/providers/openai']);
+  });
+
   test('keeps the stored optional fields when the required field is saved', async () => {
     const { container } = open({
       providers: [{ plugin: 'openai', name: 'openai', configuration: GATEWAY_SCHEMA }],
@@ -525,6 +559,48 @@ describe('managing a provider whose plugin has settings', () => {
     expect(dialog.textContent).toContain('claude-sonnet-5');
     expect(within(dialog).getByRole('button', { name: copy.done })).toBeDefined();
     expect(within(dialog).queryByRole('button', { name: copy.save })).toBeNull();
+    expect(pluginWrites()).toEqual([]);
+  });
+
+  test('an optional choice with no default starts unset, so reverting an edit leaves Done and a Connect writes nothing', async () => {
+    const SCHEMA = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      properties: {
+        baseURL: { type: 'string' },
+        tier: { type: 'string', enum: ['free', 'pro'] },
+      },
+      required: ['baseURL'],
+      additionalProperties: false,
+    };
+    const { container } = open({
+      providers: [
+        { plugin: 'anthropic', name: 'anthropic', configuration: SCHEMA },
+        { plugin: 'openai', name: 'openai', configuration: SCHEMA },
+      ],
+      plugins: [
+        { name: 'anthropic', title: 'Anthropic', configurationSchema: SCHEMA, configuration: {} },
+        {
+          name: 'openai',
+          title: 'OpenAI',
+          configurationSchema: SCHEMA,
+          configuration: { baseURL: 'https://a.example' },
+        },
+      ],
+    });
+    await loaded(container);
+    const dialog = await beginManage(container);
+
+    // Nothing stored: the choice shows Not set, and the dialog is not dirty at open.
+    const tier = within(dialog).getByLabelText(/tier/i) as HTMLSelectElement;
+    expect(tier.value).toBe('');
+    expect(within(dialog).getByRole('button', { name: copy.done })).toBeDefined();
+
+    // Edit another field and put it back: the draft is what the form opened with again.
+    await fireEvent.input(baseUrlField(dialog), { target: { value: 'https://x.example' } });
+    await within(dialog).findByRole('button', { name: copy.save });
+    await fireEvent.input(baseUrlField(dialog), { target: { value: '' } });
+    await within(dialog).findByRole('button', { name: copy.done });
     expect(pluginWrites()).toEqual([]);
   });
 

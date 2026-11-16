@@ -84,6 +84,19 @@ export interface HookActionKindRegistration {
    * registered without one, whose deliveries pin nothing.
    */
   readonly version?: string | undefined;
+  /**
+   * COR-2176 — whether the kind's plugin can run it now: `needs-setup` while a secret the plugin
+   * declared is missing. A delivery of a kind that needs setup makes no attempt and waits, with its
+   * lease released, until {@link HookActionKindRegistration.onAvailabilityChange} reports the
+   * secret saved. Absent, the kind is always available.
+   */
+  readonly availability?: (() => 'available' | 'needs-setup') | undefined;
+  /**
+   * COR-2176 — calls `listener` whenever {@link HookActionKindRegistration.availability} may have
+   * changed; returns the function that stops it. Absent, a delivery that waits for the kind is taken
+   * again only by the next `resume`, which is a restart.
+   */
+  readonly onAvailabilityChange?: ((listener: () => void) => () => void) | undefined;
 }
 
 /** What a hook does for an event, tagged by `type`. */

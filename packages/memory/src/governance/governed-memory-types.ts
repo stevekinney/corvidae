@@ -135,8 +135,19 @@ export interface RecallForModelOptions extends GovernedSearchOptions {
   readonly contextId?: string;
   /** The retrieval plan to run: a built plan, or the input to build one. Defaults to the default plan. */
   readonly plan?: MemoryRetrievalPlan | MemoryRetrievalPlanInput;
-  /** Stops the recall at its next stage boundary, with stop reason `canceled`. */
+  /**
+   * Stops the recall with stop reason `canceled`: at its next stage boundary, or at once when it is
+   * waiting on a recall guardrail, which receives the signal as `DetectorContext.signal` and is no
+   * longer waited for. The candidate that guardrail was scanning is neither withheld nor selected.
+   */
   readonly signal?: AbortSignal;
+  /**
+   * Whether the session this recall is for is tainted. Every recall guardrail receives it as
+   * `DetectorContext.sessionTainted`, so a guardrail can judge recalled content more strictly in a
+   * session an earlier detection already tainted. Defaults to `false`. Governed memory does not
+   * track taint itself: the caller that does (Bureau's run) passes it.
+   */
+  readonly sessionTainted?: boolean;
 }
 
 /**
@@ -191,8 +202,9 @@ export interface MemoryRecallExclusion {
   readonly stage: MemoryPolicyFilter | MemoryRetrievalStage | 'budget' | 'admission';
   /**
    * Present on a `content-policy` exclusion: the recall detector that withheld the record. A
-   * detector that threw reports category `detector-failure` at confidence 1. The consumer judges
-   * the confidence against its own taint threshold.
+   * detector that threw reports category `detector-failure` at confidence 1, and leaves the record
+   * `active` (COR-2194); one that tripped quarantined it. The consumer judges the confidence
+   * against its own taint threshold.
    */
   readonly detection?: MemoryRecallDetection;
 }
@@ -485,6 +497,14 @@ export interface CreateGovernedMemoryOptions {
    * embedder's. A store that already has an active embedding keeps it, whatever this names.
    */
   readonly initialEmbedder?: string;
+  /**
+   * How long one embed may take before memory abandons it, in milliseconds (COR-2185): admission,
+   * recall, and each step of an embedder switch embed with this bound, so an embedder that never
+   * answers holds one embed and not the memory. A positive, finite number; defaults to 120_000.
+   * The bound's timer comes from {@link CreateGovernedMemoryOptions.runtime}. A recall's query embed
+   * is bounded by the smaller of this and half of the recall's remaining latency budget.
+   */
+  readonly embedTimeoutMilliseconds?: number;
   readonly policy: MemoryGovernancePolicy;
   readonly textSearchProvider?: TextSearchProvider;
   readonly propagation?: MemoryDeletionPropagation;

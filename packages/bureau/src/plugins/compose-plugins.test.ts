@@ -3,6 +3,8 @@
  */
 import {
   definePlugin,
+  type PluginPanel,
+  type PluginPanelPlacement,
   type PluginSetupContext,
   type PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
@@ -31,7 +33,7 @@ const agent = () => createAgent({ generate: async () => ({ content: '', toolCall
 const judge = (name: string) => ({
   name,
   version: '1',
-  evaluate: () => ({ pass: true, score: 1, message: '' }),
+  score: () => ({ outcome: 'pass' as const, score: 1, message: '' }),
 });
 const actionKind = (name: string) => ({
   name,
@@ -245,7 +247,11 @@ describe('composePlugins', () => {
           },
         ],
         scorers: [
-          { name: 'judge', version: '1', evaluate: () => ({ pass: true, score: 1, message: '' }) },
+          {
+            name: 'judge',
+            version: '1',
+            score: () => ({ outcome: 'pass' as const, score: 1, message: '' }),
+          },
         ],
         agents: [
           {
@@ -331,6 +337,35 @@ describe('composePlugins', () => {
     }
   });
 
+  it('registers a scorer under its namespaced name and hands its score the run and the signal (COR-2199)', async () => {
+    const received: { run: unknown; signal: AbortSignal; self: unknown }[] = [];
+    const scorer = {
+      name: 'judge',
+      version: '1',
+      determinism: 'stochastic' as const,
+      score(run: unknown, signal: AbortSignal) {
+        received.push({ run, signal, self: this });
+        return { outcome: 'pass' as const, message: 'ok' };
+      },
+    };
+    const given: ComposableOptions = {
+      plugins: [pluginEntry('kit', () => ({ scorers: [scorer] }))],
+      scorers: { list: [], sampleRate: 1 },
+    };
+    const { options } = await composePlugins(given);
+    const composed = options.scorers?.list[0];
+    expect(composed?.name).toBe('kit:judge');
+    expect(composed?.determinism).toBe('stochastic');
+
+    const run = { content: 'a run' } as never;
+    const signal = new AbortController().signal;
+    await composed?.score(run, signal);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.run).toBe(run);
+    expect(received[0]?.signal).toBe(signal);
+    expect(received[0]?.self).toBe(scorer);
+  });
+
   it('lists only the contributions whose option the host gave', async () => {
     const contributing = () =>
       pluginEntry('kit', () => ({
@@ -367,11 +402,47 @@ describe('composePlugins', () => {
     }
   });
 
+  describe('a reaction’s timeoutMilliseconds (COR-2175)', () => {
+    it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])(
+      'skips only the plugin whose reaction sets %p, naming the reaction and the value, and loads the others',
+      async (timeoutMilliseconds) => {
+        const { records, options } = await composePlugins<ComposableOptions>({
+          plugins: [
+            pluginEntry('broken', () => ({
+              reactions: [{ ...actionKind('page'), timeoutMilliseconds }],
+            })),
+            pluginEntry('fine', () => ({
+              reactions: [{ ...actionKind('ping'), timeoutMilliseconds: 5_000 }],
+            })),
+          ],
+          hooks: {},
+        });
+
+        expect(records.map((record) => record.status)).toEqual(['skipped', 'running']);
+        expect(records[0]?.problems).toEqual([
+          expect.objectContaining({
+            code: 'setup-failed',
+            message: expect.stringContaining(`"page"`),
+          }),
+        ]);
+        const [problem] = records[0]?.problems ?? [];
+        expect(problem?.code === 'setup-failed' ? problem.message : '').toContain(
+          String(timeoutMilliseconds),
+        );
+        const registered = options.hooks?.actionKinds?.map(
+          (registration) => `${registration.plugin}/${registration.kind.name}`,
+        );
+        expect(registered).toEqual(['fine/ping']);
+      },
+    );
+  });
+
   describe('guardrail families', () => {
     const detect = async () => ({}) as never;
     const validate = async () => ({ valid: true, confidence: 0, category: 'x' });
 
     it('claims a guardrail name per family, so one name serves input, output and memory', async () => {
+      const handed: Parameters<Extract<ComposableOptions['memory'], Function>>[0][] = [];
       const { options, records } = await composePlugins<ComposableOptions>({
         plugins: [
           pluginEntry('kit', () => ({
@@ -382,8 +453,17 @@ describe('composePlugins', () => {
             },
           })),
         ],
-        memory: () => undefined as never,
+        memory: (contributions) => {
+          handed.push(contributions);
+          return undefined as never;
+        },
       });
+
+      // The input family's `scan` and the memory family's `scan` coexist, and the ledger sees the
+      // memory one as `kit:memory/scan` (COR-2190).
+      expect(handed).toHaveLength(1);
+      expect(handed[0]?.guardrails.admission.map(({ name }) => name)).toEqual(['kit:memory/scan']);
+      expect(handed[0]?.guardrails.recall.map(({ name }) => name)).toEqual(['kit:memory/scan']);
 
       expect(records[0]?.status).toBe('running');
       expect(records[0]?.contributions.map(({ kind, id }) => `${kind} ${id}`).toSorted()).toEqual([
@@ -397,6 +477,73 @@ describe('composePlugins', () => {
         chosen?.inputDetector && guardrailOf(chosen.inputDetector).name,
         chosen?.outputValidator && guardrailOf(chosen.outputValidator).name,
       ]).toEqual(['scan', 'scan']);
+    });
+
+    it('hands each memory gate its plugin-qualified guardrail names, and keeps a detector callable (COR-2190)', async () => {
+      const calls: string[] = [];
+      class Prototyped {
+        readonly name: string;
+        constructor(name: string) {
+          this.name = name;
+        }
+        async detect(input: string) {
+          calls.push(`${this.name}:${input}`);
+          return {} as never;
+        }
+      }
+      const handed: Parameters<Extract<ComposableOptions['memory'], Function>>[0][] = [];
+      await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('acme', () => ({
+            guardrails: {
+              memory: [
+                Object.assign(new Prototyped('pii'), { description: 'A test guardrail.' }),
+                // A plugin may name its own guardrail like the built-in one; it stays a plugin's.
+                {
+                  name: 'memory-poisoning',
+                  description: 'A test guardrail.',
+                  detect,
+                  gates: ['recall' as const],
+                },
+              ],
+            },
+          })),
+          pluginEntry('other', () => ({
+            guardrails: {
+              memory: [
+                { name: 'pii', description: 'A test guardrail.', detect, gates: ['admission'] },
+              ],
+            },
+          })),
+        ],
+        memory: (contributions) => {
+          handed.push(contributions);
+          return undefined as never;
+        },
+      });
+
+      const { admission, recall } = handed[0]?.guardrails ?? { admission: [], recall: [] };
+      expect(admission.map(({ name }) => name)).toEqual(['acme:memory/pii', 'other:memory/pii']);
+      expect(recall.map(({ name }) => name)).toEqual([
+        'acme:memory/pii',
+        'acme:memory/memory-poisoning',
+      ]);
+      // One wrapper serves both gates, and it still reaches the prototype's `detect`.
+      expect(admission[0]).toBe(recall[0]);
+      // One source per detector, in load order, with the plugin's version and canonical gates (COR-2192).
+      expect(handed[0]?.guardrails.sources).toEqual([
+        { id: 'acme:memory/pii', plugin: 'acme', version: '1.0.0', gates: ['admission', 'recall'] },
+        {
+          id: 'acme:memory/memory-poisoning',
+          plugin: 'acme',
+          version: '1.0.0',
+          gates: ['recall'],
+        },
+        { id: 'other:memory/pii', plugin: 'other', version: '1.0.0', gates: ['admission'] },
+      ]);
+      const context = { step: 0, conversationLength: 0, sessionTainted: false, provenance: 'x' };
+      await admission[0]?.detect('text', context as never);
+      expect(calls).toEqual(['pii:text']);
     });
 
     it('refuses a name contributed twice within one family', async () => {
@@ -1111,6 +1258,200 @@ describe('MCP apps a plugin contributes', () => {
     ]);
   });
 
+  describe('placements (COR-2212)', () => {
+    /** A panel that declares only where it appears: it names no `opensFromTool`. */
+    const placed = (
+      name: string,
+      uri: string,
+      placements: readonly PluginPanelPlacement[],
+      extras: Partial<PluginPanel> = {},
+    ): PluginPanel => ({
+      name,
+      title: name,
+      uri,
+      entry: new URL(`file:///${name}/app.ts`),
+      allowedTools: ['bureau.tasks.inspect'],
+      placements,
+      ...extras,
+    });
+
+    it('composes a panel with only a page placement and no opener, and links it to no tool', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [
+                { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
+              ]),
+            ],
+          })),
+          // A second plugin's page panel also names no tool, so nothing claims a tool twice.
+          pluginEntry('b', () => ({
+            panels: [placed('two', 'ui://b/two/v1', [{ kind: 'page', path: 'b' }])],
+          })),
+        ],
+      });
+      expect(records.map(({ status }) => status)).toEqual(['running', 'running']);
+      const { plugins } = createPluginRegistry(records);
+      expect(plugins.panels().map(({ app }) => [app.name, app.opensFromTool])).toEqual([
+        ['one', undefined],
+        ['two', undefined],
+      ]);
+      expect(plugins.panels()[0]?.app.placements).toEqual([
+        { kind: 'page', path: 'reviews/queue', sidebar: { group: 'work', icon: 'inbox' } },
+      ]);
+    });
+
+    it('composes two plugins’ panels that both have a run placement, with no name-clash', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [placed('one', 'ui://a/one/v1', [{ kind: 'run' }])],
+          })),
+          pluginEntry('b', () => ({
+            panels: [placed('two', 'ui://b/two/v1', [{ kind: 'run' }])],
+          })),
+        ],
+      });
+      expect(records.map(({ status }) => status)).toEqual(['running', 'running']);
+      expect(records.flatMap(({ problems }) => problems ?? [])).toEqual([]);
+    });
+
+    it('still claims the opener of a panel that names one', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [{ kind: 'run' }], {
+                opensFromTool: 'bureau.tasks.inspect',
+              }),
+            ],
+          })),
+          pluginEntry('b', () => ({
+            panels: [
+              placed('two', 'ui://b/two/v1', [{ kind: 'run' }], {
+                opensFromTool: 'bureau.tasks.inspect',
+              }),
+            ],
+          })),
+        ],
+      });
+      expect(records.map(({ status }) => status)).toEqual(['running', 'skipped']);
+      expect(records[1]?.problems).toEqual([
+        expect.objectContaining({ code: 'name-clash', name: 'bureau.tasks.inspect' }),
+      ]);
+    });
+
+    it.each([
+      ['the group home', { kind: 'page', path: 'reviews', sidebar: { group: 'home' } }],
+      ['a group that is not a string', { kind: 'page', path: 'reviews', sidebar: {} }],
+      ['an uppercase path', { kind: 'page', path: 'Reviews' }],
+      ['a path with a leading slash', { kind: 'page', path: '/reviews' }],
+      ['a path with a trailing slash', { kind: 'page', path: 'reviews/' }],
+      ['an empty segment', { kind: 'page', path: 'reviews//queue' }],
+      ['a segment starting with a digit', { kind: 'page', path: 'reviews/1st' }],
+      ['an empty path', { kind: 'page', path: '' }],
+      ['no path', { kind: 'page' }],
+      ['a path with a dot segment', { kind: 'page', path: 'reviews/../queue' }],
+      ['a null sidebar', { kind: 'page', path: 'reviews', sidebar: null }],
+      ['a null entry', null],
+      ['a string entry', 'page'],
+      ['a number entry', 7],
+      ['an array entry', [{ kind: 'run' }]],
+      ['a chat tool with no agent tool', { kind: 'chat-tool' }],
+      ['a chat tool with an empty agent tool', { kind: 'chat-tool', agentTool: '' }],
+      ['a kind this host does not know', { kind: 'dock' }],
+      ['no kind', {}],
+    ] as const)('fails setup for a placement with %s', async (_name, placement) => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [placed('one', 'ui://a/one/v1', [placement] as never)],
+          })),
+        ],
+      });
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringMatching(/^setup returned the panel "one" with a .*placement/),
+        }),
+      ]);
+    });
+
+    it('refuses a chat-tool placement for an agent tool the Bureau does not hold, but not a workflow tool', async () => {
+      const agentSource = { tools: { 'plugin:known': {} } } as never;
+      const { records } = await composePlugins<ComposableOptions>({
+        agentSource,
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [{ kind: 'chat-tool', agentTool: 'plugin:known' }]),
+            ],
+          })),
+          pluginEntry('b', () => ({
+            panels: [
+              placed('two', 'ui://b/two/v1', [
+                { kind: 'chat-tool', agentTool: 'bureau:workflows-propose-update' },
+              ]),
+            ],
+          })),
+          pluginEntry('c', () => ({
+            panels: [
+              placed('three', 'ui://c/three/v1', [{ kind: 'chat-tool', agentTool: 'nobody:home' }]),
+            ],
+          })),
+        ],
+      });
+      expect(records.map(({ status }) => status)).toEqual(['running', 'running', 'skipped']);
+      expect(records[2]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: 'setup returned the panel "three" opened from unknown agent tool "nobody:home".',
+        }),
+      ]);
+    });
+
+    it('checks no agent tool when the Bureau is given none', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [{ kind: 'chat-tool', agentTool: 'nobody:home' }]),
+            ],
+          })),
+        ],
+      });
+      expect(records[0]?.status).toBe('running');
+    });
+  });
+
+  it('skips a plugin whose host-only tool is not an operation open to host panels', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({
+          panels: [{ ...mcpApp('one', 'ui://a/one/v1'), hostOnlyTools: ['bureau.tasks.inspect'] }],
+        })),
+        pluginEntry('b', () => ({
+          panels: [
+            {
+              ...mcpApp('two', 'ui://b/two/v1', 'bureau.tasks.events'),
+              allowedTools: ['bureau.tasks.events', 'bureau.workflows.update'],
+              hostOnlyTools: ['bureau.workflows.update'],
+            },
+          ],
+        })),
+      ],
+    });
+    expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+    expect(records[0]?.problems).toEqual([
+      expect.objectContaining({
+        code: 'setup-failed',
+        message: expect.stringContaining('not an operation open to host panels'),
+      }),
+    ]);
+  });
+
   it('skips a plugin whose app is opened from a tool it may not call', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
@@ -1122,19 +1463,50 @@ describe('MCP apps a plugin contributes', () => {
     expect(records[0]?.status).toBe('skipped');
   });
 
-  it('skips a plugin whose app has no ui:// URI, or whose URI another plugin holds', async () => {
+  it('skips a plugin whose app has no ui:// URI, or that serves one URI twice', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
         pluginEntry('a', () => ({ panels: [mcpApp('one', 'https://example.test/one')] })),
-        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://shared/v1', 'tool.b')] })),
-        pluginEntry('c', () => ({ panels: [mcpApp('two', 'ui://shared/v1', 'tool.c')] })),
+        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://b/shared/v1', 'tool.b')] })),
+        pluginEntry('c', () => ({
+          panels: [
+            mcpApp('one', 'ui://c/shared/v1', 'tool.c1'),
+            mcpApp('two', 'ui://c/shared/v1', 'tool.c2'),
+          ],
+        })),
       ],
     });
     expect(records.map(({ status }) => status)).toEqual(['skipped', 'running', 'skipped']);
     expect(records[0]?.problems).toEqual([expect.objectContaining({ code: 'setup-failed' })]);
     expect(records[2]?.problems).toEqual([
-      expect.objectContaining({ code: 'name-clash', name: 'ui://shared/v1' }),
+      expect.objectContaining({ code: 'name-clash', name: 'ui://c/shared/v1' }),
     ]);
+  });
+
+  it('skips a plugin whose app serves a URI outside ui://<plugin>/ (COR-2210)', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        // Another plugin's namespace, a prefix that is not a path segment, and no path at all.
+        pluginEntry('a', () => ({ panels: [mcpApp('one', 'ui://bureau/one/v1')] })),
+        pluginEntry('ab', () => ({ panels: [mcpApp('one', 'ui://abc/one/v1', 'tool.ab')] })),
+        pluginEntry('abc', () => ({ panels: [mcpApp('one', 'ui://abc', 'tool.abc')] })),
+        pluginEntry('fine', () => ({ panels: [mcpApp('one', 'ui://fine/one/v1', 'tool.fine')] })),
+      ],
+    });
+    expect(records.map(({ status }) => status)).toEqual([
+      'skipped',
+      'skipped',
+      'skipped',
+      'running',
+    ]);
+    for (const record of records.slice(0, 3)) {
+      expect(record.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringContaining("outside the plugin's namespace"),
+        }),
+      ]);
+    }
   });
 
   it('skips the later plugin whose app opens from a tool an earlier app already opens', async () => {
@@ -1171,6 +1543,30 @@ describe('MCP apps a plugin contributes', () => {
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([
       { code: 'panel-failed', app: 'one', message: 'The entry does not build.' },
+    ]);
+  });
+
+  it('lists a panel-changed problem with both digests and keeps serving the app (COR-2210)', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [pluginEntry('a', () => ({ panels: [mcpApp('one', 'ui://a/one/v1')] }))],
+    });
+    const registry = createPluginRegistry(records);
+    registry.plugins.reportPanelChange('a', 'one', 'ui://a/one/v1', 'sha256:old', 'sha256:new');
+    // An absent plugin or app, and a repeat, are ignored.
+    registry.plugins.reportPanelChange('absent', 'one', 'ui://a/one/v1', 'sha256:x', 'sha256:y');
+    registry.plugins.reportPanelChange('a', 'absent', 'ui://a/one/v1', 'sha256:x', 'sha256:y');
+    registry.plugins.reportPanelChange('a', 'one', 'ui://a/one/v1', 'sha256:old', 'sha256:other');
+    expect(registry.plugins.panels().map(({ app }) => app.name)).toEqual(['one']);
+    const [listing] = await registry.plugins.list();
+    expect(listing?.status).toBe('running');
+    expect(listing?.problems).toEqual([
+      {
+        code: 'panel-changed',
+        app: 'one',
+        uri: 'ui://a/one/v1',
+        previousDigest: 'sha256:old',
+        contentDigest: 'sha256:new',
+      },
     ]);
   });
 });

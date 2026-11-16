@@ -130,6 +130,30 @@ describe('the decision fallback under a model policy', () => {
     expect(calls()).toBe(0);
   });
 
+  it('publishes a policy denial as a refusal naming the row it forbade and no path (COR-2249)', async () => {
+    const { bureau } = await open([PREFERRED, CHEAPER], {
+      deployment: { deniedModels: ['preferred', 'cheaper'] },
+      policyRevision: 7,
+    });
+    const received: Array<Record<string, unknown>> = [];
+    bureau.addEventListener('decision.made', (event) =>
+      received.push({ kind: event.kind, outcome: event.outcome, row: event.row, path: event.path }),
+    );
+
+    await rejection(bureau.decisions.decide(BOOLEAN));
+
+    expect(received).toEqual([
+      { kind: 'boolean', outcome: 'refused', row: 'anthropic/preferred', path: undefined },
+    ]);
+    const envelopes: Array<{ kind: string; payload: Record<string, unknown> }> = [];
+    for await (const envelope of bureau.internals.eventFeed.feed.replay()) {
+      envelopes.push(envelope);
+    }
+    expect(envelopes.filter((entry) => entry.kind === 'decision.made')).toMatchObject([
+      { payload: { kind: 'boolean', outcome: 'refused', row: 'anthropic/preferred' } },
+    ]);
+  });
+
   it('reads the policy at each decision', async () => {
     const { bureau, generated } = await open([PREFERRED, CHEAPER], undefined);
 

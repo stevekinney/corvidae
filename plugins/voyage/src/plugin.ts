@@ -32,7 +32,7 @@ export default definePlugin({
         {
           name: 'embed',
           dimensions,
-          async embed(requested: string[]): Promise<EmbeddingVector[]> {
+          async embed(requested, options): Promise<EmbeddingVector[]> {
             // Snapshot: the caller owns the array, and it is read after the first await.
             const texts = [...requested];
             try {
@@ -48,6 +48,7 @@ export default definePlugin({
                   Authorization: `Bearer ${apiKey}`,
                 },
                 body: JSON.stringify({ model, input: texts }),
+                ...(options?.signal === undefined ? {} : { signal: options.signal }),
               });
               if (!response.ok) {
                 const body = await response.text().catch(() => '');

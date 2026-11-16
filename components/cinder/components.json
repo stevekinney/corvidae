@@ -4724,6 +4724,7 @@
         ],
         "notes": [
           "Invalid submission moves focus to the first invalid field and associates each field error through aria-describedby.",
+          "The `setting-rows` variant draws each property as a `SettingRow` whose label names its control; the key is outside the label.",
           "A hosted form (`hosted`) is a `div` with `role=\"group\"`, never a form inside a form, and never submits."
         ]
       }

@@ -26,6 +26,8 @@ export const PLUGIN_PROBLEM_CODES = {
   'secret-refused': 'secret',
   'load-failed': 'plugin',
   'panel-failed': 'panel',
+  'panel-changed': 'panel',
+  'trigger-failed': 'trigger',
   'start-failed': 'plugin',
 } as const;
 

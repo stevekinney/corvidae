@@ -3,9 +3,11 @@
  * embedder that needs no model provider. Every test starts the real host on an installation that
  * has configured no provider at all, and talks to it over its own HTTP surface.
  */
+import { createMemoryRecallHook, type PluginMemoryContributions } from '@lostgradient/bureau';
 import {
   collectionNamespace,
   createHashingEmbedder,
+  createMemoryAuthority,
   createMemoryVectorStore,
   createWeftMemoryRecordStorage,
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
@@ -13,15 +15,22 @@ import {
   HASHING_EMBEDDER_ID,
 } from '@lostgradient/memory';
 import { createAgent, stopWhen } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { Conversation } from 'conversationalist';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
-import { MEMORY_DELETION_PROPAGATION } from './memory.ts';
+import {
+  createHostMemory,
+  MEMORY_DELETION_PROPAGATION,
+  MEMORY_POLICY_REVISION,
+  memoryPolicyRevision,
+} from './memory.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -294,5 +303,133 @@ describe('the host’s governed memory', () => {
     expect(
       Object.values(MEMORY_DELETION_PROPAGATION).every((value) => value === 'not-retained'),
     ).toBe(true);
+  });
+});
+
+type GuardrailSource = PluginMemoryContributions['guardrails']['sources'][number];
+
+/** One contributed memory guardrail, as Bureau describes it: `plugin:memory/name` at a plugin version. */
+function source(
+  name: string,
+  version = '1.0.0',
+  gates: GuardrailSource['gates'] = ['admission', 'recall'],
+): GuardrailSource {
+  return { id: `kit:memory/${name}`, plugin: 'kit', version, gates };
+}
+
+/** What Bureau hands the memory factory for these guardrails: a detector that never trips per source. */
+function contributing(...sources: GuardrailSource[]): PluginMemoryContributions {
+  const detectors = (gate: 'admission' | 'recall') =>
+    sources
+      .filter((contributed) => contributed.gates.includes(gate))
+      .map((contributed) => ({
+        name: contributed.id,
+        detect: async () => ({ triggered: false, confidence: 0, category: 'none' }),
+      }));
+  return {
+    guardrails: { admission: detectors('admission'), recall: detectors('recall'), sources },
+    embedders: [],
+  };
+}
+
+const revisionOf = (...sources: GuardrailSource[]): string =>
+  createHostMemory(new MemoryStorage(), contributing(...sources)).policyRevision;
+
+describe('the host’s memory policy revision (COR-2192)', () => {
+  test('is the base revision, byte for byte, when no plugin contributes a guardrail', () => {
+    expect(revisionOf()).toBe('interborough:1');
+    expect(MEMORY_POLICY_REVISION).toBe('interborough:1');
+    expect(memoryPolicyRevision([])).toBe('interborough:1');
+  });
+
+  test('is the base revision and a SHA-256 digest of the ordered guardrails otherwise', () => {
+    expect(revisionOf(source('pii'))).toMatch(/^interborough:1:sha256:[0-9a-f]{64}$/);
+    // Pinned: the digest of [["kit:memory/pii","1.0.0",["admission","recall"]]], so a change to what
+    // is hashed, or how, is a deliberate edit of this value and not an accident.
+    expect(revisionOf(source('pii'))).toBe(
+      'interborough:1:sha256:b86dfe6b14ca067043a0d1b8d10de8a801437de5dea94978520e2d2d4e7d0e70',
+    );
+  });
+
+  test('is the same for the same guardrails', () => {
+    expect(revisionOf(source('pii'), source('secrets'))).toBe(
+      revisionOf(source('pii'), source('secrets')),
+    );
+  });
+
+  test('changes when a guardrail is added', () => {
+    expect(revisionOf(source('pii'), source('secrets'))).not.toBe(revisionOf(source('pii')));
+    expect(revisionOf(source('pii'))).not.toBe(revisionOf());
+  });
+
+  test('changes when a guardrail is removed', () => {
+    expect(revisionOf(source('pii'))).not.toBe(revisionOf(source('pii'), source('secrets')));
+  });
+
+  test('changes when the guardrails are reordered', () => {
+    expect(revisionOf(source('secrets'), source('pii'))).not.toBe(
+      revisionOf(source('pii'), source('secrets')),
+    );
+  });
+
+  test('changes when a guardrail’s plugin is upgraded', () => {
+    expect(revisionOf(source('pii', '1.1.0'))).not.toBe(revisionOf(source('pii', '1.0.0')));
+  });
+
+  test('changes when a guardrail moves to other gates', () => {
+    expect(revisionOf(source('pii', '1.0.0', ['recall']))).not.toBe(
+      revisionOf(source('pii', '1.0.0', ['admission', 'recall'])),
+    );
+  });
+
+  test('withdraws evidence recalled under the guardrail set it replaced', async () => {
+    // One database under two hosts: the second started with a guardrail the first lacked.
+    const storage = new MemoryStorage();
+    const before = createHostMemory(storage, contributing());
+    const after = createHostMemory(storage, contributing(source('pii')));
+    await before.init();
+    await after.init();
+    expect(after.policyRevision).not.toBe(before.policyRevision);
+
+    const seeder = createMemoryAuthority({
+      principal: { kind: 'user', id: 'owner:seed' },
+      tenantId: 'tenant',
+      ownerId: 'owner',
+      purpose: 'conversation-memory',
+      capabilities: ['memory:write'],
+      policyRevision: 'authorization:1',
+      projection: 'bureau',
+    });
+    await before.write(seeder, 'The user prefers aisle seats.', {
+      collection: 'chat',
+      source: 'conversation',
+    });
+    const reader = createMemoryAuthority({
+      principal: { kind: 'user', id: 'owner:reader' },
+      tenantId: 'tenant',
+      ownerId: 'owner',
+      purpose: 'conversation-memory',
+      capabilities: ['memory:search'],
+      policyRevision: 'authorization:1',
+      projection: 'bureau',
+    });
+    const target = { collection: 'chat', sessionId: 'session-1' };
+
+    const conversation = new Conversation();
+    conversation.appendUserMessage('Which seats does the user prefer?');
+    await createMemoryRecallHook(before, reader, target)({ step: 0, conversation });
+    const recalled = () =>
+      conversation
+        .getMessages()
+        .filter((message) => message.metadata?.['memoryEvidence'] !== undefined)
+        .map((message) => message.content);
+    expect(recalled()).toHaveLength(1);
+    expect(recalled()[0]).toContain('<memory-evidence>');
+
+    // The next step runs under the host with the new guardrail set: the old row is withdrawn.
+    await createMemoryRecallHook(after, reader, target)({ step: 1, conversation });
+    expect(recalled()[0]).toContain('withdrawn');
+    await before.close();
+    await after.close();
   });
 });

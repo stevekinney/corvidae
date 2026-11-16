@@ -53,6 +53,36 @@ describe('composeAgentMessage', () => {
     expect(bound.workspaceAuthority.actorId).toBe('actor-a');
   });
 
+  it('shows a contributed trigger’s version, idempotency key and origin, and never its authority (COR-2162, COR-2163)', () => {
+    const trigger = {
+      kind: 'linear:webhook',
+      version: '1.2.0',
+      payload: { issue: 'COR-1' },
+      idempotencyKey: 'delivery-7',
+      origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' },
+    };
+    const bound = {
+      ...trigger,
+      workspaceAuthority: {
+        version: 1,
+        workspaceId: 'workspace-a',
+        actorId: 'actor-a',
+        authorizingOwner: 'owner-a',
+        membershipRevision: 'revision-a',
+      },
+    };
+    const composed = composeAgentMessage('Go', bound, null);
+    expect(composed).toBe(composeAgentMessage('Go', trigger, null));
+    expect(composed).toContain('"version": "1.2.0"');
+    expect(composed).toContain('"idempotencyKey": "delivery-7"');
+    expect(composed).toContain('"origin": {');
+    expect(composed).toContain('"workflowId": "sync"');
+    // Only a schedule's stored input ever carries `authorityHold` (see the test above, which
+    // covers its omission), so a contributed trigger's envelope has none to hide.
+    expect(composed).not.toContain('workspaceAuthority');
+    expect(composed).not.toContain('actor-a');
+  });
+
   it('appends the previous step’s result when it is present and not null', () => {
     expect(composeAgentMessage('Go', undefined, { content: 'hi', output: null })).toBe(
       `Go\n\nPrevious step:\n${FENCE}json\n{\n  "content": "hi",\n  "output": null\n}\n${FENCE}`,

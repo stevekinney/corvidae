@@ -50,6 +50,12 @@ describe('formatter event kinds', () => {
     expect(listing?.status).toBe('running');
   });
 
+  it('composes a plugin whose formatter lists decision.made, a published kind (COR-2249)', async () => {
+    const listing = await listFormatting(['decision.made']);
+    expect(listing?.status).toBe('running');
+    expect(listing?.problems ?? []).toEqual([]);
+  });
+
   it('names only published kinds, or kinds its own fence declares, in the README code fences', async () => {
     const readme = await Bun.file(
       new URL('../../../interborough-plugin/README.md', import.meta.url),

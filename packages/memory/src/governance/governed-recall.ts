@@ -54,6 +54,10 @@ interface RecallRun {
   readonly context: GovernanceContext;
   readonly authority: MemoryAuthority;
   readonly options: RecallForModelOptions;
+  /** The caller's signal, read once when the recall started: the caller owns `options`. */
+  readonly signal: AbortSignal | undefined;
+  /** Whether the caller's session was tainted when the recall started, read once as `signal` is. */
+  readonly sessionTainted: boolean;
   readonly plan: MemoryRetrievalPlan;
   readonly operationId: string;
   readonly startedAt: number;
@@ -80,6 +84,11 @@ interface RecallRun {
   readonly expanded: RecallCandidate[];
   budgeted: readonly RecallCandidate[];
   filters: readonly MemoryRecallFilterReport[];
+  /**
+   * Whether the active embedder failed on a query (it threw, or did not answer within its bound).
+   * Once it has, no later pass asks it, and the recall scores by text.
+   */
+  embedderFailed: boolean;
   cost: number;
   tokens: number;
   iterations: number;
@@ -121,7 +130,7 @@ function report(
 /** Records a stop reason when none is recorded yet, and reports whether the recall must stop now. */
 function stopped(run: RecallRun): boolean {
   if (run.stopReason !== undefined) return true;
-  if (run.options.signal?.aborted === true) run.stopReason = 'canceled';
+  if (run.signal?.aborted === true) run.stopReason = 'canceled';
   else if (run.context.now() - run.startedAt > run.plan.budgets.maxLatencyMilliseconds) {
     run.stopReason = 'exhausted';
   }
@@ -145,30 +154,67 @@ function evidenceFrom(candidate: RecallCandidate, score: number): MemoryEvidence
   };
 }
 
+/** What a recall guardrail found on a candidate: who found it, and how sure it was. */
+interface RecallDetection {
+  readonly detector: string;
+  readonly category: string;
+  readonly confidence: number;
+}
+
+/**
+ * Records that `candidate` was left out of this recall by a recall guardrail: the `outcome` is
+ * `quarantined` when the record was quarantined, and `withheld` when it was only left out.
+ */
+async function recordRecallWithheld(
+  run: RecallRun,
+  candidate: RecallCandidate,
+  outcome: 'quarantined' | 'withheld',
+  detection: RecallDetection,
+): Promise<void> {
+  const { context, authority } = run;
+  await context.recordEvent({
+    tenantId: authority.tenantId,
+    type: 'memory.recall.withheld',
+    outcome,
+    attribution: context.attribution(authority, run.operationId),
+    recordIds: [candidate.record.id],
+    reason: 'content-policy',
+    diagnostic: { ...detection, contentDigest: candidate.read.governance.contentDigest },
+  });
+}
+
+/** A guardrail tripped on the candidate: it is quarantined, taken out of the index, and recorded. */
 async function withholdPoisoned(
   run: RecallRun,
   candidate: RecallCandidate,
-  scan: { detector: string; category: string; confidence: number },
+  scan: RecallDetection,
 ): Promise<void> {
-  const { context, authority } = run;
+  const { context } = run;
   await context.updateGovernance(candidate, (governance) =>
     governance.state === 'active' ? { state: 'quarantined' } : undefined,
   );
   await context.textSearchProvider?.remove(candidate.record.id);
-  await context.recordEvent({
-    tenantId: authority.tenantId,
-    type: 'memory.recall.withheld',
-    outcome: 'quarantined',
-    attribution: context.attribution(authority, run.operationId),
-    recordIds: [candidate.record.id],
-    reason: 'content-policy',
-    diagnostic: { ...scan, contentDigest: candidate.read.governance.contentDigest },
-  });
+  await recordRecallWithheld(run, candidate, 'quarantined', scan);
+}
+
+/**
+ * A guardrail failed on the candidate, which says nothing about the record: it is left out of this
+ * recall and recorded, and stays `active` and indexed, so a later recall scans it again (COR-2194).
+ * The record carries no error text.
+ */
+async function withholdUnscanned(
+  run: RecallRun,
+  candidate: RecallCandidate,
+  scan: RecallDetection,
+): Promise<void> {
+  await recordRecallWithheld(run, candidate, 'withheld', scan);
 }
 
 /**
  * Admits one ranked candidate: within the token and cost budgets, and past the
- * recall detectors, which quarantine content that trips them. Returns the stop
+ * recall detectors, which quarantine content that trips them. A detector that
+ * throws quarantines nothing: the record is left out of this recall, stays
+ * `active`, and is scanned again by the next one (COR-2194). Returns the stop
  * reason when a budget ends the recall.
  */
 async function admitOne(
@@ -186,22 +232,53 @@ async function admitOne(
     return run.evidence.length > 0 ? 'sufficient' : 'exhausted';
   }
   const { policy } = run;
-  if (policy.recall.detectors.length > 0) {
-    if (run.cost + 1 > budgets.maxCost) return 'exhausted';
-    run.cost += 1;
+  // One unit for each guardrail that runs: a scan that cannot be paid for in full never starts.
+  if (
+    policy.recall.detectors.length > 0 &&
+    run.cost + policy.recall.detectors.length > budgets.maxCost
+  ) {
+    return 'exhausted';
   }
   const provenance =
     candidate.read.governance.source === 'ingested-document'
       ? 'ingested-document'
       : 'recalled-memory';
-  const scan = await scanGovernedContent(
-    candidate.record.content,
-    policy.recall.detectors,
-    provenance,
-  );
+  let scan: Awaited<ReturnType<typeof scanGovernedContent>>;
+  try {
+    scan = await scanGovernedContent(
+      candidate.record.content,
+      policy.recall.detectors,
+      provenance,
+      {
+        source: candidate.read.governance.source,
+        memoryClass: candidate.read.governance.memoryClass,
+        trust: candidate.read.governance.trust,
+      },
+      {
+        ...(run.signal === undefined ? {} : { signal: run.signal }),
+        sessionTainted: run.sessionTainted,
+        onDetectorRun: () => {
+          run.cost += 1;
+        },
+      },
+    );
+  } catch (error) {
+    // A scan rejects only when the caller's signal aborted: the candidate is not withheld, and the
+    // recall ends as canceled. Anything else is not this recall's to swallow.
+    const { signal } = run;
+    if (signal?.aborted === true && Object.is(error, signal.reason)) {
+      run.stopReason = 'canceled';
+      return run.stopReason;
+    }
+    throw error;
+  }
   if (scan.flagged) {
-    const { flagged: _flagged, ...diagnostic } = scan;
-    await withholdPoisoned(run, candidate, diagnostic);
+    // Branch on `failed`, never on the category: a guardrail that trips may name its category
+    // `detector-failure` itself, and that still quarantines.
+    const { flagged: _flagged, failed, ...diagnostic } = scan;
+    await (failed
+      ? withholdUnscanned(run, candidate, diagnostic)
+      : withholdPoisoned(run, candidate, diagnostic));
     run.exclusions.push(recallExclusion(candidate, 'admission', 'content-policy', diagnostic));
     return undefined;
   }
@@ -243,13 +320,29 @@ function reformulate(query: string, tried: readonly string[]): string | undefine
 }
 
 /**
+ * The share of a recall's remaining latency budget one query embed may take. Neither the plan nor
+ * the recall reserves a share of the budget anywhere else, so this is a choice: the budget is
+ * checked before each candidate is admitted (`stopped`, which uses `>`), so an embed that ran to
+ * the end of it would leave every candidate unadmitted. Half leaves the rest for scoring and for
+ * the recall guardrails that run on each candidate.
+ */
+const EMBED_SHARE_OF_REMAINING_BUDGET = 0.5;
+
+/** Why the semantic stage reports `unavailable` once the active embedder failed on a query. */
+const EMBEDDER_FAILED_DETAIL =
+  'the active embedder failed, so candidates were scored by their text';
+
+/**
  * The recall's vectors, read once, when a stage of its plan compares vectors. While the active
  * embedder is unavailable there are none, and the recall scores by text alone instead of failing
- * closed; an embedder that is loaded and errors still fails it closed.
+ * closed. So it does once the embedder has failed on a query (it threw, or did not answer within
+ * its bound): the recall asks it no more, and a later pass scores by text. A vector the profile
+ * refuses, and a text-search provider that errors, still fail the recall closed.
  */
 async function recallVectors(run: RecallRun): Promise<RecallVectors | undefined> {
   const { stages } = run.plan;
   if (!stages.includes('semantic') && !stages.includes('counterevidence')) return undefined;
+  if (run.embedderFailed) return undefined;
   if (run.vectors === undefined) {
     const { embedding } = await run.context.embedding.activeIfAvailable();
     if (embedding === undefined) return undefined;
@@ -270,7 +363,11 @@ async function scoringPasses(
   let pending = candidates;
   let current = query;
   while (!stopped(run)) {
-    if (run.plan.stages.includes('semantic') && run.cost + 1 > run.plan.budgets.maxCost) {
+    if (
+      run.plan.stages.includes('semantic') &&
+      !run.embedderFailed &&
+      run.cost + 1 > run.plan.budgets.maxCost
+    ) {
       run.stopReason = 'exhausted';
       break;
     }
@@ -283,14 +380,38 @@ async function scoringPasses(
           run,
           'semantic',
           'unavailable',
-          'the active embedder is unavailable, so candidates were scored by their text',
+          run.embedderFailed
+            ? EMBEDDER_FAILED_DETAIL
+            : 'the active embedder is unavailable, so candidates were scored by their text',
         );
       }
-      pass = await scoreCandidates(run.context, vectors, run.plan, current, pending);
+      // Half of what is left of the latency budget, so the scoring and admission after the embed
+      // have the other half, even when the embedder never answers. The bound is a duration for
+      // this one embed and never a second signal: an aborted signal reads as the caller giving up.
+      const remaining =
+        run.plan.budgets.maxLatencyMilliseconds - (run.context.now() - run.startedAt);
+      pass = await scoreCandidates(run.context, vectors, run.plan, current, pending, {
+        ...(run.signal === undefined ? {} : { signal: run.signal }),
+        embedTimeoutMilliseconds: Math.max(
+          1,
+          Math.floor(remaining * EMBED_SHARE_OF_REMAINING_BUDGET),
+        ),
+      });
+      if (pass.embedderFailed) {
+        run.embedderFailed = true;
+        report(run, 'semantic', 'unavailable', EMBEDDER_FAILED_DETAIL);
+      }
     } catch {
-      // The embedder or text-search provider failed: the recall fails closed
-      // with no evidence, and nothing an earlier pass selected stays selected.
-      // A ledger failure is not caught, so it still escapes.
+      // The caller gave up while the query was embedding: that is a cancellation, not a failure of
+      // the embedder, so the recall ends as `canceled` with what earlier passes selected.
+      if (run.signal?.aborted === true) {
+        run.stopReason = 'canceled';
+        break;
+      }
+      // The text-search provider failed, or the embedder returned a vector the profile refuses:
+      // the recall fails closed with no evidence, and nothing an earlier pass selected stays
+      // selected. An embedder that only threw or timed out never reaches here: its pass scored by
+      // text. A ledger failure is not caught, so it still escapes.
       run.stopReason = 'failed';
       run.evidence.length = 0;
       run.selected.clear();
@@ -328,7 +449,7 @@ async function expandProvenance(run: RecallRun): Promise<void> {
   for (const selected of run.selected.values()) {
     for (const source of selected.read.governance.lineage?.sources ?? []) {
       if (run.selected.has(source.id)) continue;
-      // A source admission already withheld (a detector quarantined it, or a
+      // A source admission already withheld (a detector quarantined it or failed on it, or a
       // budget left it out) is never offered to admission a second time.
       if (run.exclusions.some((exclusion) => exclusion.recordId === source.id)) continue;
       // A source in the recalled collection already went through every filter;
@@ -557,7 +678,8 @@ async function finish(
  * policy minimum for its class (an untrusted procedure is never selected), or
  * its retention has ended. The survivors are scored, fused, and admitted in rank
  * order, so a withheld record never shrinks the evidence returned; a recall
- * detector that trips on one withholds and quarantines it. The model receives
+ * detector that trips on one withholds and quarantines it, and one that throws
+ * withholds it from this recall only. The model receives
  * only labeled evidence; the bundle tells the caller why.
  */
 export async function recallForModel(
@@ -570,6 +692,8 @@ export async function recallForModel(
     context,
     authority,
     options,
+    signal: options.signal,
+    sessionTainted: options.sessionTainted ?? false,
     plan: resolvePlan(options.plan),
     operationId: context.operationId(),
     startedAt: context.now(),
@@ -586,6 +710,7 @@ export async function recallForModel(
     expanded: [],
     budgeted: [],
     filters: [],
+    embedderFailed: false,
     cost: 0,
     tokens: 0,
     iterations: 0,

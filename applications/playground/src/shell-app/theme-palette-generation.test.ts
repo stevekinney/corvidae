@@ -194,9 +194,9 @@ describe('palette proposals over the shipped baseline', () => {
     expect(textOf(success, 'light', 'status.success.background')).toBe('oklch(0.985 0.02333 150)');
     expect(textOf(success, 'dark', 'status.success.background')).toBe('oklch(0.1083 0.02426 150)');
     const neutral = proposalFor(fresh(), 'neutral', '#6b7280');
-    // The light surface now carries chroma 0.007 against the 0.018 text anchor, so it takes
-    // 0.007 / 0.018 of the seed's chroma; the dark text default keeps the seed's chroma.
-    expect(textOf(neutral, 'light', 'surface.base')).toBe('oklch(0.976 0.00908 264.364)');
+    // The light surface is pure white since 2026-11-15 (chroma 0), so it takes none of the
+    // seed's chroma; the dark text default keeps the seed's chroma.
+    expect(textOf(neutral, 'light', 'surface.base')).toBe('oklch(1 0 264.364)');
     expect(textOf(neutral, 'dark', 'text.default')).toBe('oklch(0.95 0.02336 264.364)');
   });
 

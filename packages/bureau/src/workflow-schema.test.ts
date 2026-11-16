@@ -260,6 +260,32 @@ describe('the input a schema describes', () => {
     }
   });
 
+  it('unwraps a contributed trigger’s envelope with the version, the idempotency key and the origin it records (COR-2162, COR-2163)', () => {
+    const input = { city: 'Oslo' };
+    expect(
+      workflowInputOf({
+        kind: 'plugin:trigger',
+        version: '2',
+        payload: input,
+        idempotencyKey: 'k',
+        origin: { kind: 'trigger', plugin: 'plugin', workflowId: 'file' },
+      }),
+    ).toEqual(input);
+    expect(workflowInputOf({ kind: 'plugin:trigger', version: '2', payload: input })).toEqual(
+      input,
+    );
+    // A run an earlier release started has none of the three.
+    expect(workflowInputOf({ kind: 'plugin:trigger', payload: input })).toEqual(input);
+    for (const raw of [
+      { kind: 'plugin:trigger', version: 2, payload: input },
+      { kind: 'plugin:trigger', payload: input, idempotencyKey: 7 },
+      { kind: 'plugin:trigger', payload: input, origin: 'trigger' },
+      { kind: 'plugin:trigger', payload: input, extra: true },
+    ]) {
+      expect(workflowInputOf(raw)).toBe(raw);
+    }
+  });
+
   it('is a raw start’s input as it is', () => {
     expect(workflowInputOf({ city: 'Oslo' })).toEqual({ city: 'Oslo' });
     expect(workflowInputOf('text')).toBe('text');

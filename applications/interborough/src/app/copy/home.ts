@@ -153,6 +153,7 @@ export const HOME_COPY = {
       goal: 'Goal',
       parent: 'Workflow',
       system: 'Interborough',
+      trigger: 'Trigger',
     },
     /** The line under the rows when more run than Home lists. */
     more: (count: number): string => `${String(count)} more in Runs`,

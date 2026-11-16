@@ -61,6 +61,7 @@ export type {
   PluginListing,
   PluginLoadSource,
   PluginMemoryContributions,
+  PluginMemoryGuardrailSource,
   PluginModelContributions,
   PluginProblem,
   PluginProviderContribution,
@@ -155,6 +156,9 @@ export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-refer
 export type {
   WorkflowCodeDetail,
   WorkflowDetail,
+  WorkflowFileListing,
+  WorkflowListener,
+  WorkflowTriggerRetry,
   WorkflowRunDetail,
   WorkflowRunFilter,
   WorkflowRunSummary,
@@ -470,6 +474,8 @@ export type {
   GoalEventKind,
   RecoveredRunVerdict,
   RecoveryRejectionReason,
+  RunFailureDetail,
+  RunSettledStatus,
 } from './events';
 export {
   ActionEvent,
@@ -480,6 +486,7 @@ export {
   DiagnosticEvent,
   GOAL_EVENT_KINDS,
   GoalLifecycleEvent,
+  DecisionMadeEvent,
   MemoryGovernanceEvent,
   NotificationCreatedEvent,
   ScheduleMissedEvent,
@@ -488,8 +495,16 @@ export {
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
+  BudgetThresholdRecordedEvent,
+  RunAbortedOutcomeEvent,
   RunAbortSettledEvent,
+  RunCompletedOutcomeEvent,
+  RunFailedOutcomeEvent,
+  RunGuardrailRecordedEvent,
   RunRegisteredEvent,
+  RunTripwireRecordedEvent,
+  ToolErrorRecordedEvent,
+  ToolPolicyDeniedRecordedEvent,
   RunSettledEvent,
   RunRemovedEvent,
 } from './events';
@@ -617,6 +632,7 @@ export type {
   TaskOrigin,
   TaskOriginKind,
   TaskPersonSurface,
+  TriggerTaskOrigin,
 } from './task-origin';
 export type { ScorerSampler, ScorerSamplerOptions } from './scorers';
 export { createScorerSampler } from './scorers';
@@ -945,6 +961,7 @@ export {
   A2A_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
+export { HOST_PANEL_OPERATIONS } from './http/host-panel-operations';
 export { startIdleTurn } from './http/ag-ui-thread-admission';
 export type { SkillSourceStanding, SkillsStanding } from './http/management/skills-operations';
 export {

@@ -1,3 +1,4 @@
+import { MemoryVectorDimensionError } from '../memory-vector-store';
 import type { GovernanceContext } from './governance-context';
 import type { MemoryRecallStageScores } from './governed-memory-types';
 import { textScores } from './governed-reads';
@@ -19,6 +20,11 @@ export interface ScoredCandidate {
 export interface ScoringPass {
   readonly ranked: readonly ScoredCandidate[];
   readonly cost: number;
+  /**
+   * Whether the active embedder failed on this pass's query (it threw, or did not answer within its
+   * bound), so the pass scored by text alone. A recall asks a failed embedder no more.
+   */
+  readonly embedderFailed: boolean;
 }
 
 /**
@@ -56,7 +62,11 @@ function fuse(
  * embedded query; `rank-fusion` combines them. Without fusion the plan's one
  * scoring stage ranks alone. With no `vectors` for a plan that selects
  * `semantic`, the active embedder is unavailable: the candidates are scored
- * as `exact-lexical` would score them, and the pass costs no embedder call.
+ * as `exact-lexical` would score them, and the pass costs no embedder call. When
+ * the embedder is available but fails on the query (it throws, or does not answer
+ * within its bound) the pass scores the same way, reports `embedderFailed`, and
+ * costs the one call it made. A vector the profile refuses (a wrong dimension, a
+ * non-finite entry), and a recall the caller cancelled, still throw.
  */
 export async function scoreCandidates(
   context: GovernanceContext,
@@ -64,14 +74,43 @@ export async function scoreCandidates(
   plan: MemoryRetrievalPlan,
   query: string,
   candidates: readonly RecallCandidate[],
+  options: {
+    /** The recall's own signal: the query's embed ends when it aborts, and the recall is canceled. */
+    readonly signal?: AbortSignal;
+    /**
+     * How long the query's embed may take, at most, so the recall keeps budget to admit with
+     * afterwards. A bound and not a signal: running out is an embedder that did not answer, never
+     * a caller that gave up.
+     */
+    readonly embedTimeoutMilliseconds?: number;
+  } = {},
 ): Promise<ScoringPass> {
-  if (candidates.length === 0) return { ranked: [], cost: 0 };
-  const semanticStage = plan.stages.includes('semantic') && vectors !== undefined;
-  // A plan that selects `semantic` falls back to text while the active embedder is unavailable.
-  const lexicalStage = plan.stages.includes('exact-lexical') || !semanticStage;
+  const { signal, embedTimeoutMilliseconds } = options;
+  if (candidates.length === 0) return { ranked: [], cost: 0, embedderFailed: false };
+  const wantsSemantic = plan.stages.includes('semantic') && vectors !== undefined;
   if (vectors !== undefined) await loadVectors(context, vectors, candidates);
-  const queryVector =
-    semanticStage && vectors !== undefined ? await embedOne(vectors.active, query) : undefined;
+  let queryVector: Float32Array | undefined;
+  let embedderFailed = false;
+  if (wantsSemantic) {
+    try {
+      queryVector = await embedOne(vectors.active, query, {
+        ...(signal === undefined ? {} : { signal }),
+        ...(embedTimeoutMilliseconds === undefined
+          ? {}
+          : { timeoutMilliseconds: embedTimeoutMilliseconds }),
+      });
+    } catch (error) {
+      // A vector the profile refuses, and the caller giving up, are not an outage: the first still
+      // fails the recall closed, and the second ends it as canceled (the caller reads its signal).
+      if (error instanceof MemoryVectorDimensionError || signal?.aborted === true) throw error;
+      // The embedder threw, or did not answer within its bound: the pass scores by text alone.
+      embedderFailed = true;
+    }
+  }
+  const semanticStage = wantsSemantic && !embedderFailed;
+  // A plan that selects `semantic` falls back to text while the active embedder is unavailable or
+  // has failed.
+  const lexicalStage = plan.stages.includes('exact-lexical') || !semanticStage;
   const lexical = lexicalStage ? await textScores(context, query, candidates) : [];
   const ranked = candidates.map((candidate, index) => {
     const partial = {
@@ -84,7 +123,9 @@ export async function scoreCandidates(
   });
   return {
     ranked: ranked.toSorted((left, right) => right.scores.fused - left.scores.fused),
-    cost: semanticStage ? 1 : 0,
+    // An embed that failed was still asked for, so it costs what one that answered does.
+    cost: wantsSemantic ? 1 : 0,
+    embedderFailed,
   };
 }
 

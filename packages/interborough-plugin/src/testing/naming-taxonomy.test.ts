@@ -16,6 +16,7 @@ const EXEMPT_TYPES: ReadonlySet<string> = new Set([
   'PluginReactionError',
   'PluginFormatting',
   'PluginScore',
+  'PluginScoreOutcome',
   'PluginEventDeclaration',
   'PluginTriggerListing',
   'PluginReactionListing',

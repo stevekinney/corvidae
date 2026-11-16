@@ -111,11 +111,6 @@ export const PLUGINS_COPY = {
     rejected: (message: string): string => (message === '' ? 'The host refused it.' : message),
     locked:
       'This host keeps its plugin choices in its deployment, so the configuration cannot be saved here.',
-    notSet: 'Not set',
-    addTag: 'Add a value',
-    tagsLabel: (label: string): string => label,
-    json: (label: string): string => `${label}, as JSON`,
-    invalidJson: 'This is not valid JSON.',
   },
   secrets: {
     set: 'Set',
@@ -328,6 +323,13 @@ export const PLUGINS_COPY = {
       title: 'A panel the plugin adds did not build',
       body: (panel: string, message: string): string =>
         `The panel ${panel} is not served. ${message}`,
+    },
+    /** A panel is served under a URI an earlier start served different bytes under (COR-2210). */
+    panelChanged: {
+      status: 'Loaded, a panel changed',
+      title: 'A panel’s page changed',
+      body: (panel: string): string =>
+        `The panel ${panel} serves a different page than at the last start. That is expected after the plugin is updated; if it was not, check where the plugin is installed from.`,
     },
   },
   /** The banner every page shows after a startup where a plugin or a folder did not load. */

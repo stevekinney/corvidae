@@ -40,6 +40,7 @@
       schema={configuration.drawnSchema}
       value={configuration.stored}
       issues={configuration.issues}
+      variant="setting-rows"
       onChange={(next) => configuration.change(next)}
     />
     {#if configuration.failure !== ''}

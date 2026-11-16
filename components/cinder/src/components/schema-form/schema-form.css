@@ -2,6 +2,8 @@
 @import '../input/input.css';
 @import '../textarea/textarea.css';
 @import '../duration-field/duration-field.css';
+@import '../setting-row/setting-row.css';
+@import '../tag-input/tag-input.css';
 
 @layer cinder.components {
   .cinder-schema-form {
@@ -152,6 +154,73 @@
   }
 
   .cinder-schema-form[data-cinder-hosted] .cinder-schema-form__array-item:first-child {
+    padding-block-start: 0;
+    border-block-start: 0;
+  }
+
+  /* The setting rows sit flat in the surface they are put in, which is already the frame: a hairline
+     between rows and no box of their own. A row is a SettingRow, which stacks its control under the
+     label when its own container is narrow. */
+  .cinder-schema-form__setting-rows {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .cinder-schema-form__setting-rows > * {
+    padding-block: var(--cinder-space-3);
+  }
+
+  .cinder-schema-form__setting-rows > * + * {
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  /* The edges are the host's to space: the first row has no padding above it and the last none below. */
+  .cinder-schema-form__setting-rows > :first-child {
+    padding-block-start: 0;
+  }
+
+  .cinder-schema-form__setting-rows > :last-child {
+    padding-block-end: 0;
+  }
+
+  .cinder-schema-form__setting-body {
+    display: grid;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-schema-form__bare-fieldset {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  /* A group or an array inside a row is flat, as in a hosted form: the row's hairline is the only
+     rule, so nothing is a box inside a box. */
+  .cinder-schema-form[data-cinder-variant='setting-rows'] .cinder-schema-form__fieldset {
+    padding: 0;
+    padding-inline-start: var(--cinder-space-3);
+    border: 0;
+    border-radius: 0;
+  }
+
+  .cinder-schema-form[data-cinder-variant='setting-rows'] .cinder-schema-form__legend {
+    padding-inline: 0;
+    padding-block-end: var(--cinder-space-2);
+    margin-inline-start: calc(-1 * var(--cinder-space-3));
+  }
+
+  .cinder-schema-form[data-cinder-variant='setting-rows'] .cinder-schema-form__array-item {
+    padding: 0;
+    padding-block-start: var(--cinder-space-3);
+    border: 0;
+    border-block-start: 1px solid var(--cinder-border-muted);
+    border-radius: 0;
+  }
+
+  .cinder-schema-form[data-cinder-variant='setting-rows']
+    .cinder-schema-form__array-item:first-child {
     padding-block-start: 0;
     border-block-start: 0;
   }

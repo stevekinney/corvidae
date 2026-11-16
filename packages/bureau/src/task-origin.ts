@@ -26,6 +26,7 @@ export const TASK_ORIGIN_KINDS = [
   'goal',
   'parent',
   'system',
+  'trigger',
 ] as const;
 
 /** The kind of a {@link TaskOrigin}: what `bureau.tasks.list` filters by. */
@@ -132,6 +133,20 @@ export interface SystemTaskOrigin {
   readonly kind: 'system';
 }
 
+/**
+ * A contributed trigger started the run (COR-2163): a plugin's listener fired for a workflow file.
+ * The run's own `trigger.kind` names the trigger kind (`plugin:name`), so the origin carries no
+ * kind of its own beyond the discriminant. The run carries it as the Weft tag `origin:trigger`.
+ */
+export interface TriggerTaskOrigin {
+  /** Discriminant. */
+  readonly kind: 'trigger';
+  /** The plugin that contributes the trigger kind. */
+  readonly plugin: string;
+  /** The workflow file the trigger started. */
+  readonly workflowId: string;
+}
+
 /** Where a task came from. */
 export type TaskOrigin =
   | ChatTaskOrigin
@@ -142,7 +157,8 @@ export type TaskOrigin =
   | AgentRunTaskOrigin
   | GoalTaskOrigin
   | ParentTaskOrigin
-  | SystemTaskOrigin;
+  | SystemTaskOrigin
+  | TriggerTaskOrigin;
 
 /**
  * What a caller of `bureau.tasks.start` may declare about where a task came from. Only the kind
@@ -205,6 +221,7 @@ const ORIGIN_CHECKS: Readonly<
   goal: (value) => isNonEmptyString(value['goalRunId']) && isNonEmptyString(value['attemptId']),
   parent: (value) => isNonEmptyString(value['parentRunId']),
   system: () => true,
+  trigger: (value) => isNonEmptyString(value['plugin']) && isNonEmptyString(value['workflowId']),
 };
 
 /** Whether a stored value is a task origin of a kind this version knows, in every field. */

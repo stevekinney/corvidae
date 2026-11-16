@@ -28,8 +28,20 @@
  * identity and a structurally-correct snapshot now, ready for real stall
  * detection once a per-evaluation deadline exists, without reopening this
  * module later to add it.
+ *
+ * Each scorer also runs under a deadline of its own (COR-2199,
+ * {@link SCORER_DEADLINE_MILLISECONDS}) that this module enforces by aborting
+ * the signal the scorer receives; the liveness row stays without a cadence,
+ * since that deadline is per scorer, not per evaluation.
+ *
+ * A scorer speaks the same outcome vocabulary a goal's validator does. A score
+ * is recorded with the outcome the scorer returned, or with one the sampler
+ * chose when the scorer returned none: `error` for a throw or a malformed
+ * return, `unavailable` for a plugin that needs setup, `canceled` for the
+ * deadline. Only a `fail`, or a score below `alertThreshold`, raises an alert.
  */
-import type { PluginScore, PluginScorer } from '@lostgradient/interborough-plugin';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import type { PluginScoreOutcome, PluginScorer } from '@lostgradient/interborough-plugin';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   BACKGROUND_EVALUATION_POLICY,
@@ -52,6 +64,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import type { AuditTrail } from './audit-trail';
 import type { ActionEvent } from './events';
 import type { Bureau } from './bureau-types/facade';
+import { PluginNeedsSetupError } from './plugins/plugin-secret-gate';
 import type { WebhookNotifier } from './webhook-notifier';
 import { formatVersionedId } from './versioned-catalog';
 
@@ -205,6 +218,13 @@ function deriveEvaluationAssessment(
   return 'healthy';
 }
 
+/**
+ * How long one scorer may run before the signal it received aborts and the sampler records
+ * `canceled` and moves on to the next scorer (COR-2199). Each scorer's deadline counts from its own
+ * start.
+ */
+export const SCORER_DEADLINE_MILLISECONDS = 30_000;
+
 /** Options for {@link createScorerSampler}. */
 export interface ScorerSamplerOptions {
   /** Judges/matchers run against each sampled run. */
@@ -217,12 +237,14 @@ export interface ScorerSamplerOptions {
    * Owner-issued signal threaded into every `evaluateRun()` judge invocation
    * (AB-37/AB-206). Aborting it causes the affected `evaluateRun()` call to
    * settle promptly instead of running its remaining judges to completion.
-   * `dispose()` still awaits that settlement via `flush()`.
+   * `dispose()` still awaits that settlement via `flush()`. Each scorer's own
+   * signal aborts with it, so a scorer that honors its signal stops too.
    */
   signal?: AbortSignal;
   /**
    * Injectable timer-agnostic clock backing each evaluation's
-   * `createStallWatchdog` (AB-220). Defaults to the composed
+   * `createStallWatchdog` (AB-220) and arming each scorer's deadline
+   * ({@link SCORER_DEADLINE_MILLISECONDS}, COR-2199). Defaults to the composed
    * `RuntimeServices` monotonic clock and timers (AB-260). Tests inject a
    * manual clock so no real sleeps are needed.
    */
@@ -291,19 +313,108 @@ function isRunResultDetail(detail: unknown): detail is RunResult {
 
 const EVAL_ALERT_TRIGGER = 'eval.threshold-breached';
 
-function breachesThreshold(judge: PluginScorer, result: PluginScore): boolean {
-  if (judge.alertThreshold !== undefined) return result.score < judge.alertThreshold;
-  return !result.pass;
+/**
+ * What one scorer's run came to, as the sampler records it: the outcome, a message, and a score
+ * when the scorer measured one. A scorer's return is read into this shape once, so what is recorded
+ * and what decides the alert are the same values.
+ */
+interface RecordedScore {
+  readonly outcome: PluginScoreOutcome;
+  readonly message: string;
+  readonly score: number | undefined;
+}
+
+/** A scorer's identity as recorded: fixed when the sampler is built, never read from the plugin again. */
+interface JudgeEntry {
+  readonly judge: PluginScorer;
+  readonly name: string;
+  readonly version: string;
+  /** The host's hash of the name and version; a plugin cannot supply one. */
+  readonly digest: string;
+  readonly determinism: 'deterministic' | 'stochastic' | undefined;
+  readonly alertThreshold: number | undefined;
+}
+
+function describeJudge(judge: PluginScorer): JudgeEntry {
+  const { name, version, determinism, alertThreshold } = judge;
+  return {
+    judge,
+    name,
+    version,
+    digest: sha256HexSync(JSON.stringify({ identity: { name, version } })),
+    determinism:
+      determinism === 'deterministic' || determinism === 'stochastic' ? determinism : undefined,
+    alertThreshold,
+  };
+}
+
+/** Every outcome a scorer may return: the kinds of a validator outcome. */
+const OUTCOME_KINDS = {
+  pass: true,
+  fail: true,
+  error: true,
+  unavailable: true,
+  canceled: true,
+  indeterminate: true,
+} satisfies Record<PluginScoreOutcome, true>;
+const OUTCOME_KIND_SET: ReadonlySet<string> = new Set(Object.keys(OUTCOME_KINDS));
+
+const MALFORMED_SCORE: RecordedScore = {
+  outcome: 'error',
+  message: 'Judge returned a malformed score',
+  score: undefined,
+};
+
+const DEADLINE_SCORE: RecordedScore = {
+  outcome: 'canceled',
+  message: `Judge exceeded its deadline of ${SCORER_DEADLINE_MILLISECONDS} milliseconds`,
+  score: undefined,
+};
+
+/**
+ * Reads a scorer's return into a {@link RecordedScore}, or {@link MALFORMED_SCORE} for anything a
+ * well-typed scorer cannot return: not an object, an outcome that is not a validator outcome kind,
+ * a message that is not a string, or a score that is not a finite number from 0 to 1. Each field is
+ * read once, so a getter cannot answer differently for the record than for the alert.
+ */
+function readScore(value: unknown): RecordedScore {
+  try {
+    if (typeof value !== 'object' || value === null) return MALFORMED_SCORE;
+    const { outcome, message, score } = value as Record<string, unknown>;
+    if (typeof outcome !== 'string' || !OUTCOME_KIND_SET.has(outcome)) return MALFORMED_SCORE;
+    if (typeof message !== 'string') return MALFORMED_SCORE;
+    if (score !== undefined) {
+      if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 1) {
+        return MALFORMED_SCORE;
+      }
+    }
+    return { outcome: outcome as PluginScoreOutcome, message, score };
+  } catch {
+    return MALFORMED_SCORE;
+  }
+}
+
+/**
+ * Whether a score raises an alert: a `fail`, or any score below the scorer's `alertThreshold`. The
+ * second test applies only when the scorer has both.
+ */
+function breachesThreshold(entry: JudgeEntry, result: RecordedScore): boolean {
+  if (result.outcome === 'fail') return true;
+  return (
+    entry.alertThreshold !== undefined &&
+    result.score !== undefined &&
+    result.score < entry.alertThreshold
+  );
 }
 
 // ── Abort-aware settlement ──────────────────────────────────────────
 
 /**
  * Rejects with `signal`'s abort reason as soon as it aborts, so awaiting
- * `judge.evaluate()` never blocks `evaluateRun()` past the owner's shutdown
- * request even though {@link PluginScorer.evaluate} itself has no way to
- * observe the signal. `signal` is the owner's disposal signal and outlives
- * any single evaluation, so the listener is removed via `unregister()` once
+ * `judge.score()` never blocks `evaluateRun()` past the owner's shutdown
+ * request or the scorer's own deadline, even when the scorer ignores the
+ * signal {@link PluginScorer.score} receives. `signal` may outlive any single
+ * evaluation, so the listener is removed via `unregister()` once
  * the race is decided rather than relying on `{ once: true }` alone —
  * otherwise a judge that WINS the race (settles before an abort) would leave
  * its listener attached to `signal` forever, one per sampled run.
@@ -373,7 +484,7 @@ export function createScorerSampler<D extends AgentDefinitions = AgentDefinition
   // also held in `activeEvaluations`, which `flush()`/`dispose()` awaits.
   runtime: RuntimeServices = createDefaultRuntimeServices(),
 ): ScorerSampler {
-  const judges = options?.list ?? [];
+  const judges = [...(options?.list ?? [])].map(describeJudge);
 
   if (judges.length === 0 || !options || options.sampleRate <= 0) {
     const noOpSnapshot: EvaluationLivenessSnapshot = Object.freeze({
@@ -586,40 +697,89 @@ export function createScorerSampler<D extends AgentDefinitions = AgentDefinition
 
   async function recordScore(
     runId: string,
-    judge: PluginScorer,
-    result: PluginScore,
+    entry: JudgeEntry,
+    result: RecordedScore,
   ): Promise<void> {
     await auditTrail?.record({
       runId,
       type: 'eval.sample.recorded',
       detail: {
-        judgeName: judge.name,
-        judgeVersion: judge.version,
-        pass: result.pass,
-        score: result.score,
+        judgeName: entry.name,
+        judgeVersion: entry.version,
+        judgeDigest: entry.digest,
+        ...(entry.determinism === undefined ? {} : { determinism: entry.determinism }),
+        outcome: result.outcome,
+        ...(result.score === undefined ? {} : { score: result.score }),
         message: result.message,
       },
     });
   }
 
-  function fireAlert(runId: string, judge: PluginScorer, result: PluginScore): void {
+  /**
+   * Hands a breach to the webhook notifier. The alert is a pushed event, so it names the scorer, its
+   * digest and the outcome and score, and never the scorer's `message`: that text stays on the
+   * `eval.sample.recorded` audit record, for an authorized read (COR-2199).
+   */
+  function fireAlert(runId: string, entry: JudgeEntry, result: RecordedScore): void {
     webhookNotifier?.notify({
       runId,
-      subjectId: `eval:${runId}:${formatVersionedId(judge.name, judge.version)}`,
+      subjectId: `eval:${runId}:${formatVersionedId(entry.name, entry.version)}`,
       trigger: EVAL_ALERT_TRIGGER,
       detail: {
-        judgeName: judge.name,
-        judgeVersion: judge.version,
-        score: result.score,
-        threshold: judge.alertThreshold,
-        message: result.message,
+        judgeName: entry.name,
+        judgeVersion: entry.version,
+        judgeDigest: entry.digest,
+        outcome: result.outcome,
+        ...(result.score === undefined ? {} : { score: result.score }),
+        threshold: entry.alertThreshold,
       },
     });
+  }
+
+  /**
+   * Runs one scorer under its own deadline and reads what it came to, or `undefined` when the
+   * owner aborted: shutdown is a request, not a scorer outcome, so it records nothing.
+   *
+   * The scorer's signal is the owner's signal and a deadline armed on the injected clock, so it
+   * aborts on shutdown and at {@link SCORER_DEADLINE_MILLISECONDS}. The race decides the result: a
+   * scorer that settles first is recorded as it returned, even if the deadline fires a moment
+   * later, and the deadline is cleared on every exit so it never aborts a scorer that has settled.
+   * After a failure the order is fixed: the owner's abort first (nothing recorded), then the
+   * deadline (`canceled`, whatever the scorer threw once told to stop), then a plugin that needs
+   * setup (`unavailable`), then any other throw (`error`).
+   */
+  async function scoreOne(
+    entry: JudgeEntry,
+    runResult: RunResult,
+  ): Promise<RecordedScore | undefined> {
+    const deadline = new AbortController();
+    const timer = clock.setTimeout(() => {
+      deadline.abort(new DOMException(DEADLINE_SCORE.message, 'TimeoutError'));
+    }, SCORER_DEADLINE_MILLISECONDS);
+    const scorerSignal =
+      signal === undefined ? deadline.signal : AbortSignal.any([signal, deadline.signal]);
+    try {
+      const returned = await raceAgainstAbort(
+        Promise.resolve(entry.judge.score(runResult, scorerSignal)),
+        scorerSignal,
+      );
+      return signal?.aborted ? undefined : readScore(returned);
+    } catch (error) {
+      if (signal?.aborted) return undefined;
+      if (deadline.signal.aborted) return DEADLINE_SCORE;
+      if (error instanceof PluginNeedsSetupError) {
+        return { outcome: 'unavailable', message: error.message, score: undefined };
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return { outcome: 'error', message: `Judge threw: ${message}`, score: undefined };
+    } finally {
+      clock.clearTimeout(timer);
+    }
   }
 
   async function evaluateRun(runId: string, runResult: RunResult): Promise<void> {
-    for (const judge of judges) {
-      // Checked before invoking the judge at all: `judge.evaluate()` is
+    for (const entry of judges) {
+      // Checked before invoking the judge at all: `judge.score()` is
       // called synchronously as an argument expression, so `raceAgainstAbort`
       // below only ever races an ALREADY-RUNNING judge against the abort —
       // it cannot stop the judge from starting in the first place. An
@@ -627,21 +787,10 @@ export function createScorerSampler<D extends AgentDefinitions = AgentDefinition
       // start (and leak) an evaluation nobody is going to wait on.
       if (signal?.aborted) return;
 
-      let result: PluginScore;
-      try {
-        result = await raceAgainstAbort(Promise.resolve(judge.evaluate(runResult)), signal);
-      } catch (error) {
-        // An aborted signal ends this evaluation promptly rather than
-        // recording the interrupted judge as a score-0 failure — the abort
-        // is a shutdown request, not a judge outcome.
-        if (signal?.aborted) return;
-        const message = error instanceof Error ? error.message : String(error);
-        result = { pass: false, score: 0, message: `Judge threw: ${message}` };
-      }
+      const result = await scoreOne(entry, runResult);
+      if (result === undefined) return;
 
-      if (signal?.aborted) return;
-
-      await recordScore(runId, judge, result);
+      await recordScore(runId, entry, result);
 
       // Rechecked after the audit write: the owner may have aborted while
       // `recordScore()` was awaiting a slow persistent write, and firing a
@@ -649,8 +798,8 @@ export function createScorerSampler<D extends AgentDefinitions = AgentDefinition
       // cancelled would enqueue delivery work past the abort boundary.
       if (signal?.aborted) return;
 
-      if (breachesThreshold(judge, result)) {
-        fireAlert(runId, judge, result);
+      if (breachesThreshold(entry, result)) {
+        fireAlert(runId, entry, result);
       }
     }
   }

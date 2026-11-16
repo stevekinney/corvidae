@@ -104,6 +104,7 @@ const CROSS_PRODUCER_NAMES: ReadonlySet<string> = new Set([
   'bureau.workflows.pause',
   'bureau.workflows.resume',
   'bureau.workflows.delete',
+  'bureau.workflows.triggers.retry',
   'bureau.workflows.list',
   'bureau.workflows.catalog',
   'bureau.workflows.revisions',

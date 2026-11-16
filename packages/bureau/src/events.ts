@@ -40,6 +40,92 @@ export class ActionEvent extends Event {
 }
 
 /**
+ * A guardrail halted a run (`mode: 'tripwire'`), as the run recorded it (COR-2096). It wraps the
+ * recorded action, like {@link ActionEvent}, and the event feed publishes only the guardrail's
+ * identity from it: never the flagged text or the guardrail's `detail`.
+ */
+export class RunTripwireRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'run.tripwire' as const;
+
+  /** The action the run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(RunTripwireRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/**
+ * A `mode: 'validate'` guardrail acted on a step and the run went on (COR-2096), as the run
+ * recorded it. The feed publishes the guardrail's identity and what it did, never the flagged text.
+ */
+export class RunGuardrailRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'run.guardrail' as const;
+
+  /** The action the run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(RunGuardrailRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/**
+ * A run's spend crossed one of its budget's warning fractions (COR-2096), as the run recorded it.
+ * The feed publishes the fraction, the spend, the budget and the model, never request content.
+ */
+export class BudgetThresholdRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'budget.threshold' as const;
+
+  /** The action the run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(BudgetThresholdRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/**
+ * A tool call was refused by a policy (COR-2096), as the run recorded it. The feed publishes the
+ * tool and the call, never the policy's free-text reason or the call's arguments.
+ */
+export class ToolPolicyDeniedRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'tool.policy-denied' as const;
+
+  /** The action the run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(ToolPolicyDeniedRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/**
+ * A tool call failed (COR-2096), as the run recorded it. The feed publishes the tool, the call and
+ * the error's code when it is an identifier, never the error's message, cause or stack.
+ */
+export class ToolErrorRecordedEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'tool.error' as const;
+
+  /** The action the run recorded. */
+  readonly action: Action;
+
+  constructor(action: Action) {
+    super(ToolErrorRecordedEvent.type);
+    this.action = action;
+  }
+}
+
+/**
  * Fired when a new run is registered in the store.
  */
 export class RunRegisteredEvent extends Event {
@@ -54,17 +140,114 @@ export class RunRegisteredEvent extends Event {
 }
 
 /**
- * Fired after a task's terminal state is committed to the task registry.
- * Unlike {@link RunRemovedEvent}, this does not mean that the run was deleted.
+ * How a settled run ended, as the task registry names it (`settledTaskState`): a run that finished
+ * without failing, a failure (`isFailureFinishReason`, or a settlement that says it failed), or an
+ * abort.
+ */
+export type RunSettledStatus = 'completed' | 'failed' | 'canceled';
+
+/**
+ * Fired after a task's terminal state is committed to the task registry, after the one outcome
+ * event ({@link RunCompletedOutcomeEvent}, {@link RunFailedOutcomeEvent} or
+ * {@link RunAbortedOutcomeEvent}) that says how it ended. Unlike {@link RunRemovedEvent}, this does
+ * not mean that the run was deleted.
  */
 export class RunSettledEvent extends Event {
   static readonly type = 'run.settled' as const;
 
   readonly runId: string;
+  /** How the run ended. */
+  readonly status: RunSettledStatus;
+  /** Why the run stopped, when the settlement recorded one. */
+  readonly finishReason?: string | undefined;
 
-  constructor(runId: string) {
+  constructor(runId: string, status: RunSettledStatus, finishReason?: string) {
     super(RunSettledEvent.type);
     this.runId = runId;
+    this.status = status;
+    this.finishReason = finishReason;
+  }
+}
+
+/**
+ * Fired, once and just before {@link RunSettledEvent}, for a run that ended without failing and
+ * without being aborted. A failed run never fires it: the feed's `run.completed` is the outcome,
+ * where the `action` envelope with `actionType: 'run.completed'` is the run's own log entry.
+ */
+export class RunCompletedOutcomeEvent extends Event {
+  /** The event type, and the published kind. */
+  static readonly type = 'run.completed' as const;
+
+  /** The run's identifier. */
+  readonly runId: string;
+  /** Why the run stopped, when the settlement recorded one. */
+  readonly finishReason?: string | undefined;
+
+  constructor(runId: string, finishReason?: string) {
+    super(RunCompletedOutcomeEvent.type);
+    this.runId = runId;
+    this.finishReason = finishReason;
+  }
+}
+
+/** What a live `RunErrorEvent` told that the task's settlement does not keep. */
+export interface RunFailureDetail {
+  /** The failing step's index; left out for a step that was reconstructed rather than observed. */
+  readonly step?: number | undefined;
+  /** `AgentRunError.code`. */
+  readonly errorCode?: string | undefined;
+  /** `AgentRunError.kind`. */
+  readonly errorKind?: string | undefined;
+}
+
+/**
+ * Fired, once and just before {@link RunSettledEvent}, for every run that ended in a failure
+ * (`isFailureFinishReason`): an error, a tripwire, the step limit, a denied elicitation, a budget,
+ * and a settlement written by the Bureau (`timed-out`, `deadline-exceeded`, `owner-lost`).
+ *
+ * It carries no error text: a failure is named by its finish reason, its kind (a member of the
+ * error-kind enum) and its code (an identifier). The text is read through the authorized task read
+ * (`bureau.tasks.get`, by `runId`), never from a pushed event (Revision 2026-11-16 of COR-2095).
+ */
+export class RunFailedOutcomeEvent extends Event {
+  /** The event type, and the published kind. */
+  static readonly type = 'run.error' as const;
+
+  /** The run's identifier. */
+  readonly runId: string;
+  /** Why the run stopped; `error` when the settlement recorded none. */
+  readonly finishReason: string;
+  /** The failing step's index, when the run's own failure event named one that was observed. */
+  readonly step?: number | undefined;
+  /** `AgentRunError.code`, when the run's own failure event named it and it is an identifier. */
+  readonly errorCode?: string | undefined;
+  /** `AgentRunError.kind`, when the run's own failure event named it and it is a known kind. */
+  readonly errorKind?: string | undefined;
+
+  constructor(runId: string, finishReason: string, detail: RunFailureDetail = {}) {
+    super(RunFailedOutcomeEvent.type);
+    this.runId = runId;
+    this.finishReason = finishReason;
+    this.step = detail.step;
+    this.errorCode = detail.errorCode;
+    this.errorKind = detail.errorKind;
+  }
+}
+
+/** Fired, once and just before {@link RunSettledEvent}, for a run that was aborted. */
+export class RunAbortedOutcomeEvent extends Event {
+  /** The event type, and the published kind. */
+  static readonly type = 'run.aborted' as const;
+
+  /** The run's identifier. */
+  readonly runId: string;
+  /** Why the run stopped, when the settlement recorded one. */
+  readonly finishReason?: string | undefined;
+
+  constructor(runId: string, finishReason?: string) {
+    super(RunAbortedOutcomeEvent.type);
+    this.runId = runId;
+    this.finishReason = finishReason;
   }
 }
 
@@ -661,6 +844,44 @@ export class DiagnosticEvent extends Event {
 }
 
 /**
+ * Fired once a `bureau.decisions.decide` decision has been written to the audit trail (COR-2249):
+ * how it ended (`answered`, `refused` or `error`), which kind it was, the catalog row that
+ * answered and the path it answered by (neither for a refusal that no model reached; a policy
+ * denial names the row alone), and the task it was asked for. It names no request, value,
+ * rationale, schema, principal, provider or routing identifier.
+ */
+export class DecisionMadeEvent extends Event {
+  /** The event kind, as the event feed publishes it, and the audit record's type. */
+  static readonly type = 'decision.made' as const;
+
+  /** The decision's kind: `boolean`, `choice`, `structured`, and so on. */
+  readonly kind: string;
+  /** How the decision ended. */
+  readonly outcome: 'answered' | 'refused' | 'error';
+  /** The row that answered, `<provider>/<model>`, when one did or one was refused. */
+  readonly row?: string | undefined;
+  /** How it answered: through a row that declares the kind, through a row's `generate`, or the fallback. */
+  readonly path?: 'native' | 'adapter' | 'fallback' | undefined;
+  /** The task the decision was asked for, when it was asked for one. */
+  readonly taskId?: string | undefined;
+
+  constructor(decision: {
+    readonly kind: string;
+    readonly outcome: 'answered' | 'refused' | 'error';
+    readonly row?: string | undefined;
+    readonly path?: 'native' | 'adapter' | 'fallback' | undefined;
+    readonly taskId?: string | undefined;
+  }) {
+    super(DecisionMadeEvent.type);
+    this.kind = decision.kind;
+    this.outcome = decision.outcome;
+    this.row = decision.row;
+    this.path = decision.path;
+    this.taskId = decision.taskId;
+  }
+}
+
+/**
  * Fired on the bureau emitter for each notification the governed memory in `BureauOptions.memory`
  * hands its subscribers (COR-1723): every ledger event a write, read, denial, share, quarantine,
  * deletion, retention sweep, or policy change appends, after the governed call that raised it has
@@ -771,8 +992,24 @@ export class SessionTaintEvent extends Event {
  */
 export interface BureauEventMap extends EventMap {
   [ActionEvent.type]: ActionEvent;
+  /** A guardrail halted a run (COR-2096). */
+  [RunTripwireRecordedEvent.type]: RunTripwireRecordedEvent;
+  /** A validate-mode guardrail acted on a step (COR-2096). */
+  [RunGuardrailRecordedEvent.type]: RunGuardrailRecordedEvent;
+  /** A run's spend crossed a budget fraction (COR-2096). */
+  [BudgetThresholdRecordedEvent.type]: BudgetThresholdRecordedEvent;
+  /** A tool call was refused by a policy (COR-2096). */
+  [ToolPolicyDeniedRecordedEvent.type]: ToolPolicyDeniedRecordedEvent;
+  /** A tool call failed (COR-2096). */
+  [ToolErrorRecordedEvent.type]: ToolErrorRecordedEvent;
   [RunRegisteredEvent.type]: RunRegisteredEvent;
   [RunSettledEvent.type]: RunSettledEvent;
+  /** A run ended without failing and without being aborted (COR-2095). */
+  [RunCompletedOutcomeEvent.type]: RunCompletedOutcomeEvent;
+  /** A run failed (COR-2095). */
+  [RunFailedOutcomeEvent.type]: RunFailedOutcomeEvent;
+  /** A run was aborted (COR-2095). */
+  [RunAbortedOutcomeEvent.type]: RunAbortedOutcomeEvent;
   [RunRemovedEvent.type]: RunRemovedEvent;
   [RunAbortSettledEvent.type]: RunAbortSettledEvent;
   [BureauDisposedEvent.type]: BureauDisposedEvent;
@@ -836,4 +1073,6 @@ export interface BureauEventMap extends EventMap {
   [NotificationCreatedEvent.type]: NotificationCreatedEvent;
   [DiagnosticEvent.type]: DiagnosticEvent;
   [MemoryGovernanceEvent.type]: MemoryGovernanceEvent;
+  /** A decision was made and written to the audit trail (COR-2249). */
+  [DecisionMadeEvent.type]: DecisionMadeEvent;
 }

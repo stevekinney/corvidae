@@ -130,6 +130,13 @@ export interface CatalogDispatcherDependencies {
    */
   readonly registerCatalogRun?: ((activeRun: ActiveRun) => void) | undefined;
   /**
+   * COR-2096 — called with the `ActiveRun` of every dispatch that {@link registerCatalogRun} is
+   * not called with: a child run, a goal attempt and a workflow step, each dispatched with the id
+   * its owner recorded and so never on the run store. It lets Bureau publish what such a run
+   * records (a guardrail, a budget threshold, a tool's failure) and what its `run.error` says.
+   */
+  readonly observeRunEvents?: ((activeRun: ActiveRun) => void) | undefined;
+  /**
    * COR-1630 — called once when the handle of a catalog run settles, for every dispatch that holds
    * its own asset claims and is not a goal attempt: `bureau.run()`, a child run and a workflow
    * step, durable or not. A goal attempt is left to the goal forwarder, which hands its rows to
@@ -380,6 +387,7 @@ export function createCatalogDispatcher({
   decideToolFor,
   toolGrant,
   registerCatalogRun,
+  observeRunEvents,
   onCatalogRunEnded,
   configureDurableRun,
   trackSubordinateRun,
@@ -1094,6 +1102,10 @@ export function createCatalogDispatcher({
       // already settled.
       if (runIdOverride === undefined && !cancellationRequested) {
         registerCatalogRun?.(activeRun);
+      } else if (runIdOverride !== undefined) {
+        // COR-2096 — a child, a goal attempt or a workflow step is not on the store, so what it
+        // records is published from its own events.
+        observeRunEvents?.(activeRun);
       }
       if (cancellationRequested) {
         if (cancellationRequested.dispose) {
@@ -1362,7 +1374,7 @@ export function createCatalogDispatcher({
               context,
               start.principal,
               agent,
-              undefined,
+              observeRunEvents,
               fileReference,
               start.workspaceAuthority,
             ),

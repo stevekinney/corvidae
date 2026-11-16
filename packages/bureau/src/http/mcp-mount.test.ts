@@ -192,7 +192,7 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
   });
 
   it('serves injected resources and tool metadata through the adapter', async () => {
-    const uri = 'ui://bureau/probe';
+    const uri = 'ui://inspectors/probe';
     const opened = await open({
       resources: [
         { uri, name: 'probe', mimeType: 'text/html;profile=mcp-app', text: '<!doctype html>' },

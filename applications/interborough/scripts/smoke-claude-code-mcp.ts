@@ -82,8 +82,8 @@ async function main(): Promise<number> {
       return JSON.parse(text.startsWith('{') ? text : (text.match(/^data: (.*)$/m)?.[1] ?? 'null'));
     };
     const apps = [
-      { uri: 'ui://bureau/run-inspector/v1', tool: 'bureau.tasks.inspect' },
-      { uri: 'ui://bureau/pending-review/v1', tool: 'bureau.reviews.list' },
+      { uri: 'ui://inspectors/run-inspector/v1', tool: 'bureau.tasks.inspect' },
+      { uri: 'ui://inspectors/pending-review/v1', tool: 'bureau.reviews.list' },
     ];
     const tools = await rpc(3, 'tools/list', {});
     let id = 10;
