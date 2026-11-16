@@ -496,6 +496,17 @@ describe('composePlugins', () => {
       ]);
       // One wrapper serves both gates, and it still reaches the prototype's `detect`.
       expect(admission[0]).toBe(recall[0]);
+      // One source per detector, in load order, with the plugin's version and canonical gates (COR-2192).
+      expect(handed[0]?.guardrails.sources).toEqual([
+        { id: 'acme:memory/pii', plugin: 'acme', version: '1.0.0', gates: ['admission', 'recall'] },
+        {
+          id: 'acme:memory/memory-poisoning',
+          plugin: 'acme',
+          version: '1.0.0',
+          gates: ['recall'],
+        },
+        { id: 'other:memory/pii', plugin: 'other', version: '1.0.0', gates: ['admission'] },
+      ]);
       const context = { step: 0, conversationLength: 0, sessionTainted: false, provenance: 'x' };
       await admission[0]?.detect('text', context as never);
       expect(calls).toEqual(['pii:text']);

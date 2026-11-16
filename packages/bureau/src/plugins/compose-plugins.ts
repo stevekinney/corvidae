@@ -710,8 +710,9 @@ class Contributed {
   readonly memory: {
     admission: PluginMemoryContributions['guardrails']['admission'][number][];
     recall: PluginMemoryContributions['guardrails']['recall'][number][];
+    sources: PluginMemoryContributions['guardrails']['sources'][number][];
     embedders: PluginMemoryContributions['embedders'][number][];
-  } = { admission: [], recall: [], embedders: [] };
+  } = { admission: [], recall: [], sources: [], embedders: [] };
   readonly providers: PluginProviderContribution[] = [];
 
   add(
@@ -787,6 +788,14 @@ class Contributed {
       };
       if (gates.includes('admission')) this.memory.admission.push(named);
       if (gates.includes('recall')) this.memory.recall.push(named);
+      // COR-2192: the host folds each source into its policy revision, so a plugin change withdraws
+      // evidence recalled under the old set. Gates are canonical: declaration order and repeats are not a change.
+      this.memory.sources.push({
+        id: named.name,
+        plugin,
+        version,
+        gates: MEMORY_GATES.filter((point) => gates.includes(point)),
+      });
     }
     for (const embedder of result.embedders ?? []) {
       this.memory.embedders.push({
@@ -954,7 +963,11 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     contributed.agentSources,
   );
   const memory = memoryOf(options.memory, {
-    guardrails: { admission: contributed.memory.admission, recall: contributed.memory.recall },
+    guardrails: {
+      admission: contributed.memory.admission,
+      recall: contributed.memory.recall,
+      sources: contributed.memory.sources,
+    },
     embedders: contributed.memory.embedders,
   });
   // A factory never reaches the rest of construction: it is replaced by what it built.

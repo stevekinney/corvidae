@@ -374,6 +374,37 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
   });
 }
 
+/** COR-2187: embeds are batched, so a batch answered with the wrong number of vectors is refused. */
+describe('a bound embed of several texts', () => {
+  function embeddingOf(embedder: Embedder) {
+    return createGovernedEmbedding({
+      registry: createTestEmbedders(embedder, DIMENSION).embedders,
+      vectors: createMemoryVectorStore(new MemoryStorage()),
+      initialEmbedder: TEST_EMBEDDER_ID,
+      runtime: createManualRuntimeServices({ identifierSeed: 'governed-embedding-batch' }),
+    });
+  }
+
+  it('returns one vector per text, in order', async () => {
+    const embedding = embeddingOf(keyword);
+    const bound = embedding.bind(PROFILE);
+    const vectors = await bound.embed(['beta', 'alpha', 'other']);
+    expect(vectors.map((vector) => Array.from(vector))).toEqual([axis(1), axis(0), axis(7)]);
+  });
+
+  it('refuses an answer with fewer vectors than texts', async () => {
+    const embedding = embeddingOf((texts) => texts.slice(1).map(() => axis(0)));
+    const failure = await rejectionOf(embedding.bind(PROFILE).embed(['alpha', 'beta', 'gamma']));
+    expect(String(failure)).toContain('expected 3, got 2');
+  });
+
+  it('refuses an answer with more vectors than texts', async () => {
+    const embedding = embeddingOf((texts) => [...texts, 'extra'].map(() => axis(0)));
+    const failure = await rejectionOf(embedding.bind(PROFILE).embed(['alpha']));
+    expect(String(failure)).toContain('expected 1, got 2');
+  });
+});
+
 describe('governed embedding status', () => {
   it('reports the initial profile of a store with none, without storing it', async () => {
     const vectors = createMemoryVectorStore(new MemoryStorage());

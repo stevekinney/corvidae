@@ -202,8 +202,9 @@ export interface MemoryRecallExclusion {
   readonly stage: MemoryPolicyFilter | MemoryRetrievalStage | 'budget' | 'admission';
   /**
    * Present on a `content-policy` exclusion: the recall detector that withheld the record. A
-   * detector that threw reports category `detector-failure` at confidence 1. The consumer judges
-   * the confidence against its own taint threshold.
+   * detector that threw reports category `detector-failure` at confidence 1, and leaves the record
+   * `active` (COR-2194); one that tripped quarantined it. The consumer judges the confidence
+   * against its own taint threshold.
    */
   readonly detection?: MemoryRecallDetection;
 }

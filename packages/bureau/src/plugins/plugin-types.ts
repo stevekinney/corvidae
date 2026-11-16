@@ -78,6 +78,18 @@ export interface PluginModelContributions {
   readonly providers: readonly PluginProviderContribution[];
 }
 
+/** One memory guardrail a plugin contributed, as a host folds it into its memory policy revision. */
+export interface PluginMemoryGuardrailSource {
+  /** `plugin:memory/name`, the identity the guardrail is recorded under. */
+  readonly id: string;
+  /** The plugin that contributed it. */
+  readonly plugin: string;
+  /** The version of that plugin. */
+  readonly version: string;
+  /** The gates it runs at. */
+  readonly gates: readonly ('admission' | 'recall')[];
+}
+
 /** What plugins contribute to governed memory, for a `memory` factory to build with. */
 export interface PluginMemoryContributions {
   /**
@@ -90,6 +102,13 @@ export interface PluginMemoryContributions {
     readonly admission: readonly InputDetector[];
     /** The detectors that run on recall. */
     readonly recall: readonly InputDetector[];
+    /**
+     * One entry per contributed detector, in load order (COR-2192): who contributed it, at which
+     * version, and the gates it runs at, so the host can fold the set into its policy revision.
+     * `id` is the namespaced identity both gates' wrappers carry, and `gates` is canonical: it
+     * lists `admission` before `recall`, and both for a detector that declared none.
+     */
+    readonly sources: readonly PluginMemoryGuardrailSource[];
   };
   /** Embedders a `memory.embedder` setting can name, by `plugin:name`. */
   readonly embedders: readonly ContributedEmbedder[];

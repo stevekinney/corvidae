@@ -53,15 +53,23 @@ import {
   HASHING_EMBEDDER_ID,
 } from '../../src/embedder-registry';
 import { withEmbeddingCache } from '../../src/embedding-cache';
-import { QUEUED_EMBED_GRACE_MILLISECONDS } from '../../src/governance/embedding-switch';
+import {
+  DEFAULT_SWITCH_BATCH_SIZE,
+  QUEUED_EMBED_GRACE_MILLISECONDS,
+} from '../../src/governance/embedding-switch';
 import type { GovernedMemory } from '../../src/governance/governed-memory-types';
 import { collectionNamespace } from '../../src/governance/record-governance';
+import {
+  DEFAULT_SWITCH_BATCH_SIZE as PUBLIC_SWITCH_BATCH_SIZE,
+  DEFAULT_SWITCH_STEP_LIMIT as PUBLIC_SWITCH_STEP_LIMIT,
+} from '../../src/index';
 import type { MemoryRecordStorage } from '../../src/memory-record-storage';
 import {
   createMemoryVectorStore,
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
   type MemoryEmbeddingJob,
   type MemoryEmbeddingProfile,
+  MemoryVectorProfileMissingError,
   type MemoryVectorReference,
   type MemoryVectorStore,
 } from '../../src/memory-vector-store';
@@ -92,20 +100,35 @@ interface Hold {
   release(): void;
 }
 
-/** An 8-dimension embedder that records every text it is asked for, and can hold or fail one. */
+/**
+ * An 8-dimension embedder that records every text it is asked for, and each invocation's texts
+ * (`batches`), and can hold, hang or fail one.
+ */
 class FakeEmbedder {
   readonly calls: string[] = [];
+  /** The texts of each invocation, in order: one entry per call of the embedder, not per text. */
+  readonly batches: string[][] = [];
   private readonly holds = new Map<string, { hold: Hold; released: Promise<void> }>();
   private failAtCall: number | undefined;
   private readonly failing = new Set<string>();
   private readonly alwaysFailing = new Set<string>();
   private readonly poisoned = new Set<string>();
+  private readonly hanging = new Set<string>();
+  private shortChanges = 0;
   private nextHold: { hold: Hold; released: Promise<void> } | undefined;
 
+  /** How many times the embedder was invoked, whatever the number of texts each invocation held. */
+  get invocations(): number {
+    return this.batches.length;
+  }
+
   readonly embed: Embedder = async (texts) => {
+    this.batches.push([...texts]);
     const invalid = new Set<string>();
     for (const text of texts) {
       this.calls.push(text);
+      // Ignores its signal, so only the bound on the embed ends the wait.
+      if (this.hanging.has(text)) await new Promise<never>(() => undefined);
       if (
         this.calls.length === this.failAtCall ||
         this.failing.delete(text) ||
@@ -122,9 +145,15 @@ class FakeEmbedder {
         await held.released;
       }
     }
-    return texts.map((text) =>
+    const vectors = texts.map((text) =>
       invalid.has(text) ? Array.from({ length: DIMENSION }, () => Number.NaN) : axis(text),
     );
+    // A misbehaving embedder: one vector fewer than texts, for the next call that gets one.
+    if (this.shortChanges > 0 && vectors.length > 1) {
+      this.shortChanges -= 1;
+      return vectors.slice(0, -1);
+    }
+    return vectors;
   };
 
   private gate(): { hold: Hold; released: Promise<void> } {
@@ -151,6 +180,16 @@ class FakeEmbedder {
   /** Answers the next call for `text`, once, with a vector of the right length holding `NaN`. */
   poison(text: string): void {
     this.poisoned.add(text);
+  }
+
+  /** Never answers a call that holds `text`: the call hangs until the embed's bound ends the wait. */
+  hangOn(text: string): void {
+    this.hanging.add(text);
+  }
+
+  /** Answers the next call that holds more than one text with one vector fewer than texts. */
+  answerShortOnce(): void {
+    this.shortChanges += 1;
   }
 
   /** Fails the next call for `text`, once. */
@@ -362,9 +401,16 @@ async function started(memory: GovernedMemory, id = FAKE): Promise<MemoryEmbeddi
 
 for (const backend of ['in-memory', 'weft'] as const satisfies readonly GovernedBackend[]) {
   describe(`switching the embedder (${backend})`, () => {
-    async function fixtureWith(fake: FakeEmbedder): Promise<GovernedFixture> {
+    async function fixtureWith(
+      fake: FakeEmbedder,
+      governed: { readonly embedTimeoutMilliseconds?: number } = {},
+    ): Promise<GovernedFixture> {
       return createGovernedFixture(backend, {
-        governed: { embedders: registryWith(fake), initialEmbedder: HASHING_EMBEDDER_ID },
+        governed: {
+          embedders: registryWith(fake),
+          initialEmbedder: HASHING_EMBEDDER_ID,
+          ...governed,
+        },
       });
     }
 
@@ -574,6 +620,8 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       const previous = (await vectorsOf(fixture).getActiveProfile())!;
       await started(fixture.memory);
       fake.failAt(3);
+      // Two records embed in one batch; the third is the next batch, which fails.
+      await fixture.memory.embedding.advance({ limit: 2 });
 
       const status = await fixture.memory.embedding.advance();
 
@@ -1018,10 +1066,13 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
     });
 
     /** A fixture whose initial, active embedder is the fake, with an availability the test sets. */
-    async function togglingFixture(fake: FakeEmbedder) {
+    async function togglingFixture(
+      fake: FakeEmbedder,
+      governed: { readonly embedTimeoutMilliseconds?: number } = {},
+    ) {
       const toggling = togglingRegistry(fake);
       const fixture = await createGovernedFixture(backend, {
-        governed: { embedders: toggling.embedders, initialEmbedder: FAKE },
+        governed: { embedders: toggling.embedders, initialEmbedder: FAKE, ...governed },
       });
       const profile: MemoryEmbeddingProfile = {
         embedderId: FAKE,
@@ -1102,6 +1153,363 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       await fixture.memory.embedding.advance({ limit: 1 });
       expect(await vectorIn(fixture, profile, front.id)).toEqual(axis(front.content));
       expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+    });
+
+    /** COR-2187: a step embeds in batches of `DEFAULT_SWITCH_BATCH_SIZE`, never past its limit. */
+    describe('in batches', () => {
+      /** What an embed may take before its bound ends it; time is driven by hand to reach it. */
+      const BOUND = 6000;
+
+      async function writeNotes(memory: GovernedMemory, count: number): Promise<string[]> {
+        const ids: string[] = [];
+        for (let index = 0; index < count; index++) {
+          ids.push(await writeNote(memory, `note ${index}`));
+        }
+        return ids;
+      }
+
+      const sizesOf = (fake: FakeEmbedder) => fake.batches.map((batch) => batch.length);
+
+      /** What a promise has come to, read without waiting on it. */
+      function observe<T>(promise: Promise<T>) {
+        const outcome: { settled: boolean } = { settled: false };
+        const settle = () => {
+          outcome.settled = true;
+        };
+        promise.then(settle, settle);
+        return outcome;
+      }
+
+      it('exports a batch size of 100, beside the step limit', () => {
+        expect(DEFAULT_SWITCH_BATCH_SIZE).toBe(100);
+        expect(PUBLIC_SWITCH_BATCH_SIZE).toBe(DEFAULT_SWITCH_BATCH_SIZE);
+        expect(PUBLIC_SWITCH_STEP_LIMIT).toBe(500);
+      });
+
+      it('embeds 500 pending records in 5 calls of 100, whatever the step limit names', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake);
+        await writeNotes(fixture.memory, 500);
+        await started(fixture.memory);
+
+        const status = await fixture.memory.embedding.advance({ limit: 500 });
+
+        expect(fake.invocations).toBe(5);
+        expect(sizesOf(fake)).toEqual([100, 100, 100, 100, 100]);
+        expect(status.job).toMatchObject({ state: 'running', done: 500, total: 500 });
+        // The step used its limit, so completing is the next one's, and it embeds nothing.
+        await advanceToEnd(fixture.memory);
+        expect(fake.invocations).toBe(5);
+        expect(await activeEmbedder(fixture.memory)).toBe(FAKE);
+      });
+
+      it('never takes a batch past the step limit, and the next step takes the rest', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake);
+        await writeNotes(fixture.memory, 250);
+        await started(fixture.memory);
+
+        const first = await fixture.memory.embedding.advance({ limit: 150 });
+        expect(sizesOf(fake)).toEqual([100, 50]);
+        expect(first.job).toMatchObject({ done: 150, total: 250 });
+
+        const second = await fixture.memory.embedding.advance({ limit: 150 });
+        expect(sizesOf(fake)).toEqual([100, 50, 100]);
+        // The step did not use its limit, so it found nothing pending and completed the switch.
+        expect(second.job).toBeUndefined();
+        expect(second.active.embedder).toBe(FAKE);
+        // Nothing was embedded twice.
+        expect(new Set(fake.calls).size).toBe(250);
+      });
+
+      it('fails the switch when a batch’s embedder throws, marking no record of it embedded', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake);
+        for (const word of ['alpha', 'beta', 'gamma'])
+          await writeNote(fixture.memory, `${word} note`);
+        const previous = (await vectorsOf(fixture).getActiveProfile())!;
+        await started(fixture.memory);
+        // The second text of the one batch: the embedder refuses the whole call.
+        fake.failAt(2);
+
+        const status = await fixture.memory.embedding.advance();
+
+        expect(fake.invocations).toBe(1);
+        expect(status.active.embedder).toBe(HASHING_EMBEDDER_ID);
+        expect(status.job).toMatchObject({ target: FAKE, state: 'failed', done: 0, total: 3 });
+        expect(status.job?.error).toContain('The fake embedder refused');
+        expect(await vectorsOf(fixture).listProfiles()).toEqual([previous]);
+      });
+
+      it('retries a failed batch by starting the switch again, which embeds every record', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake);
+        const ids: string[] = [];
+        for (const word of ['alpha', 'beta', 'gamma']) {
+          ids.push(await writeNote(fixture.memory, `${word} note`));
+        }
+        await started(fixture.memory);
+        fake.failOnce('beta note');
+        const failed = await fixture.memory.embedding.advance();
+        expect(failed.job?.state).toBe('failed');
+
+        const target = await started(fixture.memory);
+        await advanceToEnd(fixture.memory);
+
+        expect(await activeEmbedder(fixture.memory)).toBe(FAKE);
+        for (const id of ids) expect(await vectorIn(fixture, target, id)).toBeDefined();
+      });
+
+      it('fails the switch when a batch is answered with the wrong number of vectors, marking none embedded', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake);
+        for (const word of ['alpha', 'beta', 'gamma'])
+          await writeNote(fixture.memory, `${word} note`);
+        await started(fixture.memory);
+        fake.answerShortOnce();
+
+        const status = await fixture.memory.embedding.advance();
+
+        expect(status.job).toMatchObject({ target: FAKE, state: 'failed', done: 0, total: 3 });
+        expect(status.job?.error).toContain('expected 3, got 2');
+        expect(status.active.embedder).toBe(HASHING_EMBEDDER_ID);
+      });
+
+      it('withdraws the vector of a record deleted while its batch was in flight, and counts only the records held', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake);
+        const alpha = await writeNote(fixture.memory, 'alpha note');
+        const beta = await writeNote(fixture.memory, 'beta note');
+        const gamma = await writeNote(fixture.memory, 'gamma note');
+        const target = await started(fixture.memory);
+        const hold = fake.holdNext();
+
+        const advancing = fixture.memory.embedding.advance({ limit: 3 });
+        await waitUntil(() => hold.entered, { message: 'the switch embeds its batch' });
+        await forgetNote(fixture.memory, beta);
+        hold.release();
+        const status = await advancing;
+
+        expect(fake.invocations).toBe(1);
+        expect(await vectorIn(fixture, target, beta)).toBeUndefined();
+        expect(await vectorIn(fixture, target, alpha)).toEqual(axis('alpha'));
+        expect(await vectorIn(fixture, target, gamma)).toEqual(axis('gamma'));
+        expect(status.job).toMatchObject({ state: 'running', done: 2, total: 3 });
+      });
+
+      /** `store`, whose `put` number `failAt` throws `error` instead of storing, and the others store. */
+      function failingPut(store: MemoryVectorStore, failAt: number, error: Error) {
+        let puts = 0;
+        return {
+          ...store,
+          async put(...entry: Parameters<MemoryVectorStore['put']>) {
+            puts += 1;
+            if (puts === failAt) throw error;
+            return store.put(...entry);
+          },
+        } satisfies MemoryVectorStore;
+      }
+
+      it('keeps the records a batch stored before a write failed, and embeds only the others on the next step', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake);
+        for (const word of ['alpha', 'beta', 'gamma'])
+          await writeNote(fixture.memory, `${word} note`);
+        await started(fixture.memory);
+        const flaky = fixture.restart({
+          embedders: registryWith(fake),
+          initialEmbedder: HASHING_EMBEDDER_ID,
+          vectors: failingPut(
+            createMemoryVectorStore(fixture.durable),
+            2,
+            new Error('The storage stopped while writing a vector.'),
+          ),
+        });
+        await flaky.init();
+
+        const failure = await rejectionOf(flaky.embedding.advance());
+
+        // The batch embedded all three; the first write stored its vector and the second failed.
+        expect(String(failure)).toContain('The storage stopped');
+        expect(fake.batches).toHaveLength(1);
+        const interrupted = await fixture.memory.embedding.status();
+        expect(interrupted.job).toMatchObject({ state: 'running', done: 0, total: 3 });
+
+        // The target profile is the checkpoint: the next step counts the vector that was stored and
+        // embeds the two records that lack one, and no other.
+        await advanceToEnd(fixture.memory);
+        expect(await activeEmbedder(fixture.memory)).toBe(FAKE);
+        expect(sizesOf(fake)).toEqual([3, 2]);
+      });
+
+      it('fails the switch when the target is deleted part-way through a batch’s writes', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake);
+        for (const word of ['alpha', 'beta', 'gamma'])
+          await writeNote(fixture.memory, `${word} note`);
+        const previous = (await vectorsOf(fixture).getActiveProfile())!;
+        const target = await started(fixture.memory);
+        const vanishing = fixture.restart({
+          embedders: registryWith(fake),
+          initialEmbedder: HASHING_EMBEDDER_ID,
+          vectors: failingPut(
+            createMemoryVectorStore(fixture.durable),
+            2,
+            new MemoryVectorProfileMissingError(target),
+          ),
+        });
+        await vanishing.init();
+
+        const status = await vanishing.embedding.advance();
+
+        expect(status.job).toMatchObject({ state: 'failed', error: 'target-missing', done: 0 });
+        expect(status.active.embedder).toBe(HASHING_EMBEDDER_ID);
+        expect(await vectorsOf(fixture).listProfiles()).toEqual([previous]);
+      });
+
+      it('ends at the first batch that times out, failing the switch and leaving no timer behind', async () => {
+        const fake = new FakeEmbedder();
+        const fixture = await fixtureWith(fake, { embedTimeoutMilliseconds: BOUND });
+        await writeNotes(fixture.memory, 150);
+        await started(fixture.memory);
+        // Records are batched in the order the store lists them, so any batch may come first.
+        for (let index = 0; index < 150; index++) fake.hangOn(`note ${index}`);
+        const timersBefore = fixture.runtime.pendingTimers().length;
+
+        const outcome = observe(fixture.memory.embedding.advance());
+        await waitUntil(() => fake.invocations > 0, { message: 'the switch embeds its batch' });
+        expect(outcome.settled).toBe(false);
+        await fixture.runtime.advance(BOUND);
+        await waitUntil(() => outcome.settled, { message: 'the advance to settle' });
+
+        const status = await fixture.memory.embedding.status();
+        expect(status.job).toMatchObject({ target: FAKE, state: 'failed' });
+        expect(status.job?.error).toContain(`did not answer within ${BOUND}`);
+        expect(fake.invocations).toBe(1);
+        expect(fixture.runtime.pendingTimers().length).toBe(timersBefore);
+      });
+
+      describe('the queue drain', () => {
+        /** `count` notes written while the active embedder needs setup, so each is queued. */
+        async function queuedNotes(
+          count: number,
+          options: { readonly embedTimeoutMilliseconds?: number } = {},
+        ) {
+          const fake = new FakeEmbedder();
+          const toggling = await togglingFixture(fake, options);
+          toggling.setAvailability('needs-setup');
+          const ids: string[] = [];
+          for (let index = 0; index < count; index++) {
+            ids.push(await writeNote(toggling.fixture.memory, `note ${index}`));
+          }
+          expect(await keysUnder(toggling.fixture.durable, 'q:')).toHaveLength(count);
+          toggling.setAvailability('available');
+          return { fake, ids, ...toggling };
+        }
+
+        it('embeds 250 queued records in 3 calls of 100, 100 and 50', async () => {
+          const { fake, fixture, profile, ids } = await queuedNotes(250);
+
+          await fixture.memory.embedding.advance({ limit: 250 });
+
+          expect(sizesOf(fake)).toEqual([100, 100, 50]);
+          expect(fake.invocations).toBe(3);
+          for (const id of ids) expect(await vectorIn(fixture, profile, id)).toBeDefined();
+          expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+        });
+
+        it('embeds a queued record the step limit reaches and no other', async () => {
+          const { fake, fixture } = await queuedNotes(150);
+
+          await fixture.memory.embedding.advance({ limit: 120 });
+
+          expect(sizesOf(fake)).toEqual([100, 20]);
+          expect(await keysUnder(fixture.durable, 'q:')).toHaveLength(30);
+        });
+
+        it('retries a batch that failed one entry per call, so one bad entry holds back no other', async () => {
+          const { fake, fixture, profile, ids } = await queuedNotes(3);
+          fake.failAlways('note 1');
+
+          await fixture.memory.embedding.advance();
+
+          // The batch of three, then each entry alone: the entry that fails stays queued.
+          expect(fake.batches[0]).toHaveLength(3);
+          expect(
+            fake.batches
+              .slice(1)
+              .map((batch) => batch.join())
+              .toSorted(),
+          ).toEqual(['note 0', 'note 1', 'note 2']);
+          expect(await vectorIn(fixture, profile, ids[0]!)).toBeDefined();
+          expect(await vectorIn(fixture, profile, ids[1]!)).toBeUndefined();
+          expect(await vectorIn(fixture, profile, ids[2]!)).toBeDefined();
+          const queued = await keysUnder(fixture.durable, 'q:');
+          expect(queued).toHaveLength(1);
+          expect(queued[0]).toEndWith(`:r:${ids[1]}`);
+
+          // A later step embeds it once it stops failing, in a call of its own.
+          fake.stopFailing('note 1');
+          await fixture.memory.embedding.advance();
+          expect(fake.batches.at(-1)).toEqual(['note 1']);
+          expect(await vectorIn(fixture, profile, ids[1]!)).toBeDefined();
+          expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+        });
+
+        it('does not retry a batch of one, whose call already was the entry’s own', async () => {
+          const { fake, fixture } = await queuedNotes(1);
+          fake.failAlways('note 0');
+
+          await fixture.memory.embedding.advance();
+
+          expect(fake.invocations).toBe(1);
+          expect(await keysUnder(fixture.durable, 'q:')).toHaveLength(1);
+        });
+
+        it('stops at the first batch that times out, keeping every entry queued and waiting on no other', async () => {
+          const { fake, fixture, ids } = await queuedNotes(150, {
+            embedTimeoutMilliseconds: BOUND,
+          });
+          for (let index = 0; index < 150; index++) fake.hangOn(`note ${index}`);
+          const timersBefore = fixture.runtime.pendingTimers().length;
+
+          const outcome = observe(fixture.memory.embedding.advance({ limit: 150 }));
+          await waitUntil(() => fake.invocations > 0, { message: 'the drain embeds its batch' });
+          expect(outcome.settled).toBe(false);
+          await fixture.runtime.advance(BOUND);
+          await waitUntil(() => outcome.settled, { message: 'the advance to settle' });
+
+          expect(fake.invocations).toBe(1);
+          expect(await keysUnder(fixture.durable, 'q:')).toHaveLength(ids.length);
+          expect(fixture.runtime.pendingTimers().length).toBe(timersBefore);
+        });
+
+        it('does not retry a batch that timed out one entry per call', async () => {
+          const { fake, fixture } = await queuedNotes(3, { embedTimeoutMilliseconds: BOUND });
+          fake.hangOn('note 1');
+
+          const outcome = observe(fixture.memory.embedding.advance());
+          await waitUntil(() => fake.invocations > 0, { message: 'the drain embeds its batch' });
+          await fixture.runtime.advance(BOUND);
+          await waitUntil(() => outcome.settled, { message: 'the advance to settle' });
+
+          expect(fake.invocations).toBe(1);
+          expect(await keysUnder(fixture.durable, 'q:')).toHaveLength(3);
+        });
+
+        it('leaves every entry of a batch answered with the wrong number of vectors queued, then embeds them one at a time', async () => {
+          const { fake, fixture, profile, ids } = await queuedNotes(3);
+          fake.answerShortOnce();
+
+          await fixture.memory.embedding.advance();
+
+          // The short answer is a failed batch, so each entry is tried alone, and each succeeds.
+          expect(fake.batches[0]).toHaveLength(3);
+          expect(fake.invocations).toBe(4);
+          for (const id of ids) expect(await vectorIn(fixture, profile, id)).toBeDefined();
+          expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+        });
+      });
     });
 
     it('scores a semantic-only recall by text while the active embedder is unavailable, and reports semantic unavailable', async () => {

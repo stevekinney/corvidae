@@ -1025,7 +1025,7 @@ describe('/host/paths', () => {
 describe('the host’s governed memory', () => {
   test('registers the embedders plugins contribute beside the built-in one', () => {
     const memory: GovernedMemory = createHostMemory(new MemoryStorage(), {
-      guardrails: { admission: [], recall: [] },
+      guardrails: { admission: [], recall: [], sources: [] },
       embedders: [
         {
           id: 'keyed:tiny',
@@ -1050,7 +1050,14 @@ describe('the host’s governed memory', () => {
     const both = detector('both');
     const memory = createHostMemory(new MemoryStorage(), {
       // What Bureau hands the factory: `both` declared no gates, `reads` declared `recall`.
-      guardrails: { admission: [both], recall: [both, detector('reads')] },
+      guardrails: {
+        admission: [both],
+        recall: [both, detector('reads')],
+        sources: [
+          { id: 'both', plugin: 'kit', version: '1.0.0', gates: ['admission', 'recall'] },
+          { id: 'reads', plugin: 'kit', version: '1.0.0', gates: ['recall'] },
+        ],
+      },
       embedders: [],
     });
     await memory.init();
