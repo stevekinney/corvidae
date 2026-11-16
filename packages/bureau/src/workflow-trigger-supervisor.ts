@@ -587,11 +587,15 @@ export function createWorkflowTriggerSupervisor(
     // the entry is still current: `close` retires every entry first (COR-2167). A `start` still
     // pending may yet bring a listener up, which its attempt stops when it settles, so the record
     // waits for the attempt too: no peer acquires while this process's listener can still run.
-    await releaseHeld(
-      id,
-      trigger,
-      stopped.then(() => trigger.attempt.catch(() => undefined)),
-    );
+    const settled = (async () => {
+      await stopped;
+      try {
+        await trigger.attempt;
+      } catch {
+        // The attempt diagnoses its own failures; only that it has settled counts here.
+      }
+    })();
+    await releaseHeld(id, trigger, settled);
   }
 
   /**
