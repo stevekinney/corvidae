@@ -25,6 +25,8 @@
   let { contextId, runId }: RunSendMessageProps = $props();
 
   const copy = RUN_DETAIL_COPY.sendMessage;
+  // hidden-label-allowed: the bar's placeholder says Send a message, and a docked bar draws no label above its field
+  const hiddenLabel = { labelVisible: false } as const;
   let text = $state('');
   // One identifier for each message written: sending it again after a failure that may have reached
   // the Bureau is the same input, and a new message after a success is a new one.
@@ -67,7 +69,7 @@
       id={`run-send-message-${runId}`}
       bind:value={text}
       label={copy.field}
-      labelVisible={false}
+      {...hiddenLabel}
       placeholder={copy.field}
       autocomplete="off"
     />

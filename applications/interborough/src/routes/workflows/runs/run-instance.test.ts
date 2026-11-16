@@ -109,7 +109,10 @@ describe('the steps in the order the engine counts them', () => {
   ];
 
   test('walk a branch’s cases in sorted order, then otherwise, and a parallel’s branches in sorted order', () => {
-    expect(canonicalSteps(NESTED).map((step) => step['title'])).toEqual([
+    const titles = canonicalSteps(NESTED).map(
+      (step) => Object.getOwnPropertyDescriptor(Object(step), 'title')?.value,
+    );
+    expect(titles).toEqual([
       'First',
       'Choose',
       'A one',

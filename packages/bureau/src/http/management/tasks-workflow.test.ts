@@ -288,9 +288,8 @@ describe('the Bureau’s own runs, listed as tasks', () => {
       expect(await tasksOf(served, { engineRuns: false })).toEqual([]);
       expect(typesAsked()).not.toContain('scheduleTick');
       // A type an engine run can have still reads the engine.
-      expect(
-        (await tasksOf(served, { workflow: 'scheduleTick' })).map((task) => task.id),
-      ).toHaveLength(1);
+      const ticks = await tasksOf(served, { workflow: 'scheduleTick' });
+      expect(ticks).toHaveLength(1);
       expect(typesAsked()).toContain('scheduleTick');
     } finally {
       listing.mockRestore();

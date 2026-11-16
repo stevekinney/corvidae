@@ -47,32 +47,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * run's steps by it (`workflowFileStepsInCanonicalOrder`), so the page counts the same way: a
  * nested step is a step, and the count of "step 2 of 4" is the Bureau's.
  */
-export function canonicalSteps(steps: readonly InstanceStep[]): InstanceStep[] {
-  const ordered: InstanceStep[] = [];
-  const visit = (nested: readonly InstanceStep[]): void => {
-    for (const step of nested) {
+export function canonicalSteps(steps: readonly unknown[]): unknown[] {
+  const ordered: unknown[] = [];
+  const visit = (nested: unknown): void => {
+    if (!Array.isArray(nested)) return;
+    for (const step of nested.map((item: unknown) => item)) {
       ordered.push(step);
       if (!isRecord(step)) continue;
-      if (step['kind'] === 'map' && Array.isArray(step['steps'])) {
-        visit(step['steps'] as InstanceStep[]);
+      if (step['kind'] === 'map') {
+        visit(step['steps']);
         continue;
       }
       const branches = step['branches'];
       if (step['kind'] === 'parallel' && isRecord(branches)) {
-        for (const name of Object.keys(branches).toSorted()) {
-          const branch = branches[name];
-          if (Array.isArray(branch)) visit(branch as InstanceStep[]);
-        }
+        for (const name of Object.keys(branches).toSorted()) visit(branches[name]);
         continue;
       }
       const cases = step['cases'];
       if (step['kind'] !== 'branch' || !isRecord(cases)) continue;
-      for (const literal of Object.keys(cases).toSorted()) {
-        const branch = cases[literal];
-        if (Array.isArray(branch)) visit(branch as InstanceStep[]);
-      }
-      const otherwise = step['otherwise'];
-      if (Array.isArray(otherwise)) visit(otherwise as InstanceStep[]);
+      for (const literal of Object.keys(cases).toSorted()) visit(cases[literal]);
+      visit(step['otherwise']);
     }
   };
   visit(steps);
@@ -82,7 +76,7 @@ export function canonicalSteps(steps: readonly InstanceStep[]): InstanceStep[] {
 /** What step `at` (counted from one, in the engine's order) is called: its title, else what it does in words. */
 export function instanceStepName(steps: readonly InstanceStep[], at: number): string | undefined {
   const step = canonicalSteps(steps)[at - 1];
-  if (step === undefined) return undefined;
+  if (!isRecord(step)) return undefined;
   const title: unknown = step['title'];
   if (typeof title === 'string' && title.trim() !== '') return title.trim();
   const kind: unknown = step['kind'];
