@@ -58,7 +58,7 @@
     type StatusWord,
   } from '../../../lib/status.ts';
   import { getWorkflowFileRun } from '../../../lib/workflow-files.ts';
-  import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
+  import { builtInWorkflowName, isBuiltInWorkflow } from '../../../lib/workflow-type-name.ts';
   import { agentsOfSteps } from '../../schedules/schedule-row-model.ts';
   import '../detail/workflow-detail.css';
   import { isTerminalStatus } from '../detail/workflow-status.ts';
@@ -550,12 +550,11 @@
   const builtInName = $derived(
     summary === undefined || task.data !== undefined || attempt !== undefined
       ? undefined
-      : // A workflow a person reads by its name, "Release notes", as the breadcrumb and heading say it.
-        summary.title === undefined || summary.title === ''
-        ? undefined
-        : workflowTypeName(summary.title),
+      : builtInWorkflowName(summary.title ?? ''),
   );
-  const displayTitle = $derived(runTitle ?? builtInName);
+  // An instance of a workflow file is called by the file's name, "Release notes", as the breadcrumb
+  // and the heading say it (rows 54y, 55d); any other engine run is shown by its type's identifier.
+  const displayTitle = $derived(runTitle ?? builtInName ?? instance.name);
   // The label belongs to this run's own address, which is read once so that it never labels the next
   // page while a navigation is under way.
   const crumbPath = untrack(() => router.pathname);

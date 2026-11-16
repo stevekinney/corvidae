@@ -56,9 +56,11 @@
 </script>
 
 {#if goal !== undefined || sentence !== undefined}
-  <section
+  <!-- Under the engine's own Related runs this is not a region of its own, only more of its list. -->
+  <svelte:element
+    this={heading ? 'section' : 'div'}
     class="ib-run-related"
-    aria-label={RUN_DETAIL_COPY.related.heading}
+    aria-label={heading ? RUN_DETAIL_COPY.related.heading : undefined}
     data-section="related-owner"
   >
     {#if heading}
@@ -77,5 +79,5 @@
       </ul>
     {/if}
     {#if sentence !== undefined}<p class="ib-run__note">{sentence}</p>{/if}
-  </section>
+  </svelte:element>
 {/if}

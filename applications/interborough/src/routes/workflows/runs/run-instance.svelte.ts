@@ -16,7 +16,7 @@ import {
   getWorkflowRunHistory,
   listWorkflowRevisions,
 } from '../../../lib/workflow-files.ts';
-import { isBuiltInWorkflow } from '../../../lib/workflow-type-name.ts';
+import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import {
   instanceProgress,
   versionStanding,
@@ -113,8 +113,15 @@ export class RunInstance {
     return versionStanding(ran, this.#file.data.version);
   }
 
-  /** The schedule the workflow's file defines, when it has one. */
-  get schedule(): { readonly id: string; readonly status: 'active' | 'paused' } | null | undefined {
-    return this.#file.data === undefined ? undefined : this.#file.data.schedule;
+  /**
+   * What a person calls the workflow, once the Bureau has said it is a workflow file: its title, else
+   * its identifier in words ("Release notes"). `undefined` for a run that is no workflow file's.
+   */
+  get name(): string | undefined {
+    const file = this.#file.data;
+    const type = this.#source().type;
+    if (file === undefined || type === undefined) return undefined;
+    const title = file.title?.trim();
+    return title === undefined || title === '' ? workflowTypeName(type) : title;
   }
 }

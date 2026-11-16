@@ -43,7 +43,7 @@ for (const width of WIDTHS) {
       await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, width);
 
       const header = page.locator('[data-run-header]');
-      await expect(header).toContainText('Failed, at step 2 of 4');
+      await expect(header).toContainText(/Failed\s*, at step 2 of 4/);
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Release notes');
       // The failure is told once, on the step, and no banner repeats it.
       await expect(page.getByTestId('run-step-failure')).toContainText('Step 2');

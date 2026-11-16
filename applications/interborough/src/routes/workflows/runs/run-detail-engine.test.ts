@@ -167,10 +167,7 @@ describe('a run of a workflow file the engine does not hold', () => {
 
     const view = mount(id);
 
-    // A workflow is named as a person reads it ("E2e approval"), as the breadcrumb says it.
-    expect(
-      await view.findByRole('heading', { level: 1, name: workflowTypeName('e2e-approval') }),
-    ).not.toBeNull();
+    expect(await view.findByRole('heading', { level: 1, name: 'e2e-approval' })).not.toBeNull();
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
     expect(view.container.querySelector('[data-status-word]')?.textContent).toContain('Running');
     expect(view.queryAllByRole('tab').length).toBe(0);
@@ -263,7 +260,7 @@ describe('a run the engine holds', () => {
     const view = mount(id);
 
     expect(
-      await view.findByRole('heading', { level: 1, name: workflowTypeName('order-fulfillment') }),
+      await view.findByRole('heading', { level: 1, name: 'order-fulfillment' }),
     ).not.toBeNull();
     expect(view.getAllByRole('heading', { level: 1 }).length).toBe(1);
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
@@ -600,7 +597,7 @@ describe('the sections a caller sees', () => {
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT('attributes:read', 'attributes:write'));
-    await view.findByRole('heading', { level: 1, name: workflowTypeName('order-fulfillment') });
+    await view.findByRole('heading', { level: 1, name: 'order-fulfillment' });
 
     expect(jsonRpcMethodsCalled()).not.toContain('weft.workflows.attributes.get');
   });
