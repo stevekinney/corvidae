@@ -18,7 +18,7 @@ import {
   goalTransitionId,
   isGoalState,
 } from './goal-state';
-import { createGoalStore } from './goal-store';
+import { createGoalStore, type GoalStore } from './goal-store';
 import type { BureauGoalUpdateRequest } from './goal-types';
 import {
   cancelUntilSettled,
@@ -216,23 +216,66 @@ describe('the goal store’s configuration update', () => {
     return { store, record: opened.record };
   }
 
-  /** What the controller commits when it ends attempt 0 and opens attempt 1: no agent in the patch. */
-  function nextAttemptTransition(seq: number, index: number) {
+  /** An attempt as the controller's patch carries it: no agent, which is the store's to record. */
+  function attemptPatch(index: number, status: 'running' | 'evaluating' | 'failed') {
+    return {
+      attemptId: goalAttemptId('g', index),
+      attemptIndex: index,
+      runId: goalAttemptRunId('g', index),
+      sessionId: goalSessionId('g', 0),
+      startedAt: NOW,
+      usage: { steps: 0, tokens: 0 },
+      status,
+    };
+  }
+
+  /** Ends attempt 0 as the controller does, ending on `retrying` with nothing in flight (seqs 2 and 3). */
+  async function toRetrying(store: GoalStore) {
+    const checking = await store.applyTransition({
+      goalRunId: 'g',
+      seq: 2,
+      transitionId: goalTransitionId('g', 2),
+      to: 'evaluating',
+      at: NOW,
+      cause: 'attempt-ended',
+      attempt: attemptPatch(0, 'evaluating'),
+      active: {
+        kind: 'validation',
+        attemptId: goalAttemptId('g', 0),
+        validator: CHECK,
+        startedAt: NOW,
+      },
+    });
+    expect(checking.status).toBe('applied');
+    const retrying = await store.applyTransition({
+      goalRunId: 'g',
+      seq: 3,
+      transitionId: goalTransitionId('g', 3),
+      to: 'retrying',
+      at: NOW,
+      cause: 'check-failed',
+      attempt: { ...attemptPatch(0, 'failed'), feedback: 'two tests fail' },
+      active: null,
+    });
+    expect(retrying.status).toBe('applied');
+  }
+
+  /** The controller opening attempt 1 once the retry is decided (seq 4). */
+  function openNextAttempt() {
     return {
       goalRunId: 'g',
-      seq,
-      transitionId: goalTransitionId('g', seq),
+      seq: 4,
+      transitionId: goalTransitionId('g', 4),
       to: 'running' as const,
       at: NOW,
       cause: 'attempt-started',
-      attempt: {
-        attemptId: goalAttemptId('g', index),
-        attemptIndex: index,
-        runId: goalAttemptRunId('g', index),
-        sessionId: goalSessionId('g', 0),
+      attempt: attemptPatch(1, 'running'),
+      usage: { attempts: 2, steps: 0, tokens: 0, durationMs: 0 },
+      active: {
+        kind: 'attempt' as const,
+        attemptId: goalAttemptId('g', 1),
+        runId: goalAttemptRunId('g', 1),
         startedAt: NOW,
-        usage: { steps: 0, tokens: 0 },
-        status: 'running' as const,
       },
     };
   }
@@ -269,26 +312,45 @@ describe('the goal store’s configuration update', () => {
 
   it('stamps the next attempt with the goal’s agent, keeps a stamp a replacement does not carry, and leaves an unchanged goal unstamped', async () => {
     const unchanged = await goalWithAttemptInFlight();
-    const plain = await unchanged.store.applyTransition(nextAttemptTransition(2, 1));
-    expect(plain.status).toBe('applied');
-    expect((await unchanged.store.get('g'))!.attempts[1]).not.toHaveProperty('agentName');
+    await toRetrying(unchanged.store);
+    expect((await unchanged.store.applyTransition(openNextAttempt())).status).toBe('applied');
+    const plain = (await unchanged.store.get('g'))!;
+    expect(plain.attempts.map((attempt) => attempt.agentName)).toEqual([undefined, undefined]);
+    expect(plain.attempts[1]).not.toHaveProperty('agentName');
 
     const { store, record } = await goalWithAttemptInFlight();
     await store.updateConfiguration('g', { agentName: 'helper' }, NOW, record.revision);
-    // The controller's patch for attempt 1 carries no agent: the store records the goal's own.
-    const opened = await store.applyTransition(nextAttemptTransition(2, 1));
-    expect(opened.status).toBe('applied');
+    // The controller's patches carry no agent: the store records the goal's own on the attempt that
+    // opens, and keeps the one attempt 0 ran as when the controller rewrites it.
+    await toRetrying(store);
+    expect((await store.get('g'))!.attempts[0]).toMatchObject({ agentName: 'worker' });
+    expect((await store.applyTransition(openNextAttempt())).status).toBe('applied');
     const stored = (await store.get('g'))!;
     expect(stored.attempts.map((attempt) => attempt.agentName)).toEqual(['worker', 'helper']);
+    expect(isGoalState(stored)).toBe(true);
+  });
 
-    // A controller rewriting attempt 0 (its patch has no agent) does not drop the one it ran as.
-    const rewritten = await store.applyTransition({
-      ...nextAttemptTransition(3, 0),
-      to: 'evaluating',
-      attempt: { ...nextAttemptTransition(3, 0).attempt, status: 'evaluating' },
-    });
-    expect(rewritten.status).toBe('applied');
-    expect((await store.get('g'))!.attempts[0]).toMatchObject({ agentName: 'worker' });
+  it('refuses another agent while the goal is between attempts, where a controller may have read the agent it is about to claim', async () => {
+    const { store } = await goalWithAttemptInFlight();
+    await toRetrying(store);
+    const between = (await store.get('g'))!;
+    expect(between.status).toBe('retrying');
+    expect(between.active).toBeUndefined();
+
+    const refused = await store.updateConfiguration(
+      'g',
+      { agentName: 'helper' },
+      NOW,
+      between.revision,
+    );
+
+    expect(refused).toMatchObject({ status: 'rejected', reason: 'agent-between-attempts' });
+    expect(await store.get('g')).toEqual(between);
+    // Other fields change between attempts, as before.
+    expect(
+      (await store.updateConfiguration('g', { prompt: 'work harder' }, NOW, between.revision))
+        .status,
+    ).toBe('updated');
   });
 
   it('gives the retry after a prompt edit under continue the edit, once', async () => {

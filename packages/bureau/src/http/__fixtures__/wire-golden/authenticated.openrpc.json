@@ -27810,7 +27810,7 @@
       }
     },
     {
-      "description": "Changes one of the caller’s own goals for the attempts it has not yet made (COR-2017); a caller holding `bureau.goals:write` changes any owner’s, and anyone else is answered `NotFound`. It names at least one of `prompt`, `agentName`, `validator`, and `maximumAttempts`, and `expectedRevision`, which is compared inside the store’s compare-and-swap that writes the change: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. An attempt already made keeps the validator it was checked against, an attempt in flight keeps the prompt it started with, and no attempt is started. Under the default `continue` conversation a retry’s turn is the validator’s feedback when there is some, so a new prompt reaches a retry only when the feedback is absent. `agentName` is accepted only as the goal’s own agent, which cannot change: the goal’s sessions and runs belong to it. A goal that has ended, or whose cancellation is recorded, is a `Conflict`; so is another agent, a limit that leaves no room for another attempt, and a new limit while the goal’s last allowed attempt is in flight (`data.reason` says which). An agent the caller may not name is `NotFound`; a validator the Bureau lacks, or one that cannot supply the determinism the goal requires, is `Unprocessable`. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal.",
+      "description": "Changes one of the caller’s own goals for the attempts it has not yet made (COR-2017); a caller holding `bureau.goals:write` changes any owner’s, and anyone else is answered `NotFound`. It names at least one of `prompt`, `agentName`, `validator`, and `maximumAttempts`, and `expectedRevision`, which is compared inside the store’s compare-and-swap that writes the change: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. An attempt already made keeps the validator it was checked against, an attempt in flight keeps the prompt it started with, and no attempt is started. Under the default `continue` conversation the first retry opened after a prompt change is turned with the new prompt and then the validator’s feedback, and every later retry is the feedback alone, because the transcript then holds the prompt. `agentName` is the agent the attempts opened from now on run as: an attempt already opened keeps the agent it was opened under, which its record carries, and the ownership, fence and session checks read that agent. It changes only while an attempt is in flight, because a controller starting an attempt reads the agent and claims its run before the record says the attempt exists. A goal that has ended, or whose cancellation is recorded, is a `Conflict`; so is another agent while no attempt is in flight (`agent-between-attempts`), a limit that leaves no room for another attempt, and a new limit while the goal’s last allowed attempt is in flight (`data.reason` says which). An agent the caller may not name, or the catalog lacks, is `NotFound`; an agent that cannot run durably, a validator the Bureau lacks, or one that cannot supply the determinism the goal requires, is `Unprocessable`. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -27847,7 +27847,7 @@
           "name": "agentName",
           "required": false,
           "schema": {
-            "description": "The catalog agent that runs the goal’s attempts. Accepted only when it names the agent the goal already has; another agent is a `Conflict`.",
+            "description": "The catalog agent that runs the attempts the goal opens from now on; an attempt already opened keeps the agent it ran as. It must be in the catalog and able to run durably, and it changes only while an attempt is in flight.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -27974,7 +27974,7 @@
         "additionalProperties": false,
         "properties": {
           "agentName": {
-            "description": "The catalog agent that runs the goal’s attempts. Accepted only when it names the agent the goal already has; another agent is a `Conflict`.",
+            "description": "The catalog agent that runs the attempts the goal opens from now on; an attempt already opened keeps the agent it ran as. It must be in the catalog and able to run durably, and it changes only while an attempt is in flight.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"

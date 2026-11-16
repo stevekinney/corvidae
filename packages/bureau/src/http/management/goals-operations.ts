@@ -153,10 +153,16 @@ function detailOf(goal: GoalState): GoalDetail {
   return {
     ...view,
     prompt: goal.objective.prompt,
-    attempts: view.attempts.map((attempt, index) => ({
-      ...attempt,
-      feedback: goal.attempts[index]?.feedback ?? null,
-    })),
+    attempts: view.attempts.map((attempt, index) => {
+      const recorded = goal.attempts[index];
+      // The feedback the retry was turned with, else what a failed check said (an attempt that ended
+      // the goal is not retried, so no retry's turn carries its feedback).
+      const outcome = recorded?.validation?.outcome;
+      return {
+        ...attempt,
+        feedback: recorded?.feedback ?? (outcome?.kind === 'fail' ? outcome.feedback : null),
+      };
+    }),
   };
 }
 
