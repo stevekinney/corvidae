@@ -15,7 +15,7 @@ test('at 375px a toast sits above the bottom navigation bar and never covers it'
 }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(`${fixtureRoute('toast-region')}&bottom-tab-bar=1`, { waitUntil: 'load' });
-  const bar = page.locator('[data-testid="bottom-tab-bar"] .cinder-navigation-bar');
+  const bar = page.locator('[data-testid="bottom-tab-bar"] nav.cinder-navigation-bar');
   await bar.waitFor({ state: 'visible' });
 
   await page.getByRole('button', { name: 'Dismiss-after-action' }).click();
@@ -33,7 +33,7 @@ test('at 375px a toast sits above the bottom navigation bar and never covers it'
       return { top, bottom, left, right };
     };
     return {
-      bar: box('[data-testid="bottom-tab-bar"] .cinder-navigation-bar'),
+      bar: box('[data-testid="bottom-tab-bar"] nav.cinder-navigation-bar'),
       toast: box('.cinder-toast'),
     };
   });
