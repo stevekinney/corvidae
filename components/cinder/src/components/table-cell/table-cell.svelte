@@ -20,7 +20,7 @@
   import { tryGetTableContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
 
   let {
     align = 'left',
@@ -90,7 +90,7 @@
     >
       {@render children?.()}
     </span>
-    <Tooltip text={title ?? renderedText ?? ''} triggerRef={textElement} />
+    <FullTextTooltip text={title ?? renderedText ?? ''} triggerRef={textElement} />
   {:else}
     {@render children?.()}
   {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}

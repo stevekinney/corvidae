@@ -32,7 +32,7 @@
 
   import { getTooltipTriggerContext } from '../../_internal/tooltip-trigger-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
-  import Tooltip from '../tooltip/tooltip.svelte';
+  import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
 
   import type { BadgeProps, BadgeSubscriptionState, BadgeVariant } from './badge.types.ts';
 
@@ -148,7 +148,7 @@
       {@attach readLabelText}
       {@attach holdLabelElement}>{@render children?.()}</span
     >
-    {#if !insideTooltip}<Tooltip text={labelText ?? ''} triggerRef={labelElement} />{/if}
+    {#if !insideTooltip}<FullTextTooltip text={labelText ?? ''} triggerRef={labelElement} />{/if}
   {:else}
     {@render children?.()}
   {/if}

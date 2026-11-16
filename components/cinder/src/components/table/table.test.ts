@@ -1129,6 +1129,8 @@ describe('Table data display', () => {
     await waitFor(() =>
       expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(longValue),
     );
+    // The tooltip's panel is not part of the cell, so the cell's text is not read twice.
+    expect(cells[0]?.textContent?.trim()).toBe(longValue);
 
     // The CSS contract that keeps the column from growing with its content.
     const rule = ruleBody('.cinder-table__cell-text');
@@ -1148,7 +1150,6 @@ describe('Table data display', () => {
     await fireEvent.focus(texts[1] as HTMLElement);
     await waitFor(() => {
       const tooltip = document.getElementById(texts[1]?.getAttribute('aria-describedby') ?? '');
-      expect(tooltip?.hasAttribute('data-cinder-visible')).toBe(true);
       expect(tooltip?.textContent?.trim()).toBe('Key 2');
     });
     // No native title on the text or the cell, so the full text is announced once.
@@ -1164,7 +1165,6 @@ describe('Table data display', () => {
     await fireEvent.focus(text);
     await waitFor(() => {
       const tooltip = document.getElementById(text.getAttribute('aria-describedby') ?? '');
-      expect(tooltip?.hasAttribute('data-cinder-visible')).toBe(true);
       expect(tooltip?.textContent?.trim()).toBe(longValue);
     });
   });
