@@ -25,18 +25,33 @@ import {
   type BureauEventFeed,
   PUBLISHED_BUREAU_EVENT_KINDS,
 } from './bureau-event-feed.ts';
+import { isPublishedEventKind } from './bureau-event-catalog.ts';
+import type { BureauPlugins } from './plugins/plugin-types.ts';
 
 /** Matches the bound Weft and Operative apply, for the same reason. */
 const MAX_BUREAU_SUBSCRIPTION_REPLAY_EVENTS = 1_000;
 
-const bureauEventKindSchema = z.enum(PUBLISHED_BUREAU_EVENT_KINDS);
+/**
+ * A kind Bureau publishes, or one a plugin declares (COR-2224). A plugin's kind is `plugin:name`
+ * and which ones exist depends on the plugins a Bureau loaded, so the schema admits the shape and
+ * `invoke` checks the name against what the bureau's plugins declare.
+ */
+const bureauEventKindSchema = z.union([
+  z.enum(PUBLISHED_BUREAU_EVENT_KINDS),
+  z
+    .string()
+    .max(256)
+    .regex(/^[^:\s]+:\S+$/),
+]);
 
 const bureauEventsSubscriptionInput = z.object({
   bureauId: z.string().min(1).describe('The identifier of the Bureau whose events to follow.'),
   kinds: z
     .union([bureauEventKindSchema, z.array(bureauEventKindSchema).min(1)])
     .optional()
-    .describe('One event kind, or several. Omitting it delivers every published kind.'),
+    .describe(
+      'One event kind, or several: a kind Bureau publishes, or a `plugin:name` kind a loaded plugin declares. Omitting it delivers every published kind.',
+    ),
   // Bound the input here; invoke checks its structure against the resolved
   // feed before opening a stream, so every transport returns `InvalidParams`.
   fromCursor: z
@@ -121,6 +136,11 @@ export function createBureauEventRegistry(): BureauEventRegistry & {
 export type BureauEventsOperationHost = {
   readonly bureauFeeds: BureauEventRegistry;
   readonly runtime?: Pick<RuntimeServices, 'identifiers'>;
+  /**
+   * The plugins whose declared event kinds a `kinds` filter may name (COR-2224). A host without it
+   * serves the kinds Bureau itself publishes.
+   */
+  readonly plugins?: Pick<BureauPlugins, 'events'>;
 };
 
 /**
@@ -182,6 +202,29 @@ export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAcces
             data: { issues: [{ path: ['fromCursor'], message: 'Invalid cursor', code: 'custom' }] },
           };
           throw invalid;
+        }
+
+        // A kind outside the catalog is refused, as an unknown one always was: a plugin's kind is
+        // known only while the plugin that declares it is loaded.
+        const requestedKinds =
+          input.kinds === undefined ? [] : Array.isArray(input.kinds) ? input.kinds : [input.kinds];
+        const declaredKinds = host.plugins?.events().map((declared) => declared.kind) ?? [];
+        const unknownKinds = requestedKinds.filter(
+          (kind) => !isPublishedEventKind(kind, declaredKinds),
+        );
+        if (unknownKinds.length > 0) {
+          const unknown: OperationFault = {
+            code: 'InvalidParams',
+            message: `Unknown event kind: ${unknownKinds.join(', ')}`,
+            data: {
+              issues: unknownKinds.map((kind) => ({
+                path: ['kinds'],
+                message: `Unknown event kind "${kind}"`,
+                code: 'custom',
+              })),
+            },
+          };
+          throw unknown;
         }
 
         // Only the session's own signal: the feed binds its own lifetime into
