@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": -32601,
+    "data": {
+      "httpStatus": 404,
+      "method": "bureau.does.not.exist",
+      "weftCode": "MethodNotFound"
+    },
+    "message": "unknown operation: bureau.does.not.exist"
+  },
+  "id": "golden",
+  "jsonrpc": "2.0"
+}

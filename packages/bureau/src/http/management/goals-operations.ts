@@ -14,7 +14,10 @@
  * shares `cancel`'s scope: `bureau.goals:write` changes another owner's goal.
  *
  * What a goal's views leave out: its prompt and instructions (the objective's text, like a task's
- * message), each attempt's validator feedback and evidence, and its audit log. A view is the
+ * message), each attempt's validator feedback and evidence, and its audit log. An attempt's
+ * feedback and evidence are content, behind their own read (COR-2112): `verdict` serves them, with
+ * what judged the attempt, to the goal's owner or to a caller holding `bureau.goals:content`.
+ * `bureau.goals:read` does not imply it, and answers as a missing goal does. A view is the
  * goal's control-plane state: where it stands, what its attempts were, what it has used. It does
  * name the goal (`identity`) and the check it runs (`validator`), the pinned name and version each
  * was created with, so a list can title a goal and say what it is trying to make true (COR-2017).
@@ -178,7 +181,7 @@ async function goalFor(
   host: BureauGoalsOperationHost,
   principal: Principal,
   goalRunId: string,
-  operatorScope: 'bureau.goals:read' | 'bureau.goals:write',
+  operatorScope: 'bureau.goals:read' | 'bureau.goals:write' | 'bureau.goals:content',
 ): Promise<GoalState> {
   const goal = await host.goals.get(goalRunId);
   if (
@@ -266,6 +269,154 @@ export const goalsGetOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) =>
     viewOf(await goalFor(host, principal, input.goalRunId, 'bureau.goals:read')),
+});
+
+const verdictInput = z.object({
+  goalRunId: goalIdentifier.describe('The identifier of the goal whose attempt is read.'),
+  attemptIndex: z
+    .number()
+    .int()
+    .min(0)
+    .describe('The attempt’s `attemptIndex`, as the goal’s view lists it.'),
+});
+
+const verdictOutput = z.object({
+  goalRunId: z.string(),
+  attemptId: z.string(),
+  attemptIndex: z.number().int(),
+  outcome: z
+    .enum(['pass', 'fail', 'error', 'unavailable', 'canceled', 'indeterminate'])
+    .describe('The kind of verdict the validator gave.'),
+  feedback: z
+    .string()
+    .nullable()
+    .describe('What the validator said was wrong, for a `fail` verdict; `null` otherwise.'),
+  retryable: z.boolean().nullable().describe('Whether a `fail` verdict is worth another attempt.'),
+  evidence: z
+    .array(z.object({ source: z.string(), detail: z.unknown() }))
+    .describe('What the validator showed for a `pass` or `fail`; empty for the other kinds.'),
+  reason: z
+    .string()
+    .nullable()
+    .describe('Why the verdict is `unavailable` or `indeterminate`; `null` otherwise.'),
+  error: z
+    .object({ kind: z.string(), code: z.string(), message: z.string() })
+    .nullable()
+    .describe('The validator’s error for an `error` or `unavailable` verdict, without its cause.'),
+  validator: z
+    .object({ name: z.string(), version: z.string() })
+    .describe('The validator that gave the verdict, as it was named when it ran.'),
+  configuration: z
+    .unknown()
+    .describe(
+      'The configuration the validator was passed; `null` when it was passed none, and for a record written before the verdict kept it.',
+    ),
+  judgedBy: z
+    .object({
+      validator: z.object({ name: z.string(), version: z.string() }),
+      source: z.object({
+        kind: z.enum(['bureau', 'plugin']),
+        name: z.string(),
+        version: z.string(),
+      }),
+      configuration: z.unknown(),
+    })
+    .nullable()
+    .describe(
+      'What judged the attempt, captured when the validator ran and never read again from the goal; `null` for a record written before it, and when no validator ran.',
+    ),
+  startedAt: z.string(),
+  completedAt: z.string(),
+});
+
+/** The fault for an attempt the caller may read the goal of, but that has nothing to read. */
+function noVerdict(
+  goalRunId: string,
+  attemptIndex: number,
+  reason: 'no-such-attempt' | 'no-verdict-yet',
+): OperationFault {
+  return {
+    code: 'NotFound',
+    message:
+      reason === 'no-such-attempt'
+        ? `Goal "${goalRunId}" has no attempt ${attemptIndex}`
+        : `Attempt ${attemptIndex} of goal "${goalRunId}" has no verdict yet`,
+    // `NotFound` carries a `resource` and an `identifier` and nothing more, so the two cases are
+    // told apart by the resource: no such `attempt`, or an attempt with no `verdict` yet.
+    data: {
+      resource: reason === 'no-such-attempt' ? 'attempt' : 'verdict',
+      identifier: `${goalRunId}/${attemptIndex}`,
+    },
+  };
+}
+
+export const goalsVerdictOperation = defineOperation<
+  typeof verdictInput,
+  typeof verdictOutput,
+  BureauGoalsOperationHost
+>({
+  name: 'bureau.goals.verdict',
+  authorize: authorizeWorkspaceOperation('bureau.goals.verdict'),
+  mcpExposable: false,
+  summary: 'Read an attempt’s verdict',
+  description:
+    'Returns what the goal’s validator said about one attempt: the `outcome` kind, the `feedback` and `evidence` it gave, the `validator` that ran, the `configuration` it was passed, `judgedBy` (the validator, its `source`, and the configuration, captured when it ran and never read again from the goal, `null` for a record written before it), and when it started and finished. These are content, which goal views leave out: the goal’s owner reads their own, and another caller needs `bureau.goals:content`. `bureau.goals:read` alone answers as a missing goal does. An attempt that does not exist and an attempt with no verdict yet are both `NotFound`, told apart by `data.resource` (`attempt` or `verdict`, with `data.identifier` `goalRunId/attemptIndex`).',
+  destructive: false,
+  tags: ['Goals'],
+  inputSchema: verdictInput,
+  outputSchema: verdictOutput,
+  producibleFaults: ['InvalidParams', 'NotFound'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const goal = await goalFor(host, principal, input.goalRunId, 'bureau.goals:content');
+    const attempt = goal.attempts[input.attemptIndex];
+    if (attempt === undefined) {
+      throw noVerdict(input.goalRunId, input.attemptIndex, 'no-such-attempt');
+    }
+    const { validation } = attempt;
+    if (validation === undefined) {
+      throw noVerdict(input.goalRunId, input.attemptIndex, 'no-verdict-yet');
+    }
+    const { outcome, judgedBy } = validation;
+    const error =
+      outcome.kind === 'error' || outcome.kind === 'unavailable'
+        ? { kind: outcome.error.kind, code: outcome.error.code, message: outcome.error.message }
+        : null;
+    return {
+      goalRunId: goal.goalRunId,
+      attemptId: attempt.attemptId,
+      attemptIndex: attempt.attemptIndex,
+      outcome: outcome.kind,
+      feedback: outcome.kind === 'fail' ? outcome.feedback : null,
+      retryable: outcome.kind === 'fail' ? outcome.retryable : null,
+      evidence:
+        outcome.kind === 'pass' || outcome.kind === 'fail'
+          ? outcome.evidence.map(({ source, detail }) => ({ source, detail }))
+          : [],
+      reason:
+        outcome.kind === 'unavailable' || outcome.kind === 'indeterminate' ? outcome.reason : null,
+      error,
+      validator: { name: validation.identity.name, version: validation.identity.version },
+      configuration: judgedBy?.configuration ?? null,
+      judgedBy:
+        judgedBy === undefined
+          ? null
+          : {
+              validator: { name: judgedBy.validator.name, version: judgedBy.validator.version },
+              source: {
+                kind: judgedBy.source.kind,
+                name: judgedBy.source.name,
+                version: judgedBy.source.version,
+              },
+              configuration: judgedBy.configuration,
+            },
+      startedAt: validation.startedAt,
+      completedAt: validation.completedAt,
+    };
+  },
 });
 
 const positiveInteger = z.number().int().positive();
@@ -762,6 +913,7 @@ export const goalsUpdateOperation = defineOperation<
 export const bureauGoalsOperations = [
   goalsListOperation,
   goalsGetOperation,
+  goalsVerdictOperation,
   goalsCreateOperation,
   goalsCancelOperation,
   goalsUpdateOperation,

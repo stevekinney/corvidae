@@ -41,6 +41,10 @@ const NOT_STORAGE_KEYS = new Set([
   'HOOK_SIGNING_SECRET_PREFIX',
   // COR-2009: the start of a schedule tick's run id, a workflow id, not a storage key.
   'SCHEDULE_TICK_ID_PREFIX',
+  // COR-2164: the `trigger` segment of `plugin:<name>:trigger:<trigger-name>:<workflow-id>:`, a
+  // trigger's per-file state inside the plugin's own storage, which `plugin:` names; not a family
+  // of Bureau's own.
+  'TRIGGER_NAMESPACE',
 ]);
 
 /**

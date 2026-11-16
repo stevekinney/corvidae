@@ -250,6 +250,10 @@ import {
   guardrailsListOperation,
 } from './management/guardrails-operations.ts';
 import {
+  type BureauValidatorsOperationHost,
+  validatorsListOperation,
+} from './management/validators-operations.ts';
+import {
   type BureauEventFormatOperationHost,
   type BureauPluginKindsOperationHost,
   eventsFormatOperation,
@@ -427,6 +431,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauPluginKindsOperationHost &
   BureauEventsCatalogOperationHost &
   BureauGuardrailsOperationHost &
+  BureauValidatorsOperationHost &
   BureauEventFormatOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
@@ -845,6 +850,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   eventsFormatOperation,
   pluginKindsOperation,
   guardrailsListOperation,
+  validatorsListOperation,
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
   ...bureauSchedulesOperations,

@@ -532,7 +532,9 @@ export type {
   BureauGoalUpdateOutcome,
   BureauGoalUpdateRejectionCode,
   BureauGoalUpdateRequest,
+  BureauGoalValidatorListing,
 } from './goal-types';
+export type { GoalValidatorSource } from './goal-validator-catalog';
 export type {
   LivenessSnapshotEnvelope,
   TaskDiagnosticsFilter,

@@ -12,6 +12,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startOAuthMcpServer } from './tool-source-servers.test-support.ts';
 
+import type { ApiPrincipal } from './api-routes.ts';
+import { composeOperationNames } from './composed-json-rpc.ts';
+
 import { startHost, type Host } from './host.ts';
 
 const hosts: Host[] = [];
@@ -25,6 +28,7 @@ afterEach(async () => {
 async function authenticatedHost(
   a2aKey?: string,
   pendingGeneration?: { started: () => void; promise: Promise<void> },
+  apiPrincipal?: () => ApiPrincipal,
 ) {
   const home = await mkdtemp(join(tmpdir(), 'interborough-workspace-transports-'));
   homes.push(home);
@@ -55,6 +59,7 @@ async function authenticatedHost(
     workspaceId,
     port: 0,
     plugins: [],
+    ...(apiPrincipal === undefined ? {} : { apiPrincipal }),
     extraAgents: {
       agents: {
         fixture: createAgent({
@@ -206,6 +211,77 @@ describe('injected workspace transport authority', () => {
       expect(response.status, path).toBe(409);
       expect(response.headers.get('x-interborough-identity-mismatch'), path).toBe('1');
     }
+  });
+
+  test('refuses to compose a Bureau operation and a Weft operation with the same name', () => {
+    expect(() =>
+      composeOperationNames(['weft.storage.capabilities', 'shared.name'], ['shared.name']),
+    ).toThrow('shared.name');
+    expect(() =>
+      composeOperationNames(['weft.storage.capabilities'], ['weft.storage.capabilities']),
+    ).toThrow('weft.storage.capabilities');
+    // Bureau's registration of Weft's own principal operation is not a second definition.
+    expect([
+      ...composeOperationNames(['weft.system.principal'], ['weft.system.principal']),
+    ]).toEqual([]);
+    expect([
+      ...composeOperationNames(['weft.storage.capabilities'], ['bureau.agents.list']),
+    ]).toEqual(['bureau.agents.list']);
+  });
+
+  test('answers a Bureau call on /jsonrpc as /bureau/jsonrpc does, result and fault', async () => {
+    const body = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'bureau.agents.list',
+      params: {},
+    });
+    const send = async (host: Host, path: string, actor = 'member', headers = {}) => {
+      const response = await request(host, path, actor, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body,
+      });
+      const text = await response.text();
+      return {
+        status: response.status,
+        mismatch: response.headers.get('x-interborough-identity-mismatch'),
+        body: text.startsWith('{') ? JSON.parse(text) : text,
+      };
+    };
+    const allowed = await authenticatedHost();
+    const direct = await send(allowed.host, '/bureau/jsonrpc');
+    const composed = await send(allowed.host, '/jsonrpc');
+    expect(direct.body).toHaveProperty('result');
+    expect(composed).toEqual(direct);
+
+    // A credential that is not a member sees the same agents, and the same refusals, at both.
+    const service = await authenticatedHost('separate-a2a-credential');
+    expect(await send(service.host, '/jsonrpc', 'separate-a2a-credential')).toEqual(
+      await send(service.host, '/bureau/jsonrpc', 'separate-a2a-credential'),
+    );
+
+    // A browser identity that changed is refused at both, with the same status.
+    const stale = encodeURIComponent(JSON.stringify([allowed.workspaceId, 'member']));
+    allowed.members.set('member', {
+      ...allowed.members.get('member')!,
+      actorId: 'peer',
+      owner: 'owner-peer',
+    });
+    const staleHeaders = { 'x-interborough-expected-identity': stale };
+    const staleDirect = await send(allowed.host, '/bureau/jsonrpc', 'member', staleHeaders);
+    expect(staleDirect.status).toBe(409);
+    expect(await send(allowed.host, '/jsonrpc', 'member', staleHeaders)).toEqual(staleDirect);
+
+    const scopes = new Set<string>(['runs:read']);
+    const refused = await authenticatedHost(undefined, undefined, () => ({
+      subject: 'member',
+      scopes: scopes as ApiPrincipal['scopes'],
+    }));
+    const refusedDirect = await send(refused.host, '/bureau/jsonrpc');
+    const refusedComposed = await send(refused.host, '/jsonrpc');
+    expect(refusedDirect.body).toMatchObject({ error: { data: { scope: 'agents:read' } } });
+    expect(refusedComposed).toEqual(refusedDirect);
   });
 
   test('the retired integrations endpoint returns 404', async () => {

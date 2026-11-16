@@ -32,6 +32,10 @@ components/cinder/src/tokens/runtime/*-validator.generated.js
 # Prettier's proseWrap: never treats that as one paragraph and collapses it onto one line, which
 # would silently corrupt the checked-in bytes the test compares against.
 components/editor/src/lib/export/__fixtures__/diff-review/
+# COR-2470 wire goldens are byte-exact generated output (sorted keys, two-space indentation), compared verbatim by the wire-golden and fault-envelope-golden tests; regenerate with each package's scripts/update-wire-golden.ts.
+packages/weft/src/server/__fixtures__/wire-golden/
+packages/weft/src/server/__fixtures__/fault-envelope-golden/
+packages/bureau/src/http/__fixtures__/wire-golden/
 .env
 .env.*
 # Interoperability fixtures are pinned by SHA-256 (manifest.json); formatting would change their bytes.

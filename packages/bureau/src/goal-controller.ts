@@ -27,8 +27,11 @@ import type { DiagnosticSink } from './bureau-types/options';
 /** What the control plane's operations share. */
 export interface GoalControlDependencies {
   readonly store: GoalStore;
-  /** What the goal's validator promises, for the requirement a goal states about it. */
-  readonly catalog: Pick<GoalValidatorCatalog, 'resolve'>;
+  /**
+   * What the goal's validator promises, for the requirement a goal states about it; `entries`
+   * lists the validators a goal may name (COR-2111).
+   */
+  readonly catalog: Pick<GoalValidatorCatalog, 'resolve' | 'entries'>;
   readonly clock: Pick<RuntimeServices['clock'], 'now' | 'nowISO'>;
   /** Bounds the one start recovery makes outside the controller's own activity; see `recoverAttempt`. */
   readonly timers: Pick<RuntimeServices['timers'], 'setTimeout' | 'clearTimeout'>;

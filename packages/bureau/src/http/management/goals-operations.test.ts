@@ -125,10 +125,11 @@ async function updateAtCurrentRevision(
 }
 
 describe('the operations list', () => {
-  it('serves the five goal operations, registered and listed in OpenRPC', async () => {
+  it('serves the six goal operations, registered and listed in OpenRPC', async () => {
     const names = [
       'bureau.goals.list',
       'bureau.goals.get',
+      'bureau.goals.verdict',
       'bureau.goals.create',
       'bureau.goals.cancel',
       'bureau.goals.update',

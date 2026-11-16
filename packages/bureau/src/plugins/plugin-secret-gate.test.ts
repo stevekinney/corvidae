@@ -20,6 +20,7 @@ import {
   type OutputValidator,
   type ToolCallValidator,
 } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -513,7 +514,9 @@ describe('the secret-gating outcome matrix', () => {
               name: 'inbox',
               description: 'Mail arrives.',
               configuration: z.object({}),
-              start: async () => {
+              start: async (received) => {
+                // The gate hands the trigger the whole context: its file and its storage too.
+                expect(received).toBe(context);
                 log.push('start');
                 return () => {
                   log.push('stop');
@@ -528,6 +531,8 @@ describe('the secret-gating outcome matrix', () => {
     const controller = new AbortController();
     const context: PluginTriggerContext = {
       configuration: {},
+      workflowId: 'watcher',
+      storage: new MemoryStorage(),
       fire: async () => undefined,
       signal: controller.signal,
     };

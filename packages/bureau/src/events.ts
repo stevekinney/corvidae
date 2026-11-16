@@ -423,6 +423,7 @@ const GOAL_EVENT_FIELDS: Readonly<Record<GoalEventKind, readonly string[]>> = {
     'validatorIdentity',
     'outcomeKind',
     'feedbackDigest',
+    'judgedBy',
   ],
   'goal.succeeded': ['goalRunId', 'terminalReason'],
   'goal.exhausted': ['goalRunId', 'terminalReason'],
