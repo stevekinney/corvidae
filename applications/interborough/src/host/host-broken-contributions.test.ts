@@ -13,12 +13,32 @@
  */
 import { openBungalow } from '@lostgradient/bungalow';
 import { rejectionOf } from '@lostgradient/testing';
-import { afterEach, expect, test } from 'bun:test';
+import { afterAll, afterEach, expect, mock, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { startHost, type Host } from './host.ts';
+import type { Host } from './host.ts';
+
+// Snapshot the real exports before mocking: module mocks are process-wide, so the real module is
+// restored after this file. The mock passes everything through unless a test asks the host's
+// catalog composition, a step that runs after the listener is up, to fail.
+const actualComposed = { ...(await import('./composed-json-rpc.ts')) };
+const forced = { composition: false };
+
+afterAll(() => {
+  void mock.module('./composed-json-rpc.ts', () => actualComposed);
+});
+
+void mock.module('./composed-json-rpc.ts', () => ({
+  ...actualComposed,
+  composeOperationNames: (...names: Parameters<typeof actualComposed.composeOperationNames>) => {
+    if (forced.composition) throw new Error('forced: the composed catalog failed');
+    return actualComposed.composeOperationNames(...names);
+  },
+}));
+
+const { startHost } = await import('./host.ts');
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -234,7 +254,7 @@ test('a page whose bytes changed under a URI an earlier start served is listed a
   expect(changed.panels.map(({ uri }) => uri)).toEqual(['ui://drifting/page/v1']);
 });
 
-test('a start that fails after the panels are built leaves the digest record alone, so the next start reports the change (COR-2210)', async () => {
+test('a start that fails before it returns leaves the digest record alone, so the next start reports the change (COR-2210)', async () => {
   const { start, stop, change } = await driftingHome();
   const first = await start();
   await stop(first.host);
@@ -246,6 +266,15 @@ test('a start that fails after the panels are built leaves the digest record alo
     expect(await rejectionOf(start(holder.port))).toBeInstanceOf(Error);
   } finally {
     await holder.stop(true);
+  }
+
+  // The listener comes up and a later step fails: the host composes its operation catalog after
+  // `server.ready`, so the record must not have been written before it.
+  forced.composition = true;
+  try {
+    expect(await rejectionOf(start())).toBeInstanceOf(Error);
+  } finally {
+    forced.composition = false;
   }
 
   const reported = await start();

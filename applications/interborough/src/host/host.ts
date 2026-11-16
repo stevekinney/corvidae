@@ -1716,9 +1716,6 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.server = server;
     await server.ready;
-    // Recorded only now that the host is listening, so a start that failed earlier leaves the
-    // record alone and the next one still reports the change (COR-2210).
-    await commitPanelDigests(storage, mcpMounts.pendingDigests);
     engineUpstream?.({ url: server.url, key });
     // Both catalogs are known here. A name they both define stops the host from starting.
     bureauMethods?.(
@@ -1729,11 +1726,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           .map((entry) => entry.key),
       ),
     );
+    const routeInventory = Object.freeze([
+      ...inventoryHostRoutes(publicRoutes, bureauHandler.resourceInventory),
+      engineInventory,
+    ]);
+    // Recorded as the last step that can fail: a start that throws anywhere earlier leaves the
+    // record alone, so the next start still reports the change (COR-2210).
+    await commitPanelDigests(storage, mcpMounts.pendingDigests);
     return {
-      routeInventory: Object.freeze([
-        ...inventoryHostRoutes(publicRoutes, bureauHandler.resourceInventory),
-        engineInventory,
-      ]),
+      routeInventory,
       url: new URL(`http://${LOOPBACK}:${publicPort}/`),
       bureau,
       engine,
