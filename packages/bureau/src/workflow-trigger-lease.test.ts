@@ -722,7 +722,7 @@ const rows: readonly LeaseRow[] = [
     },
   },
   {
-    row: 'M12: a built-in trigger and a manual start take no lease (the supervisor sees contributed kinds only): see the Bureau rows',
+    row: 'M12: a built-in trigger’s fire and a manual start take no lease and no fence',
     run: async () => {
       // A supervisor given no contributed trigger reads and writes nothing, whatever ticks.
       const shared = sharedStore();
@@ -731,6 +731,39 @@ const rows: readonly LeaseRow[] = [
       await p.tick();
       expect(p.reads).toEqual([]);
       expect(p.writes).toEqual([]);
+
+      // Through a persistent Bureau: a signal-triggered file fires, and a manual-trigger file is
+      // started, and neither touches a listener lease key.
+      const touched: string[] = [];
+      const storage = persistentMemory();
+      const observed = new Proxy(storage, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function') return member;
+          return (...args: unknown[]) => {
+            const text = JSON.stringify(args, (_key, value: unknown) =>
+              value instanceof Uint8Array ? new TextDecoder().decode(value) : value,
+            );
+            if (text.includes('bureau-trigger:')) touched.push(String(property));
+            return (member as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      });
+      const harness = await startWorkflowBureau({
+        overrides: { storage: observed, onDiagnostic: () => undefined },
+      });
+      cleanups.push(() => harness.dispose());
+      const parked = { steps: [{ kind: 'await-signal', signal: 'never' }] };
+      await harness.put(
+        'signalled.json',
+        workflowFileText('signalled', { trigger: { kind: 'signal', name: 'go' }, ...parked }),
+      );
+      await harness.put('manual.json', workflowFileText('manual', parked));
+      await harness.bureau.workflows?.refresh();
+      const signalled = await harness.bureau.workflows!.signal('go', {});
+      expect(signalled.started).toHaveLength(1);
+      await harness.bureau.workflows!.start('manual', { input: {}, owner: 'anonymous:local' });
+      expect(touched).toEqual([]);
     },
   },
   {
@@ -827,6 +860,26 @@ const rows: readonly LeaseRow[] = [
       await p.close();
       await p.tick();
       expect(p.reads).toHaveLength(reads);
+
+      // A pass already queued, behind a start in flight, when close lands: it does nothing once
+      // it runs, though the record names another process.
+      const other = sharedStore();
+      const queued = await peer(other);
+      const taker = await peer(other);
+      const starting = gate();
+      queued.onStart = () => starting.promise;
+      const reconciling = queued.reconcile({ a: {} });
+      await waitUntil(() => queued.starts.length === 1, { message: 'the start to begin' });
+      await takenBy(other.kv, taker);
+      await queued.processLease.renew();
+      const before = queued.reads.length;
+      const closing = queued.close();
+      starting.open();
+      await reconciling;
+      await closing;
+      await queued.settled();
+      expect(queued.reads).toHaveLength(before);
+      expect(queued.status()?.state).not.toBe('standby');
     },
   },
   {
@@ -1798,6 +1851,11 @@ const rows: readonly LeaseRow[] = [
       await one.reconcile({ a: {} });
       await two.reconcile({ a: {} });
       await one.starts[0]!.fire({});
+      // The holder's start then fails twice, so its next delay has grown to 4 seconds.
+      one.onStart = boom;
+      await one.reconcile({ a: { account: 'edited' } });
+      await one.advance(1_000);
+      expect(one.status()).toEqual(status('failed', at(0), 'start-failed', at(0), at(3)));
       await one.close();
       await two.close();
       expect(await shared.kv.get(RECORD)).toBeNull();
@@ -1807,6 +1865,10 @@ const rows: readonly LeaseRow[] = [
       await four.reconcile({ a: {} });
       expect(three.status()).toEqual(status('listening', ORIGIN));
       expect(four.status()).toEqual(status('standby', ORIGIN));
+      // After the restart a failing start waits 1 second again: the backoff starts over.
+      three.onStart = boom;
+      await three.reconcile({ a: { account: 'edited' } });
+      expect(three.status()).toEqual(status('failed', ORIGIN, 'start-failed', null, at(1)));
     },
   },
   {
