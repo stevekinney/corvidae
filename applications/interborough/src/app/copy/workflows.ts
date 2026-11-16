@@ -174,6 +174,7 @@ export const WORKFLOW_COPY = {
       retry: 'Retry now',
       retrying: 'Retrying the trigger…',
       retryFailed: 'The trigger could not be retried.',
+      retryForbidden: 'You don’t have permission to retry this trigger.',
       /** Before the address a trigger that receives is sent its deliveries at. */
       address: 'Deliveries go to',
       copyAddress: 'Copy the address',

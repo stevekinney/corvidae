@@ -5,12 +5,13 @@
  * and a kind that receives shows the address its deliveries go to with a copy control. A run a
  * trigger started names the trigger's plugin in Started by.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
-import { STUB_TRIGGERS_URL } from '../../lib/bureau-stub.test-support.ts';
+import { STUB_TRIGGERS_URL, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { clockTimeWithSeconds } from '../../lib/format/clock.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
@@ -24,6 +25,7 @@ import {
 import RunOrigin from '../workflows/runs/run-origin.svelte';
 import { triggerOrigin } from '../workflows/runs/run-rows.ts';
 import Harness from './area-harness.test-harness.svelte';
+import ToastAreaHarness from './toast-area-harness.test-harness.svelte';
 
 let stub: WorkflowStub | undefined;
 
@@ -74,7 +76,7 @@ const KINDS = {
   reactions: [],
 };
 
-function open(listener: Listener | null, kind = 'inbox:message') {
+function open(listener: Listener | null, kind = 'inbox:message', withToasts = false) {
   const trigger = { kind };
   stub = installWorkflowWorld(
     emptyWorld({
@@ -99,7 +101,9 @@ function open(listener: Listener | null, kind = 'inbox:message') {
   );
   stub.on('bureau.plugins.contributions', () => KINDS);
   router.navigate('/workflows/digest', { replace: true });
-  return render(Harness, { props: { client: stub.client, scopes: AUTHORIZATION_SCOPES } } as never);
+  return render(withToasts ? ToastAreaHarness : Harness, {
+    props: { client: stub.client, scopes: AUTHORIZATION_SCOPES },
+  } as never);
 }
 
 /** The trigger section, once the page has drawn it. */
@@ -181,6 +185,45 @@ describe('the trigger status on a workflow’s page', () => {
     expect(retried).toEqual([{ id: 'digest' }]);
   });
 
+  for (const [name, fault, words] of [
+    [
+      'refused',
+      new StubFault('Unprocessable', 422, 'REFUSED-RETRY-TEXT', { reason: 'no-listener' }),
+      copy.retryFailed,
+    ],
+    ['forbidden', new StubFault('Forbidden', 403, 'FORBIDDEN-RETRY-TEXT'), copy.retryForbidden],
+  ] as const) {
+    test(`a ${name} Retry now is said once, inline, and raises no toast`, async () => {
+      const { container, getByRole } = open(
+        {
+          ...listening,
+          state: 'failed',
+          code: 'start-failed',
+          retryAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+        'inbox:message',
+        true,
+      );
+      await section(container);
+      stub!.on('bureau.workflows.triggers.retry', () => {
+        throw fault;
+      });
+      await fireEvent.click(getByRole('button', { name: copy.retry }));
+      const found = await section(container);
+      // The page says the retry failed, beside the control.
+      await waitFor(() =>
+        expect(
+          [copy.retryFailed, copy.retryForbidden].some((text) => found.textContent?.includes(text)),
+        ).toBe(true),
+      );
+      expect(found.textContent).toContain(words);
+      // And only there: the toast the query client raises by default names the Bureau's message.
+      await quietFor(100);
+      expect(document.body.textContent).not.toContain(fault.message);
+      expect(document.body.textContent?.split(words).length).toBe(2);
+    });
+  }
+
   test('a kind that receives shows the address its deliveries go to, with a copy control', async () => {
     const { container } = open({ ...listening, state: 'ready' }, 'inbox:hook');
     const found = await section(container);
@@ -195,8 +238,8 @@ describe('the trigger status on a workflow’s page', () => {
   test('a kind that only listens shows no address', async () => {
     const { container } = open(listening, 'inbox:message');
     const found = await section(container);
-    // The kinds have loaded, and the section still has no address.
-    await waitFor(() => expect(stub!.callsTo('bureau.plugins.contributions').length).toBe(1));
+    // The section has drawn what the kinds said, and still has no address.
+    await waitFor(() => expect(found.getAttribute('data-kinds')).toBe('loaded'));
     expect(found.querySelector('[data-testid="workflow-trigger-address"]')).toBeNull();
   });
 

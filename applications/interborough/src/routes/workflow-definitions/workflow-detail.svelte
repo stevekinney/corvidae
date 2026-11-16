@@ -804,6 +804,7 @@
         workflowId={type}
         listener={file.listener}
         triggersUrl={receives ? hostPaths.data?.triggersUrl : undefined}
+        kindsLoaded={pluginKinds.isSuccess}
         onListener={adoptListener}
       />
     {/if}

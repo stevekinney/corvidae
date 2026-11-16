@@ -11,6 +11,7 @@
   import { createMutation } from '@tanstack/svelte-query';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
+  import { faultTreatment } from '../../lib/faults.ts';
   import { clockTime, clockTimeWithSeconds } from '../../lib/format/clock.ts';
   import { retryWorkflowTrigger, type WorkflowListener } from '../../lib/workflow-files.ts';
 
@@ -25,9 +26,11 @@
     triggersUrl?: string | undefined;
     /** The state a retry answered, for the page to keep. */
     onListener: (listener: WorkflowListener) => void;
+    /** Whether the plugin trigger kinds have loaded, so `triggersUrl` says all there is to say. */
+    kindsLoaded?: boolean;
   }
 
-  let { workflowId, listener, triggersUrl, onListener }: Props = $props();
+  let { workflowId, listener, triggersUrl, onListener, kindsLoaded = false }: Props = $props();
 
   const copy = WORKFLOW_COPY.page.listener;
 
@@ -74,9 +77,19 @@
     }
   });
 
+  // A failed retry is said once, here beside the control: this `onError` replaces the query
+  // client's default, which would also raise a toast.
+  let retryFailure = $state<string | null>(null);
   const retry = createMutation(() => ({
     mutationFn: () => retryWorkflowTrigger(workflowId),
+    onMutate: () => {
+      retryFailure = null;
+    },
     onSuccess: (next: WorkflowListener) => onListener(next),
+    onError: (error: unknown) => {
+      retryFailure =
+        faultTreatment(error).kind === 'unauthorized' ? copy.retryForbidden : copy.retryFailed;
+    },
   }));
 </script>
 
@@ -84,6 +97,7 @@
   class="ib-workflow-trigger"
   aria-label={copy.label}
   data-testid="workflow-trigger-listener"
+  data-kinds={kindsLoaded ? 'loaded' : 'loading'}
 >
   <p class="ib-workflow-trigger__line" data-state={listener.state}>
     <Badge variant={VARIANTS[listener.state]} size="sm">{copy.states[listener.state]}</Badge>
@@ -107,8 +121,8 @@
       >
     {/if}
   </p>
-  {#if retry.isError}
-    <Alert variant="danger">{copy.retryFailed}</Alert>
+  {#if retryFailure !== null}
+    <Alert variant="danger">{retryFailure}</Alert>
   {/if}
   {#if address !== undefined}
     <p class="ib-workflow-trigger__line">
