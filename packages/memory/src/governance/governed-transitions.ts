@@ -4,6 +4,9 @@ import { type DeletionEngine, planReferences } from './deletion';
 import {
   authorizeLocated,
   type GovernanceContext,
+  indexActivated,
+  type QuarantineReleaseBlock,
+  quarantineReleaseBlock,
   type ResolvedRecord,
 } from './governance-context';
 import type {
@@ -11,7 +14,7 @@ import type {
   MemoryOperationResult,
   MemoryRecordLocator,
 } from './governed-memory-types';
-import { storeGovernedRecord } from './governed-writes';
+import { provenanceFor, storeGovernedRecord } from './governed-writes';
 import type { MemoryRecordState } from './predicate';
 import { type MemoryRecordSourceReference, withoutReservedMetadata } from './record-governance';
 
@@ -124,6 +127,95 @@ export function quarantineRecord(
   reason: string,
 ): Promise<MemoryOperationResult> {
   return setState(context, authority, locator, 'quarantined', reason);
+}
+
+/**
+ * Releases one quarantined record after inspection, when the current admission guardrails pass
+ * it. Quarantine is not terminal for this one transition: it needs `memory:inspect` as well as
+ * `memory:quarantine`, checked first so a refusal says nothing of whether the record exists, and
+ * it moves only the record named, never what was derived from it.
+ *
+ * The record is checked, scanned, and then written in one compare-and-swap that checks the same
+ * conditions again against what is stored by then ({@link GovernanceContext.activateQuarantined}),
+ * so a revocation, a deletion claim, a supersession, a tampered write or a second release that
+ * landed during the scan leaves nothing written, no text entry and no `memory.released`. The
+ * scan has no signal and no deadline, as a promotion's has none: a detector that never settles
+ * is waited for. A detector that throws fails closed, as it does at admission.
+ */
+export async function releaseQuarantine(
+  context: GovernanceContext,
+  authority: MemoryAuthority,
+  locator: MemoryRecordLocator,
+): Promise<MemoryOperationResult> {
+  const operationId = context.operationId();
+  if (!hasMemoryCapability(authority, 'memory:inspect')) {
+    await context.recordEvent({
+      tenantId: authority.tenantId,
+      type: 'memory.access.denied',
+      outcome: 'denied',
+      attribution: context.attribution(authority, operationId),
+      recordIds: [locator.id],
+      details: { operation: 'quarantine.release' },
+      reason: 'missing-capability',
+    });
+    return { operationId, status: 'denied' };
+  }
+  const located = await authorizeLocated(context, authority, 'quarantine', locator, operationId);
+  if (!('resolved' in located)) return located.result;
+  const { record, read } = located.resolved;
+  const { governance } = read;
+
+  /** What a record that cannot be released answers, and the one event a rejection records. */
+  async function declined(block: QuarantineReleaseBlock): Promise<MemoryOperationResult> {
+    if (block === 'revoked') return { operationId, status: 'not-found' };
+    if (block === 'active') return { operationId, status: 'unchanged', recordIds: [record.id] };
+    await context.recordEvent({
+      tenantId: authority.tenantId,
+      type: 'memory.release.rejected',
+      outcome: 'rejected',
+      attribution: context.attribution(authority, operationId),
+      recordIds: [record.id],
+      reason: block,
+    });
+    return { operationId, status: 'rejected', reason: block };
+  }
+
+  const barred = quarantineReleaseBlock(read);
+  if (barred !== undefined) return declined(barred);
+  const scan = await scanGovernedContent(
+    record.content,
+    context.policy().admission.detectors,
+    provenanceFor(governance.source),
+    { source: governance.source, memoryClass: governance.memoryClass, trust: governance.trust },
+  );
+  if (scan.flagged) {
+    const { flagged: _flagged, failed: _failed, ...diagnostic } = scan;
+    await context.recordEvent({
+      tenantId: authority.tenantId,
+      type: 'memory.release.rejected',
+      outcome: 'rejected',
+      attribution: context.attribution(authority, operationId),
+      recordIds: [record.id],
+      reason: 'verification-failed',
+      diagnostic: { ...diagnostic, contentDigest: governance.contentDigest },
+    });
+    return { operationId, status: 'rejected', reason: 'verification-failed' };
+  }
+  const activation = await context.activateQuarantined(located.resolved);
+  if (activation.outcome === 'missing') return { operationId, status: 'not-found' };
+  if (activation.outcome === 'declined') return declined(activation.block);
+  // The write fenced the content on its digest, so what is indexed is what was scanned.
+  // It also removes the entry again when the record stopped being active or was index-invalidated
+  // after the write, which ran its own `remove` before this `index` landed.
+  await indexActivated(context, located.resolved, activation.governance);
+  await context.recordEvent({
+    tenantId: authority.tenantId,
+    type: 'memory.released',
+    outcome: 'applied',
+    attribution: context.attribution(authority, operationId),
+    recordIds: [record.id],
+  });
+  return { operationId, status: 'applied', recordIds: [record.id] };
 }
 
 /**

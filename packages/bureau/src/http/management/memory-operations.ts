@@ -17,8 +17,8 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  *
  * - A scope is required, not an alternative to ownership. `bureau.memory:read` serves `list`,
  *   `search`, `get` and `export`, `bureau.memory:write` serves `remember`, `forget`, `correct`,
- *   `share`, `revokeShare` and `quarantine`, and `bureau.memory:govern` serves `hold` and `releaseHold`
- *   (COR-1809). A caller without the operation's scope is answered `Forbidden`, though every record
+ *   `share`, `revokeShare` and `quarantine`, and `bureau.memory:govern` serves `hold`, `releaseHold`
+ *   (COR-1809), `quarantine.release` and `list` with `state: 'quarantined'` (COR-2195). A caller without the operation's scope is answered `Forbidden`, though every record
  *   is its own. No scope grants another owner's memory; the one door to it is a share, which lets
  *   the grantee `get` the record and nothing else.
  * - Another owner's record is answered `NotFound`, in the words of a missing one, because the
@@ -35,6 +35,7 @@ import {
   type GovernedMemoryRecord,
   MEMORY_CLASSES,
   MEMORY_DELETION_TARGETS,
+  MEMORY_RELEASE_REJECTIONS,
   MEMORY_SOURCE_KINDS,
   MEMORY_TRUST_LEVELS,
   type MemoryAuthority,
@@ -221,6 +222,12 @@ type Access = {
 
 const ACCESS = {
   list: { scope: 'bureau.memory:read', capabilities: ['memory:list'] },
+  // Inspecting what was flagged, and the ledger events that say why, is a governance act: it takes
+  // the scope a release takes, so a caller that may only read cannot see flagged content.
+  listQuarantined: {
+    scope: 'bureau.memory:govern',
+    capabilities: ['memory:list', 'memory:inspect'],
+  },
   search: { scope: 'bureau.memory:read', capabilities: ['memory:search'] },
   // `get` also reads the record's own ledger events for its lineage, which `listEvents` serves
   // under `memory:list`.
@@ -232,6 +239,13 @@ const ACCESS = {
   correct: { scope: 'bureau.memory:write', capabilities: ['memory:get', 'memory:write'] },
   share: { scope: 'bureau.memory:write', capabilities: ['memory:share'] },
   quarantine: { scope: 'bureau.memory:write', capabilities: ['memory:quarantine'] },
+  // Governed memory takes a release only with both capabilities: `memory:inspect` is the
+  // inspection the release follows, and no Bureau scope is named for it, so the release is a
+  // governance operation (`bureau.memory:govern`) acting as the caller's own user.
+  releaseQuarantine: {
+    scope: 'bureau.memory:govern',
+    capabilities: ['memory:quarantine', 'memory:inspect'],
+  },
   // `export` also reads the ledger's supersessions, which `listEvents` serves under `memory:list`,
   // to fold each corrected version into its correction's history.
   export: { scope: 'bureau.memory:read', capabilities: ['memory:export', 'memory:list'] },
@@ -332,11 +346,76 @@ function lineageOf(id: string, events: readonly MemoryGovernanceEvent[]): Lineag
   return { runId, corrects, correctedBy };
 }
 
-const listInput = z.object({ agentId: agentIdentifier, ...pageFields });
+const listInput = z.object({
+  agentId: agentIdentifier,
+  ...pageFields,
+  state: z
+    .enum(['quarantined'])
+    .optional()
+    .describe(
+      'Lists only the memories in this state. Without it the list is what is in use. `quarantined` lists the caller’s quarantined memories, each with why it was quarantined, and needs `bureau.memory:govern`.',
+    ),
+});
+
+/**
+ * Why a memory is quarantined, as the owner is told: when, by what, and which guardrail held it.
+ * It names the guardrail and the category it reported, and nothing a guardrail wrote about the
+ * content or about its own failure.
+ */
+const quarantineSchema = z.object({
+  /** When the memory was quarantined. */
+  at: z.string(),
+  /** What quarantined it: the admission checks, the owner, or a recall guardrail. */
+  by: z.enum(['admission', 'owner', 'recall']),
+  /** The guardrail that held it, or `null` when the owner quarantined it. */
+  detector: z.string().nullable(),
+  /** The category that guardrail reported, or `null` when the owner quarantined it. */
+  category: z.string().nullable(),
+});
+
 const listOutput = z.object({
-  memories: z.array(memoryViewSchema),
+  memories: z.array(memoryViewSchema.extend({ quarantine: quarantineSchema.optional() })),
   nextOffset: z.number().int().nullable(),
 });
+
+type Quarantine = z.infer<typeof quarantineSchema>;
+
+/**
+ * How each quarantined record came to be one, from the latest ledger event that quarantined it:
+ * a write the admission checks held, a quarantine its owner asked for (which reaches what was
+ * derived from it too), or a recall guardrail that withheld it. A record the ledger does not
+ * explain has no entry.
+ */
+async function quarantinesOf(
+  memory: GovernedMemory,
+  authority: MemoryAuthority,
+  ids: readonly string[],
+): Promise<Map<string, Quarantine>> {
+  const found = new Map<string, { quarantine: Quarantine; at: number }>();
+  const sources = [
+    { type: 'memory.write.quarantined', by: 'admission' },
+    { type: 'memory.quarantined', by: 'owner' },
+    { type: 'memory.recall.withheld', by: 'recall' },
+  ] as const;
+  for (const { type, by } of sources) {
+    for (const event of await memory.listEvents(authority, { type })) {
+      if (type === 'memory.recall.withheld' && event.outcome !== 'quarantined') continue;
+      for (const id of event.recordIds.filter((recordId) => ids.includes(recordId))) {
+        if ((found.get(id)?.at ?? -1) > event.at) continue;
+        found.set(id, {
+          at: event.at,
+          quarantine: {
+            at: isoTime(event.at),
+            by,
+            detector: event.diagnostic?.detector ?? null,
+            category: event.diagnostic?.category ?? null,
+          },
+        });
+      }
+    }
+  }
+  return new Map([...found].map(([id, { quarantine }]) => [id, quarantine]));
+}
 
 export const memoryListOperation = defineOperation<
   typeof listInput,
@@ -348,7 +427,7 @@ export const memoryListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List an agent’s memories',
   description:
-    'Lists what the agent `agentId` remembers of the caller’s chats with it, newest first. Requires `bureau.memory:read`, which grants no one else’s memory: a caller without it is `Forbidden`. A memory that was corrected is not listed, its correction is; a quarantined or revoked one is not either. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A Bureau with no governed memory answers `UnsupportedCapability`.',
+    'Lists what the agent `agentId` remembers of the caller’s chats with it, newest first. Requires `bureau.memory:read`, which grants no one else’s memory: a caller without it is `Forbidden`. A memory that was corrected is not listed, its correction is; a quarantined or revoked one is not either. With `state` `quarantined` it lists instead the caller’s quarantined memories, newest first, each with `quarantine`: `at` (when it was quarantined), `by` (`admission` when the admission checks held it as it was written, `owner` when the caller or an earlier quarantine of what it derives from did, `recall` when a recall guardrail withheld it), and `detector` and `category`, the guardrail that held it and the category it reported, both `null` when `by` is `owner`; `quarantine` is absent when the ledger does not explain the memory. They are the memories `bureau.memory.quarantine.release` can release. Inspecting flagged content is a governance act, so `state` `quarantined` requires `bureau.memory:govern` instead of `bureau.memory:read`: a caller without it is `Forbidden` whether or not it has quarantined memories, and a caller that holds only `bureau.memory:read` still lists what is in use as before. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A Bureau with no governed memory answers `UnsupportedCapability`.',
   destructive: false,
   tags: ['Memory'],
   inputSchema: listInput,
@@ -359,7 +438,12 @@ export const memoryListOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const { memory, authority } = acting(host, principal, ACCESS.list);
+    const quarantined = input.state === 'quarantined';
+    const { memory, authority } = acting(
+      host,
+      principal,
+      quarantined ? ACCESS.listQuarantined : ACCESS.list,
+    );
     if (authority === undefined) return { memories: [], nextOffset: null };
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
@@ -369,10 +453,21 @@ export const memoryListOperation = defineOperation<
       visibility: 'private',
       limit: limit + 1,
       offset,
+      ...(quarantined ? { state: 'quarantined' as const } : {}),
     });
     const page = rows.slice(0, limit);
+    const why = quarantined
+      ? await quarantinesOf(
+          memory,
+          authority,
+          page.map((record) => record.id),
+        )
+      : new Map<string, Quarantine>();
     return {
-      memories: page.map(viewOf),
+      memories: page.map((record) => {
+        const quarantine = why.get(record.id);
+        return quarantine === undefined ? viewOf(record) : { ...viewOf(record), quarantine };
+      }),
       nextOffset: rows.length > limit ? offset + limit : null,
     };
   },
@@ -531,7 +626,7 @@ export const memoryRememberOperation = defineOperation<
   mcpExposable: false,
   summary: 'Add a memory',
   description:
-    'Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as the `kind` given, a `fact` (governed memory’s `semantic` class) by default or a `how-to` (its `procedural` class), either kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and no other operation reaches it), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+    'Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as the `kind` given, a `fact` (governed memory’s `semantic` class) by default or a `how-to` (its `procedural` class), either kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and only `bureau.memory.quarantine.release`, once it passes the admission checks again, returns it to use), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
   destructive: false,
   tags: ['Memory'],
   inputSchema: rememberInput,
@@ -978,7 +1073,7 @@ export const memoryQuarantineOperation = defineOperation<
   mcpExposable: false,
   summary: 'Quarantine one memory',
   description:
-    'Takes one memory of the agent `agentId`, and everything derived from it, out of use pending inspection: it is no longer listed, searched, read or recalled, and the quarantine does not block deletion (`bureau.memory.forget` still removes it, and a legal hold still holds it). Bureau offers no way back to active use from here; the memory is kept for an inspector. Quarantining a memory already quarantined is not an error: `changed` is `false`. A blank `reason` is `InvalidParams`. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+    'Takes one memory of the agent `agentId`, and everything derived from it, out of use pending inspection: it is no longer listed, searched, read or recalled, and the quarantine does not block deletion (`bureau.memory.forget` still removes it, and a legal hold still holds it). `bureau.memory.quarantine.release` is the way back to active use; until then the memory is kept for an inspector. Quarantining a memory already quarantined is not an error: `changed` is `false`. A blank `reason` is `InvalidParams`. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
   destructive: true,
   tags: ['Memory'],
   inputSchema: quarantineInput,
@@ -1004,6 +1099,70 @@ export const memoryQuarantineOperation = defineOperation<
       changed: result.status === 'applied',
       affected: result.status === 'applied' ? (result.recordIds?.length ?? 0) : 0,
     };
+  },
+});
+
+/**
+ * What a release that did not release answers: a rejection governed memory names from its closed
+ * set is `Unprocessable` with that reason as `data.reason` (`memory-verification-failed` and the
+ * others), and everything else, a missing memory, another owner’s, or a refusal, reads as a missing
+ * memory. The detector that held the memory, and why it tripped, stay in the ledger.
+ */
+function releaseFault(
+  result: { readonly status: string; readonly reason?: string | undefined },
+  id: string,
+): OperationFault {
+  const reason = MEMORY_RELEASE_REJECTIONS.find((known) => known === result.reason);
+  if (result.status === 'rejected' && reason !== undefined) {
+    return {
+      code: 'Unprocessable',
+      message: 'This memory cannot be released from quarantine',
+      data: { reason: `memory-${reason}` },
+    };
+  }
+  return resourceNotFound('memory', id);
+}
+
+const releaseQuarantineInput = z.object({ agentId: agentIdentifier, id: recordIdentifier });
+
+/** `bureau.memory.quarantine.release`: returns one inspected memory to use (COR-2195). */
+export const memoryReleaseQuarantineOperation = defineOperation<
+  typeof releaseQuarantineInput,
+  typeof transitionOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.quarantine.release',
+  authorize: authorizeWorkspaceOperation('bureau.memory.quarantine.release'),
+  mcpExposable: false,
+  summary: 'Release one quarantined memory',
+  description:
+    'Returns one quarantined memory of the agent `agentId` to active use after inspection, when the admission checks that apply now pass it: governed memory scans its text again, as the record’s own source and kind of memory, with the guardrails of the policy in force at the time of the call. The memory alone becomes active, is searchable and listed again, and a `memory.released` ledger event is recorded under the caller’s owner; memories derived from it stay quarantined. A memory the checks hold stays quarantined and is `Unprocessable` with `data.reason` `memory-verification-failed`, and the ledger’s `memory.release.rejected` event names the guardrail that held it for an inspector. Other refusals are `Unprocessable` too, with `data.reason` `memory-derived-record` (a memory derived from another record is never released, and releasing the one it came from leaves it quarantined), `memory-deletion-pending` (a deletion has claimed it), `memory-superseded` (a correction replaced it) and `memory-tampered` (its text no longer matches what was admitted); each records `memory.release.rejected`. Releasing a memory that is already active is not an error: `changed` is `false`. A memory that was revoked, another owner’s memory and a missing one are `NotFound`. Releasing again after a memory is quarantined again, whether by `bureau.memory.quarantine` or because recall withheld it, runs the checks again. Requires `bureau.memory:govern`, which no other memory scope implies; a caller without it is `Forbidden`.',
+  destructive: false,
+  tags: ['Memory'],
+  inputSchema: releaseQuarantineInput,
+  outputSchema: transitionOutput,
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'NotFound',
+    'Unprocessable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const { memory, authority } = acting(host, principal, ACCESS.releaseQuarantine);
+    if (authority === undefined) throw resourceNotFound('memory', input.id);
+    const result = await memory.releaseQuarantine(authority, {
+      id: input.id,
+      collection: input.agentId,
+    });
+    if (result.status !== 'applied' && result.status !== 'unchanged') {
+      throw releaseFault(result, input.id);
+    }
+    return { id: input.id, changed: result.status === 'applied' };
   },
 });
 
@@ -1073,7 +1232,7 @@ export const memoryExportOperation = defineOperation<
   },
 });
 
-/** The twelve memory operations, in the order the documentation lists them. */
+/** The thirteen memory operations, in the order the documentation lists them. */
 export const bureauMemoryOperations = [
   memoryListOperation,
   memorySearchOperation,
@@ -1086,5 +1245,6 @@ export const bureauMemoryOperations = [
   memoryHoldOperation,
   memoryReleaseHoldOperation,
   memoryQuarantineOperation,
+  memoryReleaseQuarantineOperation,
   memoryExportOperation,
 ] as const;

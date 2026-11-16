@@ -57,9 +57,11 @@ export type GovernanceEventInput = Omit<MemoryGovernanceEvent, 'id' | 'at'>;
 /**
  * The envelope fields an ordinary governance transition may change. Tenant,
  * owner, collection, provenance, trust, lineage, and attribution are fixed at
- * admission; a record's state only ever leaves `active`; the legal hold
- * changes only through {@link GovernanceContext.updateLegalHold}; and a
- * derived record's pending marker is cleared only through
+ * admission; an ordinary transition only moves a record out of `active`, and a
+ * quarantined record comes back only through
+ * {@link GovernanceContext.activateQuarantined}; the legal hold changes only
+ * through {@link GovernanceContext.updateLegalHold}; and a derived record's
+ * pending marker is cleared only through
  * {@link GovernanceContext.activateDerivation}.
  */
 export type GovernancePatch = Partial<
@@ -91,6 +93,38 @@ const ENVELOPE_WRITE_ATTEMPTS = 8;
 
 /** What {@link GovernanceContext.invalidate} came to. */
 export type InvalidationOutcome = 'stamped' | 'declined' | 'missing';
+
+/**
+ * Why a stored record cannot be released from quarantine, in the order the reasons are
+ * decided: `revoked` (never re-activated) and `active` (nothing to release) are not
+ * rejections, and the rest are. Several can hold at once; the first one named is the answer.
+ */
+export type QuarantineReleaseBlock =
+  'revoked' | 'active' | 'derived-record' | 'deletion-pending' | 'superseded' | 'tampered';
+
+/**
+ * The reason, if any, that the record whose envelope and integrity are `read` cannot be
+ * released from quarantine. The one decision both the release's early checks and the fence on
+ * its write make, so the two cannot disagree.
+ */
+export function quarantineReleaseBlock(
+  read: ReadRecordGovernance,
+): QuarantineReleaseBlock | undefined {
+  const { governance } = read;
+  if (governance.state === 'revoked') return 'revoked';
+  if (governance.state === 'active') return 'active';
+  if (governance.lineage !== undefined) return 'derived-record';
+  if (governance.deletionRequestedAt !== undefined) return 'deletion-pending';
+  if (governance.invalidatedAt !== undefined) return 'superseded';
+  if (read.integrity === 'tampered') return 'tampered';
+  return undefined;
+}
+
+/** What {@link GovernanceContext.activateQuarantined} came to. */
+export type ActivationOutcome =
+  | { readonly outcome: 'activated'; readonly governance: RecordGovernance }
+  | { readonly outcome: 'missing' }
+  | { readonly outcome: 'declined'; readonly block: QuarantineReleaseBlock };
 
 export type AuthorizationOutcome =
   | { readonly allowed: true; readonly decision: Extract<MemoryAccessDecision, { allowed: true }> }
@@ -160,6 +194,16 @@ export interface GovernanceContext {
    * or claimed.
    */
   activateDerivation(resolved: ResolvedRecord): Promise<RecordGovernance | undefined>;
+  /**
+   * The one transition that gives a quarantined record back to active use, with the same merge
+   * and compare-and-swap. The write is decided against the record as it is stored now, and
+   * declines, writing nothing, unless that record is still quarantined, not derived, not claimed
+   * by a deletion, not superseded, and still matches the digest recorded at admission:
+   * `declined` names the first condition that failed ({@link quarantineReleaseBlock}), and
+   * `missing` means the record no longer exists. The digest check is what makes the content a
+   * caller scanned the content that becomes active.
+   */
+  activateQuarantined(resolved: ResolvedRecord): Promise<ActivationOutcome>;
   attribution(authority: MemoryAuthority, operationId: string): MemoryAttribution;
   /** Appends an event to the ledger and notifies `onEvent`, with `correlation` on the notification only. */
   recordEvent(event: GovernanceEventInput, correlation?: MemoryCorrelation): Promise<void>;
@@ -255,16 +299,20 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
   /**
    * Replaces a record's envelope with `next(current)`, where `current` is the
    * envelope stored now, as a compare-and-swap retried when another
-   * transition lands first. `next` returning `undefined` leaves it alone.
+   * transition lands first. `next` returning `undefined` leaves it alone. It is also told
+   * whether the content it was read with still matches the admission digest.
    */
   async function transition(
     resolved: ResolvedRecord,
-    next: (current: RecordGovernance) => RecordGovernance | undefined,
+    next: (
+      current: RecordGovernance,
+      integrity: ReadRecordGovernance['integrity'],
+    ) => RecordGovernance | undefined,
   ): Promise<boolean> {
     for (let attempt = 1; ; attempt++) {
       const current = await loadFrom(resolved.scope, resolved.record.id);
       if (current === undefined) return false;
-      const envelope = next(current.read.governance);
+      const envelope = next(current.read.governance, current.read.integrity);
       if (envelope === undefined) return true;
       const metadata = { ...current.record.metadata, [MEMORY_GOVERNANCE_METADATA_KEY]: envelope };
       try {
@@ -356,6 +404,21 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
       return stored ? activated : undefined;
     },
 
+    async activateQuarantined(resolved) {
+      let block: QuarantineReleaseBlock | undefined;
+      let activated: RecordGovernance | undefined;
+      const stored = await transition(resolved, (current, integrity) => {
+        // Decided again on each attempt, against the envelope that attempt read.
+        block = quarantineReleaseBlock({ governance: current, integrity });
+        activated = block === undefined ? { ...current, state: 'active' } : undefined;
+        return activated;
+      });
+      if (!stored) return { outcome: 'missing' };
+      return activated === undefined || block !== undefined
+        ? { outcome: 'declined', block: block ?? 'active' }
+        : { outcome: 'activated', governance: activated };
+    },
+
     attribution(authority, operationId) {
       return attributionFor(authority, {
         governanceRevision: input.policy().revision,
@@ -413,6 +476,37 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
     },
   };
   return context;
+}
+
+/**
+ * What every activation of a record does for text search, so no activation path can forget the
+ * check: the record is indexed only when the envelope the activation wrote is active and its
+ * owner has not index-invalidated it (a forget removed it from the index, and nothing but a
+ * deletion puts it back). The decision is made again once the entry is written: a quarantine,
+ * withhold, deletion or index invalidation that landed between the activation and the `index`
+ * ran its own `remove`, which this `index` may have outlived, so the record is read again and the
+ * entry is removed when it is gone, no longer active, or index-invalidated now. Returns whether an
+ * entry was left.
+ */
+export async function indexActivated(
+  context: GovernanceContext,
+  resolved: ResolvedRecord,
+  governance: RecordGovernance,
+): Promise<boolean> {
+  if (governance.state !== 'active' || governance.indexInvalidated) return false;
+  const provider = context.textSearchProvider;
+  if (provider === undefined) return false;
+  await provider.index(resolved.record.id, resolved.record.content, resolved.scope.namespace);
+  const stored = await context.load(resolved.scope.tenantId, {
+    id: resolved.record.id,
+    namespace: resolved.scope.namespace,
+  });
+  const current = stored?.read.governance;
+  if (current === undefined || current.state !== 'active' || current.indexInvalidated) {
+    await provider.remove(resolved.record.id);
+    return false;
+  }
+  return true;
 }
 
 /** The resource descriptor for a resolved record. */

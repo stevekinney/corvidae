@@ -1,5 +1,5 @@
 import { MemoryRecordVersionConflictError } from '../memory-record-storage';
-import type { GovernanceContext, ResolvedRecord } from './governance-context';
+import { type GovernanceContext, indexActivated, type ResolvedRecord } from './governance-context';
 import type { MemoryPendingDerivation } from './ledger-types';
 import type { MemoryRecordSourceReference, RecordGovernance } from './record-governance';
 
@@ -94,10 +94,7 @@ async function confirm(
   const blocker = await sourcesBlocker(context, resolved.scope.tenantId, sources);
   const activated = blocker === undefined ? await context.activateDerivation(resolved) : undefined;
   if (activated !== undefined) {
-    if (activated.state === 'active' && !activated.indexInvalidated) {
-      const { record, scope } = resolved;
-      await context.textSearchProvider?.index(record.id, record.content, scope.namespace);
-    }
+    await indexActivated(context, resolved, activated);
     return { outcome: 'active' };
   }
   const reason = blocker ?? 'deletion-pending';

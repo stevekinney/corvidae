@@ -212,6 +212,10 @@ export const OPERATION_MAP = {
     member: 'memory.releaseLegalHold',
   },
   'bureau.memory.quarantine': { workspaceClass: 'private-owned', member: 'memory.quarantine' },
+  'bureau.memory.quarantine.release': {
+    workspaceClass: 'private-owned',
+    member: 'memory.releaseQuarantine',
+  },
   'bureau.memory.export': { workspaceClass: 'private-owned', member: 'memory.export' },
 
   'bureau.assets.get': { workspaceClass: 'explicit-share', member: 'assets.inspect' },
