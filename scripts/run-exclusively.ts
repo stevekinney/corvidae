@@ -295,7 +295,8 @@ async function putBack(
  * holder by removing only its own lock and a reclaimer by holding the reclaim guard.
  */
 export async function removeLock(lockDirectory: string, expected: OwnerRecord): Promise<void> {
-  if ((await readOwner(lockDirectory))?.token !== expected.token) return;
+  const current = await readOwner(lockDirectory);
+  if (current?.token !== expected.token) return;
   const aside = asideOf(lockDirectory);
   try {
     await rename(lockDirectory, aside);
@@ -534,12 +535,36 @@ async function reclaimUnderGuard(
   return removeOwnerless(lockDirectory, after.ino);
 }
 
-export type ReclaimOptions = {
-  /** Judges the lock's owner and the other reclaimers' tokens; by process, through `ps`, by default. */
-  readonly judge?: LivenessJudge;
-  /** Who reclaims, recorded in its token; this process by default. */
-  readonly claimant?: OwnerRecord;
+export type Reclaimer = {
+  /** Judges the lock's owner and the other reclaimers' tokens. */
+  readonly judge: LivenessJudge;
+  /** Who reclaims, recorded in its token. */
+  readonly claimant: OwnerRecord;
 };
+
+/**
+ * Removes the lock if it is abandoned, judged while holding the reclaim guard
+ * ({@link takeReclaimGuard}), and resolves to whether the lock is gone. Reclaims are serialized
+ * behind the guard and the lock is read again under it. No holder can install a lock while an
+ * abandoned one stands, and no other reclaimer can move it, so the lock judged under the guard is
+ * the lock removed. Judging it before taking the guard would let a waiter acting on a stale
+ * reading move aside a live lock another waiter had just installed. The admission lock of
+ * `scripts/host-sessions.ts` calls it with its own process table; {@link reclaimAbandoned} judges
+ * by `ps`, as this process.
+ */
+export async function reclaimAbandonedAs(
+  lockDirectory: string,
+  ownerlessGraceMs: number,
+  { judge, claimant }: Reclaimer,
+): Promise<boolean> {
+  const leave = await takeReclaimGuard(lockDirectory, claimant, judge);
+  if (leave === undefined) return false;
+  try {
+    return await reclaimUnderGuard(lockDirectory, ownerlessGraceMs, judge);
+  } finally {
+    await leave();
+  }
+}
 
 let ownStartTime: { readonly startedAt: string | undefined } | undefined;
 
@@ -558,26 +583,17 @@ function ownClaimant(): OwnerRecord {
 }
 
 /**
- * Removes the lock if it is abandoned, judged while holding the reclaim guard
- * ({@link takeReclaimGuard}), and resolves to whether the lock is gone. Reclaims are serialized
- * behind the guard and the lock is read again under it. No holder can install a lock while an
- * abandoned one stands, and no other reclaimer can move it, so the lock judged under the guard is
- * the lock removed. Judging it before taking the guard would let a waiter acting on a stale
- * reading move aside a live lock another waiter had just installed.
+ * {@link reclaimAbandonedAs} as this process, judging the lock's owner and the other reclaimers by
+ * process, through `ps`: the host lock's and the test slots' reclaim.
  */
-export async function reclaimAbandoned(
+export function reclaimAbandoned(
   lockDirectory: string,
   ownerlessGraceMs: number,
-  options: ReclaimOptions = {},
 ): Promise<boolean> {
-  const judge = options.judge ?? judgeByProcess;
-  const leave = await takeReclaimGuard(lockDirectory, options.claimant ?? ownClaimant(), judge);
-  if (leave === undefined) return false;
-  try {
-    return await reclaimUnderGuard(lockDirectory, ownerlessGraceMs, judge);
-  } finally {
-    await leave();
-  }
+  return reclaimAbandonedAs(lockDirectory, ownerlessGraceMs, {
+    judge: judgeByProcess,
+    claimant: ownClaimant(),
+  });
 }
 
 /** Records the command's process group in the held lock, replacing the owner file in one rename. */

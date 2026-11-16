@@ -55,7 +55,7 @@ import {
   enqueue,
   gitCommonDirectory,
   readTicket,
-  reclaimAbandoned,
+  reclaimAbandonedAs,
   removeLock,
   tryInstall,
   type LivenessJudge,
@@ -510,7 +510,7 @@ function tableJudge(readTable: () => ProcessTable | undefined): LivenessJudge {
 /**
  * Runs `decide` holding the admission lock, a directory installed by one rename and naming the
  * hook's process, which the next hook removes once that process is gone, through the reclaim guard
- * every lock shares (`reclaimAbandoned` in `scripts/run-exclusively.ts`). Never held across a wait.
+ * every lock shares (`reclaimAbandonedAs` in `scripts/run-exclusively.ts`). Never held across a wait.
  */
 async function withAdmissionLock<T>(
   directory: string,
@@ -530,7 +530,7 @@ async function withAdmissionLock<T>(
       }
     }
     const claimant = { ...owner, token: crypto.randomUUID() };
-    if (await reclaimAbandoned(lock, ownerlessAdmissionLockMilliseconds, { judge, claimant })) {
+    if (await reclaimAbandonedAs(lock, ownerlessAdmissionLockMilliseconds, { judge, claimant })) {
       continue;
     }
     await options.sleep(admissionLockRetryMilliseconds);

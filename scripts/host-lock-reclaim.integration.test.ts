@@ -146,6 +146,11 @@ async function installDirectly(lockDirectory: string, owner: OwnerRecord): Promi
   }
 }
 
+async function holderToken(lockDirectory: string): Promise<string | undefined> {
+  const owner = await readOwner(lockDirectory);
+  return owner?.token;
+}
+
 /** The tokens of every lock directory that names a holder: the lock itself and any moved aside. */
 async function lockHolders(lockDirectory: string): Promise<string[]> {
   const prefix = basename(lockDirectory);
@@ -606,7 +611,7 @@ const m3MoveBackFails = await scenario(async (root) => {
     dispose();
   }
   expect(removal.ok).toBe(false);
-  const message = removal.ok ? '' : String((removal.error as Error).message);
+  const message = removal.ok ? '' : (removal.error as Error).message;
   expect(message).toContain(`${lock}.removed-`);
   expect(await lockHolders(lock)).toEqual(['Z', 'Y']);
 });
@@ -656,9 +661,9 @@ const m4StalledInstaller = await scenario(async (root) => {
   }
   const installed = await installing;
   expect({
-    installed: installed?.ok === true && installed.value,
+    installed: installed?.ok ? installed.value : undefined,
     lockMoved,
-    holder: (await readOwner(lock))?.token,
+    holder: await holderToken(lock),
   }).toEqual({ installed: true, lockMoved: 0, holder: 'I' });
 });
 
@@ -738,12 +743,17 @@ const m6OwnerWithoutStartTime = await scenario(async (root) => {
   await reclaimAbandoned(hostLock, 0);
   expect({
     hookAdmitted: admitted(waited),
-    hookLock: (await readOwner(admissionLock))?.token,
-    hostLock: (await readOwner(hostLock))?.token,
+    hookLock: await holderToken(admissionLock),
+    hostLock: await holderToken(hostLock),
   }).toEqual({ hookAdmitted: false, hookLock: 'older-hook', hostLock: 'older-wrapper' });
 });
 
 // --- M7: an append racing the removal of its session's ledger -----------------------------------
+
+async function sessionIds(directory: string): Promise<string[]> {
+  const ledgers = await readSessions(directory);
+  return ledgers.map((ledger) => ledger.sessionId);
+}
 
 async function ledgersWithoutHolder(directory: string): Promise<string[]> {
   const sessions = join(directory, 'sessions');
@@ -765,7 +775,7 @@ const m7AppendAfterRemoval = await scenario(async (root) => {
       await settle(admission(directory, 'A', 'a1', { readProcessTable: () => sessionBGone })),
     ),
   ).toBe(true);
-  expect((await readSessions(directory)).map((ledger) => ledger.sessionId)).toEqual(['session-A']);
+  expect(await sessionIds(directory)).toEqual(['session-A']);
   await settle(appendEvent(directory, 'session-B', { kind: 'start', agentId: 'agent-b', at: 0 }));
   expect(
     admitted(
@@ -774,7 +784,7 @@ const m7AppendAfterRemoval = await scenario(async (root) => {
   ).toBe(true);
   expect({
     withoutHolder: await ledgersWithoutHolder(directory),
-    sessions: (await readSessions(directory)).map((ledger) => ledger.sessionId),
+    sessions: await sessionIds(directory),
   }).toEqual({ withoutHolder: [], sessions: ['session-A'] });
 });
 
@@ -788,7 +798,7 @@ const m7LedgerWithoutHolder = await scenario(async (root) => {
   expect(admitted(await settle(admission(directory, 'A', 'a1')))).toBe(true);
   expect({
     withoutHolder: await ledgersWithoutHolder(directory),
-    sessions: (await readSessions(directory)).map((ledger) => ledger.sessionId),
+    sessions: await sessionIds(directory),
   }).toEqual({ withoutHolder: [], sessions: ['session-A'] });
 });
 
