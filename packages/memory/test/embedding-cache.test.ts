@@ -134,6 +134,29 @@ describe('withEmbeddingCache', () => {
     expect(spy.calls.length).toBe(callCountBefore + 1);
   });
 
+  it('forwards the caller’s options to the miss call, and only the misses (COR-2185)', async () => {
+    const inner = createMockEmbedder(DIMENSION);
+    const seen: { texts: string[]; signal: AbortSignal | undefined }[] = [];
+    const embedder: Embedder = (texts, options) => {
+      seen.push({ texts: [...texts], signal: options?.signal });
+      return inner(texts);
+    };
+    const cached = withEmbeddingCache(embedder);
+    const controller = new AbortController();
+
+    await cached(['alpha'], { signal: controller.signal });
+    // `alpha` is cached now; only `beta` reaches the embedder, with this call's signal.
+    const second = new AbortController();
+    await cached(['alpha', 'beta'], { signal: second.signal });
+    await cached(['gamma']);
+
+    expect(seen).toEqual([
+      { texts: ['alpha'], signal: controller.signal },
+      { texts: ['beta'], signal: second.signal },
+      { texts: ['gamma'], signal: undefined },
+    ]);
+  });
+
   it('returns an empty array for empty input', async () => {
     const spy = createSpyEmbedder();
     const cached = withEmbeddingCache(spy);

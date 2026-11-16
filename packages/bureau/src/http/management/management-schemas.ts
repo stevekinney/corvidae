@@ -78,6 +78,7 @@ export const taskOriginSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('goal'), goalRunId: z.string(), attemptId: z.string() }),
   z.object({ kind: z.literal('parent'), parentRunId: z.string() }),
   z.object({ kind: z.literal('system') }),
+  z.object({ kind: z.literal('trigger'), plugin: z.string(), workflowId: z.string() }),
 ]);
 
 /** One task, as the management plane shows it. Message text is never part of it. */

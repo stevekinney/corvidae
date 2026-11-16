@@ -39,6 +39,7 @@ export const TASK_COPY = {
       goal: 'Goal',
       parent: 'Workflow',
       system: 'Internal',
+      trigger: 'Trigger',
       none: 'Run',
     },
     /** Line two's agent for a run Interborough started for its own bookkeeping. */

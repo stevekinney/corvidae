@@ -29,6 +29,7 @@ export type {
   PluginToolGuardrailEntry,
   PluginTrigger,
   PluginTriggerContext,
+  PluginTriggerOutcome,
   PluginWorkflow,
 } from './contributions.ts';
 export { definePlugin } from './define-plugin.ts';

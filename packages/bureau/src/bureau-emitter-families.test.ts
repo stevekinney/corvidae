@@ -244,6 +244,20 @@ describe('task cleanup acknowledgements on the bureau emitter', () => {
 });
 
 describe('agent definition and asset events on the bureau emitter', () => {
+  // The scanner's trigger order does not matter: a scan may announce `helper` alone before `broken`
+  // is written, so the names arrive in one event or in two. Each name is added exactly once, so wait
+  // on the union of `added` across every event, never on one event holding both.
+  const expectHelperAddedAndBrokenRejected = async (changes: DefinitionsChangedEvent[]) => {
+    const added = () => new Set(changes.flatMap((change) => change.added));
+    await waitUntil(() => added().has('helper') && added().has('broken'));
+
+    const change = changes.find((candidate) => candidate.added.includes('broken'));
+    expect(change?.catalog).toBe('agents');
+    expect(change?.rejected).toEqual(['broken']);
+    expect(changes.some((candidate) => candidate.added.includes('helper'))).toBe(true);
+    expect(changes.some((candidate) => candidate.rejected.includes('helper'))).toBe(false);
+  };
+
   it('reports agent file changes, with invalid files rejected, and forwards upload events', async () => {
     const harness = await startFileBureau();
     cleanups.push(() => harness.dispose());
@@ -255,13 +269,7 @@ describe('agent definition and asset events on the bureau emitter', () => {
     await harness.put('helper.md', validAgentFile());
     await harness.put('broken.md', 'not an agent file');
     await harness.bureau.agents.refresh();
-    await waitUntil(() =>
-      changes.some((change) => change.added.includes('helper') && change.added.includes('broken')),
-    );
-
-    const change = changes.find((candidate) => candidate.added.includes('broken'));
-    expect(change?.catalog).toBe('agents');
-    expect(change?.rejected).toEqual(['broken']);
+    await expectHelperAddedAndBrokenRejected(changes);
 
     const assetService = harness.bureau.assets;
     if (assetService === undefined) throw new Error('the harness has an asset service');
@@ -272,6 +280,24 @@ describe('agent definition and asset events on the bureau emitter', () => {
       uploadId: session.uploadId,
       principal: 'alice',
     });
+  });
+
+  it('reports agent file changes when a scan announces the first file before the second exists', async () => {
+    const harness = await startFileBureau();
+    cleanups.push(() => harness.dispose());
+    const changes: DefinitionsChangedEvent[] = [];
+    harness.bureau.addEventListener(DefinitionsChangedEvent.type, (event) => changes.push(event));
+
+    await harness.put('helper.md', validAgentFile());
+    await harness.bureau.agents.refresh();
+    await harness.put('broken.md', 'not an agent file');
+    await harness.bureau.agents.refresh();
+    await expectHelperAddedAndBrokenRejected(changes);
+
+    // The split is real: no single event holds both names.
+    expect(
+      changes.some((change) => change.added.includes('helper') && change.added.includes('broken')),
+    ).toBe(false);
   });
 });
 

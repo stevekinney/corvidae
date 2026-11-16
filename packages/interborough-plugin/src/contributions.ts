@@ -300,11 +300,43 @@ export interface PluginTriggerContext<TConfiguration = unknown> {
    * matches: the host never resets a key on a configuration edit.
    */
   readonly storage: Storage;
-  /** Reports that the trigger fired, with the payload the started work receives. */
-  fire(payload: unknown): Promise<void>;
+  /**
+   * Reports that the trigger fired, with the payload the started work receives, and resolves with
+   * what the host did: {@link PluginTriggerOutcome}.
+   *
+   * `options.idempotencyKey` makes a redelivery safe. The host remembers a key per workflow file
+   * and trigger kind, for as long as the run it started exists, so a second fire with the same key
+   * starts nothing and resolves `duplicate` with the first run's id, whatever state that run is in
+   * and whatever its payload was. Once that run is purged, the key is forgotten. Only a fire that
+   * starts a run uses its key: a fire the host skipped, or one that rejected, leaves the key free
+   * for the redelivery. A key that is empty or not a string rejects.
+   *
+   * A fire after the host stopped the trigger resolves `skipped` and starts nothing; so does one
+   * for a file that is paused, or after the host closed. A payload the file's `inputSchema`
+   * refuses, one that is not JSON, and a file whose last change the host could not apply reject.
+   */
+  fire(
+    payload: unknown,
+    options?: {
+      /**
+       * A string that names this delivery, such as the id the source gave the event. A non-empty
+       * string; at most one run starts for it per workflow file and trigger kind.
+       */
+      readonly idempotencyKey?: string;
+    },
+  ): Promise<PluginTriggerOutcome>;
   /** Aborts when the host stops the trigger. */
   readonly signal: AbortSignal;
 }
+
+/**
+ * What the host did with a {@link PluginTriggerContext.fire}: it `started` a run, found the run an
+ * earlier fire with the same key started (`duplicate`, with that run's `runId`), or `skipped` the
+ * fire because the trigger was stopped, the file is paused, or the host is closed.
+ */
+export type PluginTriggerOutcome =
+  | { readonly outcome: 'started' | 'duplicate'; readonly runId: string }
+  | { readonly outcome: 'skipped'; readonly reason: 'stopped' | 'paused' | 'closed' };
 
 /**
  * A new kind of trigger, an external source that starts work in the host. `TSchema` is the
@@ -316,7 +348,7 @@ export interface PluginTrigger<TSchema extends z.ZodType = z.ZodType> {
   readonly name: string;
   /**
    * The kind's own version; the plugin's version stands in without one. A change to it restarts
-   * the listener of every file that uses the kind.
+   * the listener of every file that uses the kind, and it is recorded on each run the kind starts.
    */
   readonly version?: string;
   /** What the trigger listens for. */

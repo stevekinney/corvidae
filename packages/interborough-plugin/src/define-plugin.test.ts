@@ -16,6 +16,7 @@ const unstartedHost: PluginHost = {
   agents: { list: () => [] },
   schedules: { create: async () => undefined, list: async () => undefined },
   goals: { create: async () => ({ outcome: 'rejected' }) },
+  publish: async () => undefined,
 };
 
 describe('definePlugin', () => {

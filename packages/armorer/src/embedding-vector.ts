@@ -1,5 +1,14 @@
 export type EmbeddingVector = number[];
-export type Embedder = (texts: string[]) => EmbeddingVector[] | Promise<EmbeddingVector[]>;
+/**
+ * Turns texts into vectors, one per text and in order. The second argument is optional: a caller
+ * that can give up (a request, a recall) passes a `signal`, and an embedder that makes a network
+ * call should hand it to that call so the call ends when the caller gives up. An embedder that
+ * ignores it still works; the caller stops waiting for it either way.
+ */
+export type Embedder = (
+  texts: string[],
+  options?: { signal?: AbortSignal },
+) => EmbeddingVector[] | Promise<EmbeddingVector[]>;
 
 /**
  * A read-only, index-addressable sequence of numbers.

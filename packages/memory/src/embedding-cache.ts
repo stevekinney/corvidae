@@ -126,8 +126,10 @@ export function withEmbeddingCache(
   }
 
   const cachedEmbedder: CachedEmbedder = Object.assign(
-    async (texts: string[]): Promise<EmbeddingVector[]> => {
+    async (texts: string[], callOptions?: Parameters<Embedder>[1]): Promise<EmbeddingVector[]> => {
       if (texts.length === 0) return [];
+      // Read before the first await: the caller owns `callOptions` and may change it meanwhile.
+      const signal = callOptions?.signal;
 
       // Hash all inputs.
       const hashes = await Promise.all(texts.map(async (text) => computeKey(text)));
@@ -151,7 +153,11 @@ export function withEmbeddingCache(
 
       // Fetch only the misses from the real embedder.
       if (missTexts.length > 0) {
-        const freshVectors = await embedder(missTexts);
+        // The caller's signal goes to the miss call, so it reaches the wrapped embedder.
+        const freshVectors = await embedder(
+          missTexts,
+          signal === undefined ? undefined : { signal },
+        );
         for (let j = 0; j < missIndices.length; j++) {
           const originalIndex = missIndices[j]!;
           const vector = freshVectors[j]!;

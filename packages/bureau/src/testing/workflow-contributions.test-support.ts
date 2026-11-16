@@ -3,7 +3,11 @@
  * `x:y`, which answers `y@<version>:<input>`, and optionally the trigger kind `x:ticker`, which a
  * test fires by hand. Nothing here loads a plugin.
  */
-import type { PluginActivity, PluginTriggerContext } from '@lostgradient/interborough-plugin';
+import type {
+  PluginActivity,
+  PluginTriggerContext,
+  PluginTriggerOutcome,
+} from '@lostgradient/interborough-plugin';
 import { z } from 'zod';
 
 import { createVersionedCatalog, type VersionedCatalog } from '../versioned-catalog.ts';
@@ -19,8 +23,10 @@ export interface TickerController {
   stopped: number;
   /** When set, `start` fires this payload before it resolves, as a source that has news at once does. */
   fireOnStart?: unknown;
-  /** Fire the most recently started trigger with `payload`. */
-  fire(payload: unknown): Promise<void>;
+  /** What the host answered each `fireOnStart`, in order. */
+  readonly startOutcomes: PluginTriggerOutcome[];
+  /** Fire the most recently started trigger with `payload`, and the key in `options`, if any. */
+  fire: PluginTriggerContext['fire'];
   /**
    * Hold the `start` of every trigger whose `channel` is `channel` until the returned function is
    * called. The apply that is starting it cannot finish meanwhile, so the work queued behind that
@@ -37,8 +43,9 @@ export function createTickerController(): TickerController {
   const holds = new Map<string, Promise<void>>();
   const controller: TickerController = {
     contexts: [],
+    startOutcomes: [],
     stopped: 0,
-    fire: (payload) => controller.contexts.at(-1)!.fire(payload),
+    fire: (payload, options) => controller.contexts.at(-1)!.fire(payload, options),
     hold: (channel) => {
       let release: () => void = () => undefined;
       holds.set(
@@ -63,6 +70,10 @@ export interface ContributionOptions {
   readonly activityVersion?: string | undefined;
   /** Registers the `x:ticker` trigger kind, driven by this controller. */
   readonly ticker?: TickerController | undefined;
+  /** The `x:ticker` kind's own version. Defaults to `1`. */
+  readonly triggerVersion?: string | undefined;
+  /** The version of the plugin that contributes `x:ticker`. Defaults to `1`. */
+  readonly triggerSourceVersion?: string | undefined;
   /**
    * The whole `x:y` activity, in place of the one that answers `y@<version>:<input>`. It is still
    * registered at `activityVersion`, which must be given.
@@ -102,17 +113,17 @@ export function contributionCatalog(options: ContributionOptions): VersionedCata
     catalog.register({
       kind: 'trigger',
       name: 'x:ticker',
-      version: '1',
+      version: options.triggerVersion ?? '1',
       value: {
         name: 'ticker',
         description: 'Fires when a test says so.',
         configuration: z.object({ channel: z.string() }).strict(),
         start: async (context: PluginTriggerContext) => {
-          const inFlight = new Set<Promise<void>>();
+          const inFlight = new Set<Promise<unknown>>();
           const tracked: PluginTriggerContext = {
             ...context,
-            fire: (payload) => {
-              const fired = context.fire(payload);
+            fire: (payload, options) => {
+              const fired = context.fire(payload, options);
               inFlight.add(fired);
               const forget = () => inFlight.delete(fired);
               fired.then(forget, forget);
@@ -121,7 +132,9 @@ export function contributionCatalog(options: ContributionOptions): VersionedCata
           };
           ticker.contexts.push(tracked);
           await ticker.heldUntil((context.configuration as { channel: string }).channel);
-          if (Object.hasOwn(ticker, 'fireOnStart')) await tracked.fire(ticker.fireOnStart);
+          if (Object.hasOwn(ticker, 'fireOnStart')) {
+            ticker.startOutcomes.push(await tracked.fire(ticker.fireOnStart));
+          }
           // As `Bun.serve`'s `server.stop()` does, stopping waits for the fires still in flight.
           return async () => {
             await Promise.allSettled(inFlight);
@@ -129,7 +142,7 @@ export function contributionCatalog(options: ContributionOptions): VersionedCata
           };
         },
       },
-      source: { name: 'x', version: '1' },
+      source: { name: 'x', version: options.triggerSourceVersion ?? '1' },
     });
   }
   return catalog;

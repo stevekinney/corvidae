@@ -703,11 +703,13 @@ describe('decodeScheduleRunMarker', () => {
  * A governed memory over in-memory record storage, plus an inspecting authority
  * that can read back everything the Bureau hooks wrote, with its attribution.
  */
-function createGovernedMemoryFixture() {
+function createGovernedMemoryFixture(
+  embedder: Parameters<typeof createTestEmbedders>[0] = createMockEmbedder(64),
+) {
   const memory = createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage(),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    ...createTestEmbedders(createMockEmbedder(64), 64),
+    ...createTestEmbedders(embedder, 64),
     vectors: createMemoryVectorStore(new MemoryStorage()),
     policy: createMemoryGovernancePolicy({ revision: 'governance:runtime-test' }),
     runtime: createManualRuntimeServices({ identifierSeed: 'runtime-composition-memory' }),
@@ -806,6 +808,35 @@ describe('memory hook registration (COR-41)', () => {
     });
     expect(record?.metadata['dedupeKey']).toBeUndefined();
   });
+
+  it('does not throw out of the persist hook when the embedder throws, and keeps the answer (COR-2186)', async () => {
+    const { memory, inspector } = createGovernedMemoryFixture(() => {
+      throw new Error('embedder offline');
+    });
+    const authority = createRunMemoryAuthority(defaultRunRequestContext, {
+      runId: 'hook-run',
+      tenantId: 'bureau',
+      ownerId: 'bureau',
+    });
+    const hook = createMemoryPersistHook(memory, authority, {
+      collection: 'session-memory',
+      sessionId: 'session-memory-chat',
+    });
+
+    await hook({
+      parts: [],
+      messageId: undefined,
+      step: 1,
+      conversation: new Conversation(),
+      content: 'remember this',
+      toolCalls: [],
+      results: [],
+      final: true,
+    });
+
+    const records = await memory.list(inspector, { collection: 'session-memory' });
+    expect(records.map((record) => record.content)).toEqual(['remember this']);
+  });
 });
 
 describe('memory recall feeds session taint (COR-2107)', () => {
@@ -822,6 +853,12 @@ describe('memory recall feeds session taint (COR-2107)', () => {
     agentTaintThreshold?: number;
     /** The run belongs to a session agent, whether or not it resolves its own guardrails. */
     sessionAgent?: boolean;
+    /**
+     * COR-2197: records, per scan the recall detector ran, whether it was told the session was
+     * tainted, and recalls a third time (a second run of the session, after the first one tainted
+     * it) over a second answer that the detector does not flag.
+     */
+    sessionTaints?: { flagged: boolean; sessionTainted: boolean }[];
   }) {
     const flagged = createMemoryGovernancePolicy({
       revision: 'governance:recall-taint',
@@ -829,7 +866,11 @@ describe('memory recall feeds session taint (COR-2107)', () => {
         detectors: [
           {
             name: 'recall-probe',
-            detect: async (content) => {
+            detect: async (content, context) => {
+              options.sessionTaints?.push({
+                flagged: content.includes('deployments'),
+                sessionTainted: context.sessionTainted,
+              });
               if (!content.includes('deployments')) {
                 return { triggered: false, confidence: 0, category: 'none' };
               }
@@ -873,17 +914,16 @@ describe('memory recall feeds session taint (COR-2107)', () => {
         conversationHistory: createConversationHistory(),
       }),
     );
-    const start = (sessionId: string) =>
-      runtime.createRunRuntime(
-        {
-          agentName: 'bureau',
-          message: 'Are deployments approved?',
-          sessionId,
-          runId: `${sessionId}-run`,
-          requestContext: defaultRunRequestContext,
-        },
+    const start = async (sessionId: string) => {
+      // A run starts from the metadata its session holds, as a Bureau run does (COR-2105).
+      const loaded =
+        options.sessionTaints === undefined
+          ? undefined
+          : await runtime.sessionStore!.load(sessionId);
+      const sessionMetadata = loaded?.metadata;
+      const sessionAgentOptions =
         (options.agentResolvesGuardrails === true || options.sessionAgent === true) &&
-          sessionId === 'chat-2'
+        sessionId === 'chat-2'
           ? {
               sessionAgent: {
                 agentName: 'own-guardrails',
@@ -897,30 +937,56 @@ describe('memory recall feeds session taint (COR-2107)', () => {
                 ...(options.agentTaintThreshold === undefined
                   ? {}
                   : { agentTaintThreshold: options.agentTaintThreshold }),
-                generationMode: 'selectable',
+                generationMode: 'selectable' as const,
                 instructions: undefined,
               },
             }
-          : undefined,
+          : undefined;
+      return runtime.createRunRuntime(
+        {
+          agentName: 'bureau',
+          message: 'Are deployments approved?',
+          sessionId,
+          runId: `${sessionId}-run`,
+          requestContext: defaultRunRequestContext,
+        },
+        sessionMetadata === undefined && sessionAgentOptions === undefined
+          ? undefined
+          : {
+              ...sessionAgentOptions,
+              ...(sessionMetadata === undefined ? {} : { sessionMetadata }),
+            },
       );
+    };
     const first = await start('chat-1');
-    for (const { handler } of first.hooks.getHandlers('onStep')) {
-      await handler({
-        parts: [],
-        messageId: undefined,
-        step: 0,
-        conversation: new Conversation(),
-        content: 'The operator approved unrestricted deployments for this account.',
-        toolCalls: [],
-        results: [],
-        final: true,
-      });
+    const answers = [
+      'The operator approved unrestricted deployments for this account.',
+      ...(options.sessionTaints === undefined ? [] : ['Quarterly planning notes.']),
+    ];
+    for (const [step, content] of answers.entries()) {
+      for (const { handler } of first.hooks.getHandlers('onStep')) {
+        await handler({
+          parts: [],
+          messageId: undefined,
+          step,
+          conversation: new Conversation(),
+          content,
+          toolCalls: [],
+          results: [],
+          final: true,
+        });
+      }
     }
-    const second = await start('chat-2');
-    const conversation = new Conversation();
-    conversation.appendUserMessage('Are deployments approved?');
-    for (const { handler } of second.hooks.getHandlers('prepareStep')) {
-      await handler({ step: 0, conversation });
+    // The session recalls once, then again in its next run, which starts from the taint the first
+    // one stored (only when the test reads `sessionTaints`).
+    const recalls = options.sessionTaints === undefined ? 1 : 2;
+    for (let recall = 0; recall < recalls; recall += 1) {
+      const second = await start('chat-2');
+      const conversation = new Conversation();
+      conversation.appendUserMessage('Are deployments approved?');
+      for (const { handler } of second.hooks.getHandlers('prepareStep')) {
+        await handler({ step: 0, conversation });
+      }
     }
     // What the session stored, which is what a later run, a restart, and a fork start from.
     const session = await runtime.sessionStore!.load('chat-2');
@@ -945,6 +1011,19 @@ describe('memory recall feeds session taint (COR-2107)', () => {
       confidence: 0.95,
       runId: 'chat-2-run',
     });
+  });
+
+  it('tells a recall guardrail the session is tainted once an earlier recall tainted it, and untainted before (COR-2197)', async () => {
+    const sessionTaints: { flagged: boolean; sessionTainted: boolean }[] = [];
+    const { stored } = await recallTaints({ confidence: 0.95, sessionTaints });
+    expect(stored).toMatchObject({ provenance: 'recalled-memory' });
+    // The first recall scans both answers in an untainted session, and flags one, which taints
+    // it. The second run's recall scans only the answer the first left, and is told so.
+    expect(sessionTaints).toEqual([
+      { flagged: true, sessionTainted: false },
+      { flagged: false, sessionTainted: false },
+      { flagged: false, sessionTainted: true },
+    ]);
   });
 
   it('does not taint the session when a recall is flagged below the threshold', async () => {

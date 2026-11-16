@@ -71,6 +71,7 @@ import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
 import { createAssetTools } from './asset-tools';
+import { createPluginEventPublisher } from './plugins/plugin-event-publish';
 import { createPluginRegistry, hostGuardrailRows } from './plugins/plugin-registry';
 import { createGoalForPlugin } from './goals';
 import {
@@ -573,9 +574,15 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-2118 — the guardrails the host gave, read before plugins' join them (and before any await),
   // so a listing tells them apart.
   const hostGuardrails = hostGuardrailRows(options.agentContributions);
+  // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
+  // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
+  // COR-2191 — made before plugins are composed, so a skipped memory guardrail reports through it.
+  const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
+  const { diagnose } = diagnostics;
   const composedPlugins = await composePlugins({
     ...options,
     plugins: withBuiltInPlugin(options.plugins, bureauTools),
+    onDiagnostic: diagnose,
   });
   options = composedPlugins.options;
   options = withPluginContentLayers(options, given, composedPlugins.shippedContent);
@@ -584,10 +591,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   const pluginRegistry = createPluginRegistry(composedPlugins.records, {
     guardrails: hostGuardrails,
   });
-  // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
-  // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
-  const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
-  const { diagnose } = diagnostics;
   // COR-1710 — the settings: validated here, read in `bootSettings` below, before the engine.
   const settingsLocked = validateSettingsOptions(options, toBadRequest);
   const settingsDefaults = settingsDefaultsOf(options);
@@ -5409,7 +5412,20 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the goal it creates stores the plugin, so every `goal.*` event of the goal carries it.
    */
   function pluginHostApiOf(host: Bureau, plugin: string): PluginHost {
+    const record = composedPlugins.records.find(
+      (candidate) => candidate.entry.descriptor.name === plugin,
+    );
     return {
+      publish: createPluginEventPublisher({
+        plugin,
+        declarations: record?.setup?.result.events ?? [],
+        gate: record?.gate,
+        // The feed records it from the emitter, as it records every other event.
+        dispatch: (event) => emitter.dispatchEvent(event),
+        // The emitter completes in the same synchronous stretch that stops the feed recording, so
+        // no publish resolves between the feed stopping and this turning true (`shutdown`).
+        isDisposed: () => emitter.completed,
+      }),
       agents: { list: () => host.agents.list() },
       schedules: {
         create: (definition) => createSchedule(definition, undefined, plugin),

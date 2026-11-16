@@ -105,6 +105,51 @@ describe('createGeminiEmbedder — client injection', () => {
   });
 });
 
+describe('createGeminiEmbedder — the caller’s signal (COR-2185)', () => {
+  it('hands the signal to every request as its abortSignal config', async () => {
+    const client = createFakeEmbeddingClient([
+      { embeddings: [{ values: [1, 2] }] },
+      { embeddings: [{ values: [3, 4] }] },
+    ]);
+    const controller = new AbortController();
+
+    await createGeminiEmbedder({ client })(['alpha', 'beta'], { signal: controller.signal });
+
+    expect(client.calls.map((call) => (call as { config?: unknown }).config)).toEqual([
+      { abortSignal: controller.signal },
+      { abortSignal: controller.signal },
+    ]);
+  });
+
+  it('sends no config when the caller gave no signal', async () => {
+    const client = createFakeEmbeddingClient([{ embeddings: [{ values: [1] }] }]);
+
+    await createGeminiEmbedder({ client })(['alpha']);
+
+    expect(Object.hasOwn(client.calls[0]!, 'config')).toBe(false);
+  });
+
+  it('stops before the next text once the signal aborted', async () => {
+    const controller = new AbortController();
+    const client = createFakeEmbeddingClient([{ embeddings: [{ values: [1] }] }]);
+    const calls = client.calls;
+    const embedContent = client.models.embedContent.bind(client.models);
+    client.models.embedContent = async (params) => {
+      const result = await embedContent(params);
+      controller.abort(new Error('the caller gave up'));
+      return result;
+    };
+
+    const failure = await rejectionOf(
+      createGeminiEmbedder({ client })(['alpha', 'beta'], { signal: controller.signal }),
+    );
+
+    expect(failure).toBeInstanceOf(ProviderError);
+    expect(String((failure as ProviderError).cause)).toContain('the caller gave up');
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe('createGeminiEmbedder — SDK construction', () => {
   it('throws a ProviderError when neither a client nor an apiKey is given', async () => {
     const embed = createGeminiEmbedder();

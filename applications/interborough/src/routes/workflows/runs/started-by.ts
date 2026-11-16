@@ -23,6 +23,8 @@ export const STARTED_BY_LABELS = {
   parent: 'A workflow',
   // COR-2009: Interborough's own runs, such as the schedule tick.
   system: 'Interborough',
+  // COR-2163: a plugin's trigger started the workflow run.
+  trigger: 'A trigger',
 } as const satisfies Record<StartedBy, string>;
 
 function isStartedBy(kind: string): kind is StartedBy {
