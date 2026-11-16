@@ -34,6 +34,7 @@ import {
   type CleanupAcknowledgement,
   type CleanupAcknowledgementReason,
   isFailureFinishReason,
+  RUN_ENGINE_WORKFLOW_TYPE,
 } from '@lostgradient/operative';
 import { messageText, getOwn } from 'conversationalist';
 import {
@@ -1258,11 +1259,19 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
    * so a filter on one of those matches none of them, and an A2A listing (`topLevelOnly`) never
    * holds one. The reviews a run waits on make it `input-required` as they do for a task.
    */
+  const TASK_RECORD_WORKFLOW_TYPES: ReadonlySet<string> = new Set([
+    RUN_ENGINE_WORKFLOW_TYPE.agentRun,
+    RUN_ENGINE_WORKFLOW_TYPE.goalRun,
+    RUN_ENGINE_WORKFLOW_TYPE.durableHeartbeatTick,
+  ]);
+
   async function engineRunViews(query: TaskListQuery<unknown>): Promise<TaskView[]> {
     if (
       host.engineRuns === undefined ||
       query.topLevelOnly === true ||
       query.engineRuns === false ||
+      // The engine is not asked for a type no engine run has: those are the types of a task record.
+      (query.workflow !== undefined && TASK_RECORD_WORKFLOW_TYPES.has(query.workflow)) ||
       query.contextId !== undefined ||
       query.agentName !== undefined ||
       query.parentRunId !== undefined ||

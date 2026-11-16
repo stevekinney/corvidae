@@ -103,7 +103,13 @@ const tasksListInput = z.object({
     .min(1)
     .optional()
     .describe(
-      'Only the tasks that ran on this workflow type: `agentRun`, `goalRun`, `durableHeartbeatTick`, `scheduleTick`, or the identifier of a workflow file for its instances. A task’s `workflow.type` says which.',
+      'Only the tasks that ran on this workflow type: `agentRun`, `goalRun`, `scheduleTick`, or the identifier of a workflow file for its instances. A task’s `workflow.type` says which.',
+    ),
+  engineRuns: z
+    .boolean()
+    .optional()
+    .describe(
+      'Whether the schedule tick’s runs and the instances of workflow files, which the engine holds and no task record describes, are listed beside the tasks. Defaults to true for a caller that may read the deployment’s workflows; `false` lists only the tasks that have records, so a reader that wants an agent’s or a goal’s runs is not given its page slots to the engine’s. It never lists them for a caller that may not read them.',
     ),
   statusTimestampAfter: z.iso
     .datetime({ offset: true })
@@ -178,7 +184,9 @@ export const tasksListOperation = defineOperation<
         // The schedule tick and the instances of workflow files are the deployment's workflows' runs:
         // a caller lists them as it reads `bureau.workflows.runs.list`, and `bureau.tasks:read`
         // alone does not show them.
-        engineRuns: mayAccessWorkflows(host, principal, 'bureau.workflows:read'),
+        engineRuns:
+          input.engineRuns !== false &&
+          mayAccessWorkflows(host, principal, 'bureau.workflows:read'),
         ...(input.statusTimestampAfter === undefined
           ? {}
           : { statusTimestampAfter: input.statusTimestampAfter }),

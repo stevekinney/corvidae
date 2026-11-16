@@ -44,3 +44,39 @@ describe('the latest run of each chat', () => {
     ).toEqual(new Set(['broken']));
   });
 });
+
+describe('the read of the most recent tasks', () => {
+  let stub: BureauWorldStub | undefined;
+  afterEach(() => {
+    stub?.restore();
+    stub = undefined;
+  });
+
+  test('asks for the tasks that have records only, so the engine’s runs take none of its slots (COR-2424)', async () => {
+    // A page as the Bureau lists it: the engine's runs newest, filling the whole page, and behind
+    // them the chat's failed run, which the chat list marks.
+    const engineRuns = Array.from({ length: RECENT_TASK_LIMIT }, (_, index) => ({
+      ...task(
+        `schedule-tick:${String(index)}`,
+        `schedule-tick:${String(index)}`,
+        'completed',
+        '2026-11-02T10:00:00.000Z',
+      ),
+      agentName: null,
+    }));
+    const chatRun = task('chat-run', 'chat-1', 'failed', '2026-11-01T09:00:00.000Z');
+    stub = installBureauWorld(emptyBureauWorld({ tasks: [] }));
+    stub.on('bureau.tasks.list', (params) => {
+      const listed = params['engineRuns'] === false ? [chatRun] : [...engineRuns, chatRun];
+      return {
+        tasks: listed.slice(0, typeof params['limit'] === 'number' ? params['limit'] : 50),
+        nextPageToken: null,
+      };
+    });
+
+    const page = await recentTasksQuery().queryFn({ signal: new AbortController().signal });
+
+    expect(page.tasks.map((listed) => listed.id)).toEqual(['chat-run']);
+    expect(chatsWithFailedRun(page.tasks)).toEqual(new Set(['chat-1']));
+  });
+});

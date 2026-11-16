@@ -1784,6 +1784,14 @@
           }
         },
         {
+          "name": "engineRuns",
+          "required": false,
+          "schema": {
+            "description": "Whether the schedule tick’s runs and the instances of workflow files, which the engine holds and no task record describes, are listed beside the tasks. Defaults to true for a caller that may read the deployment’s workflows; `false` lists only the tasks that have records, so a reader that wants an agent’s or a goal’s runs is not given its page slots to the engine’s. It never lists them for a caller that may not read them.",
+            "type": "boolean"
+          }
+        },
+        {
           "name": "limit",
           "required": false,
           "schema": {
@@ -2419,6 +2427,10 @@
             "description": "Only the tasks in this context’s current incarnation.",
             "minLength": 1,
             "type": "string"
+          },
+          "engineRuns": {
+            "description": "Whether the schedule tick’s runs and the instances of workflow files, which the engine holds and no task record describes, are listed beside the tasks. Defaults to true for a caller that may read the deployment’s workflows; `false` lists only the tasks that have records, so a reader that wants an agent’s or a goal’s runs is not given its page slots to the engine’s. It never lists them for a caller that may not read them.",
+            "type": "boolean"
           },
           "limit": {
             "description": "The most tasks to return in one page, from 1 to 100. Defaults to 50.",

@@ -169,6 +169,12 @@ export type TaskFilter = {
   readonly parentContextId?: string;
   /** Only the tasks that ran on this workflow type (COR-2423); a task's `workflow.type` says which. */
   readonly workflow?: string;
+  /**
+   * `false` lists only the tasks that have records (COR-2424): the schedule tick's runs and the
+   * instances of workflow files, which the engine holds, are left out so a reader of the newest
+   * tasks (the chat list, the command palette) is not given its slots to them.
+   */
+  readonly engineRuns?: boolean;
 };
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };

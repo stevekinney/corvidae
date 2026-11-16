@@ -15,9 +15,12 @@ import CommandPaletteLauncher from './command-palette.svelte';
 import { registerShellShortcuts } from './destinations.ts';
 
 let restore: (() => void) | undefined;
+/** What the palette asked `bureau.tasks.list` for, in order. */
+const taskListParams: Record<string, unknown>[] = [];
 afterEach(() => {
   restore?.();
   restore = undefined;
+  taskListParams.length = 0;
 });
 
 function landAt(path: string): void {
@@ -35,7 +38,12 @@ function stubEngine(unreachable?: string): void {
       throw new Error('the host did not answer');
     }
     if (typeof init?.body === 'string') {
-      const call = JSON.parse(init.body) as { id?: unknown; method?: string };
+      const call = JSON.parse(init.body) as {
+        id?: unknown;
+        method?: string;
+        params?: Record<string, unknown>;
+      };
+      if (call.method === 'bureau.tasks.list') taskListParams.push(call.params ?? {});
       if (call.method === 'bureau.contexts.list') {
         return Response.json({
           jsonrpc: '2.0',
@@ -237,6 +245,12 @@ describe('the command palette', () => {
   test('opens the selected run', async () => {
     await choose('run-7', /^run-7/);
     await waitFor(() => expect(router.pathname).toBe('/runs/run-7'));
+  });
+
+  test('searches the tasks that have records, so the engine’s runs take none of the slots it reads (COR-2424)', async () => {
+    await choose('run-7', /^run-7/);
+    expect(taskListParams.length).toBeGreaterThan(0);
+    for (const params of taskListParams) expect(params['engineRuns']).toBe(false);
   });
 
   test('opens the selected schedule, not the list of schedules', async () => {

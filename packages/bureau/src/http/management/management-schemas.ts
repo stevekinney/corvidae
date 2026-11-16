@@ -89,9 +89,8 @@ export const taskOriginSchema = z.discriminatedUnion('kind', [
 export const taskWorkflowSchema = z.object({
   /**
    * The engine workflow type: `agentRun` (a chat's, a fire's or a child's run, and a step of a
-   * workflow instance), `goalRun` (an attempt of a goal), `durableHeartbeatTick`, `scheduleTick`
-   * (the Bureau's own record of what its scheduler did), or the identifier of a workflow file for
-   * one of its instances.
+   * workflow instance), `goalRun` (an attempt of a goal), `scheduleTick` (the Bureau's own record
+   * of what its scheduler did), or the identifier of a workflow file for one of its instances.
    */
   type: z.string(),
   /** The schedule the run belongs to: a fire's, an instance a schedule started, or the one a tick records. */

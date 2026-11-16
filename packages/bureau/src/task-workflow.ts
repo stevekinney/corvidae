@@ -41,8 +41,8 @@ export interface TaskSteps {
 /** The workflow a task ran on, as its view shows it. */
 export interface TaskWorkflow {
   /**
-   * The engine workflow type: `agentRun`, `goalRun`, `durableHeartbeatTick`, `scheduleTick`, or the
-   * identifier of a workflow file for one of its instances.
+   * The engine workflow type: `agentRun`, `goalRun`, `scheduleTick`, or the identifier of a
+   * workflow file for one of its instances.
    */
   readonly type: string;
   /** The schedule the run belongs to (a fire's, an instance's, or the one a tick records), or `null`. */

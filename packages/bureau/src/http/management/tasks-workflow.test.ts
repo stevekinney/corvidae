@@ -268,6 +268,76 @@ describe('the Bureau’s own runs, listed as tasks', () => {
     expect(await asKey('operator-key')).toContain('scheduleTick');
   });
 
+  it('does not read the engine for a workflow filter no engine run can match (COR-2424)', async () => {
+    const served = await serveWorkflows(cleanups);
+    const engine = served.bureau.durableEngine()!;
+    await startScheduleTick(engine, {
+      event: 'came-due',
+      scheduleId: 'schedule-a',
+      scheduleName: null,
+      fireRunId: 'fire-a',
+    });
+    const listing = spyOn(engine, 'list');
+    try {
+      for (const workflow of ['agentRun', 'goalRun']) {
+        expect(await tasksOf(served, { workflow })).toEqual([]);
+      }
+      expect(await tasksOf(served, { engineRuns: false })).toEqual([]);
+      expect(listing).not.toHaveBeenCalled();
+      // A type an engine run can have still reads the engine.
+      expect(
+        (await tasksOf(served, { workflow: 'scheduleTick' })).map((task) => task.id),
+      ).toHaveLength(1);
+      expect(listing).toHaveBeenCalled();
+    } finally {
+      listing.mockRestore();
+    }
+  });
+
+  it('leaves the engine’s runs out of a listing that asks for engineRuns: false (COR-2424)', async () => {
+    const served = await serveWorkflows(cleanups);
+    const kv = served.bureau.internals.kv!;
+    await kv.set(
+      `${TASK_RECORD_KEY_PREFIX}chat-run`,
+      JSON.stringify({
+        schemaVersion: 1,
+        taskId: 'chat-run',
+        contextId: 'chat-run',
+        incarnation: '',
+        agentName: 'writer',
+        owner: served.bureau.workflows!.owner,
+        createdAt: '2026-11-02T10:00:00.000Z',
+        history: [],
+      }),
+    );
+    for (const fireRunId of ['fire-a', 'fire-b']) {
+      await startScheduleTick(served.bureau.durableEngine()!, {
+        event: 'came-due',
+        scheduleId: 'schedule-a',
+        scheduleName: null,
+        fireRunId,
+      });
+    }
+    // Asked for, the engine's runs fill the page; the task with a record is still there.
+    const all = await tasksOf(served);
+    expect(all.map((task) => task.workflow.type)).toContain('scheduleTick');
+    expect(all.map((task) => task.id)).toContain('chat-run');
+    // A page of one holds the engine's newest run, so a reader that keeps only a page of the
+    // listing loses the chat's run behind it: the slots it asked for went to the engine.
+    const crowded = await tasksOf(served, { limit: 1 });
+    expect(crowded.map((task) => task.id)).not.toEqual(['chat-run']);
+    // `engineRuns: false` gives the slots back: the same page of one is the task with a record.
+    const only = await tasksOf(served, { limit: 1, engineRuns: false });
+    expect(only.map((task) => task.id)).toEqual(['chat-run']);
+    const unfiltered = await tasksOf(served, { engineRuns: false });
+    expect(unfiltered.map((task) => task.workflow.type)).not.toContain('scheduleTick');
+    // `true` is the default, and still lists nothing for a caller who may not read the workflows.
+    const explicit = await tasksOf(served, { engineRuns: true });
+    expect(explicit.map((task) => task.workflow.type)).toContain('scheduleTick');
+    const body = await rpc(served.keyed, 'bureau.tasks.list', { engineRuns: true }, 'bob-key');
+    expect((body.result?.['tasks'] ?? []) as ListedTask[]).toEqual([]);
+  });
+
   it('lists a tick under manual maintenance, where the engine’s type index is not refreshed', async () => {
     const served = await serveWorkflows(cleanups, { maintenance: 'manual' });
     await startScheduleTick(served.bureau.durableEngine()!, {
