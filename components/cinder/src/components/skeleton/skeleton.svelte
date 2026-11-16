@@ -36,6 +36,8 @@
     statusColumn = true,
     framed = true,
     dayBand = false,
+    dayBandLabel,
+    dayBandDetail,
     label,
     delay = 0,
     stillLoadingAfter,
@@ -234,7 +236,14 @@
         data-cinder-framed={framed ? undefined : 'false'}
         aria-hidden="true"
       >
-        {#if dayBand}
+        {#if dayBandLabel?.trim()}
+          <div class="cinder-skeleton-day-band" data-cinder-day-band-text="">
+            <span class="cinder-skeleton-day-label">{dayBandLabel}</span>
+            {#if dayBandDetail?.trim()}
+              <span class="cinder-skeleton-day-detail">{dayBandDetail}</span>
+            {/if}
+          </div>
+        {:else if dayBand}
           <div class="cinder-skeleton-day-band">
             <div class="cinder-skeleton cinder-skeleton-day-bar"></div>
           </div>

@@ -96,6 +96,27 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
+  /* A band that carries the day's real text is the real group header (`DataList`'s): the day at the
+   * start, the zone at the end, in the same inset band and type, so the page does not change when the
+   * rows arrive. */
+  .cinder-skeleton-day-band[data-cinder-day-band-text] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-skeleton-day-detail {
+    color: var(--cinder-text-subtle);
+    font-weight: var(--cinder-font-normal);
+    white-space: nowrap;
+  }
+
   .cinder-skeleton-row {
     display: grid;
     grid-template-columns: 8rem minmax(0, 1fr) auto;

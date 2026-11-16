@@ -72,6 +72,16 @@ const schema = {
         "Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`,\nthe placeholder for a list that groups its rows by day. Ignored by other variants.",
       default: false,
     },
+    dayBandLabel: {
+      type: 'string',
+      description:
+        'The text of the day band, when the page knows the day it is about to list ("Today, Monday,\nNov 2"): the band then draws it, in the type of a real day band, in place of the bar, so a\nplaceholder under a real band does not change what it says when the rows arrive. Setting it\ndraws the band without `dayBand`. Ignored by variants other than `\'list\'`.',
+    },
+    dayBandDetail: {
+      type: 'string',
+      description:
+        'The text at the end of the day band, such as the zone its times are in ("Central time"). It is\ndrawn only with `dayBandLabel`.',
+    },
     label: {
       type: 'string',
       description:

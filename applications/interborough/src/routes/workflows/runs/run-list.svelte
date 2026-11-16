@@ -381,6 +381,8 @@
     {:else if loading}
       <RunListStates
         kind={showCanceled ? 'canceled' : 'loading'}
+        {now}
+        {zone}
         {bar}
         onCancel={cancelLoading}
         onRetry={retry}

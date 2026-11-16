@@ -86,6 +86,18 @@ export type SkeletonProps = {
    */
   dayBand?: boolean;
   /**
+   * The text of the day band, when the page knows the day it is about to list ("Today, Monday,
+   * Nov 2"): the band then draws it, in the type of a real day band, in place of the bar, so a
+   * placeholder under a real band does not change what it says when the rows arrive. Setting it
+   * draws the band without `dayBand`. Ignored by variants other than `'list'`.
+   */
+  dayBandLabel?: string;
+  /**
+   * The text at the end of the day band, such as the zone its times are in ("Central time"). It is
+   * drawn only with `dayBandLabel`.
+   */
+  dayBandDetail?: string;
+  /**
    * Accessible name of the loading region, announced politely once the placeholder appears
    * (for example `'Loading agents'`). The placeholder bars stay hidden from assistive
    * technology and no spinner is drawn. Applies to the grouped variants; omit it when the

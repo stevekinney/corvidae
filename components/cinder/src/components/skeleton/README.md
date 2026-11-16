@@ -41,7 +41,7 @@ Animated placeholder shape that fills content areas while data is loading.
 
 ### List variant
 
-`variant="list"` draws the placeholder for a status-first list in the real layout: a bordered surface of `rows` rows (default 3), each with the 8rem status column reserved, two text bars and a time bar at the right. No leading circle or avatar is drawn, so nothing shifts when the data arrives. `dayBand` adds a tinted day band above the rows for a list grouped by day. On a narrow container the status bar drops under the text bars, as a stacked list item does on a phone.
+`variant="list"` draws the placeholder for a status-first list in the real layout: a bordered surface of `rows` rows (default 3), each with the 8rem status column reserved, two text bars and a time bar at the right. No leading circle or avatar is drawn, so nothing shifts when the data arrives. `dayBand` adds a tinted day band above the rows for a list grouped by day; a page that knows the day it is about to list passes `dayBandLabel="Today, Monday, Nov 2"` and `dayBandDetail="Central time"`, and the band draws that text in the type of a real day band in place of the bar. On a narrow container the status bar drops under the text bars, as a stacked list item does on a phone.
 
 `label` names the loading region (for example `"Loading agents"`). The bars stay hidden from assistive technology, no spinner is drawn, and the name is announced politely when the rows appear:
 
@@ -118,6 +118,8 @@ Both timers start when the Skeleton mounts, so render it only while the request 
 | `cancelLabel` | `string` | no | `"Cancel"` | Label of the Cancel button in the "Still loading" status. |
 | `class` | `string` | no | — | Additional class merged onto the root element: `.cinder-skeleton` for a single block, or `.cinder-skeleton-group` when `lines`, `variant`, or `stillLoadingAfter` render a group. |
 | `dayBand` | `boolean` | no | `false` | Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`, the placeholder for a list that groups its rows by day. Ignored by other variants. |
+| `dayBandDetail` | `string` | no | — | The text at the end of the day band, such as the zone its times are in ("Central time"). It is drawn only with `dayBandLabel`. |
+| `dayBandLabel` | `string` | no | — | The text of the day band, when the page knows the day it is about to list ("Today, Monday, Nov 2"): the band then draws it, in the type of a real day band, in place of the bar, so a placeholder under a real band does not change what it says when the rows arrive. Setting it draws the band without `dayBand`. Ignored by variants other than `'list'`. |
 | `delay` | `number` | no | `0` | Milliseconds to wait after mounting before anything renders. A load that finishes inside the delay never flashes a placeholder. Use `300` for the Cinder loading rule. |
 | `framed` | `boolean` | no | `true` | Draw the list's own border and rounded corners when `variant` is `'list'`. Turn it off inside a card that already frames its rows, so the placeholder does not draw a box within the box. Ignored by other variants. |
 | `height` | `string` | no | — | CSS height value applied as an inline style on the skeleton block (e.g. `'1rem'`, `'48px'`). |
