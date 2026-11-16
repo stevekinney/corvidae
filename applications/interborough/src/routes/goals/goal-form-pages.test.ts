@@ -169,6 +169,10 @@ describe('the Edit goal page', () => {
     expect(page.getByText(copy.edit.agentLocked)).not.toBeNull();
     expect((page.getByLabelText(copy.checkLabel) as HTMLInputElement).value).toBe(CHECK_TEXT);
     expect((page.getByLabelText(copy.maximumAttemptsLabel) as HTMLInputElement).value).toBe('5');
+    // The limit is Cinder's NumberInput with a floor of one attempt (row S25).
+    const limit = page.getByLabelText(copy.maximumAttemptsLabel) as HTMLInputElement;
+    expect(limit.getAttribute('role')).toBe('spinbutton');
+    expect(limit.getAttribute('aria-valuemin')).toBe('1');
     expect(page.getByTestId('goal-form-note').textContent).toBe(copy.edit.footer);
     expect(page.getByRole('button', { name: copy.edit.saveAction })).not.toBeDisabled();
     expect(page.getByRole('link', { name: copy.cancelAction }).getAttribute('href')).toBe(
