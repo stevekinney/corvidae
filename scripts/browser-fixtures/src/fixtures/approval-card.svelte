@@ -26,3 +26,49 @@
   editableArgs={true}
   onResolve={() => undefined}
 />
+
+<!-- The chat's waiting approval (COR-2327): the row layout with three pairs of input, which show
+     in the open at the content edge with no Show all. -->
+<ApprovalCard
+  id="approval-card-row-chat"
+  layout="row"
+  headingLevel={4}
+  question="Refund order 4471 for $42.00?"
+  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}
+  source="Tool runner"
+  operation={{
+    kind: 'other',
+    argsPreview: { orderId: 4471, cents: 4200, reason: 'Arrived damaged' },
+  }}
+  policyVersion="policy-2026-06"
+  idempotencyKey="approval-row-chat-01"
+  state="pending"
+  onResolve={() => undefined}
+/>
+
+<!-- The decision layout with nine pairs: the first four show, then "Show all 9" under them. -->
+<ApprovalCard
+  id="approval-card-decision-long"
+  layout="decision"
+  headingLevel={4}
+  question="Create the shipping label for order 4471?"
+  tool={{ name: 'create-label', label: 'Create label', risk: 'medium' }}
+  operation={{
+    kind: 'other',
+    argsPreview: {
+      orderId: 4471,
+      carrier: 'Parcel Post',
+      service: 'Ground',
+      weightGrams: 1250,
+      lengthCentimetres: 30,
+      widthCentimetres: 20,
+      heightCentimetres: 12,
+      insured: true,
+      reference: 'Replacement for a damaged delivery, sent at no charge to the customer',
+    },
+  }}
+  policyVersion="policy-2026-06"
+  idempotencyKey="approval-decision-long-01"
+  state="pending"
+  onResolve={() => undefined}
+/>
