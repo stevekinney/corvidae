@@ -23,6 +23,7 @@
     display: block;
     /* Narrow rules ask about the card's own width, so a phone and a narrow pane read the same. */
     container-type: inline-size;
+    line-height: var(--cinder-leading-normal);
   }
 
   .cinder-approval-card__surface {
@@ -767,6 +768,80 @@
   .cinder-approval-card__pair-value[data-cinder-muted] {
     color: var(--cinder-text-subtle);
     font-style: italic;
+  }
+
+  /* The input in the open, at the card's content edge with no chevron, no label column and no
+   * box: each pair is a row of its own, the label in the secondary ink on its line and the value in
+   * the body ink under it, so the value starts on the title's edge and a long one wraps there too.
+   * "Show all" sits under the rows. */
+  .cinder-approval-card__input-list,
+  .cinder-approval-card__input-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+    margin: 0;
+  }
+
+  .cinder-approval-card__input-list {
+    align-items: flex-start;
+  }
+
+  .cinder-approval-card__input-rows {
+    align-self: stretch;
+  }
+
+  .cinder-approval-card__input-rows[hidden] {
+    display: none;
+  }
+
+  .cinder-approval-card__input-row {
+    overflow-wrap: anywhere;
+    text-align: start;
+  }
+
+  .cinder-approval-card__input-row > dt,
+  .cinder-approval-card__input-row > dd {
+    display: block;
+    margin: 0;
+  }
+
+  .cinder-approval-card__input-row > dt {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-approval-card__input-row > dd {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-approval-card__input-row > dd[data-cinder-monospace] {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-approval-card__show-all {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    font-weight: var(--cinder-font-medium);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  @media (hover: hover) {
+    .cinder-approval-card__show-all:hover {
+      text-decoration: underline;
+      text-underline-offset: 0.15em;
+    }
+  }
+
+  .cinder-approval-card__show-all:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   .cinder-approval-card__row-input {
@@ -1570,7 +1645,8 @@
     }
 
     /* The card's arguments line names its block in more than one word, so its pairs take the line
-     * under the name, lined up past the chevron, instead of a squeezed column beside it. */
+     * under the name and start at the body's content edge, where the command and the chevron
+     * start, instead of a squeezed column beside it or a column past the chevron. */
     .cinder-approval-card__disclosures .cinder-approval-card__input-toggle {
       flex-wrap: wrap;
       row-gap: 0;
@@ -1578,7 +1654,6 @@
 
     .cinder-approval-card__disclosures .cinder-approval-card__input-pairs {
       flex-basis: 100%;
-      padding-inline-start: calc(12px + var(--cinder-space-2));
     }
 
     /* Svelte leaves whitespace text nodes in an empty pairs list, so `:empty` never matches. */
@@ -1660,12 +1735,14 @@
     /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) are painted at text height; on a touch screen each reaches a 44px hit area
      * through a pseudo-element that takes no layout space, so the rows keep their rhythm. */
     .cinder-approval-card__input-toggle,
-    .cinder-approval-card__said-toggle {
+    .cinder-approval-card__said-toggle,
+    .cinder-approval-card__show-all {
       position: relative;
     }
 
     .cinder-approval-card__input-toggle::before,
-    .cinder-approval-card__said-toggle::before {
+    .cinder-approval-card__said-toggle::before,
+    .cinder-approval-card__show-all::before {
       content: '';
       position: absolute;
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
@@ -1683,7 +1760,8 @@
     }
 
     .cinder-approval-card__risk-icon:focus-visible,
-    .cinder-approval-card__input-toggle:focus-visible {
+    .cinder-approval-card__input-toggle:focus-visible,
+    .cinder-approval-card__show-all:focus-visible {
       outline: 2px solid CanvasText;
       outline-offset: 2px;
       box-shadow: none;

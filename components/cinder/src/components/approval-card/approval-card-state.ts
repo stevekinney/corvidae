@@ -8,7 +8,11 @@ import {
 import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
 import { readPayloadEntries } from '../payload-inspector/payload-inspector-fields.ts';
 import { describeContents, describeScalar } from '../payload-inspector/payload-inspector-model.ts';
-import { maskSecrets, SECRET_MASK } from '../payload-inspector/payload-inspector-secrets.ts';
+import {
+  isSecretValue,
+  maskSecrets,
+  SECRET_MASK,
+} from '../payload-inspector/payload-inspector-secrets.ts';
 import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 import type { ApprovalState, ApprovalToolRisk } from './approval-card.types.ts';
 
@@ -120,7 +124,7 @@ export function describeDecidedAction(
 
 /**
  * True when every field of the input summary is already shown in the open as a fact (a Command,
- * a Target, the tool), so an Input disclosure would only repeat it: "Input: Command refund order
+ * a Target, the tool), so input rows would only repeat it: "Input: Command refund order
  * 4471" under the Command fact that already reads "refund order 4471".
  */
 export function inputRepeatsShownFacts(
@@ -325,23 +329,73 @@ export type InputSummaryPair = {
  */
 export function summarizeInput(value: unknown): InputSummaryPair[] {
   const entries = readPayloadEntries(maskSecrets(normalizeArgumentsPreviewValue(value)));
-  const pairs: InputSummaryPair[] = [];
-  for (const entry of entries) {
-    const label = humanizeIdentifier(entry.key, { casing: 'sentence' });
-    if (entry.nested) {
-      pairs.push({ key: entry.key, label, text: describeContents(entry.value), muted: false });
-      continue;
-    }
-    const display = describeScalar(entry.value);
-    if (display.kind === 'secret')
-      pairs.push({ key: entry.key, label, text: SECRET_MASK, muted: false });
-    else if (display.kind === 'none')
-      pairs.push({ key: entry.key, label, text: 'None', muted: true });
-    else if (display.kind === 'empty')
-      pairs.push({ key: entry.key, label, text: 'Empty', muted: true });
-    else pairs.push({ key: entry.key, label, text: display.text, muted: false });
+  return entries.map((entry) => ({
+    key: entry.key,
+    label: humanizeIdentifier(entry.key, { casing: 'sentence' }),
+    ...(entry.nested
+      ? { text: describeContents(entry.value), muted: false }
+      : describeScalarText(entry.value)),
+  }));
+}
+
+/** A value that is not a list or an object as text: its mask when it is a secret, "None" or "Empty" muted. */
+function describeScalarText(value: unknown): { text: string; muted: boolean } {
+  const display = describeScalar(value);
+  if (display.kind === 'secret') return { text: SECRET_MASK, muted: false };
+  if (display.kind === 'none') return { text: 'None', muted: true };
+  if (display.kind === 'empty') return { text: 'Empty', muted: true };
+  return { text: display.text, muted: false };
+}
+
+/** One row of the input shown in the open: a label, then the whole value as text. */
+export type InputRow = InputSummaryPair & {
+  /** True when the value is a list or an object, written as compact JSON in the code font. */
+  structured: boolean;
+};
+
+/**
+ * How many rows of the input show before "Show all" offers the rest. The input had no count of
+ * its own before; four keeps a short call (an order, an amount, a reason) whole.
+ */
+export const INPUT_SUMMARY_ROWS = 4;
+
+/**
+ * Reads the arguments preview as the rows the approver reads in the open, one per field: "Order
+ * ID" then "4471". Unlike the one-line summary, a nested value is written whole, as compact JSON
+ * with any secret inside it masked, so nothing the call carries is out of reach. A preview that is
+ * not a list or an object is one row labelled "Value"; an empty one has no rows.
+ */
+export function describeInputRows(value: unknown): InputRow[] {
+  const masked = maskSecrets(normalizeArgumentsPreviewValue(value));
+  const entries = readPayloadEntries(masked);
+  if (entries.length === 0) {
+    if (
+      masked === undefined ||
+      (typeof masked === 'object' &&
+        masked !== null &&
+        !(masked instanceof Date) &&
+        !isSecretValue(masked))
+    )
+      return [];
+    return [{ key: 'value', label: 'Value', ...describeScalarText(masked), structured: false }];
   }
-  return pairs;
+  return entries.map((entry) => ({
+    key: entry.key,
+    label: humanizeIdentifier(entry.key, { casing: 'sentence' }),
+    ...(entry.nested
+      ? { text: writeCompactJson(entry.value), muted: false, structured: true }
+      : { ...describeScalarText(entry.value), structured: false }),
+  }));
+}
+
+/** A list or an object as one line of JSON; a hidden secret writes its mask. */
+function writeCompactJson(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? describeContents(value);
+  } catch {
+    // A bigint or a cycle cannot be written as JSON; say how much there is instead.
+    return describeContents(value);
+  }
 }
 
 /**

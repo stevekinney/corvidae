@@ -2,12 +2,7 @@
 import { afterEach, describe, expect, jest, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import {
-  expectNoLeakedTimers,
-  requiredInstance,
-  setupHappyDom,
-  trackTimers,
-} from '@lostgradient/testing';
+import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
 
 import type { ApprovalCardProps } from './approval-card.types.ts';
 
@@ -701,20 +696,22 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(queryByRole('button', { name: 'Refund $42.00' })).toBeNull();
   });
 
-  test('holds the input disclosure for what the open anatomy leaves out', async () => {
-    const { getByRole, container } = render(ApprovalCard, { props: decisionCard() });
-    const toggle = requiredInstance(getByRole('button', { name: /^Input/ }), HTMLButtonElement);
+  test('shows the input in the open as rows at the content edge, with no disclosure', () => {
+    const { getByRole, container, queryByRole } = render(ApprovalCard, {
+      props: decisionCard(),
+    });
+    const input = getByRole('group', { name: 'Input' });
 
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    await fireEvent.click(toggle);
-    expect(
-      container.querySelector('.cinder-approval-card__row-input')?.hasAttribute('hidden'),
-    ).toBe(false);
+    expect(queryByRole('button', { name: /^Input/ })).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__row-input')).toBeNull();
+    expect(input.querySelectorAll('.cinder-approval-card__input-row').length).toBeGreaterThan(0);
+    // The group sits straight in the card, after the facts, not inside a button or a box.
+    expect(input.parentElement?.classList.contains('cinder-approval-card--decision')).toBe(true);
   });
 
   // C#14 (chat stress sweep): "Input: Command refund order 4471" repeated the Command fact.
-  test('leaves out an Input disclosure whose only field is already shown as a fact', () => {
-    const { queryByRole } = render(ApprovalCard, {
+  test('leaves out input rows whose only field is already shown as a fact', () => {
+    const { queryByRole, container } = render(ApprovalCard, {
       props: decisionCard({
         operation: {
           kind: 'command',
@@ -724,7 +721,8 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
       }),
     });
 
-    expect(queryByRole('button', { name: /^Input/ })).toBeNull();
+    expect(queryByRole('group', { name: 'Input' })).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__input-row')).toBeNull();
   });
 });
 
@@ -808,6 +806,31 @@ describe('ApprovalCard decision layout stylesheet', () => {
     );
     expect(css).not.toMatch(/__row-actions \{ margin-block-start:/);
     expect(css).not.toMatch(/__body > \.cinder-approval-card__actions \{ margin-block-start:/);
+  });
+
+  test('the input rows start at the content edge: label over value, no column, no box', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toContain(
+      '.cinder-approval-card__input-row > dt, .cinder-approval-card__input-row > dd { display: block; margin: 0; }',
+    );
+    expect(css).toContain(
+      '.cinder-approval-card__input-row > dt { color: var(--cinder-text-muted); }',
+    );
+    expect(css).toContain(
+      '.cinder-approval-card__input-row > dd { color: var(--cinder-text-default); }',
+    );
+    for (const part of ['__input-list', '__input-rows', '__input-row']) {
+      const rule = new RegExp(`\\.cinder-approval-card${part} \\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+      expect(rule, part).not.toMatch(/padding-inline|margin-inline-start|border|background|grid/);
+    }
+    // The card's arguments summary takes the line under its name at the content edge, never a
+    // column past the chevron.
+    expect(css).not.toMatch(
+      /__disclosures \.cinder-approval-card__input-pairs \{[^}]*padding-inline-start/,
+    );
   });
 
   test('every line keeps the body line height, never a tighter one', () => {
@@ -1045,7 +1068,7 @@ describe('ApprovalCard decision layout stylesheet', () => {
     const coarse = css.slice(css.indexOf('@media (any-pointer: coarse)'));
     // Painted at text height: the 44px hit area is a pseudo-element that takes no layout space.
     expect(coarse).toContain(
-      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
+      ".cinder-approval-card__input-toggle::before, .cinder-approval-card__said-toggle::before, .cinder-approval-card__show-all::before { content: ''; position: absolute; inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)); }",
     );
     expect(coarse).not.toMatch(/__(?:input|said|note)-toggle\s*\{\s*min-block-size/);
   });

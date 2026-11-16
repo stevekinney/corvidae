@@ -73,10 +73,12 @@
     context: Snippet | undefined;
     /** Identity of the request; the note and the checkbox reset when it changes. */
     requestKey: string;
-    /** The pairs of the one-line summary of the input. */
+    /** The pairs of the one-line summary of the input, written once the approval is decided or unavailable. */
     inputPairs: InputSummaryPair[];
-    /** What the Input disclosure opens onto, or `undefined` when the operation carries nothing. */
-    inputBody: Snippet | undefined;
+    /** The rows of the input, shown in the open while the approval waits. */
+    inputRows: InputRow[];
+    /** The patch and the touched files, shown in the open, or `undefined` when the operation carries neither. */
+    operationBody: Snippet | undefined;
     /** Resolution sink; undefined when the host is not wired to answer, or the approval is not actionable. */
     resolve: ((resolution: ApprovalResolution) => void) | undefined;
     /** Requests a fresh approval after this one expired. */
@@ -87,7 +89,6 @@
 <script lang="ts">
   import Ban from '@lucide/svelte/icons/ban';
   import Check from '@lucide/svelte/icons/check';
-  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { untrack } from 'svelte';
 
   import Button from '../button/button.svelte';
@@ -102,7 +103,8 @@
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import ApprovalCardOutcome from './approval-card-outcome.svelte';
   import { RISK_LABELS, RISK_WORDS, STATE_LABELS } from './approval-card-state.ts';
-  import type { InputSummaryPair } from './approval-card-state.ts';
+  import ApprovalCardInputRows from './approval-card-input-rows.svelte';
+  import type { InputRow, InputSummaryPair } from './approval-card-state.ts';
 
   let {
     rootId,
@@ -136,7 +138,8 @@
     context,
     requestKey,
     inputPairs,
-    inputBody,
+    inputRows,
+    operationBody,
     resolve,
     onAskAgain,
   }: ApprovalCardRowProps = $props();
@@ -146,7 +149,6 @@
   const hintId = $derived(`${rootId}-arm-hint`);
   const disabledReasonId = $derived(`${rootId}-disabled-reason`);
 
-  let inputOpen = $state(false);
   let noteOpen = $state(false);
   let note = $state('');
   let remember = $state(false);
@@ -176,7 +178,6 @@
   const riskLabel = $derived(RISK_LABELS[tool.risk]);
   const riskWord = $derived(RISK_WORDS[tool.risk]);
   const hasSourceLine = $derived(sourceText !== undefined || requestedText !== undefined);
-  const hasInput = $derived(inputBody !== undefined);
   const rememberLabel = $derived(
     rememberScope === undefined ? '' : `Allow ${tool.label ?? tool.name} for ${rememberScope}`,
   );
@@ -367,39 +368,10 @@
         </div>
       {/if}
 
-      {#if hasInput}
-        <div class="cinder-approval-card__input">
-          <button
-            type="button"
-            class="cinder-approval-card__input-toggle"
-            aria-expanded={inputOpen}
-            aria-controls={inputId}
-            onclick={() => (inputOpen = !inputOpen)}
-          >
-            <ChevronRight
-              class="cinder-approval-card__input-chevron"
-              size={12}
-              strokeWidth={2}
-              aria-hidden="true"
-              data-cinder-open={inputOpen || undefined}
-            />
-            <span class="cinder-approval-card__input-word">{inputLabel}</span>
-            <span class="cinder-approval-card__input-pairs">
-              {#each inputPairs as pair, index (pair.key)}
-                {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true"
-                    >,</span
-                  >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
-                >{' '}<span
-                  class="cinder-approval-card__pair-value"
-                  data-cinder-muted={pair.muted || undefined}>{pair.text}</span
-                >
-              {/each}
-            </span>
-          </button>
-          <div id={inputId} class="cinder-approval-card__row-input" hidden={!inputOpen}>
-            {@render inputBody?.()}
-          </div>
-        </div>
+      {@render operationBody?.()}
+
+      {#if inputRows.length > 0}
+        <ApprovalCardInputRows id={inputId} label={inputLabel} rows={inputRows} />
       {/if}
 
       {#if canAnswer && failure !== undefined}
